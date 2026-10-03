@@ -15,7 +15,8 @@ fn git(root: &Path, args: &[&str]) -> Result<String> {
     let output = Command::new("/usr/bin/git")
         .current_dir(root)
         .args(args)
-        .envs(rrx::git::native_environment())
+        .env_clear()
+        .envs(std::env::vars_os().filter(|(key, _)| !key.to_string_lossy().starts_with("GIT_")))
         .output()?;
     ensure!(
         output.status.success(),

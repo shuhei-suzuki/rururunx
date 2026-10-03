@@ -517,6 +517,7 @@ mod tests {
         let output = Command::new("/usr/bin/git")
             .current_dir(root)
             .args(args)
+            .env_clear()
             .envs(crate::git::native_environment())
             .output()
             .unwrap();
