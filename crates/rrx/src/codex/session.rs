@@ -32,6 +32,41 @@ use crate::{
 const OUTPUT_LIMIT: usize = 64 * 1024;
 const RETAINED_TERMINALS: usize = 32;
 
+fn pin_starting_input(
+    session: &mut Session,
+    request: &LaunchRequest,
+    previous: Option<&Session>,
+) -> AdapterResult<()> {
+    session.state = SessionState::Starting;
+    session.pid = None;
+    // A fresh continuation is a new attempt: pin its source metadata while
+    // Starting, before admission. Later observations must not rebind it.
+    session.recovery["input_revision"] = json!(request.input.revision);
+    session.recovery["input_version"] = json!(request.input.version);
+    session.recovery["input_bytes"] = json!(request.input.payload.len());
+    session.recovery["input_sha256"] = json!(format!(
+        "{:x}",
+        Sha256::digest(request.input.payload.as_bytes())
+    ));
+    session.recovery["source_versions"] = json!(request.input.source_versions);
+    if let Some(previous) = previous {
+        // Durable proof for exact pre-dispatch rollback; never permission to
+        // change source metadata after the consumed intent was published.
+        session.recovery["pre_dispatch_restore_sha256"] = json!(format!(
+            "{:x}",
+            Sha256::digest(
+                serde_json::to_vec(previous)
+                    .map_err(|error| { failure(ErrorKind::StateFailure, error.to_string()) })?
+            )
+        ));
+    }
+    if let Some(recovery) = session.recovery.as_object_mut() {
+        recovery.remove("dispatch_intent");
+        recovery.remove("native_dispatch_unobserved");
+    }
+    Ok(())
+}
+
 fn evict_one_terminal(sessions: &mut HashMap<SessionId, Entry>) {
     if let Some(id) = sessions
         .iter()
@@ -579,29 +614,7 @@ impl CodexAdapter {
         } else {
             0
         };
-        session.state = SessionState::Starting;
-        session.pid = None;
-        // A fresh continuation is a new attempt: pin its source metadata while
-        // Starting, before admission. Later observations must not rebind it.
-        session.recovery["input_revision"] = json!(request.input.revision);
-        session.recovery["input_version"] = json!(request.input.version);
-        session.recovery["input_bytes"] = json!(request.input.payload.len());
-        session.recovery["source_versions"] = json!(request.input.source_versions);
-        if let Some(previous) = &resume {
-            // Durable proof for exact pre-dispatch rollback; never permission to
-            // change source metadata after the consumed intent was published.
-            session.recovery["pre_dispatch_restore_sha256"] = json!(format!(
-                "{:x}",
-                Sha256::digest(
-                    serde_json::to_vec(previous)
-                        .map_err(|error| { failure(ErrorKind::StateFailure, error.to_string()) })?
-                )
-            ));
-        }
-        if let Some(recovery) = session.recovery.as_object_mut() {
-            recovery.remove("dispatch_intent");
-            recovery.remove("native_dispatch_unobserved");
-        }
+        pin_starting_input(&mut session, &request, resume.as_ref())?;
         let resume_publication = if let Some(previous) = &resume {
             let sessions = self.registry()?;
             let entry = sessions.get(&previous.id).ok_or_else(|| {
@@ -1203,7 +1216,7 @@ impl AgentAdapter for CodexAdapter {
                 resume_publication: Some(publication),
                 inference_started: false,
             };
-            reservation.session.state = SessionState::Starting;
+            pin_starting_input(&mut reservation.session, &request, Some(&status.session))?;
             reservation.persist()?;
             reservation.armed = true;
             // Checkpoints are validated before replacing resumable prepared input.
@@ -2296,6 +2309,84 @@ mod tests {
             ErrorKind::SessionLost
         );
         assert!(adapter.registry().unwrap().is_empty());
+    }
+    #[tokio::test]
+    async fn checkpoint_and_resume_publish_fresh_input_before_reserving_and_restore_consumed_history()
+     {
+        let mut fixture = ApprovalFixture::new(true).await;
+        fixture.status.session.recovery["dispatch_intent"] = json!({
+            "id":"historical-runtime-input","origin":"runtime","consumed":true,
+        });
+        let (adapter, reference) = fixture.terminal_adapter();
+        let original = adapter.current(&reference).unwrap().session;
+        let mut input = fixture.authority.request.input.clone();
+        input.version += 1;
+        input.payload = "explicit fresh continuation with owned context".into();
+        let db = fixture
+            .authority
+            .request
+            .project
+            .root
+            .parent()
+            .unwrap()
+            .join("state.sqlite3");
+        let connection = rusqlite::Connection::open(db).unwrap();
+        connection.execute_batch("CREATE TABLE checkpoint_expectation(version INTEGER,revision TEXT,bytes INTEGER,hash TEXT,restore TEXT,sources TEXT);
+            CREATE TRIGGER verify_reserved_checkpoint BEFORE UPDATE ON records
+            WHEN NEW.kind='session' AND json_extract(NEW.body,'$.data.state')='STARTING'
+            AND EXISTS(SELECT 1 FROM checkpoint_expectation WHERE
+                version IS NOT json_extract(NEW.body,'$.data.recovery.input_version') OR
+                revision IS NOT json_extract(NEW.body,'$.data.recovery.input_revision') OR
+                bytes IS NOT json_extract(NEW.body,'$.data.recovery.input_bytes') OR
+                hash IS NOT json_extract(NEW.body,'$.data.recovery.input_sha256') OR
+                restore IS NOT json_extract(NEW.body,'$.data.recovery.pre_dispatch_restore_sha256') OR
+                sources IS NOT json_extract(NEW.body,'$.data.recovery.source_versions') OR
+                json_extract(NEW.body,'$.data.recovery.dispatch_intent') IS NOT NULL)
+            BEGIN SELECT RAISE(ABORT,'reserved input differs from fresh checkpoint'); END;").unwrap();
+        connection
+            .execute(
+                "INSERT INTO checkpoint_expectation VALUES(?1,?2,?3,?4,?5,?6)",
+                rusqlite::params![
+                    input.version,
+                    input.revision,
+                    input.payload.len(),
+                    format!("{:x}", Sha256::digest(input.payload.as_bytes())),
+                    format!(
+                        "{:x}",
+                        Sha256::digest(serde_json::to_vec(&original).unwrap())
+                    ),
+                    serde_json::to_string(&input.source_versions).unwrap(),
+                ],
+            )
+            .unwrap();
+        adapter
+            .checkpoint(reference.clone(), input.clone())
+            .await
+            .unwrap();
+        assert_eq!(
+            serde_json::to_value(adapter.current(&reference).unwrap().session).unwrap(),
+            serde_json::to_value(&original).unwrap()
+        );
+        assert_eq!(
+            adapter
+                .registry()
+                .unwrap()
+                .get(&reference.id)
+                .unwrap()
+                .request
+                .input
+                .payload,
+            input.payload
+        );
+        assert_eq!(
+            adapter.resume(reference.clone()).await.unwrap_err().kind,
+            ErrorKind::ExecutableMissing
+        );
+        assert_eq!(
+            serde_json::to_value(adapter.current(&reference).unwrap().session).unwrap(),
+            serde_json::to_value(original).unwrap()
+        );
+        adapter.release(reference).unwrap();
     }
     #[tokio::test]
     async fn failed_pre_inference_resume_restores_the_owned_terminal_record_and_watch() {

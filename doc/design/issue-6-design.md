@@ -297,7 +297,7 @@ from account payloads or persisted, and missing required login is a typed outcom
 
 A terminal resume requires explicitly checkpointed continuation input with a
 higher version than the last attempt. Do not repeat a cached mutating prompt.
-Persist the new input revision/version/bytes/source versions in the new Starting
+Persist the new input revision/version/bytes/SHA-256/source versions in the new Starting
 attempt before admission. Starting-to-Running and subsequent observations retain
 that same source binding; failure before dispatch restores the original terminal
 record and its watch state rather than consuming the new attempt.
