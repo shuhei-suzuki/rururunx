@@ -29,6 +29,10 @@ Additional LLM calls are reserved for explicit review, approval, classification,
                    └────────┬─────────┘
                             │
                     ┌───────▼────────┐
+                    │ Project Mgr    │
+                    └───────┬────────┘
+                            │
+                    ┌───────▼────────┐
                     │ Goal Manager   │
                     └───────┬────────┘
                             │
@@ -82,6 +86,22 @@ Responsibilities:
 - request stop/resume/review actions
 
 The TUI must not become a proprietary replacement chat interface.
+
+### Project Manager
+
+Owns registered repository/workspace identity and project-scoped configuration.
+
+Responsibilities:
+
+- persistent Project registry
+- canonical repository/workspace identity
+- project rules/source-of-truth references
+- project-scoped Goal/Task lookup
+- worktree namespace
+- project concurrency policy
+- cross-project isolation guarantees
+
+See `multi-project-runtime.md`.
 
 ### Goal Manager
 
@@ -258,9 +278,11 @@ Workflow phases and process state are related but should not be encoded as one f
 
 ## 5. Parallelism model
 
-The scheduling root may be a Goal, but the unit of parallel execution is a Task, not a terminal window.
+The Runtime schedules across multiple Projects. A Goal exposes dependency-ready Tasks inside one Project, and the global Scheduler selects runnable Tasks across Projects.
 
-A Goal may expose multiple dependency-ready Tasks to the Scheduler.
+The unit of parallel execution is a Task, not a terminal window.
+
+Scheduler resource scopes include Runtime-global, Project, Agent/provider, Goal dependency readiness, and reviewer availability.
 
 ```text
 Task
@@ -348,6 +370,8 @@ rururunx must not:
 
 MVP extensibility points:
 
+- Project registry/provider
+- global scheduler/fairness policy
 - Goal planner/evaluator policy
 - Agent Adapter
 - Workflow definition/preset
