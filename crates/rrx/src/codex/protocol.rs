@@ -545,6 +545,18 @@ impl UsageTracker {
             ..Self::new(thread, turn)
         }
     }
+    /// A replayed owned prior turn can show that our shutdown-time gauge lagged.
+    /// Never attribute the difference to the newly resumed turn. Once uncertain,
+    /// this baseline stays unknown for the whole current turn.
+    pub fn verify_previous_total(&mut self, previous: &TokenCounters) {
+        if self
+            .baseline
+            .as_ref()
+            .is_some_and(|baseline| baseline.as_ref() != Some(previous))
+        {
+            self.baseline = Some(None);
+        }
+    }
     /// Entire current turn, including every native model call and tool cycle.
     /// `last` is a single model call and cannot represent a multi-call turn.
     pub fn turn_counters(&self) -> Option<TokenCounters> {
