@@ -1422,10 +1422,10 @@ fn target_producing(phase: Phase) -> bool {
     )
 }
 fn remove_attempt_blocker(task: &mut Task, attempt: &PhaseAttempt) {
-    if let Some(detail) = &attempt.detail {
-        if let Some(index) = task.blockers.iter().rposition(|blocker| blocker == detail) {
-            task.blockers.remove(index);
-        }
+    if let Some(detail) = &attempt.detail
+        && let Some(index) = task.blockers.iter().rposition(|blocker| blocker == detail)
+    {
+        task.blockers.remove(index);
     }
 }
 fn validate_status(status: &SessionStatus, task: &Task, attempt: &PhaseAttempt) -> Result<()> {
@@ -1736,29 +1736,30 @@ pub(crate) fn validate_transition(
                 );
                 validate_evidence(evidence, &task.scope(), &next.sources, after)?;
             }
-            if let Some(index) = old.active {
-                if next.history[index].state == AttemptState::Succeeded {
-                    ensure!(
-                        additions.len() == 1,
-                        "succeeded attempt requires matching evidence"
-                    );
-                }
-            }
-        }
-        if let Some(index) = old.active {
-            if next.active != Some(index) && next.generation == old.generation {
-                let state = &next.history[index].state;
+            if let Some(index) = old.active
+                && next.history[index].state == AttemptState::Succeeded
+            {
                 ensure!(
-                    *state == AttemptState::Succeeded
-                        || (matches!(state, AttemptState::Waiting | AttemptState::Failed)
-                            && next.retries.len() == old.retries.len() + 1
-                            && next
-                                .retries
-                                .last()
-                                .is_some_and(|event| event.prior_attempt == index)),
-                    "active reservation can only close by completion or explicit resolved retry"
+                    additions.len() == 1,
+                    "succeeded attempt requires matching evidence"
                 );
             }
+        }
+        if let Some(index) = old.active
+            && next.active != Some(index)
+            && next.generation == old.generation
+        {
+            let state = &next.history[index].state;
+            ensure!(
+                *state == AttemptState::Succeeded
+                    || (matches!(state, AttemptState::Waiting | AttemptState::Failed)
+                        && next.retries.len() == old.retries.len() + 1
+                        && next
+                            .retries
+                            .last()
+                            .is_some_and(|event| event.prior_attempt == index)),
+                "active reservation can only close by completion or explicit resolved retry"
+            );
         }
         if let Some(index) = next.active {
             ensure!(
