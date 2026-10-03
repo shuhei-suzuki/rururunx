@@ -1,10 +1,12 @@
 //! Bounded native JSON-RPC over the app-server's local Unix WebSocket transport.
 use std::collections::{BTreeMap, VecDeque};
+use std::path::{Component, Path, PathBuf};
 use std::time::Duration;
 
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use tokio::net::UnixStream;
 use tokio_tungstenite::{
     WebSocketStream,
@@ -273,6 +275,8 @@ pub struct PendingRequest {
     pub id: RpcId,
     pub method: String,
     pub params: Value,
+    pub operation: Option<Value>,
+    pub operation_hash: String,
 }
 
 /// A reply can grant only the exact already pending operation once.
@@ -288,6 +292,8 @@ pub struct ApprovalLedger {
     turn: String,
     pending: BTreeMap<RpcId, PendingRequest>,
     seen: BTreeMap<RpcId, ()>,
+    workspace: Option<PathBuf>,
+    items: BTreeMap<String, Value>,
 }
 impl ApprovalLedger {
     pub fn new(thread: String, turn: String) -> Self {
@@ -296,7 +302,50 @@ impl ApprovalLedger {
             turn,
             pending: BTreeMap::new(),
             seen: BTreeMap::new(),
+            workspace: None,
+            items: BTreeMap::new(),
         }
+    }
+    pub fn for_workspace(mut self, workspace: PathBuf) -> Self {
+        self.workspace = Some(workspace);
+        self
+    }
+    /// Retain only bounded planned patches, without command output/history.
+    pub fn observe_item(&mut self, item: &Value) -> AdapterResult<()> {
+        if item["type"] != "fileChange" {
+            return Ok(());
+        }
+        let id = item["id"]
+            .as_str()
+            .filter(|id| !id.is_empty() && id.len() <= 256)
+            .ok_or_else(|| {
+                failure(
+                    ErrorKind::ParseFailure,
+                    "invalid native patch item identity",
+                )
+            })?;
+        let operation = json!({"type":"fileChange","changes":item["changes"]});
+        let operation =
+            if serde_json::to_vec(&operation).map_or(true, |bytes| bytes.len() > 64 * 1024) {
+                Value::Null
+            } else {
+                operation
+            };
+        if let Some(previous) = self.items.get(id) {
+            if previous != &operation {
+                return Err(failure(
+                    ErrorKind::OwnershipMismatch,
+                    "native planned patch changed under its item ID",
+                ));
+            }
+        } else if self.items.len() >= 16 {
+            return Err(failure(
+                ErrorKind::ParseFailure,
+                "too many simultaneous native planned patches",
+            ));
+        }
+        self.items.insert(id.into(), operation);
+        Ok(())
     }
     pub fn insert(
         &mut self,
@@ -387,10 +436,40 @@ impl ApprovalLedger {
                 "replayed or excessive native approval request",
             ));
         }
+        let operation = if method == "item/commandExecution/requestApproval" {
+            if params["command"]
+                .as_str()
+                .is_some_and(|command| !command.trim().is_empty())
+                && params["cwd"].is_string()
+            {
+                Some(
+                    json!({"type":"commandExecution","command":params["command"],"cwd":params["cwd"],"commandActions":params["commandActions"]}),
+                )
+            } else {
+                None
+            }
+        } else {
+            self.items
+                .get(params["itemId"].as_str().expect("validated item ID"))
+                .filter(|operation| !operation.is_null())
+                .cloned()
+        };
+        let operation_hash = format!(
+            "{:x}",
+            Sha256::digest(
+                serde_json::to_vec(&json!({"method":method,"params":params,"operation":operation}))
+                    .map_err(|_| failure(
+                        ErrorKind::ParseFailure,
+                        "native operation digest unavailable"
+                    ))?
+            )
+        );
         let request = PendingRequest {
             id: id.clone(),
             method,
             params,
+            operation,
+            operation_hash,
         };
         self.seen.insert(id.clone(), ());
         self.pending.insert(id, request.clone());
@@ -403,6 +482,15 @@ impl ApprovalLedger {
                 "unknown or already answered native approval ID",
             )
         })?;
+        if matches!(decision, OperationDecision::Approve) {
+            let workspace = self.workspace.as_deref().ok_or_else(|| {
+                failure(
+                    ErrorKind::UnsupportedCapability,
+                    "native operation has no verified workspace binding",
+                )
+            })?;
+            operation_paths(request, workspace)?;
+        }
         if matches!(decision, OperationDecision::Approve)
             && let Some(decisions) = request
                 .params
@@ -434,6 +522,31 @@ impl ApprovalLedger {
     pub fn pending(&self) -> Vec<PendingRequest> {
         self.pending.values().cloned().collect()
     }
+    pub fn request(&self, id: &RpcId) -> AdapterResult<PendingRequest> {
+        self.pending.get(id).cloned().ok_or_else(|| {
+            failure(
+                ErrorKind::OwnershipMismatch,
+                "native operation is no longer pending",
+            )
+        })
+    }
+    pub fn retire(&mut self, id: &RpcId) -> Option<PendingRequest> {
+        self.pending.remove(id)
+    }
+    pub fn retire_item(&mut self, item: &str) -> Vec<PendingRequest> {
+        let ids: Vec<_> = self
+            .pending
+            .iter()
+            .filter(|(_, request)| request.params["itemId"] == item)
+            .map(|(id, _)| id.clone())
+            .collect();
+        self.items.remove(item);
+        ids.into_iter().filter_map(|id| self.retire(&id)).collect()
+    }
+    pub fn retire_turn(&mut self) -> Vec<PendingRequest> {
+        self.items.clear();
+        std::mem::take(&mut self.pending).into_values().collect()
+    }
     pub fn preview_reply(&self, id: &RpcId, decision: OperationDecision) -> AdapterResult<Value> {
         let mut preview = Self {
             thread: self.thread.clone(),
@@ -444,9 +557,125 @@ impl ApprovalLedger {
                 .map(|request| BTreeMap::from([(id.clone(), request.clone())]))
                 .unwrap_or_default(),
             seen: BTreeMap::new(),
+            workspace: self.workspace.clone(),
+            items: BTreeMap::new(),
         };
         preview.reply(id, decision)
     }
+}
+
+/// Lexical admission is followed by actual ancestor resolution at grant time.
+/// Native restrictive filesystem/escape policy remains authoritative for commands.
+pub(super) fn operation_paths(
+    request: &PendingRequest,
+    workspace: &Path,
+) -> AdapterResult<Vec<PathBuf>> {
+    let operation = request.operation.as_ref().ok_or_else(|| {
+        failure(
+            ErrorKind::UnsupportedCapability,
+            "native operation content is unavailable; no grant supplied",
+        )
+    })?;
+    let path = |text: &str| -> AdapterResult<PathBuf> {
+        let input = Path::new(text);
+        if text.is_empty()
+            || text.len() > 4096
+            || text.contains('\0')
+            || input
+                .components()
+                .any(|component| matches!(component, Component::ParentDir))
+        {
+            return Err(failure(
+                ErrorKind::OwnershipMismatch,
+                "native operation path is not a scoped normalized path",
+            ));
+        }
+        let path = if input.is_absolute() {
+            input.to_path_buf()
+        } else {
+            workspace.join(input)
+        };
+        if !workspace.is_absolute() || !path.starts_with(workspace) {
+            return Err(failure(
+                ErrorKind::OwnershipMismatch,
+                "native operation targets another workspace",
+            ));
+        }
+        Ok(path)
+    };
+    let mut paths = Vec::new();
+    if operation["type"] == "commandExecution" {
+        paths.push(path(operation["cwd"].as_str().ok_or_else(|| {
+            failure(
+                ErrorKind::UnsupportedCapability,
+                "native command CWD unavailable",
+            )
+        })?)?);
+        if let Some(actions) = operation
+            .get("commandActions")
+            .filter(|value| !value.is_null())
+        {
+            for action in actions.as_array().ok_or_else(|| {
+                failure(
+                    ErrorKind::ParseFailure,
+                    "invalid native command action metadata",
+                )
+            })? {
+                if let Some(text) = action.get("path").filter(|value| !value.is_null()) {
+                    paths.push(path(text.as_str().ok_or_else(|| {
+                        failure(ErrorKind::ParseFailure, "invalid native action path")
+                    })?)?);
+                }
+            }
+        }
+    } else if operation["type"] == "fileChange" {
+        let changes = operation["changes"]
+            .as_array()
+            .filter(|changes| !changes.is_empty() && changes.len() <= 256)
+            .ok_or_else(|| {
+                failure(
+                    ErrorKind::UnsupportedCapability,
+                    "native planned patch paths unavailable",
+                )
+            })?;
+        for change in changes {
+            if !matches!(
+                change["kind"]["type"].as_str(),
+                Some("add" | "delete" | "update")
+            ) {
+                return Err(failure(
+                    ErrorKind::UnsupportedCapability,
+                    "unknown native patch change kind",
+                ));
+            }
+            paths.push(path(change["path"].as_str().ok_or_else(|| {
+                failure(ErrorKind::ParseFailure, "native patch path unavailable")
+            })?)?);
+            if !change["diff"].is_string() {
+                return Err(failure(
+                    ErrorKind::UnsupportedCapability,
+                    "native planned patch diff unavailable",
+                ));
+            }
+            if let Some(moved) = change["kind"]
+                .get("move_path")
+                .filter(|value| !value.is_null())
+            {
+                paths.push(path(moved.as_str().ok_or_else(|| {
+                    failure(
+                        ErrorKind::ParseFailure,
+                        "native patch move path unavailable",
+                    )
+                })?)?);
+            }
+        }
+    } else {
+        return Err(failure(
+            ErrorKind::UnsupportedCapability,
+            "unknown native operation content",
+        ));
+    }
+    Ok(paths)
 }
 
 /// Native cumulative counters are gauges, not deltas to add on each notification.
@@ -631,7 +860,7 @@ mod tests {
     use tokio_tungstenite::accept_async;
 
     fn request() -> Value {
-        json!({"threadId":"own-thread","turnId":"own-turn","itemId":"item-1","command":"supplied exact operation"})
+        json!({"threadId":"own-thread","turnId":"own-turn","itemId":"item-1","command":"supplied exact operation","cwd":"/own"})
     }
 
     #[test]
@@ -668,7 +897,8 @@ mod tests {
                 json!({"all":true}),
             ),
         ] {
-            let mut ledger = ApprovalLedger::new("own-thread".into(), "own-turn".into());
+            let mut ledger = ApprovalLedger::new("own-thread".into(), "own-turn".into())
+                .for_workspace("/own".into());
             let mut params = json!({"threadId":"own-thread","turnId":"own-turn","itemId":"item-1"});
             params[field] = value;
             assert_eq!(
@@ -689,7 +919,8 @@ mod tests {
 
     #[test]
     fn persistent_only_prompt_can_be_denied_but_never_converted_to_operation_approval() {
-        let mut ledger = ApprovalLedger::new("own-thread".into(), "own-turn".into());
+        let mut ledger = ApprovalLedger::new("own-thread".into(), "own-turn".into())
+            .for_workspace("/own".into());
         let mut params = request();
         params["availableDecisions"] = json!(["acceptForSession", "decline"]);
         ledger
@@ -740,7 +971,8 @@ mod tests {
                 params
             }),
         ] {
-            let mut ledger = ApprovalLedger::new("own-thread".into(), "own-turn".into());
+            let mut ledger = ApprovalLedger::new("own-thread".into(), "own-turn".into())
+                .for_workspace("/own".into());
             assert_eq!(
                 ledger
                     .insert(id, "item/commandExecution/requestApproval".into(), params)
@@ -858,7 +1090,8 @@ mod tests {
 
     #[test]
     fn approvals_are_scoped_one_time_and_cannot_create_persistent_grants() {
-        let mut ledger = ApprovalLedger::new("own-thread".into(), "own-turn".into());
+        let mut ledger = ApprovalLedger::new("own-thread".into(), "own-turn".into())
+            .for_workspace("/own".into());
         let id = RpcId::Text("native-opaque".into());
         let mut foreign = request();
         foreign["threadId"] = json!("other-project-thread");
@@ -911,6 +1144,126 @@ mod tests {
                 )
                 .is_err()
         );
+        assert!(ledger.is_empty());
+    }
+    #[test]
+    fn grants_require_scoped_cwd_and_the_exact_planned_patch_content() {
+        for cwd in [
+            Value::Null,
+            json!("/other-project"),
+            json!("../other-project"),
+        ] {
+            let mut ledger = ApprovalLedger::new("own-thread".into(), "own-turn".into())
+                .for_workspace("/own".into());
+            let mut params = request();
+            params["cwd"] = cwd;
+            ledger
+                .insert(
+                    RpcId::Number(1),
+                    "item/commandExecution/requestApproval".into(),
+                    params,
+                )
+                .unwrap();
+            assert!(
+                ledger
+                    .preview_reply(&RpcId::Number(1), OperationDecision::Approve)
+                    .is_err()
+            );
+            assert!(!ledger.is_empty());
+            ledger
+                .reply(&RpcId::Number(1), OperationDecision::Deny)
+                .unwrap();
+        }
+        for (source, target, available) in [
+            ("inside.txt", None, true),
+            ("../other-project/target", None, false),
+            ("inside.txt", Some("/other-project/moved"), false),
+        ] {
+            let mut ledger = ApprovalLedger::new("own-thread".into(), "own-turn".into())
+                .for_workspace("/own".into());
+            ledger.observe_item(&json!({"id":"patch","type":"fileChange","changes":[{"path":source,"diff":"exact proposed content","kind":{"type":"update","move_path":target}}]})).unwrap();
+            let pending = ledger
+                .insert(
+                    RpcId::Number(1),
+                    "item/fileChange/requestApproval".into(),
+                    json!({"threadId":"own-thread","turnId":"own-turn","itemId":"patch"}),
+                )
+                .unwrap();
+            assert_eq!(
+                pending.operation.as_ref().unwrap()["changes"][0]["diff"],
+                "exact proposed content"
+            );
+            assert_eq!(pending.operation_hash.len(), 64);
+            assert_eq!(
+                ledger
+                    .preview_reply(&RpcId::Number(1), OperationDecision::Approve)
+                    .is_ok(),
+                available
+            );
+        }
+        let mut missing = ApprovalLedger::new("own-thread".into(), "own-turn".into())
+            .for_workspace("/own".into());
+        missing
+            .insert(
+                RpcId::Number(1),
+                "item/fileChange/requestApproval".into(),
+                json!({"threadId":"own-thread","turnId":"own-turn","itemId":"missing"}),
+            )
+            .unwrap();
+        assert_eq!(
+            missing
+                .reply(&RpcId::Number(1), OperationDecision::Approve)
+                .unwrap_err()
+                .kind,
+            ErrorKind::UnsupportedCapability
+        );
+        missing
+            .reply(&RpcId::Number(1), OperationDecision::Cancel)
+            .unwrap();
+    }
+    #[test]
+    fn retirement_prevents_replies_and_preserves_replay_fences_without_wire_grants() {
+        let mut ledger = ApprovalLedger::new("own-thread".into(), "own-turn".into())
+            .for_workspace("/own".into());
+        let id = RpcId::Number(1);
+        ledger
+            .insert(
+                id.clone(),
+                "item/commandExecution/requestApproval".into(),
+                request(),
+            )
+            .unwrap();
+        assert!(ledger.retire(&id).is_some());
+        assert!(
+            ledger
+                .preview_reply(&id, OperationDecision::Approve)
+                .is_err()
+        );
+        assert!(
+            ledger
+                .insert(
+                    id,
+                    "item/commandExecution/requestApproval".into(),
+                    request()
+                )
+                .is_err()
+        );
+        ledger
+            .insert(
+                RpcId::Number(2),
+                "item/commandExecution/requestApproval".into(),
+                request(),
+            )
+            .unwrap();
+        assert_eq!(ledger.retire_item("item-1").len(), 1);
+        ledger
+            .insert(
+                RpcId::Number(3),
+                "item/commandExecution/requestApproval".into(),
+                request(),
+            )
+            .unwrap();
+        assert_eq!(ledger.retire_turn().len(), 1);
         assert!(ledger.is_empty());
     }
     #[test]
