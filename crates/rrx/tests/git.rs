@@ -335,3 +335,72 @@ fn duplicate_executors_and_malformed_locks_fail_closed() {
     let mut malformed = Record::new(t.scope(), RecordKind::WorktreeLock, json!({"active":false}));
     assert!(f.store.put_record(&mut malformed).is_err());
 }
+
+#[test]
+fn aliased_worktree_bindings_and_goal_scoped_executors_are_rejected() {
+    let mut f = Fixture::new();
+    let t = f.task(1);
+    let status = Manager::create(&mut f.store, t.id).unwrap();
+    let mut duplicate = f.task(1);
+    duplicate.worktree = Some(status.worktree.clone());
+    duplicate.branch = Some(status.branch.clone());
+    assert!(
+        f.store.put_task(&mut duplicate).is_err(),
+        "duplicate worktree ownership accepted"
+    );
+    let task = f.store.task(t.id).unwrap().unwrap();
+    let mut session = f.session(&task, SessionState::Starting);
+    session.scope = Scope::goal(task.project_id, task.goal_id);
+    assert!(
+        f.store.put_session(&session, 0).is_err(),
+        "goal-scoped executor accepted"
+    );
+    session.scope = task.scope();
+    session.worktree = f.root.clone();
+    assert!(
+        f.store.put_session(&session, 0).is_err(),
+        "executor cwd differs from owned worktree"
+    );
+}
+#[test]
+fn cleanup_checks_native_branch_delete_predicate_before_removal() {
+    let mut f = Fixture::new();
+    let t = f.task(1);
+    let s = Manager::create(&mut f.store, t.id).unwrap();
+    git(&f.root, &["branch", "old"]);
+    git(&s.worktree, &["commit", "--allow-empty", "-m", "change"]);
+    git(&f.root, &["merge", "--ff-only", &s.branch]);
+    git(&f.root, &["switch", "old"]);
+    assert!(Manager::cleanup(&mut f.store, t.id).is_err());
+    assert!(
+        s.worktree.exists(),
+        "worktree deleted before native branch predicate checked"
+    );
+    git(&f.root, &["switch", "main"]);
+    git(&s.worktree, &["branch", "--set-upstream-to=old"]);
+    assert!(Manager::cleanup(&mut f.store, t.id).is_err());
+    assert!(s.worktree.exists());
+}
+#[test]
+fn linked_and_wrong_identity_project_roots_are_rejected() {
+    let mut f = Fixture::new();
+    let t = f.task(1);
+    let s = Manager::create(&mut f.store, t.id).unwrap();
+    let mut nested = Project::new("nested".into(), s.worktree, "nested".into(), "main".into());
+    assert!(
+        f.store.put_project(&mut nested).is_err(),
+        "overlapping Project root accepted"
+    );
+    // A separate Store must also reject treating a linked worktree as a source repository.
+    let mut separate = Store::memory().unwrap();
+    separate.put_project(&mut nested).unwrap();
+    let mut goal = Goal::new(
+        nested.id,
+        "fixture".into(),
+        f.goal.completion_criteria.clone(),
+    );
+    separate.put_goal(&mut goal).unwrap();
+    let mut task = Task::new(nested.id, goal.id, "fixture".into(), "fake".into());
+    separate.put_task(&mut task).unwrap();
+    assert!(Manager::create(&mut separate, task.id).is_err());
+}
