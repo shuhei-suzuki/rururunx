@@ -41,6 +41,11 @@ preimage and postimage paths remain visible. Filesystem jobs (including native
 executable resolution and ownership canonicalization) and scanner/graph work have
 five-second deadlines. Synchronous registry/manager commands use the same absolute
 native Git resolver while preserving configuration, hooks and environment.
+Absolute executable resolution applies to the top-level Git binary. Native
+subcommands and hooks retain the configured environment, including PATH.
+Each filesystem slot wait and worker job is bounded separately; this is not a
+five-second total index SLA under contention. Resolution is repeated for each
+Git observation, so runtime PATH changes during indexing are not pinned.
 Configured native Git infrastructure retains Git's lifecycle: on macOS,
 `core.fsmonitor=true` can start a detached Git fsmonitor daemon during inventory
 queries, including with `--no-optional-locks`. That Git-managed service can outlive

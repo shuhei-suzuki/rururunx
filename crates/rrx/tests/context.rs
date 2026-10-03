@@ -453,7 +453,8 @@ async fn dirty_sources_added_deleted_and_head_changes_invalidate() {
     assert!(dirty.files()["src/codec.rs"].changed);
     std::fs::write(
         f.worktree.join("src/codec.rs"),
-        "pub fn encode() { panic!(\"already dirty, changed again\") }\n",
+        // Same byte length and unchanged dirty-path set: content hashing must differ.
+        "pub fn encode() { panic!(\"other\") }\n",
     )
     .unwrap();
     assert!(engine.validate(&dirty).await.is_err());

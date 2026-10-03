@@ -514,13 +514,14 @@ fn relative_path_cannot_replace_native_git_and_global_git_config_remains_authori
         let mut cmd = Command::new(env!("CARGO_BIN_EXE_rrx"));
         cmd.current_dir(&f.a)
             .env("PATH", ".:/usr/bin:/bin")
+            .env(
+                "GIT_CONFIG_GLOBAL",
+                global.unwrap_or(Path::new("/dev/null")),
+            )
             .arg("--state")
             .arg(&f.db)
             .args(["project", "add"])
             .arg(&f.a);
-        if let Some(path) = global {
-            cmd.env("GIT_CONFIG_GLOBAL", path);
-        }
         cmd.output().unwrap()
     };
     let normal = run(None);
@@ -530,6 +531,7 @@ fn relative_path_cannot_replace_native_git_and_global_git_config_remains_authori
         String::from_utf8_lossy(&normal.stderr)
     );
     assert!(!f.a.join("fake-git-ran").exists());
+    assert!(run(None).status.success(), "same-root add is idempotent");
     let config = f.root.join("native-global.gitconfig");
     let included = f.root.join("malformed-native.gitconfig");
     std::fs::write(&included, "native configuration syntax error\n").unwrap();
@@ -542,6 +544,11 @@ fn relative_path_cannot_replace_native_git_and_global_git_config_remains_authori
     assert!(
         !guarded.status.success(),
         "native configured include failures must remain authoritative"
+    );
+    assert!(
+        String::from_utf8_lossy(&guarded.stderr).contains(included.to_str().unwrap()),
+        "{}",
+        String::from_utf8_lossy(&guarded.stderr)
     );
     assert!(!f.a.join("fake-git-ran").exists());
 }
