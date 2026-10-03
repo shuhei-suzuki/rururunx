@@ -36,6 +36,9 @@ const DISABLED_FEATURES: &[&str] = &[
 #[derive(Debug, Clone)]
 pub struct DecisionPolicy {
     disabled_servers: BTreeSet<String>,
+    execute: bool,
+    approval: Value,
+    reviewer: Option<String>,
 }
 impl DecisionPolicy {
     pub fn from_native(config: &Value) -> AdapterResult<Self> {
@@ -73,15 +76,103 @@ impl DecisionPolicy {
                 ));
             }
         }
-        Ok(Self { disabled_servers })
+        Ok(Self {
+            disabled_servers,
+            execute: false,
+            approval: json!("never"),
+            reviewer: None,
+        })
+    }
+    /// Task execution retains native rule prompts/approval reviewer, while refusing
+    /// sandbox escapes and permission-profile expansion outside the Task boundary.
+    pub fn for_executor(config: &Value) -> AdapterResult<Self> {
+        let mut policy = Self::from_native(config)?;
+        if !matches!(
+            config["sandbox_mode"].as_str(),
+            Some("workspace-write" | "danger-full-access")
+        ) || config.get("default_permissions").is_some_and(|profile| {
+            !profile.is_null() && profile != ":workspace" && profile != ":unrestricted"
+        }) {
+            return Err(failure(
+                ErrorKind::UnsupportedCapability,
+                "native executor cannot widen or intersect an unknown/read-only native profile",
+            ));
+        }
+        policy.approval = match &config["approval_policy"] {
+            Value::String(value) if value == "never" => json!("never"),
+            Value::String(value) if value == "on-request" => {
+                json!({"granular":{"sandbox_approval":false,"request_permissions":false,"rules":true,"mcp_elicitations":false,"skill_approval":true}})
+            }
+            Value::Object(value)
+                if value.len() == 1 && value.get("granular").is_some_and(Value::is_object) =>
+            {
+                let mut approval = config["approval_policy"].clone();
+                let granular = approval["granular"]
+                    .as_object_mut()
+                    .expect("validated granular policy");
+                if granular.keys().any(|key| {
+                    !matches!(
+                        key.as_str(),
+                        "sandbox_approval"
+                            | "request_permissions"
+                            | "rules"
+                            | "mcp_elicitations"
+                            | "skill_approval"
+                    )
+                }) || granular.values().any(|value| !value.is_boolean())
+                    || !granular.contains_key("rules")
+                    || !granular.contains_key("mcp_elicitations")
+                {
+                    return Err(failure(
+                        ErrorKind::UnsupportedCapability,
+                        "unsupported native granular policy",
+                    ));
+                }
+                granular.insert("sandbox_approval".into(), json!(false));
+                granular.insert("request_permissions".into(), json!(false));
+                approval
+            }
+            _ => {
+                return Err(failure(
+                    ErrorKind::UnsupportedCapability,
+                    "unsupported native executor approval policy",
+                ));
+            }
+        };
+        policy.reviewer = Some(
+            config["approvals_reviewer"]
+                .as_str()
+                .filter(|value| matches!(*value, "user" | "auto_review" | "guardian_subagent"))
+                .ok_or_else(|| {
+                    failure(
+                        ErrorKind::ParseFailure,
+                        "native approval reviewer unavailable",
+                    )
+                })?
+                .into(),
+        );
+        policy.execute = true;
+        Ok(policy)
+    }
+    fn restricted_features(&self) -> impl Iterator<Item = &&'static str> {
+        DISABLED_FEATURES
+            .iter()
+            .filter(|feature| !self.execute || !matches!(**feature, "shell_tool" | "unified_exec"))
+    }
+    fn filesystem(&self) -> Value {
+        json!({":root":"deny",":minimal":"read",":slash_tmp":"deny",":tmpdir":"deny",":workspace_roots":{".":if self.execute {"write"} else {"read"}}})
     }
     pub fn profile_name(&self) -> &'static str {
-        PROFILE
+        if self.execute {
+            "rrx_scoped_execute"
+        } else {
+            PROFILE
+        }
     }
     /// Only restrictive overrides; no rule/hook/authentication bypass switches.
     pub fn arguments(&self) -> Vec<String> {
         let mut args = Vec::new();
-        for feature in DISABLED_FEATURES {
+        for feature in self.restricted_features() {
             args.extend(["--disable".into(), (*feature).into()]);
         }
         for name in &self.disabled_servers {
@@ -89,20 +180,20 @@ impl DecisionPolicy {
         }
         args.extend([
             "-c".into(), "web_search=\"disabled\"".into(),
-            "-c".into(), format!("permissions.{PROFILE}.filesystem={{\":root\"=\"deny\",\":minimal\"=\"read\",\":slash_tmp\"=\"deny\",\":tmpdir\"=\"deny\",\":workspace_roots\"={{\".\"=\"read\"}}}}"),
-            "-c".into(), format!("permissions.{PROFILE}.network.enabled=false"),
+            "-c".into(), format!("permissions.{}.filesystem={{\":root\"=\"deny\",\":minimal\"=\"read\",\":slash_tmp\"=\"deny\",\":tmpdir\"=\"deny\",\":workspace_roots\"={{\".\"=\"{}\"}}}}",self.profile_name(),if self.execute {"write"} else {"read"}),
+            "-c".into(), format!("permissions.{}.network.enabled=false",self.profile_name()),
         ]);
         args
     }
     pub fn thread_parameters(&self, cwd: &Path) -> Value {
         // A decision session cannot request an escape from its read-only profile.
         // Managed policies remain authoritative; rejection is an explicit failure.
-        json!({"cwd":cwd,"permissions":PROFILE,"approvalPolicy":"never","environments":[],"runtimeWorkspaceRoots":[cwd],"ephemeral":false})
+        json!({"cwd":cwd,"permissions":self.profile_name(),"approvalPolicy":self.approval,"environments":[],"runtimeWorkspaceRoots":[cwd],"ephemeral":false})
     }
     pub fn verify_configuration(&self, effective: &Value) -> AdapterResult<()> {
         if effective["web_search"] != "disabled"
-            || DISABLED_FEATURES
-                .iter()
+            || self
+                .restricted_features()
                 .any(|feature| effective["features"][*feature] != false)
             || self
                 .disabled_servers
@@ -114,7 +205,7 @@ impl DecisionPolicy {
                 "native decision controls are not effective",
             ));
         }
-        let mut filesystem = effective["permissions"][PROFILE]["filesystem"].clone();
+        let mut filesystem = effective["permissions"][self.profile_name()]["filesystem"].clone();
         // Installed config/read normalizes the optional scan-depth metadata to
         // null. It is not an extra path grant; every actual path rule still matches.
         if let Some(object) = filesystem.as_object_mut()
@@ -122,9 +213,8 @@ impl DecisionPolicy {
         {
             object.remove("glob_scan_max_depth");
         }
-        if filesystem
-            != json!({":root":"deny",":minimal":"read",":slash_tmp":"deny",":tmpdir":"deny",":workspace_roots":{".":"read"}})
-            || effective["permissions"][PROFILE]["network"]["enabled"] != false
+        if filesystem != self.filesystem()
+            || effective["permissions"][self.profile_name()]["network"]["enabled"] != false
         {
             return Err(failure(
                 ErrorKind::UnsupportedCapability,
@@ -135,8 +225,12 @@ impl DecisionPolicy {
     }
     pub fn verify_thread(&self, response: &Value, cwd: &Path) -> AdapterResult<String> {
         let native_ref = verify_thread_identity(response, cwd, None)?;
-        if response["activePermissionProfile"]["id"] != PROFILE
-            || response["approvalPolicy"] != "never"
+        if response["activePermissionProfile"]["id"] != self.profile_name()
+            || response["approvalPolicy"] != self.approval
+            || self
+                .reviewer
+                .as_ref()
+                .is_some_and(|reviewer| response["approvalsReviewer"] != reviewer.as_str())
         {
             return Err(failure(
                 ErrorKind::UnsupportedCapability,
@@ -336,6 +430,51 @@ mod tests {
         for name in ["", "contains.dot", "quote\"", "x\n"] {
             assert!(DecisionPolicy::from_native(&json!({"mcp_servers":{name:{}}})).is_err());
         }
+    }
+    #[test]
+    fn executor_preserves_native_reviewer_and_rule_prompts_without_profile_expansion() {
+        let mut config = json!({"mcp_servers":{"known":{}},"sandbox_mode":"workspace-write","approval_policy":"on-request","approvals_reviewer":"auto_review"});
+        let policy = DecisionPolicy::for_executor(&config).unwrap();
+        assert!(
+            !policy
+                .arguments()
+                .iter()
+                .any(|arg| arg == "shell_tool" || arg == "unified_exec")
+        );
+        assert_eq!(
+            policy.thread_parameters(Path::new("/own"))["approvalPolicy"]["granular"]["sandbox_approval"],
+            false
+        );
+        assert_eq!(
+            policy.thread_parameters(Path::new("/own"))["approvalPolicy"]["granular"]["request_permissions"],
+            false
+        );
+        assert_eq!(
+            policy.thread_parameters(Path::new("/own"))["approvalPolicy"]["granular"]["rules"],
+            true
+        );
+        let mut effective = effective();
+        effective["features"]["shell_tool"] = json!(true);
+        effective["features"]["unified_exec"] = json!(true);
+        effective["permissions"][policy.profile_name()] =
+            json!({"filesystem":policy.filesystem(),"network":{"enabled":false}});
+        policy.verify_configuration(&effective).unwrap();
+        let mut response = json!({"cwd":"/own","thread":{"id":"01a10085-deba-7831-8b1b-f302ca6c6da8","cwd":"/own"},"activePermissionProfile":{"id":policy.profile_name()},"approvalPolicy":policy.approval,"approvalsReviewer":"auto_review"});
+        policy.verify_thread(&response, Path::new("/own")).unwrap();
+        response["approvalsReviewer"] = json!("user");
+        assert!(policy.verify_thread(&response, Path::new("/own")).is_err());
+        config["sandbox_mode"] = json!("read-only");
+        assert!(DecisionPolicy::for_executor(&config).is_err());
+        config["sandbox_mode"] = json!("workspace-write");
+        config["default_permissions"] = json!("managed-custom");
+        assert!(DecisionPolicy::for_executor(&config).is_err());
+        config["default_permissions"] = Value::Null;
+        config["approval_policy"] = json!({"granular":{"sandbox_approval":true,"request_permissions":true,"rules":false,"mcp_elicitations":false,"skill_approval":false}});
+        let policy = DecisionPolicy::for_executor(&config).unwrap();
+        assert_eq!(policy.approval["granular"]["rules"], false);
+        assert_eq!(policy.approval["granular"]["skill_approval"], false);
+        config["approval_policy"]["granular"]["unknown_future_grant"] = json!(true);
+        assert!(DecisionPolicy::for_executor(&config).is_err());
     }
     #[test]
     fn inventory_errors_unknown_rosters_and_surviving_tools_fail_closed() {

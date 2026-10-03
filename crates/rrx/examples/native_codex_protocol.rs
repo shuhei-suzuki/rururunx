@@ -30,10 +30,11 @@ async fn main() -> Result<()> {
             .context("absolute native Codex executable required")?,
     )
     .canonicalize()?;
-    let review = match arguments.next() {
-        None => false,
-        Some(mode) if mode == "review" => true,
-        Some(_) => anyhow::bail!("only the explicit review mode is supported"),
+    let (review, execute) = match arguments.next() {
+        None => (false, false),
+        Some(mode) if mode == "review" => (true, false),
+        Some(mode) if mode == "execute-policy" => (false, true),
+        Some(_) => anyhow::bail!("only explicit review or execute-policy mode is supported"),
     };
     ensure!(arguments.next().is_none(), "unexpected arguments");
     let fixture = tempfile::Builder::new()
@@ -81,7 +82,11 @@ async fn main() -> Result<()> {
             .rpc
             .call("config/read", json!({"cwd":own,"includeLayers":false}))
             .await?;
-        let policy = DecisionPolicy::from_native(&config["config"])?;
+        let policy = if execute {
+            DecisionPolicy::for_executor(&config["config"])?
+        } else {
+            DecisionPolicy::from_native(&config["config"])?
+        };
         let account = discovery
             .rpc
             .call("account/read", json!({"refreshToken":false}))
@@ -116,6 +121,16 @@ async fn main() -> Result<()> {
             if cursor.is_none() { inventory_done=true; break; }
         }
         if !inventory_done { return Err(rrx::adapter::AdapterError { kind:rrx::adapter::ErrorKind::ParseFailure,message:"inventory pagination exceeded bound".into() }); }
+        let mut filesystem_canaries=None;
+        if execute {
+            let mut exits=Vec::new();
+            for command in [vec!["/bin/cat".to_owned(),own.join("scope-sentinel").display().to_string()],vec!["/bin/cat".to_owned(),foreign.join("scope-sentinel").display().to_string()],vec!["/usr/bin/touch".to_owned(),own.join("owned-write").display().to_string()],vec!["/usr/bin/touch".to_owned(),foreign.join("foreign-write").display().to_string()]] {
+                let response=native.rpc.call("command/exec",json!({"command":command,"cwd":own,"permissionProfile":policy.profile_name(),"timeoutMs":5000,"outputBytesCap":4096})).await?;
+                exits.push(response["exitCode"].as_i64().ok_or_else(||rrx::adapter::AdapterError {kind:rrx::adapter::ErrorKind::ParseFailure,message:"native filesystem canary exit unavailable".into()})?);
+            }
+            if exits[0]!=0 || exits[1]==0 || exits[2]!=0 || exits[3]==0 || !own.join("owned-write").is_file() || foreign.join("foreign-write").exists() { return Err(rrx::adapter::AdapterError {kind:rrx::adapter::ErrorKind::ProcessFailure,message:"native executor filesystem isolation failed".into()}); }
+            filesystem_canaries=Some(json!({"own_read":true,"foreign_read_denied":true,"own_write":true,"foreign_write_denied":true}));
+        }
         let mut answer = None;
         let mut usage = None;
         if review {
@@ -153,7 +168,7 @@ async fn main() -> Result<()> {
                 }
             }
         }
-        Ok::<_,rrx::adapter::AdapterError>(json!({"native_account_observed":native_account_observed,"native_uuid":thread,"private_socket_verified":native.socket().is_ok(),"native_model":started["model"],"native_effort":started["reasoningEffort"],"instruction_source_count":started["instructionSources"].as_array().map(Vec::len),"decision_profile_verified":true,"external_tool_count":0,"model_turn_sent":review,"structured_answer":answer,"cumulative_tokens":usage,"estimated_cost":null}))
+        Ok::<_,rrx::adapter::AdapterError>(json!({"native_account_observed":native_account_observed,"native_uuid":thread,"private_socket_verified":native.socket().is_ok(),"native_model":started["model"],"native_effort":started["reasoningEffort"],"instruction_source_count":started["instructionSources"].as_array().map(Vec::len),"scoped_profile_verified":true,"filesystem_canaries":filesystem_canaries,"native_approval_policy":started["approvalPolicy"],"native_approval_reviewer":started["approvalsReviewer"],"external_tool_count":0,"model_turn_sent":review,"structured_answer":answer,"cumulative_tokens":usage,"estimated_cost":null}))
     }.await;
     native.shutdown().await?;
     ensure!(

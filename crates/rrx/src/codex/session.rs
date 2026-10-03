@@ -371,6 +371,7 @@ impl CodexAdapter {
         reservation.session.recovery["native_turn"] = json!(turn);
         reservation.session.recovery["input_revision"] = json!(request.input.revision);
         reservation.session.recovery["input_version"] = json!(request.input.version);
+        reservation.session.recovery["input_bytes"] = json!(request.input.payload.len());
         reservation.session.recovery["source_versions"] = json!(request.input.source_versions);
         if let Err(error) = reservation.persist() {
             native.shutdown().await?;
