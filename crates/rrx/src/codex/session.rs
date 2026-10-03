@@ -1929,7 +1929,7 @@ mod tests {
     use super::super::ownership::tests::Fixture;
     use super::*;
     use crate::domain::{ProjectId, Scope};
-    use futures_util::StreamExt;
+    use futures_util::{SinkExt, StreamExt};
 
     #[tokio::test]
     async fn any_uncertain_owned_group_retains_lost_reservation_and_scoped_diagnostic() {
