@@ -170,11 +170,13 @@ impl Reservation {
         }
         // The server process's exit status is not a native model-turn outcome.
         status.exit_code = None;
-        status.failure = cleanup
-            .as_ref()
-            .err()
-            .or(result.as_ref().err())
-            .map(|error| error.to_string());
+        status.failure = match (result.as_ref().err(), cleanup.as_ref().err()) {
+            (Some(primary), Some(cleanup)) => Some(format!(
+                "owned cleanup unverified: {cleanup}; original failure: {primary}"
+            )),
+            (Some(error), None) | (None, Some(error)) => Some(error.to_string()),
+            (None, None) => None,
+        };
         if uncertain {
             status
                 .failure
