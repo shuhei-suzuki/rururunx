@@ -531,11 +531,17 @@ fn relative_path_cannot_replace_native_git_and_global_git_config_remains_authori
     );
     assert!(!f.a.join("fake-git-ran").exists());
     let config = f.root.join("native-global.gitconfig");
-    std::fs::write(&config, format!("[core]\nworktree = {}\n", f.b.display())).unwrap();
+    let included = f.root.join("malformed-native.gitconfig");
+    std::fs::write(&included, "native configuration syntax error\n").unwrap();
+    std::fs::write(
+        &config,
+        format!("[include]\npath = {}\n", included.display()),
+    )
+    .unwrap();
     let guarded = run(Some(&config));
     assert!(
         !guarded.status.success(),
-        "native global routing must remain effective and reject a mismatched exact root"
+        "native configured include failures must remain authoritative"
     );
     assert!(!f.a.join("fake-git-ran").exists());
 }
