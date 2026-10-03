@@ -21,15 +21,16 @@ must not bypass native executor reservations.
 
 ## Presets and escalation
 
-QUICK: Worktree, Implement, Tests, ImplementationReview, Commit, PR.
-STANDARD: Issue, Worktree, Requirements, RequirementsReview, Design, DesignReview,
-Implement, ImpactAnalysis, Tests, ImplementationReview, Commit, PR, MergeGate,
+QUICK: Worktree, Implement, Commit, Tests, ImplementationReview, PR.
+STANDARD: Issue, Worktree, Requirements, RequirementsCommit, RequirementsReview,
+Design, DesignCommit, DesignReview, Implement, ImpactAnalysis, Commit, Tests,
+ImplementationReview, PR, MergeGate,
 Cleanup. STRICT inserts SecurityReview, ExpandedRegression and Mutation; browser
 and staging phases are configurable and require separate evidence. Security and
 mutation evidence are never synthesized.
 
 Risk R0 recommends QUICK, R1/R2 STANDARD, R3 STRICT. Effective selection takes the
-maximum of configured default/minimum, stored Task workflow, requested stricter
+maximum of configured minimum, stored Task workflow, requested stricter
 choice and risk. Escalation preserves historical attempts but invalidates active
 phase completion evidence and creates a new context generation. Conservative
 restart runs newly mandatory prerequisites before implementation/review again.
@@ -69,3 +70,51 @@ server provider may override using its private owned completion journal after
 verified group cleanup and terminal persistence, preserving actual OS exit code.
 Caller-supplied recovery JSON is insufficient. Successful transport still requires
 separate scoped review/test/acceptance evidence.
+
+## Reviewed gate lifecycle and revision semantics
+
+Explicit user Goal section 35 requires commit before tests/review. RequirementsCommit,
+DesignCommit and implementation Commit are trusted Git evidence ports; their successful
+process exit cannot invent a commit artifact. The captured revision is the actual
+owning HEAD. Target-producing Issue/Worktree/requirements/design/implementation/impact
+and commit phases attest their final captured authority, which the engine publishes
+atomically. PR and merge gates are target-preserving: known drift prevents invocation,
+and drift during evaluation invalidates the result and earlier prerequisites.
+
+Review Evidence includes exact source dependency digests selected by the trusted review
+integration, including all mandatory rule digests and at least one reviewed artifact.
+Later artifact changes restart prerequisites when these digests change. HEAD alone may
+change during another committed milestone without changing the approved document;
+its explicit dependency digests still bind that earlier formal review. Dependencies
+are not a claim that arbitrary generic commands enforce a read-only review.
+
+Definitive invalid evidence or a rejected verdict records Failed with its reason and
+allows explicit remediation/retry once native Sessions are resolved. Unknown gate
+errors retain Evaluating with a recovery diagnostic; no native death is inferred.
+A waiting gate can use `resume_gate` to reevaluate the same ContextVersion/Session
+without launching again. Until accepted, a produced target is not published as fresh:
+the launch pack remains immutable with `context_fresh=false`. Explicit phase `retry`
+relaunches separately, removes only that attempt's blocker and preserves its original
+completion timestamp. Restart status errors keep the Running reservation and record
+recovery diagnostics; #13 must verify native termination before any release.
+
+After a definitive gate result, owners are reread, activity and source authority are
+checked again, and only workflow fields merge into the latest Task. Issue/worktree
+bindings, Goal metadata and unrelated Task blockers/actions survive under refreshed
+Project/Goal/Task/record CAS. Concurrent policy/source changes invalidate authority;
+a later CAS conflict still preserves the evaluation reservation for recovery.
+
+The Store rejects general Task/context writes that change workflow-owned fields.
+Conservative WaitingHuman metadata updates remain available within existing Blocked
+Project rules. Initial authority cannot contain invented evidence/history; each new
+completion requires the active Evaluating→Succeeded transition and matching scoped
+phase/generation/Session/ContextVersion evidence. Unresolved reservations, finished
+flags and terminal Task states cannot be forged by skipping those transitions.
+Native live/Lost records remain authoritative even for state-only reservation release.
+
+Default workflow is a Task-creation fallback, not a minimum for an explicitly classified
+Task. BudgetClass guides #18 breadth/selection; configured phase token caps apply to
+all classes until measured per-class settings exist. Mandatory rules are never trimmed.
+Finished workflows require a new Task for further escalation. Every generation
+invalidation records cause and old/new revision/source digests separately from actual
+class escalation.

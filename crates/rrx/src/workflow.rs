@@ -1058,6 +1058,36 @@ impl WorkflowEngine {
         source: SourceSnapshot,
         reason: &str,
     ) -> Result<StepResult> {
+        let (config, fresh, _) = self
+            .inputs(
+                &snapshot.project,
+                &snapshot.task,
+                snapshot.workflow.history[index].phase,
+                snapshot.workflow.workflow,
+            )
+            .await?;
+        ensure!(
+            same_sources(&source, &fresh),
+            "authority changed during invalidation"
+        );
+        let class = snapshot
+            .workflow
+            .workflow
+            .max(config.minimum_workflow)
+            .max(risk_workflow(&config, snapshot.workflow.risk));
+        if class > snapshot.workflow.workflow {
+            snapshot.workflow.escalations.push(Escalation {
+                from: snapshot.workflow.workflow,
+                to: class,
+                reason: reason.into(),
+                evidence: serde_json::to_string(&source.source_versions)?,
+                at: now_ms(),
+            });
+        }
+        snapshot.workflow.workflow = class;
+        snapshot.task.workflow = class;
+        snapshot.workflow.configured_phases =
+            retain_phases(&snapshot.workflow.configured_phases, phases(class, &config));
         snapshot.workflow.history[index].state = AttemptState::Interrupted;
         snapshot.workflow.history[index].completed_at = Some(now_ms());
         snapshot.workflow.history[index].detail = Some(reason.into());
@@ -1246,6 +1276,16 @@ impl WorkflowEngine {
                     index,
                     final_source,
                     "sources changed while gate evaluated",
+                )
+                .await;
+        }
+        if rules_changed(&source, &final_source) {
+            return self
+                .invalidate_attempt(
+                    snapshot,
+                    index,
+                    final_source,
+                    "mandatory policy/rules changed while gate evaluated",
                 )
                 .await;
         }
@@ -1583,6 +1623,20 @@ pub(crate) fn validate_transition(
                             .is_none_or(|id| after.session_id == Some(id)),
                     "active attempt identity is immutable"
                 );
+                ensure!(
+                    before
+                        .completed_at
+                        .is_none_or(|time| after.completed_at == Some(time)),
+                    "attempt completion time is immutable"
+                );
+                ensure!(
+                    before.session_id.is_some()
+                        || after.session_id.is_none()
+                        || (before.state == AttemptState::Running
+                            && after.state == AttemptState::Running
+                            && after.phase.actor() != Actor::EvidencePort),
+                    "Session may only bind during native launch"
+                );
                 let valid = match before.state {
                     AttemptState::Running => matches!(
                         after.state,
@@ -1691,7 +1745,26 @@ pub(crate) fn validate_transition(
                 }
             }
         }
+        if let Some(index) = old.active {
+            if next.active != Some(index) && next.generation == old.generation {
+                let state = &next.history[index].state;
+                ensure!(
+                    *state == AttemptState::Succeeded
+                        || (matches!(state, AttemptState::Waiting | AttemptState::Failed)
+                            && next.retries.len() == old.retries.len() + 1
+                            && next
+                                .retries
+                                .last()
+                                .is_some_and(|event| event.prior_attempt == index)),
+                    "active reservation can only close by completion or explicit resolved retry"
+                );
+            }
+        }
         if let Some(index) = next.active {
+            ensure!(
+                next.history[index].context_version == next.context_version,
+                "active context identity differs"
+            );
             ensure!(
                 next.history[index].generation == next.generation
                     && !matches!(

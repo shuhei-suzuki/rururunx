@@ -436,6 +436,33 @@ impl Store {
         ensure!(count == 0, "Task already owns a workflow");
         let previous_workflow: Option<Record> = read_tx(&tx, "records", &workflow.id.to_string())?;
         crate::workflow::validate_transition(task, workflow, previous_workflow.as_ref())?;
+        if let Some(previous) = &previous_workflow {
+            let before: crate::workflow::WorkflowSnapshot =
+                serde_json::from_value(previous.data.clone())?;
+            let after: crate::workflow::WorkflowSnapshot =
+                serde_json::from_value(workflow.data.clone())?;
+            if before.active.is_some() && after.active != before.active {
+                let mut statement = tx.prepare("SELECT body FROM records WHERE project_id=?1 AND goal_id=?2 AND task_id=?3 AND kind='session'")?;
+                for body in statement.query_map(
+                    params![
+                        task.project_id.to_string(),
+                        task.goal_id.to_string(),
+                        task.id.to_string()
+                    ],
+                    |row| row.get::<_, String>(0),
+                )? {
+                    let record: Record = decode(body?)?;
+                    let session: Session = serde_json::from_value(record.data)?;
+                    ensure!(
+                        matches!(
+                            session.state,
+                            SessionState::Exited | SessionState::Stopped | SessionState::Failed
+                        ),
+                        "closing workflow reservation requires verified native termination"
+                    );
+                }
+            }
+        }
         if let Some(context) = context {
             ensure!(
                 context.scope == task.scope() && context.version == task.context_version,
@@ -917,7 +944,7 @@ fn put_record_tx(tx: &Transaction<'_>, record: &Record) -> Result<Record> {
         &format!("{}.saved", next.kind.key()),
         json!({"id":next.id,"version":next.version,"evidence": match next.kind {
             RecordKind::Review | RecordKind::Approval | RecordKind::WorktreeLock => next.data.clone(),
-            RecordKind::Workflow => json!({"generation":next.data["generation"],"context_version":next.data["context_version"],"active":next.data["active"],"finished":next.data["finished"],"attempt":next.data["history"].as_array().and_then(|a|a.last()),"escalation":next.data["escalations"].as_array().and_then(|a|a.last()),"retry":next.data["retries"].as_array().and_then(|a|a.last())}),
+            RecordKind::Workflow => json!({"generation":next.data["generation"],"context_version":next.data["context_version"],"active":next.data["active"],"finished":next.data["finished"],"attempt":next.data["history"].as_array().and_then(|a|a.last()),"escalation":next.data["escalations"].as_array().and_then(|a|a.last()),"retry":next.data["retries"].as_array().and_then(|a|a.last()),"invalidation":next.data["invalidations"].as_array().and_then(|a|a.last())}),
             RecordKind::Session => json!({"state":next.data["state"],"agent":next.data["agent"],"provider":next.data["provider"],"role":next.data["role"],"native_ref":next.data["native_ref"]}),
             _ => Value::Null,
         }}),

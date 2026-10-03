@@ -16,9 +16,9 @@ Task Workflow Engine operates below Goal Runtime and always within a Project bou
 ```text
 Prepare Worktree
 → Implement
+→ Commit
 → Relevant Verification
 → Review
-→ Commit
 → PR
 ```
 
@@ -28,11 +28,14 @@ Prepare Worktree
 Issue
 → Worktree
 → Requirements
+→ Requirements Commit
 → Requirements Review
 → Design
+→ Design Commit
 → Design Review
 → Implement
 → Impact Analysis
+→ Commit
 → Tests
 → Implementation Review
 → PR
@@ -53,12 +56,9 @@ STANDARD plus configured:
 
 ## 3. Workflow selection
 
-Selection sources, highest precedence first:
-
-1. project policy minimum
-2. explicit stricter user choice
-3. risk classifier recommendation
-4. default workflow
+Selection takes the monotonic maximum of stored Task workflow, runtime/Project policy
+minimum, explicit stricter user choice and risk classifier recommendation. The configured
+default is a Task-creation fallback, not a floor for an explicitly classified Task.
 
 A user may make a workflow stricter.
 
@@ -314,9 +314,24 @@ Store format v3 persists Workflow record authority. Task state, workflow history
 and ContextVersion pointer commit atomically with Project/Goal/Task/record CAS;
 gate evaluation is separately reserved to prevent concurrent duplicate port calls,
 and completed attempt/decision history is immutable. Workflow authority uses only
-the atomic transition API.
-rollback leaves no orphan context or overwritten concurrent metadata. Blocked,
+the atomic transition API. Initial authority cannot contain fabricated completion;
+new completion requires the active Evaluating→Succeeded phase with exact scoped
+evidence. General Store Task/context writes cannot override workflow-owned fields.
+A rollback leaves no orphan context or overwritten concurrent metadata. Blocked,
 Removed, paused/terminal owners cannot progress. Mutation dispatch rejects active
 review locks and all agent dispatch rejects reserved executors. This is a phase
 runner library; scheduling, workflow CLI/TUI and actual GitHub publication/merge
 ports remain dependent work. See [Issue #8 design](../issue-8-workflow-engine.md).
+
+User Goal §35 sets the executable order: each requirements/design/implementation
+milestone commits before its verification or formal review. Target-producing commit
+ports attest the captured final HEAD. Target-preserving PR/merge gates never receive
+known stale prerequisites. Review evidence binds explicit source dependency digests
+(including mandatory rules), so changed approved artifacts restart prerequisites.
+Definitive rejected/invalid evidence persists Failed; uncertain integration errors
+retain Evaluating for recovery. `resume_gate` reevaluates a definitive Waiting result
+with the same Session and launch context; `retry` explicitly relaunches only resolved
+attempts. Native restart diagnostics never imply verified process death. Invalidation
+history records old/new revision/source digests and cause independently of escalation.
+Default class is creation fallback; class-specific breadth is interpreted by #18 within
+configured phase token caps, with mandatory rules retained outside those caps.

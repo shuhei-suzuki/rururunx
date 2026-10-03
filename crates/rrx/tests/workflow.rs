@@ -2111,14 +2111,14 @@ async fn atomic_authority_rejects_invented_initial_history_completion_and_finish
         .context(&base.task.scope(), None)
         .unwrap()
         .unwrap();
-    for mutation in 0..3 {
+    for mutation in 0..4 {
         let fixture = Fixture::new(WorkflowClass::Quick);
         let mut snapshot = template.clone();
         snapshot.sources.scope = fixture.task.scope();
         match mutation {
             0 => snapshot.generation = 2,
             1 => snapshot.finished = true,
-            _ => snapshot.history.push(PhaseAttempt {
+            2 => snapshot.history.push(PhaseAttempt {
                 phase: Phase::Worktree,
                 generation: 1,
                 context_version: 1,
@@ -2133,6 +2133,22 @@ async fn atomic_authority_rejects_invented_initial_history_completion_and_finish
                 completed_at: Some(1),
                 detail: None,
             }),
+            _ => {
+                snapshot.completed.insert(
+                    Phase::Pr,
+                    Evidence {
+                        scope: fixture.task.scope(),
+                        phase: Phase::Pr,
+                        revision: snapshot.sources.revision.clone(),
+                        source_versions: snapshot.sources.source_versions.clone(),
+                        artifacts: vec!["forged".into()],
+                        dependencies: snapshot.sources.source_versions.clone(),
+                        review_approved: None,
+                        session_id: None,
+                        context_version: 1,
+                    },
+                );
+            }
         }
         let mut task = fixture.task.clone();
         task.context_version = 1;
@@ -2189,7 +2205,7 @@ async fn atomic_authority_rejects_invented_initial_history_completion_and_finish
         .step(fixture.task.id, BTreeMap::new())
         .await
         .unwrap(); // Running Implement
-    for mutation in 0..3 {
+    for mutation in 0..4 {
         let mut store = fixture.store.lock().unwrap();
         let mut task = store.task(fixture.task.id).unwrap().unwrap();
         let mut record = store
@@ -2203,7 +2219,8 @@ async fn atomic_authority_rejects_invented_initial_history_completion_and_finish
                 let evidence = snapshot.completed[&Phase::Worktree].clone();
                 snapshot.completed.insert(Phase::Pr, evidence);
             }
-            _ => snapshot.history[snapshot.active.unwrap()].state = AttemptState::Succeeded,
+            2 => snapshot.history[snapshot.active.unwrap()].state = AttemptState::Succeeded,
+            _ => snapshot.active = None,
         }
         record.data = serde_json::to_value(snapshot).unwrap();
         let goal_version = store.goal(task.goal_id).unwrap().unwrap().version;
@@ -2220,4 +2237,105 @@ async fn atomic_authority_rejects_invented_initial_history_completion_and_finish
                 .is_err()
         );
     }
+}
+
+#[tokio::test]
+async fn native_git_commit_port_freezes_owning_worktree_head_for_review_and_pr() {
+    let fixture = Fixture::new(WorkflowClass::Quick);
+    let root = fixture.project.root.clone();
+    let worktree = fixture.task.worktree.clone().unwrap();
+    let git = |cwd: &std::path::Path, args: &[&str]| {
+        let output = std::process::Command::new("git")
+            .args(args)
+            .current_dir(cwd)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8(output.stdout).unwrap().trim().to_string()
+    };
+    git(&root, &["init", "-b", "main"]);
+    git(&root, &["config", "user.name", "Fixture"]);
+    git(&root, &["config", "user.email", "fixture@example.invalid"]);
+    git(&root, &["commit", "--allow-empty", "-m", "source fixture"]);
+    git(
+        &root,
+        &[
+            "worktree",
+            "add",
+            "-b",
+            "feature/task",
+            worktree.to_str().unwrap(),
+            "main",
+        ],
+    );
+    let original = git(&worktree, &["rev-parse", "HEAD"]);
+    fixture.sources.snapshot.lock().unwrap().revision = original.clone();
+    fixture
+        .engine
+        .initialize(fixture.task.id, None)
+        .await
+        .unwrap();
+    fixture.through(Phase::Implement).await;
+    std::fs::write(
+        worktree.join("implementation.txt"),
+        "actual fixture implementation\n",
+    )
+    .unwrap();
+    let sources = fixture.sources.clone();
+    let source_root = root.clone();
+    let owned_worktree = worktree.clone();
+    *fixture.gates.on_complete.lock().unwrap() = Some(Box::new(move |invocation| {
+        assert_eq!(invocation.task.worktree.as_ref(), Some(&owned_worktree));
+        assert_eq!(invocation.phase, Phase::Commit);
+        for args in [
+            vec!["add", "implementation.txt"],
+            vec!["commit", "-m", "implementation fixture"],
+        ] {
+            assert!(
+                std::process::Command::new("git")
+                    .args(args)
+                    .current_dir(&owned_worktree)
+                    .output()
+                    .unwrap()
+                    .status
+                    .success()
+            );
+        }
+        let output = std::process::Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(&owned_worktree)
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        sources.snapshot.lock().unwrap().revision =
+            String::from_utf8(output.stdout).unwrap().trim().into();
+        // The primary source branch remains untouched by the scoped native port.
+        assert!(
+            std::process::Command::new("git")
+                .args(["status", "--porcelain"])
+                .current_dir(&source_root)
+                .output()
+                .unwrap()
+                .status
+                .success()
+        );
+        Some(sources.snapshot.lock().unwrap().clone())
+    }));
+    fixture.through(Phase::Commit).await;
+    let committed = git(&worktree, &["rev-parse", "HEAD"]);
+    assert_ne!(committed, original);
+    assert_eq!(git(&root, &["rev-parse", "HEAD"]), original);
+    assert!(git(&worktree, &["status", "--porcelain"]).is_empty());
+    fixture.finish().await;
+    let workflow = fixture.engine.snapshot(fixture.task.id).unwrap();
+    assert_eq!(workflow.generation, 1);
+    assert_eq!(
+        workflow.completed[&Phase::ImplementationReview].revision,
+        committed
+    );
+    assert_eq!(workflow.completed[&Phase::Pr].revision, committed);
 }

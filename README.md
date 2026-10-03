@@ -89,7 +89,7 @@ For trivial or local changes such as typos, copy changes, small CSS fixes, obvio
 Typical path:
 
 ```text
-Worktree → Implement → Relevant Test → Review → Commit → PR
+Worktree → Implement → Commit → Relevant Test → Review → PR
 ```
 
 ### STANDARD
@@ -97,8 +97,9 @@ Worktree → Implement → Relevant Test → Review → Commit → PR
 For ordinary features, bug fixes, refactoring, and multi-file changes.
 
 ```text
-Issue → Worktree → Requirements → Design → Implement
-→ Impact Analysis → Tests → Review → PR
+Issue → Worktree → Requirements → Commit Requirements → Review Requirements
+→ Design → Commit Design → Review Design → Implement
+→ Impact Analysis → Commit → Tests → Review → PR
 ```
 
 ### STRICT
@@ -268,9 +269,12 @@ Development of rururunx should dogfood QUICK / STANDARD / STRICT classification 
 
 Install [Rust with rustup](https://www.rust-lang.org/tools/install) and Git.
 The Rust workflow library now drives QUICK/STANDARD/STRICT phases through adapters
-and explicit evidence ports, persists phase/context history atomically, and raises
+and explicit evidence ports, commits each milestone before tests/review, persists
+phase/context history atomically, and raises
 workflow requirements when risk or scoped policy changes. Missing test/review/PR/
 merge integrations wait for evidence; review exit zero alone cannot pass a gate.
+Definitive rejection permits explicit remediation; waiting evidence can be reevaluated
+without relaunching its Session. Unknown outcomes keep recovery reservations.
 The generic CLI cannot review. Workflow CLI/TUI, independent review sets (#9),
 approval routing (#12), recovery (#13), and repository-context selection (#18)
 remain pending. See [Workflow Engine](doc/design/master/workflow-engine.md).
