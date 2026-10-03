@@ -1825,7 +1825,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn running_write_failure_cleans_confirmed_groups_and_reserves_uncertain_groups_with_audit()
      {
         for fail_cleanup in [false, true] {

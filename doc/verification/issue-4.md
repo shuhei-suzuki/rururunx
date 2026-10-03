@@ -40,8 +40,10 @@ Native provider adapters and runtime CLI orchestration remain separate.
   `-D warnings`, fmt, locked debug/release builds passed. Exact code/test head
   `2205d03` passes both [Linux/macOS CI](https://github.com/shuhei-suzuki/rururunx/actions/runs/37098362774).
   Its affected 27 unit/native tests and lint/build gates also pass locally.
-  Final documentation-head CI and native delta review complete before merge; any
-  later evidence-only commits preserve this exact Rust/test source. On this macOS host real signal/ps tests require native
+  Final scoped review at `05295e7` confirms no Critical/High/Medium blockers.
+  Production source remains the reviewed `2205d03`; later documentation and an
+  explicit current_thread annotation preserve existing test behavior. Exact final
+  commit CI is a merge gate tracked in [PR #32 checks](https://github.com/shuhei-suzuki/rururunx/pull/32/checks). On this macOS host real signal/ps tests require native
   OS access; sandbox ps was denied and Tokio subprocess waits timed out. Authorized
   `require_escalated` verification uses temporary Git fixtures only.
 
@@ -126,6 +128,18 @@ is green. Remaining Low/Info were repository-verified:
   from event-driven long-lived agent supervision. This is a performance detail,
   not a safety defect; #18/context performance work can assess host overhead.
 - I1: wording now names the two macOS-specific EPERM/timeout tests precisely.
+
+The fifth scoped public delta review at `05295e7` confirms the final cleanup helper
+is correct, the thread witness meaningfully catches the mutation, and L1/L2/L3/I1
+are addressed. **No Critical, High or Medium findings remain.** It ran no operation
+tools and retained the native configured model/hook/rule/auth baseline. Optional
+Low D5-1 pins the failure regression's existing current_thread runtime explicitly;
+this makes its deterministic ThreadId dependency visible without changing behavior.
+Info D5-3 reinforces that recovery must verify group membership and never trust a
+possibly unpinned audited PGID. Final Info evidence wording is stated as a merge
+gate, not a completed claim about future commits. The parent independently checks
+the final documentation/test-attribute delta before merge; production Rust is
+unchanged from the reviewed and tested `2205d03`.
 
 ## Isolated mutation evidence
 
