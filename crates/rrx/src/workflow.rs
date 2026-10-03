@@ -24,11 +24,14 @@ pub enum Phase {
     Issue,
     Worktree,
     Requirements,
+    RequirementsCommit,
     RequirementsReview,
     Design,
+    DesignCommit,
     DesignReview,
     Implement,
     ImpactAnalysis,
+    Commit,
     Tests,
     ImplementationReview,
     SecurityReview,
@@ -36,7 +39,6 @@ pub enum Phase {
     Mutation,
     Browser,
     Staging,
-    Commit,
     Pr,
     MergeGate,
     Cleanup,
@@ -47,8 +49,10 @@ impl Phase {
             Self::Issue => "issue",
             Self::Worktree => "worktree",
             Self::Requirements => "requirements",
+            Self::RequirementsCommit => "requirements_commit",
             Self::RequirementsReview => "requirements_review",
             Self::Design => "design",
+            Self::DesignCommit => "design_commit",
             Self::DesignReview => "design_review",
             Self::Implement => "implement",
             Self::ImpactAnalysis => "impact_analysis",
@@ -91,7 +95,9 @@ impl Phase {
             | Self::Mutation
             | Self::Browser
             | Self::Staging => TaskState::Testing,
-            Self::Commit | Self::Pr => TaskState::ReadyForPr,
+            Self::RequirementsCommit | Self::DesignCommit | Self::Commit | Self::Pr => {
+                TaskState::ReadyForPr
+            }
             Self::MergeGate | Self::Cleanup => TaskState::PrCreated,
         }
     }
@@ -117,17 +123,20 @@ pub struct ContextBudget {
 pub fn phases(class: WorkflowClass, config: &Config) -> Vec<Phase> {
     use Phase::*;
     let mut result = if class == WorkflowClass::Quick {
-        vec![Worktree, Implement, Tests, ImplementationReview]
+        vec![Worktree, Implement, Commit, Tests, ImplementationReview]
     } else {
         vec![
             Issue,
             Worktree,
             Requirements,
+            RequirementsCommit,
             RequirementsReview,
             Design,
+            DesignCommit,
             DesignReview,
             Implement,
             ImpactAnalysis,
+            Commit,
             Tests,
             ImplementationReview,
         ]
@@ -141,7 +150,7 @@ pub fn phases(class: WorkflowClass, config: &Config) -> Vec<Phase> {
             result.push(Staging);
         }
     }
-    result.extend([Commit, Pr]);
+    result.push(Pr);
     if class != WorkflowClass::Quick {
         result.extend([MergeGate, Cleanup]);
     }
@@ -218,6 +227,9 @@ pub struct Evidence {
     pub source_versions: BTreeMap<String, String>,
     /// Durable references; callers attest real artifacts, never fabricated paths.
     pub artifacts: Vec<String>,
+    /// Exact source dependencies approved by a review; all mandatory rules are
+    /// included. Ports select artifact keys; the engine never invents coverage.
+    pub dependencies: BTreeMap<String, String>,
     /// Only an external review integration can attest a decision.
     pub review_approved: Option<bool>,
     /// Binds an agent-produced artifact/verdict to the launched Session.
@@ -302,6 +314,16 @@ pub struct RetryEvent {
     pub at: i64,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Invalidation {
+    pub generation: u64,
+    pub cause: String,
+    pub previous_revision: String,
+    pub revision: String,
+    pub previous_sources: BTreeMap<String, String>,
+    pub sources: BTreeMap<String, String>,
+    pub at: i64,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkflowSnapshot {
     pub workflow: WorkflowClass,
     pub risk: RiskClass,
@@ -313,6 +335,7 @@ pub struct WorkflowSnapshot {
     pub history: Vec<PhaseAttempt>,
     pub escalations: Vec<Escalation>,
     pub retries: Vec<RetryEvent>,
+    pub invalidations: Vec<Invalidation>,
     pub sources: SourceSnapshot,
     pub configured_phases: Vec<Phase>,
     pub finished: bool,
@@ -489,9 +512,7 @@ impl WorkflowEngine {
             "authority changed while preparing phase Context Pack"
         );
         ensure!(
-            class >= config.minimum_workflow
-                && class >= config.workflow.default
-                && class >= risk_workflow(&config, task.risk),
+            class >= config.minimum_workflow && class >= risk_workflow(&config, task.risk),
             "workflow policy changed while preparing Context Pack"
         );
         Ok(make_context(
@@ -523,7 +544,6 @@ impl WorkflowEngine {
         let workflow = task
             .workflow
             .max(config.minimum_workflow)
-            .max(config.workflow.default)
             .max(stricter.unwrap_or(WorkflowClass::Quick))
             .max(risk_workflow(&config, task.risk));
         let configured_phases = phases(workflow, &config);
@@ -545,6 +565,7 @@ impl WorkflowEngine {
             history: vec![],
             escalations: vec![],
             retries: vec![],
+            invalidations: vec![],
             sources: SourceSnapshot {
                 payload: context.data["payload"]
                     .as_str()
@@ -601,6 +622,10 @@ impl WorkflowEngine {
             "escalation needs reason/evidence"
         );
         let mut snapshot = self.read(task_id)?;
+        ensure!(
+            !snapshot.workflow.finished,
+            "finished workflow requires a new Task, not escalation"
+        );
         active(&snapshot.project, &snapshot.goal, &snapshot.task)?;
         ensure!(
             snapshot.workflow.active.is_none(),
@@ -619,7 +644,6 @@ impl WorkflowEngine {
             .workflow
             .workflow
             .max(config.minimum_workflow)
-            .max(config.workflow.default)
             .max(stricter.unwrap_or(WorkflowClass::Quick))
             .max(risk_workflow(&config, risk));
         if class > snapshot.workflow.workflow {
@@ -634,7 +658,11 @@ impl WorkflowEngine {
             snapshot.task.workflow = class;
             snapshot.workflow.configured_phases =
                 retain_phases(&snapshot.workflow.configured_phases, phases(class, &config));
-            invalidate(&mut snapshot.workflow)?;
+            invalidate(
+                &mut snapshot.workflow,
+                &source,
+                "workflow policy or target changed",
+            )?;
         }
         snapshot.workflow.risk = risk;
         snapshot.task.risk = risk;
@@ -687,7 +715,6 @@ impl WorkflowEngine {
             .workflow
             .workflow
             .max(config.minimum_workflow)
-            .max(config.workflow.default)
             .max(risk_workflow(&config, snapshot.workflow.risk));
         let configured =
             retain_phases(&snapshot.workflow.configured_phases, phases(class, &config));
@@ -696,14 +723,20 @@ impl WorkflowEngine {
             snapshot.workflow.workflow = class;
             snapshot.task.workflow = class;
             snapshot.workflow.configured_phases = configured;
-            snapshot.workflow.escalations.push(Escalation {
-                from: old,
-                to: class,
-                reason: "scoped policy refreshed".into(),
-                evidence: serde_json::to_string(&source.source_versions)?,
-                at: now_ms(),
-            });
-            invalidate(&mut snapshot.workflow)?;
+            if class > old {
+                snapshot.workflow.escalations.push(Escalation {
+                    from: old,
+                    to: class,
+                    reason: "scoped policy refreshed".into(),
+                    evidence: serde_json::to_string(&source.source_versions)?,
+                    at: now_ms(),
+                });
+            }
+            invalidate(
+                &mut snapshot.workflow,
+                &source,
+                "workflow policy or target changed",
+            )?;
             let first = next_phase(&snapshot.workflow).expect("presets nonempty");
             let context = self
                 .prepare_pack(
@@ -723,7 +756,11 @@ impl WorkflowEngine {
             });
         }
         if !same_sources(&source, &snapshot.workflow.sources) {
-            invalidate(&mut snapshot.workflow)?;
+            invalidate(
+                &mut snapshot.workflow,
+                &source,
+                "workflow policy or target changed",
+            )?;
             snapshot.workflow.sources = source.clone();
             let first = next_phase(&snapshot.workflow).expect("presets nonempty");
             let context = self
@@ -789,7 +826,11 @@ impl WorkflowEngine {
             snapshot.workflow.history[index].state = AttemptState::Interrupted;
             snapshot.workflow.history[index].completed_at = Some(now_ms());
             snapshot.workflow.active = None;
-            invalidate(&mut snapshot.workflow)?;
+            invalidate(
+                &mut snapshot.workflow,
+                &fresh_source,
+                "workflow policy or target changed",
+            )?;
             snapshot.workflow.sources = fresh_source.clone();
             let first = next_phase(&snapshot.workflow).expect("presets nonempty");
             let context = self
@@ -947,25 +988,28 @@ impl WorkflowEngine {
             .as_ref()
             .context("native attempt actor missing")?;
         let adapter = self.registry.get(agent)?;
-        let status = adapter
+        let status = match adapter
             .status(SessionRef {
                 id,
                 scope: snapshot.task.scope(),
             })
-            .await?;
-        ensure!(
-            status.session.id == id
-                && status.session.scope == snapshot.task.scope()
-                && status.session.agent == *agent
-                && Some(&status.session.worktree) == snapshot.task.worktree.as_ref()
-                && status.session.role
-                    == if phase.actor() == Actor::Reviewer {
-                        SessionRole::Reviewer
-                    } else {
-                        SessionRole::Executor
-                    },
-            "foreign session status"
-        );
+            .await
+        {
+            Ok(status) => status,
+            Err(error) => {
+                let mut snapshot = snapshot;
+                snapshot.workflow.history[index].detail = Some(format!(
+                    "native status unavailable; recovery required: {error}"
+                ));
+                self.refresh_owners(&mut snapshot)?;
+                self.persist(&mut snapshot, None)?;
+                return Ok(StepResult::Waiting {
+                    phase,
+                    reason: format!("native status unavailable; recovery required: {error}"),
+                });
+            }
+        };
+        validate_status(&status, &snapshot.task, attempt)?;
         if !status.terminal() {
             return Ok(StepResult::Running { phase, session: id });
         }
@@ -980,6 +1024,95 @@ impl WorkflowEngine {
             );
         }
         self.evaluate(snapshot, index, Some(status)).await
+    }
+    fn refresh_owners(&self, snapshot: &mut Snapshot) -> Result<()> {
+        let store = self
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("state store poisoned"))?;
+        let (project, goal, mut task) = owners(&store, snapshot.task.id)?;
+        active(&project, &goal, &task)?;
+        ensure!(
+            store
+                .record(snapshot.record.id)?
+                .is_some_and(|r| r.version == snapshot.record.version),
+            "workflow changed during external operation"
+        );
+        // Workflow fields are authoritative, other fields are latest owner data.
+        task.workflow = snapshot.task.workflow;
+        task.risk = snapshot.task.risk;
+        task.state = snapshot.task.state;
+        task.phase = snapshot.task.phase.clone();
+        task.context_version = snapshot.task.context_version;
+        task.revision = snapshot.task.revision.clone();
+        task.artifacts = snapshot.task.artifacts.clone();
+        snapshot.project = project;
+        snapshot.goal = goal;
+        snapshot.task = task;
+        Ok(())
+    }
+    async fn invalidate_attempt(
+        &self,
+        mut snapshot: Snapshot,
+        index: usize,
+        source: SourceSnapshot,
+        reason: &str,
+    ) -> Result<StepResult> {
+        snapshot.workflow.history[index].state = AttemptState::Interrupted;
+        snapshot.workflow.history[index].completed_at = Some(now_ms());
+        snapshot.workflow.history[index].detail = Some(reason.into());
+        snapshot.workflow.active = None;
+        invalidate(&mut snapshot.workflow, &source, reason)?;
+        snapshot.workflow.sources = source.clone();
+        let phase = next_phase(&snapshot.workflow).context("workflow has no phases")?;
+        let context = self
+            .prepare_pack(
+                &snapshot.project,
+                &snapshot.task,
+                &source,
+                phase,
+                snapshot.workflow.workflow,
+                snapshot.workflow.generation,
+            )
+            .await?;
+        set_context(&mut snapshot, &context);
+        self.persist(&mut snapshot, Some(&context))?;
+        Ok(StepResult::Invalidated {
+            reason: reason.into(),
+        })
+    }
+    /// Re-evaluate a known waiting gate without launching another native Session.
+    /// An unknown/interrupted evaluation still requires external recovery (#13).
+    pub async fn resume_gate(&self, task_id: TaskId) -> Result<StepResult> {
+        let mut snapshot = self.read(task_id)?;
+        active(&snapshot.project, &snapshot.goal, &snapshot.task)?;
+        let index = snapshot.workflow.active.context("no waiting attempt")?;
+        let attempt = snapshot.workflow.history[index].clone();
+        ensure!(
+            attempt.state == AttemptState::Waiting,
+            "only a definitive waiting gate can resume"
+        );
+        let status = if let Some(id) = attempt.session_id {
+            let agent = self
+                .registry
+                .get(attempt.agent.as_deref().context("native actor missing")?)?;
+            let status = agent
+                .status(SessionRef {
+                    id,
+                    scope: snapshot.task.scope(),
+                })
+                .await?;
+            validate_status(&status, &snapshot.task, &attempt)?;
+            ensure!(
+                agent.transport_succeeded(&status),
+                "native completion unavailable; recovery required"
+            );
+            Some(status)
+        } else {
+            None
+        };
+        remove_attempt_blocker(&mut snapshot.task, &attempt);
+        self.evaluate(snapshot, index, status).await
     }
     fn fail(&self, mut snapshot: Snapshot, index: usize, reason: String) -> Result<StepResult> {
         let attempt = &mut snapshot.workflow.history[index];
@@ -1011,7 +1144,6 @@ impl WorkflowEngine {
             .workflow
             .workflow
             .max(config.minimum_workflow)
-            .max(config.workflow.default)
             .max(risk_workflow(&config, snapshot.workflow.risk));
         if class > snapshot.workflow.workflow
             || retain_phases(&snapshot.workflow.configured_phases, phases(class, &config))
@@ -1023,17 +1155,23 @@ impl WorkflowEngine {
             snapshot.task.workflow = class;
             snapshot.workflow.configured_phases =
                 retain_phases(&snapshot.workflow.configured_phases, phases(class, &config));
-            snapshot.workflow.escalations.push(Escalation {
-                from: old,
-                to: class,
-                reason: "policy/rules changed during phase".into(),
-                evidence: serde_json::to_string(&source.source_versions)?,
-                at: now_ms(),
-            });
+            if class > old {
+                snapshot.workflow.escalations.push(Escalation {
+                    from: old,
+                    to: class,
+                    reason: "policy/rules changed during phase".into(),
+                    evidence: serde_json::to_string(&source.source_versions)?,
+                    at: now_ms(),
+                });
+            }
             snapshot.workflow.history[index].state = AttemptState::Interrupted;
             snapshot.workflow.history[index].completed_at = Some(now_ms());
             snapshot.workflow.active = None;
-            invalidate(&mut snapshot.workflow)?;
+            invalidate(
+                &mut snapshot.workflow,
+                &source,
+                "workflow policy or target changed",
+            )?;
             snapshot.workflow.sources = source.clone();
             let first = next_phase(&snapshot.workflow).expect("presets nonempty");
             let context = self
@@ -1052,6 +1190,16 @@ impl WorkflowEngine {
                 reason: "mandatory policy/rules changed during phase".into(),
             });
         }
+        if !target_producing(phase) && !same_sources(&source, &snapshot.workflow.sources) {
+            return self
+                .invalidate_attempt(
+                    snapshot,
+                    index,
+                    source,
+                    "target changed before evidence invocation",
+                )
+                .await;
+        }
         // Agent implementation may intentionally change revision/artifacts. The
         // gate must attest that observed target, not the obsolete launch revision.
         let invocation = PhaseInvocation {
@@ -1067,7 +1215,22 @@ impl WorkflowEngine {
         // or side effects. A concurrent poll cannot run the same gate twice.
         snapshot.workflow.history[index].state = AttemptState::Evaluating;
         self.persist(&mut snapshot, None)?;
-        let outcome = self.gates.complete(invocation, status).await?;
+        let outcome = match self.gates.complete(invocation, status).await {
+            Ok(outcome) => outcome,
+            Err(error) => {
+                // External side effects are unknown: never infer process death or
+                // retry permission from an integration error.
+                snapshot.workflow.history[index].detail =
+                    Some(format!("gate outcome unknown: {error:#}"));
+                self.refresh_owners(&mut snapshot)?;
+                self.persist(&mut snapshot, None)?;
+                return Ok(StepResult::Waiting {
+                    phase,
+                    reason: format!("gate outcome unknown; explicit recovery required: {error:#}"),
+                });
+            }
+        };
+        self.refresh_owners(&mut snapshot)?;
         let (_, final_source, _) = self
             .inputs(
                 &snapshot.project,
@@ -1076,10 +1239,17 @@ impl WorkflowEngine {
                 snapshot.workflow.workflow,
             )
             .await?;
-        ensure!(
-            same_sources(&source, &final_source),
-            "sources changed while gate evaluated"
-        );
+        if !target_producing(phase) && !same_sources(&source, &final_source) {
+            return self
+                .invalidate_attempt(
+                    snapshot,
+                    index,
+                    final_source,
+                    "sources changed while gate evaluated",
+                )
+                .await;
+        }
+        let source = final_source;
         match outcome {
             GateOutcome::Waiting(reason) => {
                 snapshot.workflow.context_fresh = same_sources(&source, &snapshot.workflow.sources);
@@ -1093,62 +1263,29 @@ impl WorkflowEngine {
             }
             GateOutcome::Failed(reason) => self.fail(snapshot, index, reason),
             GateOutcome::Passed(evidence) => {
-                ensure!(
-                    evidence.scope == snapshot.task.scope()
-                        && evidence.phase == phase
-                        && evidence.revision == source.revision
-                        && evidence.source_versions == source.source_versions
-                        && !evidence.artifacts.is_empty()
-                        && evidence.artifacts.iter().all(|p| !p.trim().is_empty()),
-                    "gate evidence is foreign/stale/incomplete"
-                );
-                ensure!(
-                    evidence.session_id == snapshot.workflow.history[index].session_id
-                        && evidence.context_version
-                            == snapshot.workflow.history[index].context_version,
-                    "gate session binding mismatch"
-                );
-                if phase.actor() == Actor::Reviewer {
-                    ensure!(
-                        evidence.review_approved == Some(true),
-                        "review requires explicit approved verdict"
-                    );
+                if let Err(error) = validate_evidence(
+                    &evidence,
+                    &snapshot.task.scope(),
+                    &source,
+                    &snapshot.workflow.history[index],
+                ) {
+                    return self.fail(snapshot, index, error.to_string());
                 }
-                // Only mutating milestones may legitimately change the target.
-                // A changed review/verification target invalidates its verdict.
-                if !same_sources(&source, &snapshot.workflow.sources)
-                    && !matches!(
-                        phase,
-                        Phase::Issue
-                            | Phase::Worktree
-                            | Phase::Requirements
-                            | Phase::Design
-                            | Phase::Implement
-                            | Phase::ImpactAnalysis
-                    )
-                {
-                    snapshot.workflow.history[index].state = AttemptState::Interrupted;
-                    snapshot.workflow.history[index].detail =
-                        Some("target changed during evidence phase".into());
-                    snapshot.workflow.active = None;
-                    invalidate(&mut snapshot.workflow)?;
-                    snapshot.workflow.sources = source.clone();
-                    let first = next_phase(&snapshot.workflow).expect("presets nonempty");
-                    let context = self
-                        .prepare_pack(
-                            &snapshot.project,
-                            &snapshot.task,
-                            &source,
-                            first,
-                            snapshot.workflow.workflow,
-                            snapshot.workflow.generation,
+                if snapshot.workflow.completed.values().any(|approved| {
+                    approved.phase.actor() == Actor::Reviewer
+                        && approved
+                            .dependencies
+                            .iter()
+                            .any(|(key, value)| source.source_versions.get(key) != Some(value))
+                }) {
+                    return self
+                        .invalidate_attempt(
+                            snapshot,
+                            index,
+                            source,
+                            "approved artifact dependency changed",
                         )
-                        .await?;
-                    set_context(&mut snapshot, &context);
-                    self.persist(&mut snapshot, Some(&context))?;
-                    return Ok(StepResult::Invalidated {
-                        reason: "target changed during review/verification".into(),
-                    });
+                        .await;
                 }
                 snapshot
                     .task
@@ -1222,11 +1359,101 @@ impl WorkflowEngine {
             reason,
             at: now_ms(),
         });
-        snapshot.workflow.history[index].completed_at = Some(now_ms());
+        snapshot.workflow.history[index]
+            .completed_at
+            .get_or_insert_with(now_ms);
         snapshot.workflow.active = None;
-        snapshot.task.blockers.clear();
+        remove_attempt_blocker(&mut snapshot.task, &snapshot.workflow.history[index]);
         self.persist(&mut snapshot, None)
     }
+}
+fn target_producing(phase: Phase) -> bool {
+    matches!(
+        phase,
+        Phase::Issue
+            | Phase::Worktree
+            | Phase::Requirements
+            | Phase::RequirementsCommit
+            | Phase::Design
+            | Phase::DesignCommit
+            | Phase::Implement
+            | Phase::ImpactAnalysis
+            | Phase::Commit
+    )
+}
+fn remove_attempt_blocker(task: &mut Task, attempt: &PhaseAttempt) {
+    if let Some(detail) = &attempt.detail {
+        if let Some(index) = task.blockers.iter().rposition(|blocker| blocker == detail) {
+            task.blockers.remove(index);
+        }
+    }
+}
+fn validate_status(status: &SessionStatus, task: &Task, attempt: &PhaseAttempt) -> Result<()> {
+    ensure!(
+        Some(status.session.id) == attempt.session_id
+            && status.session.scope == task.scope()
+            && status.session.agent
+                == *attempt
+                    .agent
+                    .as_ref()
+                    .context("native attempt actor missing")?
+            && Some(&status.session.worktree) == task.worktree.as_ref()
+            && status.session.role
+                == if attempt.phase.actor() == Actor::Reviewer {
+                    SessionRole::Reviewer
+                } else {
+                    SessionRole::Executor
+                },
+        "foreign session status"
+    );
+    Ok(())
+}
+fn validate_evidence(
+    evidence: &Evidence,
+    scope: &Scope,
+    source: &SourceSnapshot,
+    attempt: &PhaseAttempt,
+) -> Result<()> {
+    ensure!(
+        evidence.scope == *scope
+            && evidence.phase == attempt.phase
+            && evidence.revision == source.revision
+            && evidence.source_versions == source.source_versions
+            && !evidence.artifacts.is_empty()
+            && evidence.artifacts.iter().all(|p| !p.trim().is_empty()),
+        "gate evidence is foreign/stale/incomplete"
+    );
+    ensure!(
+        evidence.session_id == attempt.session_id
+            && evidence.context_version == attempt.context_version,
+        "gate session binding mismatch"
+    );
+    ensure!(
+        evidence
+            .dependencies
+            .iter()
+            .all(|(k, v)| source.source_versions.get(k) == Some(v))
+            && source
+                .source_versions
+                .iter()
+                .filter(|(k, _)| k.starts_with("rules:"))
+                .all(|(k, v)| evidence.dependencies.get(k) == Some(v)),
+        "gate dependencies are foreign or omit mandatory rules"
+    );
+    if attempt.phase.actor() == Actor::Reviewer {
+        ensure!(
+            evidence.review_approved == Some(true),
+            "review requires explicit approved verdict"
+        );
+        ensure!(
+            evidence
+                .dependencies
+                .keys()
+                .any(|k| !k.starts_with("rules:")),
+            "review must bind approved artifact dependencies"
+        );
+    }
+    Ok(())
 }
 pub(crate) fn validate_context(
     task: &Task,
@@ -1286,6 +1513,39 @@ pub(crate) fn validate_transition(
         next.active.is_none_or(|i| i < next.history.len()),
         "invalid workflow active index"
     );
+    ensure!(
+        !next.configured_phases.is_empty()
+            && next.configured_phases.windows(2).all(|p| p[0] < p[1])
+            && phases(next.workflow, &Config::default())
+                .iter()
+                .all(|p| next.configured_phases.contains(p)),
+        "workflow mandatory preset/order differs"
+    );
+    ensure!(
+        next.finished == next_phase(&next).is_none(),
+        "finished requires all configured gates"
+    );
+    if task_terminal(task.state) {
+        ensure!(
+            task.state == TaskState::Completed
+                && next.finished
+                && next.completed.contains_key(&Phase::Cleanup),
+            "terminal Task requires completed cleanup evidence"
+        );
+    }
+    if previous.is_none() {
+        ensure!(
+            next.generation == 1
+                && next.history.is_empty()
+                && next.completed.is_empty()
+                && next.escalations.is_empty()
+                && next.retries.is_empty()
+                && next.invalidations.is_empty()
+                && next.active.is_none()
+                && !next.finished,
+            "initial workflow must contain no invented history/evidence"
+        );
+    }
     if let Some(previous) = previous {
         let old: WorkflowSnapshot = serde_json::from_value(previous.data.clone())?;
         ensure!(
@@ -1324,7 +1584,19 @@ pub(crate) fn validate_transition(
                     "active attempt identity is immutable"
                 );
                 let valid = match before.state {
-                    AttemptState::Running => true,
+                    AttemptState::Running => matches!(
+                        after.state,
+                        AttemptState::Running
+                            | AttemptState::Evaluating
+                            | AttemptState::Failed
+                            | AttemptState::Interrupted
+                    ),
+                    AttemptState::Waiting => matches!(
+                        after.state,
+                        AttemptState::Waiting
+                            | AttemptState::Evaluating
+                            | AttemptState::Interrupted
+                    ),
                     AttemptState::Evaluating => matches!(
                         after.state,
                         AttemptState::Evaluating
@@ -1343,10 +1615,100 @@ pub(crate) fn validate_transition(
                 );
             }
         }
+        ensure!(
+            next.history.len() <= old.history.len() + 1,
+            "only one phase may be reserved per transition"
+        );
+        if next.history.len() > old.history.len() {
+            let attempt = next.history.last().expect("new attempt");
+            ensure!(
+                old.active.is_none()
+                    && next.active == Some(old.history.len())
+                    && attempt.phase
+                        == next_phase(&old).context("finished workflow cannot launch")?
+                    && attempt.generation == next.generation
+                    && attempt.context_version == next.context_version
+                    && attempt.state == AttemptState::Running
+                    && attempt.session_id.is_none()
+                    && attempt.completed_at.is_none()
+                    && attempt.detail.is_none(),
+                "new attempt must reserve the next phase"
+            );
+        }
+        if next.generation > old.generation {
+            ensure!(
+                next.completed.is_empty()
+                    && next.active.is_none()
+                    && next.invalidations.len() == old.invalidations.len() + 1,
+                "new generation must invalidate evidence with durable cause"
+            );
+        } else {
+            ensure!(
+                next.invalidations.len() == old.invalidations.len(),
+                "invalidation requires generation change"
+            );
+            for (phase, before) in &old.completed {
+                ensure!(
+                    next.completed
+                        .get(phase)
+                        .is_some_and(|after| serde_json::to_value(before).ok()
+                            == serde_json::to_value(after).ok()),
+                    "completed evidence is immutable within a generation"
+                );
+            }
+            let additions = next
+                .completed
+                .iter()
+                .filter(|(phase, _)| !old.completed.contains_key(phase))
+                .collect::<Vec<_>>();
+            ensure!(
+                additions.len() <= 1,
+                "one evaluation can complete only its own phase"
+            );
+            if let Some((phase, evidence)) = additions.first() {
+                let index = old
+                    .active
+                    .context("completion requires active evaluation")?;
+                let before = &old.history[index];
+                let after = &next.history[index];
+                ensure!(
+                    before.state == AttemptState::Evaluating
+                        && after.state == AttemptState::Succeeded
+                        && after.generation == next.generation
+                        && after.phase == **phase
+                        && next.active.is_none()
+                        && after.completed_at.is_some(),
+                    "completion requires Evaluating to Succeeded"
+                );
+                validate_evidence(evidence, &task.scope(), &next.sources, after)?;
+            }
+            if let Some(index) = old.active {
+                if next.history[index].state == AttemptState::Succeeded {
+                    ensure!(
+                        additions.len() == 1,
+                        "succeeded attempt requires matching evidence"
+                    );
+                }
+            }
+        }
+        if let Some(index) = next.active {
+            ensure!(
+                next.history[index].generation == next.generation
+                    && !matches!(
+                        next.history[index].state,
+                        AttemptState::Succeeded | AttemptState::Interrupted
+                    ),
+                "active attempt must be unresolved current generation"
+            );
+        }
         for (old, new) in [
             (
                 serde_json::to_value(&old.escalations)?,
                 serde_json::to_value(&next.escalations)?,
+            ),
+            (
+                serde_json::to_value(&old.invalidations)?,
+                serde_json::to_value(&next.invalidations)?,
             ),
             (
                 serde_json::to_value(&old.retries)?,
@@ -1406,7 +1768,16 @@ fn next_phase(workflow: &WorkflowSnapshot) -> Option<Phase> {
         .copied()
         .find(|p| !workflow.completed.contains_key(p))
 }
-fn invalidate(workflow: &mut WorkflowSnapshot) -> Result<()> {
+fn invalidate(workflow: &mut WorkflowSnapshot, source: &SourceSnapshot, cause: &str) -> Result<()> {
+    workflow.invalidations.push(Invalidation {
+        generation: workflow.generation,
+        cause: cause.into(),
+        previous_revision: workflow.sources.revision.clone(),
+        revision: source.revision.clone(),
+        previous_sources: workflow.sources.source_versions.clone(),
+        sources: source.source_versions.clone(),
+        at: now_ms(),
+    });
     workflow.generation = workflow
         .generation
         .checked_add(1)

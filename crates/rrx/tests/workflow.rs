@@ -237,6 +237,8 @@ struct Gates {
     hold: Mutex<Option<Arc<Notify>>>,
     entered: Notify,
     corrupt: AtomicU8,
+    on_complete: Mutex<Option<Box<dyn FnOnce(&PhaseInvocation) -> Option<SourceSnapshot> + Send>>>,
+    unknown: AtomicBool,
 }
 impl Gates {
     fn new() -> Self {
@@ -247,6 +249,8 @@ impl Gates {
             hold: Mutex::new(None),
             entered: Notify::new(),
             corrupt: AtomicU8::new(0),
+            on_complete: Mutex::new(None),
+            unknown: AtomicBool::new(false),
         }
     }
 }
@@ -263,6 +267,19 @@ impl PhaseGates for Gates {
                 self.entered.notify_one();
                 hold.notified().await;
             }
+            if self.unknown.load(Ordering::SeqCst) {
+                anyhow::bail!("fixture outcome unknown");
+            }
+            let replacement = self
+                .on_complete
+                .lock()
+                .unwrap()
+                .take()
+                .and_then(|hook| hook(&invocation));
+            let mut invocation = invocation;
+            if let Some(source) = replacement {
+                invocation.sources = source;
+            }
             if self.waiting.load(Ordering::SeqCst) {
                 return Ok(GateOutcome::Waiting(
                     "test evidence deliberately withheld".into(),
@@ -272,6 +289,7 @@ impl PhaseGates for Gates {
                 scope: invocation.task.scope(),
                 phase: invocation.phase,
                 revision: invocation.sources.revision,
+                dependencies: invocation.sources.source_versions.clone(),
                 source_versions: invocation.sources.source_versions,
                 artifacts: vec![format!("fixture://{}", invocation.phase.key())],
                 review_approved: if invocation.phase.actor() == Actor::Reviewer {
@@ -667,12 +685,24 @@ async fn exit_zero_without_review_approval_cannot_satisfy_review_gate() {
             ..
         }
     ));
-    let error = fixture
+    let result = fixture
         .engine
         .step(fixture.task.id, BTreeMap::new())
         .await
-        .unwrap_err();
-    assert!(error.to_string().contains("explicit approved verdict"));
+        .unwrap();
+    assert!(
+        matches!(result, StepResult::Failed { reason, .. } if reason.contains("explicit approved verdict"))
+    );
+    let failed = fixture.engine.snapshot(fixture.task.id).unwrap();
+    assert_eq!(
+        failed.history[failed.active.unwrap()].state,
+        AttemptState::Failed
+    );
+    fixture
+        .engine
+        .retry(fixture.task.id, "review remediation complete".into())
+        .unwrap();
+    fixture.gates.approved.store(true, Ordering::SeqCst);
     assert!(
         !fixture
             .engine
@@ -1161,20 +1191,21 @@ async fn revision_changes_during_review_gate_preserve_reservation_and_never_acce
     .unwrap();
     fixture.sources.snapshot.lock().unwrap().revision = "new-review-target".into();
     hold.notify_one();
+    assert!(matches!(
+        poll.await.unwrap().unwrap(),
+        StepResult::Invalidated { .. }
+    ));
+    let wf = fixture.engine.snapshot(id).unwrap();
+    assert!(wf.completed.is_empty());
+    assert!(wf.active.is_none());
+    assert_eq!(wf.generation, 2);
     assert!(
-        poll.await
+        wf.invalidations
+            .last()
             .unwrap()
-            .unwrap_err()
-            .to_string()
+            .cause
             .contains("sources changed")
     );
-    let wf = fixture.engine.snapshot(id).unwrap();
-    assert!(!wf.completed.contains_key(&Phase::ImplementationReview));
-    assert_eq!(
-        wf.history[wf.active.unwrap()].state,
-        AttemptState::Evaluating
-    );
-    assert!(fixture.engine.retry(id, "unverified retry".into()).is_err());
 }
 #[tokio::test]
 async fn record_cas_failure_rolls_back_context_task_and_all_transition_audit() {
@@ -1462,15 +1493,16 @@ async fn foreign_stale_unbound_or_empty_gate_evidence_never_advances_review() {
                 .engine
                 .step(fixture.task.id, BTreeMap::new())
                 .await
-                .is_err(),
+                .is_ok_and(|result| matches!(result, StepResult::Failed { .. })),
             "gate corruption {corruption} accepted"
         );
         let wf = fixture.engine.snapshot(fixture.task.id).unwrap();
         assert!(!wf.completed.contains_key(&Phase::ImplementationReview));
-        assert_eq!(
-            wf.history[wf.active.unwrap()].state,
-            AttemptState::Evaluating
-        );
+        assert_eq!(wf.history[wf.active.unwrap()].state, AttemptState::Failed);
+        fixture
+            .engine
+            .retry(fixture.task.id, "corrected evidence".into())
+            .unwrap();
     }
 }
 
@@ -1638,4 +1670,554 @@ async fn completed_attempt_rewrite_and_atomic_owner_version_or_activity_changes_
             )
             .is_err()
     );
+}
+
+#[tokio::test]
+async fn default_is_fallback_not_a_floor_and_finished_workflow_cannot_reopen() {
+    let fixture = Fixture::new(WorkflowClass::Quick);
+    let mut config = fixture.config.clone();
+    config.workflow.default = WorkflowClass::Standard;
+    let mut registry = AgentRegistry::default();
+    registry
+        .register("executor".into(), fixture.executor.clone())
+        .unwrap();
+    registry
+        .register("reviewer".into(), fixture.reviewer.clone())
+        .unwrap();
+    let engine = WorkflowEngine::new(
+        fixture.store.clone(),
+        Arc::new(registry),
+        config,
+        fixture.sources.clone(),
+        fixture.gates.clone(),
+    )
+    .unwrap();
+    assert_eq!(
+        engine
+            .initialize(fixture.task.id, None)
+            .await
+            .unwrap()
+            .workflow,
+        WorkflowClass::Quick
+    );
+    fixture.finish().await;
+    assert!(
+        engine
+            .escalate(
+                fixture.task.id,
+                RiskClass::R3,
+                None,
+                "after PR".into(),
+                "fixture".into()
+            )
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("finished workflow")
+    );
+}
+#[tokio::test]
+async fn gate_owner_updates_preserve_issue_binding_goal_metadata_and_task_blockers() {
+    let fixture = Fixture::new(WorkflowClass::Standard);
+    fixture
+        .engine
+        .initialize(fixture.task.id, None)
+        .await
+        .unwrap();
+    // Exercise an actual Issue port Task write and a concurrent Goal update.
+    let store = fixture.store.clone();
+    *fixture.gates.on_complete.lock().unwrap() = Some(Box::new(move |invocation| {
+        assert_eq!(invocation.phase, Phase::Issue);
+        let mut store = store.lock().unwrap();
+        let mut task = store.task(invocation.task.id).unwrap().unwrap();
+        task.issue = Some(42);
+        task.next_action = Some("external next action".into());
+        task.blockers.push("unrelated blocker".into());
+        store.put_task(&mut task).unwrap();
+        let mut goal = store.goal(task.goal_id).unwrap().unwrap();
+        goal.constraints.push("concurrent constraint".into());
+        store.put_goal(&mut goal).unwrap();
+        None
+    }));
+    assert!(matches!(
+        fixture
+            .engine
+            .step(fixture.task.id, BTreeMap::new())
+            .await
+            .unwrap(),
+        StepResult::Completed {
+            phase: Phase::Issue
+        }
+    ));
+    let task = fixture
+        .store
+        .lock()
+        .unwrap()
+        .task(fixture.task.id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(task.issue, Some(42));
+    assert_eq!(task.next_action.as_deref(), Some("external next action"));
+    assert_eq!(task.blockers, ["unrelated blocker"]);
+    // Worktree port can bind a previously unbound Task through the normal Store.
+    let fixture = Fixture::new(WorkflowClass::Quick);
+    let mut task = fixture.task.clone();
+    task.worktree = None;
+    task.branch = None;
+    // Existing assigned bindings are immutable, so use a fresh unbound Task.
+    task.id = TaskId::new();
+    task.version = 0;
+    fixture.store.lock().unwrap().put_task(&mut task).unwrap();
+    let sources = Arc::new(Sources::new(task.scope()));
+    let gates = Arc::new(Gates::new());
+    let store = fixture.store.clone();
+    let path = fixture.project.worktree_root.join("fresh-task");
+    let assigned = path.clone();
+    *gates.on_complete.lock().unwrap() = Some(Box::new(move |invocation| {
+        let mut store = store.lock().unwrap();
+        let mut task = store.task(invocation.task.id).unwrap().unwrap();
+        task.worktree = Some(assigned);
+        task.branch = Some("feature/fresh-task".into());
+        store.put_task(&mut task).unwrap();
+        None
+    }));
+    let engine = WorkflowEngine::new(
+        fixture.store.clone(),
+        Arc::new(AgentRegistry::default()),
+        fixture.config,
+        sources,
+        gates,
+    )
+    .unwrap();
+    engine.initialize(task.id, None).await.unwrap();
+    assert!(matches!(
+        engine.step(task.id, BTreeMap::new()).await.unwrap(),
+        StepResult::Completed {
+            phase: Phase::Worktree
+        }
+    ));
+    assert_eq!(
+        fixture
+            .store
+            .lock()
+            .unwrap()
+            .task(task.id)
+            .unwrap()
+            .unwrap()
+            .worktree,
+        Some(path)
+    );
+}
+#[tokio::test]
+async fn commit_publishes_new_head_before_tests_review_and_pr_without_restart() {
+    let fixture = Fixture::new(WorkflowClass::Quick);
+    fixture
+        .engine
+        .initialize(fixture.task.id, None)
+        .await
+        .unwrap();
+    fixture.through(Phase::Implement).await;
+    let sources = fixture.sources.clone();
+    *fixture.gates.on_complete.lock().unwrap() = Some(Box::new(move |invocation| {
+        assert_eq!(invocation.phase, Phase::Commit);
+        sources.snapshot.lock().unwrap().revision = "committed-head".into();
+        Some(sources.snapshot.lock().unwrap().clone())
+    }));
+    assert!(matches!(
+        fixture
+            .engine
+            .step(fixture.task.id, BTreeMap::new())
+            .await
+            .unwrap(),
+        StepResult::Completed {
+            phase: Phase::Commit
+        }
+    ));
+    fixture.finish().await;
+    let workflow = fixture.engine.snapshot(fixture.task.id).unwrap();
+    assert_eq!(workflow.generation, 1);
+    for phase in [Phase::Tests, Phase::ImplementationReview, Phase::Pr] {
+        assert_eq!(workflow.completed[&phase].revision, "committed-head");
+    }
+    for class in [WorkflowClass::Standard, WorkflowClass::Strict] {
+        let list = phases(class, &fixture.config);
+        for (commit, review) in [
+            (Phase::RequirementsCommit, Phase::RequirementsReview),
+            (Phase::DesignCommit, Phase::DesignReview),
+            (Phase::Commit, Phase::Tests),
+        ] {
+            assert!(
+                list.iter().position(|p| *p == commit).unwrap()
+                    < list.iter().position(|p| *p == review).unwrap()
+            );
+        }
+    }
+}
+#[tokio::test]
+async fn changed_approved_artifact_invalidates_formal_reviews_and_known_drift_never_calls_gate() {
+    let fixture = Fixture::new(WorkflowClass::Standard);
+    fixture
+        .engine
+        .initialize(fixture.task.id, None)
+        .await
+        .unwrap();
+    fixture.through(Phase::DesignReview).await;
+    fixture
+        .engine
+        .step(fixture.task.id, BTreeMap::new())
+        .await
+        .unwrap(); // Implement
+    fixture
+        .sources
+        .snapshot
+        .lock()
+        .unwrap()
+        .source_versions
+        .insert("requirements".into(), "changed-approved-artifact".into());
+    assert!(
+        matches!(fixture.engine.step(fixture.task.id, BTreeMap::new()).await.unwrap(), StepResult::Invalidated { reason } if reason.contains("approved artifact"))
+    );
+    let workflow = fixture.engine.snapshot(fixture.task.id).unwrap();
+    assert!(workflow.completed.is_empty());
+    assert_eq!(workflow.generation, 2);
+    let fixture = Fixture::new(WorkflowClass::Quick);
+    fixture
+        .engine
+        .initialize(fixture.task.id, None)
+        .await
+        .unwrap();
+    fixture.through(Phase::Tests).await;
+    fixture
+        .engine
+        .step(fixture.task.id, BTreeMap::new())
+        .await
+        .unwrap(); // Reviewer native run
+    let calls = fixture.gates.calls.lock().unwrap().len();
+    fixture.sources.snapshot.lock().unwrap().revision = "known-stale".into();
+    assert!(matches!(
+        fixture
+            .engine
+            .step(fixture.task.id, BTreeMap::new())
+            .await
+            .unwrap(),
+        StepResult::Invalidated { .. }
+    ));
+    assert_eq!(fixture.gates.calls.lock().unwrap().len(), calls);
+}
+#[tokio::test]
+async fn waiting_gate_reuses_native_session_and_unknown_outcome_stays_reserved() {
+    let fixture = Fixture::new(WorkflowClass::Quick);
+    fixture
+        .engine
+        .initialize(fixture.task.id, None)
+        .await
+        .unwrap();
+    fixture.through(Phase::Worktree).await;
+    fixture
+        .engine
+        .step(fixture.task.id, BTreeMap::new())
+        .await
+        .unwrap();
+    fixture.gates.waiting.store(true, Ordering::SeqCst);
+    fixture.sources.snapshot.lock().unwrap().revision = "agent-produced-target".into();
+    assert!(matches!(
+        fixture
+            .engine
+            .step(fixture.task.id, BTreeMap::new())
+            .await
+            .unwrap(),
+        StepResult::Waiting { .. }
+    ));
+    let count = fixture.executor.launches.lock().unwrap().len();
+    fixture.gates.waiting.store(false, Ordering::SeqCst);
+    assert!(matches!(
+        fixture.engine.resume_gate(fixture.task.id).await.unwrap(),
+        StepResult::Completed {
+            phase: Phase::Implement
+        }
+    ));
+    assert_eq!(fixture.executor.launches.lock().unwrap().len(), count);
+    assert_eq!(
+        fixture
+            .engine
+            .snapshot(fixture.task.id)
+            .unwrap()
+            .sources
+            .revision,
+        "agent-produced-target"
+    );
+    fixture.gates.unknown.store(true, Ordering::SeqCst);
+    assert!(
+        matches!(fixture.engine.step(fixture.task.id, BTreeMap::new()).await.unwrap(), StepResult::Waiting { reason, .. } if reason.contains("outcome unknown"))
+    );
+    let workflow = fixture.engine.snapshot(fixture.task.id).unwrap();
+    assert_eq!(
+        workflow.history[workflow.active.unwrap()].state,
+        AttemptState::Evaluating
+    );
+    assert!(
+        workflow.history[workflow.active.unwrap()]
+            .detail
+            .as_ref()
+            .unwrap()
+            .contains("outcome unknown")
+    );
+    assert!(
+        fixture
+            .engine
+            .retry(fixture.task.id, "unsafe retry".into())
+            .is_err()
+    );
+    assert!(fixture.engine.resume_gate(fixture.task.id).await.is_err());
+}
+#[tokio::test]
+async fn restarted_native_attempt_reports_durable_recovery_without_rebinding_or_launching() {
+    let fixture = Fixture::new(WorkflowClass::Quick);
+    fixture
+        .engine
+        .initialize(fixture.task.id, None)
+        .await
+        .unwrap();
+    fixture.through(Phase::Worktree).await;
+    fixture
+        .engine
+        .step(fixture.task.id, BTreeMap::new())
+        .await
+        .unwrap();
+    let fresh = Arc::new(FakeAgent::new("executor", fixture.store.clone(), false));
+    let mut registry = AgentRegistry::default();
+    registry.register("executor".into(), fresh.clone()).unwrap();
+    let engine = WorkflowEngine::new(
+        fixture.store.clone(),
+        Arc::new(registry),
+        fixture.config,
+        fixture.sources,
+        fixture.gates,
+    )
+    .unwrap();
+    assert!(
+        matches!(engine.step(fixture.task.id, BTreeMap::new()).await.unwrap(), StepResult::Waiting { reason, .. } if reason.contains("recovery required"))
+    );
+    let workflow = engine.snapshot(fixture.task.id).unwrap();
+    let attempt = &workflow.history[workflow.active.unwrap()];
+    assert_eq!(attempt.state, AttemptState::Running);
+    assert!(
+        attempt
+            .detail
+            .as_ref()
+            .unwrap()
+            .contains("recovery required")
+    );
+    assert_eq!(
+        fixture
+            .store
+            .lock()
+            .unwrap()
+            .session(attempt.session_id.unwrap())
+            .unwrap()
+            .unwrap()
+            .0
+            .state,
+        SessionState::Running
+    );
+    assert!(fresh.launches.lock().unwrap().is_empty());
+    assert!(
+        engine
+            .retry(fixture.task.id, "unverified death".into())
+            .is_err()
+    );
+}
+#[tokio::test]
+async fn ordinary_store_cannot_override_workflow_fields_or_context_and_retry_preserves_other_blockers()
+ {
+    let fixture = Fixture::new(WorkflowClass::Quick);
+    fixture
+        .engine
+        .initialize(fixture.task.id, None)
+        .await
+        .unwrap();
+    for field in 0..7 {
+        let mut store = fixture.store.lock().unwrap();
+        let mut task = store.task(fixture.task.id).unwrap().unwrap();
+        match field {
+            0 => task.state = TaskState::Completed,
+            1 => task.workflow = WorkflowClass::Strict,
+            2 => task.risk = RiskClass::R3,
+            3 => task.context_version += 1,
+            4 => task.revision = Some("forged".into()),
+            5 => task.phase = Some("cleanup".into()),
+            _ => task.artifacts.push("forged".into()),
+        }
+        assert!(store.put_task(&mut task).is_err());
+    }
+    let mut context = fixture
+        .store
+        .lock()
+        .unwrap()
+        .context(&fixture.task.scope(), None)
+        .unwrap()
+        .unwrap();
+    context.version += 1;
+    assert!(fixture.store.lock().unwrap().put_context(&context).is_err());
+    fixture.through(Phase::Tests).await;
+    fixture.gates.approved.store(false, Ordering::SeqCst);
+    fixture
+        .engine
+        .step(fixture.task.id, BTreeMap::new())
+        .await
+        .unwrap();
+    fixture
+        .engine
+        .step(fixture.task.id, BTreeMap::new())
+        .await
+        .unwrap();
+    let old = fixture.engine.snapshot(fixture.task.id).unwrap();
+    let old_attempt = &old.history[old.active.unwrap()];
+    {
+        let mut store = fixture.store.lock().unwrap();
+        let mut task = store.task(fixture.task.id).unwrap().unwrap();
+        task.blockers.insert(0, "unrelated blocker".into());
+        store.put_task(&mut task).unwrap();
+    }
+    fixture
+        .engine
+        .retry(fixture.task.id, "fix rejected review".into())
+        .unwrap();
+    let retried = fixture.engine.snapshot(fixture.task.id).unwrap();
+    assert_eq!(
+        retried.history[old.active.unwrap()].completed_at,
+        old_attempt.completed_at
+    );
+    assert_eq!(
+        fixture
+            .store
+            .lock()
+            .unwrap()
+            .task(fixture.task.id)
+            .unwrap()
+            .unwrap()
+            .blockers,
+        ["unrelated blocker"]
+    );
+}
+#[tokio::test]
+async fn atomic_authority_rejects_invented_initial_history_completion_and_finished_flags() {
+    let base = Fixture::new(WorkflowClass::Quick);
+    let template = base.engine.initialize(base.task.id, None).await.unwrap();
+    let template_context = base
+        .store
+        .lock()
+        .unwrap()
+        .context(&base.task.scope(), None)
+        .unwrap()
+        .unwrap();
+    for mutation in 0..3 {
+        let fixture = Fixture::new(WorkflowClass::Quick);
+        let mut snapshot = template.clone();
+        snapshot.sources.scope = fixture.task.scope();
+        match mutation {
+            0 => snapshot.generation = 2,
+            1 => snapshot.finished = true,
+            _ => snapshot.history.push(PhaseAttempt {
+                phase: Phase::Worktree,
+                generation: 1,
+                context_version: 1,
+                budget: ContextBudget {
+                    class: BudgetClass::Small,
+                    discretionary_tokens: 1,
+                },
+                state: AttemptState::Succeeded,
+                session_id: None,
+                agent: None,
+                started_at: 0,
+                completed_at: Some(1),
+                detail: None,
+            }),
+        }
+        let mut task = fixture.task.clone();
+        task.context_version = 1;
+        task.revision = Some(snapshot.sources.revision.clone());
+        let mut record = Record::new(
+            task.scope(),
+            RecordKind::Workflow,
+            serde_json::to_value(snapshot).unwrap(),
+        );
+        let mut context = template_context.clone();
+        context.scope = task.scope();
+        let goal_version = fixture
+            .store
+            .lock()
+            .unwrap()
+            .goal(task.goal_id)
+            .unwrap()
+            .unwrap()
+            .version;
+        assert!(
+            fixture
+                .store
+                .lock()
+                .unwrap()
+                .put_workflow_transition(
+                    &mut task,
+                    &mut record,
+                    Some(&context),
+                    fixture.project.version,
+                    goal_version,
+                    WorkflowAccess::StateOnly
+                )
+                .is_err()
+        );
+        assert!(
+            fixture
+                .store
+                .lock()
+                .unwrap()
+                .records(&task.scope(), RecordKind::Workflow)
+                .unwrap()
+                .is_empty()
+        );
+    }
+    let fixture = Fixture::new(WorkflowClass::Quick);
+    fixture
+        .engine
+        .initialize(fixture.task.id, None)
+        .await
+        .unwrap();
+    fixture.through(Phase::Worktree).await;
+    fixture
+        .engine
+        .step(fixture.task.id, BTreeMap::new())
+        .await
+        .unwrap(); // Running Implement
+    for mutation in 0..3 {
+        let mut store = fixture.store.lock().unwrap();
+        let mut task = store.task(fixture.task.id).unwrap().unwrap();
+        let mut record = store
+            .records(&task.scope(), RecordKind::Workflow)
+            .unwrap()
+            .remove(0);
+        let mut snapshot: WorkflowSnapshot = serde_json::from_value(record.data.clone()).unwrap();
+        match mutation {
+            0 => snapshot.finished = true,
+            1 => {
+                let evidence = snapshot.completed[&Phase::Worktree].clone();
+                snapshot.completed.insert(Phase::Pr, evidence);
+            }
+            _ => snapshot.history[snapshot.active.unwrap()].state = AttemptState::Succeeded,
+        }
+        record.data = serde_json::to_value(snapshot).unwrap();
+        let goal_version = store.goal(task.goal_id).unwrap().unwrap().version;
+        assert!(
+            store
+                .put_workflow_transition(
+                    &mut task,
+                    &mut record,
+                    None,
+                    fixture.project.version,
+                    goal_version,
+                    WorkflowAccess::StateOnly
+                )
+                .is_err()
+        );
+    }
 }

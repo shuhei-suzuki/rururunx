@@ -317,6 +317,20 @@ impl Store {
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        if owns_workflow(&tx, &task.scope())? {
+            let old: Task = read_tx(&tx, "tasks", &task.id.to_string())?.context("unknown Task")?;
+            ensure!(
+                old.workflow == task.workflow
+                    && old.risk == task.risk
+                    && old.context_version == task.context_version
+                    && old.revision == task.revision
+                    && old.phase == task.phase
+                    && old.artifacts == task.artifacts
+                    && (old.state == task.state
+                        || (!task_terminal(old.state) && task.state == TaskState::WaitingHuman)),
+                "workflow-owned Task fields require atomic transition"
+            );
+        }
         let next = put_task_tx(&tx, task)?;
         tx.commit()?;
         *task = next;
@@ -484,6 +498,10 @@ impl Store {
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        ensure!(
+            !owns_workflow(&tx, &context.scope)?,
+            "workflow-owned ContextVersion requires atomic transition"
+        );
         put_context_tx(&tx, context)?;
         tx.commit()?;
         Ok(())
@@ -730,6 +748,12 @@ impl Store {
     }
 }
 
+fn owns_workflow(tx: &Transaction<'_>, scope: &Scope) -> Result<bool> {
+    if scope.task_id.is_none() {
+        return Ok(false);
+    }
+    Ok(tx.query_row("SELECT EXISTS(SELECT 1 FROM records WHERE project_id=?1 AND goal_id=?2 AND task_id=?3 AND kind='workflow')", params![scope.project_id.to_string(), scope.goal_id.map(|id| id.to_string()), scope.task_id.map(|id| id.to_string())], |row| row.get(0))?)
+}
 fn put_task_tx(tx: &Transaction<'_>, task: &Task) -> Result<Task> {
     ensure!(
         !task.title.trim().is_empty() && !task.executor.trim().is_empty(),
