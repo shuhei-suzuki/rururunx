@@ -447,14 +447,22 @@ fn dag_and_followup_references_cannot_cross_project_or_goal_boundaries() {
     assert!(store.put_goal(&mut goal_one).is_err());
     goal_one.dag.edges.clear();
     goal_one.dag.nodes.push(local_task.id);
+    let undeclared = task(&mut store, &one, &goal_one);
+    goal_one.dag.edges.push(Dependency {
+        prerequisite: local_task.id,
+        dependent: undeclared.id,
+        hard: true,
+    });
+    assert!(store.put_goal(&mut goal_one).is_err());
+    goal_one.dag.edges.clear();
     store.put_goal(&mut goal_one).unwrap();
 }
 
 #[test]
 fn foreign_databases_and_unknown_snapshots_are_rejected_without_data_loss() {
     let dir = tempfile::tempdir().unwrap();
-    for version in [0, 1] {
-        let db = dir.path().join(format!("foreign-{version}.db"));
+    for (table, version) in [("other_app", 0), ("other_app", 1), ("sqlite3_data", 0)] {
+        let db = dir.path().join(format!("foreign-{table}-{version}.db"));
         let raw = rusqlite::Connection::open(&db).unwrap();
         raw.execute_batch(
             "CREATE TABLE other_app(value TEXT); INSERT INTO other_app VALUES('keep');",
