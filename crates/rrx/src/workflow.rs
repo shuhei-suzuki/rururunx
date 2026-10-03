@@ -222,6 +222,7 @@ pub struct Evidence {
     pub review_approved: Option<bool>,
     /// Binds an agent-produced artifact/verdict to the launched Session.
     pub session_id: Option<SessionId>,
+    pub context_version: u64,
 }
 #[derive(Debug, Clone)]
 pub enum GateOutcome {
@@ -281,6 +282,7 @@ pub struct PhaseAttempt {
     pub budget: ContextBudget,
     pub state: AttemptState,
     pub session_id: Option<SessionId>,
+    pub agent: Option<String>,
     pub started_at: i64,
     pub completed_at: Option<i64>,
     pub detail: Option<String>,
@@ -729,6 +731,11 @@ impl WorkflowEngine {
             budget: selected_budget,
             state: AttemptState::Running,
             session_id: None,
+            agent: match phase.actor() {
+                Actor::Executor => Some(snapshot.task.executor.clone()),
+                Actor::Reviewer => snapshot.task.reviewers.first().cloned(),
+                Actor::EvidencePort => None,
+            },
             started_at: now_ms(),
             completed_at: None,
             detail: None,
@@ -901,15 +908,10 @@ impl WorkflowEngine {
                 reason: "interrupted phase needs explicit recovery integration (#13)".into(),
             });
         };
-        let agent = if phase.actor() == Actor::Reviewer {
-            snapshot
-                .task
-                .reviewers
-                .first()
-                .context("reviewer not configured")?
-        } else {
-            &snapshot.task.executor
-        };
+        let agent = attempt
+            .agent
+            .as_ref()
+            .context("native attempt actor missing")?;
         let adapter = self.registry.get(agent)?;
         let status = adapter
             .status(SessionRef {
@@ -918,7 +920,16 @@ impl WorkflowEngine {
             })
             .await?;
         ensure!(
-            status.session.id == id && status.session.scope == snapshot.task.scope(),
+            status.session.id == id
+                && status.session.scope == snapshot.task.scope()
+                && status.session.agent == *agent
+                && Some(&status.session.worktree) == snapshot.task.worktree.as_ref()
+                && status.session.role
+                    == if phase.actor() == Actor::Reviewer {
+                        SessionRole::Reviewer
+                    } else {
+                        SessionRole::Executor
+                    },
             "foreign session status"
         );
         if !status.terminal() {
@@ -1057,7 +1068,9 @@ impl WorkflowEngine {
                     "gate evidence is foreign/stale/incomplete"
                 );
                 ensure!(
-                    evidence.session_id == snapshot.workflow.history[index].session_id,
+                    evidence.session_id == snapshot.workflow.history[index].session_id
+                        && evidence.context_version
+                            == snapshot.workflow.history[index].context_version,
                     "gate session binding mismatch"
                 );
                 if phase.actor() == Actor::Reviewer {
@@ -1161,8 +1174,11 @@ impl WorkflowEngine {
         for record in store.records(&snapshot.task.scope(), RecordKind::Session)? {
             let session: Session = serde_json::from_value(record.data)?;
             ensure!(
-                session.role != SessionRole::Executor || !crate::git::executor_reserved(&session),
-                "reserved/Lost executor requires verified recovery"
+                matches!(
+                    session.state,
+                    SessionState::Exited | SessionState::Stopped | SessionState::Failed
+                ),
+                "reserved/Lost session requires verified recovery"
             );
         }
         drop(store);
@@ -1266,6 +1282,7 @@ pub(crate) fn validate_transition(
                         && before.context_version == after.context_version
                         && before.budget == after.budget
                         && before.started_at == after.started_at
+                        && before.agent == after.agent
                         && before
                             .session_id
                             .is_none_or(|id| after.session_id == Some(id)),

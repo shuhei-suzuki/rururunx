@@ -398,8 +398,8 @@ impl Store {
                 let record: Record = decode(body?)?;
                 if record.kind == RecordKind::Session {
                     let session: Session = serde_json::from_value(record.data)?;
-                    if session.role == SessionRole::Executor
-                        && crate::git::executor_reserved(&session)
+                    if crate::git::executor_reserved(&session)
+                        || (access == WorkflowAccess::Mutating && !session_terminal(session.state))
                     {
                         bail!(StateGuardError::ExecutorReserved);
                     }

@@ -237,6 +237,7 @@ impl PhaseGates for Gates {
                     None
                 },
                 session_id: status.map(|s| s.session.id),
+                context_version: invocation.context.version,
             }))
         })
     }
@@ -852,6 +853,7 @@ async fn second_engine_cannot_dispatch_duplicate_phase_and_interrupt_does_not_au
             },
             state: AttemptState::Running,
             session_id: None,
+            agent: None,
             started_at: now_ms(),
             completed_at: None,
             detail: None,
@@ -1265,4 +1267,95 @@ async fn atomic_context_pointer_rejects_wrong_revision_phase_or_source_versions(
             original_task.version
         );
     }
+}
+
+#[tokio::test]
+async fn running_attempt_preserves_native_actor_when_task_reviewer_choice_changes() {
+    let fixture = Fixture::new(WorkflowClass::Quick);
+    fixture
+        .engine
+        .initialize(fixture.task.id, None)
+        .await
+        .unwrap();
+    fixture.through(Phase::Tests).await;
+    let StepResult::Started {
+        session: Some(session),
+        ..
+    } = fixture
+        .engine
+        .step(fixture.task.id, BTreeMap::new())
+        .await
+        .unwrap()
+    else {
+        panic!("review not started");
+    };
+    {
+        let mut store = fixture.store.lock().unwrap();
+        let mut task = store.task(fixture.task.id).unwrap().unwrap();
+        task.reviewers = vec!["executor".into()];
+        store.put_task(&mut task).unwrap();
+    }
+    assert!(matches!(
+        fixture
+            .engine
+            .step(fixture.task.id, BTreeMap::new())
+            .await
+            .unwrap(),
+        StepResult::Completed {
+            phase: Phase::ImplementationReview
+        }
+    ));
+    let wf = fixture.engine.snapshot(fixture.task.id).unwrap();
+    let review = wf
+        .history
+        .iter()
+        .find(|a| a.phase == Phase::ImplementationReview)
+        .unwrap();
+    assert_eq!(review.agent.as_deref(), Some("reviewer"));
+    assert_eq!(review.session_id, Some(session));
+    assert_eq!(
+        fixture
+            .store
+            .lock()
+            .unwrap()
+            .task(fixture.task.id)
+            .unwrap()
+            .unwrap()
+            .reviewers,
+        ["executor"]
+    );
+}
+#[tokio::test]
+async fn lost_reviewer_also_requires_verified_recovery_before_retry() {
+    let fixture = Fixture::new(WorkflowClass::Quick);
+    fixture
+        .engine
+        .initialize(fixture.task.id, None)
+        .await
+        .unwrap();
+    fixture.through(Phase::Tests).await;
+    fixture.reviewer.fail.store(true, Ordering::SeqCst);
+    fixture
+        .engine
+        .step(fixture.task.id, BTreeMap::new())
+        .await
+        .unwrap();
+    assert!(matches!(
+        fixture
+            .engine
+            .step(fixture.task.id, BTreeMap::new())
+            .await
+            .unwrap(),
+        StepResult::Failed {
+            phase: Phase::ImplementationReview,
+            ..
+        }
+    ));
+    assert!(
+        fixture
+            .engine
+            .retry(fixture.task.id, "retry".into())
+            .is_err()
+    );
+    assert_eq!(fixture.reviewer.launches.lock().unwrap().len(), 1);
 }
