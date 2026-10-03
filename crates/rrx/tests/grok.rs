@@ -234,6 +234,7 @@ for line in sys.stdin:
    for _ in range(257):
     send({'jsonrpc':'2.0','id':'permission','method':'session/request_permission','params':{'sessionId':sid,'options':[{'kind':'reject_once','optionId':'deny'}]}});assert json.loads(sys.stdin.readline())['result']['outcome']['optionId']=='deny'
   if mode=='path_budget':fs('fs/read_text_file','a'*4097)
+  if mode=='unknown_fs_method':assert fs('fs/unsupported_future','own.txt').get('error')
   if mode=='permission':
    send({'jsonrpc':'2.0','id':'permission','method':'session/request_permission','params':{'sessionId':sid,'options':[{'kind':'allow_once','optionId':'allow'},{'kind':'reject_once','optionId':'deny'}]}})
    answer=json.loads(sys.stdin.readline());assert answer['result']['outcome']['optionId']=='deny'
@@ -374,6 +375,7 @@ async fn native_auth_inventory_config_parser_and_tool_evidence_fail_closed() {
         "hook_failure",
         "unowned_write",
         "unowned_read",
+        "unknown_fs_method",
     ] {
         let mut fixture = Fixture::new();
         fixture.mode(mode);
@@ -394,7 +396,8 @@ async fn native_auth_inventory_config_parser_and_tool_evidence_fail_closed() {
                 "wrong_method",
                 "ambiguous",
                 "unowned_write",
-                "unowned_read"
+                "unowned_read",
+                "unknown_fs_method"
             ]
             .contains(&mode)
             {
@@ -430,6 +433,19 @@ async fn native_auth_inventory_config_parser_and_tool_evidence_fail_closed() {
             assert!(
                 !fixture.request.worktree.join("unowned.txt").exists(),
                 "unowned write must be rejected before effects"
+            );
+        }
+        if mode == "unknown_fs_method" {
+            assert!(
+                !fixture
+                    .store
+                    .lock()
+                    .unwrap()
+                    .events(&fixture.request.scope, 0, 100)
+                    .unwrap()
+                    .iter()
+                    .any(|e| e.kind == "grok.fs_observed"),
+                "unsupported FS method must never read or write"
             );
         }
         assert!(status.session.pid.is_none(), "{mode}");
