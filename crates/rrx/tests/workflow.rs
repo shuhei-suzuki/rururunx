@@ -10,7 +10,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU8, Ordering},
     },
 };
 use tokio::sync::{Notify, watch};
@@ -195,6 +195,7 @@ struct Gates {
     calls: Mutex<Vec<PhaseInvocation>>,
     hold: Mutex<Option<Arc<Notify>>>,
     entered: Notify,
+    corrupt: AtomicU8,
 }
 impl Gates {
     fn new() -> Self {
@@ -204,6 +205,7 @@ impl Gates {
             calls: Mutex::new(vec![]),
             hold: Mutex::new(None),
             entered: Notify::new(),
+            corrupt: AtomicU8::new(0),
         }
     }
 }
@@ -225,7 +227,7 @@ impl PhaseGates for Gates {
                     "test evidence deliberately withheld".into(),
                 ));
             }
-            Ok(GateOutcome::Passed(Evidence {
+            let mut evidence = Evidence {
                 scope: invocation.task.scope(),
                 phase: invocation.phase,
                 revision: invocation.sources.revision,
@@ -238,7 +240,17 @@ impl PhaseGates for Gates {
                 },
                 session_id: status.map(|s| s.session.id),
                 context_version: invocation.context.version,
-            }))
+            };
+            match self.corrupt.load(Ordering::SeqCst) {
+                1 => evidence.scope.project_id = ProjectId::new(),
+                2 => evidence.revision = "stale-target".into(),
+                3 => evidence.source_versions.clear(),
+                4 => evidence.context_version = 0,
+                5 => evidence.session_id = Some(SessionId::new()),
+                6 => evidence.artifacts.clear(),
+                _ => {}
+            }
+            Ok(GateOutcome::Passed(evidence))
         })
     }
 }
@@ -1038,7 +1050,13 @@ async fn concurrent_native_polls_claim_evidence_evaluation_before_calling_extern
     .unwrap();
     let calls = fixture.gates.calls.lock().unwrap().len();
     assert!(matches!(
-        fixture.engine.step(id, BTreeMap::new()).await.unwrap(),
+        tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            fixture.engine.step(id, BTreeMap::new())
+        )
+        .await
+        .expect("concurrent poll must not enter already reserved gate")
+        .unwrap(),
         StepResult::Waiting {
             phase: Phase::Implement,
             ..
@@ -1358,4 +1376,37 @@ async fn lost_reviewer_also_requires_verified_recovery_before_retry() {
             .is_err()
     );
     assert_eq!(fixture.reviewer.launches.lock().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn foreign_stale_unbound_or_empty_gate_evidence_never_advances_review() {
+    for corruption in 1..=6 {
+        let fixture = Fixture::new(WorkflowClass::Quick);
+        fixture
+            .engine
+            .initialize(fixture.task.id, None)
+            .await
+            .unwrap();
+        fixture.through(Phase::Tests).await;
+        fixture
+            .engine
+            .step(fixture.task.id, BTreeMap::new())
+            .await
+            .unwrap();
+        fixture.gates.corrupt.store(corruption, Ordering::SeqCst);
+        assert!(
+            fixture
+                .engine
+                .step(fixture.task.id, BTreeMap::new())
+                .await
+                .is_err(),
+            "gate corruption {corruption} accepted"
+        );
+        let wf = fixture.engine.snapshot(fixture.task.id).unwrap();
+        assert!(!wf.completed.contains_key(&Phase::ImplementationReview));
+        assert_eq!(
+            wf.history[wf.active.unwrap()].state,
+            AttemptState::Evaluating
+        );
+    }
 }
