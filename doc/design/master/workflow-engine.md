@@ -307,7 +307,7 @@ revision, source versions and Session, with durable artifact references. Reviews
 require an explicit approved verdict. Missing integration (`PendingGates`) waits;
 no successful exit invents verification, approval, PR, merge or cleanup evidence.
 Ports must use their own Git/Session ownership and transactional guards at actual
-native side effects. #12 approval and #13 recovery remain pending; uncertain phase
+native side effects. #10 approval and #14 owner/restart recovery remain pending; uncertain phase
 reservations never trigger automatic retry. Explicit retry preserves prior attempt
 and reason history and rejects live/Lost executor reservations.
 
@@ -342,7 +342,16 @@ are recorded before postgate activity/freshness checks, including artifact refs 
 a Goal becomes paused or a Project Blocked; observation does not authorize completion.
 A same-generation source rebind requires target-producing completion, and unknown
 Evaluating reservations cannot be released by changing generation. An immutable native
-dispatch marker distinguishes undispatched reservations from possible launch interruption.
+dispatch marker records whether launch may have begun; it does not prove owner
+absence. Issue #41 specifies passive Waiting observation for agent Running
+attempts without a Session, before or after that marker. Such observation changes
+no Task/Workflow/context/audit state. Only the invocation whose reserve committed
+may release its own proven pre-dispatch preparation error, using its exact
+committed Workflow Record identity/version and original attempt. Reservation CAS
+losers never release. Fresh-read CAS preserves concurrent Task metadata and all
+executor/Lost fences. Inactive owners, definitive-decision publication conflicts
+and unknown/dispatched outcomes stay reserved for #14; no native replay occurs.
+EvidencePort claim evaluation remains separate and does not use agent release.
 Explicit cancel/fail decisions retain native/phase reservations until verified recovery.
 QUICK PR-created is nonterminal; request_finalization adds actual MergeGate/Cleanup ports
 before Completed. Native termination state is a trusted provider/recovery attestation,
@@ -356,8 +365,13 @@ PR/merge evidence prevent generation invalidation into duplicate operations; dri
 for explicit reconciliation (#13). Their ports receive prior attempt observations and
 resume idempotently; Cleanup freezes pre-disposal sources even after Waiting/Failed.
 Cancel/fail decisions are conservative under inactive Goals or Blocked Projects; a narrow
-terminal reservation release keeps Task/decision/context/evidence immutable and requires
-owned persisted termination plus all executor/Lost fences. Unknown outcomes or unbound
+terminal reservation release keeps Task/decision/context/evidence immutable. A
+bound Session requires owned persisted termination plus all executor/Lost fences.
+For an undispatched attempt without a Session, the committed terminal decision,
+transactional terminal-Task fence and absence of a dispatch marker exclude the
+suspended owner from launching; all executor/Lost fences still apply. No inferred
+owner absence is needed for this existing explicit TerminalRecovery path.
+Unknown outcomes or unbound
 dispatch stay reserved. General workflow progression cannot resurrect terminal Tasks.
 
 An evaluation claim binds the exact prior observation count. The private observer
@@ -371,3 +385,11 @@ Durable irreversible holds publish held_reason/WaitingHuman/blocker and await ac
 Observation/audit metadata retain authority digests without copied Context Pack text.
 Cleanup freezes the reserved class/phases, independent of later runtime policy capture.
 Project risk-mapping recommendations can strengthen but cannot weaken runtime mappings.
+
+Issue #14 must supply trusted recovery proof for orphaned undispatched attempts,
+dropped futures/crashes, inactive-owner preparation errors, definitive-decision
+publication conflicts and post-dispatch Session-binding conflicts; #41 adds no
+durable owner-absence proof. Unknown reversible Evaluating claims also belong to
+owner/restart recovery14. Ordinary observation must allow evaluation still being
+in flight; #13 remains responsible for irreversible Pr/MergeGate/Cleanup outcomes.
+See [Issue #41 design](../issue-41-design.md).
