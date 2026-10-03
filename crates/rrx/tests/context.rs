@@ -118,7 +118,7 @@ fn budget() -> Budget {
 }
 fn ready(outcome: SelectionOutcome) -> ContextSlice {
     match outcome {
-        SelectionOutcome::Ready { slice } => slice,
+        SelectionOutcome::Ready { slice } => *slice,
         other => panic!("expected ready: {other:?}"),
     }
 }

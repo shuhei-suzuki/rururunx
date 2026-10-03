@@ -129,7 +129,7 @@ pub struct SelectionEvidence {
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "status", rename_all = "snake_case")]
 pub enum SelectionOutcome {
-    Ready { slice: ContextSlice },
+    Ready { slice: Box<ContextSlice> },
     NeedsBudget { evidence: SelectionEvidence },
 }
 #[derive(Debug, Clone, Serialize)]
@@ -465,12 +465,12 @@ impl RepositoryContext {
             }
             evidence.estimated_tokens = payload.len();
             SelectionOutcome::Ready {
-                slice: ContextSlice {
+                slice: Box::new(ContextSlice {
                     freshness: map.freshness.clone(),
                     evidence: evidence.clone(),
                     payload,
                     map: map.clone(),
-                },
+                }),
             }
         };
         // Validate again after ranking/packing, before committing observable evidence.
@@ -913,17 +913,16 @@ fn lexical(path: &str, text: &str, changed: bool) -> FileEntry {
                     | "function"
                     | "interface"
             )
-        }) {
-            if let Some(name) = tokens.get(pos + 1) {
-                if name.len() <= 256 && symbols.len() < 64 {
-                    symbols.push(Symbol {
-                        name: (*name).into(),
-                        line: index + 1,
-                        signature: line.chars().take(240).collect(),
-                    });
-                } else {
-                    limited = true;
-                }
+        }) && let Some(name) = tokens.get(pos + 1)
+        {
+            if name.len() <= 256 && symbols.len() < 64 {
+                symbols.push(Symbol {
+                    name: (*name).into(),
+                    line: index + 1,
+                    signature: line.chars().take(240).collect(),
+                });
+            } else {
+                limited = true;
             }
         }
         if tokens
