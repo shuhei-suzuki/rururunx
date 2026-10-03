@@ -170,7 +170,12 @@ impl TurnEvidence {
             if dependencies.next().is_none() || dependencies.next().is_some() {
                 return Err(failure(
                     ErrorKind::OwnershipMismatch,
-                    "unowned native file read callback",
+                    format!(
+                        "unowned native file read callback; prior_successful_tool_path={}",
+                        self.tools
+                            .values()
+                            .any(|t| t.path == path && t.finished && t.callbacks > 0)
+                    ),
                 ));
             }
         } else {
