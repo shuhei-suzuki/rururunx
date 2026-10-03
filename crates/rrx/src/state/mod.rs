@@ -10,7 +10,7 @@ use serde_json::{Value, json};
 
 use crate::domain::*;
 
-pub const SCHEMA_VERSION: i64 = 3;
+pub const SCHEMA_VERSION: i64 = 4;
 pub const APPLICATION_ID: i64 = 0x52525831; // ASCII RRX1.
 
 /// Typed transactional guards let callers distinguish contention from storage failure.
@@ -104,6 +104,7 @@ impl Store {
                     "refusing to initialize a nonempty or foreign database"
                 );
                 tx.execute_batch(include_str!("schema.sql"))?;
+                context_pack::migrate_v4(&tx)?;
                 tx.pragma_update(None, "application_id", APPLICATION_ID)?;
                 tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
             } else {
@@ -114,9 +115,12 @@ impl Store {
                 let application: i64 =
                     tx.pragma_query_value(None, "application_id", |row| row.get(0))?;
                 ensure!(application == APPLICATION_ID, "not an rrx state database");
-                // Ordered JSON-format migrations; SQL layout and ownership/audit stay intact.
-                // v2 adds Project blocked_reason; v3 adds authoritative Workflow records.
+                // Ordered authority migrations: v2 Project metadata, v3 Workflow,
+                // v4 immutable checkpoints/typed packs and an indexed scoped head.
                 for next in (locked_version + 1)..=SCHEMA_VERSION {
+                    if next == 4 {
+                        context_pack::migrate_v4(&tx)?;
+                    }
                     tx.pragma_update(None, "user_version", next)?;
                 }
             }
@@ -595,6 +599,7 @@ impl Store {
                 "context pointer/scope differs from workflow Task"
             );
             crate::workflow::validate_context(task, workflow, context)?;
+            context_pack::guard_context_checkpoint(&tx, context)?;
             put_context_tx(&tx, context)?;
         } else {
             let owner = context_owner(&task.scope())?;
@@ -1079,6 +1084,7 @@ fn put_task_tx(tx: &Transaction<'_>, task: &Task) -> Result<Task> {
 
 fn put_record_tx(tx: &Transaction<'_>, record: &Record) -> Result<Record> {
     context_pack::guard_checkpoint_write(tx, record)?;
+    context_pack::guard_launch_checkpoint(tx, record)?;
     validate_scope(&record.scope)?;
     if record.kind == RecordKind::Session {
         let session: Session =

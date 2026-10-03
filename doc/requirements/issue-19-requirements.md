@@ -38,7 +38,7 @@ no supervisor model or transcript summarization model is introduced.
 - Native I/O stays outside SharedStore. Publication rechecks current versions and
   live/Lost Session/lock/workflow ownership inside the transaction. Workflow-owned
   publication uses the workflow phase port; standalone publication cannot rewrite
-  its phase/attempt context. After Workflow format 3 is merged, an ordered format 3→4 marker upgrade
+  its phase/attempt context. The ordered format 3→4 migration
   makes older writers refuse the authoritative checkpoint write contract. SQL
   checkpoint-head indexing is maintained atomically with append. Generic Context
   writes and pointer changes cannot bypass typed publication or restore an older
@@ -51,7 +51,7 @@ cleanup. Finalized Task refs remain historical and non-launchable.
 Core checkpoints use a registered Goal and bound Task, including consultation
 Sessions. Goal-before-Task consultation creation and CLI/TUI/session transport are
 separate integrations. Native checkpoint capability is not fabricated. The real
-workflow PhaseContext port is integrated after Issue 8 merges, before acceptance.
+workflow PhaseContext port is integrated against merged Issue 8, before acceptance.
 
 Goal summaries report exact immutable Task refs and whether source validation is
 required; concurrent dirty execution does not disable the Goal summary. Task

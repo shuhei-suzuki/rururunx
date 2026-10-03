@@ -47,11 +47,11 @@ Consultant checkpoints promote only within the same Project/Goal after source
 reference validation, retaining historical source Session/Task/HEAD provenance.
 Target rules/constraints and source hashes are rebuilt; no full chat is copied.
 
-Keep Record kinds unchanged. After the Workflow format 3 migration,
-an atomic ordered 3→4 marker upgrade fences older writers from modifying typed
+Keep Record kinds unchanged. An atomic ordered 3→4 migration fences older writers from modifying typed
 checkpoint authority and installs an atomically maintained indexed checkpoint head;
-preserve earlier 1→2→3 migrations. The interim independent core uses append row
-order and decodes one head body rather than loading all checkpoint history. Add
+preserves earlier 1→2→3 migrations. The scoped primary-key head lookup joins one
+immutable record and does not sort/decode checkpoint history during runtime. It
+survives SQLite VACUUM, and index updates roll back with failed append/audit. Add
 narrow Store transactions beside existing
 helpers and coordinate their workflow fences with Issue 8. The PhaseContext port
 provides a draft payload/source authority while Engine owns ContextVersion/Task
@@ -96,3 +96,11 @@ Explicit artifact/additional-source refs include durable lexical metadata (up to
 sources retain only inventory/skipped metadata. Native preparation can select
 broader file/symbol slices under its budget. Verification facts are caller-supplied
 structured pack facts; authoritative verification files remain scoped digest refs.
+
+Native reservation validates prepared `checkpoint:head` (including `none`) with
+the scoped indexed head. Typed Issue 19 native inputs cannot omit that key; legacy
+non-pack callers retain their existing contract. The same comparison applies to
+Starting→Running publication, so an intervening checkpoint prevents stale launch.
+Existing Running/terminal observations remain valid and preserve immutable active
+attempt identity. `Store::validate_checkpoint_source` exposes the pure bounded
+comparison for native adapters; it performs no Git/filesystem work.

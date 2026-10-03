@@ -3,6 +3,112 @@ use super::*;
 use crate::context_pack::{Checkpoint, CheckpointRef};
 use sha2::{Digest, Sha256};
 
+pub(super) fn migrate_v4(tx: &Transaction<'_>) -> Result<()> {
+    tx.execute_batch(include_str!("checkpoint-heads.sql"))?;
+    let mut query=tx.prepare("SELECT body FROM records WHERE kind='checkpoint' AND json_extract(body,'$.data.format')='rrx.checkpoint.v1' ORDER BY project_id,goal_id,task_id,json_extract(body,'$.data.chain_version')")?;
+    let mut previous: Option<(Record, Checkpoint)> = None;
+    for body in query.query_map([], |r| r.get::<_, String>(0))? {
+        let record: Record = decode(body?)?;
+        let cp: Checkpoint = serde_json::from_value(record.data.clone())?;
+        ensure!(
+            record.version == 1 && record.scope == cp.scope && cp.scope.task_id.is_some(),
+            "invalid typed checkpoint migration authority"
+        );
+        if let Some((record, old)) = &previous
+            && old.scope == cp.scope
+        {
+            let reference = CheckpointRef {
+                scope: record.scope.clone(),
+                id: record.id,
+                version: record.version,
+                digest: checkpoint_digest(&record.data)?,
+            };
+            ensure!(
+                cp.chain_version
+                    == old
+                        .chain_version
+                        .checked_add(1)
+                        .context("checkpoint chain overflow")?
+                    && cp.previous.as_ref() == Some(&reference),
+                "checkpoint migration chain invalid"
+            );
+        } else {
+            ensure!(
+                cp.chain_version == 1 && cp.previous.is_none(),
+                "checkpoint migration missing origin"
+            );
+        }
+        write_checkpoint_head(tx, &record)?;
+        previous = Some((record, cp));
+    }
+    Ok(())
+}
+fn write_checkpoint_head(tx: &Transaction<'_>, record: &Record) -> Result<()> {
+    tx.execute("INSERT INTO checkpoint_heads(project_id,goal_id,task_id,record_id) VALUES(?1,?2,?3,?4) ON CONFLICT(project_id,goal_id,task_id) DO UPDATE SET record_id=excluded.record_id",params![record.scope.project_id.to_string(),str_id(record.scope.goal_id),str_id(record.scope.task_id),record.id.to_string()])?;
+    Ok(())
+}
+fn validate_checkpoint_source(
+    connection: &Connection,
+    scope: &Scope,
+    key: Option<&str>,
+) -> Result<()> {
+    if let Some(key) = key {
+        ensure!(
+            scope.task_id.is_some() && scope.goal_id.is_some(),
+            "checkpoint source requires Task scope"
+        );
+        let current = checkpoint_head_record(connection, scope)?
+            .map(|r| checkpoint_digest(&r.data))
+            .transpose()?
+            .unwrap_or_else(|| "none".into());
+        ensure!(
+            key == current,
+            "checkpoint source changed before native reservation"
+        );
+    }
+    Ok(())
+}
+pub(super) fn guard_context_checkpoint(
+    tx: &Transaction<'_>,
+    context: &ContextVersion,
+) -> Result<()> {
+    validate_checkpoint_source(
+        tx,
+        &context.scope,
+        context
+            .source_hashes
+            .get("checkpoint:head")
+            .map(String::as_str),
+    )
+}
+pub(super) fn guard_launch_checkpoint(tx: &Transaction<'_>, record: &Record) -> Result<()> {
+    if record.kind != RecordKind::Session {
+        return Ok(());
+    }
+    let session: Session = serde_json::from_value(record.data.clone())?;
+    if session.scope.task_id.is_none()
+        || !matches!(
+            session.state,
+            SessionState::Starting | SessionState::Running
+        )
+    {
+        return Ok(());
+    }
+    let previous = read_tx::<Record>(tx, "records", &record.id.to_string())?
+        .map(|r| serde_json::from_value::<Session>(r.data))
+        .transpose()?;
+    if previous.is_some_and(|s| s.state == SessionState::Running) {
+        return Ok(());
+    }
+    let key = session.recovery["source_versions"]["checkpoint:head"].as_str();
+    if latest_context(tx, &session.scope)?.is_some_and(|c| typed_pack(&c.data)) {
+        ensure!(
+            key.is_some(),
+            "typed native pack missing checkpoint source authority"
+        );
+    }
+    validate_checkpoint_source(tx, &session.scope, key)
+}
 pub(super) fn guard_checkpoint_write(tx: &Transaction<'_>, record: &Record) -> Result<()> {
     let previous = read_tx::<Record>(tx, "records", &record.id.to_string())?;
     ensure!(
@@ -16,9 +122,7 @@ pub(super) fn guard_checkpoint_write(tx: &Transaction<'_>, record: &Record) -> R
     Ok(())
 }
 fn checkpoint_head_record(connection: &Connection, scope: &Scope) -> Result<Option<Record>> {
-    // Interim pre-v4 accessor: private append order, one decoded body. The v4
-    // integration replaces this with the atomically maintained indexed head row.
-    let body:Option<String>=connection.query_row("SELECT body FROM records WHERE kind='checkpoint' AND project_id=?1 AND goal_id=?2 AND task_id=?3 AND json_extract(body,'$.data.format')='rrx.checkpoint.v1' ORDER BY rowid DESC LIMIT 1",params![scope.project_id.to_string(),str_id(scope.goal_id),str_id(scope.task_id)],|r|r.get(0)).optional()?;
+    let body:Option<String>=connection.query_row("SELECT r.body FROM checkpoint_heads h JOIN records r ON r.id=h.record_id AND r.project_id=h.project_id AND r.goal_id=h.goal_id AND r.task_id=h.task_id WHERE h.project_id=?1 AND h.goal_id=?2 AND h.task_id=?3",params![scope.project_id.to_string(),str_id(scope.goal_id),str_id(scope.task_id)],|r|r.get(0)).optional()?;
     body.map(decode).transpose()
 }
 fn own_checkpoint_tx(
@@ -50,7 +154,7 @@ fn typed_pack(data: &Value) -> bool {
     matches!(
         data["format"].as_str(),
         Some("rrx.task-pack.v1" | "rrx.goal-pack.v1")
-    )
+    ) || data["task_pack"]["format"] == "rrx.phase-pack.v1"
 }
 fn latest_context(connection: &Connection, scope: &Scope) -> Result<Option<ContextVersion>> {
     let owner = context_owner(scope)?;
@@ -78,6 +182,19 @@ pub(super) fn guard_pack_pointer(
     Ok(())
 }
 impl Store {
+    /// Pure scoped check; callers hold SharedStore only for this bounded SQL lookup.
+    /// Legacy inputs without Issue 19's key retain their original contract.
+    pub fn validate_checkpoint_source(
+        &self,
+        scope: &Scope,
+        sources: &std::collections::BTreeMap<String, String>,
+    ) -> Result<()> {
+        validate_checkpoint_source(
+            &self.connection,
+            scope,
+            sources.get("checkpoint:head").map(String::as_str),
+        )
+    }
     pub(crate) fn pack_checkpoint_head(&self, scope: &Scope) -> Result<Option<CheckpointRef>> {
         checkpoint_head_record(&self.connection, scope)?
             .map(|r| {
@@ -311,6 +428,7 @@ impl Store {
         let body = serde_json::to_string(&next)?;
         tx.execute("INSERT INTO records(id,kind,project_id,goal_id,task_id,version,body) VALUES(?1,'checkpoint',?2,?3,?4,1,?5)",
             params![next.id.to_string(),scope.project_id.to_string(),str_id(scope.goal_id),str_id(scope.task_id),body])?;
+        write_checkpoint_head(&tx, &next)?;
         append_event(
             &tx,
             scope,
@@ -612,6 +730,9 @@ mod tests {
             );
             r.version = 1;
             store.connection.execute("INSERT INTO records(id,project_id,goal_id,task_id,kind,version,body) VALUES(?1,?2,?3,?4,'checkpoint',1,?5)",params![r.id.to_string(),scope.project_id.to_string(),str_id(scope.goal_id),str_id(scope.task_id),serde_json::to_string(&r).unwrap()]).unwrap();
+            let tx = store.connection.unchecked_transaction().unwrap();
+            write_checkpoint_head(&tx, &r).unwrap();
+            tx.commit().unwrap();
         };
         // Raw immutable rows isolate the final transaction from earlier service gates.
         insert(&f.store, 1);

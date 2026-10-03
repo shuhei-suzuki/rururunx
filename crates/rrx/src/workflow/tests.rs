@@ -1158,14 +1158,19 @@ fn ordered_format_migration_preserves_v2_state_and_unknown_future_is_rejected() 
     connection.pragma_update(None, "user_version", 2).unwrap();
     drop(connection);
     let restored = Store::open(&db).unwrap();
-    assert_eq!(restored.schema_version().unwrap(), 3);
+    assert_eq!(
+        restored.schema_version().unwrap(),
+        crate::state::SCHEMA_VERSION
+    );
     assert_eq!(
         restored.task(fixture.task.id).unwrap().unwrap().scope(),
         fixture.task.scope()
     );
     drop(restored);
     let connection = rusqlite::Connection::open(&db).unwrap();
-    connection.pragma_update(None, "user_version", 4).unwrap();
+    connection
+        .pragma_update(None, "user_version", crate::state::SCHEMA_VERSION + 1)
+        .unwrap();
     drop(connection);
     assert!(Store::open(&db).is_err());
 }

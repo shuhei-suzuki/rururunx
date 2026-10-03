@@ -163,7 +163,7 @@ fn session(f: &Fixture, role: SessionRole, state: SessionState) -> (Session, u64
         state,
         model: None,
         effort: None,
-        recovery: serde_json::json!({}),
+        recovery: serde_json::json!({"source_versions":{"checkpoint:head":"none"}}),
         started_at: now_ms(),
     };
     let version = f.store.lock().unwrap().put_session(&s, 0).unwrap();
@@ -1921,4 +1921,126 @@ async fn own_checkpoint_is_mandatory_even_when_the_caller_omits_its_reference() 
     assert!(prepared.payload.contains("never remove safety constraints"));
     assert!(prepared.payload.contains("failure is unresolved"));
     assert_eq!(prepared.source_versions["checkpoint:head"], cp.digest);
+    let sources = std::collections::BTreeMap::from([("checkpoint:head".into(), cp.digest.clone())]);
+    f.store
+        .lock()
+        .unwrap()
+        .validate_checkpoint_source(&f.task.scope(), &sources)
+        .unwrap();
+    let mut launching = native.clone();
+    launching.id = SessionId::new();
+    launching.state = SessionState::Starting;
+    launching.recovery = serde_json::json!({"source_versions":prepared.source_versions});
+    let version = f.store.lock().unwrap().put_session(&launching, 0).unwrap();
+    packs
+        .checkpoint(
+            &f.task.scope(),
+            native.id,
+            Some(cp),
+            vec![event(3, EventKind::Failure, "later failure")],
+            HistoryPolicy {
+                recent_history_bytes: 0,
+            },
+        )
+        .await
+        .unwrap();
+    assert!(
+        f.store
+            .lock()
+            .unwrap()
+            .validate_checkpoint_source(&f.task.scope(), &sources)
+            .is_err()
+    );
+    launching.state = SessionState::Running;
+    assert!(
+        f.store
+            .lock()
+            .unwrap()
+            .put_session(&launching, version)
+            .is_err()
+    );
+    launching.state = SessionState::Stopped;
+    f.store
+        .lock()
+        .unwrap()
+        .put_session(&launching, version)
+        .unwrap();
+}
+
+#[tokio::test]
+async fn checkpoint_v4_index_migrates_atomically_and_is_independent_of_record_rowids() {
+    let f = Fixture::new();
+    let packs = f.packs();
+    let (native, _) = session(&f, SessionRole::Consultant, SessionState::Exited);
+    let first = packs
+        .checkpoint(
+            &f.task.scope(),
+            native.id,
+            None,
+            vec![event(1, EventKind::Decision, "first")],
+            HistoryPolicy {
+                recent_history_bytes: 0,
+            },
+        )
+        .await
+        .unwrap();
+    let last = packs
+        .checkpoint(
+            &f.task.scope(),
+            native.id,
+            Some(first),
+            vec![event(2, EventKind::Failure, "unresolved")],
+            HistoryPolicy {
+                recent_history_bytes: 0,
+            },
+        )
+        .await
+        .unwrap();
+    let db = f._temp.path().join("state.db");
+    let raw = rusqlite::Connection::open(&db).unwrap();
+    raw.execute_batch("DROP TABLE checkpoint_heads; PRAGMA user_version=3;")
+        .unwrap();
+    let restored = Store::open(&db).unwrap();
+    assert_eq!(restored.schema_version().unwrap(), 4);
+    let scope = f.task.scope();
+    let sources =
+        std::collections::BTreeMap::from([("checkpoint:head".into(), last.digest.clone())]);
+    restored
+        .validate_checkpoint_source(&scope, &sources)
+        .unwrap();
+    raw.execute_batch("VACUUM;").unwrap();
+    restored
+        .validate_checkpoint_source(&scope, &sources)
+        .unwrap();
+    let artifact = packs.draft_task(&scope, input()).await.unwrap();
+    assert_eq!(artifact.pack().checkpoint, Some(last));
+    // Invalid migration history leaves neither the v4 marker nor its index behind.
+    raw.execute_batch("DROP TABLE checkpoint_heads; PRAGMA user_version=3;")
+        .unwrap();
+    let mut row = f
+        .store
+        .lock()
+        .unwrap()
+        .record(artifact.pack().checkpoint.as_ref().unwrap().id)
+        .unwrap()
+        .unwrap();
+    row.data["previous"]["digest"] = serde_json::json!("sha256:bad");
+    raw.execute(
+        "UPDATE records SET body=?1 WHERE id=?2",
+        rusqlite::params![serde_json::to_string(&row).unwrap(), row.id.to_string()],
+    )
+    .unwrap();
+    assert!(Store::open(&db).is_err());
+    let marker: i64 = raw
+        .pragma_query_value(None, "user_version", |r| r.get(0))
+        .unwrap();
+    assert_eq!(marker, 3);
+    let tables: i64 = raw
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_schema WHERE name='checkpoint_heads'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(tables, 0);
 }
