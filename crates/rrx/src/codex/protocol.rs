@@ -304,6 +304,14 @@ impl ApprovalLedger {
         method: String,
         params: Value,
     ) -> AdapterResult<PendingRequest> {
+        if matches!(&id, RpcId::Text(value) if value.is_empty() || value.len() > 256)
+            || serde_json::to_vec(&params).map_or(true, |value| value.len() > 64 * 1024)
+        {
+            return Err(failure(
+                ErrorKind::ParseFailure,
+                "native approval exceeds correlation/argument bounds",
+            ));
+        }
         if params["threadId"].as_str() != Some(self.thread.as_str())
             || params["turnId"].as_str() != Some(self.turn.as_str())
             || params["itemId"].as_str().is_none_or(str::is_empty)
@@ -322,6 +330,55 @@ impl ApprovalLedger {
                 "unsupported native approval kind; no grant supplied",
             ));
         }
+        let keys = if method == "item/commandExecution/requestApproval" {
+            &[
+                "threadId",
+                "turnId",
+                "itemId",
+                "startedAtMs",
+                "reason",
+                "command",
+                "cwd",
+                "commandActions",
+                "approvalId",
+                "availableDecisions",
+                "kind",
+                "environmentId",
+                "additionalPermissions",
+                "networkApprovalContext",
+                "proposedExecpolicyAmendment",
+                "proposedNetworkPolicyAmendments",
+            ][..]
+        } else {
+            &[
+                "threadId",
+                "turnId",
+                "itemId",
+                "startedAtMs",
+                "reason",
+                "grantRoot",
+            ][..]
+        };
+        if params
+            .as_object()
+            .is_none_or(|object| object.keys().any(|key| !keys.contains(&key.as_str())))
+            || [
+                "grantRoot",
+                "additionalPermissions",
+                "networkApprovalContext",
+            ]
+            .iter()
+            .any(|key| params.get(*key).is_some_and(|value| !value.is_null()))
+            || params.get("kind").is_some_and(|value| value != "command")
+            || params
+                .get("environmentId")
+                .is_some_and(|value| !value.is_null() && value != "local")
+        {
+            return Err(failure(
+                ErrorKind::UnsupportedCapability,
+                "native approval requires an unsupported permission, persistent root, terminal input or remote environment; no grant supplied",
+            ));
+        }
         if self.seen.contains_key(&id) || self.pending.len() >= 16 || self.seen.len() >= 4096 {
             return Err(failure(
                 ErrorKind::ParseFailure,
@@ -338,12 +395,30 @@ impl ApprovalLedger {
         Ok(request)
     }
     pub fn reply(&mut self, id: &RpcId, decision: OperationDecision) -> AdapterResult<Value> {
-        let request = self.pending.remove(id).ok_or_else(|| {
+        let request = self.pending.get(id).ok_or_else(|| {
             failure(
                 ErrorKind::OwnershipMismatch,
                 "unknown or already answered native approval ID",
             )
         })?;
+        if matches!(decision, OperationDecision::Approve)
+            && let Some(decisions) = request
+                .params
+                .get("availableDecisions")
+                .filter(|value| !value.is_null())
+            && decisions
+                .as_array()
+                .is_none_or(|values| !values.iter().any(|value| value == "accept"))
+        {
+            return Err(failure(
+                ErrorKind::UnsupportedCapability,
+                "native request does not offer one-operation approval",
+            ));
+        }
+        let request = self
+            .pending
+            .remove(id)
+            .expect("pending native request checked");
         let decision = match decision {
             OperationDecision::Approve => "accept",
             OperationDecision::Deny => "decline",
@@ -524,6 +599,124 @@ mod tests {
 
     fn request() -> Value {
         json!({"threadId":"own-thread","turnId":"own-turn","itemId":"item-1","command":"supplied exact operation"})
+    }
+
+    #[test]
+    fn approval_arguments_cannot_expand_permissions_or_adopt_remote_terminal_operations() {
+        for (method, field, value) in [
+            (
+                "item/fileChange/requestApproval",
+                "grantRoot",
+                json!("/other-project"),
+            ),
+            (
+                "item/commandExecution/requestApproval",
+                "additionalPermissions",
+                json!({"fileSystem":{"write":["/other-project"]}}),
+            ),
+            (
+                "item/commandExecution/requestApproval",
+                "networkApprovalContext",
+                json!({"host":"foreign.invalid","protocol":"https"}),
+            ),
+            (
+                "item/commandExecution/requestApproval",
+                "kind",
+                json!("writeStdin"),
+            ),
+            (
+                "item/commandExecution/requestApproval",
+                "environmentId",
+                json!("remote"),
+            ),
+            (
+                "item/commandExecution/requestApproval",
+                "newPermissionGrant",
+                json!({"all":true}),
+            ),
+        ] {
+            let mut ledger = ApprovalLedger::new("own-thread".into(), "own-turn".into());
+            let mut params = json!({"threadId":"own-thread","turnId":"own-turn","itemId":"item-1"});
+            params[field] = value;
+            assert_eq!(
+                ledger
+                    .insert(RpcId::Number(1), method.into(), params)
+                    .unwrap_err()
+                    .kind,
+                ErrorKind::UnsupportedCapability
+            );
+            assert!(ledger.is_empty());
+            assert!(
+                ledger
+                    .reply(&RpcId::Number(1), OperationDecision::Approve)
+                    .is_err()
+            );
+        }
+    }
+
+    #[test]
+    fn persistent_only_prompt_can_be_denied_but_never_converted_to_operation_approval() {
+        let mut ledger = ApprovalLedger::new("own-thread".into(), "own-turn".into());
+        let mut params = request();
+        params["availableDecisions"] = json!(["acceptForSession", "decline"]);
+        ledger
+            .insert(
+                RpcId::Number(1),
+                "item/commandExecution/requestApproval".into(),
+                params,
+            )
+            .unwrap();
+        assert_eq!(
+            ledger
+                .reply(&RpcId::Number(1), OperationDecision::Approve)
+                .unwrap_err()
+                .kind,
+            ErrorKind::UnsupportedCapability
+        );
+        assert_eq!(
+            ledger
+                .reply(&RpcId::Number(1), OperationDecision::Deny)
+                .unwrap(),
+            json!({"id":1,"result":{"decision":"decline"}})
+        );
+        let mut params = request();
+        params["availableDecisions"] = json!(["accept", "acceptForSession"]);
+        params["proposedExecpolicyAmendment"] = json!(["native", "proposal"]);
+        ledger
+            .insert(
+                RpcId::Number(2),
+                "item/commandExecution/requestApproval".into(),
+                params.clone(),
+            )
+            .unwrap();
+        assert_eq!(
+            ledger
+                .reply(&RpcId::Number(2), OperationDecision::Approve)
+                .unwrap(),
+            json!({"id":2,"result":{"decision":"accept"}})
+        );
+    }
+
+    #[test]
+    fn oversized_native_callback_ids_and_arguments_never_enter_the_pending_map() {
+        for (id, params) in [
+            (RpcId::Text("x".repeat(257)), request()),
+            (RpcId::Number(1), {
+                let mut params = request();
+                params["command"] = json!("x".repeat(65536));
+                params
+            }),
+        ] {
+            let mut ledger = ApprovalLedger::new("own-thread".into(), "own-turn".into());
+            assert_eq!(
+                ledger
+                    .insert(id, "item/commandExecution/requestApproval".into(), params)
+                    .unwrap_err()
+                    .kind,
+                ErrorKind::ParseFailure
+            );
+            assert!(ledger.is_empty());
+        }
     }
 
     fn usage(total: Value, last: Value) -> Value {
