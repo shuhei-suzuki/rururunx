@@ -1074,6 +1074,7 @@ impl WorkflowEngine {
                             },
                     "adapter returned foreign session"
                 );
+                self.refresh_actor_ack(&mut snapshot, index)?;
                 snapshot.workflow.history[index].session_id = Some(session.id);
                 // Adapter may persist Session, never rewrite Task/history. CAS loss
                 // preserves the reservation; #13 reconciles the durable Session.
@@ -1085,6 +1086,50 @@ impl WorkflowEngine {
             }
             Err(error) => self.fail(snapshot, index, error.to_string()),
         }
+    }
+    // A sibling's bookkeeping may advance Goal.version while the private native
+    // start is pending. Rebase only this acknowledgement, never a new dispatch,
+    // onto unchanged semantic inputs and the exact still-owned Task/Workflow CAS.
+    fn refresh_actor_ack(&self, snapshot: &mut Snapshot, index: usize) -> Result<()> {
+        let current = self.read(snapshot.task.id)?;
+        ensure!(
+            current.task.version == snapshot.task.version
+                && current.record.version == snapshot.record.version
+                && current.workflow.active == Some(index)
+                && current.workflow.history.get(index).is_some_and(|attempt| {
+                    attempt.context_version == snapshot.task.context_version
+                        && attempt.generation == snapshot.workflow.generation
+                        && attempt.dispatch_started
+                        && attempt.state == AttemptState::Running
+                        && attempt.session_id.is_none()
+                }),
+            "native acknowledgement lost its exact Workflow claim"
+        );
+        active(&current.project, &current.goal, &current.task)?;
+        let instructions = crate::context_pack::instruction_versions(
+            &current.project,
+            &current.goal,
+            &current.task,
+        )?;
+        let typed = snapshot
+            .workflow
+            .sources
+            .source_versions
+            .contains_key("instruction:project");
+        ensure!(
+            if typed {
+                instructions.iter().all(|(key, value)| {
+                    snapshot.workflow.sources.source_versions.get(key) == Some(value)
+                })
+            } else {
+                current.project.version == snapshot.project.version
+                    && current.goal.version == snapshot.goal.version
+            },
+            "native acknowledgement semantic authority changed"
+        );
+        snapshot.project = current.project;
+        snapshot.goal = current.goal;
+        Ok(())
     }
     async fn poll(&self, snapshot: Snapshot, index: usize) -> Result<StepResult> {
         let attempt = snapshot

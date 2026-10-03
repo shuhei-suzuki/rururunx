@@ -216,3 +216,12 @@ PID while preserving exact actor, scope, input, restore proof and consumed inten
 This flag is conservative uncertainty, not a new dispatch admission. New
 checkpoints record their configured transient window; historical checkpoints with
 no recorded policy retain an explicit unknown value.
+
+A successful native actor acknowledgement may refresh only its Project/Goal CAS
+rows after sibling bookkeeping changes. It first verifies the exact unchanged
+Task/Workflow versions, active attempt/context/generation and stable semantic
+instruction hashes, with active lifecycle guards. Session ID publication then
+uses the new CAS in the same existing atomic Workflow transition. Changed
+constraints, scoped references, Task/attempt authority or paused owners remain
+fenced; acknowledgement is not another model dispatch. Legacy sources retain
+strict Project/Goal version equality.

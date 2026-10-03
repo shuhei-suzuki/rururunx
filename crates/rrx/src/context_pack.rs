@@ -714,6 +714,11 @@ impl ContextPacks {
                     .sum::<usize>(),
             "checkpoint recent byte accounting mismatch"
         );
+        ensure!(
+            cp.recent_history_limit_bytes
+                .is_none_or(|limit| limit <= MAX_BYTES && cp.recent_bytes <= limit),
+            "checkpoint history exceeds recorded window policy"
+        );
         Ok(cp)
     }
     async fn validate_task_map(&self, reference: &PackRef) -> Result<(TaskPack, RepositoryMap)> {
