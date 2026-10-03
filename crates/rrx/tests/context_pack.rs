@@ -748,3 +748,191 @@ async fn typed_reader_does_not_accept_metadata_that_disagrees_with_actual_task()
             .is_err()
     );
 }
+
+#[tokio::test]
+async fn goal_before_tasks_uses_primary_sources_and_never_adopts_a_worktree() {
+    let f = Fixture::new();
+    let packs = f.packs();
+    let mut goal = Goal::new(f.project.id, "Plan before Tasks".into(), vec![]);
+    f.store.lock().unwrap().put_goal(&mut goal).unwrap();
+    let inputs = || GoalInputs {
+        artifacts: vec![ArtifactRequest {
+            kind: ArtifactKind::Requirements,
+            path: "src/lib.rs".into(),
+        }],
+        decisions: vec!["Use authoritative source refs".into()],
+        ..Default::default()
+    };
+    let first = packs
+        .publish_goal_with_inputs(&goal.scope(), inputs())
+        .await
+        .unwrap();
+    packs.validate_goal(&first).await.unwrap();
+    let data = packs.goal_pack(&first).unwrap();
+    assert!(data.tasks.is_empty());
+    assert_eq!(data.repository.root, f.root);
+    assert_eq!(data.artifacts[0].scope, goal.scope());
+    assert_eq!(
+        packs
+            .publish_goal_with_inputs(&goal.scope(), inputs())
+            .await
+            .unwrap(),
+        first
+    );
+    let independent = Store::open(&f._temp.path().join("state.db")).unwrap();
+    let reopened = ContextPacks::new(Arc::new(Mutex::new(independent)));
+    reopened.validate_goal(&first).await.unwrap();
+    let head = git(&f.root, &["rev-parse", "HEAD"]);
+    std::fs::write(
+        f.root.join("src/lib.rs"),
+        "mod codec;\npub fn run() { codec::encode2(); }\n",
+    )
+    .unwrap();
+    assert_eq!(git(&f.root, &["rev-parse", "HEAD"]), head);
+    assert!(packs.validate_goal(&first).await.is_err());
+    let second = packs
+        .publish_goal_with_inputs(&goal.scope(), inputs())
+        .await
+        .unwrap();
+    assert_eq!(second.version, 2);
+    assert!(data.artifacts[0].digest != packs.goal_pack(&second).unwrap().artifacts[0].digest);
+    std::fs::write(
+        f.root.join("RULES.md"),
+        "MANDATORY: never cross Project boundaries.\n",
+    )
+    .unwrap();
+    assert!(packs.validate_goal(&second).await.is_err());
+    let third = packs
+        .publish_goal_with_inputs(&goal.scope(), inputs())
+        .await
+        .unwrap();
+    assert_eq!(third.version, 3);
+    packs.validate_goal(&third).await.unwrap();
+    assert!(
+        packs
+            .publish_goal_with_inputs(&f.task.scope(), inputs())
+            .await
+            .is_err()
+    );
+    let foreign = Scope::goal(ProjectId::new(), goal.id);
+    assert!(
+        packs
+            .publish_goal_with_inputs(&foreign, inputs())
+            .await
+            .is_err()
+    );
+    let tasks = f.store.lock().unwrap().tasks(f.project.id, None).unwrap();
+    assert_eq!(tasks.len(), 1); // only the fixture's unrelated Task exists
+    assert!(!f.root.join("worktree").join(goal.id.to_string()).exists());
+}
+
+#[tokio::test]
+async fn goal_retains_nonlaunchable_finalized_task_pack_after_native_cleanup() {
+    let f = Fixture::new();
+    let packs = f.packs();
+    let task_ref = packs
+        .publish_task(&packs.draft_task(&f.task.scope(), input()).await.unwrap())
+        .await
+        .unwrap();
+    {
+        let mut store = f.store.lock().unwrap();
+        let mut task = store.task(f.task.id).unwrap().unwrap();
+        task.state = TaskState::Merged;
+        store.put_task(&mut task).unwrap();
+        WorktreeManager::cleanup(&mut store, f.task.id).unwrap();
+    }
+    assert!(!f.worktree.exists());
+    let goal = packs
+        .publish_goal(
+            &Scope::goal(f.project.id, f.task.goal_id),
+            vec![],
+            Default::default(),
+        )
+        .await
+        .unwrap();
+    packs.validate_goal(&goal).await.unwrap();
+    let data = packs.goal_pack(&goal).unwrap();
+    assert!(data.tasks[0].historical);
+    assert_eq!(data.tasks[0].context, Some(task_ref.clone()));
+    assert!(
+        packs
+            .prepare_task(&task_ref, SelectionRequest::default(), budget())
+            .await
+            .is_err()
+    );
+    assert!(!f.worktree.exists());
+    assert_eq!(
+        packs
+            .publish_goal(&goal.scope, vec![], Default::default())
+            .await
+            .unwrap(),
+        goal
+    );
+}
+
+#[tokio::test]
+async fn goal_primary_artifacts_reject_escaping_sources_and_replaced_repository() {
+    let f = Fixture::new();
+    let packs = f.packs();
+    let goal = Scope::goal(f.project.id, f.task.goal_id);
+    let input = |path: &str| GoalInputs {
+        artifacts: vec![ArtifactRequest {
+            kind: ArtifactKind::Design,
+            path: path.into(),
+        }],
+        ..Default::default()
+    };
+    std::os::unix::fs::symlink(f.worktree.join("src/lib.rs"), f.root.join("foreign-link")).unwrap();
+    std::fs::hard_link(f.root.join("src/lib.rs"), f.root.join("hard-link")).unwrap();
+    for path in [
+        "../RULES.md",
+        "/etc/passwd",
+        ".git/HEAD",
+        "missing.txt",
+        "foreign-link",
+        "hard-link",
+        "worktree/rrx-task/x",
+    ] {
+        assert!(
+            packs
+                .publish_goal_with_inputs(&goal, input(path))
+                .await
+                .is_err(),
+            "{path}"
+        );
+    }
+    // Hard-linked sources are rejected even when their apparent path is scoped.
+    std::fs::remove_file(f.root.join("hard-link")).unwrap();
+    let valid = packs
+        .publish_goal_with_inputs(&goal, input("src/lib.rs"))
+        .await
+        .unwrap();
+    let moved = f.root.with_file_name("moved-repo");
+    std::fs::rename(&f.root, &moved).unwrap();
+    assert!(packs.validate_goal(&valid).await.is_err());
+    std::fs::create_dir(&f.root).unwrap();
+    git(&f.root, &["init", "-b", "main"]);
+    git(&f.root, &["config", "user.name", "Fixture"]);
+    git(
+        &f.root,
+        &["config", "user.email", "fixture@example.invalid"],
+    );
+    git(&f.root, &["config", "commit.gpgsign", "false"]);
+    git(&f.root, &["config", "core.hooksPath", ".git/hooks"]);
+    std::fs::write(
+        f.root.join("RULES.md"),
+        "MANDATORY: preserve Project boundaries.\n",
+    )
+    .unwrap();
+    git(&f.root, &["add", "."]);
+    git(&f.root, &["commit", "-m", "replacement"]);
+    assert!(
+        packs
+            .publish_goal_with_inputs(&goal, input("RULES.md"))
+            .await
+            .is_err()
+    );
+    std::fs::remove_dir_all(&f.root).unwrap();
+    std::fs::rename(moved, &f.root).unwrap();
+    packs.validate_goal(&valid).await.unwrap();
+}
