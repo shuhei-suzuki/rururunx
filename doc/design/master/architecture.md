@@ -29,6 +29,10 @@ Additional LLM calls are reserved for explicit review, approval, classification,
                    └────────┬─────────┘
                             │
                     ┌───────▼────────┐
+                    │ Goal Manager   │
+                    └───────┬────────┘
+                            │
+                    ┌───────▼────────┐
                     │ Task Manager   │
                     └───────┬────────┘
                             │
@@ -78,6 +82,24 @@ Responsibilities:
 - request stop/resume/review actions
 
 The TUI must not become a proprietary replacement chat interface.
+
+### Goal Manager
+
+Owns persistent long-running objectives above Tasks.
+
+Responsibilities:
+
+- Goal objective / completion criteria / constraints
+- Goal state and audit history
+- Task DAG and dependency readiness
+- follow-up Task proposals
+- continuous Goal loop
+- Goal-level Context Pack
+- Goal completion evaluation
+- pause/resume/cancel/recovery
+- provider-native goal references as optional adapter hints
+
+See `goal-runtime.md`.
 
 ### Task Manager
 
@@ -189,10 +211,13 @@ Responsibilities:
 
 ### Local State / Event Journal
 
-Recommended MVP implementation: SQLite plus append-only logical events.
+Recommended MVP implementation: **Rust** runtime with SQLite plus append-only logical events.
+
+Rust is the fixed MVP implementation language for the core CLI/runtime. The implementation should favor low startup latency, low idle overhead, async process supervision, reliable PTY handling, and single-binary distribution where practical.
 
 Persist:
 
+- Goal snapshot / Task DAG / completion criteria
 - Task snapshot
 - workflow/state
 - agent sessions
@@ -202,7 +227,11 @@ Persist:
 - decision/audit events
 - recovery metadata
 
-## 4. Task state model
+## 4. Goal and Task state model
+
+Goal state is defined in `goal-runtime.md` and sits above Task state.
+
+### Task state
 
 Minimum states:
 
@@ -229,7 +258,9 @@ Workflow phases and process state are related but should not be encoded as one f
 
 ## 5. Parallelism model
 
-The unit of parallelism is a Task, not a terminal window.
+The scheduling root may be a Goal, but the unit of parallel execution is a Task, not a terminal window.
+
+A Goal may expose multiple dependency-ready Tasks to the Scheduler.
 
 ```text
 Task
@@ -317,6 +348,7 @@ rururunx must not:
 
 MVP extensibility points:
 
+- Goal planner/evaluator policy
 - Agent Adapter
 - Workflow definition/preset
 - Approval policy
