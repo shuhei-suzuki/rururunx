@@ -6,6 +6,10 @@ Risk: STRICT, because this change owns durable workflow authority and native/sid
 Broad workflow production review baseline: `8f46135c2bc9e9c103bbdac29d610536236815ec`.
 The later context diagnostic-only follow-up has its own scoped review below.
 Integrated base: merged Issue 18 (`a43afd8`), including its guarded audit API and rustix filesystem support.
+Latest upstream documentation `e076d94` is integrated: product requirements v0.8,
+native-adapter critical path, deterministic headed MVP Core, optional adaptive browser
+scope and risk-proportional verification. Rebase changed only upstream documentation;
+production bytes matched the pre-rebase diagnostic commit `eb2015b`.
 
 ## Acceptance and boundaries
 
@@ -45,7 +49,7 @@ Git/process fixtures use temporary isolated repositories and owned process group
 | --- | --- |
 | `cargo fmt --all --check` | PASS |
 | `cargo clippy --workspace --all-targets --locked -- -D warnings` | PASS |
-| `cargo test --workspace --locked` | PASS: 149 checks at workflow baseline; 150 at diagnostic follow-up `ac813f9` |
+| `cargo test --workspace --locked` | PASS: 149 checks at workflow baseline; 150 at diagnostic follow-up and reviewed code head `150080f` |
 | `cargo build --workspace --locked` | PASS |
 | `cargo build --workspace --locked --release` | PASS |
 
@@ -56,6 +60,8 @@ its focused regression and clippy pass. That test-only commit preserves the revi
 production bytes. The subsequent context diagnostic change adds one pure regression,
 with full 150 checks and clippy passing at `ac813f9`. The privacy check requires E0624
 and has a positive accessible Store control.
+At reviewed diagnostic code head `150080f`, local focused regression, fmt, clippy,
+debug and release builds PASS; exact Linux/macOS CI also runs and passes all 150 checks.
 Class checks cover all three preset launches, scoped source/owner/record/context CAS,
 formal dependency freshness, rule/config drift, unsupported review, actual commit HEAD,
 transport success separate from verdict, second-round claim concurrency/restart/cancel,
@@ -86,6 +92,7 @@ Review dogfood and does not claim three-provider review evidence.
 | 6, `b53377e` | Completed, 2 Low/1 Info, no Critical/High/Medium. Confirmed all Review 5 findings resolved; fixed hold blocker refresh and observer-only factual append; documented fail-closed unpublished snapshots. |
 | 7, `8f46135` | Scoped delta completed, no Critical/High/Medium/Low; both Low fixes resolved. Optional Failed-arm test gap covered with a test-only variant and assertion-killed narrowed-guard mutation. Redundant observation bound remains harmless. |
 | 8, `ac813f9` | Scoped diagnostic review completed, no Critical/High/Medium; 4 Low/1 Info. Distinguished own cleanup failure from a concurrent uncertainty latch, verified existing direct-`?` consumers preserve the cause to CI Debug output, corrected stale gate wording, and retained the documented caller-wiring/cancellation diagnostic limitations. |
+| 9, `150080f` | Scoped delta completed, no Critical/High/Medium; own/concurrent diagnostic fix confirmed correct. Three Low documentation/evidence findings corrected: explicit caller-mutant survivors and safety coverage gap, diagnostic mutation table, and current-call master wording. Two Info items require no code change. |
 
 Successful rounds have `is_error=false` and no permission denials. Actual findings were
 verified against source, committed, tested and sent back for independent delta review.
@@ -107,6 +114,16 @@ between cases. Counts are per round; repeated guard targets are not distinct mut
 | Review 5 exact claims | 9 / 9 | Initial unbounded fixture wait interrupted, excluded; corrected deadline rerun killed by assertion |
 | Review 6 Low fixes | 2 / 2 | None |
 | Review 7 optional Failed-arm control | 1 / 1 | None |
+| Review 8 diagnostic | 2 / 4 | D803/D804 caller flag removal compiled and survived normal context scans; excluded |
+| Review 9 own/concurrent split | 2 / 4 | D807 concurrent flag removal and D808 flag swap compiled and survived normal context scans; excluded |
+
+D801 removes the retained native error chain; D802 accepts uncertain successful output;
+D805 misattributes a concurrent cause; D806 accepts a concurrent-latch result. All four
+compiled and assertion-failed. The caller survivors expose a coverage gap: removing the
+concurrent flag would permit one in-flight successful result despite another call's latch;
+the entry latch still blocks later launches. Swapping flags mislabels the diagnostic.
+Tests cover those outcomes inside the helper but do not inject uncertainty through the
+actual native caller. A per-test latch/fault seam remains future work, not credited evidence.
 
 Review 5 mutations cover stale prior-round knowledge, missing claim advancement,
 wrong-claim and duplicate observers, ordinary Failed terminal release, unstripped payload,
@@ -114,7 +131,7 @@ non-durable hold, weakened Project risk mapping and unknown raw closure. The ear
 privacy mutation made both method and argument access public, causing the expected
 compile-fail doctest to fail; the positive consumer control compiled.
 JSON/per-case logs are retained as `/private/tmp/rururunx-issue8-*-mutations.json` and
-`/private/tmp/rururunx-issue8-{M*,R3*,K4*,E5*}.log`.
+`/private/tmp/rururunx-issue8-{M*,R3*,K4*,E5*,L6*,I7*,D8*}.log`.
 Restored final baseline: 49 workflow tests and both privacy doctests PASS.
 The exclusive detached mutation worktree was removed normally after clean restoration.
 
@@ -134,11 +151,17 @@ ownership remains uncertain. Its regression covers both failure and successful-o
 cases. No timeout or safety-boundary change is inferred from the initial failure.
 Diagnostic head `ac813f9` passed both Linux and macOS in
 [run 37111305746](https://github.com/shuhei-suzuki/rururunx/actions/runs/37111305746).
+Reviewed diagnostic code head `150080f` passed both Linux and macOS in
+[run 37111654324](https://github.com/shuhei-suzuki/rururunx/actions/runs/37111654324).
 This does not establish the original intermittent cleanup cause. Issue 14 retains
 that investigation and cancelled-call latch diagnostics. Full-chain formatting is
 required for future Display-only status consumers. Diagnostic helper mutation trials
 D801/D802 compiled and assertion-failed; call-site fault injection remains a separate
 limitation because normal successful scans do not exercise cleanup uncertainty.
+The macOS 250 ms trusted process-inspection deadline under load is an unproven
+hypothesis; no deadline or ownership check was changed. The final evidence/master
+wording delta after Review 9 changes documentation only; final exact-head CI remains
+required before merge.
 
 Issue 9 owns actual multi-review scheduling/verdict reconciliation; Issue 12 owns typed
 approval/blocker routing; Issue 13 owns actual unknown-outcome/crash reconciliation;
