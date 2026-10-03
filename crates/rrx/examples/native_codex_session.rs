@@ -200,8 +200,12 @@ async fn main() -> Result<()> {
     let usage = adapter
         .usage(
             (&session).into(),
-            "review".into(),
-            Some(if resume { 2 } else { 1 }),
+            if execute { "implementation" } else { "review" }.into(),
+            if execute {
+                None
+            } else {
+                Some(if resume { 2 } else { 1 })
+            },
         )
         .await?;
     let persisted = store

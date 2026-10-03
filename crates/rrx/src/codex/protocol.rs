@@ -367,6 +367,34 @@ pub struct TokenCounters {
     pub total: Option<u64>,
 }
 impl TokenCounters {
+    fn fields(&self) -> [Option<u64>; 6] {
+        [
+            self.input,
+            self.cached_input,
+            self.cache_write_input,
+            self.output,
+            self.reasoning_output,
+            self.total,
+        ]
+    }
+    fn from_fields(fields: [Option<u64>; 6]) -> Self {
+        let [
+            input,
+            cached_input,
+            cache_write_input,
+            output,
+            reasoning_output,
+            total,
+        ] = fields;
+        Self {
+            input,
+            cached_input,
+            cache_write_input,
+            output,
+            reasoning_output,
+            total,
+        }
+    }
     pub fn from_native(value: &Value) -> AdapterResult<Self> {
         let field = |name: &str| match value.get(name) {
             None | Some(Value::Null) => Ok(None),
@@ -401,6 +429,11 @@ pub struct UsageTracker {
     turn: String,
     pub total: Option<TokenCounters>,
     pub last: Option<TokenCounters>,
+    // None denotes a newly created native thread, Some(None) an owned resume
+    // whose previous cumulative gauge was unavailable. Never substitute zero
+    // for missing native counters on resume.
+    baseline: Option<Option<TokenCounters>>,
+    valid: [bool; 6],
 }
 impl UsageTracker {
     pub fn new(thread: String, turn: String) -> Self {
@@ -409,7 +442,36 @@ impl UsageTracker {
             turn,
             total: None,
             last: None,
+            baseline: None,
+            valid: [true; 6],
         }
+    }
+    pub fn resumed(thread: String, turn: String, baseline: Option<TokenCounters>) -> Self {
+        Self {
+            baseline: Some(baseline),
+            ..Self::new(thread, turn)
+        }
+    }
+    /// Entire current turn, including every native model call and tool cycle.
+    /// `last` is a single model call and cannot represent a multi-call turn.
+    pub fn turn_counters(&self) -> Option<TokenCounters> {
+        let current = self.total.as_ref()?.fields();
+        let baseline = self.baseline.as_ref().map(|prior| {
+            prior
+                .as_ref()
+                .map(TokenCounters::fields)
+                .unwrap_or([None; 6])
+        });
+        Some(TokenCounters::from_fields(std::array::from_fn(|index| {
+            if !self.valid[index] {
+                return None;
+            }
+            let value = current[index]?;
+            match baseline {
+                None => Some(value),
+                Some(prior) => value.checked_sub(prior[index]?),
+            }
+        })))
     }
     pub fn update(&mut self, params: &Value) -> AdapterResult<bool> {
         if params["threadId"].as_str() != Some(self.thread.as_str())
@@ -425,6 +487,30 @@ impl UsageTracker {
         if self.total.as_ref() == Some(&total) && self.last.as_ref() == Some(&last) {
             return Ok(false);
         }
+        if let Some(previous) = &self.total {
+            for (index, (before, after)) in previous
+                .fields()
+                .into_iter()
+                .zip(total.fields())
+                .enumerate()
+            {
+                if matches!((before, after), (Some(before), Some(after)) if after < before) {
+                    self.valid[index] = false;
+                }
+            }
+        }
+        if let Some(Some(baseline)) = &self.baseline {
+            for (index, (before, after)) in baseline
+                .fields()
+                .into_iter()
+                .zip(total.fields())
+                .enumerate()
+            {
+                if matches!((before, after), (Some(before), Some(after)) if after < before) {
+                    self.valid[index] = false;
+                }
+            }
+        }
         self.total = Some(total);
         self.last = Some(last);
         Ok(true)
@@ -438,6 +524,82 @@ mod tests {
 
     fn request() -> Value {
         json!({"threadId":"own-thread","turnId":"own-turn","itemId":"item-1","command":"supplied exact operation"})
+    }
+
+    fn usage(total: Value, last: Value) -> Value {
+        json!({"threadId":"thread","turnId":"turn","tokenUsage":{"total":total,"last":last}})
+    }
+
+    #[test]
+    fn whole_turn_counts_every_model_call_without_summing_duplicate_gauges() {
+        let mut tracker = UsageTracker::new("thread".into(), "turn".into());
+        let first = usage(
+            json!({"inputTokens":100,"outputTokens":10,"cachedInputTokens":0}),
+            json!({"inputTokens":100,"outputTokens":10}),
+        );
+        tracker.update(&first).unwrap();
+        let next = usage(
+            json!({"inputTokens":250,"outputTokens":35,"cachedInputTokens":80}),
+            json!({"inputTokens":150,"outputTokens":25}),
+        );
+        assert!(tracker.update(&next).unwrap());
+        assert!(!tracker.update(&next).unwrap());
+        let counters = tracker.turn_counters().unwrap();
+        assert_eq!(counters.input, Some(250));
+        assert_eq!(counters.output, Some(35));
+        assert_eq!(counters.cached_input, Some(80));
+        assert_eq!(counters.cache_write_input, None);
+        assert_eq!(tracker.last.unwrap().input, Some(150));
+    }
+
+    #[test]
+    fn resumed_turn_subtracts_owned_baseline_preserving_unknown_and_native_zero() {
+        let baseline = TokenCounters::from_native(
+            &json!({"inputTokens":250,"outputTokens":35,"cachedInputTokens":80}),
+        )
+        .unwrap();
+        let mut tracker = UsageTracker::resumed("thread".into(), "turn".into(), Some(baseline));
+        let next = usage(
+            json!({"inputTokens":400,"outputTokens":60,"cachedInputTokens":80,"cacheWriteInputTokens":20}),
+            json!({"inputTokens":75,"outputTokens":12}),
+        );
+        tracker.update(&next).unwrap();
+        let counters = tracker.turn_counters().unwrap();
+        assert_eq!(counters.input, Some(150));
+        assert_eq!(counters.output, Some(25));
+        assert_eq!(counters.cached_input, Some(0));
+        assert_eq!(counters.cache_write_input, None);
+        let mut unknown = UsageTracker::resumed("thread".into(), "turn".into(), None);
+        unknown.update(&next).unwrap();
+        assert_eq!(unknown.turn_counters().unwrap(), TokenCounters::default());
+    }
+
+    #[test]
+    fn native_counter_reset_stays_unknown_even_after_the_counter_recovers() {
+        let baseline =
+            TokenCounters::from_native(&json!({"inputTokens":100,"outputTokens":20})).unwrap();
+        let mut tracker = UsageTracker::resumed("thread".into(), "turn".into(), Some(baseline));
+        tracker
+            .update(&usage(
+                json!({"inputTokens":90,"outputTokens":25}),
+                json!({}),
+            ))
+            .unwrap();
+        tracker
+            .update(&usage(
+                json!({"inputTokens":150,"outputTokens":30}),
+                json!({}),
+            ))
+            .unwrap();
+        assert_eq!(tracker.turn_counters().unwrap().input, None);
+        assert_eq!(tracker.turn_counters().unwrap().output, Some(10));
+        let mut fresh = UsageTracker::new("thread".into(), "turn".into());
+        for input in [100, 80, 130] {
+            fresh
+                .update(&usage(json!({"inputTokens":input}), json!({})))
+                .unwrap();
+        }
+        assert_eq!(fresh.turn_counters().unwrap().input, None);
     }
 
     #[test]
