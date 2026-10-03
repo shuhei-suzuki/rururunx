@@ -73,3 +73,9 @@ bytes/estimates separately from repository selection. Goal limits are 128 Tasks,
 4096 DAG edges and 128 artifact/metric refs. Caller-supplied metrics are labeled
 observations without provider provenance. Workflow phase/budget/risk decisions are
 separate authority; the Engine compares exact HEAD as well as source hashes.
+
+Explicit artifact/additional-source refs include durable lexical metadata (up to
+8 symbols/imports each, with a truncation flag) and exact content digests; binary
+sources retain only inventory/skipped metadata. Native preparation can select
+broader file/symbol slices under its budget. Verification facts are caller-supplied
+structured pack facts; authoritative verification files remain scoped digest refs.

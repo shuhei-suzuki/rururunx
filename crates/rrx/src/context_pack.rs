@@ -150,8 +150,58 @@ pub struct TaskInputs {
     pub decisions: Vec<String>,
     pub completed_work: Vec<String>,
     pub failures: Vec<String>,
+    pub verification: Vec<String>,
     pub unresolved_findings: Vec<String>,
     pub impact_summary: Option<String>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct SourceSymbolRef {
+    pub name: String,
+    pub line: usize,
+    pub signature: String,
+}
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct SourceMetadata {
+    pub path: String,
+    pub digest: String,
+    pub changed: bool,
+    pub symbols: Vec<SourceSymbolRef>,
+    pub imports: Vec<String>,
+    pub metadata_limited: bool,
+}
+fn source_metadata(map: &RepositoryMap, paths: &[String]) -> Result<Vec<SourceMetadata>> {
+    paths
+        .iter()
+        .filter_map(|path| map.files().get(path).map(|f| (path, f)))
+        .map(|(path, f)| {
+            Ok(SourceMetadata {
+                path: path.clone(),
+                digest: map
+                    .freshness()
+                    .source_hashes
+                    .get(&format!("worktree:{path}"))
+                    .context("missing source metadata hash")?
+                    .clone(),
+                changed: f.changed,
+                symbols: f
+                    .symbols
+                    .iter()
+                    .take(8)
+                    .map(|s| SourceSymbolRef {
+                        name: s.name.clone(),
+                        line: s.line,
+                        signature: s.signature.clone(),
+                    })
+                    .collect(),
+                imports: f.imports.iter().take(8).cloned().collect(),
+                metadata_limited: f.lexical_limits_reached
+                    || f.symbols.len() > 8
+                    || f.imports.len() > 8,
+            })
+        })
+        .collect()
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -165,9 +215,11 @@ pub struct TaskPack {
     pub authority_digest: String,
     pub repository: RepositoryRef,
     pub artifacts: Vec<ArtifactRef>,
+    pub referenced_sources: Vec<SourceMetadata>,
     pub decisions: Vec<String>,
     pub completed_work: Vec<String>,
     pub failures: Vec<String>,
+    pub verification: Vec<String>,
     pub unresolved_findings: Vec<String>,
     pub impact_summary: Option<String>,
     pub checkpoint: Option<CheckpointRef>,
@@ -265,7 +317,13 @@ pub struct GoalPack {
     pub next_work_candidates: Vec<TaskId>,
     /// Nullable caller-supplied observations; no guessed provider measurement.
     pub metrics: BTreeMap<String, Option<u64>>,
+    pub metrics_origin: MetricOrigin,
     pub authority_digest: String,
+}
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MetricOrigin {
+    CallerSupplied,
 }
 #[derive(Debug)]
 pub enum PreparedPack {
@@ -355,11 +413,13 @@ impl ContextPacks {
             goal: projection(&g)?,
             project_rules: rules(&map),
             authority_digest: authority(&p, &g, &t)?,
+            referenced_sources: source_metadata(&map, &additional)?,
             repository: RepositoryRef::of(&map, additional)?,
             artifacts,
             decisions: inputs.decisions,
             completed_work: inputs.completed_work,
             failures: inputs.failures,
+            verification: inputs.verification,
             unresolved_findings: inputs.unresolved_findings,
             impact_summary: inputs.impact_summary,
             checkpoint: inputs.checkpoint,
@@ -367,7 +427,7 @@ impl ContextPacks {
         };
         bounded(&pack)?;
         let mut instructions = instruction_versions(&p, &g, &t)?;
-        instructions.insert("instruction:pack_facts".into(), digest(&json!({"artifacts":pack.artifacts,"decisions":pack.decisions,"completed_work":pack.completed_work,"failures":pack.failures,"findings":pack.unresolved_findings,"impact":pack.impact_summary,"checkpoint":pack.checkpoint}))?);
+        instructions.insert("instruction:pack_facts".into(), digest(&json!({"artifacts":pack.artifacts,"decisions":pack.decisions,"completed_work":pack.completed_work,"failures":pack.failures,"verification":pack.verification,"findings":pack.unresolved_findings,"impact":pack.impact_summary,"checkpoint":pack.checkpoint}))?);
         Ok(TaskDraft {
             pack,
             map,
@@ -628,6 +688,10 @@ impl ContextPacks {
                 "Task pack authoritative artifact mismatch"
             );
         }
+        ensure!(
+            source_metadata(&map, &pack.repository.additional_paths)? == pack.referenced_sources,
+            "Task pack referenced source metadata mismatch"
+        );
         let historical = pack
             .checkpoint
             .as_ref()
@@ -1110,6 +1174,7 @@ impl ContextPacks {
             cross_task_decisions: inputs.decisions,
             next_work_candidates,
             metrics: inputs.metrics,
+            metrics_origin: MetricOrigin::CallerSupplied,
             authority_digest,
         };
         bounded(&pack)?;
@@ -1180,6 +1245,7 @@ impl ContextPacks {
                 && pack.tasks.iter().map(|t| t.id).collect::<Vec<_>>() == g.dag.nodes,
             "invalid Goal Task set/order"
         );
+        let mut task_versions = vec![];
         for d in &pack.tasks {
             let t = self
                 .store
@@ -1202,6 +1268,7 @@ impl ContextPacks {
                     && d.source_validation_required == !d.historical,
                 "stale Goal Task summary"
             );
+            task_versions.push((t.id, t.version));
             if let Some(r) = &d.context {
                 self.validate_task_reference(&t, r).await?;
             }
@@ -1238,6 +1305,21 @@ impl ContextPacks {
                         .get(&format!("project:{}", artifact.path))
                         == Some(&artifact.digest),
                 "invalid Goal artifact reference"
+            );
+        }
+        let store = self
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Store poisoned"))?;
+        ensure!(
+            crate::project::registered_project(&store, p.id)?.version == p.version
+                && store.goal(g.id)?.context("Goal disappeared")?.version == g.version,
+            "Goal authority changed after source observation"
+        );
+        for (id, version) in task_versions {
+            ensure!(
+                store.task(id)?.context("Task disappeared")?.version == version,
+                "Goal Task summary changed after source observation"
             );
         }
         Ok(())
@@ -1354,6 +1436,7 @@ fn validate_inputs(inputs: &TaskInputs) -> Result<()> {
         &inputs.decisions,
         &inputs.completed_work,
         &inputs.failures,
+        &inputs.verification,
         &inputs.unresolved_findings,
     ] {
         text_list(list)?;

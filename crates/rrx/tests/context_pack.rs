@@ -170,6 +170,14 @@ async fn publication_reopens_is_idempotent_and_native_payload_uses_owned_authori
     assert_eq!(pack.repository_identity, f.project.repository_identity);
     assert!(pack.artifacts[0].digest.starts_with("sha256:"));
     assert_eq!(pack.artifacts[0].path, "src/lib.rs");
+    assert_eq!(pack.referenced_sources[0].path, "src/lib.rs");
+    assert_eq!(pack.referenced_sources[0].digest, pack.artifacts[0].digest);
+    assert!(
+        pack.referenced_sources[0]
+            .symbols
+            .iter()
+            .any(|s| s.name == "run")
+    );
     let PreparedPack::Ready(prepared) = reopened
         .prepare_task(
             &reference,
@@ -196,6 +204,26 @@ async fn publication_reopens_is_idempotent_and_native_payload_uses_owned_authori
     );
     assert!(prepared.payload.contains("task_context_pack"));
     assert_eq!(prepared.scope, f.task.scope());
+    let events = f
+        .store
+        .lock()
+        .unwrap()
+        .events(&f.task.scope(), 0, 1000)
+        .unwrap();
+    let estimate = events
+        .iter()
+        .rev()
+        .find(|e| e.kind == "context.pack.prepared")
+        .unwrap();
+    assert_eq!(
+        estimate.data["estimated_bytes"],
+        serde_json::json!(prepared.payload.len())
+    );
+    assert_eq!(
+        estimate.data["estimated_tokens"],
+        serde_json::json!(prepared.payload.len())
+    );
+    assert!(estimate.data["measured_tokens"].is_null());
     assert_eq!(
         f.store
             .lock()
@@ -1293,5 +1321,120 @@ async fn terminal_task_and_goal_never_prepare_draft_native_input() {
             .prepare_draft(&draft, SelectionRequest::default(), budget())
             .await
             .is_err()
+    );
+}
+
+#[tokio::test]
+async fn genuine_foreign_project_and_goal_checkpoints_in_one_store_cannot_promote() {
+    let f = Fixture::new();
+    let other = Fixture::new();
+    let packs = f.packs();
+    // Both genuine repositories and checkpoint records share one Store so the
+    // promotion scope gate, rather than missing-record/digest checks, is causal.
+    let mut p = other.project.clone();
+    p.version = 0;
+    let mut g = other
+        .store
+        .lock()
+        .unwrap()
+        .goal(other.task.goal_id)
+        .unwrap()
+        .unwrap();
+    g.version = 0;
+    let mut t = other.task.clone();
+    t.version = 0;
+    {
+        let mut store = f.store.lock().unwrap();
+        store.put_project(&mut p).unwrap();
+        store.put_goal(&mut g).unwrap();
+        store.put_task(&mut t).unwrap();
+    }
+    let (mut native, _) = session(&other, SessionRole::Consultant, SessionState::Exited);
+    native.id = SessionId::new();
+    f.store.lock().unwrap().put_session(&native, 0).unwrap();
+    let foreign = packs
+        .checkpoint(
+            &t.scope(),
+            native.id,
+            None,
+            vec![event(1, EventKind::Decision, "foreign Project decision")],
+            HistoryPolicy {
+                recent_history_bytes: 0,
+            },
+        )
+        .await
+        .unwrap();
+    packs.load_checkpoint(&foreign).unwrap();
+    let error = packs
+        .draft_task(
+            &f.task.scope(),
+            TaskInputs {
+                checkpoint: Some(foreign),
+                ..input()
+            },
+        )
+        .await
+        .unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("foreign consultation/checkpoint promotion"),
+        "{error:#}"
+    );
+    let mut goal = Goal::new(
+        f.project.id,
+        "Other Goal".into(),
+        vec![CompletionCriterion {
+            id: "done".into(),
+            description: "verified".into(),
+            satisfied: false,
+            evidence: None,
+        }],
+    );
+    let mut task = Task::new(
+        f.project.id,
+        goal.id,
+        "Other Goal consultation".into(),
+        "fake".into(),
+    );
+    {
+        let mut store = f.store.lock().unwrap();
+        store.put_goal(&mut goal).unwrap();
+        store.put_task(&mut task).unwrap();
+        WorktreeManager::create(&mut store, task.id).unwrap();
+        task = store.task(task.id).unwrap().unwrap();
+    }
+    native.id = SessionId::new();
+    native.scope = task.scope();
+    native.worktree = task.worktree.clone().unwrap();
+    f.store.lock().unwrap().put_session(&native, 0).unwrap();
+    let foreign = packs
+        .checkpoint(
+            &task.scope(),
+            native.id,
+            None,
+            vec![event(1, EventKind::Decision, "foreign Goal decision")],
+            HistoryPolicy {
+                recent_history_bytes: 0,
+            },
+        )
+        .await
+        .unwrap();
+    packs.load_checkpoint(&foreign).unwrap();
+    let error = packs
+        .draft_task(
+            &f.task.scope(),
+            TaskInputs {
+                checkpoint: Some(foreign),
+                ..input()
+            },
+        )
+        .await
+        .unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("foreign consultation/checkpoint promotion"),
+        "{error:#}"
     );
 }

@@ -242,7 +242,7 @@ impl Store {
             json!({"id":next.id,"version":1,"session":session.id,"chain_version":checkpoint.chain_version,
             "first_sequence":checkpoint.first_sequence,"last_sequence":checkpoint.last_sequence,"input_digest":checkpoint.input_digest,
             "retained":checkpoint.retained.len(),"recent":checkpoint.recent.len(),"recent_bytes":checkpoint.recent_bytes,
-            "omitted_transient":checkpoint.omitted_transient,"measured_tokens":Value::Null}),
+            "omitted_transient":checkpoint.omitted_transient,"omitted_first_sequence":checkpoint.omitted_first_sequence,"omitted_last_sequence":checkpoint.omitted_last_sequence,"omitted_digest":checkpoint.omitted_digest,"measured_tokens":Value::Null}),
         )?;
         tx.commit()?;
         *record = next;
