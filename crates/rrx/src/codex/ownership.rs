@@ -702,12 +702,10 @@ pub(super) mod tests {
         }
         // Path, Git common directory, native registration and HEAD still match;
         // only the previously authenticated directory inode changed.
-        assert!(
-            snapshot
-                .verify_git(&fixture.request, &mut ownership)
-                .await
-                .is_ok()
-        );
+        snapshot
+            .verify_git(&fixture.request, &mut ownership)
+            .await
+            .unwrap();
         assert_eq!(
             snapshot
                 .verify_binding(&fixture.request, &mut ownership, &binding)
