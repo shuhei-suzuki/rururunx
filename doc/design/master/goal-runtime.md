@@ -7,6 +7,8 @@
 
 Provide a provider-independent long-running objective above individual Tasks.
 
+For MVP, every Goal belongs to exactly one registered Project. Multiple Projects and multiple Goals may execute concurrently under the global Runtime scheduler.
+
 A Goal owns the durable objective, completion criteria, constraints, dependency graph, progress, and escalation state.
 
 ```text
@@ -28,6 +30,7 @@ A Goal must survive agent replacement, native session loss, and rururunx restart
 Suggested fields:
 
 - goal_id
+- project_id
 - title
 - objective
 - completion_criteria[]
@@ -60,7 +63,17 @@ FAILED
 
 State transition must be audited.
 
-## 4. Task DAG
+## 4. Project binding
+
+Goal `project_id` is immutable for MVP after execution begins.
+
+All Task DAG nodes inherit that Project unless explicitly rejected as invalid.
+
+Goal Runtime obtains project rules, repository root, worktree namespace, and source-of-truth references from Project Manager.
+
+Cross-project Goal DAG edges are not supported in MVP.
+
+## 6. Task DAG
 
 A Goal graph contains Task nodes and hard/soft dependency edges.
 
@@ -76,7 +89,7 @@ Independent ready Tasks may run in parallel.
 
 Cycle detection is required before accepting hard dependency changes.
 
-## 5. Goal loop
+## 6. Goal loop
 
 Logical control loop:
 
@@ -105,7 +118,7 @@ repeat
 
 The loop is event-driven where possible; it must not busy-poll.
 
-## 6. Completion evaluation
+## 7. Completion evaluation
 
 Completion is explicit, not inferred only from Task count.
 
@@ -121,7 +134,7 @@ Completion criteria may reference:
 
 A Goal may have tasks completed but remain incomplete.
 
-## 7. Goal planning / Task discovery
+## 8. Goal planning / Task discovery
 
 The MVP may begin with a Goal that references an existing Issue graph or explicit Task list.
 
@@ -137,7 +150,7 @@ The proposal is normalized into rururunx Task/DAG data.
 
 The planning agent is advisory; rururunx owns the resulting graph.
 
-## 8. Follow-up Task creation
+## 9. Follow-up Task creation
 
 During execution, a Task may produce a follow-up proposal.
 
@@ -153,7 +166,7 @@ Policy decides whether to auto-create, queue for review, or escalate.
 
 Unrelated scope expansion is not allowed.
 
-## 9. Goal Context Pack
+## 10. Goal Context Pack
 
 Goal Context Pack is separate from Task Context Packs.
 
@@ -171,7 +184,7 @@ It contains cross-Task durable information:
 
 It does not include every Task transcript.
 
-## 10. Provider-native Goal capability
+## 11. Provider-native Goal capability
 
 Adapters may expose:
 
@@ -193,7 +206,7 @@ Rules:
 
 For Codex, native `/goal` may be used where programmatically/safely available; otherwise rururunx sends the Goal Context Pack/instructions through normal adapter mechanisms.
 
-## 11. CLI
+## 12. CLI
 
 Initial interface:
 
@@ -215,7 +228,7 @@ rrx goal add-task ...
 rrx goal replan ...
 ```
 
-## 12. TUI
+## 13. TUI
 
 Goal view should show:
 
@@ -228,7 +241,7 @@ Goal view should show:
 - Human attention queue
 - aggregate token/cost/time metrics
 
-## 13. Persistence and recovery
+## 14. Persistence and recovery
 
 Persist:
 
@@ -248,7 +261,7 @@ On restart:
 4. re-evaluate completion criteria
 5. resume or move to BLOCKED/WAITING_HUMAN as appropriate
 
-## 14. Performance
+## 15. Performance
 
 Goal orchestration must be lightweight.
 
@@ -256,7 +269,7 @@ The Rust runtime should use event-driven process/state updates and avoid a high-
 
 Goal scheduling overhead should remain small relative to native agent runtime.
 
-## 15. Safety
+## 16. Safety
 
 Goal autonomy never overrides:
 
@@ -268,7 +281,7 @@ Goal autonomy never overrides:
 
 Goal may continue automatically only inside those boundaries.
 
-## 16. MVP acceptance
+## 17. MVP acceptance
 
 - persistent Goal entity
 - explicit completion criteria
