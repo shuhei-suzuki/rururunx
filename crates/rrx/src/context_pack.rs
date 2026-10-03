@@ -906,6 +906,7 @@ impl ContextPacks {
                     map,
                     version,
                     json!({"ready":false,"required_bytes":required_bytes,"budget":budget}),
+                    None,
                 )?;
                 Ok(PreparedPack::NeedsBudget {
                     required_bytes,
@@ -925,7 +926,7 @@ impl ContextPacks {
                     input.payload.len() <= available,
                     "rendered pack exceeds budget"
                 );
-                self.audit_preparation(pack,map,version,json!({"ready":true,"estimated_bytes":input.payload.len(),"estimated_tokens":input.payload.len(),"estimate_method":"utf8_bytes_v1","measured_tokens":null}))?;
+                self.audit_preparation(pack,map,version,json!({"ready":true,"estimated_bytes":input.payload.len(),"estimated_tokens":input.payload.len(),"estimate_method":"utf8_bytes_v1","measured_tokens":null}), version.map(|_| &input))?;
                 Ok(PreparedPack::Ready(input))
             }
         }
@@ -936,6 +937,7 @@ impl ContextPacks {
         map: &RepositoryMap,
         version: Option<u64>,
         mut data: Value,
+        prepared: Option<&PreparedInput>,
     ) -> Result<()> {
         data["context_version"] = json!(version);
         self.store
@@ -946,6 +948,7 @@ impl ContextPacks {
                 map_versions(map),
                 pack.checkpoint.as_ref(),
                 data,
+                prepared,
             )?;
         Ok(())
     }

@@ -370,3 +370,16 @@ proof before wire delivery. Current checkpoint source invalidation is conservati
 it can restart a pre-effect generation or hold post-PR work for Issue 13/23
 reconciliation. These core proofs do not claim automatic post-PR recovery or
 actual double/triple native runtime dogfood.
+
+Ordered schema 4→5 adds private immutable prepared-frame authority for standalone
+selection. Preparation publishes scope/context version/HEAD/source versions/UTF-8
+byte count/lowerhex SHA256 of the exact complete PreparedInput.payload in the
+same Immediate owner/source/head CAS and audit transaction. Up to 128 variants
+per context version are retained; prompt bodies are not duplicated. Generic audit
+or Record writes cannot fabricate this authority. Workflow authority uses its
+immutable ContextVersion.data.payload, including mandatory Engine rule prefix.
+Store::validate_context_input checks actual request bytes; Session admission pins
+input_sha256 and consumed intent must match that hash. Provider-specific RPC
+envelopes/fixed prefixes are a distinct transport digest, never this input hash.
+Older public schema 4 writers refuse schema 5. Existing schema4 standalone packs
+must be prepared again under the new private publication contract before launch.

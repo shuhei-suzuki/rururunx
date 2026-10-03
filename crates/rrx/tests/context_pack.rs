@@ -6,6 +6,7 @@ use rrx::{
     git::WorktreeManager,
     state::Store,
 };
+use sha2::{Digest, Sha256};
 use std::{
     path::{Path, PathBuf},
     process::Command,
@@ -150,7 +151,7 @@ fn event(sequence: u64, kind: EventKind, text: &str) -> HistoryEvent {
         text: text.into(),
     }
 }
-fn session(f: &Fixture, role: SessionRole, state: SessionState) -> (Session, u64) {
+async fn session(f: &Fixture, role: SessionRole, state: SessionState) -> (Session, u64) {
     let context = f
         .store
         .lock()
@@ -166,6 +167,33 @@ fn session(f: &Fixture, role: SessionRole, state: SessionState) -> (Session, u64
         .map(|c| c.source_hashes.clone())
         .unwrap_or_default();
     sources.insert("checkpoint:head".into(), head);
+    let prepared = if context
+        .as_ref()
+        .is_some_and(|c| c.data["format"] == "rrx.task-pack.v1")
+        && !matches!(
+            state,
+            SessionState::Exited | SessionState::Stopped | SessionState::Failed
+        ) {
+        let reference = PackRef {
+            scope: f.task.scope(),
+            version: context.as_ref().unwrap().version,
+            digest: format!(
+                "sha256:{:x}",
+                Sha256::digest(serde_json::to_vec(context.as_ref().unwrap()).unwrap())
+            ),
+        };
+        let PreparedPack::Ready(input) = f
+            .packs()
+            .prepare_task(&reference, SelectionRequest::default(), budget())
+            .await
+            .unwrap()
+        else {
+            panic!("fixture mandatory budget")
+        };
+        Some(input)
+    } else {
+        None
+    };
     let s = Session {
         id: SessionId::new(),
         scope: f.task.scope(),
@@ -178,7 +206,7 @@ fn session(f: &Fixture, role: SessionRole, state: SessionState) -> (Session, u64
         state,
         model: None,
         effort: None,
-        recovery: serde_json::json!({"source_versions":sources,"input_version":context.as_ref().map_or(0,|c|c.version),"input_revision":context.as_ref().map_or("",|c|c.revision.as_str()),"input_bytes":0}),
+        recovery: prepared.as_ref().map_or_else(|| serde_json::json!({"source_versions":sources,"input_version":context.as_ref().map_or(0,|c|c.version),"input_revision":context.as_ref().map_or("",|c|c.revision.as_str()),"input_bytes":0}), |input| serde_json::json!({"source_versions":input.source_versions,"input_version":input.version,"input_revision":input.revision,"input_bytes":input.payload.len(),"input_sha256":format!("{:x}",Sha256::digest(input.payload.as_bytes()))})),
         started_at: now_ms(),
     };
     let mut s = s;
@@ -398,7 +426,7 @@ async fn checkpoint_preserves_semantics_incrementally_and_never_rewrites_live_la
         .publish_task(&packs.draft_task(&f.task.scope(), input()).await.unwrap())
         .await
         .unwrap();
-    let (mut native, version) = session(&f, SessionRole::Executor, SessionState::Running);
+    let (mut native, version) = session(&f, SessionRole::Executor, SessionState::Running).await;
     let events = vec![
         event(1, EventKind::Goal, "durable objective"),
         event(2, EventKind::Decision, "confirmed decision"),
@@ -525,7 +553,7 @@ async fn checkpoint_preserves_semantics_incrementally_and_never_rewrites_live_la
 async fn consultation_promotes_historical_facts_without_transcript_and_rejects_foreign_refs() {
     let f = Fixture::new();
     let packs = f.packs();
-    let (native, _) = session(&f, SessionRole::Consultant, SessionState::Exited);
+    let (native, _) = session(&f, SessionRole::Consultant, SessionState::Exited).await;
     let cp = packs
         .checkpoint(
             &f.task.scope(),
@@ -741,7 +769,7 @@ async fn stale_drafts_lost_sessions_and_immutable_locks_cannot_publish_context()
         independent.put_task(&mut task).unwrap();
     }
     assert!(packs.publish_task(&stale).await.is_err());
-    let (native, _) = session(&f, SessionRole::Consultant, SessionState::Lost);
+    let (native, _) = session(&f, SessionRole::Consultant, SessionState::Lost).await;
     let draft = packs.draft_task(&f.task.scope(), input()).await.unwrap();
     assert!(packs.publish_task(&draft).await.is_err());
     assert_eq!(
@@ -1024,7 +1052,7 @@ async fn goal_primary_artifacts_reject_escaping_sources_and_replaced_repository(
 async fn checkpoint_transient_count_bound_and_retained_session_provenance_survive_reload() {
     let f = Fixture::new();
     let packs = f.packs();
-    let (native, _) = session(&f, SessionRole::Consultant, SessionState::Running);
+    let (native, _) = session(&f, SessionRole::Consultant, SessionState::Running).await;
     let events = (1..=4096)
         .map(|i| event(i, EventKind::Transient, "short"))
         .collect();
@@ -1092,7 +1120,7 @@ async fn checkpoint_transient_count_bound_and_retained_session_provenance_surviv
 async fn typed_checkpoints_are_immutable_and_promotion_matches_exact_current_head() {
     let f = Fixture::new();
     let packs = f.packs();
-    let (native, _) = session(&f, SessionRole::Consultant, SessionState::Exited);
+    let (native, _) = session(&f, SessionRole::Consultant, SessionState::Exited).await;
     let cp = packs
         .checkpoint(
             &f.task.scope(),
@@ -1249,7 +1277,7 @@ async fn typed_checkpoints_are_immutable_and_promotion_matches_exact_current_hea
 async fn mixed_role_chain_promotes_only_consultant_facts_and_current_goal_can_report_dirty_tasks() {
     let f = Fixture::new();
     let packs = f.packs();
-    let (executor, _) = session(&f, SessionRole::Executor, SessionState::Exited);
+    let (executor, _) = session(&f, SessionRole::Executor, SessionState::Exited).await;
     let cp = packs
         .checkpoint(
             &f.task.scope(),
@@ -1262,7 +1290,7 @@ async fn mixed_role_chain_promotes_only_consultant_facts_and_current_goal_can_re
         )
         .await
         .unwrap();
-    let (consultant, _) = session(&f, SessionRole::Consultant, SessionState::Exited);
+    let (consultant, _) = session(&f, SessionRole::Consultant, SessionState::Exited).await;
     let cp = packs
         .checkpoint(
             &f.task.scope(),
@@ -1329,7 +1357,7 @@ async fn mixed_role_chain_promotes_only_consultant_facts_and_current_goal_can_re
         )
         .await
         .unwrap();
-    let (_, _) = session(&f, SessionRole::Executor, SessionState::Running);
+    let (_, _) = session(&f, SessionRole::Executor, SessionState::Running).await;
     std::fs::write(
         f.worktree.join("src/codec.rs"),
         "pub fn encode() { panic!(\"dirty\"); }\n",
@@ -1454,7 +1482,7 @@ async fn genuine_foreign_project_and_goal_checkpoints_in_one_store_cannot_promot
         g.dag.nodes.push(t.id);
         store.put_goal(&mut g).unwrap();
     }
-    let (mut native, _) = session(&other, SessionRole::Consultant, SessionState::Exited);
+    let (mut native, _) = session(&other, SessionRole::Consultant, SessionState::Exited).await;
     native.id = SessionId::new();
     f.store.lock().unwrap().put_session(&native, 0).unwrap();
     let foreign = packs
@@ -1589,7 +1617,7 @@ async fn typed_pack_generic_writers_cannot_move_pointers_or_hide_unresolved_fact
         append.data = serde_json::json!({"opaque":"cannot poison a typed owner"});
         assert!(store.put_context(&append).is_err());
     }
-    let (native, _) = session(&f, SessionRole::Executor, SessionState::Running);
+    let (native, _) = session(&f, SessionRole::Executor, SessionState::Running).await;
     {
         let mut store = f.store.lock().unwrap();
         let mut task = store.task(f.task.id).unwrap().unwrap();
@@ -1718,7 +1746,7 @@ async fn typed_pack_generic_writers_cannot_move_pointers_or_hide_unresolved_fact
 async fn cross_task_consultation_is_an_explicit_immutable_snapshot_not_a_live_head_dependency() {
     let f = Fixture::new();
     let packs = f.packs();
-    let (consultant, _) = session(&f, SessionRole::Consultant, SessionState::Exited);
+    let (consultant, _) = session(&f, SessionRole::Consultant, SessionState::Exited).await;
     let cp = packs
         .checkpoint(
             &f.task.scope(),
@@ -1902,7 +1930,7 @@ async fn own_checkpoint_is_mandatory_even_when_the_caller_omits_its_reference() 
     else {
         panic!("budget")
     };
-    let (native, _) = session(&f, SessionRole::Executor, SessionState::Exited);
+    let (native, _) = session(&f, SessionRole::Executor, SessionState::Exited).await;
     let cp = packs
         .checkpoint(
             &f.task.scope(),
@@ -1954,7 +1982,7 @@ async fn own_checkpoint_is_mandatory_even_when_the_caller_omits_its_reference() 
     let mut launching = native.clone();
     launching.id = SessionId::new();
     launching.state = SessionState::Starting;
-    launching.recovery = serde_json::json!({"source_versions":prepared.source_versions,"input_version":prepared.version,"input_revision":prepared.revision,"input_bytes":prepared.payload.len()});
+    launching.recovery = serde_json::json!({"source_versions":prepared.source_versions,"input_version":prepared.version,"input_revision":prepared.revision,"input_bytes":prepared.payload.len(),"input_sha256":format!("{:x}",Sha256::digest(prepared.payload.as_bytes()))});
     let version = f.store.lock().unwrap().put_session(&launching, 0).unwrap();
     packs
         .checkpoint(
@@ -2020,7 +2048,7 @@ async fn own_checkpoint_is_mandatory_even_when_the_caller_omits_its_reference() 
 async fn checkpoint_v4_index_migrates_atomically_and_is_independent_of_record_rowids() {
     let f = Fixture::new();
     let packs = f.packs();
-    let (native, _) = session(&f, SessionRole::Consultant, SessionState::Exited);
+    let (native, _) = session(&f, SessionRole::Consultant, SessionState::Exited).await;
     let first = packs
         .checkpoint(
             &f.task.scope(),
@@ -2047,10 +2075,12 @@ async fn checkpoint_v4_index_migrates_atomically_and_is_independent_of_record_ro
         .unwrap();
     let db = f._temp.path().join("state.db");
     let raw = rusqlite::Connection::open(&db).unwrap();
-    raw.execute_batch("DROP TABLE checkpoint_heads; PRAGMA user_version=3;")
-        .unwrap();
+    raw.execute_batch(
+        "DROP TABLE prepared_pack_inputs; DROP TABLE checkpoint_heads; PRAGMA user_version=3;",
+    )
+    .unwrap();
     let restored = Store::open(&db).unwrap();
-    assert_eq!(restored.schema_version().unwrap(), 4);
+    assert_eq!(restored.schema_version().unwrap(), 5);
     let scope = f.task.scope();
     let sources =
         std::collections::BTreeMap::from([("checkpoint:head".into(), last.digest.clone())]);
@@ -2064,8 +2094,10 @@ async fn checkpoint_v4_index_migrates_atomically_and_is_independent_of_record_ro
     let artifact = packs.draft_task(&scope, input()).await.unwrap();
     assert_eq!(artifact.pack().checkpoint, Some(last));
     // Invalid migration history leaves neither the v4 marker nor its index behind.
-    raw.execute_batch("DROP TABLE checkpoint_heads; PRAGMA user_version=3;")
-        .unwrap();
+    raw.execute_batch(
+        "DROP TABLE prepared_pack_inputs; DROP TABLE checkpoint_heads; PRAGMA user_version=3;",
+    )
+    .unwrap();
     let mut row = f
         .store
         .lock()
@@ -2135,10 +2167,13 @@ impl rrx::adapter::AgentAdapter for PackFixtureAgent {
                 state: SessionState::Starting,
                 model: None,
                 effort: None,
-                recovery: serde_json::json!({"source_versions":request.input.source_versions,"input_version":request.input.version}),
+                recovery: serde_json::json!({"source_versions":request.input.source_versions,"input_version":request.input.version,"input_revision":request.input.revision,"input_bytes":request.input.payload.len(),"input_sha256":format!("{:x}",Sha256::digest(request.input.payload.as_bytes()))}),
                 started_at: now_ms(),
             };
             let mut store = self.store.lock().unwrap();
+            store
+                .validate_context_input(&request.scope, &request.input)
+                .map_err(pack_fixture_error)?;
             let v = store.put_session(&s, 0).map_err(pack_fixture_error)?;
             s.state = SessionState::Running;
             store.put_session(&s, v).map_err(pack_fixture_error)?;
@@ -2567,7 +2602,7 @@ async fn actual_engine_tiny_discretionary_budget_preserves_facts_and_provider_re
     };
     let f = Fixture::new();
     let packs = f.packs();
-    let (native, _) = session(&f, SessionRole::Executor, SessionState::Exited);
+    let (native, _) = session(&f, SessionRole::Executor, SessionState::Exited).await;
     let checkpoint = packs
         .checkpoint(
             &f.task.scope(),
@@ -2722,11 +2757,11 @@ async fn admitted_session_reentry_preserves_launch_head_after_incremental_checkp
     else {
         panic!("budget")
     };
-    let (exited, _) = session(&f, SessionRole::Executor, SessionState::Exited);
+    let (exited, _) = session(&f, SessionRole::Executor, SessionState::Exited).await;
     let mut native = exited;
     native.id = SessionId::new();
     native.state = SessionState::Starting;
-    native.recovery = serde_json::json!({"source_versions":prepared.source_versions,"input_version":prepared.version,"input_revision":prepared.revision,"input_bytes":prepared.payload.len()});
+    native.recovery = serde_json::json!({"source_versions":prepared.source_versions,"input_version":prepared.version,"input_revision":prepared.revision,"input_bytes":prepared.payload.len(),"input_sha256":format!("{:x}",Sha256::digest(prepared.payload.as_bytes()))});
     let mut version = f.store.lock().unwrap().put_session(&native, 0).unwrap();
     native.state = SessionState::Running;
     version = f
@@ -2800,7 +2835,7 @@ async fn goal_pointer_publication_preserves_admitted_task_authority_and_rejects_
     else {
         panic!("budget")
     };
-    let (mut native, mut version) = session(&f, SessionRole::Executor, SessionState::Running);
+    let (mut native, mut version) = session(&f, SessionRole::Executor, SessionState::Running).await;
     let before = f
         .store
         .lock()
@@ -2913,7 +2948,7 @@ async fn goal_summary_preserves_opaque_legacy_context_without_typed_claims() {
 async fn checkpoint_admission_preserves_renderable_mandatory_headroom() {
     let f = Fixture::new();
     let packs = f.packs();
-    let (native, _) = session(&f, SessionRole::Executor, SessionState::Exited);
+    let (native, _) = session(&f, SessionRole::Executor, SessionState::Exited).await;
     std::fs::write(f.root.join("RULES.md"), "R".repeat(220_000)).unwrap();
     let events = (1..=110)
         .map(|n| event(n, EventKind::Constraint, &"C".repeat(8192)))
@@ -2987,7 +3022,7 @@ async fn provider_scoped_configuration_releases_capacity_and_adopts_new_own_head
     let f = Fixture::new();
     let packs = f.packs();
     let sources = WorkflowPackSources::new(packs.clone());
-    let (native, _) = session(&f, SessionRole::Executor, SessionState::Exited);
+    let (native, _) = session(&f, SessionRole::Executor, SessionState::Exited).await;
     let first = packs
         .checkpoint(
             &f.task.scope(),
@@ -3150,9 +3185,9 @@ async fn native_input_pin_allows_verified_fresh_continuation_and_only_exact_pre_
     else {
         panic!("budget")
     };
-    let (mut native, _) = session(&f, SessionRole::Executor, SessionState::Exited);
+    let (mut native, _) = session(&f, SessionRole::Executor, SessionState::Exited).await;
     native.id = SessionId::new();
-    native.recovery = serde_json::json!({"source_versions":first.source_versions,"input_version":first.version,"input_revision":first.revision,"input_bytes":first.payload.len(),"dispatch_intent":{"id":"prior-admitted","consumed":true}});
+    native.recovery = serde_json::json!({"source_versions":first.source_versions,"input_version":first.version,"input_revision":first.revision,"input_bytes":first.payload.len(),"input_sha256":format!("{:x}",Sha256::digest(first.payload.as_bytes())),"dispatch_intent":{"id":"prior-admitted","consumed":true,"input_sha256":format!("{:x}",Sha256::digest(first.payload.as_bytes()))}});
     let mut version = f.store.lock().unwrap().put_session(&native, 0).unwrap();
     packs
         .checkpoint(
@@ -3184,7 +3219,7 @@ async fn native_input_pin_allows_verified_fresh_continuation_and_only_exact_pre_
     let terminal = native.clone();
     let proof = Store::session_restore_sha256(&terminal).unwrap();
     native.state = SessionState::Starting;
-    native.recovery = serde_json::json!({"source_versions":second.source_versions,"input_version":second.version,"input_revision":second.revision,"input_bytes":second.payload.len(),"pre_dispatch_restore_sha256":proof});
+    native.recovery = serde_json::json!({"source_versions":second.source_versions,"input_version":second.version,"input_revision":second.revision,"input_bytes":second.payload.len(),"input_sha256":format!("{:x}",Sha256::digest(second.payload.as_bytes())),"pre_dispatch_restore_sha256":proof});
     let mut forged = native.clone();
     forged.recovery["pre_dispatch_restore_sha256"] = serde_json::json!("bad");
     assert!(
@@ -3230,7 +3265,8 @@ async fn native_input_pin_allows_verified_fresh_continuation_and_only_exact_pre_
         .unwrap()
         .put_session(&native, version)
         .unwrap();
-    native.recovery["dispatch_intent"] = serde_json::json!({"consumed":true});
+    native.recovery["dispatch_intent"] =
+        serde_json::json!({"consumed":true,"input_sha256":native.recovery["input_sha256"]});
     version = f
         .store
         .lock()
@@ -3299,7 +3335,7 @@ async fn typed_admission_rejects_terminal_bypasses_and_self_declared_head_rebind
     else {
         panic!("budget")
     };
-    let (terminal, version) = session(&f, SessionRole::Executor, SessionState::Exited);
+    let (terminal, version) = session(&f, SessionRole::Executor, SessionState::Exited).await;
     for state in [
         SessionState::Running,
         SessionState::WaitingHuman,
@@ -3333,7 +3369,7 @@ async fn typed_admission_rejects_terminal_bypasses_and_self_declared_head_rebind
     let mut forged = terminal.clone();
     forged.id = SessionId::new();
     forged.state = SessionState::Starting;
-    forged.recovery = serde_json::json!({"source_versions":prepared.source_versions,"input_version":prepared.version,"input_revision":prepared.revision,"input_bytes":prepared.payload.len(),"pre_dispatch_restore_sha256":Store::session_restore_sha256(&terminal).unwrap()});
+    forged.recovery = serde_json::json!({"source_versions":prepared.source_versions,"input_version":prepared.version,"input_revision":prepared.revision,"input_bytes":prepared.payload.len(),"input_sha256":format!("{:x}",Sha256::digest(prepared.payload.as_bytes())),"pre_dispatch_restore_sha256":Store::session_restore_sha256(&terminal).unwrap()});
     assert!(f.store.lock().unwrap().put_session(&forged, 0).is_err());
     forged
         .recovery
@@ -3371,4 +3407,109 @@ async fn typed_admission_rejects_terminal_bypasses_and_self_declared_head_rebind
             .state,
         SessionState::Exited
     );
+}
+
+#[tokio::test]
+async fn private_rendered_frame_authority_is_atomic_and_rejects_forged_payload_metadata() {
+    let f = Fixture::new();
+    let packs = f.packs();
+    let reference = packs
+        .publish_task(&packs.draft_task(&f.task.scope(), input()).await.unwrap())
+        .await
+        .unwrap();
+    let raw = rusqlite::Connection::open(f._temp.path().join("state.db")).unwrap();
+    raw.execute_batch("CREATE TRIGGER fail_frame_audit BEFORE INSERT ON audit WHEN NEW.kind='context.pack.prepared' BEGIN SELECT RAISE(ABORT,'injected frame audit failure'); END;").unwrap();
+    assert!(
+        packs
+            .prepare_task(&reference, SelectionRequest::default(), budget())
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        raw.query_row("SELECT COUNT(*) FROM prepared_pack_inputs", [], |r| r
+            .get::<_, u64>(0))
+            .unwrap(),
+        0
+    );
+    raw.execute_batch("DROP TRIGGER fail_frame_audit;").unwrap();
+    let PreparedPack::Ready(prepared) = packs
+        .prepare_task(&reference, SelectionRequest::default(), budget())
+        .await
+        .unwrap()
+    else {
+        panic!("budget")
+    };
+    f.store
+        .lock()
+        .unwrap()
+        .validate_context_input(&f.task.scope(), &prepared)
+        .unwrap();
+    assert_eq!(
+        raw.query_row("SELECT COUNT(*) FROM prepared_pack_inputs", [], |r| r
+            .get::<_, u64>(0))
+            .unwrap(),
+        1
+    );
+    assert!(
+        raw.execute("UPDATE prepared_pack_inputs SET input_bytes=1", [])
+            .is_err()
+    );
+    assert!(raw.execute("DELETE FROM prepared_pack_inputs", []).is_err());
+    assert!(
+        raw.execute(
+            "INSERT OR REPLACE INTO prepared_pack_inputs SELECT * FROM prepared_pack_inputs",
+            []
+        )
+        .is_err()
+    );
+    let mut forged = prepared.clone();
+    forged.payload.push('x');
+    f.store.lock().unwrap().audit(&f.task.scope(),"context.pack.prepared",serde_json::json!({"ready":true,"context_version":forged.version,"input_sha256":format!("{:x}",Sha256::digest(forged.payload.as_bytes()))})).unwrap();
+    assert!(
+        f.store
+            .lock()
+            .unwrap()
+            .validate_context_input(&f.task.scope(), &forged)
+            .is_err()
+    );
+    let (mut native, _) = session(&f, SessionRole::Executor, SessionState::Exited).await;
+    native.id = SessionId::new();
+    native.state = SessionState::Starting;
+    native.recovery = serde_json::json!({"source_versions":forged.source_versions,"input_version":forged.version,"input_revision":forged.revision,"input_bytes":forged.payload.len(),"input_sha256":format!("{:x}",Sha256::digest(forged.payload.as_bytes()))});
+    assert!(f.store.lock().unwrap().put_session(&native, 0).is_err());
+    let mut wrong_scope = prepared.clone();
+    wrong_scope.scope.task_id = Some(TaskId::new());
+    assert!(
+        f.store
+            .lock()
+            .unwrap()
+            .validate_context_input(&f.task.scope(), &wrong_scope)
+            .is_err()
+    );
+    let mut wrong_version = prepared.clone();
+    wrong_version.version += 1;
+    assert!(
+        f.store
+            .lock()
+            .unwrap()
+            .validate_context_input(&f.task.scope(), &wrong_version)
+            .is_err()
+    );
+    let mut wrong_sources = prepared.clone();
+    wrong_sources
+        .source_versions
+        .insert("invented".into(), "none".into());
+    assert!(
+        f.store
+            .lock()
+            .unwrap()
+            .validate_context_input(&f.task.scope(), &wrong_sources)
+            .is_err()
+    );
+    drop(packs);
+    let reopened = Store::open(&f._temp.path().join("state.db")).unwrap();
+    assert_eq!(reopened.schema_version().unwrap(), 5);
+    reopened
+        .validate_context_input(&f.task.scope(), &prepared)
+        .unwrap();
 }

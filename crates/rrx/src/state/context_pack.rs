@@ -47,7 +47,7 @@ fn write_checkpoint_head(tx: &Transaction<'_>, record: &Record) -> Result<()> {
     tx.execute("INSERT INTO checkpoint_heads(project_id,goal_id,task_id,record_id) VALUES(?1,?2,?3,?4) ON CONFLICT(project_id,goal_id,task_id) DO UPDATE SET record_id=excluded.record_id",params![record.scope.project_id.to_string(),str_id(record.scope.goal_id),str_id(record.scope.task_id),record.id.to_string()])?;
     Ok(())
 }
-fn validate_checkpoint_source(
+pub(super) fn validate_checkpoint_source(
     connection: &Connection,
     scope: &Scope,
     key: Option<&str>,
@@ -148,6 +148,7 @@ fn input_metadata_equal(old: &Session, new: &Session) -> bool {
         "input_version",
         "input_revision",
         "input_bytes",
+        "input_sha256",
         "source_versions",
     ]
     .iter()
@@ -256,28 +257,11 @@ pub(super) fn guard_launch_checkpoint(tx: &Transaction<'_>, record: &Record) -> 
     }
     let key = session.recovery["source_versions"]["checkpoint:head"].as_str();
     if typed {
-        let context = latest.as_ref().expect("typed context exists");
-        let task: Task = read_tx(tx, "tasks", &session.scope.task_id.unwrap().to_string())?
-            .context("unknown native Task")?;
-        let expected_head = if context.data.get("task_pack").is_some() {
-            context
-                .source_hashes
-                .get("checkpoint:head")
-                .cloned()
-                .context("typed phase input missing checkpoint head")?
-        } else {
-            let pack: crate::context_pack::TaskPack = serde_json::from_value(context.data.clone())?;
-            crate::context_pack::head_digest(pack.checkpoint.as_ref())
-        };
-        ensure!(
-            session.recovery["input_version"].as_u64() == Some(context.version)
-                && task.context_version == context.version
-                && key == Some(expected_head.as_str())
-                && context.source_hashes.iter().all(|(key, value)| {
-                    session.recovery["source_versions"][key].as_str() == Some(value.as_str())
-                }),
-            "native input differs from latest typed Task input authority"
-        );
+        super::prepared_input::validate_session(
+            tx,
+            &session,
+            latest.as_ref().expect("typed context exists"),
+        )?;
     }
     validate_checkpoint_source(tx, &session.scope, key)
 }
@@ -322,13 +306,16 @@ fn own_checkpoint_tx(
     );
     Ok(())
 }
-fn typed_pack(data: &Value) -> bool {
+pub(super) fn typed_pack(data: &Value) -> bool {
     matches!(
         data["format"].as_str(),
         Some("rrx.task-pack.v1" | "rrx.goal-pack.v1")
     ) || data["task_pack"]["format"] == "rrx.phase-pack.v1"
 }
-fn latest_context(connection: &Connection, scope: &Scope) -> Result<Option<ContextVersion>> {
+pub(super) fn latest_context(
+    connection: &Connection,
+    scope: &Scope,
+) -> Result<Option<ContextVersion>> {
     let owner = context_owner(scope)?;
     let body:Option<String>=connection.query_row("SELECT body FROM context_versions WHERE project_id=?1 AND owner=?2 ORDER BY version DESC LIMIT 1",params![scope.project_id.to_string(),owner],|r|r.get(0)).optional()?;
     body.map(decode).transpose()
@@ -390,12 +377,17 @@ impl Store {
         expected: [u64; 3],
         checkpoint: Option<&CheckpointRef>,
         data: Value,
+        prepared: Option<&crate::adapter::PreparedInput>,
     ) -> Result<()> {
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         pack_guard(&tx, scope, expected)?;
         own_checkpoint_tx(&tx, scope, checkpoint)?;
+        if let Some(input) = prepared {
+            ensure!(*scope == input.scope, "foreign prepared frame");
+            super::prepared_input::publish(&tx, input)?;
+        }
         append_event(&tx, scope, "context.pack.prepared", data)?;
         tx.commit()?;
         Ok(())
@@ -952,20 +944,26 @@ mod tests {
         insert(&f.store, 1);
         let old = f.store.pack_checkpoint_head(&scope).unwrap().unwrap();
         f.store
-            .audit_pack_preparation(&scope, expected, Some(&old), json!({"control":true}))
+            .audit_pack_preparation(&scope, expected, Some(&old), json!({"control":true}), None)
             .unwrap();
         insert(&f.store, 2);
         let before = f.store.events(&scope, 0, 100).unwrap().len();
         assert!(
             f.store
-                .audit_pack_preparation(&scope, expected, Some(&old), json!({"stale":true}))
+                .audit_pack_preparation(&scope, expected, Some(&old), json!({"stale":true}), None)
                 .is_err()
         );
         assert_eq!(f.store.events(&scope, 0, 100).unwrap().len(), before);
         assert_eq!(f.store.task(f.t.id).unwrap().unwrap().version, f.t.version);
         let current = f.store.pack_checkpoint_head(&scope).unwrap().unwrap();
         f.store
-            .audit_pack_preparation(&scope, expected, Some(&current), json!({"current":true}))
+            .audit_pack_preparation(
+                &scope,
+                expected,
+                Some(&current),
+                json!({"current":true}),
+                None,
+            )
             .unwrap();
         assert_eq!(f.store.events(&scope, 0, 100).unwrap().len(), before + 1);
     }

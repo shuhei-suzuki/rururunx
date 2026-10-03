@@ -1,5 +1,6 @@
 //! Transactional SQLite snapshots + append-only logical events, scoped by Project.
 mod context_pack;
+mod prepared_input;
 
 use std::{path::Path, time::Duration};
 
@@ -10,7 +11,7 @@ use serde_json::{Value, json};
 
 use crate::domain::*;
 
-pub const SCHEMA_VERSION: i64 = 4;
+pub const SCHEMA_VERSION: i64 = 5;
 pub const APPLICATION_ID: i64 = 0x52525831; // ASCII RRX1.
 
 /// Typed transactional guards let callers distinguish contention from storage failure.
@@ -105,6 +106,7 @@ impl Store {
                 );
                 tx.execute_batch(include_str!("schema.sql"))?;
                 context_pack::migrate_v4(&tx)?;
+                prepared_input::migrate_v5(&tx)?;
                 tx.pragma_update(None, "application_id", APPLICATION_ID)?;
                 tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
             } else {
@@ -116,10 +118,13 @@ impl Store {
                     tx.pragma_query_value(None, "application_id", |row| row.get(0))?;
                 ensure!(application == APPLICATION_ID, "not an rrx state database");
                 // Ordered authority migrations: v2 Project metadata, v3 Workflow,
-                // v4 immutable checkpoints/typed packs and an indexed scoped head.
+                // v4 immutable checkpoint heads; v5 private prepared-frame authority.
                 for next in (locked_version + 1)..=SCHEMA_VERSION {
                     if next == 4 {
                         context_pack::migrate_v4(&tx)?;
+                    }
+                    if next == 5 {
+                        prepared_input::migrate_v5(&tx)?;
                     }
                     tx.pragma_update(None, "user_version", next)?;
                 }
