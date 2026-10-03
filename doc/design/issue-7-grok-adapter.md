@@ -153,7 +153,9 @@ owned session and shut down/reap its private server. Success is privately author
 when exact native UUID/prompt/Scope and durable terminal Session match. Stop/cancel/timeouts
 do not synthesize success or zero exit. Only native end_turn can establish turn completion;
 cancelled/max_tokens/refusal/unknown reasons do not. Once stop is requested, reject new
-file/permission work while cleaning up. Uncertain cleanup/persistence remains Lost/reserved.
+file/permission work while cleaning up. Uncertain cleanup/persistence or a dispatched prompt without authoritative native terminal
+outcome remains Lost/reserved even after verified process death and PID clearing. A known
+correlated native terminal failure can be Failed; cancellation never supplies that evidence.
 
 Private registry state prevents duplicate live launches or concurrent same-Session resume.
 Checkpoint accepts explicit scope/version/source-bound fresh PreparedInput, persists only

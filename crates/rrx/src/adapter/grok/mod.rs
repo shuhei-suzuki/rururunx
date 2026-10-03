@@ -234,6 +234,8 @@ impl GrokAdapter {
                 prompt: String::new(),
                 active: false,
                 native_before_calls: 0,
+                dispatched: false,
+                native_outcome: false,
             },
             None,
         ));
@@ -568,6 +570,8 @@ impl AgentAdapter for GrokAdapter {
                     prompt: String::new(),
                     active: false,
                     native_before_calls: 0,
+                    dispatched: false,
+                    native_outcome: false,
                 },
                 Some(native),
             ));
@@ -633,6 +637,8 @@ struct Actor {
     prompt: String,
     active: bool,
     native_before_calls: u64,
+    dispatched: bool,
+    native_outcome: bool,
 }
 impl Actor {
     fn owner(&self) -> AdapterResult<()> {
@@ -692,8 +698,9 @@ impl Actor {
             if value.get("method").is_some() {
                 if value.get("id").is_some() {
                     self.callback(value).await?;
-                } else if self.active && value["method"] == "session/update" {
-                    if let Some(text) = self.evidence.update(
+                } else if self.active
+                    && value["method"] == "session/update"
+                    && let Some(text) = self.evidence.update(
                         &self.request.worktree,
                         &value["params"],
                         self.session
@@ -702,10 +709,10 @@ impl Actor {
                             .expect("active native UUID"),
                         &self.prompt,
                         self.request.role != SessionRole::Executor,
-                    )? {
-                        self.events
-                            .send_modify(|status| append_output(status, text.as_bytes()));
-                    }
+                    )?
+                {
+                    self.events
+                        .send_modify(|status| append_output(status, text.as_bytes()));
                 }
                 continue;
             }
@@ -718,6 +725,9 @@ impl Actor {
                 ));
             }
             if value.get("error").is_some() {
+                if self.active {
+                    self.native_outcome = true;
+                }
                 return Err(failure(
                     ErrorKind::ProcessFailure,
                     "native ACP returned error",
@@ -913,9 +923,8 @@ async fn supervise(mut actor: Actor, load: Option<String>) {
         for (key,value) in [("model",model.as_ref()),("reasoning_effort",effort.as_ref())]{if let Some(value)=value {
             options=actor.request("session/set_config_option",json!({"sessionId":native,"configId":key,"value":value}),Duration::from_secs(30)).await?["configOptions"].clone();
         }}
-        for (key,value) in [("model",model.as_ref()),("reasoning_effort",effort.as_ref())]{if let Some(value)=value {
-            if !options.as_array().is_some_and(|a|a.iter().any(|v|v["id"]==key && v["currentValue"]==*value)){return Err(failure(ErrorKind::InvalidConfiguration,"native model/effort configuration did not match"));}
-        }}
+        for (key,value) in [("model",model.as_ref()),("reasoning_effort",effort.as_ref())]{if let Some(value)=value
+            && !options.as_array().is_some_and(|a|a.iter().any(|v|v["id"]==key && v["currentValue"]==*value)){return Err(failure(ErrorKind::InvalidConfiguration,"native model/effort configuration did not match"));}}
         let info=actor.request("_x.ai/session/info",json!({"sessionId":native}),Duration::from_secs(15)).await?;actor.inventory_gate(&info)?;
         actor.snapshot.verify_binding(&actor.request,&mut ownership,binding.as_ref().expect("preflight binding")).await?;actor.owner()?;profile.as_ref().expect("owned profile").verify()?;
         actor.prompt=uuid::Uuid::new_v4().to_string();
@@ -924,10 +933,12 @@ async fn supervise(mut actor: Actor, load: Option<String>) {
         let (id,frame)=actor.rpc.as_mut().expect("RPC").frame("session/prompt",params)?;
         actor.session.state=SessionState::Running;actor.session.recovery["input_version"]=json!(actor.request.input.version);actor.session.recovery["prompt_id"]=json!(actor.prompt);actor.session.recovery["dispatch_state"]=json!("dispatching");
         actor.publish()?; // Durable consumption before the only dispatch write.
+        actor.dispatched=true;
         actor.rpc.as_mut().expect("RPC").send(&frame).await?;
         actor.active=true;
         let response=actor.response(id,TURN_TIMEOUT).await?;
-        if response["stopReason"]!="end_turn" || response["_meta"]["sessionId"]!=native || response["_meta"]["promptId"]!=actor.prompt {return Err(failure(ErrorKind::ProcessFailure,"native turn did not complete with owned end_turn evidence"));}
+        if response["_meta"]["sessionId"]==native && response["_meta"]["promptId"]==actor.prompt && ["end_turn","max_tokens","max_turn_requests","refusal","cancelled"].contains(&response["stopReason"].as_str().unwrap_or("")){actor.native_outcome=true;}
+        if !actor.native_outcome || response["stopReason"]!="end_turn" {return Err(failure(ErrorKind::ProcessFailure,"native turn did not complete with owned end_turn evidence"));}
         actor.store.lock().map_err(|_|failure(ErrorKind::StateFailure,"state poisoned"))?.audit(&actor.session.scope,"grok.native_turn_observed",json!({"session":actor.session.id,"native":native,"prompt":actor.prompt,"stop_reason":"end_turn","structured_output_digest":response["_meta"].get("structuredOutput").and_then(|v|serde_json::to_vec(v).ok()).map(|v|digest(&v))})).map_err(state_error)?;
         actor.evidence.finished()?;
         for field in ["serverSideToolCalls","serverToolCalls","webSearchCalls","xSearchCalls","searchSources"] {
@@ -963,14 +974,13 @@ async fn supervise(mut actor: Actor, load: Option<String>) {
     };
     actor.rpc.take();
     let mut output_verified = true;
-    if let Some(mut reader) = stderr {
-        if tokio::time::timeout(Duration::from_millis(250), &mut reader)
+    if let Some(mut reader) = stderr
+        && tokio::time::timeout(Duration::from_millis(250), &mut reader)
             .await
             .is_err()
-        {
-            reader.abort();
-            output_verified = false;
-        }
+    {
+        reader.abort();
+        output_verified = false;
     }
     drop(profile);
     let reconciled = if cleanup.is_ok() && result.is_ok() {
@@ -1016,7 +1026,7 @@ async fn supervise(mut actor: Actor, load: Option<String>) {
     };
     let clean = cleanup.is_ok() && !ownership.uncertain() && output_verified;
     let completed = result.is_ok() && reconciled.is_ok() && clean && !actor.stopped();
-    let diagnostic = result
+    let mut diagnostic = result
         .err()
         .or_else(|| {
             cleanup
@@ -1025,8 +1035,20 @@ async fn supervise(mut actor: Actor, load: Option<String>) {
                 .map(|e| failure(e.kind, e.message.clone()))
         })
         .or_else(|| reconciled.err());
+    if actor.dispatched && !actor.native_outcome {
+        diagnostic = Some(failure(
+            ErrorKind::SessionLost,
+            format!(
+                "native dispatch outcome unknown; reservation retained: {}",
+                diagnostic
+                    .as_ref()
+                    .map(ToString::to_string)
+                    .unwrap_or_else(|| "stop requested".into())
+            ),
+        ));
+    }
     let _=actor.store.lock().map(|mut store|store.audit(&actor.session.scope,"grok.turn_observed",json!({"session":actor.session.id,"native":actor.session.native_ref,"prompt":actor.prompt,"completed":completed,"cleanup_verified":clean,"exit_code":cleanup.as_ref().ok().copied().flatten(),"diagnostic":diagnostic.as_ref().map(ToString::to_string)})));
-    let state = if !clean {
+    let state = if !clean || (actor.dispatched && !actor.native_outcome) {
         SessionState::Lost
     } else if actor.stopped() {
         SessionState::Stopped
@@ -1035,12 +1057,11 @@ async fn supervise(mut actor: Actor, load: Option<String>) {
     } else {
         SessionState::Failed
     };
-    if let Ok(store) = actor.store.lock() {
-        if let Ok(Some((saved, version))) = store.session(actor.session.id) {
-            if version == actor.version {
-                actor.session = saved;
-            }
-        }
+    if let Ok(store) = actor.store.lock()
+        && let Ok(Some((saved, version))) = store.session(actor.session.id)
+        && version == actor.version
+    {
+        actor.session = saved;
     }
     actor.session.state = state;
     if clean {

@@ -294,7 +294,11 @@ async fn native_auth_inventory_config_parser_and_tool_evidence_fail_closed() {
         let status = finished(&adapter, &session).await;
         assert_eq!(
             status.session.state,
-            SessionState::Failed,
+            if ["malformed", "oversize", "bypass"].contains(&mode) {
+                SessionState::Lost
+            } else {
+                SessionState::Failed
+            },
             "{mode}: {:?}",
             status.failure
         );

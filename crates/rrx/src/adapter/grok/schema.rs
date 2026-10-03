@@ -56,25 +56,23 @@ fn inspect(schema: &Value, depth: usize) -> AdapterResult<()> {
             return Err(invalid());
         }
     }
-    if let Some(values) = object.get("enum") {
-        if values
+    if let Some(values) = object.get("enum")
+        && values
             .as_array()
             .is_none_or(|values| values.is_empty() || values.len() > 128)
-        {
-            return Err(invalid());
-        }
+    {
+        return Err(invalid());
     }
     for key in ["minLength", "maxLength", "minItems", "maxItems"] {
-        if let Some(value) = object.get(key) {
-            if value.as_u64().is_none()
+        if let Some(value) = object.get(key)
+            && (value.as_u64().is_none()
                 || !(if key.ends_with("Length") {
                     kind == "string"
                 } else {
                     kind == "array"
-                })
-            {
-                return Err(invalid());
-            }
+                }))
+        {
+            return Err(invalid());
         }
     }
     for key in ["minimum", "maximum"] {
@@ -97,14 +95,13 @@ fn inspect(schema: &Value, depth: usize) -> AdapterResult<()> {
             inspect(property, depth + 1)?;
         }
     }
-    if let Some(required) = object.get("required") {
-        if kind != "object"
+    if let Some(required) = object.get("required")
+        && (kind != "object"
             || required
                 .as_array()
-                .is_none_or(|a| a.len() > 128 || a.iter().any(|v| !v.is_string()))
-        {
-            return Err(invalid());
-        }
+                .is_none_or(|a| a.len() > 128 || a.iter().any(|v| !v.is_string())))
+    {
+        return Err(invalid());
     }
     if object
         .get("additionalProperties")
@@ -159,19 +156,17 @@ fn matches_value(schema: &Value, value: &Value, depth: usize) -> bool {
             .as_array()
             .map(|a| (a.len() as u64, "minItems", "maxItems"))
     };
-    if let Some((length, min, max)) = length {
-        if schema[min].as_u64().is_some_and(|v| length < v)
-            || schema[max].as_u64().is_some_and(|v| length > v)
-        {
-            return false;
-        }
+    if let Some((length, min, max)) = length
+        && (schema[min].as_u64().is_some_and(|v| length < v)
+            || schema[max].as_u64().is_some_and(|v| length > v))
+    {
+        return false;
     }
-    if let Some(number) = value.as_f64() {
-        if schema["minimum"].as_f64().is_some_and(|v| number < v)
-            || schema["maximum"].as_f64().is_some_and(|v| number > v)
-        {
-            return false;
-        }
+    if let Some(number) = value.as_f64()
+        && (schema["minimum"].as_f64().is_some_and(|v| number < v)
+            || schema["maximum"].as_f64().is_some_and(|v| number > v))
+    {
+        return false;
     }
     if let Some(object) = value.as_object() {
         if schema["required"].as_array().is_some_and(|a| {
@@ -190,12 +185,11 @@ fn matches_value(schema: &Value, value: &Value, depth: usize) -> bool {
             }
         }
     }
-    if let Some(values) = value.as_array() {
-        if let Some(items) = schema.get("items") {
-            if values.iter().any(|v| !matches_value(items, v, depth + 1)) {
-                return false;
-            }
-        }
+    if let Some(values) = value.as_array()
+        && let Some(items) = schema.get("items")
+        && values.iter().any(|v| !matches_value(items, v, depth + 1))
+    {
+        return false;
     }
     true
 }

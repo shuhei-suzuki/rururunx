@@ -153,7 +153,13 @@ impl TurnEvidence {
         if params["sessionId"] != native || params["_meta"]["promptId"] != prompt {
             return Err(failure(
                 ErrorKind::OwnershipMismatch,
-                "foreign or replayed live ACP notification",
+                format!(
+                    "foreign/replayed ACP notification kind={:?} session_matches={} prompt_matches={} prompt_present={}",
+                    params["update"]["sessionUpdate"].as_str(),
+                    params["sessionId"] == native,
+                    params["_meta"]["promptId"] == prompt,
+                    params["_meta"].get("promptId").is_some()
+                ),
             ));
         }
         let update = &params["update"];
@@ -170,13 +176,13 @@ impl TurnEvidence {
                     .filter(|s| s.len() <= 256)
                     .ok_or_else(|| failure(ErrorKind::ParseFailure, "missing tool identity"))?;
                 let name = update["_meta"]["x.ai/tool"]["name"].as_str();
-                if let Some(name) = name {
-                    if !["read_file", "search_replace"].contains(&name) {
-                        return Err(failure(
-                            ErrorKind::OwnershipMismatch,
-                            "native tool outside curated contract",
-                        ));
-                    }
+                if let Some(name) = name
+                    && !["read_file", "search_replace"].contains(&name)
+                {
+                    return Err(failure(
+                        ErrorKind::OwnershipMismatch,
+                        "native tool outside curated contract",
+                    ));
                 }
                 if update["sessionUpdate"] == "tool_call" {
                     let name = name.ok_or_else(|| {
