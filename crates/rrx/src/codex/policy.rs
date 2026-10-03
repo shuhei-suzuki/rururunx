@@ -401,6 +401,120 @@ pub fn native_environment(
     Ok(result.into_iter().collect())
 }
 
+/// Restore only credential/header names declared by the selected native model
+/// provider. The native configuration owns the names; values stay in the scoped
+/// runtime environment and are never returned as metadata or persisted.
+pub(super) fn provider_environment(
+    config: &Value,
+    baseline: &[(OsString, OsString)],
+    projects: &[Project],
+    current: &Project,
+    provided: &BTreeMap<String, String>,
+) -> AdapterResult<Vec<(OsString, OsString)>> {
+    let mut environment: BTreeMap<_, _> =
+        native_environment(baseline.iter().cloned(), projects, current, provided)?
+            .into_iter()
+            .collect();
+    let Some(selected) = config
+        .get("model_provider")
+        .filter(|value| !value.is_null())
+    else {
+        return Ok(environment.into_iter().collect());
+    };
+    let provider = selected.as_str().ok_or_else(|| {
+        failure(
+            ErrorKind::ParseFailure,
+            "invalid native model provider selection",
+        )
+    })?;
+    let settings = &config["model_providers"][provider];
+    let mut names = BTreeSet::new();
+    if let Some(key) = settings.get("env_key").filter(|key| !key.is_null()) {
+        names.insert(key.as_str().ok_or_else(|| {
+            failure(
+                ErrorKind::ParseFailure,
+                "invalid native provider credential reference",
+            )
+        })?);
+    }
+    if let Some(headers) = settings
+        .get("env_http_headers")
+        .filter(|headers| !headers.is_null())
+    {
+        for value in headers
+            .as_object()
+            .ok_or_else(|| {
+                failure(
+                    ErrorKind::ParseFailure,
+                    "invalid native provider header references",
+                )
+            })?
+            .values()
+        {
+            names.insert(value.as_str().ok_or_else(|| {
+                failure(
+                    ErrorKind::ParseFailure,
+                    "invalid native provider header reference",
+                )
+            })?);
+        }
+    }
+    for name in names {
+        if name.is_empty()
+            || name.len() > 128
+            || !name.bytes().enumerate().all(|(index, byte)| {
+                byte == b'_' || byte.is_ascii_alphabetic() || (index > 0 && byte.is_ascii_digit())
+            })
+            || name.starts_with("GIT_")
+        {
+            return Err(failure(
+                ErrorKind::UnsupportedCapability,
+                "unsupported native provider environment reference",
+            ));
+        }
+        if projects.iter().any(|project| {
+            project.id != current.id && project.environment_refs.iter().any(|key| key == name)
+        }) && !current.environment_refs.iter().any(|key| key == name)
+        {
+            return Err(failure(
+                ErrorKind::OwnershipMismatch,
+                "native provider credential belongs to another Project",
+            ));
+        }
+        if let Some(value) = provided.get(name) {
+            environment.insert(name.into(), value.into());
+        } else if let Some((_, value)) = baseline.iter().find(|(key, _)| key == name) {
+            environment.insert(name.into(), value.clone());
+        }
+    }
+    Ok(environment.into_iter().collect())
+}
+
+pub(super) fn verify_auth_readiness(account: &Value) -> AdapterResult<()> {
+    let required = account["requiresOpenaiAuth"].as_bool().ok_or_else(|| {
+        failure(
+            ErrorKind::ParseFailure,
+            "native authentication readiness unavailable",
+        )
+    })?;
+    if required && account.get("account").is_none_or(Value::is_null) {
+        return Err(failure(
+            ErrorKind::AuthenticationUnavailable,
+            "native Codex authentication unavailable; use its normal login route",
+        ));
+    }
+    if account
+        .get("account")
+        .is_some_and(|value| !value.is_null() && !value.is_object())
+    {
+        return Err(failure(
+            ErrorKind::ParseFailure,
+            "invalid native account readiness",
+        ));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -609,5 +723,100 @@ mod tests {
             Some(&OsString::from("current-a-value"))
         );
         assert!(native_environment(pairs(), &[a, b.clone()], &b, &provided).is_err());
+    }
+    #[test]
+    fn selected_provider_credentials_are_scoped_without_inheriting_unselected_secrets() {
+        let config = json!({"model_provider":"custom","model_providers":{"custom":{"env_key":"CUSTOM_NATIVE_KEY","env_http_headers":{"X-Auth":"CUSTOM_HEADER"}},"other":{"env_key":"UNSELECTED_SECRET"}}});
+        let own = project("own");
+        let mut foreign = project("foreign");
+        foreign.environment_refs = vec!["FOREIGN_SECRET".into()];
+        let baseline: Vec<_> = [
+            "CUSTOM_NATIVE_KEY",
+            "CUSTOM_HEADER",
+            "UNSELECTED_SECRET",
+            "FOREIGN_SECRET",
+            "ARBITRARY_SECRET",
+        ]
+        .into_iter()
+        .map(|name| (OsString::from(name), OsString::from("fixture-secret")))
+        .collect();
+        let scoped: BTreeMap<_, _> = provider_environment(
+            &config,
+            &baseline,
+            &[own.clone(), foreign.clone()],
+            &own,
+            &BTreeMap::new(),
+        )
+        .unwrap()
+        .into_iter()
+        .collect();
+        assert_eq!(scoped.len(), 2);
+        assert!(scoped.contains_key(&OsString::from("CUSTOM_NATIVE_KEY")));
+        assert!(scoped.contains_key(&OsString::from("CUSTOM_HEADER")));
+        let mut foreign_config = config.clone();
+        foreign_config["model_providers"]["custom"]["env_key"] = json!("FOREIGN_SECRET");
+        assert_eq!(
+            provider_environment(
+                &foreign_config,
+                &baseline,
+                &[own.clone(), foreign.clone()],
+                &own,
+                &BTreeMap::new()
+            )
+            .unwrap_err()
+            .kind,
+            ErrorKind::OwnershipMismatch
+        );
+        let mut declared = own.clone();
+        declared.environment_refs = vec!["CUSTOM_NATIVE_KEY".into()];
+        let provided =
+            BTreeMap::from([("CUSTOM_NATIVE_KEY".into(), "current-project-value".into())]);
+        let scoped: BTreeMap<_, _> = provider_environment(
+            &config,
+            &baseline,
+            &[declared.clone(), foreign],
+            &declared,
+            &provided,
+        )
+        .unwrap()
+        .into_iter()
+        .collect();
+        assert_eq!(
+            scoped.get(&OsString::from("CUSTOM_NATIVE_KEY")),
+            Some(&OsString::from("current-project-value"))
+        );
+        for value in [json!(3), json!("GIT_DIR"), json!("bad-name"), json!("")] {
+            let mut bad = config.clone();
+            bad["model_providers"]["custom"]["env_key"] = value;
+            assert!(
+                provider_environment(&bad, &baseline, &[own.clone()], &own, &BTreeMap::new())
+                    .is_err()
+            );
+        }
+    }
+    #[test]
+    fn native_auth_readiness_preserves_custom_no_auth_and_missing_login_outcomes() {
+        verify_auth_readiness(&json!({"requiresOpenaiAuth":false,"account":null})).unwrap();
+        verify_auth_readiness(&json!({"requiresOpenaiAuth":true,"account":{"type":"apiKey"}}))
+            .unwrap();
+        for value in [
+            json!({"requiresOpenaiAuth":true}),
+            json!({"requiresOpenaiAuth":true,"account":null}),
+        ] {
+            assert_eq!(
+                verify_auth_readiness(&value).unwrap_err().kind,
+                ErrorKind::AuthenticationUnavailable
+            );
+        }
+        for value in [
+            json!({}),
+            json!({"requiresOpenaiAuth":"unknown"}),
+            json!({"requiresOpenaiAuth":false,"account":"unexpected"}),
+        ] {
+            assert_eq!(
+                verify_auth_readiness(&value).unwrap_err().kind,
+                ErrorKind::ParseFailure
+            );
+        }
     }
 }
