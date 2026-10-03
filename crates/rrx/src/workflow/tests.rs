@@ -3499,6 +3499,34 @@ async fn resumed_round_claim_never_replays_prior_outcome_during_poll_restart_or_
         assert_eq!(snapshot.history[index].claimed_observations, 1);
         assert_eq!(snapshot.history[index].observations.len(), 1);
         assert!(super::known_gate_observation(&snapshot.history[index]).is_none());
+        {
+            let mut store = fixture.store.lock().unwrap();
+            let mut task = store.task(id).unwrap().unwrap();
+            let mut record = store
+                .records(&task.scope(), RecordKind::Workflow)
+                .unwrap()
+                .remove(0);
+            let mut raw = snapshot.clone();
+            raw.history[index].state = AttemptState::Waiting;
+            record.data = serde_json::to_value(raw).unwrap();
+            let project_version = store.project(task.project_id).unwrap().unwrap().version;
+            let goal_version = store.goal(task.goal_id).unwrap().unwrap().version;
+            assert!(
+                store
+                    .put_workflow_transition(
+                        &mut task,
+                        &mut record,
+                        None,
+                        project_version,
+                        goal_version,
+                        WorkflowAccess::StateOnly
+                    )
+                    .unwrap_err()
+                    .to_string()
+                    .contains("unknown gate reservation requires explicit recovery")
+            );
+        }
+
         let calls = fixture.gates.calls.lock().unwrap().len();
         assert!(
             matches!(fixture.engine.step(id, BTreeMap::new()).await.unwrap(), StepResult::Waiting { reason, .. } if reason.contains("explicit recovery"))

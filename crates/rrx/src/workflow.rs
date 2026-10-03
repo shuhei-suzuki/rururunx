@@ -1793,6 +1793,7 @@ impl WorkflowEngine {
                 };
                 set_context(&mut snapshot, &context);
                 snapshot.task.phase = next.map(|p| p.key().into());
+                snapshot.task.state = phase.task_state();
                 snapshot.workflow.finished = next.is_none();
                 if phase == Phase::Pr {
                     snapshot.task.state = TaskState::PrCreated;
@@ -2180,6 +2181,12 @@ pub(crate) fn validate_transition(
                         }
                         && after.observations.len() <= after.claimed_observations.saturating_add(1),
                     "evaluation claim/observation round mismatch"
+                );
+                ensure!(
+                    before.state != AttemptState::Evaluating
+                        || after.state == AttemptState::Evaluating
+                        || known_gate_observation(before).is_some(),
+                    "unknown gate reservation requires explicit recovery"
                 );
                 let valid = match before.state {
                     AttemptState::Running => matches!(
