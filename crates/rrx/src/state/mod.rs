@@ -666,7 +666,7 @@ fn validate_worktree_exclusion(tx: &Transaction<'_>, record: &Record) -> Result<
                     "worktree has an active immutable/maintenance lock"
                 );
             }
-            RecordKind::Session if acquiring => {
+            RecordKind::Session if acquiring || executor => {
                 let session: Session = serde_json::from_value(other.data)?;
                 ensure!(!executor_reserved(&session), "executor is reserved/live");
             }

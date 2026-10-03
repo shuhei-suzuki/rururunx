@@ -210,7 +210,7 @@ The command examples above describe the MVP target. Currently implemented:
 - Library Git/worktree management with project ownership checks, protected branches,
   dirty-state checks, durable logical review locks and safe merged cleanup. CLI/workflow
   integration and interrupted-operation reconciliation are pending.
-`rrx --help`, `rrx --version`, and `rrx config-check`. The library also provides
+- `rrx --help`, `rrx --version`, and `rrx config-check`. The library also provides
 typed runtime entities and transactional SQLite state/audit persistence; native
 execution and workflow commands are not yet implemented.
 

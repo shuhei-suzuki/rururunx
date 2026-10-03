@@ -159,6 +159,7 @@ impl WorktreeManager {
         );
         // Store checks sessions/locks under the same SQLite write transaction as reservation.
         store.put_record(&mut record)?;
+        Self::verify_review(store, record.id)?;
         Ok(record.id)
     }
 
@@ -298,6 +299,10 @@ fn project_root(project: &Project) -> Result<PathBuf> {
 }
 fn namespace(project: &Project, root: &Path) -> Result<PathBuf> {
     let path = &project.worktree_root;
+    ensure!(
+        !path.starts_with(root.join(".git")),
+        "worktree namespace cannot use Git metadata"
+    );
     ensure!(
         path.is_absolute() && path.starts_with(root) && path != root,
         "worktree namespace must be below project root"
