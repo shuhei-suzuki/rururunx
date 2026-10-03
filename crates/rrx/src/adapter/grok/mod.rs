@@ -938,7 +938,7 @@ async fn supervise(mut actor: Actor, load: Option<String>) {
         let info=actor.request("_x.ai/session/info",json!({"sessionId":native}),Duration::from_secs(15)).await?;actor.inventory_gate(&info)?;
         actor.snapshot.verify_binding(&actor.request,&mut ownership,binding.as_ref().expect("preflight binding")).await?;actor.owner()?;profile.as_ref().expect("owned profile").verify()?;
         actor.prompt=uuid::Uuid::new_v4().to_string();
-        let mut params=json!({"sessionId":native,"prompt":[{"type":"text","text":actor.request.input.payload}],"_meta":{"promptId":actor.prompt,"screenMode":"headless"}});
+        let mut params=json!({"sessionId":native,"prompt":[{"type":"text","text":format!("Prepared Task input follows:\n\n{}",actor.request.input.payload)}],"_meta":{"promptId":actor.prompt,"screenMode":"headless"}});
         if let Some(schema)=&actor.entry.schema{params["_meta"]["outputSchema"]=schema.clone();}
         let (id,frame)=actor.rpc.as_mut().expect("RPC").frame("session/prompt",params)?;
         actor.session.state=SessionState::Running;actor.session.recovery["input_version"]=json!(actor.request.input.version);actor.session.recovery["prompt_id"]=json!(actor.prompt);actor.session.recovery["dispatch_state"]=json!("dispatching");

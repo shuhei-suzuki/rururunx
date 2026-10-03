@@ -82,7 +82,10 @@ model/effort current values must match explicit requested values before promptin
 One Tokio actor owns each private process and NDJSON channel. It correlates exact RPC IDs,
 bounds every frame/output/pending request, drains stderr concurrently, and rejects
 unknown/wrong-session reverse requests. It preserves structured native result/error and
-scoped factual audit. Public supplied recovery JSON cannot create completion authority.
+scoped factual audit. Prepared text receives a fixed non-command first-line envelope; its
+content remains intact beneath that line. Native human-catalog leading slash commands
+cannot turn a Context Pack into a permission/workflow control operation. Arbitrary content
+metadata is never forwarded. Public supplied recovery JSON cannot create completion authority.
 
 Executor client FS supports ACP read/write only. Resolve relative paths against the exact
 Task root and walk pinned directory descriptors with no-follow flags; check directory/file
