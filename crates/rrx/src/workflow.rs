@@ -1392,7 +1392,7 @@ impl WorkflowEngine {
     /// Re-evaluate a known waiting gate without launching another native Session.
     /// An unknown/interrupted evaluation still requires external recovery (#13).
     pub async fn resume_gate(&self, task_id: TaskId) -> Result<StepResult> {
-        let mut snapshot = self.read(task_id)?;
+        let snapshot = self.read(task_id)?;
         active(&snapshot.project, &snapshot.goal, &snapshot.task)?;
         let index = snapshot.workflow.active.context("no waiting attempt")?;
         let attempt = snapshot.workflow.history[index].clone();
