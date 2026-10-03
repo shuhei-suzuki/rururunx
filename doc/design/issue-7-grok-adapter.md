@@ -19,7 +19,11 @@ both. Both explicitly deny `search_tool`, `use_tool`, `web_search`, `x_search`, 
 for executor and read-only for decision. Native sandbox labels alone do not establish
 Task isolation: executor tools delegate to the supervisor's scoped filesystem.
 
-Decision also uses dontAsk. Default system prompt/rule/skill discovery, native hooks and
+Executor preserves native default permission mode (`permissionMode: default` in its
+curated profile); it adds no acceptEdits/auto/bypass/always-approve grant. Ordinary native
+file edits can be auto-allowed by existing native policy; if policy asks, the adapter denies
+and the tool fails. Thus execute capability does not guarantee every proposed edit succeeds.
+Decision uses dontAsk. Default system prompt/rule/skill discovery, native hooks and
 inherited MCP startup remain. Decision-only means no model tool entrypoint; it does not
 mean native hooks/config discovery have no effects. A before/after worktree observation
 must detect unexplained effects before any completed transport result is accepted.
@@ -36,7 +40,13 @@ internally, not shell-interpolated. Explicit intentional native baseline environ
 retained; project leakage and Git overrides are rejected. Native authentication/config,
 loader and permission override variables may only equal the constructor-captured intentional
 runtime baseline; per-launch replacement HOME/GROK_HOME/config/auth/library injection or
-native safety overrides fail. Additional ordinary explicit environment remains scoped. Preserve native auth home;
+native safety overrides fail. Additional ordinary explicit environment remains scoped.
+Exact baseline-only names: HOME, PATH, TMPDIR, XDG_CONFIG_HOME, XDG_DATA_HOME,
+XDG_STATE_HOME, XDG_CACHE_HOME, NODE_OPTIONS, SSL_CERT_FILE, SSL_CERT_DIR,
+REQUESTS_CA_BUNDLE, CURL_CA_BUNDLE, HTTP_PROXY, HTTPS_PROXY, ALL_PROXY, NO_PROXY
+(and lowercase proxy equivalents). All GROK_*, XAI_*, DYLD_*, LD_* variables are
+baseline-only, including unknown future suffixes. GIT_* is always rejected. The
+constructor captures these intentional baseline values; launch cannot alter/add them. Preserve native auth home;
 never create an empty replacement config/auth home. No native trust bypass is introduced.
 
 Fresh lifecycle: reserve persisted Starting → async immutable Git/owner preflight → owned
@@ -45,7 +55,20 @@ with exact CWD → apply/verify explicit model then effort → native session/in
 persist owned UUID/PID/metadata with CAS → durably consume exact input version and unique
 prompt ID with CAS → send prepared payload. A failed or uncertain send consumes that input;
 no durable dispatch marker means no prompt. Unknown outcomes remain reserved.
-Every async boundary is followed by necessary owner checks before irreversible dispatch.
+Before dispatch, one Immediate Store transaction checks Project/Goal/Task versions, exact
+lock ID/version set, Session version/ownership/reservation and input consumption, then
+writes the marker through existing Session guards. Buffer the complete NDJSON frame before
+this transaction; no other I/O/preflight await lies between commit and its bounded pipe
+write. External mutation cannot be made atomic with SQLite: actor checks ownership after
+send, journals the actual outcome, and fails conservatively on changed authority.
+
+Reviewer requires the exact immutable active review lock; Executor requires no active lock.
+Consultant requires no live/Lost executor on the Task and may share a stable review lock.
+Multiple independent decision Sessions use existing scoped Session records, which exclude
+only reserved Executors, not other reviewers; every reviewer shares the same lock snapshot.
+ApprovalReviewer is explicitly Unsupported in this baseline until Issue 10 supplies exact
+requester/pending-request authority. Review/consult output itself grants no native approval.
+Concurrent reviewer hook effects invalidate affected reviews rather than fabricate evidence.
 Failure after actual native creation is recorded factually, even if owner activity changes;
 conservative Session updates preserve Blocked ownership metadata guards.
 
@@ -64,10 +87,13 @@ scoped factual audit. Public supplied recovery JSON cannot create completion aut
 Executor client FS supports ACP read/write only. Resolve relative paths against the exact
 Task root and walk pinned directory descriptors with no-follow flags; check directory/file
 identity, regular-file type and hard-link count. Reject foreign paths, every dot-prefixed
-component (including .git/.grok/.claude/.codex/.agents/.rrx/.github), AGENTS.md/CLAUDE.md
+component (including .git/.grok/.claude/.codex/.agents/.rrx/.github), AGENTS.md/CLAUDE.md/GROK.md
 case-insensitively, and exact configured Project rule/config paths and their inode aliases.
 The baseline accepts ASCII path components only, so Unicode/case-normalization ambiguity
-cannot grant authority on macOS. Deny FIFOs/devices/hardlinks/symlinks. Text reads/writes
+cannot grant authority on macOS. Read and write share this conservative baseline; non-secret
+dotfile/rule reads are intentionally unsupported, not an accidental full-repository claim.
+Pinned discovery includes AGENTS.md/CLAUDE.md plus vendor dot directories; GROK.md is
+conservatively protected even though it is not a verified discovered rule name. Deny FIFOs/devices/hardlinks/symlinks. Text reads/writes
 are UTF-8 and bounded; unsupported ranges or absent parents fail explicitly. New files use
 exclusive no-follow creation under the pinned parent. Existing files preserve their mode
 and are only written after identity/type/content checks; partial failed effects remain
@@ -88,16 +114,29 @@ Native extension hooks are known to fail open on some failures and are not isola
 Native assistant text updates feed bounded output. Schema launch sends native
 `session/prompt._meta.outputSchema`; native terminal structuredOutput is retained and
 validated locally against the same bounded supported schema contract as well as native
-success/error/size. Unsupported schema keywords/dialects fail before inference; native
+success/error/size. The supported JSON Schema subset has no dialect/ref resolver: type (single object/array/
+string/integer/number/boolean/null), properties, required, boolean additionalProperties,
+enum, items, minLength/maxLength, minItems/maxItems, minimum/maximum, and annotation-only
+title/description. Schema <=16KiB, depth <=16, properties/required/enum <=128, result <=1MiB.
+Unsupported schema keywords/dialects fail before inference; native
 metadata alone does not validate a result. Post-turn identity/count checks are mandatory;
 decision toolCallCount must remain zero, and any FS/terminal callback invalidates decision
-success. Executor must retain its two-tool contract. Notifications replayed during load
+success. Any live tool_call/tool_call_update invalidates a decision; executor native tool
+metadata must name exactly read_file/search_replace and correlate each successful tool
+with its requested-path ACP callbacks. A native tool that resolves a directory/stat or
+fallback locally without callbacks cannot establish completed executor transport. Native
+search/tool invocation fields invalidate decision success if present. Missing post-turn
+counts fail; old history/cumulative counts are not new activity. Executor must retain its
+two-tool contract. Notifications replayed during load
 are excluded from live output/evidence until the load response has been verified. Review Engine owns verdict/evidence policy. Native
 `_meta.usage` aggregate counters are preferred over last-call fields; absent telemetry
 and uncontracted cost conversion remain null.
 
 Before native startup and after shutdown, observe exact HEAD, current branch ref, index,
-status, and bounded Task file inventory/content hashes, including ignored files. Executor
+status, and bounded Task file inventory/content hashes, including ignored files. Initial bounds are 4096 entries, 1MiB per file, 16MiB aggregate,
+32 directory levels and a five-second observation deadline. Repositories with large ignored
+build trees must use a clean isolated Task worktree; no weak metadata fallback is claimed.
+Over-budget is explicit observation failure. Executor
 changes must match recorded ACP writes; decision changes must be empty. Missing/over-budget
 observations or unexplained hook/native/concurrent effects fail completion. Preserve hooks
 and report evidence rather than silently roll back effects. Other Project/native-global
@@ -122,7 +161,10 @@ authority metadata, and retains payload/environment in memory. Resume requires a
 input version than the last dispatched turn, unchanged owning path/provider/role and
 verified prior termination. It restores conversation through session/load without
 --restore-code, applies current explicit config, rechecks inventory and dispatches the new
-input once. No picker/title/continue heuristics and no automatic old-prompt replay.
+input once. The 0400 profile in a 0700 owned runtime directory is immutable while running;
+its exact digest/contract is checked before dispatch and matched on load. After the final
+setter, verify both model and effort together from returned options. Native per-prompt
+aggregate usage after load is collected once; unknown fields stay null. No picker/title/continue heuristics and no automatic old-prompt replay.
 
 Release requires owned verified terminal state; Lost cannot be released. After runtime
 restart, absent private ownership returns SessionLost until Issue 13 supplies explicit

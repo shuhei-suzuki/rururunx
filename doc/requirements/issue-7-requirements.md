@@ -16,7 +16,7 @@ credentials extraction, bypass mode, always-approve flag or snapshot restoration
 - Native execution accepts scoped prepared input and actually edits an owned Task file.
   The first implementation exposes only native `read_file` and `search_replace` tools,
   routed through ACP filesystem callbacks. It does not advertise shell execution.
-- Consultant, Reviewer and ApprovalReviewer Sessions are decision-only: profile identity
+- Consultant and Reviewer Sessions are decision-only: profile identity
   and a tested curated tool contract plus native zero-tool inventory are checked before every fresh/resumed prompt. Empty
   strings, unknown tool names or prompt instructions are never security controls.
 - Native `outputSchema` produces collected structured results. Missing/invalid or locally schema-invalid native
@@ -29,7 +29,7 @@ credentials extraction, bypass mode, always-approve flag or snapshot restoration
 - Concurrent independent reviewer Sessions work through the existing AgentRegistry.
   Issue 9 still owns actual Review Set policy/scheduling/aggregation.
 - Every launch is Task-scoped with exact persisted Project/Goal/Task/worktree ownership.
-  Mutating launches reserve Starting before async preflight; persisted review locks,
+  Mutating launches reserve Starting before async preflight; executor launches fence persisted review locks,
   base/main/master branches, inactive owners and live/Lost executors remain fenced.
 - Filesystem callbacks require the exact current native Session ID and owned Task root.
   Traversal, symlinks, hard-link aliases, foreign Projects, Git/native metadata and
@@ -49,10 +49,11 @@ credentials extraction, bypass mode, always-approve flag or snapshot restoration
 - Native aggregate token/cache telemetry is collected only when present. Absent values
   remain null; last-model-call counters and projected fallback zeros are not totals.
 
-Interactive PTY/attach, shell/terminal operations, universal permission interception,
+ApprovalReviewer/requester binding pending Issue 10, interactive PTY/attach, shell/terminal
+operations, universal permission interception,
 native Goals and cross-process recovery are unsupported in this baseline. Unknown reverse
 callbacks fail closed. Native one-time permission callbacks may be denied conservatively;
-ordinary auto-approved edits do not prove an interception capability. All permission
+native default-mode ordinary auto-approved edits do not prove an interception capability. All permission
 callbacks are denied; native cached-token authentication has no interactive fallback. Future extensions
 must prove those native authority boundaries independently before advertising support.
 
