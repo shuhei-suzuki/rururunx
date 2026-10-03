@@ -169,6 +169,30 @@ rrx logs 201
 
 `rrx consult` launches a native agent for repository-aware discussion without forcing the full development workflow. A consultation can later be promoted into an Issue / Requirements / Task.
 
+## MVP scope and priority
+
+The release-blocking path is the supervision runtime itself:
+
+```text
+Claude / Codex / Grok adapters
+  ↓
+Workflow
+  ↓
+Review
+  ↓
+Cross-agent Approval
+  ↓
+Goal / Scheduler / Recovery
+  ↓
+Full dogfood
+```
+
+Context Efficiency, multi-project isolation, verification gates, PR/merge/cleanup, CLI/TUI and audit are part of MVP Core.
+
+Adaptive Stagehand/Jev browser automation is **MVP Optional / Stretch**. MVP browser verification is backend-neutral and must have a deterministic headed path that does not require an LLM.
+
+The iOS/iPadOS companion PWA, `rrx serve`, and Tailscale remote status experience are **Post-MVP** and must not block the core runtime.
+
 ## MVP definition
 
 The MVP is complete when the development workflow currently performed across multiple terminal sessions can be managed from one `rrx` session, including:
@@ -185,7 +209,7 @@ The MVP is complete when the development workflow currently performed across mul
 - impact analysis
 - unit / integration / E2E / regression checks
 - mutation verification where required
-- headed browser verification for UI/browser-facing changes
+- provider-neutral headed browser verification for UI/browser-facing changes through at least one deterministic backend
 - staging verification for relevant API/auth/DB/infra changes
 - configurable parallel review with 1, 2, 3, or more reviewers (including 2-reviewer mode and Claude / Codex / Grok Triple Review)
 - multi-round verify → fix → commit → re-review
