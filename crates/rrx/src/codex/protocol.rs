@@ -392,6 +392,45 @@ impl TokenCounters {
     }
 }
 
+/// Replace cumulative gauges and emit only changed scoped observations. The
+/// runtime persists these snapshots by native thread/turn rather than summing
+/// repeated cumulative notifications (including notifications after resume).
+#[derive(Debug, Clone)]
+pub struct UsageTracker {
+    thread: String,
+    turn: String,
+    pub total: Option<TokenCounters>,
+    pub last: Option<TokenCounters>,
+}
+impl UsageTracker {
+    pub fn new(thread: String, turn: String) -> Self {
+        Self {
+            thread,
+            turn,
+            total: None,
+            last: None,
+        }
+    }
+    pub fn update(&mut self, params: &Value) -> AdapterResult<bool> {
+        if params["threadId"].as_str() != Some(self.thread.as_str())
+            || params["turnId"].as_str() != Some(self.turn.as_str())
+        {
+            return Err(failure(
+                ErrorKind::OwnershipMismatch,
+                "foreign or stale native token usage",
+            ));
+        }
+        let total = TokenCounters::from_native(&params["tokenUsage"]["total"])?;
+        let last = TokenCounters::from_native(&params["tokenUsage"]["last"])?;
+        if self.total.as_ref() == Some(&total) && self.last.as_ref() == Some(&last) {
+            return Ok(false);
+        }
+        self.total = Some(total);
+        self.last = Some(last);
+        Ok(true)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -473,6 +512,23 @@ mod tests {
         assert_eq!(a.output, None);
         assert!(TokenCounters::from_native(&json!({"inputTokens":-1})).is_err());
         assert!(TokenCounters::from_native(&json!({"cachedInputTokens":"0"})).is_err());
+        let mut tracker = UsageTracker::new("own-thread".into(), "own-turn".into());
+        let mut notification = json!({"threadId":"own-thread","turnId":"own-turn","tokenUsage":{"total":{"inputTokens":41,"cachedInputTokens":0,"totalTokens":43},"last":{"inputTokens":41,"totalTokens":43}}});
+        assert!(tracker.update(&notification).unwrap());
+        assert!(!tracker.update(&notification).unwrap());
+        assert_eq!(tracker.total.as_ref().unwrap().input, Some(41));
+        notification["tokenUsage"]["total"]["inputTokens"] = json!(82);
+        assert!(tracker.update(&notification).unwrap());
+        assert_eq!(tracker.total.as_ref().unwrap().input, Some(82));
+        notification["threadId"] = json!("other-project-thread");
+        assert_eq!(
+            tracker.update(&notification).unwrap_err().kind,
+            ErrorKind::OwnershipMismatch
+        );
+        assert_eq!(tracker.total.as_ref().unwrap().input, Some(82));
+        notification["threadId"] = json!("own-thread");
+        notification["turnId"] = json!("stale-turn");
+        assert!(tracker.update(&notification).is_err());
     }
     #[test]
     fn ambiguous_envelopes_and_invalid_ids_are_rejected() {
