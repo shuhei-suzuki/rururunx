@@ -30,6 +30,8 @@ Human
 Suggested fields:
 
 - request ID
+- project ID
+- goal ID
 - task ID
 - executor agent/session
 - action category
