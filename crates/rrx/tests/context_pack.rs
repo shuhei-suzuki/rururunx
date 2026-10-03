@@ -3513,3 +3513,65 @@ async fn private_rendered_frame_authority_is_atomic_and_rejects_forged_payload_m
         .validate_context_input(&f.task.scope(), &prepared)
         .unwrap();
 }
+
+#[tokio::test]
+async fn exact_prepared_frame_cannot_outlive_new_semantic_task_or_goal_constraints() {
+    let f = Fixture::new();
+    let packs = f.packs();
+    let reference = packs
+        .publish_task(&packs.draft_task(&f.task.scope(), input()).await.unwrap())
+        .await
+        .unwrap();
+    let PreparedPack::Ready(prepared) = packs
+        .prepare_task(&reference, SelectionRequest::default(), budget())
+        .await
+        .unwrap()
+    else {
+        panic!("budget")
+    };
+    f.store
+        .lock()
+        .unwrap()
+        .validate_context_input(&f.task.scope(), &prepared)
+        .unwrap();
+    {
+        let mut store = f.store.lock().unwrap();
+        let mut task = store.task(f.task.id).unwrap().unwrap();
+        task.acceptance_criteria
+            .push("new mandatory Task criterion".into());
+        store.put_task(&mut task).unwrap();
+        assert!(
+            store
+                .validate_context_input(&f.task.scope(), &prepared)
+                .is_err()
+        );
+    }
+    let current = packs
+        .publish_task(&packs.draft_task(&f.task.scope(), input()).await.unwrap())
+        .await
+        .unwrap();
+    let PreparedPack::Ready(fresh) = packs
+        .prepare_task(&current, SelectionRequest::default(), budget())
+        .await
+        .unwrap()
+    else {
+        panic!("budget")
+    };
+    f.store
+        .lock()
+        .unwrap()
+        .validate_context_input(&f.task.scope(), &fresh)
+        .unwrap();
+    {
+        let mut store = f.store.lock().unwrap();
+        let mut goal = store.goal(f.task.goal_id).unwrap().unwrap();
+        goal.constraints
+            .push("new mandatory Goal constraint".into());
+        store.put_goal(&mut goal).unwrap();
+        assert!(
+            store
+                .validate_context_input(&f.task.scope(), &fresh)
+                .is_err()
+        );
+    }
+}

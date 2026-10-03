@@ -120,6 +120,18 @@ fn validate(
         |r| r.get(0),
     )?;
     let task: Task = decode(body)?;
+    let goal_body: String = connection.query_row(
+        "SELECT body FROM goals WHERE id=?1",
+        [task.goal_id.to_string()],
+        |r| r.get(0),
+    )?;
+    let goal: Goal = decode(goal_body)?;
+    let project_body: String = connection.query_row(
+        "SELECT body FROM projects WHERE id=?1",
+        [task.project_id.to_string()],
+        |r| r.get(0),
+    )?;
+    let project: Project = decode(project_body)?;
     ensure!(
         context.scope == *scope
             && task.scope() == *scope
@@ -129,7 +141,14 @@ fn validate(
         "native input differs from latest typed Task authority"
     );
     if context.data.get("task_pack").is_some() {
-        crate::context_pack::workflow::context_artifact(context)?;
+        let artifact = crate::context_pack::workflow::context_artifact(context)?;
+        ensure!(
+            artifact.authority_versions[..2] == [project.version, goal.version]
+                && crate::context_pack::instruction_versions(&project, &goal, &task)?
+                    .iter()
+                    .all(|(key, value)| frame.sources.get(key) == Some(value)),
+            "native phase input semantic authority changed"
+        );
         let payload = context.data["payload"]
             .as_str()
             .context("typed phase payload missing")?;
@@ -145,6 +164,12 @@ fn validate(
             "native input has no exact privately prepared frame authority"
         );
         let pack: crate::context_pack::TaskPack = serde_json::from_value(context.data.clone())?;
+        ensure!(
+            pack.authority_digest == crate::context_pack::authority(&project, &goal, &task)?
+                && pack.task == crate::context_pack::projection(&task)?
+                && pack.goal == crate::context_pack::projection(&goal)?,
+            "native standalone pack semantic authority changed"
+        );
         ensure!(
             frame.sources.get("checkpoint:head")
                 == Some(&crate::context_pack::head_digest(pack.checkpoint.as_ref())),

@@ -1566,7 +1566,7 @@ fn bounded(value: &impl Serialize) -> Result<()> {
     );
     Ok(())
 }
-fn projection(value: &impl Serialize) -> Result<Value> {
+pub(crate) fn projection(value: &impl Serialize) -> Result<Value> {
     let mut v = serde_json::to_value(value)?;
     if let Some(obj) = v.as_object_mut() {
         for key in ["version", "context_version", "created_at", "updated_at"] {
@@ -1575,7 +1575,7 @@ fn projection(value: &impl Serialize) -> Result<Value> {
     }
     Ok(v)
 }
-fn authority(p: &Project, g: &Goal, t: &Task) -> Result<String> {
+pub(crate) fn authority(p: &Project, g: &Goal, t: &Task) -> Result<String> {
     digest(&(projection(p)?, projection(g)?, projection(t)?))
 }
 fn rules(map: &RepositoryMap) -> BTreeMap<String, String> {
@@ -1647,7 +1647,11 @@ fn validate_inputs(inputs: &TaskInputs) -> Result<()> {
     Ok(())
 }
 
-fn instruction_versions(p: &Project, g: &Goal, t: &Task) -> Result<BTreeMap<String, String>> {
+pub(crate) fn instruction_versions(
+    p: &Project,
+    g: &Goal,
+    t: &Task,
+) -> Result<BTreeMap<String, String>> {
     Ok(BTreeMap::from([
         (
             "repository:identity".into(),
