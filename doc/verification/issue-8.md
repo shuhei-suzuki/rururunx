@@ -118,7 +118,16 @@ The exclusive detached mutation worktree was removed normally after clean restor
 
 Reviewed exact-head Linux/macOS CI: [run 37109940133](https://github.com/shuhei-suzuki/rururunx/actions/runs/37109940133), both SUCCESS at `8f46135`.
 Final test/documentation-head CI is tracked by PR 36 exact-head checks; root must verify
-both Linux and macOS SUCCESS before merge. No additional production change follows review.
+both Linux and macOS SUCCESS before merge.
+
+Final run 37110578255 failed in the macOS merged Issue 18 context suite: a native
+Git cleanup uncertainty latched subsequent scans closed. Workflow and adapter checks
+passed; Linux completed every check but received the matrix cancellation conclusion.
+The unchanged local native context suite passed all 16 tests. The original diagnostic
+discarded the underlying native error, so a narrow diagnostic follow-up preserves that
+error chain while retaining the uncertainty latch and rejecting successful output when
+ownership remains uncertain. Its regression covers both failure and successful-output
+cases. No timeout or safety-boundary change is inferred from the initial failure.
 
 Issue 9 owns actual multi-review scheduling/verdict reconciliation; Issue 12 owns typed
 approval/blocker routing; Issue 13 owns actual unknown-outcome/crash reconciliation;
