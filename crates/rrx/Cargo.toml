@@ -12,6 +12,11 @@ clap.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 toml.workspace = true
+rusqlite.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
 
 [lints]
 workspace = true
