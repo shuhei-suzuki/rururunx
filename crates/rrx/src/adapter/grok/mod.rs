@@ -721,7 +721,13 @@ impl Actor {
             {
                 return Err(failure(
                     ErrorKind::ParseFailure,
-                    "uncorrelated ACP response",
+                    format!(
+                        "ACP response mismatch expected_id={id} actual_numeric_id={:?} actual_string_id={} has_result={} has_error={}",
+                        value["id"].as_u64(),
+                        value["id"].is_string(),
+                        value.get("result").is_some(),
+                        value.get("error").is_some()
+                    ),
                 ));
             }
             if value.get("error").is_some() {
