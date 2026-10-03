@@ -1278,6 +1278,158 @@ async fn index_digest(root: &Path, ownership: &mut ProcessOwnership) -> AdapterR
 #[cfg(test)]
 mod registry_tests {
     use super::*;
+    #[tokio::test]
+    async fn actor_journals_failed_write_effect_and_denies_completion() {
+        use crate::domain::{CompletionCriterion, Goal, Task};
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().canonicalize().unwrap();
+        let worktree = root.join("worktree/task");
+        std::fs::create_dir_all(&worktree).unwrap();
+        let mut store = crate::state::Store::open(&root.join("state.db")).unwrap();
+        let mut project = Project::new("fixture".into(), root, "fixture".into(), "main".into());
+        store.put_project(&mut project).unwrap();
+        let mut goal = Goal::new(
+            project.id,
+            "fixture".into(),
+            vec![CompletionCriterion {
+                id: "effect".into(),
+                description: "observe actual failed write".into(),
+                satisfied: false,
+                evidence: None,
+            }],
+        );
+        store.put_goal(&mut goal).unwrap();
+        let mut task = Task::new(project.id, goal.id, "fixture".into(), "grok".into());
+        task.worktree = Some(worktree.clone());
+        task.branch = Some("feature/task".into());
+        store.put_task(&mut task).unwrap();
+        let request = LaunchRequest {
+            project,
+            scope: task.scope(),
+            worktree: worktree.clone(),
+            role: SessionRole::Executor,
+            mode: LaunchMode::NonInteractive,
+            input: PreparedInput {
+                scope: task.scope(),
+                kind: InputKind::ContextPack,
+                revision: "a".repeat(40),
+                version: 1,
+                source_versions: BTreeMap::new(),
+                payload: "fixture".into(),
+            },
+            environment: BTreeMap::new(),
+            model: None,
+            effort: None,
+        };
+        let store = Arc::new(Mutex::new(store));
+        let snapshot = ScopeSnapshot::capture(&store, &request, "grok").unwrap();
+        let session = Session {
+            id: SessionId::new(),
+            scope: task.scope(),
+            agent: "grok".into(),
+            provider: "grok".into(),
+            role: SessionRole::Executor,
+            native_ref: Some("native".into()),
+            pid: None,
+            worktree: worktree.clone(),
+            state: SessionState::Running,
+            model: None,
+            effort: None,
+            recovery: json!({}),
+            started_at: now_ms(),
+        };
+        let version = store.lock().unwrap().put_session(&session, 0).unwrap();
+        let (events, status) = watch::channel(SessionStatus {
+            session: session.clone(),
+            exit_code: None,
+            stdout: vec![],
+            stderr: vec![],
+            stdout_truncated: false,
+            stderr_truncated: false,
+            failure: None,
+        });
+        let entry = Arc::new(OwnedEntry {
+            scope: session.scope.clone(),
+            transition: Mutex::new(()),
+            status,
+            events: events.clone(),
+            request: Mutex::new(request.clone()),
+            schema: None,
+            busy: AtomicBool::new(true),
+            stopping: AtomicBool::new(false),
+            stop: Notify::new(),
+            completed: AtomicBool::new(false),
+            cleaned: AtomicBool::new(false),
+            usage: Mutex::new(Value::Null),
+        });
+        let mut files = ScopedFiles::new(worktree.clone(), &request.project).unwrap();
+        files.fail_sync = true;
+        let mut child = tokio::process::Command::new("/bin/cat")
+            .env_clear()
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .kill_on_drop(true)
+            .spawn()
+            .unwrap();
+        let rpc = Rpc::new(child.stdin.take().unwrap(), child.stdout.take().unwrap());
+        let mut actor = Actor {
+            store: store.clone(),
+            agent: "grok".into(),
+            executable: PathBuf::from("/bin/cat"),
+            request,
+            environment: BTreeMap::new(),
+            snapshot,
+            session: session.clone(),
+            version,
+            entry,
+            events,
+            rpc: Some(rpc),
+            files: Some(Arc::new(Mutex::new(files))),
+            evidence: TurnEvidence::default(),
+            prompt: "prompt".into(),
+            active: true,
+            native_before_calls: 0,
+            dispatched: true,
+            native_outcome: false,
+            callbacks: 0,
+        };
+        actor.evidence.update(&worktree, &json!({"sessionId":"native","_meta":{"promptId":"prompt"},"update":{"sessionUpdate":"tool_call","toolCallId":"write","_meta":{"x.ai/tool":{"name":"search_replace"}},"status":"pending","rawInput":{"file_path":"effect.txt"}}}), "native", "prompt", false).unwrap();
+        let callback = actor.callback(json!({"jsonrpc":"2.0","id":1,"method":"fs/write_text_file","params":{"sessionId":"native","path":"effect.txt","content":"applied before sync error"}})).await;
+        let response = tokio::time::timeout(
+            Duration::from_secs(5),
+            actor.rpc.as_mut().unwrap().receive(),
+        )
+        .await;
+        // Close the only stdin writer and reap the owned echo process before assertions.
+        actor.rpc.take();
+        let exited = tokio::time::timeout(Duration::from_secs(5), child.wait()).await;
+        assert!(exited.unwrap().unwrap().success());
+        callback.unwrap();
+        assert!(response.unwrap().unwrap().get("error").is_some());
+        assert_eq!(
+            std::fs::read_to_string(worktree.join("effect.txt")).unwrap(),
+            "applied before sync error"
+        );
+        let event = store
+            .lock()
+            .unwrap()
+            .events(&session.scope, 0, 100)
+            .unwrap()
+            .into_iter()
+            .find(|event| event.kind == "grok.fs_observed")
+            .unwrap();
+        assert_eq!(event.data["session"], json!(session.id));
+        assert_eq!(event.data["native"], "native");
+        assert_eq!(event.data["prompt"], "prompt");
+        assert_eq!(event.data["succeeded"], false);
+        assert_eq!(event.data["effect_may_have_occurred"], true);
+        actor.evidence.update(&worktree, &json!({"sessionId":"native","_meta":{"promptId":"prompt"},"update":{"sessionUpdate":"tool_call_update","toolCallId":"write","status":"failed"}}), "native", "prompt", false).unwrap();
+        assert_eq!(
+            actor.evidence.finished().unwrap_err().kind,
+            ErrorKind::ProcessFailure
+        );
+    }
     #[test]
     fn successful_retirement_permanently_fences_previously_handed_entry() {
         let directory = tempfile::tempdir().unwrap();

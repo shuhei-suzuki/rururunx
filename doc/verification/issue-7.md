@@ -222,3 +222,21 @@ survivor subsequently killed. Restored baseline has no crate diff; its full fake
 passes and the owned detached mutation worktree was removed normally. Immutable
 scoped Round 5 rereview and the latest exact default-concurrency Linux/macOS CI remain
 pending.
+
+## Implementation Review 5 dispositions
+
+Independent native Round 5 of public immutable `6f10dff` completed in 134.315 seconds,
+with no Critical/High/Medium or unresolved blockers. All three R4 fixes are verified;
+exact default-concurrency Linux/macOS CI run `37160386577` succeeds. Three Low refinements
+were checked: R5-01 identifies a caller-wiring test gap, with current code correct. A
+private actual Actor callback fixture injects the same applied-write sync failure and
+asserts both scoped audit possible-effects evidence and refusal of completion; its
+owned piped echo subprocess is explicitly reaped before assertions. R5-02 synchronizes
+the master design's pre-syscall ownership and failed-effect completion invariants.
+R5-03 checks two intentional bounded diagnostic sites: `grok.fs_observed` retains the
+callback path (at most 4096 bytes), and inventory reconciliation reports the unexplained
+entry name (bounded by depth/filename limits). Both retain factual scope/effect evidence,
+are data rather than authority and may include foreign paths. Boolean-only unmatched
+identity/kind diagnostics remain separate. No general claim that all diagnostics exclude
+native-controlled text is made. Caller-level compiled mutants, committed targeted gates
+and immutable scoped rereview remain pending.

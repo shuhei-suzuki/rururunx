@@ -245,6 +245,9 @@ Prepared text is enclosed beneath a non-command first line, never sent as native
 metadata. Unknown dispatched outcomes remain Lost even after verified process death.
 Only private exact native completion plus cleanup/persistence authorizes transport success;
 actual OS exit code is preserved. Native aggregate usage is collected per owned prompt.
+Executor writes require one unfinished owned search_replace before any syscall; a failed
+host write with possible effects denies transport success even after native end_turn and
+matching inventory.
 Shell/PTY, ApprovalReviewer, universal permission interception and restart recovery remain
 unsupported. See [verification](../../verification/issue-7.md) for final review/CI status.
 
