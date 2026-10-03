@@ -1341,6 +1341,7 @@ async fn genuine_foreign_project_and_goal_checkpoints_in_one_store_cannot_promot
         .unwrap()
         .unwrap();
     g.version = 0;
+    g.dag.nodes.clear();
     let mut t = other.task.clone();
     t.version = 0;
     {
@@ -1348,6 +1349,8 @@ async fn genuine_foreign_project_and_goal_checkpoints_in_one_store_cannot_promot
         store.put_project(&mut p).unwrap();
         store.put_goal(&mut g).unwrap();
         store.put_task(&mut t).unwrap();
+        g.dag.nodes.push(t.id);
+        store.put_goal(&mut g).unwrap();
     }
     let (mut native, _) = session(&other, SessionRole::Consultant, SessionState::Exited);
     native.id = SessionId::new();
