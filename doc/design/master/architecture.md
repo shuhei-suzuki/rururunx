@@ -437,3 +437,24 @@ Future migrations must be ordered/transactional, preserve identity/audit/context
 and telemetry, and test real old-version fixtures. Persistence schema and snapshot
 format evolve together; typed snapshots reject unknown fields instead of dropping
 them during read/write. Free-form extension payloads retain their fields.
+
+## 14. Scoped Git/worktree implementation
+
+`git::WorktreeManager` creates independent task worktrees and attached branches,
+checks exact canonical Project root/worktree top-level and common-dir, rejects
+main/master/configured base, detached HEAD, mismatched bindings and symlink paths.
+Supported namespaces are descendants of the Project root. Status includes ignored
+files so cleanup cannot silently discard them. Existing hooks/config remain active;
+Git arguments never request force/no-verify. Inherited repository-routing environment
+variables are removed to enforce scoped CWD.
+
+Task binding and create/cleanup intents persist before native side effects. Typed
+WorktreeLock records reserve maintenance/review operations; SQLite immediate
+transactions serialize active locks against Starting/Running/WaitingApproval/
+WaitingHuman Executor reservations across connections. Assigned task path/branch
+are immutable. Logical locks block runtime mutation; external changes are detected
+by exact HEAD/clean verification. Cleanup requires owned clean merged worktrees,
+uses ordinary Git removal/local branch deletion, and retains durable provenance.
+Failures preserve intent/lock for explicit recovery; dependent runtime recovery
+integration is not yet implemented. Git calls are synchronous local operations and
+must run on a blocking worker when integrated with async scheduling.

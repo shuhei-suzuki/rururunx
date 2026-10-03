@@ -222,6 +222,17 @@ impl Store {
                 "task ownership is immutable"
             );
             ensure!(
+                previous
+                    .worktree
+                    .as_ref()
+                    .is_none_or(|path| task.worktree.as_ref() == Some(path))
+                    && previous
+                        .branch
+                        .as_ref()
+                        .is_none_or(|branch| task.branch.as_ref() == Some(branch)),
+                "assigned task worktree/branch binding is immutable"
+            );
+            ensure!(
                 task.workflow >= previous.workflow,
                 "workflow downgrade is forbidden"
             );
@@ -282,6 +293,7 @@ impl Store {
                 "record scope/kind is immutable"
             );
         }
+        validate_worktree_exclusion(&tx, record)?;
         let mut next = record.clone();
         bump(&mut next.version)?;
         next.updated_at = now_ms();
@@ -589,6 +601,81 @@ fn validate_goal_references(tx: &Transaction<'_>, goal: &Goal) -> Result<()> {
 fn decode<T: DeserializeOwned>(body: String) -> Result<T> {
     serde_json::from_str(&body).context("invalid persisted snapshot")
 }
+/// Reservations and immutable locks serialize across independent SQLite connections.
+fn validate_worktree_exclusion(tx: &Transaction<'_>, record: &Record) -> Result<()> {
+    use crate::git::{WorktreeLock, executor_reserved};
+    let acquiring = if record.kind == RecordKind::WorktreeLock {
+        ensure!(
+            record.scope.task_id.is_some(),
+            "worktree lock needs exact task scope"
+        );
+        let lock: WorktreeLock = serde_json::from_value(record.data.clone())?;
+        ensure!(
+            !lock.reason.trim().is_empty() && !lock.revision.trim().is_empty(),
+            "lock needs reason/revision"
+        );
+        let task = read_tx::<Task>(tx, "tasks", &record.scope.task_id.unwrap().to_string())?
+            .context("unknown lock task")?;
+        ensure!(
+            task.scope() == record.scope
+                && task.worktree.as_ref() == Some(&lock.worktree)
+                && task.branch.as_ref() == Some(&lock.branch),
+            "lock binding mismatch"
+        );
+        if let Some(previous) = read_tx::<Record>(tx, "records", &record.id.to_string())? {
+            let old: WorktreeLock = serde_json::from_value(previous.data)?;
+            ensure!(
+                old.revision == lock.revision
+                    && old.worktree == lock.worktree
+                    && old.branch == lock.branch
+                    && old.reason == lock.reason,
+                "lock identity is immutable"
+            );
+        }
+        lock.active
+    } else {
+        false
+    };
+    let executor = if record.kind == RecordKind::Session {
+        executor_reserved(&serde_json::from_value::<Session>(record.data.clone())?)
+    } else {
+        false
+    };
+    if !acquiring && !executor {
+        return Ok(());
+    }
+    let mut statement = tx.prepare("SELECT body FROM records WHERE project_id=?1 AND goal_id IS ?2 AND task_id IS ?3 AND (kind='worktree_lock' OR kind='session')")?;
+    let rows = statement.query_map(
+        params![
+            record.scope.project_id.to_string(),
+            str_id(record.scope.goal_id),
+            str_id(record.scope.task_id)
+        ],
+        |row| row.get::<_, String>(0),
+    )?;
+    for row in rows {
+        let other: Record = decode(row?)?;
+        if other.id == record.id {
+            continue;
+        }
+        match other.kind {
+            RecordKind::WorktreeLock => {
+                let lock: WorktreeLock = serde_json::from_value(other.data)?;
+                ensure!(
+                    !lock.active,
+                    "worktree has an active immutable/maintenance lock"
+                );
+            }
+            RecordKind::Session if acquiring => {
+                let session: Session = serde_json::from_value(other.data)?;
+                ensure!(!executor_reserved(&session), "executor is reserved/live");
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
 fn validate_scope(scope: &Scope) -> Result<()> {
     ensure!(
         scope.task_id.is_none() || scope.goal_id.is_some(),
