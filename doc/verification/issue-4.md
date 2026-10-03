@@ -28,8 +28,8 @@ Native provider adapters and runtime CLI orchestration remain separate.
   payload size is observable in bytes and Usage remains attributable through Store.
 - Two isolated Projects execute concurrently with distinct context/environment.
 - 53 workspace tests pass after #3 integration: 16 native adapter regressions plus
-  37 existing Git/state/config/CLI tests. Clippy/fmt/debug/release and final CI gates
-  are recorded before merge. On this macOS host real signal/ps tests require native
+  37 existing Git/state/config/CLI tests. Clippy `-D warnings`, fmt-check, debug and release builds passed at `5ff14a5`.
+  Final Linux/macOS CI gates are recorded before merge. On this macOS host real signal/ps tests require native
   OS access; sandbox ps was denied and Tokio subprocess waits timed out. Authorized
   `require_escalated` verification uses temporary Git fixtures only.
 
@@ -77,7 +77,20 @@ original bytes were restored, all 28 baseline tests passed and the tree was clea
 | Session action Scope check | project_goal_task_context_cwd_branch_and_lock_boundaries_fail_closed |
 
 Shared Git/Store boundary mutation evidence is also retained in #3 verification.
-Additional lifecycle/CAS mutations are recorded before final review.
+At integrated detached `5ff14a5`, eight additional protected regressions each
+failed under intentional mutations; originals were restored and all 53 workspace
+tests passed with a clean tree:
+
+| Removed guarantee | Failing regression |
+| --- | --- |
+| Owned group kill before terminal state | natural_exit_cleans_redirected_background_descendants_before_terminal_persistence |
+| Session expected CAS version | concurrent_snapshot_updates_are_not_overwritten_and_identity_survives_reopen |
+| Shared authoritative Git preflight | foreign_git_repository_inside_namespace_detached_and_protected_branches_are_rejected |
+| GIT_* environment rejection | project_goal_task_context_cwd_branch_and_lock_boundaries_fail_closed |
+| Environment clearing | configured_command_receives_only_prepared_context_explicit_environment_and_task_cwd |
+| Session Scope | project_goal_task_context_cwd_branch_and_lock_boundaries_fail_closed |
+| Prepared context Scope | project_goal_task_context_cwd_branch_and_lock_boundaries_fail_closed |
+| Terminal retention eviction | terminal_retention_is_bounded_and_output_can_be_released |
 
 ## Limits
 
