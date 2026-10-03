@@ -443,6 +443,7 @@ async fn dirty_sources_added_deleted_and_head_changes_invalidate() {
     let f = Fixture::new();
     let engine = f.engine();
     let map = f.map().await;
+    engine.validate(&map).await.unwrap();
     std::fs::write(
         f.worktree.join("src/codec.rs"),
         "pub fn encode() { panic!(\"dirty\") }\n",
@@ -451,13 +452,21 @@ async fn dirty_sources_added_deleted_and_head_changes_invalidate() {
     assert!(engine.validate(&map).await.is_err());
     let dirty = f.map().await;
     assert!(dirty.files()["src/codec.rs"].changed);
+    engine.validate(&dirty).await.unwrap();
     std::fs::write(
         f.worktree.join("src/codec.rs"),
         // Same byte length and unchanged dirty-path set: content hashing must differ.
         "pub fn encode() { panic!(\"other\") }\n",
     )
     .unwrap();
-    assert!(engine.validate(&dirty).await.is_err());
+    assert!(
+        engine
+            .validate(&dirty)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("stale repository map")
+    );
     let dirty = f.map().await;
     let selected = ready(
         engine
