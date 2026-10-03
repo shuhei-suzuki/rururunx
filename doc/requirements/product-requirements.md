@@ -413,6 +413,8 @@ Default mapping is configurable.
 
 The runtime must support dynamic escalation such as QUICK → STANDARD or STANDARD → STRICT when new risk or broader impact is discovered. Automatic workflow downgrade is not allowed.
 
+Verification depth must remain proportional to the effective workflow class. STRICT-only gates such as security review, broad mutation/regression, staging, or headed browser checks must not become universal requirements for QUICK/STANDARD work unless project policy or discovered risk escalates the Task. rururunx development/dogfood should exercise this distinction rather than treating every change as maximum-strictness work.
+
 ## 10. GitHub Issue
 
 When required by workflow, rururunx must support Issue creation containing:
