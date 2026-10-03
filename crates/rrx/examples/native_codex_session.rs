@@ -45,10 +45,11 @@ async fn finished(adapter: &CodexAdapter, session: &Session) -> Result<SessionSt
 async fn main() -> Result<()> {
     let mut arguments = std::env::args_os().skip(1);
     let executable = PathBuf::from(arguments.next().context("absolute executable required")?);
-    let resume = match arguments.next().as_deref() {
-        Some(mode) if mode == "review" => false,
-        Some(mode) if mode == "resume" => true,
-        _ => anyhow::bail!("explicit review or resume opt-in required"),
+    let (resume, execute) = match arguments.next().as_deref() {
+        Some(mode) if mode == "review" => (false, false),
+        Some(mode) if mode == "resume" => (true, false),
+        Some(mode) if mode == "execute" => (false, true),
+        _ => anyhow::bail!("explicit review, resume or execute opt-in required"),
     };
     ensure!(arguments.next().is_none(), "unexpected arguments");
     let fixture = tempfile::Builder::new()
@@ -101,28 +102,51 @@ async fn main() -> Result<()> {
     task.issue = Some(42);
     store.put_task(&mut task)?;
     let worktree = WorktreeManager::create(&mut store, task.id)?;
-    WorktreeManager::lock_review(
-        &mut store,
-        task.id,
-        &worktree.revision,
-        "native immutable review fixture",
-    )?;
+    if !execute {
+        WorktreeManager::lock_review(
+            &mut store,
+            task.id,
+            &worktree.revision,
+            "native immutable review fixture",
+        )?;
+    }
     let scope = task.scope();
     let store = Arc::new(Mutex::new(store));
     let adapter = CodexAdapter::new("codex".into(), executable, store.clone())?;
-    let mut input=PreparedInput { scope:scope.clone(),kind:InputKind::ReviewBundle,revision:worktree.revision,version:1,source_versions:BTreeMap::from([("synthetic-contract".into(),"v1".into())]),payload:"Review only the supplied synthetic function clamp(x)=x-1 and contract that output >=0 for every integer x. Return DEFECT with x=0 as a mathematical witness. Do not execute target operations.".into() };
+    let payload = if execute {
+        "Create the file result.txt in your current owning worktree with exactly NATIVE_EXECUTED followed by a newline. Use native tools and preserve existing files. Then return EXECUTED and a short reason in the JSON schema."
+    } else {
+        "Review only the supplied synthetic function clamp(x)=x-1 and contract that output >=0 for every integer x. Return DEFECT with x=0 as a mathematical witness. Do not execute target operations."
+    };
+    let mut input = PreparedInput {
+        scope: scope.clone(),
+        kind: if execute {
+            InputKind::ContextPack
+        } else {
+            InputKind::ReviewBundle
+        },
+        revision: worktree.revision,
+        version: 1,
+        source_versions: BTreeMap::from([("synthetic-contract".into(), "v1".into())]),
+        payload: payload.into(),
+    };
     let request = LaunchRequest {
         project,
         scope,
         worktree: worktree.worktree,
-        role: SessionRole::Reviewer,
+        role: if execute {
+            SessionRole::Executor
+        } else {
+            SessionRole::Reviewer
+        },
         mode: LaunchMode::NonInteractive,
         input: input.clone(),
         environment: BTreeMap::new(),
         model: None,
         effort: None,
     };
-    let schema = json!({"type":"object","properties":{"verdict":{"type":"string","enum":["DEFECT"]},"reason":{"type":"string"}},"required":["verdict","reason"],"additionalProperties":false});
+    let verdict = if execute { "EXECUTED" } else { "DEFECT" };
+    let schema = json!({"type":"object","properties":{"verdict":{"type":"string","enum":[verdict]},"reason":{"type":"string"}},"required":["verdict","reason"],"additionalProperties":false});
     let session = adapter.start_structured(request, schema).await?;
     let first = finished(&adapter, &session).await?;
     ensure!(
@@ -131,7 +155,17 @@ async fn main() -> Result<()> {
         first.failure
     );
     let answer: Value = serde_json::from_slice(&first.stdout)?;
-    ensure!(answer["verdict"] == "DEFECT", "native verdict is not valid");
+    ensure!(answer["verdict"] == verdict, "native verdict is not valid");
+    if execute {
+        ensure!(
+            std::fs::read_to_string(session.worktree.join("result.txt"))? == "NATIVE_EXECUTED\n",
+            "native executor did not create exact owning artifact"
+        );
+        ensure!(
+            !projects[1].root.join("result.txt").exists(),
+            "foreign Project artifact created"
+        );
+    }
     let foreign = SessionRef {
         id: session.id,
         scope: Scope::project(projects[1].id),

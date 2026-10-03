@@ -151,12 +151,10 @@ impl CodexAdapter {
         schema: Option<Value>,
         resume: Option<Session>,
     ) -> AdapterResult<Session> {
-        // Executor filesystem/tool policy is a separate verified native mode. Until
-        // installed-policy evidence is complete, this adapter advertises decision roles only.
-        if request.role == SessionRole::Executor || request.mode == LaunchMode::Interactive {
+        if request.mode == LaunchMode::Interactive {
             return Err(failure(
                 ErrorKind::UnsupportedCapability,
-                "native executor/interactive policy is not yet verified",
+                "native interactive policy requires an owned TUI lifecycle",
             ));
         }
         if schema.as_ref().is_some_and(|schema| {
@@ -263,7 +261,11 @@ impl CodexAdapter {
                     json!({"cwd":request.worktree,"includeLayers":false}),
                 )
                 .await?;
-            DecisionPolicy::from_native(&config["config"])
+            if request.role == SessionRole::Executor {
+                DecisionPolicy::for_executor(&config["config"])
+            } else {
+                DecisionPolicy::from_native(&config["config"])
+            }
         }
         .await;
         discovery.shutdown().await?;
@@ -436,6 +438,7 @@ impl CodexAdapter {
 impl AgentAdapter for CodexAdapter {
     fn capabilities(&self) -> BTreeSet<Capability> {
         [
+            Capability::Execute,
             Capability::Consult,
             Capability::Review,
             Capability::NonInteractive,
@@ -628,7 +631,14 @@ async fn supervise(
             if resumed_usage(&event, &thread, previous_turn.as_deref())? {
                 return Ok(None);
             }
-            decision_event(event, &thread, &turn, &mut tracker, &mut status)
+            session_event(
+                event,
+                &thread,
+                &turn,
+                &mut tracker,
+                &mut status,
+                reservation.session.role == SessionRole::Executor,
+            )
         }) {
             Ok(Some(completed)) => break Ok(completed),
             Ok(None) => {
@@ -698,12 +708,13 @@ fn resumed_usage(event: &Event, thread: &str, previous_turn: Option<&str>) -> Ad
     Ok(true)
 }
 
-fn decision_event(
+fn session_event(
     event: Event,
     thread: &str,
     turn: &str,
     tracker: &mut UsageTracker,
     status: &mut SessionStatus,
+    execute: bool,
 ) -> AdapterResult<Option<bool>> {
     let Event::Notification { method, params } = event else {
         return Err(failure(
@@ -732,6 +743,7 @@ fn decision_event(
             }
             match params["item"]["type"].as_str() {
                 Some("agentMessage" | "userMessage" | "reasoning" | "plan") => {}
+                Some("commandExecution" | "fileChange") if execute => {}
                 _ => {
                     return Err(failure(
                         ErrorKind::ProcessFailure,
@@ -768,6 +780,17 @@ fn decision_event(
         _ => {}
     }
     Ok(None)
+}
+
+#[cfg(test)]
+fn decision_event(
+    event: Event,
+    thread: &str,
+    turn: &str,
+    tracker: &mut UsageTracker,
+    status: &mut SessionStatus,
+) -> AdapterResult<Option<bool>> {
+    session_event(event, thread, turn, tracker, status, false)
 }
 
 #[cfg(test)]
