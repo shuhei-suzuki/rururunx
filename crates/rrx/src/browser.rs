@@ -328,6 +328,9 @@ impl BrowserBinding {
         })
     }
     pub fn validate(&self, scope: &Scope) -> Result<PathBuf> {
+        Ok(self.validate_status(scope)?.worktree)
+    }
+    fn validate_status(&self, scope: &Scope) -> Result<crate::git::WorktreeStatus> {
         ensure!(
             self.task.scope() == *scope && self.project.id == self.task.project_id,
             "browser ownership mismatch"
@@ -336,7 +339,7 @@ impl BrowserBinding {
             self.project.state == ProjectState::Registered,
             "Project is not registered"
         );
-        Ok(WorktreeManager::validate_binding(&self.project, &self.task)?.worktree)
+        WorktreeManager::validate_binding(&self.project, &self.task)
     }
 }
 
@@ -412,10 +415,9 @@ impl BrowserVerifier for BridgeVerifier {
         request: &VerificationRequest,
     ) -> Result<VerificationResult> {
         self.config.validate()?;
-        let deadline = Instant::now() + Duration::from_millis(self.config.timeout_ms);
-        let cwd = binding.validate(&request.scope)?;
-        let initial_revision =
-            WorktreeManager::validate_binding(&binding.project, &binding.task)?.revision;
+        let status = binding.validate_status(&request.scope)?;
+        let cwd = status.worktree;
+        let initial_revision = status.revision;
         let session_id = SessionId::new();
         let backend = route(&self.config, &request.steps)?;
         validate_request(request)?;
@@ -444,6 +446,9 @@ impl BrowserVerifier for BridgeVerifier {
         }
         let artifacts = artifact_dir(&self.config.artifact_root, &request.scope, session_id)?;
         let profile = PrivateProfile(artifacts.join("profile"));
+        // One deadline covers all browser/helper attempts. Ownership validation
+        // precedes this external browser phase and never consumes a short SDK budget.
+        let deadline = Instant::now() + Duration::from_millis(self.config.timeout_ms);
         let mut result =
             self.attempt(binding, request, session_id, backend, &artifacts, deadline)?;
         if may_fallback(&self.config, request, &result) {
@@ -689,8 +694,13 @@ impl BridgeVerifier {
                 }
                 break;
             }
-            if output.is_some() {
-                break;
+            match child.exited() {
+                Ok(true) => break,
+                Ok(false) => {}
+                Err(_) => {
+                    failed = Some(Failure::Operation);
+                    break;
+                }
             }
             thread::sleep(Duration::from_millis(10));
         }
@@ -700,6 +710,14 @@ impl BridgeVerifier {
         let status = child.stop();
         let _ = writer.join();
         let _ = reader.join();
+        while let Ok(value) = rx.try_recv() {
+            match value {
+                Ok(Some(bytes)) if bytes.len() > bound => failed = Some(Failure::OutputLimit),
+                Ok(Some(bytes)) => output = Some(bytes),
+                Ok(None) => {}
+                Err(_) => failed = Some(Failure::Protocol),
+            }
+        }
         if let Some(failure) = failed {
             return Err(BridgeFailure(failure).into());
         }
@@ -745,6 +763,28 @@ struct OwnedChild {
     stopped: bool,
 }
 impl OwnedChild {
+    fn exited(&self) -> std::io::Result<bool> {
+        #[cfg(unix)]
+        {
+            use rustix::process::{Pid, WaitId, WaitIdOptions, waitid};
+            let pid = Pid::from_raw(self.id as i32)
+                .ok_or_else(|| std::io::Error::other("invalid owned PID"))?;
+            match waitid(
+                WaitId::Pid(pid),
+                WaitIdOptions::EXITED | WaitIdOptions::NOWAIT | WaitIdOptions::NOHANG,
+            ) {
+                Ok(status) => Ok(status.is_some()),
+                Err(rustix::io::Errno::INTR) => Ok(false),
+                Err(error) => Err(error.into()),
+            }
+        }
+        #[cfg(not(unix))]
+        {
+            Err(std::io::Error::other(
+                "owned process observation requires Unix",
+            ))
+        }
+    }
     fn stop(&mut self) -> std::io::Result<ExitStatus> {
         self.stopped = true;
         terminate_group(&mut self.child, self.id)

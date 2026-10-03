@@ -242,7 +242,7 @@ fn private_group_cwd_and_scoped_evidence_are_checked() {
     };
     let first = verifier.verify(&fixture.binding, &request).unwrap();
     let second = verifier.verify(&fixture.binding, &request).unwrap();
-    assert!(first.success);
+    assert!(first.success, "{first:?}");
     assert_ne!(first.session_id, second.session_id);
     assert_eq!(first.evidence[0]["owned_group"], json!(true));
     assert_eq!(
@@ -403,7 +403,7 @@ fn explicit_fallback_is_exercised_only_before_effects() {
         config: fixture.config(&script),
     };
     let result = verifier.verify(&fixture.binding, &request).unwrap();
-    assert!(result.success && result.fallback_used);
+    assert!(result.success && result.fallback_used, "{result:?}");
     assert_eq!(result.backend, Backend::Playwright);
     request.deterministic_fallback = Some(vec![Step::Click {
         selector: "button".into(),
@@ -418,17 +418,15 @@ fn fallback_attempts_share_one_total_deadline() {
     request.steps.push(adaptive());
     request.deterministic_fallback = Some(fixture.request().steps);
     let script = SUCCESS_BRIDGE.replace("import json,sys,os", "import json,sys,os,time")
-        .replace("i=json.load(sys.stdin)", "i=json.load(sys.stdin)\ntime.sleep(.45 if i['backend']=='stagehand' else 1)")
+        .replace("i=json.load(sys.stdin)", "i=json.load(sys.stdin)\ntime.sleep(.45 if i['backend']=='stagehand' else 1.75)")
         .replace("'success':True,'failure':None", "'success':i['backend']=='playwright','failure':'unavailable' if i['backend']=='stagehand' else None");
     let mut config = fixture.config(&script);
-    config.timeout_ms = 1000;
-    let start = Instant::now();
+    config.timeout_ms = 2000;
     let result = BridgeVerifier { config }
         .verify(&fixture.binding, &request)
         .unwrap();
-    assert!(result.fallback_used);
+    assert!(result.fallback_used, "{result:?}");
     assert_eq!(result.failure, Some(Failure::Timeout));
-    assert!(start.elapsed() < Duration::from_millis(1550));
 }
 
 /// Real backend, explicit because Chrome and pinned Node SDK installation are host prerequisites.

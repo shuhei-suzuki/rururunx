@@ -83,7 +83,11 @@ before dispatch when registry/environment ownership changes.
 API account credentials remain in their native user auth system.
 
 The bridge receives at most 64 KiB stdin. Rust bounds output (default 256 KiB,
-maximum 1 MiB), total lifetime (maximum 10 minutes), step lifetime and step count.
+maximum 1 MiB), total browser/helper lifetime (maximum 10 minutes shared across
+fallback attempts), step lifetime and step count. Native Git ownership validation
+precedes this browser-phase deadline. The unreaped leader reserves its PGID;
+`waitid(NOWAIT)` observes exit before cleanup signals so an EOF-before-exit race
+cannot interrupt a completed bridge or recycle its group identity.
 Failures normalize to unavailable, unsupported, policy_hold, timeout, assertion,
 operation, protocol, output_limit or cleanup. Raw native errors, SDK stack traces,
 full HTML and model conversations are not returned. Selected text and semantic
