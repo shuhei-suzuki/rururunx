@@ -468,3 +468,10 @@ Failed review acquisition releases its provisional lock and audits the failure.
 Cleanup prechecks native branch deletion's upstream/root-HEAD predicate and currently
 supports ancestry-preserving merges. External writers remain outside advisory lock
 control; ignored files present at the safety check block cleanup.
+
+Cleanup follows native HEAD fallback when a tracking ref has been pruned. Project
+namespace changes are rejected after a Task has bound its worktree. Status avoids
+optional Git index locks, and provisional release errors retain diagnostic lock IDs.
+Cleanup retains Task bindings for audit provenance; naming reuse, source-history
+validation cost, explicit existing-worktree adoption and independent state databases
+must be addressed by the dependent Project registry/recovery policy where applicable.
