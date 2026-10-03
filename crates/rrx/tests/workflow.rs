@@ -256,7 +256,16 @@ impl Fixture {
             "main".into(),
         );
         store.put_project(&mut project).unwrap();
-        let mut goal = Goal::new(project.id, "fixture objective".into(), vec![]);
+        let mut goal = Goal::new(
+            project.id,
+            "fixture objective".into(),
+            vec![CompletionCriterion {
+                id: "workflow".into(),
+                description: "workflow evidence recorded".into(),
+                evidence: None,
+                satisfied: false,
+            }],
+        );
         store.put_goal(&mut goal).unwrap();
         let mut task = Task::new(
             project.id,
@@ -721,11 +730,12 @@ async fn blocked_project_and_paused_goal_cannot_progress_or_publish_context() {
         .unwrap()
         .put_project(&mut project)
         .unwrap();
-    let mut store = fixture.store.lock().unwrap();
-    let mut goal = store.goal(fixture.task.goal_id).unwrap().unwrap();
-    goal.state = GoalState::Paused;
-    store.put_goal(&mut goal).unwrap();
-    drop(store);
+    {
+        let mut store = fixture.store.lock().unwrap();
+        let mut goal = store.goal(fixture.task.goal_id).unwrap().unwrap();
+        goal.state = GoalState::Paused;
+        store.put_goal(&mut goal).unwrap();
+    }
     assert!(
         fixture
             .engine
@@ -757,10 +767,11 @@ async fn existing_live_executor_and_review_lock_reject_mutating_phase_before_evi
             .is_err()
     );
     assert!(fixture.gates.calls.lock().unwrap().is_empty());
-    let mut store = fixture.store.lock().unwrap();
-    lock.data["active"] = json!(false);
-    store.put_record(&mut lock).unwrap();
-    drop(store);
+    {
+        let mut store = fixture.store.lock().unwrap();
+        lock.data["active"] = json!(false);
+        store.put_record(&mut lock).unwrap();
+    }
     let request = LaunchRequest {
         project: fixture.project.clone(),
         scope: fixture.task.scope(),
@@ -811,40 +822,41 @@ async fn second_engine_cannot_dispatch_duplicate_phase_and_interrupt_does_not_au
         .initialize(fixture.task.id, None)
         .await
         .unwrap();
-    let mut store = fixture.store.lock().unwrap();
-    let mut task = store.task(fixture.task.id).unwrap().unwrap();
-    let mut record = store
-        .records(&task.scope(), RecordKind::Workflow)
-        .unwrap()
-        .remove(0);
-    let mut wf: WorkflowSnapshot = serde_json::from_value(record.data.clone()).unwrap();
-    wf.active = Some(0);
-    wf.history.push(PhaseAttempt {
-        phase: Phase::Worktree,
-        generation: 1,
-        context_version: 1,
-        budget: ContextBudget {
-            class: BudgetClass::Small,
-            discretionary_tokens: 1,
-        },
-        state: AttemptState::Running,
-        session_id: None,
-        started_at: now_ms(),
-        completed_at: None,
-        detail: None,
-    });
-    record.data = serde_json::to_value(wf).unwrap();
-    store
-        .put_workflow_transition(
-            &mut task,
-            &mut record,
-            None,
-            fixture.project.version,
-            1,
-            WorkflowAccess::StateOnly,
-        )
-        .unwrap();
-    drop(store);
+    {
+        let mut store = fixture.store.lock().unwrap();
+        let mut task = store.task(fixture.task.id).unwrap().unwrap();
+        let mut record = store
+            .records(&task.scope(), RecordKind::Workflow)
+            .unwrap()
+            .remove(0);
+        let mut wf: WorkflowSnapshot = serde_json::from_value(record.data.clone()).unwrap();
+        wf.active = Some(0);
+        wf.history.push(PhaseAttempt {
+            phase: Phase::Worktree,
+            generation: 1,
+            context_version: 1,
+            budget: ContextBudget {
+                class: BudgetClass::Small,
+                discretionary_tokens: 1,
+            },
+            state: AttemptState::Running,
+            session_id: None,
+            started_at: now_ms(),
+            completed_at: None,
+            detail: None,
+        });
+        record.data = serde_json::to_value(wf).unwrap();
+        store
+            .put_workflow_transition(
+                &mut task,
+                &mut record,
+                None,
+                fixture.project.version,
+                1,
+                WorkflowAccess::StateOnly,
+            )
+            .unwrap();
+    }
     assert!(matches!(
         fixture
             .engine
