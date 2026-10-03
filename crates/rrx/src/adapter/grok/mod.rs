@@ -541,6 +541,10 @@ impl AgentAdapter for GrokAdapter {
             let version = save_current(&self.store, &session, version, &snapshot)?;
             entry.completed.store(false, Ordering::SeqCst);
             entry.cleaned.store(false, Ordering::SeqCst);
+            *entry
+                .usage
+                .lock()
+                .map_err(|_| failure(ErrorKind::StateFailure, "usage poisoned"))? = Value::Null;
             entry.stopping.store(false, Ordering::SeqCst);
             let events = entry_sender(&entry);
             events.send_modify(|status| {
@@ -944,6 +948,7 @@ async fn supervise(mut actor: Actor, load: Option<String>) {
         actor.active=true;
         let response=actor.response(id,TURN_TIMEOUT).await?;
         if response["_meta"]["sessionId"]==native && response["_meta"]["promptId"]==actor.prompt && ["end_turn","max_tokens","max_turn_requests","refusal","cancelled"].contains(&response["stopReason"].as_str().unwrap_or("")){actor.native_outcome=true;}
+        if actor.native_outcome { *actor.entry.usage.lock().map_err(|_|failure(ErrorKind::StateFailure,"usage poisoned"))?=response["_meta"]["usage"].clone(); }
         if !actor.native_outcome || response["stopReason"]!="end_turn" {return Err(failure(ErrorKind::ProcessFailure,"native turn did not complete with owned end_turn evidence"));}
         actor.store.lock().map_err(|_|failure(ErrorKind::StateFailure,"state poisoned"))?.audit(&actor.session.scope,"grok.native_turn_observed",json!({"session":actor.session.id,"native":native,"prompt":actor.prompt,"stop_reason":"end_turn","structured_output_digest":response["_meta"].get("structuredOutput").and_then(|v|serde_json::to_vec(v).ok()).map(|v|digest(&v))})).map_err(state_error)?;
         actor.evidence.finished()?;
@@ -959,7 +964,7 @@ async fn supervise(mut actor: Actor, load: Option<String>) {
             let bytes=serde_json::to_vec(output).map_err(|_|failure(ErrorKind::ParseFailure,"structured output encoding failed"))?;
             actor.events.send_modify(|status|{status.stdout=bytes;status.stdout_truncated=false;});
         }
-        *actor.entry.usage.lock().map_err(|_|failure(ErrorKind::StateFailure,"usage poisoned"))?=response["_meta"]["usage"].clone();
+
         actor.owner()?;
         actor.request("session/close",json!({"sessionId":native}),Duration::from_secs(15)).await?;
         Ok::<_,AdapterError>(())

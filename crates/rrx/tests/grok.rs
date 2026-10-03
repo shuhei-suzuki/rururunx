@@ -217,7 +217,10 @@ for line in sys.stdin:
    n=tool('search_replace',os.environ['RRX_FOREIGN'],3);assert fs('fs/write_text_file',os.environ['RRX_FOREIGN'],'forbidden').get('error');done(n,True)
   elif mode=='decision_tool':tool('read_file','own.txt',1)
   if mode=='hook':pathlib.Path('unexplained.txt').write_text('native hook effect')
-  output={'verdict':'DENY','reason':'native fixture'} if mode!='schema' else {'verdict':'ALLOW','extra':'invalid'}
+  output={'verdict':'DENY','reason':'native fixture'}
+  if mode=='schema_enum':output={'verdict':'ALLOW','reason':'native fixture'}
+  elif mode=='schema_required':output={'verdict':'DENY'}
+  elif mode=='schema_extra':output={'verdict':'DENY','reason':'native fixture','extra':True}
   result={'stopReason':'end_turn','_meta':{'sessionId':sid,'promptId':prompt,'usage':{'inputTokens':101,'outputTokens':11,'cachedReadTokens':0,'cacheCreationTokens':0},'structuredOutput':output}}
  send({'jsonrpc':'2.0','id':d['id'],'result':result})
 "#;
@@ -564,4 +567,37 @@ async fn installed_native_edit_fresh_continuation_and_structured_decision() {
     assert!(usage.input_tokens.is_some_and(|v| v > 0));
     assert!(usage.output_tokens.is_some_and(|v| v > 0));
     assert_eq!(usage.estimated_cost, None);
+}
+
+#[tokio::test]
+async fn native_structured_consumer_rejects_each_schema_violation_and_live_decision_tools() {
+    for mode in [
+        "schema_enum",
+        "schema_required",
+        "schema_extra",
+        "decision_tool",
+    ] {
+        let mut fixture = Fixture::new();
+        fixture.review();
+        fixture.mode(mode);
+        let adapter = fixture.adapter();
+        let schema = json!({"type":"object","properties":{"verdict":{"type":"string","enum":["DENY"]},"reason":{"type":"string"}},"required":["verdict","reason"],"additionalProperties":false});
+        let session = adapter
+            .start_structured(fixture.request.clone(), schema)
+            .await
+            .unwrap();
+        let status = finished(&adapter, &session).await;
+        assert_eq!(
+            status.session.state,
+            if mode == "decision_tool" {
+                SessionState::Lost
+            } else {
+                SessionState::Failed
+            },
+            "{mode}: {:?}",
+            status.failure
+        );
+        assert!(!adapter.transport_succeeded(&status));
+        assert!(status.failure.is_some());
+    }
 }
