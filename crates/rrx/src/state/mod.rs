@@ -1222,7 +1222,7 @@ fn put_record_tx(tx: &Transaction<'_>, record: &Record) -> Result<Record> {
         json!({"id":next.id,"version":next.version,"evidence": match next.kind {
             RecordKind::Review | RecordKind::Approval | RecordKind::WorktreeLock => next.data.clone(),
             RecordKind::Workflow => json!({"generation":next.data["generation"],"context_version":next.data["context_version"],"active":next.data["active"],"finished":next.data["finished"],"attempt":next.data["history"].as_array().and_then(|a|a.last()),"escalation":next.data["escalations"].as_array().and_then(|a|a.last()),"retry":next.data["retries"].as_array().and_then(|a|a.last()),"invalidation":next.data["invalidations"].as_array().and_then(|a|a.last())}),
-            RecordKind::Session => json!({"state":next.data["state"],"agent":next.data["agent"],"provider":next.data["provider"],"role":next.data["role"],"native_ref":next.data["native_ref"]}),
+            RecordKind::Session => json!({"state":next.data["state"],"agent":next.data["agent"],"provider":next.data["provider"],"role":next.data["role"],"native_ref":next.data["native_ref"],"dispatch_intent":next.data["recovery"]["dispatch_intent"]}),
             _ => Value::Null,
         }}),
     )?;

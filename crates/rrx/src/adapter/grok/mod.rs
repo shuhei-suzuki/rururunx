@@ -1016,6 +1016,7 @@ async fn supervise(mut actor: Actor, load: Option<String>) {
         if let Some(schema)=&actor.entry.schema{params["_meta"]["outputSchema"]=schema.clone();}
         let (id,frame)=actor.rpc.as_mut().expect("RPC").frame("session/prompt",params)?;
         actor.session.state=SessionState::Running;actor.session.recovery["input_version"]=json!(actor.request.input.version);actor.session.recovery["prompt_id"]=json!(actor.prompt);actor.session.recovery["dispatch_state"]=json!("dispatching");
+        actor.session.recovery["dispatch_intent"]=json!({"input_version":actor.request.input.version,"prompt_id":actor.prompt});
         actor.publish()?; // Durable consumption before the only dispatch write.
         actor.dispatched=true;
         actor.rpc.as_mut().expect("RPC").send(&frame).await?;

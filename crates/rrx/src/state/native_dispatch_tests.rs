@@ -103,7 +103,7 @@ fn native_dispatch_fences_lock_version_aba_and_session_cas() {
     lock.data["active"] = json!(true);
     other.put_record(&mut lock).unwrap();
     session.state = SessionState::Running;
-    session.recovery = json!({"prompt_id":"must-not-dispatch"});
+    session.recovery = json!({"prompt_id":"must-not-dispatch","dispatch_intent":{"input_version":1,"prompt_id":"must-not-dispatch"},"private_payload":"must-not-journal"});
     assert!(
         store
             .put_session_if_current(&session, version, expected, &locks)
@@ -118,6 +118,17 @@ fn native_dispatch_fences_lock_version_aba_and_session_cas() {
         .put_session_if_current(&session, version, expected, &current)
         .unwrap();
     assert!(next > version);
+    let events = store.events(&task.scope(), 0, 100).unwrap();
+    let saved = events
+        .iter()
+        .rev()
+        .find(|e| e.kind == "session.saved")
+        .unwrap();
+    assert_eq!(
+        saved.data["evidence"]["dispatch_intent"],
+        session.recovery["dispatch_intent"]
+    );
+    assert!(saved.data.to_string().find("must-not-journal").is_none());
     assert!(
         store
             .put_session_if_current(&session, version, expected, &current)
