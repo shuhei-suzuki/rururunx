@@ -89,7 +89,7 @@ pub struct RetainedEvent {
 }
 #[derive(Debug, Clone, Copy)]
 pub struct HistoryPolicy {
-    /// UTF8 byte estimate, never a provider token count. Zero retains no transient tail.
+    /// Serialized event JSON byte estimate, never provider tokens. Zero retains no transient tail.
     pub recent_history_bytes: usize,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -106,10 +106,14 @@ pub struct Checkpoint {
     pub input_digest: String,
     pub authority: RepositoryRef,
     pub mandatory_goal: Value,
+    pub mandatory_task: Value,
     pub mandatory_rules: BTreeMap<String, String>,
     pub retained: Vec<RetainedEvent>,
     pub recent: Vec<RetainedEvent>,
     pub omitted_transient: u64,
+    pub omitted_first_sequence: Option<u64>,
+    pub omitted_last_sequence: Option<u64>,
+    pub omitted_digest: Option<String>,
     pub recent_bytes: usize,
     pub measured_tokens: Option<u64>,
 }
@@ -217,6 +221,8 @@ pub struct TaskDescriptor {
     pub context: Option<PackRef>,
     /// Terminal Task provenance is historical and never launchable.
     pub historical: bool,
+    /// Source freshness is checked by Task preparation; Goal summaries never launch refs.
+    pub source_validation_required: bool,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -269,6 +275,22 @@ pub enum PreparedPack {
         budget: Budget,
     },
 }
+/// Private-authority source payload; never an Adapter PreparedInput or published version.
+#[derive(Debug)]
+pub struct DraftPayload {
+    pub scope: Scope,
+    pub revision: String,
+    pub source_versions: BTreeMap<String, String>,
+    pub payload: String,
+}
+#[derive(Debug)]
+pub enum DraftPreparation {
+    Ready(DraftPayload),
+    NeedsBudget {
+        required_bytes: usize,
+        budget: Budget,
+    },
+}
 #[derive(Clone)]
 pub struct ContextPacks {
     store: SharedStore,
@@ -301,6 +323,10 @@ impl ContextPacks {
     pub async fn draft_task(&self, scope: &Scope, inputs: TaskInputs) -> Result<TaskDraft> {
         validate_inputs(&inputs)?;
         let (p, g, t) = self.snapshot(scope)?;
+        ensure!(
+            !crate::state::task_terminal(t.state) && !crate::state::goal_terminal(g.state),
+            "terminal Task/Goal is historical, never source preparation"
+        );
         let mut additional = inputs.additional_paths.clone();
         additional.extend(inputs.artifacts.iter().map(|a| a.path.clone()));
         additional.sort();
@@ -316,28 +342,11 @@ impl ContextPacks {
             .iter()
             .map(|a| artifact(scope, a, &map))
             .collect::<Result<Vec<_>>>()?;
-        let historical_checkpoint = if let Some(reference) = &inputs.checkpoint {
-            let checkpoint = self.load_checkpoint(reference)?;
-            ensure!(
-                checkpoint.scope.project_id == scope.project_id
-                    && checkpoint.scope.goal_id == scope.goal_id,
-                "foreign consultation/checkpoint promotion"
-            );
-            if checkpoint.scope != *scope {
-                ensure!(
-                    checkpoint.role == SessionRole::Consultant,
-                    "only consultation facts may promote across Tasks"
-                );
-            }
-            Some(
-                json!({"scope":checkpoint.scope,"session":checkpoint.session,"revision":checkpoint.authority.revision,
-                "role":checkpoint.role,"retained":checkpoint.retained,"mandatory_goal_at_checkpoint":checkpoint.mandatory_goal,
-                "mandatory_rules_at_checkpoint":checkpoint.mandatory_rules,
-                "recent":if checkpoint.scope==*scope {checkpoint.recent} else {vec![]}}),
-            )
-        } else {
-            None
-        };
+        let historical_checkpoint = inputs
+            .checkpoint
+            .as_ref()
+            .map(|r| self.promotion(scope, r))
+            .transpose()?;
         let pack = TaskPack {
             format: FORMAT.into(),
             scope: scope.clone(),
@@ -357,11 +366,13 @@ impl ContextPacks {
             historical_checkpoint,
         };
         bounded(&pack)?;
+        let mut instructions = instruction_versions(&p, &g, &t)?;
+        instructions.insert("instruction:pack_facts".into(), digest(&json!({"artifacts":pack.artifacts,"decisions":pack.decisions,"completed_work":pack.completed_work,"failures":pack.failures,"findings":pack.unresolved_findings,"impact":pack.impact_summary,"checkpoint":pack.checkpoint}))?);
         Ok(TaskDraft {
             pack,
             map,
             versions: versions(&p, &g, &t),
-            instructions: instruction_versions(&p, &g, &t)?,
+            instructions,
         })
     }
     pub async fn publish_task(&self, draft: &TaskDraft) -> Result<PackRef> {
@@ -414,6 +425,62 @@ impl ContextPacks {
         );
         Ok(c)
     }
+    fn promotion(&self, scope: &Scope, reference: &CheckpointRef) -> Result<Value> {
+        let cp = self.load_checkpoint(reference)?;
+        ensure!(
+            cp.scope.project_id == scope.project_id && cp.scope.goal_id == scope.goal_id,
+            "foreign consultation/checkpoint promotion"
+        );
+        self.ensure_checkpoint_head(reference)?;
+        let cross = cp.scope != *scope;
+        ensure!(
+            !cross || cp.role == SessionRole::Consultant,
+            "only consultation facts may promote across Tasks"
+        );
+        let retained = if cross {
+            let store = self
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("Store poisoned"))?;
+            let mut retained = vec![];
+            for event in &cp.retained {
+                let source = store
+                    .session(event.session)?
+                    .context("missing historical Session")?
+                    .0;
+                if source.role == SessionRole::Consultant {
+                    retained.push(event.clone());
+                }
+            }
+            retained
+        } else {
+            cp.retained.clone()
+        };
+        Ok(
+            json!({"scope":cp.scope,"session":cp.session,"revision":cp.authority.revision,"role":cp.role,
+            "retained":retained,"mandatory_goal_at_checkpoint":cp.mandatory_goal,"mandatory_rules_at_checkpoint":cp.mandatory_rules,
+            "mandatory_task_at_checkpoint":cp.mandatory_task,"recent":if cross {vec![]} else {cp.recent}}),
+        )
+    }
+    fn ensure_checkpoint_head(&self, reference: &CheckpointRef) -> Result<()> {
+        let store = self
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Store poisoned"))?;
+        let head = store
+            .records(&reference.scope, RecordKind::Checkpoint)?
+            .into_iter()
+            .filter(|r| r.data["format"] == CHECKPOINT)
+            .max_by_key(|r| r.data["chain_version"].as_u64().unwrap_or(0))
+            .context("checkpoint head missing")?;
+        ensure!(
+            head.id == reference.id
+                && head.version == reference.version
+                && digest(&head.data)? == reference.digest,
+            "stale checkpoint head reference"
+        );
+        Ok(())
+    }
     pub fn load_checkpoint(&self, reference: &CheckpointRef) -> Result<Checkpoint> {
         let store = self
             .store
@@ -424,6 +491,7 @@ impl ContextPacks {
             r.kind == RecordKind::Checkpoint
                 && r.scope == reference.scope
                 && r.version == reference.version
+                && r.version == 1
                 && digest(&r.data)? == reference.digest,
             "stale/foreign checkpoint reference"
         );
@@ -434,7 +502,8 @@ impl ContextPacks {
         );
         bounded(&cp)?;
         ensure!(
-            cp.chain_version > 0
+            cp.measured_tokens.is_none()
+                && cp.chain_version > 0
                 && cp.first_sequence > 0
                 && cp.last_sequence >= cp.first_sequence
                 && cp.retained.len() <= MAX_EVENTS
@@ -458,6 +527,23 @@ impl ContextPacks {
                         && !e.event.text.trim().is_empty()
                         && e.event.text.len() <= MAX_TEXT),
             "checkpoint history classification/provenance invalid"
+        );
+        ensure!(
+            (cp.omitted_transient == 0
+                && cp.omitted_first_sequence.is_none()
+                && cp.omitted_last_sequence.is_none()
+                && cp.omitted_digest.is_none())
+                || (cp.omitted_transient > 0
+                    && cp.omitted_first_sequence.is_some_and(|s| s > 0)
+                    && cp
+                        .omitted_last_sequence
+                        .is_some_and(|s| s <= cp.last_sequence)
+                    && cp.omitted_first_sequence <= cp.omitted_last_sequence
+                    && cp
+                        .omitted_digest
+                        .as_ref()
+                        .is_some_and(|s| s.starts_with("sha256:") && s.len() == 71)),
+            "invalid omitted transient commitment"
         );
         let native = store
             .session(cp.session)?
@@ -542,9 +628,15 @@ impl ContextPacks {
                 "Task pack authoritative artifact mismatch"
             );
         }
-        if let Some(r) = &pack.checkpoint {
-            self.load_checkpoint(r)?;
-        }
+        let historical = pack
+            .checkpoint
+            .as_ref()
+            .map(|r| self.promotion(&pack.scope, r))
+            .transpose()?;
+        ensure!(
+            historical == pack.historical_checkpoint,
+            "Task pack historical checkpoint body/provenance mismatch"
+        );
         ensure!(
             versions(&p, &g, &t) == map_versions(&map),
             "Task pack state changed during validation"
@@ -561,27 +653,46 @@ impl ContextPacks {
         budget: Budget,
     ) -> Result<PreparedPack> {
         let (pack, map) = self.validate_task_map(reference).await?;
-        self.prepare(&pack, &map, reference.version, request, budget)
+        self.prepare(&pack, &map, Some(reference.version), request, budget)
             .await
     }
-    /// Phase provider preparation does not publish or mutate a launch/context pointer.
+    /// Sources for an Engine-owned phase, without a fabricated native launch version.
     pub async fn prepare_draft(
         &self,
         draft: &TaskDraft,
-        version: u64,
         request: SelectionRequest,
         budget: Budget,
-    ) -> Result<PreparedPack> {
-        ensure!(version > 0, "pack version must be positive");
+    ) -> Result<DraftPreparation> {
         self.source().validate(&draft.map).await?;
-        self.prepare(&draft.pack, &draft.map, version, request, budget)
-            .await
+        let (_, g, t) = self.snapshot(&draft.pack.scope)?;
+        ensure!(
+            !crate::state::task_terminal(t.state) && !crate::state::goal_terminal(g.state),
+            "terminal Task/Goal cannot prepare source payload"
+        );
+        match self
+            .prepare(&draft.pack, &draft.map, None, request, budget)
+            .await?
+        {
+            PreparedPack::Ready(input) => Ok(DraftPreparation::Ready(DraftPayload {
+                scope: input.scope,
+                revision: input.revision,
+                source_versions: draft.source_versions(),
+                payload: input.payload,
+            })),
+            PreparedPack::NeedsBudget {
+                required_bytes,
+                budget,
+            } => Ok(DraftPreparation::NeedsBudget {
+                required_bytes,
+                budget,
+            }),
+        }
     }
     async fn prepare(
         &self,
         pack: &TaskPack,
         map: &RepositoryMap,
-        version: u64,
+        version: Option<u64>,
         request: SelectionRequest,
         budget: Budget,
     ) -> Result<PreparedPack> {
@@ -611,22 +722,49 @@ impl ContextPacks {
             )
             .await?;
         match selection {
-            SelectionOutcome::NeedsBudget { evidence } => Ok(PreparedPack::NeedsBudget {
-                required_bytes: header.len() + evidence.required_bytes,
-                budget,
-            }),
+            SelectionOutcome::NeedsBudget { evidence } => {
+                let required_bytes = header.len() + evidence.required_bytes;
+                self.audit_preparation(
+                    map,
+                    version,
+                    json!({"ready":false,"required_bytes":required_bytes,"budget":budget}),
+                )?;
+                Ok(PreparedPack::NeedsBudget {
+                    required_bytes,
+                    budget,
+                })
+            }
             SelectionOutcome::Ready { slice } => {
                 let mut input = slice
-                    .prepared_input(&self.source(), InputKind::ContextPack, version)
+                    .prepared_input(&self.source(), InputKind::ContextPack, version.unwrap_or(1))
                     .await?;
                 input.payload = format!("{header}{}", input.payload);
                 ensure!(
                     input.payload.len() <= available,
                     "rendered pack exceeds budget"
                 );
+                self.audit_preparation(map,version,json!({"ready":true,"estimated_bytes":input.payload.len(),"estimated_tokens":input.payload.len(),"estimate_method":"utf8_bytes_v1","measured_tokens":null}))?;
                 Ok(PreparedPack::Ready(input))
             }
         }
+    }
+    fn audit_preparation(
+        &self,
+        map: &RepositoryMap,
+        version: Option<u64>,
+        mut data: Value,
+    ) -> Result<()> {
+        data["context_version"] = json!(version);
+        self.store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Store poisoned"))?
+            .audit_if_current(
+                &map.freshness().scope,
+                map_versions(map),
+                "context.pack.prepared",
+                data,
+            )?;
+        Ok(())
     }
     pub async fn checkpoint(
         &self,
@@ -720,6 +858,27 @@ impl ContextPacks {
             drop_count += 1;
             omitted = omitted.checked_add(1).context("history count overflow")?;
         }
+        let omitted_first_sequence =
+            old.as_ref()
+                .and_then(|c| c.omitted_first_sequence)
+                .or_else(|| {
+                    recent
+                        .first()
+                        .filter(|_| drop_count > 0)
+                        .map(|e| e.event.sequence)
+                });
+        let omitted_last_sequence = recent
+            .get(drop_count.wrapping_sub(1))
+            .map(|e| e.event.sequence)
+            .or_else(|| old.as_ref().and_then(|c| c.omitted_last_sequence));
+        let omitted_digest = if drop_count > 0 {
+            Some(digest(&(
+                old.as_ref().and_then(|c| c.omitted_digest.clone()),
+                &recent[..drop_count],
+            ))?)
+        } else {
+            old.as_ref().and_then(|c| c.omitted_digest.clone())
+        };
         recent.drain(..drop_count);
         let map = self.source().index(scope, vec![]).await?;
         ensure!(
@@ -742,10 +901,14 @@ impl ContextPacks {
             input_digest: digest(&events)?,
             authority: RepositoryRef::of(&map, vec![])?,
             mandatory_goal: projection(&g)?,
+            mandatory_task: projection(&t)?,
             mandatory_rules: rules(&map),
             retained,
             recent,
             omitted_transient: omitted,
+            omitted_first_sequence,
+            omitted_last_sequence,
+            omitted_digest,
             recent_bytes,
             measured_tokens: None,
         };
@@ -798,22 +961,18 @@ impl ContextPacks {
             reference.scope == task.scope() && reference.version == task.context_version,
             "foreign/stale Task reference"
         );
-        if crate::state::task_terminal(task.state) {
-            let pack = self.task_pack(reference)?;
-            // Immutable provenance only: a finalized worktree may already be disposed.
-            ensure!(
-                pack.scope == task.scope()
-                    && pack.task["id"] == serde_json::to_value(task.id)?
-                    && pack.task["project_id"] == serde_json::to_value(task.project_id)?
-                    && pack.task["goal_id"] == serde_json::to_value(task.goal_id)?
-                    && pack.repository.manifest_digest
-                        == digest(&self.load_context(reference)?.source_hashes)?
-                    && !pack.repository.revision.is_empty(),
-                "invalid historical Task provenance"
-            );
-        } else {
-            self.validate_task(reference).await?;
-        }
+        let pack = self.task_pack(reference)?;
+        // Immutable provenance only: a finalized worktree may already be disposed.
+        ensure!(
+            pack.scope == task.scope()
+                && pack.task["id"] == serde_json::to_value(task.id)?
+                && pack.task["project_id"] == serde_json::to_value(task.project_id)?
+                && pack.task["goal_id"] == serde_json::to_value(task.goal_id)?
+                && pack.repository.manifest_digest
+                    == digest(&self.load_context(reference)?.source_hashes)?
+                && !pack.repository.revision.is_empty(),
+            "invalid historical Task provenance"
+        );
         Ok(())
     }
     /// Compatibility selector accepts an owned Task, but observes the Goal's
@@ -912,6 +1071,7 @@ impl ContextPacks {
                 next_action: task.next_action,
                 context,
                 historical: crate::state::task_terminal(task.state),
+                source_validation_required: !crate::state::task_terminal(task.state),
             });
         }
         let next_work_candidates = goal_candidates(&g, &descriptors);
@@ -1038,7 +1198,8 @@ impl ContextPacks {
                     && t.blockers == d.blockers
                     && t.next_action == d.next_action
                     && t.context_version == d.context.as_ref().map_or(0, |r| r.version)
-                    && crate::state::task_terminal(t.state) == d.historical,
+                    && crate::state::task_terminal(t.state) == d.historical
+                    && d.source_validation_required == !d.historical,
                 "stale Goal Task summary"
             );
             if let Some(r) = &d.context {

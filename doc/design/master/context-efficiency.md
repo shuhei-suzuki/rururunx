@@ -75,7 +75,9 @@ before audit mutation. See [bounded retrieval design](../issue-18-design.md).
 Issue 19's `ContextPacks` service publishes typed Task and Goal artifacts atomically
 with their durable pointers and audit events. It captures primary Project sources
 read-only for Goal packs and retains terminal Task context refs as non-launchable
-history after cleanup. Task preparation selects current sources under the complete
+history after cleanup. Goal Task refs carry explicit source-validation-required status during concurrent
+work; immutable finalized refs remain historical. Task preparation selects current
+sources under the complete
 rendered budget; dirty files, rules/config and state changes invalidate stale packs.
 Database/pointer versions are CAS guards, separate from phase-stable physical and
 instruction hashes. The Workflow Engine integration is pending Issue 8's merge;
@@ -132,11 +134,14 @@ Condensation must be auditable and must not overwrite authoritative requirements
 Issue 19 implements deterministic condensation over typed, consecutive events.
 Goals, decisions, completed work, failures, findings, next actions, constraints,
 critical references and verification remain intact across checkpoints. Only
-explicitly transient events leave the configurable serialized-byte tail. Mandatory
+explicitly transient events leave the configurable serialized-byte tail, with
+count/sequence-range/rolling-digest evidence. Typed checkpoint records are immutable
+and promotion binds the current chain head. Mandatory
 state overflow fails explicitly; no summarizer guesses which text is safe to drop.
 Checkpoint refs bind exact Session/Task/Goal provenance and retain historical source
 metadata. Cross-Task Consultant promotion requires the same Project/Goal and copies
-semantic facts without its recent transcript. Native event normalization and
+Consultant-origin semantic facts without its recent transcript, including when
+the original Task chain also contains Executor events. Native event normalization and
 checkpoint scheduling remain caller/transport integrations, not measured runtime
 model behavior.
 
@@ -322,3 +327,9 @@ MVP must demonstrate:
 - per-task/per-agent token telemetry when available
 
 A dogfood comparison should measure the same representative workflow with and without Context Efficiency features and report token/cost/time differences plus any quality regressions.
+
+The bounded core supports 4096 retained events and 1 MiB per Task checkpoint,
+128 Tasks/4096 edges per Goal summary. It provides no semantic deduplication or
+checkpoint reset; mandatory overflow requires decomposition into another Task.
+Native-source draft DTOs carry no Adapter launch version. Complete rendered pack
+estimates are audited independently of optional repository slice estimates.

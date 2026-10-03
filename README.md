@@ -221,7 +221,9 @@ The command examples above describe the MVP target. Currently implemented:
   and deterministic execution/consultation checkpoints. All typed semantic facts
   survive condensation; a configurable byte window bounds transient history.
   Goal packs reference Task packs and can observe primary rules/artifacts before
-  Tasks exist or after owned worktree cleanup. Terminal Task refs stay historical.
+  Tasks exist or after owned worktree cleanup. Active Task refs require separate
+  source validation; terminal refs stay historical. Typed checkpoints are immutable
+  and promotion binds their current head.
   Provider token measurements remain null unless supplied. Automatic native event
   normalization, CLI/TUI transport and the Workflow phase publication port remain
   pending; see [Issue 19 design](doc/design/issue-19-design.md).

@@ -22,13 +22,17 @@ Goal packs contain compact Task descriptors and exact pack version/digest refs,
 DAG edges, cross-Task facts and aggregate metrics. They do not embed Task packs,
 source slices or Task chat. The exact registered primary root anchors read-only rule/config and explicit Goal
 artifact observation before Tasks exist and after their worktrees are disposed.
-Referenced nonterminal Tasks require fresh owned sources; terminal Task refs retain
-immutable provenance, are marked historical and never become launch input. No dummy
+Goal descriptors validate exact immutable Task envelopes/pointers, and label active
+Task refs as requiring source validation. A Goal summary remains available during
+executor edits; Task preparation separately rejects stale owned sources. Terminal
+Task refs retain immutable provenance, are marked historical and never launch. No dummy
 Task or protected-root execution is authorized by Goal observation.
 
 Deterministic condensation operates on typed event classifications. Semantic events
-are retained with sequence/provenance; duplicate semantic facts can be deduplicated
-without losing their category. Only explicitly transient notes can leave the recent
+are retained with exact sequence/provenance. No semantic deduplication or reset
+operation is implemented; a Task chain is bounded to 4096 retained events and a
+1 MiB checkpoint. Reaching either limit explicitly stops checkpointing until work
+is decomposed into a new Task; it never erases prior constraints to continue. Only explicitly transient notes can leave the recent
 window. This strategy cannot infer safety meaning from arbitrary unclassified chat;
 callers must normalize native events honestly. Mandatory state overflow is explicit,
 not silent truncation. Checkpoints record input digest, consumed sequence range,
@@ -53,3 +57,19 @@ same-length dirty/rule/config/artifact changes, two Projects with identical name
 Goal DAG refs, budget/mandatory preservation, incremental condensation, malformed
 references, consultation provenance and atomic cross-connection/session fences.
 Important guarantees receive detached mutation proof and immutable native review.
+
+Typed checkpoint records are immutable through generic Store writes; only the
+owned append transaction creates them. Promotion rederives exact compact content
+from the current chain head, and publication checks that head atomically. Mixed
+Executor/Consultant chains retain all source facts, while cross-Task promotion
+selects only actual Consultant events. Omitted transient history records count,
+first/last sequence and a rolling SHA256 commitment, without storing omitted text.
+Checkpoints also preserve original Task criteria alongside mandatory Goal/rules.
+
+Draft preparation returns a source DTO without Adapter InputKind or native version;
+only the Engine binds it to a persisted phase context. Terminal Task/Goal preparation
+fails even if its worktree remains. Final pack preparation audits complete rendered
+bytes/estimates separately from repository selection. Goal limits are 128 Tasks,
+4096 DAG edges and 128 artifact/metric refs. Caller-supplied metrics are labeled
+observations without provider provenance. Workflow phase/budget/risk decisions are
+separate authority; the Engine compares exact HEAD as well as source hashes.

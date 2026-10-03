@@ -28,6 +28,7 @@ no supervisor model or transcript summarization model is introduced.
   preserved facts with historical provenance, never the full transcript or target
   source authority. No cross-Project or cross-Goal implicit promotion is allowed.
 - Mandatory Project rules and Goal/Task constraints survive packing and promotion.
+  The source Task criteria are preserved in checkpoints as well.
   Byte/estimated-token budgets apply to fully rendered payloads; provider metrics
   stay nullable. Insufficient budget has no launchable input.
 - Native I/O stays outside SharedStore. Publication rechecks current versions and
@@ -43,3 +44,9 @@ Core checkpoints use a registered Goal and bound Task, including consultation
 Sessions. Goal-before-Task consultation creation and CLI/TUI/session transport are
 separate integrations. Native checkpoint capability is not fabricated. The real
 workflow PhaseContext port is integrated after Issue 8 merges, before acceptance.
+
+Goal summaries report exact immutable Task refs and whether source validation is
+required; concurrent dirty execution does not disable the Goal summary. Task
+launch preparation separately validates current sources. Core limits are 128 Goal
+Tasks/4096 DAG edges and 4096 retained semantic events/1 MiB per checkpoint. There
+is no destructive checkpoint reset or semantic deduplication; overflow is explicit.

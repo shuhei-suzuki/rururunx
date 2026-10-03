@@ -428,6 +428,7 @@ impl Store {
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        context_pack::guard_checkpoint_write(&tx, record)?;
         if let Some(previous) = read_tx::<Record>(&tx, "records", &record.id.to_string())? {
             ensure!(
                 previous.scope == record.scope && previous.kind == record.kind,

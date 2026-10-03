@@ -988,7 +988,19 @@ async fn checkpoint_transient_count_bound_and_retained_session_provenance_surviv
     // historical context merely by supplying a fresh envelope digest.
     let mut record = f.store.lock().unwrap().record(second.id).unwrap().unwrap();
     record.data["recent"][0]["session"] = serde_json::to_value(SessionId::new()).unwrap();
-    f.store.lock().unwrap().put_record(&mut record).unwrap();
+    assert!(f.store.lock().unwrap().put_record(&mut record).is_err());
+    // Corrupt only the isolated test database to exercise reader provenance
+    // independently of the production generic Record write fence.
+    rusqlite::Connection::open(f._temp.path().join("state.db"))
+        .unwrap()
+        .execute(
+            "UPDATE records SET body=?1 WHERE id=?2",
+            rusqlite::params![
+                serde_json::to_string(&record).unwrap(),
+                record.id.to_string()
+            ],
+        )
+        .unwrap();
     use sha2::{Digest, Sha256};
     let forged = CheckpointRef {
         scope: record.scope,
@@ -1000,4 +1012,286 @@ async fn checkpoint_transient_count_bound_and_retained_session_provenance_surviv
         ),
     };
     assert!(packs.load_checkpoint(&forged).is_err());
+}
+
+#[tokio::test]
+async fn typed_checkpoints_are_immutable_and_promotion_matches_exact_current_head() {
+    let f = Fixture::new();
+    let packs = f.packs();
+    let (native, _) = session(&f, SessionRole::Consultant, SessionState::Exited);
+    let cp = packs
+        .checkpoint(
+            &f.task.scope(),
+            native.id,
+            None,
+            vec![event(
+                1,
+                EventKind::Constraint,
+                "Never discard this constraint",
+            )],
+            HistoryPolicy {
+                recent_history_bytes: 0,
+            },
+        )
+        .await
+        .unwrap();
+    let draft = packs
+        .draft_task(
+            &f.task.scope(),
+            TaskInputs {
+                checkpoint: Some(cp.clone()),
+                ..input()
+            },
+        )
+        .await
+        .unwrap();
+    let valid = packs.publish_task(&draft).await.unwrap();
+    packs.validate_task(&valid).await.unwrap();
+    let mut original = f.store.lock().unwrap().record(cp.id).unwrap().unwrap();
+    original.data["retained"] = serde_json::json!([]);
+    assert!(f.store.lock().unwrap().put_record(&mut original).is_err());
+    let mut injection = Record::new(
+        f.task.scope(),
+        RecordKind::Checkpoint,
+        original.data.clone(),
+    );
+    injection.data["chain_version"] = serde_json::json!(u64::MAX);
+    assert!(f.store.lock().unwrap().put_record(&mut injection).is_err());
+    assert_eq!(packs.load_checkpoint(&cp).unwrap().retained.len(), 1);
+    // Rehashed context envelopes cannot forge a checkpoint promotion body.
+    let frozen = f
+        .store
+        .lock()
+        .unwrap()
+        .context(&f.task.scope(), Some(valid.version))
+        .unwrap()
+        .unwrap();
+    for variant in 0..2 {
+        let mut forged = frozen.clone();
+        forged.version = 2 + variant;
+        if variant == 0 {
+            forged.data["historical_checkpoint"]["retained"] = serde_json::json!([]);
+        } else {
+            forged.data["checkpoint"] = serde_json::Value::Null;
+        }
+        let mut store = f.store.lock().unwrap();
+        store.put_context(&forged).unwrap();
+        let mut t = store.task(f.task.id).unwrap().unwrap();
+        t.context_version = forged.version;
+        store.put_task(&mut t).unwrap();
+        drop(store);
+        use sha2::{Digest, Sha256};
+        let reference = PackRef {
+            scope: forged.scope.clone(),
+            version: forged.version,
+            digest: format!(
+                "sha256:{:x}",
+                Sha256::digest(serde_json::to_vec(&forged).unwrap())
+            ),
+        };
+        assert!(packs.validate_task(&reference).await.is_err());
+    }
+    let stale = packs
+        .draft_task(
+            &f.task.scope(),
+            TaskInputs {
+                checkpoint: Some(cp.clone()),
+                ..input()
+            },
+        )
+        .await
+        .unwrap();
+    let next = packs
+        .checkpoint(
+            &f.task.scope(),
+            native.id,
+            Some(cp.clone()),
+            vec![event(2, EventKind::Failure, "new unresolved failure")],
+            HistoryPolicy {
+                recent_history_bytes: 0,
+            },
+        )
+        .await
+        .unwrap();
+    let error = packs.publish_task(&stale).await.unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("checkpoint reference no longer current"),
+        "{error:#}"
+    );
+    assert!(
+        packs
+            .draft_task(
+                &f.task.scope(),
+                TaskInputs {
+                    checkpoint: Some(cp),
+                    ..input()
+                }
+            )
+            .await
+            .is_err()
+    );
+    let current = packs
+        .publish_task(
+            &packs
+                .draft_task(
+                    &f.task.scope(),
+                    TaskInputs {
+                        checkpoint: Some(next.clone()),
+                        ..input()
+                    },
+                )
+                .await
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    packs.validate_task(&current).await.unwrap();
+    packs
+        .checkpoint(
+            &f.task.scope(),
+            native.id,
+            Some(next),
+            vec![event(3, EventKind::Decision, "new decision")],
+            HistoryPolicy {
+                recent_history_bytes: 0,
+            },
+        )
+        .await
+        .unwrap();
+    assert!(packs.validate_task(&current).await.is_err());
+}
+
+#[tokio::test]
+async fn mixed_role_chain_promotes_only_consultant_facts_and_current_goal_can_report_dirty_tasks() {
+    let f = Fixture::new();
+    let packs = f.packs();
+    let (executor, _) = session(&f, SessionRole::Executor, SessionState::Exited);
+    let cp = packs
+        .checkpoint(
+            &f.task.scope(),
+            executor.id,
+            None,
+            vec![event(1, EventKind::Decision, "executor-only")],
+            HistoryPolicy {
+                recent_history_bytes: 0,
+            },
+        )
+        .await
+        .unwrap();
+    let (consultant, _) = session(&f, SessionRole::Consultant, SessionState::Exited);
+    let cp = packs
+        .checkpoint(
+            &f.task.scope(),
+            consultant.id,
+            Some(cp),
+            vec![event(2, EventKind::Decision, "consultant-decision")],
+            HistoryPolicy {
+                recent_history_bytes: 0,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(packs.load_checkpoint(&cp).unwrap().retained.len(), 2);
+    let mut task = Task::new(
+        f.project.id,
+        f.task.goal_id,
+        "Other Task".into(),
+        "fake".into(),
+    );
+    {
+        let mut store = f.store.lock().unwrap();
+        store.put_task(&mut task).unwrap();
+        WorktreeManager::create(&mut store, task.id).unwrap();
+        task = store.task(task.id).unwrap().unwrap();
+    }
+    let promoted = packs
+        .draft_task(
+            &task.scope(),
+            TaskInputs {
+                checkpoint: Some(cp.clone()),
+                ..input()
+            },
+        )
+        .await
+        .unwrap();
+    let historical = promoted
+        .pack()
+        .historical_checkpoint
+        .as_ref()
+        .unwrap()
+        .to_string();
+    assert!(historical.contains("consultant-decision"));
+    assert!(!historical.contains("executor-only"));
+    let task_ref = packs
+        .publish_task(
+            &packs
+                .draft_task(
+                    &f.task.scope(),
+                    TaskInputs {
+                        checkpoint: Some(cp),
+                        ..input()
+                    },
+                )
+                .await
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let goal = packs
+        .publish_goal(
+            &Scope::goal(f.project.id, f.task.goal_id),
+            vec![],
+            Default::default(),
+        )
+        .await
+        .unwrap();
+    let (_, _) = session(&f, SessionRole::Executor, SessionState::Running);
+    std::fs::write(
+        f.worktree.join("src/codec.rs"),
+        "pub fn encode() { panic!(\"dirty\"); }\n",
+    )
+    .unwrap();
+    assert!(packs.validate_task(&task_ref).await.is_err());
+    packs.validate_goal(&goal).await.unwrap();
+    let latest = packs
+        .publish_goal(&goal.scope, vec![], Default::default())
+        .await
+        .unwrap();
+    let data = packs.goal_pack(&latest).unwrap();
+    assert!(data.tasks[0].source_validation_required);
+    assert!(!data.tasks[0].historical);
+}
+
+#[tokio::test]
+async fn terminal_task_and_goal_never_prepare_draft_native_input() {
+    let f = Fixture::new();
+    let packs = f.packs();
+    let draft = packs.draft_task(&f.task.scope(), input()).await.unwrap();
+    let DraftPreparation::Ready(payload) = packs
+        .prepare_draft(&draft, SelectionRequest::default(), budget())
+        .await
+        .unwrap()
+    else {
+        panic!("source budget");
+    };
+    let header: serde_json::Value =
+        serde_json::from_str(payload.payload.lines().next().unwrap()).unwrap();
+    assert!(header["version"].is_null());
+    assert_eq!(payload.scope, f.task.scope());
+    {
+        let mut store = f.store.lock().unwrap();
+        let mut task = store.task(f.task.id).unwrap().unwrap();
+        task.state = TaskState::Cancelled;
+        store.put_task(&mut task).unwrap();
+    }
+    assert!(f.worktree.exists());
+    assert!(packs.draft_task(&f.task.scope(), input()).await.is_err());
+    assert!(
+        packs
+            .prepare_draft(&draft, SelectionRequest::default(), budget())
+            .await
+            .is_err()
+    );
 }

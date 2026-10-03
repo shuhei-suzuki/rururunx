@@ -3,6 +3,34 @@ use super::*;
 use crate::context_pack::{Checkpoint, CheckpointRef};
 use sha2::{Digest, Sha256};
 
+pub(super) fn guard_checkpoint_write(tx: &Transaction<'_>, record: &Record) -> Result<()> {
+    let previous = read_tx::<Record>(tx, "records", &record.id.to_string())?;
+    ensure!(
+        !(record.kind == RecordKind::Checkpoint
+            && (record.data["format"] == "rrx.checkpoint.v1"
+                || previous
+                    .as_ref()
+                    .is_some_and(|r| r.data["format"] == "rrx.checkpoint.v1"))),
+        "typed checkpoints are immutable and require the dedicated append transaction"
+    );
+    Ok(())
+}
+fn current_checkpoint_tx(tx: &Transaction<'_>, reference: &CheckpointRef) -> Result<()> {
+    let latest:Option<String>=tx.query_row("SELECT body FROM records WHERE kind='checkpoint' AND project_id=?1 AND goal_id=?2 AND task_id=?3 AND json_extract(body,'$.data.format')='rrx.checkpoint.v1' ORDER BY json_extract(body,'$.data.chain_version') DESC LIMIT 1",
+        params![reference.scope.project_id.to_string(),str_id(reference.scope.goal_id),str_id(reference.scope.task_id)],|r|r.get(0)).optional()?;
+    let latest: Record = latest
+        .map(decode)
+        .transpose()?
+        .context("checkpoint head missing")?;
+    ensure!(
+        latest.id == reference.id
+            && latest.version == 1
+            && reference.version == 1
+            && checkpoint_digest(&latest.data)? == reference.digest,
+        "checkpoint reference no longer current"
+    );
+    Ok(())
+}
 impl Store {
     pub(crate) fn publish_context_pack(
         &mut self,
@@ -12,9 +40,7 @@ impl Store {
         task_versions: &[(TaskId, u64)],
     ) -> Result<()> {
         ensure!(
-            context.scope == *binding
-                || context.scope
-                    == Scope::goal(binding.project_id, binding.goal_id.context("missing Goal")?),
+            context.scope == *binding && binding.task_id.is_some(),
             "foreign pack publication"
         );
         let tx = self
@@ -31,6 +57,10 @@ impl Store {
             !goal_terminal(goal.state),
             "terminal Goal cannot publish new pack"
         );
+        if let Some(value) = context.data.get("checkpoint").filter(|v| !v.is_null()) {
+            let reference: CheckpointRef = serde_json::from_value(value.clone())?;
+            current_checkpoint_tx(&tx, &reference)?;
+        }
         pack_idle(&tx, &context.scope)?;
         for (id, version) in task_versions {
             let t: Task =
