@@ -464,9 +464,9 @@ fn foreign_databases_and_unknown_snapshots_are_rejected_without_data_loss() {
     for (table, version) in [("other_app", 0), ("other_app", 1), ("sqlite3_data", 0)] {
         let db = dir.path().join(format!("foreign-{table}-{version}.db"));
         let raw = rusqlite::Connection::open(&db).unwrap();
-        raw.execute_batch(
-            "CREATE TABLE other_app(value TEXT); INSERT INTO other_app VALUES('keep');",
-        )
+        raw.execute_batch(&format!(
+            "CREATE TABLE {table}(value TEXT); INSERT INTO {table} VALUES('keep');"
+        ))
         .unwrap();
         raw.pragma_update(None, "user_version", version).unwrap();
         drop(raw);
