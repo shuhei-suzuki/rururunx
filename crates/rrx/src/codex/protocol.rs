@@ -561,7 +561,13 @@ mod tests {
                 rpc.call("fixture", json!({})).await.unwrap_err().kind,
                 ErrorKind::ParseFailure
             );
-            task.await.unwrap();
+            // A rejected oversized frame leaves its sender backpressured until
+            // the owning connection is closed; never await it while keeping it open.
+            drop(rpc);
+            tokio::time::timeout(Duration::from_secs(2), task)
+                .await
+                .expect("fixture peer terminates after connection close")
+                .unwrap();
         }
     }
 }
