@@ -219,7 +219,7 @@ mod tests {
     #[test]
     fn project_preserves_runtime_limits_and_only_escalates_minimum() {
         let mut config: Config = toml::from_str("minimum_workflow = 'STRICT'\n[scheduler]\nglobal_max_sessions = 8\n[agents.codex]\nmodel = 'original'\ncommand = ['codex']\nmax_concurrent = 6").unwrap();
-        config.apply_project(toml::from_str("minimum_workflow = 'QUICK'\n[scheduler]\nmax_tasks_per_project = 2\n[agents.codex]\neffort = 'high'").unwrap());
+        config.apply_project(toml::from_str("minimum_workflow = 'QUICK'\n[scheduler]\nmax_tasks_per_project = 2\n[agents.codex]\neffort = 'high'").unwrap()).unwrap();
         assert_eq!(config.minimum_workflow, WorkflowClass::Strict);
         assert_eq!(config.scheduler.global_max_sessions, 8);
         assert_eq!(config.scheduler.max_tasks_per_project, 2);
