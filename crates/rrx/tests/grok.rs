@@ -370,8 +370,8 @@ async fn concurrent_native_reviewers_share_exact_lock_and_validate_structured_ve
     assert_eq!(c.session.scope, fixture.request.scope);
     assert_eq!(d.session.scope, fixture.request.scope);
     assert_eq!(
-        registered.status((&three).into()).await.unwrap().session,
-        c.session
+        serde_json::to_value(registered.status((&three).into()).await.unwrap().session).unwrap(),
+        serde_json::to_value(&c.session).unwrap()
     );
     for session in [&one, &two, &three, &four] {
         registered.release(session.into()).unwrap();
