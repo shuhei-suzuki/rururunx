@@ -34,6 +34,12 @@ product requirements and master Agent Adapter design.
    marking a runtime Session stopped/exited; uncertain termination stays reserved.
 8. Record observed native token/cache metrics with exact attribution. Missing
    cost/telemetry stays null with a reason; deduplicate cumulative turn updates.
+9. Atomically fence owning parent versions, scoped lock versions and Session CAS
+   with durable metadata-only input consumption before inference. After possible
+   dispatch, absent exact authoritative native terminal evidence stays Lost even
+   after verified process death or an interrupt acknowledgement. Never implicitly
+   replay the consumed input; fresh continuation metadata belongs to a new
+   higher-version Starting attempt and is immutable during that attempt.
 
 ## Boundaries
 
