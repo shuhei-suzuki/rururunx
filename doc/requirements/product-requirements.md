@@ -849,6 +849,9 @@ Primary commands:
 
 ```bash
 rrx
+rrx project add
+rrx project list
+rrx project status
 rrx goal
 rrx goal status
 rrx consult
@@ -1156,3 +1159,11 @@ The MVP is accepted when all of the following are demonstrable:
 43. Goal context is represented compactly without duplicating all Task histories.
 44. Provider-native goal support is optional optimization; Goal execution remains provider-independent.
 45. The core `rrx` runtime is implemented in Rust and demonstrates acceptable orchestration overhead under 4+ concurrent Tasks.
+46. At least two separate Projects/repositories can be registered and active concurrently in one Runtime.
+47. Project rules, context, worktrees, Git operations, and environment references remain isolated across Projects.
+48. Multiple Goals from different Projects can make progress concurrently.
+49. Global, per-project, and per-agent concurrency limits are enforced.
+50. Runtime scheduling provides basic fairness so one Project does not unintentionally starve all others.
+51. Runtime-wide status/TUI groups activity by Project → Goal → Task.
+52. Runtime restart restores Project registry and multi-project Goal/Task scheduling state.
+53. Dogfooding demonstrates at least two repositories progressing concurrently with no cross-project context/worktree contamination.
