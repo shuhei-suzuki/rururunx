@@ -154,6 +154,10 @@ async fn main() -> Result<()> {
         "native review failed: {:?}",
         first.failure
     );
+    ensure!(
+        adapter.transport_succeeded(&first),
+        "native completion journal did not validate Workflow transport"
+    );
     let answer: Value = serde_json::from_slice(&first.stdout)?;
     ensure!(
         answer["verdict"] == verdict,
@@ -194,6 +198,10 @@ async fn main() -> Result<()> {
             status.session.state == SessionState::Exited,
             "native resume failed: {:?}",
             status.failure
+        );
+        ensure!(
+            adapter.transport_succeeded(&status),
+            "resumed native completion journal unavailable"
         );
         second = Some(serde_json::from_slice::<Value>(&status.stdout)?);
     }

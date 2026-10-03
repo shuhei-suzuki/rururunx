@@ -865,6 +865,15 @@ impl AgentAdapter for CodexAdapter {
         Box::pin(async move {
             let (_claim, request, schema) = self.claim(&session)?;
             let previous = self.current(&session)?.session;
+            if previous.recovery["input_version"]
+                .as_u64()
+                .is_none_or(|version| request.input.version <= version)
+            {
+                return Err(failure(
+                    ErrorKind::StateConflict,
+                    "native resume needs a newly checkpointed continuation; the previous prompt cannot be replayed implicitly",
+                ));
+            }
             self.launch(request, schema, Some(previous)).await
         })
     }
@@ -1003,6 +1012,26 @@ impl AgentAdapter for CodexAdapter {
                 ));
             }
             request.input = input;
+            // An explicit fresh checkpoint may refresh mutable Project metadata,
+            // but may never rebind the owned repository/worktree identity.
+            let project = self
+                .store
+                .lock()
+                .map_err(|_| failure(ErrorKind::StateFailure, "state store poisoned"))?
+                .project(request.project.id)
+                .map_err(|error| failure(ErrorKind::StateFailure, error.to_string()))?
+                .ok_or_else(|| failure(ErrorKind::SessionLost, "checkpoint Project disappeared"))?;
+            if project.root != request.project.root
+                || project.repository_identity != request.project.repository_identity
+                || project.base_branch != request.project.base_branch
+                || project.worktree_root != request.project.worktree_root
+            {
+                return Err(failure(
+                    ErrorKind::OwnershipMismatch,
+                    "native checkpoint cannot rebind its Project repository",
+                ));
+            }
+            request.project = project;
             let snapshot = ScopeSnapshot::capture(&self.store, &request, &self.agent)?;
             let (persisted, version) = self
                 .store
@@ -1756,6 +1785,7 @@ mod tests {
             status.session.role = SessionRole::Executor;
             status.session.native_ref = Some("thread".into());
             status.session.recovery["native_turn"] = json!("turn");
+            status.session.recovery["input_version"] = json!(owned.request.input.version);
             status.session.state = SessionState::Starting;
             let mut reservation = Reservation {
                 store: owned.store.clone(),
@@ -1981,6 +2011,9 @@ mod tests {
     async fn failed_pre_inference_resume_restores_the_owned_terminal_record_and_watch() {
         let mut fixture = ApprovalFixture::new(true).await;
         let (adapter, reference) = fixture.terminal_adapter();
+        let mut input = fixture.authority.request.input.clone();
+        input.version += 1;
+        adapter.checkpoint(reference.clone(), input).await.unwrap();
         let original = adapter.current(&reference).unwrap();
         for _ in 0..2 {
             assert_eq!(
@@ -1994,6 +2027,54 @@ mod tests {
             );
             assert!(fixture.evidence.lock().unwrap().completed);
         }
+        adapter.release(reference).unwrap();
+    }
+    #[tokio::test]
+    async fn resume_never_replays_cached_prompt_and_checkpoint_refreshes_only_own_metadata() {
+        let mut fixture = ApprovalFixture::new(true).await;
+        let (adapter, reference) = fixture.terminal_adapter();
+        let original = adapter.current(&reference).unwrap();
+        assert_eq!(
+            adapter.resume(reference.clone()).await.unwrap_err().kind,
+            ErrorKind::StateConflict
+        );
+        assert_eq!(
+            serde_json::to_value(adapter.current(&reference).unwrap().session).unwrap(),
+            serde_json::to_value(original.session).unwrap()
+        );
+        let mut project = fixture.authority.request.project.clone();
+        project.name = "updated own display metadata".into();
+        fixture
+            .reservation
+            .store
+            .lock()
+            .unwrap()
+            .put_project(&mut project)
+            .unwrap();
+        let mut input = fixture.authority.request.input.clone();
+        input.version += 1;
+        input.payload = "explicit safe continuation".into();
+        adapter.checkpoint(reference.clone(), input).await.unwrap();
+        assert_eq!(
+            adapter
+                .registry()
+                .unwrap()
+                .get(&reference.id)
+                .unwrap()
+                .request
+                .project
+                .version,
+            project.version
+        );
+        assert_eq!(
+            adapter.resume(reference.clone()).await.unwrap_err().kind,
+            ErrorKind::ExecutableMissing
+        );
+        // The failed pre-inference attempt may retry this explicit continuation.
+        assert_eq!(
+            adapter.current(&reference).unwrap().session.state,
+            SessionState::Exited
+        );
         adapter.release(reference).unwrap();
     }
     #[tokio::test]
