@@ -64,7 +64,16 @@ impl Fixture {
             "fixture".into(),
             "main".into(),
         );
-        let mut goal = Goal::new(project.id, "test".into(), vec![]);
+        let mut goal = Goal::new(
+            project.id,
+            "test".into(),
+            vec![CompletionCriterion {
+                id: "fixture".into(),
+                description: "fake agent exits".into(),
+                evidence: None,
+                satisfied: false,
+            }],
+        );
         let mut task = Task::new(project.id, goal.id, "test".into(), "fake".into());
         task.worktree = Some(worktree.canonicalize().unwrap());
         task.branch = Some("feature/task".into());
