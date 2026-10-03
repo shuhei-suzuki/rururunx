@@ -190,7 +190,69 @@ When exposed by native agents/providers, record:
 
 Metrics should be attributable by Task, phase, and agent.
 
-## 13. MVP acceptance
+## 13. Invalidation and freshness
+
+Context artifacts must carry enough metadata to detect staleness.
+
+At minimum consider:
+
+- repository
+- branch/worktree
+- HEAD/commit
+- workflow phase
+- source artifact hashes/versions
+- generation timestamp
+- Context Pack version
+
+Invalidation examples:
+
+- HEAD changed → diff/review bundle becomes stale
+- requirements/design changed → dependent Context Pack sections become stale
+- workflow escalated → newly mandatory rules/evidence must be added
+- project rule file changed → relevant rule snapshot must refresh
+
+A stale artifact must not be silently reused for a gate whose correctness depends on freshness.
+
+## 14. Context selection pipeline
+
+Logical pipeline:
+
+```text
+Task + Phase + Target Revision
+          ↓
+Mandatory rules/evidence
+          ↓
+Context Pack
+          ↓
+Repository-map candidate retrieval
+          ↓
+Relevance ranking / graph expansion
+          ↓
+Budget packing
+          ↓
+Agent-specific formatting
+          ↓
+Native Agent
+```
+
+Mandatory items are packed before discretionary repository context.
+
+## 15. Baseline mode
+
+For measurement and debugging, rururunx should support a baseline/disabled mode that bypasses optional context-reduction behavior where practical.
+
+This allows dogfood comparison of:
+
+- token use
+- cost
+- latency
+- review findings
+- task success
+- safety/quality regressions
+
+Baseline mode must still preserve mandatory safety/project rules.
+
+## 16. MVP acceptance
 
 MVP must demonstrate:
 
