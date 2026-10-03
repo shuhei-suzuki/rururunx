@@ -287,6 +287,19 @@ impl NativeRpc {
         let prepared = self.prepare_call(method, params)?;
         self.dispatch_call(prepared).await
     }
+    /// The live supervisor remains the sole reader while interrupting. It must
+    /// correlate this response and drain scoped callbacks/terminal notifications;
+    /// an acknowledgement alone never establishes native turn termination.
+    pub(super) async fn interrupt_turn(
+        &mut self,
+        thread: &str,
+        turn: &str,
+    ) -> AdapterResult<RpcId> {
+        let prepared =
+            self.prepare_call("turn/interrupt", json!({"threadId":thread,"turnId":turn}))?;
+        self.send_text(prepared.text).await?;
+        Ok(prepared.id)
+    }
     /// Encode and bound the whole frame before publishing consumed input intent.
     pub(super) fn prepare_call(
         &mut self,

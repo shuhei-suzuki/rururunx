@@ -86,6 +86,51 @@ pub struct NativeServer {
     pid: u32,
 }
 impl NativeServer {
+    /// Test transport for the actual supervisor: real owned child/group cleanup,
+    /// private socket identity and reader lifecycle, with a synthetic RPC peer.
+    /// This is not a native launch/peer-authentication conformance fixture.
+    #[cfg(test)]
+    pub(super) fn supervisor_fixture(
+        rpc: NativeRpc,
+        uncertain: Arc<AtomicBool>,
+    ) -> AdapterResult<Self> {
+        let directory = tempfile::Builder::new()
+            .prefix("rrx-test-")
+            .tempdir_in("/tmp")
+            .map_err(|error| failure(ErrorKind::LaunchFailure, error.to_string()))?;
+        std::fs::set_permissions(directory.path(), std::fs::Permissions::from_mode(0o700))
+            .map_err(|error| failure(ErrorKind::LaunchFailure, error.to_string()))?;
+        let socket = directory.path().canonicalize().unwrap().join("s");
+        let listener = std::os::unix::net::UnixListener::bind(&socket)
+            .map_err(|error| failure(ErrorKind::LaunchFailure, error.to_string()))?;
+        std::fs::set_permissions(&socket, std::fs::Permissions::from_mode(0o600))
+            .map_err(|error| failure(ErrorKind::LaunchFailure, error.to_string()))?;
+        let socket_binding = SocketBinding::capture(&socket)?;
+        drop(listener);
+        let child = Command::new("/bin/sleep")
+            .arg("30")
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .process_group(0)
+            .kill_on_drop(true)
+            .spawn()
+            .map_err(|error| failure(ErrorKind::LaunchFailure, error.to_string()))?;
+        let mut process = ProcessGroup::new(child, uncertain)?;
+        let pid = process.child.id().expect("owned fixture child");
+        let stdout = Reader::spawn(process.child.stdout.take().expect("piped stdout"));
+        let stderr = Reader::spawn(process.child.stderr.take().expect("piped stderr"));
+        Ok(Self {
+            rpc,
+            process,
+            directory,
+            socket,
+            socket_binding,
+            stdout,
+            stderr,
+            pid,
+        })
+    }
     pub async fn launch(
         executable: &Path,
         workspace: &Path,
