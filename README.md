@@ -237,7 +237,9 @@ Configuration uses TOML. Inputs are explicit during bootstrap:
 rrx --config runtime.toml --project-config project.toml config-check
 ```
 
-Project overlays merge by key over runtime configuration; arrays replace.
+Project overlays may change per-project task limits, context budgets and agent
+model/effort. They cannot change global session limits or agent executable/concurrency
+settings. A project minimum workflow can only make the runtime minimum stricter.
 Unknown fields, unreadable explicit files and invalid limits fail with an error.
 Configuration checking does not start agents or write state. Example:
 

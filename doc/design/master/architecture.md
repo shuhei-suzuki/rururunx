@@ -389,13 +389,13 @@ Cloud execution, web dashboards, and long-term memory are outside MVP and should
 
 Rust 2024 / minimum Rust 1.91 is the core standard; development and CI pin 1.91.1.
 The Cargo workspace contains `crates/rrx` with a library and a CLI binary.
-Native process/PTY supervision, persistence and terminal presentation are module
-boundaries; the bootstrap does not construct an async runtime for help/config
-validation. Tokio will own event-driven process IO, rusqlite local persistence,
-and a PTY backend native session transport when those components land.
+The currently implemented library module is `config`; CLI help and config validation
+do not construct an async runtime or start native agents.
 
 Initial dependencies are clap, serde/serde_json, TOML and anyhow. Config loading
-accepts explicit runtime and single-project inputs, validates typed limits, and
-does not act as a native permission grant. Agents are launched only through the
-future adapter layer. macOS/Linux source installation uses one release `rrx`
-binary; no hosted service is required. Details: `../issue-1-design.md`.
+accepts explicit runtime and single-project inputs, validates typed limits and
+does not act as a native permission grant. A separate ProjectOverlay schema
+excludes runtime-wide session limits and agent executable/concurrency settings;
+project workflow minimum can only escalate the runtime minimum. Diagnostics
+retain the input file path. macOS/Linux source installation produces one release
+`rrx` binary with Cargo; no hosted service is required.

@@ -18,11 +18,14 @@ Native CLI providers must not leak into scheduling/domain modules.
 ## Configuration
 
 `--config` loads runtime-global TOML. `--project-config` loads one explicit project
-overlay recursively by key (arrays replace). Unknown fields, malformed TOML,
+overlay through a separate typed schema. Only project task limits, context options,
+and agent model/effort are overridable. Global session/agent limits and executable
+argv are runtime-owned; project `minimum_workflow` is combined by maximum. Unknown
+fields, malformed TOML,
 missing explicit paths and zero concurrency/context budgets are errors. Agent
 models/efforts are optional values, without provider defaults at this layer.
-Configuration is not a permission grant; workflow minimum combination belongs
-to #8 and native safety remains authoritative. No secrets are printed by
+Configuration is not a permission grant; further risk/Goal/user workflow minimum
+combination belongs to #8 and native safety remains authoritative. No secrets are printed by
 `config-check`. Registered-project discovery belongs to #26.
 
 ## API, data and impact
@@ -34,8 +37,10 @@ are ignored. CI uses read-only repository permissions.
 
 ## Verification strategy
 
-Unit checks protect default parallel capacity, overlay semantics and fail-closed
-config validation. CLI integration checks help/version, config defaults and
+Unit checks protect default parallel capacity, workflow rank and project scope.
+Executable tests protect typed loading, actual overlay precedence, source-path
+diagnostics, invalid budgets/commands, missing paths, no startup side effects and
+the README configuration example. CLI integration checks help/version, config defaults and
 missing-file errors. Both build modes plus fmt/clippy run on macOS/Linux CI.
 Warm-start measurements report platform and sample count without claiming agent
 execution/idle overhead. Idle CPU/memory measurement requires the live scheduler

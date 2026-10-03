@@ -67,21 +67,104 @@ pub struct Config {
     pub agents: BTreeMap<String, AgentConfig>,
 }
 
+/// Project inputs intentionally cannot alter runtime-wide slots or executables.
+#[derive(Debug, Default, Clone, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct ProjectOverlay {
+    pub minimum_workflow: Option<WorkflowClass>,
+    pub scheduler: ProjectSchedulerOverlay,
+    pub context: ContextOverlay,
+    pub agents: BTreeMap<String, ProjectAgentOverlay>,
+}
+
+#[derive(Debug, Default, Clone, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct ProjectSchedulerOverlay {
+    pub max_tasks_per_project: Option<usize>,
+}
+
+#[derive(Debug, Default, Clone, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct ContextOverlay {
+    pub enabled: Option<bool>,
+    pub repo_map_tokens: Option<usize>,
+    pub review_context_tokens: Option<usize>,
+    pub recent_history_tokens: Option<usize>,
+}
+
+#[derive(Debug, Default, Clone, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct ProjectAgentOverlay {
+    pub model: Option<String>,
+    pub effort: Option<String>,
+}
+
+fn parse_file<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T> {
+    let text = fs::read_to_string(path)
+        .with_context(|| format!("cannot read config {}", path.display()))?;
+    toml::from_str(&text).with_context(|| format!("invalid config {}", path.display()))
+}
+
 impl Config {
-    /// Load runtime configuration and one explicitly selected project overlay.
-    /// Missing explicit inputs are errors; absence of optional inputs uses defaults.
+    /// Runtime and Project have distinct schemas. The merged config is one
+    /// project's effective view; the global scheduler retains runtime slots.
     pub fn load(global: Option<&Path>, project: Option<&Path>) -> Result<Self> {
-        let mut value = toml::Value::try_from(Self::default())?;
-        for path in [global, project].into_iter().flatten() {
-            let text = fs::read_to_string(path)
-                .with_context(|| format!("cannot read config {}", path.display()))?;
-            let overlay: toml::Value = toml::from_str(&text)
-                .with_context(|| format!("invalid TOML config {}", path.display()))?;
-            merge(&mut value, overlay);
+        let mut result: Self = match global {
+            Some(path) => parse_file(path)?,
+            None => Self::default(),
+        };
+        result.validate().with_context(|| {
+            format!(
+                "invalid runtime config {}",
+                global.map_or_else(|| "defaults".into(), |p| p.display().to_string())
+            )
+        })?;
+        if let Some(path) = project {
+            result.apply_project(parse_file(path)?);
+            result
+                .validate()
+                .with_context(|| format!("invalid project config {}", path.display()))?;
         }
-        let result: Self = value.try_into().context("invalid configuration fields")?;
-        result.validate()?;
         Ok(result)
+    }
+
+    fn apply_project(&mut self, project: ProjectOverlay) {
+        if let Some(minimum) = project.minimum_workflow {
+            self.minimum_workflow = self.minimum_workflow.max(minimum);
+        }
+        if let Some(limit) = project.scheduler.max_tasks_per_project {
+            self.scheduler.max_tasks_per_project = limit;
+        }
+        if let Some(enabled) = project.context.enabled {
+            self.context.enabled = enabled;
+        }
+        for (target, value) in [
+            (
+                &mut self.context.repo_map_tokens,
+                project.context.repo_map_tokens,
+            ),
+            (
+                &mut self.context.review_context_tokens,
+                project.context.review_context_tokens,
+            ),
+            (
+                &mut self.context.recent_history_tokens,
+                project.context.recent_history_tokens,
+            ),
+        ] {
+            if let Some(value) = value {
+                *target = value;
+            }
+        }
+        for (name, overlay) in project.agents {
+            let agent = self.agents.entry(name).or_default();
+            if let Some(model) = overlay.model {
+                agent.model = Some(model);
+            }
+            if let Some(effort) = overlay.effort {
+                agent.effort = Some(effort);
+            }
+        }
     }
 
     pub fn validate(&self) -> Result<()> {
@@ -99,28 +182,20 @@ impl Config {
         }
         for (name, agent) in &self.agents {
             if name.trim().is_empty() || agent.max_concurrent == Some(0) {
-                bail!("agent name and concurrency must be nonempty/positive");
+                bail!("agent {name:?} name and concurrency must be nonempty/positive");
             }
             if agent.command.first().is_some_and(|s| s.trim().is_empty()) {
                 bail!("agent {name} executable must not be empty");
             }
-        }
-        Ok(())
-    }
-}
-
-fn merge(base: &mut toml::Value, overlay: toml::Value) {
-    match (base, overlay) {
-        (toml::Value::Table(base), toml::Value::Table(overlay)) => {
-            for (key, value) in overlay {
-                if let Some(existing) = base.get_mut(&key) {
-                    merge(existing, value);
-                } else {
-                    base.insert(key, value);
-                }
+            if [agent.model.as_deref(), agent.effort.as_deref()]
+                .into_iter()
+                .flatten()
+                .any(|value| value.trim().is_empty())
+            {
+                bail!("agent {name} model/effort must not be blank");
             }
         }
-        (base, overlay) => *base = overlay,
+        Ok(())
     }
 }
 
@@ -137,44 +212,28 @@ mod tests {
     }
 
     #[test]
-    fn overlay_preserves_unmodified_global_fields() {
-        let mut value = toml::Value::try_from(Config::default()).unwrap();
-        merge(
-            &mut value,
-            toml::from_str(
-                "[scheduler]\nglobal_max_sessions = 8\n[agents.codex]\nmodel = 'configured'\n",
-            )
-            .unwrap(),
-        );
-        merge(
-            &mut value,
-            toml::from_str(
-                "[scheduler]\nmax_tasks_per_project = 2\n[agents.codex]\neffort = 'high'\n",
-            )
-            .unwrap(),
-        );
-        let config: Config = value.try_into().unwrap();
+    fn project_preserves_runtime_limits_and_only_escalates_minimum() {
+        let mut config: Config = toml::from_str("minimum_workflow = 'STRICT'\n[scheduler]\nglobal_max_sessions = 8\n[agents.codex]\nmodel = 'original'\ncommand = ['codex']\nmax_concurrent = 6").unwrap();
+        config.apply_project(toml::from_str("minimum_workflow = 'QUICK'\n[scheduler]\nmax_tasks_per_project = 2\n[agents.codex]\neffort = 'high'").unwrap());
+        assert_eq!(config.minimum_workflow, WorkflowClass::Strict);
         assert_eq!(config.scheduler.global_max_sessions, 8);
         assert_eq!(config.scheduler.max_tasks_per_project, 2);
-        assert_eq!(config.agents["codex"].model.as_deref(), Some("configured"));
+        assert_eq!(config.agents["codex"].model.as_deref(), Some("original"));
+        assert_eq!(config.agents["codex"].command, ["codex"]);
+        assert_eq!(config.agents["codex"].max_concurrent, Some(6));
         assert_eq!(config.agents["codex"].effort.as_deref(), Some("high"));
+        assert!(WorkflowClass::Quick < WorkflowClass::Standard);
+        assert!(WorkflowClass::Standard < WorkflowClass::Strict);
     }
 
     #[test]
-    fn unknown_fields_and_invalid_limits_fail_closed() {
-        assert!(toml::from_str::<Config>("minimum_workflow = 'LOOSE'").is_err());
-        assert!(toml::from_str::<Config>("unexpected = true").is_err());
-        let mut config = Config::default();
-        config.scheduler.global_max_sessions = 0;
-        assert!(config.validate().is_err());
-        config.scheduler.global_max_sessions = 4;
-        config.agents.insert(
-            "codex".into(),
-            AgentConfig {
-                max_concurrent: Some(0),
-                ..Default::default()
-            },
-        );
-        assert!(config.validate().is_err());
+    fn project_cannot_set_runtime_wide_keys() {
+        for input in [
+            "[scheduler]\nglobal_max_sessions = 9",
+            "[agents.codex]\ncommand = ['other']",
+            "[agents.codex]\nmax_concurrent = 7",
+        ] {
+            assert!(toml::from_str::<ProjectOverlay>(input).is_err(), "{input}");
+        }
     }
 }

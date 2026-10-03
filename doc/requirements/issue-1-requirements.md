@@ -1,6 +1,6 @@
 # Issue #1 — Rust executable foundation
 
-Source: Product Requirements v0.7, Architecture, GitHub #1. Workflow: STANDARD.
+Source: Product Requirements v0.7, Architecture, GitHub #1. Workflow: STRICT (configuration isolation boundary).
 
 ## Purpose and scope
 

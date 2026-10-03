@@ -24,9 +24,9 @@ enum Command {
 }
 
 fn run(cli: Cli) -> Result<()> {
+    let config = Config::load(cli.config.as_deref(), cli.project_config.as_deref())?;
     match cli.command {
         Some(Command::ConfigCheck) => {
-            let config = Config::load(cli.config.as_deref(), cli.project_config.as_deref())?;
             println!(
                 "Configuration valid: global sessions {}, tasks/project {}, context {}",
                 config.scheduler.global_max_sessions,
