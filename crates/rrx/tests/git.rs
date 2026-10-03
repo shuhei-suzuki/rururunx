@@ -464,3 +464,39 @@ fn qualified_base_ref_wins_over_same_named_tag_and_replacement_is_blocked() {
     let other = f.task(2);
     assert!(Manager::create(&mut f.store, other.id).is_err());
 }
+
+#[test]
+fn cleanup_after_upstream_tracking_ref_is_pruned() {
+    let mut f = Fixture::new();
+    let t = f.task(1);
+    let s = Manager::create(&mut f.store, t.id).unwrap();
+    git(
+        &f.root,
+        &[
+            "config",
+            "remote.origin.url",
+            "https://example.invalid/fixture.git",
+        ],
+    );
+    git(
+        &f.root,
+        &[
+            "config",
+            "remote.origin.fetch",
+            "+refs/heads/*:refs/remotes/origin/*",
+        ],
+    );
+    let tracking = format!("refs/remotes/origin/{}", s.branch);
+    git(&f.root, &["update-ref", &tracking, &s.revision]);
+    git(
+        &s.worktree,
+        &[
+            "branch",
+            "--set-upstream-to",
+            &format!("origin/{}", s.branch),
+        ],
+    );
+    git(&f.root, &["update-ref", "-d", &tracking]);
+    Manager::cleanup(&mut f.store, t.id).unwrap();
+    assert!(!s.worktree.exists());
+}
