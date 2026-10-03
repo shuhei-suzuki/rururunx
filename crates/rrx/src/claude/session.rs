@@ -28,6 +28,12 @@ use tokio::sync::{mpsc, oneshot, watch};
 
 const OUTPUT_LIMIT: usize = 64 * 1024;
 const RETAINED: usize = 32;
+#[cfg(test)]
+type SpawnPublicationFence = (
+    Arc<tokio::sync::Barrier>,
+    Arc<tokio::sync::Barrier>,
+    Arc<std::sync::atomic::AtomicU32>,
+);
 fn input_sha256(input: &PreparedInput) -> String {
     use sha2::{Digest, Sha256};
     format!("{:x}", Sha256::digest(input.payload.as_bytes()))
@@ -55,6 +61,8 @@ pub struct ClaudeAdapter {
     turn_timeout: Duration,
     #[cfg(test)]
     before_input_fence: Option<(Arc<tokio::sync::Barrier>, Arc<tokio::sync::Barrier>)>,
+    #[cfg(test)]
+    before_pid_publication: Option<SpawnPublicationFence>,
 }
 struct Entry {
     admission: Arc<tokio::sync::OwnedSemaphorePermit>,
@@ -221,6 +229,8 @@ impl ClaudeAdapter {
             turn_timeout: Duration::from_secs(600),
             #[cfg(test)]
             before_input_fence: None,
+            #[cfg(test)]
+            before_pid_publication: None,
         })
     }
     /// Enable exact one-shot replies from the trusted runtime broker. Native
@@ -380,12 +390,37 @@ impl ClaudeAdapter {
             reservation.ownership.group(),
         )?;
         reservation.input_may_have_been_sent = true;
-        reservation.session.pid = Some(transport.pid());
-        reservation.session.state = SessionState::WaitingHuman;
+        #[cfg(test)]
+        if let Some((ready, release, pid)) = &self.before_pid_publication {
+            pid.store(transport.pid(), Ordering::SeqCst);
+            ready.wait().await;
+            release.wait().await;
+        }
+        let mut candidate = reservation.session.clone();
+        candidate.pid = Some(transport.pid());
+        candidate.state = SessionState::WaitingHuman;
         // UI output is not authoritative structured UUID/turn confirmation.
-        reservation.session.native_ref = None;
-        reservation.session.recovery["requested_native_uuid"] = native.into();
-        reservation.persist()?;
+        candidate.native_ref = None;
+        candidate.recovery["requested_native_uuid"] = native.into();
+        if let Err(primary) = reservation.commit_current(candidate, &snapshot) {
+            let pid = transport.pid();
+            let cleanup = transport.cleanup().await;
+            return Err(failure(
+                if cleanup.is_err() {
+                    ErrorKind::SessionLost
+                } else {
+                    primary.kind
+                },
+                format!(
+                    "native terminal PID publication failed: {primary}; owned pid={pid} cleanup={}",
+                    if cleanup.is_err() {
+                        "unverified"
+                    } else {
+                        "verified"
+                    }
+                ),
+            ));
+        }
         let session = reservation.session.clone();
         let status = SessionStatus {
             session: session.clone(),
@@ -705,8 +740,33 @@ impl ClaudeAdapter {
             environment,
             reservation.ownership.group(),
         )?;
-        reservation.session.pid = Some(transport.pid());
-        reservation.persist()?;
+        #[cfg(test)]
+        if let Some((ready, release, pid)) = &self.before_pid_publication {
+            pid.store(transport.pid(), Ordering::SeqCst);
+            ready.wait().await;
+            release.wait().await;
+        }
+        let mut candidate = reservation.session.clone();
+        candidate.pid = Some(transport.pid());
+        if let Err(primary) = reservation.commit_current(candidate, &snapshot) {
+            let pid = transport.pid();
+            let cleanup = transport.cleanup().await;
+            return Err(failure(
+                if cleanup.is_err() {
+                    ErrorKind::SessionLost
+                } else {
+                    primary.kind
+                },
+                format!(
+                    "native PID publication failed: {primary}; owned pid={pid} cleanup={}",
+                    if cleanup.is_err() {
+                        "unverified"
+                    } else {
+                        "verified"
+                    }
+                ),
+            ));
+        }
         let initialize=async {
             transport.request("initialize",&format!("init-{attempt}")).await?;
             if policy::decision(request.role) {
@@ -1964,6 +2024,80 @@ for line in sys.stdin:
                 .iter()
                 .all(|event| event.data["evidence"]["dispatch_intent"]["decision"] != "DENY")
         );
+    }
+    #[tokio::test]
+    async fn blocked_after_spawn_preserves_committed_metadata_and_cleans_owned_print_and_pty() {
+        for terminal_mode in [false, true] {
+            let mut fixture = Fixture::new(!terminal_mode);
+            if terminal_mode {
+                fixture.request.mode = LaunchMode::Interactive;
+            }
+            let temp = tempfile::tempdir().unwrap();
+            let ready = Arc::new(tokio::sync::Barrier::new(2));
+            let release = Arc::new(tokio::sync::Barrier::new(2));
+            let pid = Arc::new(std::sync::atomic::AtomicU32::new(0));
+            let mut adapter = ClaudeAdapter::new(
+                "claude".into(),
+                executable(&temp, "hang"),
+                fixture.store.clone(),
+            )
+            .unwrap();
+            adapter.before_pid_publication = Some((ready.clone(), release.clone(), pid.clone()));
+            if terminal_mode {
+                adapter = adapter.with_terminal_prototype();
+            }
+            let adapter = Arc::new(adapter);
+            let owner = adapter.clone();
+            let request = fixture.request.clone();
+            let launch = tokio::spawn(async move { owner.start(request).await });
+            tokio::time::timeout(Duration::from_secs(10), ready.wait())
+                .await
+                .unwrap();
+            assert!(pid.load(Ordering::SeqCst) > 0);
+            block_fixture_project(&fixture);
+            release.wait().await;
+            let error = tokio::time::timeout(Duration::from_secs(10), launch)
+                .await
+                .unwrap()
+                .unwrap()
+                .unwrap_err();
+            assert_eq!(error.kind, ErrorKind::StateConflict, "{error}");
+            assert!(error.message.contains("cleanup=verified"));
+            let records = fixture
+                .store
+                .lock()
+                .unwrap()
+                .records(&fixture.request.scope, crate::domain::RecordKind::Session)
+                .unwrap();
+            assert_eq!(records.len(), 1);
+            let saved: Session = serde_json::from_value(records[0].data.clone()).unwrap();
+            assert_eq!(
+                saved.state,
+                if terminal_mode {
+                    SessionState::Lost
+                } else {
+                    SessionState::Failed
+                }
+            );
+            assert!(saved.pid.is_none());
+            assert!(saved.recovery["dispatch_intent"]["kind"] != "input");
+            let output = std::process::Command::new("/bin/ps")
+                .args(["-axo", "pgid=,stat="])
+                .env_clear()
+                .output()
+                .unwrap();
+            assert!(output.status.success());
+            assert!(
+                String::from_utf8(output.stdout)
+                    .unwrap()
+                    .lines()
+                    .all(|line| line
+                        .split_whitespace()
+                        .next()
+                        .and_then(|n| n.parse::<u32>().ok())
+                        != Some(pid.load(Ordering::SeqCst)))
+            );
+        }
     }
     #[tokio::test]
     async fn automatic_denial_is_durable_before_correlated_native_completion() {

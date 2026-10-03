@@ -66,3 +66,5 @@ OS login identity keep their documented isolation rules. Staged continuation and
 explicit evidence release semantics must be visible to consumers.
 
 Permission wait/cancel and non-broker automatic denial must preserve the last durable Session on publication failure, persist conservative Lost with verified PID cleanup, and audit exact automatic denial intent before dispatch. Rejecting broad Project overlay classes must not forward unrelated ambient Node or Google credentials.
+
+Post-spawn PID publication uses a candidate and current scoped CAS. If publication fails, the runtime verifies owned group cleanup and reap before returning an error, including only owned PID and verified/unverified cleanup diagnostics. Recovery derives from the last committed metadata; an unsubmitted print attempt may fail only after verified cleanup, while the opted-in native UI with uncertain input remains Lost. No stale Starting/WaitingHuman record is manufactured by a never-durable PID.

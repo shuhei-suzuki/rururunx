@@ -266,3 +266,5 @@ later owned resume; it does not deliver context to a live turn. Retained native
 evidence requires explicit release after the consumer records its result.
 
 Every permission wait, cancellation and automatic denial uses a Session candidate: the runtime journal changes only after durable CAS. An automatic denial records its exact dispatch intent before wire output. If Project activity changes before publication, Lost is derived from the last committed recovery, preserving only a durably published pending hash. The broad forbidden overlay class does not expand native baseline passthrough: unrelated ambient NODE_/GOOGLE_/GCLOUD_/VERTEX_ secrets remain excluded.
+
+Post-spawn PID publication uses a candidate and current scoped CAS. If publication fails, the runtime verifies owned group cleanup and reap before returning an error, including only owned PID and verified/unverified cleanup diagnostics. Recovery derives from the last committed metadata; an unsubmitted print attempt may fail only after verified cleanup, while the opted-in native UI with uncertain input remains Lost. No stale Starting/WaitingHuman record is manufactured by a never-durable PID.
