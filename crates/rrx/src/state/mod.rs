@@ -1,4 +1,6 @@
 //! Transactional SQLite snapshots + append-only logical events, scoped by Project.
+mod context_pack;
+
 use std::{path::Path, time::Duration};
 
 use anyhow::{Context, Result, bail, ensure};

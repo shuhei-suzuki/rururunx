@@ -2,6 +2,7 @@
 pub mod adapter;
 pub mod config;
 pub mod context;
+pub mod context_pack;
 pub mod domain;
 pub mod git;
 pub mod project;
