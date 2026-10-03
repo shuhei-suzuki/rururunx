@@ -339,6 +339,62 @@ impl CodexAdapter {
         }
         Ok(status)
     }
+    /// Bind telemetry/completion to one registry owner and persisted turn while
+    /// excluding replacement by resume/release. No provider or caller JSON is
+    /// sufficient without this supervisor's private journal.
+    fn observe_owned<T>(
+        &self,
+        reference: &SessionRef,
+        observe: impl FnOnce(&SessionStatus, &Evidence) -> AdapterResult<T>,
+    ) -> AdapterResult<T> {
+        let sessions = self.registry()?;
+        let entry = sessions.get(&reference.id).ok_or_else(|| {
+            failure(
+                ErrorKind::SessionLost,
+                "native observation owner unavailable",
+            )
+        })?;
+        if entry.transition.load(Ordering::SeqCst) {
+            return Err(failure(
+                ErrorKind::StateConflict,
+                "native observation overlaps a transition",
+            ));
+        }
+        let store = self
+            .store
+            .lock()
+            .map_err(|_| failure(ErrorKind::StateFailure, "state store poisoned"))?;
+        let status = entry.status.borrow().clone();
+        if status.session.scope != reference.scope {
+            return Err(failure(
+                ErrorKind::OwnershipMismatch,
+                "foreign native observation",
+            ));
+        }
+        let persisted = store
+            .session(reference.id)
+            .map_err(|error| failure(ErrorKind::StateFailure, error.to_string()))?
+            .ok_or_else(|| {
+                failure(
+                    ErrorKind::SessionLost,
+                    "native observation record unavailable",
+                )
+            })?
+            .0;
+        let evidence = entry
+            .evidence
+            .lock()
+            .map_err(|_| failure(ErrorKind::StateFailure, "native journal poisoned"))?;
+        if serde_json::to_value(&persisted).ok() != serde_json::to_value(&status.session).ok()
+            || status.session.recovery["native_turn"].as_str() != evidence.turn.as_deref()
+        {
+            return Err(failure(
+                ErrorKind::StateConflict,
+                "native observation belongs to a different persisted attempt",
+            ));
+        }
+        observe(&status, &evidence)
+    }
     async fn launch(
         &self,
         request: LaunchRequest,
@@ -737,6 +793,21 @@ impl AgentAdapter for CodexAdapter {
     fn start(&self, request: LaunchRequest) -> AdapterFuture<'_, Session> {
         Box::pin(self.launch(request, None, None))
     }
+    fn transport_succeeded(&self, status: &SessionStatus) -> bool {
+        self.observe_owned(&SessionRef::from(&status.session), |owned, evidence| {
+            Ok(evidence.completed
+                && evidence.turn.is_some()
+                && owned.session.native_ref.is_some()
+                && owned.session.state == SessionState::Exited
+                && owned.session.pid.is_none()
+                && owned.failure.is_none()
+                && status.failure.is_none()
+                && status.exit_code == owned.exit_code
+                && serde_json::to_value(&status.session).ok()
+                    == serde_json::to_value(&owned.session).ok())
+        })
+        .unwrap_or(false)
+    }
     fn start_structured(
         &self,
         request: LaunchRequest,
@@ -812,14 +883,10 @@ impl AgentAdapter for CodexAdapter {
             if phase.trim().is_empty() {
                 return Err(failure(ErrorKind::InvalidInput, "usage phase is blank"));
             }
-            let status = self.current(&session)?;
-            let (_, _, evidence, _) = self.reference(&session)?;
-            let evidence = evidence
-                .lock()
-                .map_err(|_| failure(ErrorKind::StateFailure, "native telemetry poisoned"))?;
+            self.observe_owned(&session, |status, evidence| {
             let counters = evidence.counters.clone().unwrap_or_default();
             Ok(Usage {
-                scope: status.session.scope,
+                scope: status.session.scope.clone(),
                 session_id: session.id,
                 agent: self.agent.clone(),
                 phase,
@@ -841,18 +908,16 @@ impl AgentAdapter for CodexAdapter {
                     .into(),
                 ),
             })
+            })
         })
     }
     fn pending_approvals(&self, session: SessionRef) -> AdapterFuture<'_, Value> {
         Box::pin(async move {
-            let status = self.current(&session)?;
-            let (_, _, evidence, _) = self.reference(&session)?;
-            let evidence = evidence
-                .lock()
-                .map_err(|_| failure(ErrorKind::StateFailure, "native approval state poisoned"))?;
+            self.observe_owned(&session, |status, evidence| {
             Ok(
                 json!({"scope":status.session.scope,"session_id":session.id,"native_uuid":status.session.native_ref,"native_turn":evidence.turn,"requires_human":!self.runtime_broker,"requests":evidence.pending.as_ref().map(ApprovalLedger::pending).unwrap_or_default()}),
             )
+            })
         })
     }
     fn submit_approval(&self, session: SessionRef, decision: Value) -> AdapterFuture<'_, ()> {
@@ -1680,6 +1745,7 @@ mod tests {
             status.session.worktree = owned.request.worktree.clone();
             status.session.role = SessionRole::Executor;
             status.session.native_ref = Some("thread".into());
+            status.session.recovery["native_turn"] = json!("turn");
             status.session.state = SessionState::Starting;
             let mut reservation = Reservation {
                 store: owned.store.clone(),
@@ -1789,6 +1855,79 @@ mod tests {
             );
             (adapter, SessionRef::from(&self.status.session))
         }
+    }
+    #[tokio::test]
+    async fn workflow_completion_requires_private_owned_turn_and_verified_persisted_terminal() {
+        let mut fixture = ApprovalFixture::new(true).await;
+        let (adapter, reference) = fixture.terminal_adapter();
+        let status = adapter.current(&reference).unwrap();
+        assert!(adapter.transport_succeeded(&status));
+        assert_eq!(status.exit_code, None);
+        let mut fabricated = status.clone();
+        fabricated.exit_code = Some(0);
+        assert!(!adapter.transport_succeeded(&fabricated));
+        fabricated = status.clone();
+        fabricated.session.scope.project_id = crate::domain::ProjectId::new();
+        assert!(!adapter.transport_succeeded(&fabricated));
+        fixture.evidence.lock().unwrap().completed = false;
+        fixture.reservation.session.recovery["completed"] = json!(true);
+        fixture
+            .reservation
+            .publish(&fixture.sender, &mut fixture.status)
+            .unwrap();
+        assert!(!adapter.transport_succeeded(&fixture.status));
+        fixture.evidence.lock().unwrap().completed = true;
+        fixture.evidence.lock().unwrap().turn = Some("foreign-turn".into());
+        assert!(!adapter.transport_succeeded(&fixture.status));
+        fixture.evidence.lock().unwrap().turn = Some("turn".into());
+        fixture.reservation.session.state = SessionState::Lost;
+        fixture.reservation.session.pid = Some(42);
+        fixture
+            .reservation
+            .publish(&fixture.sender, &mut fixture.status)
+            .unwrap();
+        assert!(!adapter.transport_succeeded(&fixture.status));
+    }
+    #[tokio::test]
+    async fn observations_reject_transition_and_stale_turn_instead_of_mixing_telemetry() {
+        let mut fixture = ApprovalFixture::new(true).await;
+        let (adapter, reference) = fixture.terminal_adapter();
+        fixture.evidence.lock().unwrap().counters = Some(TokenCounters {
+            input: Some(42),
+            ..TokenCounters::default()
+        });
+        assert_eq!(
+            adapter
+                .usage(reference.clone(), "review".into(), Some(2))
+                .await
+                .unwrap()
+                .input_tokens,
+            Some(42)
+        );
+        let (claim, _, _) = adapter.claim(&reference).unwrap();
+        assert_eq!(
+            adapter
+                .usage(reference.clone(), "review".into(), Some(2))
+                .await
+                .unwrap_err()
+                .kind,
+            ErrorKind::StateConflict
+        );
+        assert!(!adapter.transport_succeeded(&fixture.status));
+        drop(claim);
+        fixture.evidence.lock().unwrap().turn = Some("different-resumed-turn".into());
+        assert_eq!(
+            adapter
+                .usage(reference.clone(), "review".into(), Some(2))
+                .await
+                .unwrap_err()
+                .kind,
+            ErrorKind::StateConflict
+        );
+        assert_eq!(
+            adapter.pending_approvals(reference).await.unwrap_err().kind,
+            ErrorKind::StateConflict
+        );
     }
     #[tokio::test]
     async fn claimed_transition_excludes_release_resume_and_eviction_without_poisoning_registry() {
