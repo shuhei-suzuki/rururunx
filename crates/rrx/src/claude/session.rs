@@ -1336,29 +1336,39 @@ async fn run(
                         transport.write_encoded(&response).await?;
                         continue;
                     }
-                    {
-                        let mut evidence=evidence.lock().map_err(|_|failure(ErrorKind::StateFailure,"native pending journal poisoned"))?;
-                        evidence.pending=Some(pending.clone());
-                    }
-                    reservation.session.state=SessionState::WaitingApproval;
-                    reservation.session.recovery["pending_permission"]=pending.public(native);
-                    reservation.publish(status,sender)?;
+                    let mut candidate=reservation.session.clone();
+                    candidate.state=SessionState::WaitingApproval;
+                    candidate.recovery["pending_permission"]=pending.public(native);
+                    reservation.commit_session_only(candidate)?;
+                    evidence.lock().map_err(|_|failure(ErrorKind::StateFailure,"native pending journal poisoned"))?.pending=Some(pending.clone());
+                    status.session=reservation.session.clone();sender.send_replace(status.clone());
                     if !broker {
-                        transport.write(&pending.reply(false)).await?;
+                        let response=Transport::encode(&pending.reply(false))?;
+                        let mut candidate=reservation.session.clone();
+                        candidate.state=SessionState::Running;
+                        candidate.recovery.as_object_mut().expect("recovery object").remove("pending_permission");
+                        candidate.recovery["dispatch_intent"]=json!({"kind":"permission","operation":pending.public(native),"decision":"DENY","reason":"runtime_broker_unavailable"});
+                        reservation.commit_session_only(candidate)?;
                         evidence.lock().map_err(|_|failure(ErrorKind::StateFailure,"native pending journal poisoned"))?.pending=None;
-                        reservation.session.state=SessionState::Running;reservation.session.recovery.as_object_mut().expect("recovery object").remove("pending_permission");reservation.publish(status,sender)?;
+                        status.session=reservation.session.clone();sender.send_replace(status.clone());
+                        transport.write_encoded(&response).await?;
                     }
                     continue;
                 }
                 if message["type"]=="control_cancel_request" {
                     let id=bounded_id(&message["request_id"])?;
-                    let mut journal=evidence.lock().map_err(|_|failure(ErrorKind::StateFailure,"native pending journal poisoned"))?;
+                    let journal=evidence.lock().map_err(|_|failure(ErrorKind::StateFailure,"native pending journal poisoned"))?;
                     if journal.pending.as_ref().is_none_or(|p|p.request_id!=id) {
                         if request_ids.contains(&id) {continue;}
                         return Err(failure(ErrorKind::ParseFailure,"foreign native permission cancellation"));
                     }
-                    journal.pending=None;drop(journal);
-                    reservation.session.state=SessionState::Running;reservation.session.recovery.as_object_mut().expect("recovery object").remove("pending_permission");reservation.publish(status,sender)?;continue;
+                    drop(journal);
+                    let mut candidate=reservation.session.clone();
+                    candidate.state=SessionState::Running;
+                    candidate.recovery.as_object_mut().expect("recovery object").remove("pending_permission");
+                    reservation.commit_session_only(candidate)?;
+                    evidence.lock().map_err(|_|failure(ErrorKind::StateFailure,"native pending journal poisoned"))?.pending=None;
+                    status.session=reservation.session.clone();sender.send_replace(status.clone());continue;
                 }
                 let observed=state.observe(&message,native,&request.worktree,policy::decision(request.role));
                 // Capture only a correlated accepted native terminal. A failed
@@ -1584,7 +1594,7 @@ mod tests {
         let path = temp.path().join("native-fixture");
         let script = format!(
             r#"#!/usr/bin/env python3
-import json,os,sys
+import json,os,sys,time
 if '--version' in sys.argv:
  print('2.1.283 (Claude Code)');sys.exit(0)
 native=next(a.split('=',1)[1] for a in sys.argv if a.startswith(('--session-id=','--resume=')))
@@ -1613,8 +1623,15 @@ for line in sys.stdin:
   if behavior=='preinit':
    emit({{'type':'control_request','request_id':'early','request':{{'subtype':'can_use_tool','tool_name':'Read','tool_use_id':'early-op','input':{{'file_path':'proof.txt'}}}}}});continue
   emit({{'type':'system','subtype':'init','session_id':native,'cwd':os.getcwd(),'tools':[],'mcp_servers':[]}})
-  if behavior in ['pending','parallel']:
+  if behavior=='pending-gated':
+   open(__file__+'.ready','w').write('ready')
+   while not os.path.exists(__file__+'.go'):time.sleep(0.005)
+  if behavior in ['pending','parallel','pending-gated','cancel-gated']:
    emit({{'type':'control_request','request_id':'permission-1','request':{{'subtype':'can_use_tool','tool_name':'Bash','tool_use_id':'operation-1','input':{{'command':'pwd'}}}}}})
+   if behavior=='cancel-gated':
+    open(__file__+'.ready','w').write('ready')
+    while not os.path.exists(__file__+'.go'):time.sleep(0.005)
+    emit({{'type':'control_cancel_request','request_id':'permission-1'}})
    if behavior=='parallel':emit({{'type':'control_request','request_id':'permission-2','request':{{'subtype':'can_use_tool','tool_name':'Read','tool_use_id':'operation-2','input':{{'file_path':'private-second'}}}}}})
    continue
   if behavior=='hang':continue
@@ -1825,6 +1842,157 @@ for line in sys.stdin:
         assert_eq!(usage.cache_metadata["observed_human_input_tokens"], 2);
         assert!(usage.input_tokens.is_none() && usage.estimated_cost.is_none());
         assert!(usage.missing_reason.is_some());
+    }
+    async fn fixture_marker(path: &std::path::Path) {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while !path.exists() {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .unwrap();
+    }
+    fn block_fixture_project(fixture: &Fixture) {
+        let mut store = fixture.store.lock().unwrap();
+        let mut project = store
+            .project(fixture.request.scope.project_id)
+            .unwrap()
+            .unwrap();
+        project.state = crate::domain::ProjectState::Blocked;
+        store.put_project(&mut project).unwrap();
+    }
+    fn assert_durable_lost(fixture: &Fixture, status: &SessionStatus, pending: bool) {
+        assert_eq!(
+            status.session.state,
+            SessionState::Lost,
+            "{:?}",
+            status.failure
+        );
+        assert!(status.session.pid.is_none());
+        let durable = fixture
+            .store
+            .lock()
+            .unwrap()
+            .session(status.session.id)
+            .unwrap()
+            .unwrap()
+            .0;
+        assert_eq!(durable, status.session);
+        assert_eq!(!durable.recovery["pending_permission"].is_null(), pending);
+        assert!(durable.recovery["dispatch_intent"]["decision"].is_null());
+    }
+    #[tokio::test]
+    async fn blocked_before_permission_preserves_durable_lost_in_both_broker_modes() {
+        for broker in [false, true] {
+            let fixture = Fixture::new(true);
+            let temp = tempfile::tempdir().unwrap();
+            let path = executable(&temp, "pending-gated");
+            let ready = PathBuf::from(format!("{}.ready", path.display()));
+            let go = PathBuf::from(format!("{}.go", path.display()));
+            let mut adapter =
+                ClaudeAdapter::new("claude".into(), path, fixture.store.clone()).unwrap();
+            if broker {
+                adapter = adapter.with_runtime_broker();
+            }
+            let session = adapter.start(fixture.request.clone()).await.unwrap();
+            fixture_marker(&ready).await;
+            block_fixture_project(&fixture);
+            std::fs::write(go, "go").unwrap();
+            let status = terminal(&adapter, (&session).into()).await;
+            assert_durable_lost(&fixture, &status, false);
+            assert!(adapter.pending_operation((&session).into()).is_err());
+        }
+    }
+    #[tokio::test]
+    async fn blocked_permission_cancel_keeps_only_committed_pending_hash() {
+        let fixture = Fixture::new(true);
+        let temp = tempfile::tempdir().unwrap();
+        let path = executable(&temp, "cancel-gated");
+        let ready = PathBuf::from(format!("{}.ready", path.display()));
+        let go = PathBuf::from(format!("{}.go", path.display()));
+        let adapter = ClaudeAdapter::new("claude".into(), path, fixture.store.clone())
+            .unwrap()
+            .with_runtime_broker();
+        let session = adapter.start(fixture.request.clone()).await.unwrap();
+        fixture_marker(&ready).await;
+        let mut receiver = adapter.subscribe((&session).into()).unwrap();
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while receiver.borrow().session.state != SessionState::WaitingApproval {
+                receiver.changed().await.unwrap();
+            }
+        })
+        .await
+        .unwrap();
+        block_fixture_project(&fixture);
+        std::fs::write(go, "go").unwrap();
+        assert_durable_lost(&fixture, &terminal(&adapter, (&session).into()).await, true);
+    }
+    #[tokio::test]
+    async fn block_after_permission_publication_prevents_automatic_denial_wire_and_phantom_intent()
+    {
+        let fixture = Fixture::new(true);
+        let connection = rusqlite::Connection::open(
+            fixture
+                .request
+                .project
+                .root
+                .parent()
+                .unwrap()
+                .join("state.sqlite3"),
+        )
+        .unwrap();
+        connection.execute_batch("CREATE TRIGGER fixture_block AFTER UPDATE ON records WHEN json_extract(NEW.body,'$.data.state')='WAITING_APPROVAL' BEGIN UPDATE projects SET version=version+1,body=json_set(body,'$.version',version+1,'$.state','BLOCKED'); END;").unwrap();
+        let temp = tempfile::tempdir().unwrap();
+        let adapter = ClaudeAdapter::new(
+            "claude".into(),
+            executable(&temp, "pending"),
+            fixture.store.clone(),
+        )
+        .unwrap();
+        let session = adapter.start(fixture.request.clone()).await.unwrap();
+        assert_durable_lost(&fixture, &terminal(&adapter, (&session).into()).await, true);
+        assert!(
+            fixture
+                .store
+                .lock()
+                .unwrap()
+                .events(&session.scope, 0, 100)
+                .unwrap()
+                .iter()
+                .all(|event| event.data["evidence"]["dispatch_intent"]["decision"] != "DENY")
+        );
+    }
+    #[tokio::test]
+    async fn automatic_denial_is_durable_before_correlated_native_completion() {
+        let fixture = Fixture::new(true);
+        let temp = tempfile::tempdir().unwrap();
+        let adapter = ClaudeAdapter::new(
+            "claude".into(),
+            executable(&temp, "pending"),
+            fixture.store.clone(),
+        )
+        .unwrap();
+        let session = adapter.start(fixture.request.clone()).await.unwrap();
+        let status = terminal(&adapter, (&session).into()).await;
+        assert!(adapter.transport_succeeded(&status), "{:?}", status.failure);
+        assert_eq!(
+            status.session.recovery["dispatch_intent"]["decision"],
+            "DENY"
+        );
+        assert_eq!(
+            status.session.recovery["dispatch_intent"]["reason"],
+            "runtime_broker_unavailable"
+        );
+        assert!(
+            fixture
+                .store
+                .lock()
+                .unwrap()
+                .events(&session.scope, 0, 100)
+                .unwrap()
+                .iter()
+                .any(|event| event.data["evidence"]["dispatch_intent"]["decision"] == "DENY")
+        );
     }
     #[tokio::test]
     async fn blocked_project_denial_stops_without_publishing_a_phantom_grant() {

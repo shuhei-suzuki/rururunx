@@ -226,7 +226,7 @@ Initialization buffers bounded known non-control metadata while correlating the 
 
 PTY master/slave allocation and duplicated descriptors use atomic CLOEXEC. Read/write supervision uses AsyncFd readiness; the owner continues draining output and observing stop while an input write is backpressured. Resize remains synchronized with unreaped process-group ownership. The shared hidden setsid helper proposal must separately verify session/controlling-tty identity with a bounded READY/GO handshake before this prototype can advertise Interactive/Attach. No permanent requirement for a detached user supervisor is intended.
 
-Installed native provider routing/TLS aliases and OS login identity are trusted baseline controls, never scoped application credential replacements. Another Project's reference to an identity/control name cannot disable the current native baseline. Current Project API-key references still receive normal exact Project scoping. Sources: [native environment variables](https://code.claude.com/docs/en/env-vars), [gateway routing](https://code.claude.com/docs/en/llm-gateway-connect), [network settings](https://code.claude.com/docs/en/network-config).
+Installed native provider routing/TLS aliases and OS login identity are trusted baseline controls, never scoped application credential replacements. Another Project's reference cannot disable trusted OS login identity. Other foreign-declared environment names are excluded even when native supports them; routing values that are meant to be global must remain undeclared as Project references. Current Project API-key references still receive normal exact Project scoping. Sources: [native environment variables](https://code.claude.com/docs/en/env-vars), [gateway routing](https://code.claude.com/docs/en/llm-gateway-connect), [network settings](https://code.claude.com/docs/en/network-config).
 
 ## Verified source-review corrections
 
@@ -264,3 +264,5 @@ not a native turn timeout. Terminal-start audit explicitly says prepared input
 was not submitted. ContextCheckpoint stages a higher-version continuation for
 later owned resume; it does not deliver context to a live turn. Retained native
 evidence requires explicit release after the consumer records its result.
+
+Every permission wait, cancellation and automatic denial uses a Session candidate: the runtime journal changes only after durable CAS. An automatic denial records its exact dispatch intent before wire output. If Project activity changes before publication, Lost is derived from the last committed recovery, preserving only a durably published pending hash. The broad forbidden overlay class does not expand native baseline passthrough: unrelated ambient NODE_/GOOGLE_/GCLOUD_/VERTEX_ secrets remain excluded.

@@ -64,3 +64,5 @@ Project. Native baseline selector controls must reject Project overlay while
 foreign Project environment names remain excluded. Direct scoped keys and trusted
 OS login identity keep their documented isolation rules. Staged continuation and
 explicit evidence release semantics must be visible to consumers.
+
+Permission wait/cancel and non-broker automatic denial must preserve the last durable Session on publication failure, persist conservative Lost with verified PID cleanup, and audit exact automatic denial intent before dispatch. Rejecting broad Project overlay classes must not forward unrelated ambient Node or Google credentials.

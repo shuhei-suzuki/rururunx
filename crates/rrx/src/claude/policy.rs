@@ -183,8 +183,7 @@ pub(super) fn environment(
             {
                 return false;
             }
-            baseline_control(name)
-                || OS_IDENTITY.contains(&name)
+            OS_IDENTITY.contains(&name)
                 || matches!(
                     name,
                     "HOME"
@@ -209,6 +208,7 @@ pub(super) fn environment(
                         | "VISUAL"
                         | "REQUESTS_CA_BUNDLE"
                         | "CURL_CA_BUNDLE"
+                        | "GOOGLE_EXTERNAL_ACCOUNT_ALLOW_EXECUTABLES"
                         | "GOOGLE_APPLICATION_CREDENTIALS"
                         | "GOOGLE_CLOUD_PROJECT"
                         | "GCLOUD_PROJECT"
@@ -364,6 +364,35 @@ mod tests {
                 .is_err()
             );
         }
+    }
+    #[test]
+    fn unrelated_ambient_google_and_node_secrets_are_not_native_baseline() {
+        let own = Project::new(
+            "own".into(),
+            "/own".into(),
+            "identity".into(),
+            "main".into(),
+        );
+        let ambient = [
+            "NODE_AUTH_TOKEN",
+            "GOOGLE_API_KEY",
+            "GOOGLE_CLIENT_SECRET",
+            "NODE_ENV",
+            "GCLOUD_UNRELATED_SECRET",
+            "VERTEX_UNRELATED_SECRET",
+        ];
+        let filtered: BTreeMap<_, _> = environment(
+            ambient
+                .into_iter()
+                .map(|name| (OsString::from(name), OsString::from("ambient-secret"))),
+            std::slice::from_ref(&own),
+            &own,
+            &BTreeMap::new(),
+        )
+        .unwrap()
+        .into_iter()
+        .collect();
+        assert!(filtered.is_empty());
     }
     #[test]
     fn project_cannot_override_trusted_os_login_context() {
