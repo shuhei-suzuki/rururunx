@@ -352,8 +352,10 @@ losers never release. Fresh-read CAS preserves concurrent Task metadata and all
 executor/Lost fences. Preparation pins the reserved actor and Task binding; an
 actor override requires release and a new reservation before any dispatch.
 Eligibility ends immediately before fail/invalidate/hold/marker publication,
-including within invalidation helpers. Only a typed pre-commit SnapshotChanged
-marker error can restore it. Inactive owners, definitive-decision publication
+including within invalidation helpers. Only a typed pre-commit owning Task-row
+SnapshotChanged from the marker transaction can restore it. Project/Goal/Record
+version errors and all definitive-publication errors remain reserved.
+Inactive owners, definitive-decision publication
 conflicts, untyped/unknown marker errors, release CAS/termination fence failures
 and unknown/dispatched outcomes stay reserved for #14; no native replay occurs.
 EvidencePort claim evaluation remains separate and does not use agent release.
@@ -394,7 +396,8 @@ Project risk-mapping recommendations can strengthen but cannot weaken runtime ma
 Issue #14 must supply trusted recovery proof for orphaned undispatched attempts,
 dropped futures/crashes, inactive-owner preparation errors, definitive-decision
 publication conflicts, untyped/unknown marker publication outcomes, release
-CAS/executor-Lost fence failures and post-dispatch Session-binding conflicts;
+CAS/executor-Lost fence failures, marker Project/Goal-version conflicts and
+post-dispatch Session-binding conflicts;
 #41 adds no
 durable owner-absence proof. Unknown reversible Evaluating claims also belong to
 owner/restart recovery14. Ordinary observation must allow evaluation still being
