@@ -136,7 +136,7 @@ Deterministic runs report measured `llm_calls=0` without inventing token/cost ze
 ```sh
 cd scripts/browser
 npm ci --ignore-scripts --no-audit --no-fund
-node --test native-claude.test.mjs
+node --test native-claude.test.mjs policy.test.mjs
 node smoke.mjs
 node smoke.mjs --headed
 # Explicit real inference through existing native Claude auth:
@@ -163,6 +163,7 @@ custom_command = ["node", "/absolute/path/rururunx/scripts/browser/native-claude
 
 ```sh
 cargo test --offline --locked --test browser
+python3 scripts/browser/mutations.py
 RRX_BROWSER_NODE=/absolute/path/to/node cargo test --offline --locked \
   --test browser actual_rust_to_playwright_browser_fixture -- --ignored --exact
 # Explicit inference through the scoped Rust API and native account:
@@ -180,6 +181,12 @@ Its four callback invocations reported input 8, output 192, cached input 8640,
 cache write 49661, USD 0.402888 and API duration 8408 ms. These are one measured
 fixture run, not estimates or a performance guarantee. Synthetic fallback/contract
 tests do not stand in for these real SDK operations.
+The reversible mutation harness checks routing, uncertain replay, exact Scope,
+artifact symlinks, cross-Project provider credentials, output/time bounds,
+native child group inheritance, strict empty MCP and exact CDP extension origin.
+All ten faults were detected and restored-source Rust/Node suites passed.
+Rust checks and the no-model Node contract checks run on both Linux and macOS CI;
+the explicit real Chrome/native-model fixtures require host setup and authorization.
 
 ## Primary references
 
