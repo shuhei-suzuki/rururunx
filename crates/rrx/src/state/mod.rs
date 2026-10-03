@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 
 use crate::domain::*;
 
-pub const SCHEMA_VERSION: i64 = 1;
+pub const SCHEMA_VERSION: i64 = 2;
 pub const APPLICATION_ID: i64 = 0x52525831; // ASCII RRX1.
 
 pub struct Store {
@@ -40,7 +40,7 @@ impl Store {
             "not an rrx state database (application_id={application})"
         );
         connection.pragma_update(None, "foreign_keys", true)?;
-        if version == 0 {
+        if version < SCHEMA_VERSION {
             let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
             // Recheck under the write lock: another runtime may have initialized it.
             let locked_version: i64 =
@@ -62,12 +62,15 @@ impl Store {
                 tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
             } else {
                 ensure!(
-                    locked_version == SCHEMA_VERSION,
+                    (1..=SCHEMA_VERSION).contains(&locked_version),
                     "unsupported state schema {locked_version}"
                 );
                 let application: i64 =
                     tx.pragma_query_value(None, "application_id", |row| row.get(0))?;
                 ensure!(application == APPLICATION_ID, "not an rrx state database");
+                // v1 → v2 adds Project blocked_reason JSON metadata (default None).
+                // SQL layout is unchanged; older binaries must refuse the new format.
+                tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
             }
             tx.commit()?;
         }
@@ -136,6 +139,9 @@ impl Store {
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        if project.state == ProjectState::Removed {
+            ensure_project_idle(&tx, project.id)?;
+        }
         if let Some(previous) = read_tx::<Project>(&tx, "projects", &project.id.to_string())? {
             ensure!(
                 previous.root == project.root
@@ -166,7 +172,11 @@ impl Store {
                     !project.root.starts_with(&other.root)
                         && !other.root.starts_with(&project.root)
                         && !project.worktree_root.starts_with(&other.worktree_root)
-                        && !other.worktree_root.starts_with(&project.worktree_root),
+                        && !other.worktree_root.starts_with(&project.worktree_root)
+                        && !project.root.starts_with(&other.worktree_root)
+                        && !other.worktree_root.starts_with(&project.root)
+                        && !other.root.starts_with(&project.worktree_root)
+                        && !project.worktree_root.starts_with(&other.root),
                     "Project roots/worktree namespaces overlap"
                 );
             }
@@ -204,6 +214,24 @@ impl Store {
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        if !goal_terminal(goal.state) {
+            let previous = read_tx::<Goal>(&tx, "goals", &goal.id.to_string())?;
+            let safe_update = if let Some(old) = &previous {
+                let mut metadata = goal.clone();
+                metadata.state = old.state;
+                metadata.blockers = old.blockers.clone();
+                !goal_terminal(old.state)
+                    && (old.state == goal.state
+                        || matches!(
+                            goal.state,
+                            GoalState::Blocked | GoalState::WaitingHuman | GoalState::Paused
+                        ))
+                    && serde_json::to_value(metadata)? == serde_json::to_value(old)?
+            } else {
+                false
+            };
+            ensure_activity_write(&tx, goal.project_id, safe_update)?;
+        }
         if let Some(previous) = read_tx::<Goal>(&tx, "goals", &goal.id.to_string())? {
             ensure!(
                 previous.project_id == goal.project_id,
@@ -249,6 +277,21 @@ impl Store {
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        if !task_terminal(task.state) {
+            let previous = read_tx::<Task>(&tx, "tasks", &task.id.to_string())?;
+            let safe_update = if let Some(old) = &previous {
+                let mut metadata = task.clone();
+                metadata.state = old.state;
+                metadata.blockers = old.blockers.clone();
+                metadata.next_action = old.next_action.clone();
+                !task_terminal(old.state)
+                    && (old.state == task.state || task.state == TaskState::WaitingHuman)
+                    && serde_json::to_value(metadata)? == serde_json::to_value(old)?
+            } else {
+                false
+            };
+            ensure_activity_write(&tx, task.project_id, safe_update)?;
+        }
         if let Some(previous) = read_tx::<Task>(&tx, "tasks", &task.id.to_string())? {
             ensure!(
                 previous.project_id == task.project_id && previous.goal_id == task.goal_id,
@@ -638,6 +681,73 @@ impl Store {
     }
 }
 
+pub(crate) fn goal_terminal(state: GoalState) -> bool {
+    matches!(
+        state,
+        GoalState::Completed | GoalState::Cancelled | GoalState::Failed
+    )
+}
+pub(crate) fn task_terminal(state: TaskState) -> bool {
+    matches!(
+        state,
+        TaskState::Completed | TaskState::Cancelled | TaskState::Failed | TaskState::Merged
+    )
+}
+fn session_terminal(state: SessionState) -> bool {
+    matches!(
+        state,
+        SessionState::Exited | SessionState::Stopped | SessionState::Failed
+    )
+}
+fn ensure_project_registered(tx: &Transaction<'_>, id: ProjectId) -> Result<()> {
+    let project: Project = read_tx(tx, "projects", &id.to_string())?.context("unknown project")?;
+    ensure!(
+        project.state == ProjectState::Registered,
+        "project is not registered/active"
+    );
+    Ok(())
+}
+/// Blocked Projects may describe existing work conservatively, never start/resume it.
+fn ensure_activity_write(tx: &Transaction<'_>, id: ProjectId, safe_update: bool) -> Result<()> {
+    let project: Project = read_tx(tx, "projects", &id.to_string())?.context("unknown project")?;
+    ensure!(
+        project.state == ProjectState::Registered
+            || (project.state == ProjectState::Blocked && safe_update),
+        "project is not registered/active; only conservative existing blocked-work updates allowed"
+    );
+    Ok(())
+}
+/// Checked in the same write transaction as removal, including Lost sessions.
+fn ensure_project_idle(tx: &Transaction<'_>, id: ProjectId) -> Result<()> {
+    for table in ["goals", "tasks", "records"] {
+        let mut statement = tx.prepare(&format!("SELECT body FROM {table} WHERE project_id=?1"))?;
+        for row in statement.query_map([id.to_string()], |row| row.get::<_, String>(0))? {
+            let body = row?;
+            let idle = match table {
+                "goals" => goal_terminal(decode::<Goal>(body)?.state),
+                "tasks" => task_terminal(decode::<Task>(body)?.state),
+                _ => {
+                    let record: Record = decode(body)?;
+                    match record.kind {
+                        RecordKind::Session => {
+                            session_terminal(serde_json::from_value::<Session>(record.data)?.state)
+                        }
+                        RecordKind::WorktreeLock => {
+                            !serde_json::from_value::<crate::git::WorktreeLock>(record.data)?.active
+                        }
+                        _ => true,
+                    }
+                }
+            };
+            ensure!(
+                idle,
+                "cannot remove project with active {table}; complete/cancel or reconcile them first"
+            );
+        }
+    }
+    Ok(())
+}
+
 fn str_id<T: std::fmt::Display>(id: Option<T>) -> Option<String> {
     id.map(|id| id.to_string())
 }
@@ -680,6 +790,37 @@ fn decode<T: DeserializeOwned>(body: String) -> Result<T> {
 /// Reservations and immutable locks serialize across independent SQLite connections.
 fn validate_worktree_exclusion(tx: &Transaction<'_>, record: &Record) -> Result<()> {
     use crate::git::{WorktreeLock, executor_reserved};
+    if record.kind == RecordKind::Session {
+        let session: Session = serde_json::from_value(record.data.clone())?;
+        if !session_terminal(session.state) {
+            let safe_update =
+                if let Some(previous) = read_tx::<Record>(tx, "records", &record.id.to_string())? {
+                    let old: Session = serde_json::from_value(previous.data)?;
+                    let mut metadata = session.clone();
+                    metadata.state = old.state;
+                    if session.pid.is_none() {
+                        metadata.pid = old.pid;
+                    }
+                    !session_terminal(old.state)
+                        && (session.state == SessionState::Lost
+                            || (old.state != SessionState::Lost
+                                && matches!(
+                                    session.state,
+                                    SessionState::WaitingHuman | SessionState::WaitingApproval
+                                )))
+                        && serde_json::to_value(metadata)? == serde_json::to_value(&old)?
+                } else {
+                    false
+                };
+            ensure_activity_write(tx, record.scope.project_id, safe_update)?;
+        }
+    }
+    if record.kind == RecordKind::WorktreeLock
+        && serde_json::from_value::<WorktreeLock>(record.data.clone())?.active
+    {
+        ensure_project_registered(tx, record.scope.project_id)?;
+    }
+
     if record.kind == RecordKind::Session {
         let session: Session = serde_json::from_value(record.data.clone())?;
         if session.role == SessionRole::Executor {

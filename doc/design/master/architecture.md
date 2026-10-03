@@ -475,3 +475,9 @@ optional Git index locks, and provisional release errors retain diagnostic lock 
 Cleanup retains Task bindings for audit provenance; naming reuse, source-history
 validation cost, explicit existing-worktree adoption and independent state databases
 must be addressed by the dependent Project registry/recovery policy where applicable.
+
+Project registry foundation is implemented by `project::ProjectRegistry` (Issue
+26), including runtime-global CLI state, identity validation, sticky BLOCKED
+recovery, scoped input APIs and transactional soft removal. Native context/env
+forwarding and global scheduling remain dependent integrations. See
+`../issue-26-design.md`.

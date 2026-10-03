@@ -160,6 +160,8 @@ pub struct Project {
     pub environment_refs: Vec<String>,
     pub max_tasks: usize,
     pub state: ProjectState,
+    #[serde(default)]
+    pub blocked_reason: Option<String>,
     pub version: u64,
     pub created_at: i64,
     pub updated_at: i64,
@@ -183,6 +185,7 @@ impl Project {
             environment_refs: vec![],
             max_tasks: 4,
             state: ProjectState::Registered,
+            blocked_reason: None,
             version: 0,
             created_at: now_ms(),
             updated_at: now_ms(),

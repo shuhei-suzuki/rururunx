@@ -502,7 +502,7 @@ fn git_success(cwd: &Path, args: &[&str]) -> Result<bool> {
     );
     Ok(status.success())
 }
-fn git_text(cwd: &Path, args: &[&str]) -> Result<String> {
+pub(crate) fn git_text(cwd: &Path, args: &[&str]) -> Result<String> {
     Ok(String::from_utf8(git(cwd, args)?.stdout)?
         .trim_end_matches(['\n', '\r'])
         .to_owned())

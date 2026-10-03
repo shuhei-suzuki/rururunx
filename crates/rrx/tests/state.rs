@@ -56,7 +56,7 @@ fn restart_preserves_hierarchy_decisions_dag_sessions_context_and_nullable_usage
     let dir = tempfile::tempdir().unwrap();
     let db = dir.path().join("state.db");
     let mut store = Store::open(&db).unwrap();
-    assert_eq!(store.schema_version().unwrap(), 1);
+    assert_eq!(store.schema_version().unwrap(), rrx::state::SCHEMA_VERSION);
     let project = project(&mut store, "one", dir.path());
     let mut goal = goal(&mut store, &project);
     let mut task = task(&mut store, &project, &goal);
