@@ -502,6 +502,36 @@ async fn state_version_recheck_rejects_changed_task_goal_and_worktree_branch() {
     git(&f.worktree, &["checkout", "-b", "foreign-branch"]);
     assert!(f.engine().validate(&map).await.is_err());
 }
+
+#[tokio::test]
+async fn in_flight_index_releases_store_and_rejects_concurrent_state_mutation() {
+    use std::{future::Future, task::Poll};
+    let f = Fixture::new();
+    let engine = f.engine();
+    let scope = f.task.scope();
+    let mut operation = Box::pin(engine.index(&scope, vec![]));
+    // Poll actual native indexing through its first asynchronous Git wait. The
+    // current-thread runtime has not run its piped-output reader tasks yet.
+    std::future::poll_fn(|cx| {
+        assert!(matches!(operation.as_mut().poll(cx), Poll::Pending));
+        Poll::Ready(())
+    })
+    .await;
+    let mut store = f
+        .store
+        .try_lock()
+        .expect("Git/source work must release SharedStore");
+    let mut task = store.task(f.task.id).unwrap().unwrap();
+    task.title = "concurrent authorized update".into();
+    store.put_task(&mut task).unwrap();
+    drop(store);
+    assert!(
+        operation.await.is_err(),
+        "obsolete snapshot must not publish index evidence"
+    );
+    let events = f.store.lock().unwrap().events(&scope, 0, 100).unwrap();
+    assert!(!events.iter().any(|e| e.kind == "context.index.generated"));
+}
 #[tokio::test]
 async fn missing_moved_or_replaced_source_root_cannot_rebind() {
     let f = Fixture::new();
@@ -555,6 +585,29 @@ async fn symlink_nested_repo_metadata_namespace_and_special_files_fail_closed() 
             .is_err()
     );
     std::fs::remove_dir_all(f.worktree.join("nested")).unwrap();
+    let mut project = f
+        .store
+        .lock()
+        .unwrap()
+        .project(f.project.id)
+        .unwrap()
+        .unwrap();
+    project.rule_refs = vec![f.worktree.join("src/codec.rs")];
+    f.store.lock().unwrap().put_project(&mut project).unwrap();
+    assert!(
+        engine.index(&f.task.scope(), vec![]).await.is_err(),
+        "primary references must not enter Task namespace"
+    );
+    project.rule_refs = vec![f.root.join("RULES.md")];
+    f.store.lock().unwrap().put_project(&mut project).unwrap();
+    std::fs::remove_file(f.root.join("RULES.md")).unwrap();
+    std::os::unix::fs::symlink(other.root.join("RULES.md"), f.root.join("RULES.md")).unwrap();
+    assert!(
+        engine.index(&f.task.scope(), vec![]).await.is_err(),
+        "authoritative rule symlink must not cross Projects"
+    );
+    std::fs::remove_file(f.root.join("RULES.md")).unwrap();
+    std::fs::write(f.root.join("RULES.md"), "restored mandatory rule").unwrap();
     assert!(
         Command::new("mkfifo")
             .arg(f.worktree.join("fifo"))
