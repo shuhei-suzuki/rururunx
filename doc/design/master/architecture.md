@@ -451,7 +451,7 @@ variables are removed to enforce scoped CWD.
 Task binding and create/cleanup intents persist before native side effects. Typed
 WorktreeLock records reserve maintenance/review operations; SQLite immediate
 transactions serialize active locks against Starting/Running/WaitingApproval/
-WaitingHuman Executor reservations across connections. Assigned task path/branch
+WaitingHuman/Lost Executor reservations across connections. Assigned task path/branch
 are immutable. Logical locks block runtime mutation; external changes are detected
 by exact HEAD/clean verification. Cleanup requires owned clean merged worktrees,
 uses ordinary Git removal/local branch deletion, and retains durable provenance.

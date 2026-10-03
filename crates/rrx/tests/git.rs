@@ -172,6 +172,10 @@ fn reservations_and_locks_serialize_across_connections() {
     assert!(Manager::lock_review(&mut f.store, t.id, &s.revision, "review").is_err());
     assert!(Manager::cleanup(&mut f.store, t.id).is_err());
     session.state = SessionState::Lost;
+    let version = second.put_session(&session, version).unwrap();
+    assert!(Manager::lock_review(&mut f.store, t.id, &s.revision, "review").is_err());
+    session.state = SessionState::Stopped;
+    session.recovery = json!({"verified_dead":true});
     second.put_session(&session, version).unwrap();
     let lock = Manager::lock_review(&mut f.store, t.id, &s.revision, "review").unwrap();
     assert!(

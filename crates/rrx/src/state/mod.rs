@@ -124,7 +124,12 @@ impl Store {
             "project name/base branch must be nonempty"
         );
         ensure!(
-            project.root.is_absolute() && project.max_tasks > 0,
+            project.root.is_absolute()
+                && project.max_tasks > 0
+                && project.root.components().all(|c| !matches!(
+                    c,
+                    std::path::Component::ParentDir | std::path::Component::CurDir
+                )),
             "project root must be absolute and task limit positive"
         );
         let root = project.root.to_str().context("project root is not UTF-8")?;
@@ -342,18 +347,18 @@ impl Store {
                 "record scope/kind is immutable"
             );
         }
-        if record.kind == RecordKind::Session {
-            if let Some(previous) = read_tx::<Record>(&tx, "records", &record.id.to_string())? {
-                let old: Session = serde_json::from_value(previous.data)?;
-                let new: Session = serde_json::from_value(record.data.clone())?;
-                ensure!(
-                    old.agent == new.agent
-                        && old.provider == new.provider
-                        && old.role == new.role
-                        && old.worktree == new.worktree,
-                    "session actor/worktree identity is immutable"
-                );
-            }
+        if record.kind == RecordKind::Session
+            && let Some(previous) = read_tx::<Record>(&tx, "records", &record.id.to_string())?
+        {
+            let old: Session = serde_json::from_value(previous.data)?;
+            let new: Session = serde_json::from_value(record.data.clone())?;
+            ensure!(
+                old.agent == new.agent
+                    && old.provider == new.provider
+                    && old.role == new.role
+                    && old.worktree == new.worktree,
+                "session actor/worktree identity is immutable"
+            );
         }
         validate_worktree_exclusion(&tx, record)?;
         let mut next = record.clone();

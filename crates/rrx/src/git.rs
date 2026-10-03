@@ -305,6 +305,7 @@ pub(crate) fn executor_reserved(session: &Session) -> bool {
                 | SessionState::Running
                 | SessionState::WaitingApproval
                 | SessionState::WaitingHuman
+                | SessionState::Lost
         )
 }
 fn ensure_no_executor(store: &Store, scope: &Scope) -> Result<()> {
