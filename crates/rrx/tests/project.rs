@@ -857,7 +857,7 @@ fn blocked_work_cannot_resurrect_terminal_rows_or_rewrite_goal_and_task_metadata
         provider: "fixture".into(),
         role: SessionRole::Executor,
         native_ref: None,
-        pid: None,
+        pid: Some(321),
         worktree: wt.worktree,
         state: SessionState::Running,
         model: None,
@@ -884,6 +884,12 @@ fn blocked_work_cannot_resurrect_terminal_rows_or_rewrite_goal_and_task_metadata
     assert!(store.put_session(&changed, version).is_err());
     let mut changed = session.clone();
     changed.recovery = json!({"resume": "foreign"});
+    assert!(store.put_session(&changed, version).is_err());
+    // Clearing a known PID is conservative; neither replacing nor restoring one is.
+    session.pid = None;
+    version = store.put_session(&session, version).unwrap();
+    let mut changed = session.clone();
+    changed.pid = Some(321);
     assert!(store.put_session(&changed, version).is_err());
     session.state = SessionState::WaitingApproval;
     assert!(store.put_session(&session, version).is_err());
