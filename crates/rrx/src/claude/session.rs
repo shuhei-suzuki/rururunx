@@ -85,6 +85,7 @@ struct Evidence {
     pending: Option<Pending>,
     terminal_observed: bool,
     aggregate_metrics_unattributed: bool,
+    final_authority_current: Option<bool>,
 }
 type OwnedReference = (
     watch::Receiver<SessionStatus>,
@@ -1167,7 +1168,7 @@ impl AgentAdapter for ClaudeAdapter {
                     .then(|| status.session.recovery["input_bytes"].as_u64())
                     .flatten(),
                 repo_map_size: None,
-                cache_metadata: json!({"provider":"claude","native_uuid":evidence.native,"aggregate_metrics_unattributed":evidence.aggregate_metrics_unattributed,"observed_human_input_tokens":metrics.and_then(|m|m.input),"observed_human_output_tokens":metrics.and_then(|m|m.output),"cache_creation_input_tokens":metrics.and_then(|m|m.cache_write),"duration_api_ms":metrics.and_then(|m|m.api_ms),"token_counters":"per_invocation","reported_cost_usd":metrics.and_then(|m|m.cumulative_cost),"reported_duration_api_ms":metrics.and_then(|m|m.cumulative_api_ms),"cost_duration_gauges":"fresh_invocation_only; resumed_raw_unattributed"}),
+                cache_metadata: json!({"provider":"claude","native_uuid":evidence.native,"aggregate_metrics_unattributed":evidence.aggregate_metrics_unattributed,"final_authority_current":evidence.final_authority_current,"observed_human_input_tokens":metrics.and_then(|m|m.input),"observed_human_output_tokens":metrics.and_then(|m|m.output),"cache_creation_input_tokens":metrics.and_then(|m|m.cache_write),"duration_api_ms":metrics.and_then(|m|m.api_ms),"token_counters":"per_invocation","reported_cost_usd":metrics.and_then(|m|m.cumulative_cost),"reported_duration_api_ms":metrics.and_then(|m|m.cumulative_api_ms),"cost_duration_gauges":"fresh_invocation_only; resumed_raw_unattributed"}),
                 missing_reason: if !evidence.completed
                     || evidence.aggregate_metrics_unattributed
                     || metrics
@@ -1321,7 +1322,35 @@ async fn supervise(
             .expect("runtime recovery object")
             .remove("pending_permission");
     }
-    let persisted = reservation.persist().is_ok();
+    // Final native outcome and decision eligibility are independent. A
+    // decision's completion proof is fenced atomically with the complete scoped
+    // authority, rather than inferred from an earlier lock snapshot.
+    let mut final_authority_current = None;
+    let persisted = if matches!(result, Ok(true)) && !uncertain && policy::decision(request.role) {
+        let mut candidate = reservation.session.clone();
+        candidate.recovery["final_authority_current"] = json!(true);
+        match reservation.commit_current(candidate, &snapshot) {
+            Ok(()) => {
+                final_authority_current = Some(true);
+                true
+            }
+            Err(_) => {
+                let mut candidate = reservation.session.clone();
+                candidate.recovery["final_authority_current"] = json!(false);
+                final_authority_current = Some(false);
+                reservation.commit_session_only(candidate).is_ok()
+            }
+        }
+    } else {
+        if observed {
+            final_authority_current = Some(
+                snapshot
+                    .recheck_scope(&reservation.store, &request, &agent)
+                    .is_ok(),
+            );
+        }
+        reservation.persist().is_ok()
+    };
     status.session = reservation.session.clone();
     if !persisted {
         status.failure = Some("native terminal CAS failed; completion is unverified".into());
@@ -1330,7 +1359,11 @@ async fn supervise(
     }
     if let Ok(mut evidence) = evidence.lock() {
         evidence.pending = None;
-        evidence.completed = matches!(result, Ok(true)) && !uncertain && persisted;
+        evidence.final_authority_current = final_authority_current;
+        evidence.completed = matches!(result, Ok(true))
+            && !uncertain
+            && persisted
+            && (!policy::decision(request.role) || final_authority_current == Some(true));
     }
     sender.send_replace(status);
     reservation.armed = !persisted;
@@ -1695,6 +1728,9 @@ for line in sys.stdin:
    if behavior=='parallel':emit({{'type':'control_request','request_id':'permission-2','request':{{'subtype':'can_use_tool','tool_name':'Read','tool_use_id':'operation-2','input':{{'file_path':'private-second'}}}}}})
    continue
   if behavior=='hang':continue
+  if behavior=='result-gated':
+   open(__file__+'.ready','w').write('ready')
+   while not os.path.exists(__file__+'.go'):time.sleep(0.005)
   if behavior.startswith('background'):emit({{'type':'system','subtype':'task_started','task_type':'local_agent','task_id':'still-running'}})
   emit({{'type':'result','uuid':'result-1','subtype':'success' if behavior!='native-error' else 'error_during_execution','is_error':behavior=='native-error','session_id':native,'result':'{{"fixture":true}}','usage':{{'input_tokens':2,'output_tokens':13,'cache_creation_input_tokens':5,'cache_read_input_tokens':7}},'total_cost_usd':0.2 if '--resume='+native in sys.argv else 0.1,'duration_api_ms':200 if '--resume='+native in sys.argv else 100}})
   if behavior in ['background-complete','background-error']:
@@ -2024,6 +2060,75 @@ for line in sys.stdin:
                 .iter()
                 .all(|event| event.data["evidence"]["dispatch_intent"]["decision"] != "DENY")
         );
+    }
+    #[tokio::test]
+    async fn reviewer_terminal_cas_rejects_revoked_lock_aba_and_owner_currency_without_erasing_outcome()
+     {
+        for mutation in ["unlock", "relock", "task", "project"] {
+            let mut fixture = Fixture::new(true);
+            fixture.review();
+            let temp = tempfile::tempdir().unwrap();
+            let path = executable(&temp, "result-gated");
+            let ready = PathBuf::from(format!("{}.ready", path.display()));
+            let go = PathBuf::from(format!("{}.go", path.display()));
+            let adapter = ClaudeAdapter::new("claude".into(), path, fixture.store.clone()).unwrap();
+            let session = adapter.start(fixture.request.clone()).await.unwrap();
+            fixture_marker(&ready).await;
+            {
+                let mut store = fixture.store.lock().unwrap();
+                match mutation {
+                    "unlock" | "relock" => {
+                        let mut lock = store
+                            .records(&session.scope, crate::domain::RecordKind::WorktreeLock)
+                            .unwrap()
+                            .pop()
+                            .unwrap();
+                        lock.data["active"] = json!(false);
+                        store.put_record(&mut lock).unwrap();
+                        if mutation == "relock" {
+                            lock.data["active"] = json!(true);
+                            store.put_record(&mut lock).unwrap();
+                        }
+                    }
+                    "task" => {
+                        let mut task = store.task(session.scope.task_id.unwrap()).unwrap().unwrap();
+                        task.title = "concurrently changed decision task".into();
+                        store.put_task(&mut task).unwrap();
+                    }
+                    "project" => {
+                        let mut project = store.project(session.scope.project_id).unwrap().unwrap();
+                        project.name = "concurrently changed Project".into();
+                        store.put_project(&mut project).unwrap();
+                    }
+                    _ => unreachable!(),
+                }
+            }
+            std::fs::write(go, "go").unwrap();
+            let status = terminal(&adapter, (&session).into()).await;
+            assert_eq!(
+                status.session.state,
+                SessionState::Exited,
+                "{:?}",
+                status.failure
+            );
+            assert!(status.session.pid.is_none());
+            assert_eq!(status.session.recovery["final_authority_current"], false);
+            assert!(!adapter.transport_succeeded(&status));
+            assert_eq!(
+                serde_json::from_slice::<Value>(&status.stdout).unwrap(),
+                json!({"fixture":true})
+            );
+            let usage = adapter
+                .usage((&session).into(), "review".into(), Some(1))
+                .await
+                .unwrap();
+            assert_eq!(usage.input_tokens, Some(2));
+            assert_eq!(usage.cache_metadata["final_authority_current"], false);
+            assert!(usage.missing_reason.is_some());
+            let mut fresh = fixture.request.input.clone();
+            fresh.version = 2;
+            assert!(adapter.checkpoint((&session).into(), fresh).await.is_err());
+        }
     }
     #[tokio::test]
     async fn blocked_after_spawn_preserves_committed_metadata_and_cleans_owned_print_and_pty() {
