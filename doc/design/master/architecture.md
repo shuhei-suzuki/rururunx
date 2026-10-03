@@ -44,6 +44,11 @@ Additional LLM calls are reserved for explicit review, approval, classification,
              │      Agent Registry         │
              │ + Adapter Capability Map    │
              └──────┬──────────────┬───────┘
+                    │
+             ┌──────▼───────────────┐
+             │ Context Efficiency   │
+             │ Map / Pack / Condense│
+             └──────────────────────┘
                     │              │
            ┌────────▼───┐     ┌────▼────────┐
            │ Executors  │     │ Reviewers   │
@@ -151,6 +156,25 @@ Responsibilities:
 - preserve individual findings
 - coordinate verify → fix → commit → re-review rounds
 - enforce review-time worktree lock where configured
+
+### Context Efficiency Layer
+
+Owns context selection and token-efficiency artifacts without becoming a new planning agent.
+
+Responsibilities:
+
+- repository map/context index
+- versioned Task Context Pack
+- progressive rule/skill loading
+- conversation condensation/checkpoints
+- deterministic Review Bundles
+- delta-based re-review context
+- provider cache-awareness metadata
+- token/cost telemetry when available
+
+Correctness and safety take precedence over token savings. Agents can request context expansion when selected context is insufficient.
+
+See `context-efficiency.md`.
 
 ### Git / Worktree Manager
 
@@ -299,5 +323,8 @@ MVP extensibility points:
 - Review policy
 - project rule loader
 - verification runner
+- context selector/indexer
+- context condensation strategy
+- provider cache telemetry
 
 Cloud execution, web dashboards, and long-term memory are outside MVP and should not shape the core architecture.
