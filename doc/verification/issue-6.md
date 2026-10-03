@@ -1,7 +1,7 @@
 # Issue 6: Native Codex verification in progress
 
 This evidence is partial; Issue 6 is not ready to merge. Native TUI/attach,
-final immutable independent delta source review, semantic mutations and final
+final immutable independent delta source review and final
 exact-head CI remain required. Authentication/provider compatibility guards are
 implemented and tested; native Interactive/Attach remain explicitly unavailable.
 
@@ -141,8 +141,55 @@ sandbox and denied escalation remain the command boundary.
 Residual limitations: production native Interactive/Attach and its exclusive
 Human-versus-broker grant route are pending, so no concurrent TUI/client grant
 capability is advertised. Native user-input replies are unavailable in the current
-noninteractive route. Startup alias dangling-target readiness and preserving both
-original and cleanup failures have Low follow-up findings. A final delta source
+noninteractive route. Commit `38d1cad` addresses the Low startup alias readiness
+and cleanup failure findings: a dangling alias retries only while its target is
+absent within the existing startup deadline; wrong UID/mode/namespace/peer remains
+fatal. An unverified cleanup retains the original sanitized failure as well as
+the cleanup failure. All 59 Codex regressions passed at this commit. A final delta source
 review must include full shared ProcessGroup inspect/cleanup/reap/Drop helpers;
-the original IPC excerpt supplied only part of that helper. Semantic mutation and
-final Linux/macOS CI are still required; no merge approval is claimed here.
+the original IPC excerpt supplied only part of that helper. Final Linux/macOS CI
+is still required; no merge approval is claimed here.
+
+## Semantic mutations at the current production baseline
+
+At immutable `38d1cad942485a74dcf14d950df5356c64f87250`, 13 independently
+compiled mutants were killed by assertion failures in the existing causal tests:
+
+| Mutation | Removed guarantee | Causal regression |
+| --- | --- | --- |
+| M601 | private native completion authority | caller recovery cannot fabricate completed turn |
+| M602 | observed turn identity | stale telemetry/pending approvals rejected |
+| M603 | fresh continuation version | cached prompt cannot be implicitly replayed |
+| M604 | original failure after uncertain cleanup | both sanitized causes retained |
+| M605 | operation-content digest | changed operation cannot claim reviewed approval |
+| M606 | hard-link ambiguity rejection | native planned patch cannot grant a linked foreign target |
+| M607 | uncertainty from any owning process group | Lost retained when a separate Git group is unverified |
+| M608 | exact native version conformance | unknown native version rejected before a turn |
+| M609 | exclusive transition claim | release and another resume cannot race a claimed attempt |
+| M610B | counter high-water memory | missing snapshot cannot conceal a later native reset |
+| M611 | native CWD binding | foreign native thread CWD rejected |
+| M612 | effective native permission profile binding | writable profile cannot replace decision restriction |
+| M613 | actual native tool inventory verification | surviving tools and discovery errors fail closed |
+
+The first M610 attempt matched no source anchor and receives **no mutation credit**;
+M610B is the separately compiled semantic replacement that actually failed its
+assertion. Every mutation ran in an owned detached temporary worktree, with
+byte-exact restoration in `finally`; all 59 original Codex tests passed after
+each batch's restoration. Compiler errors, runner failures and timeouts receive
+no kill credit. No production branch was mutated by these runs.
+
+## Native TUI gateway reconnaissance
+
+An actual installed native CLI connected through a temporary private Unix gateway
+to stored mathematical-fixture UUID `01a10137-f77b-76c3-aa2c-407dd1ba0050`.
+Observed native client methods were `initialize`, `initialized`, `account/read`,
+`thread/read` and `config/read`. The real terminal remained alive at the native
+trust gate; the owning native UUID was unchanged, and both owning process groups
+were confirmed dead before reaping their leaders. No trust choice, target
+operation, config/auth write or additional permission was supplied.
+
+This proves native metadata transport and retained native gating only. The
+temporary gateway is reconnaissance, not production authorization or a reviewed
+scope implementation. In particular, metadata allowlisting does not establish
+safe configuration projection, actual conversation, new-turn attribution or
+exclusive Human/broker authority. Production Interactive/Attach remain unavailable.
