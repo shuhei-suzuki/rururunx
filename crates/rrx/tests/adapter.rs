@@ -442,3 +442,94 @@ async fn separate_projects_run_concurrently_without_environment_or_context_reuse
     assert_ne!(sa.scope.project_id, sb.scope.project_id);
     assert_ne!(sa.id, sb.id);
 }
+
+#[tokio::test]
+async fn foreign_git_repository_inside_namespace_detached_and_protected_branches_are_rejected() {
+    let fixture = Fixture::new();
+    let adapter = fixture.adapter("/bin/cat");
+    let mut forged = fixture.request.clone();
+    forged.project.base_branch = "forged".into();
+    assert!(adapter.start(forged).await.is_err());
+    git(&fixture.request.worktree, &["checkout", "--detach"]);
+    assert_eq!(
+        adapter
+            .start(fixture.request.clone())
+            .await
+            .unwrap_err()
+            .kind,
+        ErrorKind::OwnershipMismatch
+    );
+    git(&fixture.request.worktree, &["checkout", "feature/task"]);
+    git(&fixture.request.worktree, &["branch", "-m", "master"]);
+    {
+        let mut store = fixture.store.lock().unwrap();
+        let mut task = store
+            .task(fixture.request.scope.task_id.unwrap())
+            .unwrap()
+            .unwrap();
+        task.branch = Some("master".into());
+        store.put_task(&mut task).unwrap();
+    }
+    assert_eq!(
+        adapter
+            .start(fixture.request.clone())
+            .await
+            .unwrap_err()
+            .kind,
+        ErrorKind::OwnershipMismatch
+    );
+    let foreign = fixture.request.project.worktree_root.join("foreign");
+    std::fs::create_dir(&foreign).unwrap();
+    git(&foreign, &["init", "-b", "feature/task"]);
+    git(
+        &foreign,
+        &[
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=fixture@example.invalid",
+            "commit",
+            "--allow-empty",
+            "-m",
+            "foreign",
+        ],
+    );
+    {
+        let mut store = fixture.store.lock().unwrap();
+        let mut task = store
+            .task(fixture.request.scope.task_id.unwrap())
+            .unwrap()
+            .unwrap();
+        task.branch = Some("feature/task".into());
+        task.worktree = Some(foreign.canonicalize().unwrap());
+        store.put_task(&mut task).unwrap();
+    }
+    let mut request = fixture.request.clone();
+    request.worktree = foreign;
+    assert_eq!(
+        adapter.start(request).await.unwrap_err().kind,
+        ErrorKind::OwnershipMismatch
+    );
+}
+
+#[tokio::test]
+async fn immediate_stop_and_adapter_drop_do_not_leave_running_children() {
+    let fixture = Fixture::new();
+    let adapter = fixture.adapter("sleep 60");
+    let session = adapter.start(fixture.request.clone()).await.unwrap();
+    assert_eq!(
+        adapter.stop((&session).into()).await.unwrap().session.state,
+        SessionState::Stopped
+    );
+    let session = adapter.start(fixture.request.clone()).await.unwrap();
+    let mut events = adapter.subscribe((&session).into()).unwrap();
+    drop(adapter);
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while !events.borrow().terminal() {
+            events.changed().await.unwrap();
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(events.borrow().session.state, SessionState::Stopped);
+}

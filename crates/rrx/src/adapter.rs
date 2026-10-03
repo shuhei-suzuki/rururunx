@@ -686,7 +686,8 @@ fn validate_persisted(
         anyhow::ensure!(
             project.state == ProjectState::Registered
                 && project.root == request.project.root
-                && project.worktree_root == request.project.worktree_root,
+                && project.worktree_root == request.project.worktree_root
+                && project.base_branch == request.project.base_branch,
             "Project snapshot does not match registry"
         );
         let goal = store
@@ -792,9 +793,17 @@ async fn validate_git(
             .task(request.scope.task_id.expect("validated Task"))?
             .and_then(|task| task.branch))
     })?;
+    let canonical = |path: &str| {
+        Path::new(path).canonicalize().map_err(|e| {
+            error(
+                ErrorKind::OwnershipMismatch,
+                format!("Git ownership path missing: {e}"),
+            )
+        })
+    };
     if expected_branch.as_deref() != Some(branch.as_str())
-        || Path::new(&root_git).canonicalize().ok() != Path::new(&task_git).canonicalize().ok()
-        || Path::new(&top).canonicalize().ok().as_deref() != Some(worktree)
+        || canonical(&root_git)? != canonical(&task_git)?
+        || canonical(&top)? != worktree
         || matches!(branch.as_str(), "main" | "master")
         || branch == request.project.base_branch
     {
