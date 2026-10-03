@@ -268,7 +268,7 @@ Parallel development
 
 The user must be able to review or edit Goal objective/completion criteria before execution when policy requires it.
 
-## 8. Consultation mode
+## 7. Consultation mode
 
 The user must be able to start repository-aware consultation with any configured interactive agent:
 
