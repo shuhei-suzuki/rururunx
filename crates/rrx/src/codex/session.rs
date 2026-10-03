@@ -289,6 +289,13 @@ impl CodexAdapter {
                 )
                 .await?;
             policy.verify_configuration(&config["config"])?;
+            if request.role == SessionRole::Executor {
+                let environment = native
+                    .rpc
+                    .call("environment/status", json!({"environmentId":"local"}))
+                    .await?;
+                policy.verify_local_environment(&environment)?;
+            }
             let mut parameters = policy.thread_parameters(&request.worktree);
             if let Some(model) = &request.model {
                 parameters["model"] = json!(model);
