@@ -169,6 +169,12 @@ impl DecisionPolicy {
             PROFILE
         }
     }
+    /// A runtime broker may answer the native client route only when the
+    /// installed native policy already routes approval to that client. Never
+    /// replace native automatic/managed review to obtain callbacks.
+    pub fn permits_runtime_broker(&self) -> bool {
+        self.execute && self.reviewer.as_deref() == Some("user")
+    }
     /// Only restrictive overrides; no rule/hook/authentication bypass switches.
     pub fn arguments(&self) -> Vec<String> {
         let mut args = Vec::new();
@@ -449,6 +455,23 @@ mod tests {
     fn executor_preserves_native_reviewer_and_rule_prompts_without_profile_expansion() {
         let mut config = json!({"mcp_servers":{"known":{}},"sandbox_mode":"workspace-write","approval_policy":"on-request","approvals_reviewer":"auto_review"});
         let policy = DecisionPolicy::for_executor(&config).unwrap();
+        assert!(!policy.permits_runtime_broker());
+        let mut client_config = config.clone();
+        client_config["approvals_reviewer"] = json!("user");
+        let client = DecisionPolicy::for_executor(&client_config).unwrap();
+        assert!(client.permits_runtime_broker());
+        assert!(
+            !client
+                .arguments()
+                .iter()
+                .any(|argument| argument.contains("approvals_reviewer"))
+        );
+        assert!(
+            client
+                .thread_parameters(Path::new("/own"))
+                .get("approvalsReviewer")
+                .is_none()
+        );
         assert_eq!(
             policy.thread_parameters(Path::new("/own"))["environments"],
             json!([{"environmentId":"local","cwd":"/own","runtimeWorkspaceRoots":["/own"]}])

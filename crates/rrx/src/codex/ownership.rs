@@ -513,7 +513,7 @@ fn canonical_binding(root: &Path, workspace: &Path) -> AdapterResult<Value> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
     use crate::{
         adapter::{LaunchMode, PreparedInput},
@@ -523,10 +523,10 @@ mod tests {
     };
     use std::{collections::BTreeMap, process::Command, sync::Mutex};
 
-    struct Fixture {
+    pub(in crate::codex) struct Fixture {
         _temp: tempfile::TempDir,
-        store: SharedStore,
-        request: LaunchRequest,
+        pub(in crate::codex) store: SharedStore,
+        pub(in crate::codex) request: LaunchRequest,
     }
     fn git(root: &Path, args: &[&str]) -> String {
         let output = Command::new("/usr/bin/git")
@@ -544,7 +544,7 @@ mod tests {
         String::from_utf8(output.stdout).unwrap().trim().to_owned()
     }
     impl Fixture {
-        fn new(task_scoped: bool) -> Self {
+        pub(in crate::codex) fn new(task_scoped: bool) -> Self {
             let temp = tempfile::tempdir().unwrap();
             let root = temp.path().canonicalize().unwrap().join("project");
             std::fs::create_dir(&root).unwrap();
