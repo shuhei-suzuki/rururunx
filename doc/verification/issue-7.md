@@ -51,3 +51,42 @@ provider factories and restart recovery remain pending their separate Issues.
 Native lifecycle hooks/config discovery are preserved: before/after owned Task observations
 reject unexplained effects, but deliberately escaped process groups and native-global hook
 side effects are outside the model file-tool scope claim.
+
+## Implementation Review 1 dispositions
+
+Independent native review of public immutable `511f3e3` completed in 461.186 seconds,
+with no Critical/High, five Medium and nine Low findings. No tools/MCP or permission
+denials; the 349,649-byte source bundle included all shared ownership authorities.
+
+Verified fixes queued for committed verification/re-review: GROK7-01 closes callbacks
+immediately on the correlated terminal response and rejects late notifications; 02 counts
+only successful FS operations as completed-tool evidence; 03 protects corresponding Task
+copies of absolute source-root authority refs; 04 restricts ordinary environment keys and
+expands native baseline selectors. Additional fixes address cancellation-safe partial frames
+(06), request IDs before effects (07), unsupported live mode/config updates and decision
+permission attempts (08), read-only Git optional locks (10), callback/path/time budgets
+while joining host workers (11), and auth transport/spawn error distinction (13).
+
+GROK7-05: retain conservative Lost reservation for an aborted decision without an observed
+native terminal outcome. This can block Task progression until explicit Issue 13 recovery;
+verified process death alone does not establish inference/side-effect outcome.
+GROK7-09: retain reviewed shared immediate owned-group kill-before-reap semantics. Installed
+session/load acceptance proves the tested conversation survived; it does not guarantee
+native-global persistence under every abrupt shutdown. `exit_code=None` for signal death is
+honest shared API behavior; signal number is not represented by that field. Reconnaissance
+status 143 was a separate TERM probe, not the production adapter's synthetic exit code.
+GROK7-12: first-party resume reconnaissance already measured fresh per-prompt aggregates
+(71,903 resumed input versus 91,985 previous input); no previous-turn subtraction or fallback
+zero is invented. Fake resume telemetry now distinguishes the two turns. Missing reason
+continues to disclose uncontracted cost, even with known token counters.
+GROK7-14: consultant/executor overlap is conservatively invalidated by authority rechecks;
+mutual scheduling exclusion belongs to future runtime/broker integration. Shared helper
+semantics are unchanged while concurrent provider consumers integrate the same contract.
+
+Ten initial compiled mutants produced nine assertion kills and one survivor: removing the
+final unfinished-tool gate lacked an unfinished-terminal fixture. A causal subprocess
+regression now supplies that case; rerun is pending. Restored original baseline fake tests
+passed with no crate diff. Source inspection additionally verified a release/begin stale-Arc
+race; successful retirement now leaves its begin fence permanently closed, with a private
+causal regression. A real paused-native-info second-Store Task replacement fixture checks
+no prompt reaches the wire and no durable dispatch consumption is written.

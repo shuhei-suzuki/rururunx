@@ -84,7 +84,19 @@ impl ScopedFiles {
         let mut protected = BTreeSet::new();
         let mut protected_inodes = BTreeSet::new();
         for path in project.rule_refs.iter().chain(project.config_ref.iter()) {
+            if !path.is_absolute() {
+                return Err(failure(
+                    ErrorKind::InvalidConfiguration,
+                    "Project rule/config refs must be absolute",
+                ));
+            }
             let canonical = path.canonicalize().map_err(io_error)?;
+            if let Ok(relative) = canonical.strip_prefix(&project.root) {
+                protected.insert(relative.to_path_buf());
+                if let Ok(metadata) = root.join(relative).metadata() {
+                    protected_inodes.insert((metadata.dev(), metadata.ino()));
+                }
+            }
             if let Ok(relative) = canonical.strip_prefix(&root) {
                 protected.insert(relative.to_path_buf());
             }
@@ -575,5 +587,41 @@ mod tests {
                 )
                 .is_err()
         );
+    }
+}
+
+#[cfg(test)]
+mod configured_rule_tests {
+    use super::*;
+    #[test]
+    fn source_checkout_authority_refs_also_protect_task_copies() {
+        let source = tempfile::tempdir().unwrap();
+        let task = tempfile::tempdir().unwrap();
+        for root in [source.path(), task.path()] {
+            std::fs::create_dir(root.join("docs")).unwrap();
+            std::fs::write(root.join("docs/rules.txt"), "authoritative rule").unwrap();
+        }
+        let source = source.path().canonicalize().unwrap();
+        let task_root = task.path().canonicalize().unwrap();
+        let mut project = Project::new(
+            "fixture".into(),
+            source.clone(),
+            "fixture".into(),
+            "main".into(),
+        );
+        project.rule_refs.push(source.join("docs/rules.txt"));
+        let mut files = ScopedFiles::new(task_root.clone(), &project).unwrap();
+        assert!(files.read(&json!({"path":"docs/rules.txt"})).is_err());
+        assert!(
+            files
+                .write(&json!({"path":"docs/rules.txt","content":"replacement"}))
+                .is_err()
+        );
+        assert_eq!(
+            std::fs::read_to_string(task_root.join("docs/rules.txt")).unwrap(),
+            "authoritative rule"
+        );
+        project.rule_refs = vec![PathBuf::from("docs/rules.txt")];
+        assert!(ScopedFiles::new(task_root, &project).is_err());
     }
 }

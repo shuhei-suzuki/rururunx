@@ -475,6 +475,7 @@ impl ScopeSnapshot {
             let status = observe(
                 request.worktree.clone(),
                 args(&[
+                    "--no-optional-locks",
                     "status",
                     "--porcelain=v1",
                     "--untracked-files=all",

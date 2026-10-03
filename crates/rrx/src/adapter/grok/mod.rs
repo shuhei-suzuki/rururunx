@@ -135,7 +135,7 @@ impl GrokAdapter {
                     "invalid/leaking Git environment",
                 ));
             }
-            if baseline_key(key) && self.baseline.get(key) != Some(value) {
+            if !ordinary_key(key) && (!baseline_key(key) || self.baseline.get(key) != Some(value)) {
                 return Err(failure(
                     ErrorKind::InvalidConfiguration,
                     "native auth/config/safety environment cannot replace intentional runtime baseline",
@@ -236,6 +236,7 @@ impl GrokAdapter {
                 native_before_calls: 0,
                 dispatched: false,
                 native_outcome: false,
+                callbacks: 0,
             },
             None,
         ));
@@ -243,10 +244,15 @@ impl GrokAdapter {
     }
 }
 fn baseline_key(key: &str) -> bool {
-    ["GROK_", "XAI_", "DYLD_", "LD_"]
+    ["GROK_", "XAI_", "DYLD_", "LD_", "NODE_", "BUN_", "OPENSSL_"]
         .iter()
         .any(|prefix| key.starts_with(prefix))
         || [
+            "SSLKEYLOGFILE",
+            "BASH_ENV",
+            "ENV",
+            "SHELL",
+            "ZDOTDIR",
             "HOME",
             "PATH",
             "TMPDIR",
@@ -269,6 +275,11 @@ fn baseline_key(key: &str) -> bool {
             "no_proxy",
         ]
         .contains(&key)
+}
+// Additional scoped values have no native loader/auth/permission selector meaning.
+fn ordinary_key(key: &str) -> bool {
+    key.starts_with("RRX_")
+        || ["LANG", "LC_ALL", "LC_CTYPE", "TERM", "COLORTERM", "TZ"].contains(&key)
 }
 fn assert_saved(store: &SharedStore, session: &Session) -> AdapterResult<u64> {
     let store = store
@@ -402,8 +413,15 @@ impl AgentAdapter for GrokAdapter {
     }
     fn release(&self, reference: SessionRef) -> AdapterResult<()> {
         let entry = self.entry(&reference)?;
-        if entry.busy.load(Ordering::SeqCst)
-            || !entry.cleaned.load(Ordering::SeqCst)
+        if entry
+            .busy
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_err()
+        {
+            return Err(failure(ErrorKind::StateConflict, "native Session is busy"));
+        }
+        let mut retirement = Busy(Some(entry.clone()));
+        if !entry.cleaned.load(Ordering::SeqCst)
             || !entry.status.borrow().terminal()
             || entry.status.borrow().session.state == SessionState::Lost
         {
@@ -416,6 +434,9 @@ impl AgentAdapter for GrokAdapter {
             .lock()
             .map_err(|_| failure(ErrorKind::StateFailure, "registry poisoned"))?
             .remove(&reference.id);
+        // A caller may already hold this Arc from before registry removal. Keep
+        // its begin fence closed forever; failed retirement restores it via Drop.
+        retirement.0 = None;
         Ok(())
     }
     fn checkpoint(&self, reference: SessionRef, input: PreparedInput) -> AdapterFuture<'_, ()> {
@@ -576,6 +597,7 @@ impl AgentAdapter for GrokAdapter {
                     native_before_calls: 0,
                     dispatched: false,
                     native_outcome: false,
+                    callbacks: 0,
                 },
                 Some(native),
             ));
@@ -643,6 +665,7 @@ struct Actor {
     native_before_calls: u64,
     dispatched: bool,
     native_outcome: bool,
+    callbacks: usize,
 }
 impl Actor {
     fn owner(&self) -> AdapterResult<()> {
@@ -702,9 +725,16 @@ impl Actor {
             if value.get("method").is_some() {
                 if value.get("id").is_some() {
                     self.callback(value).await?;
-                } else if self.active
-                    && value["method"] == "session/update"
-                    && let Some(text) = self.evidence.update(
+                } else if (self.active || self.dispatched) && value["method"] == "session/update" {
+                    if !self.active
+                        && value["params"]["update"]["sessionUpdate"] != "session_info_update"
+                    {
+                        return Err(failure(
+                            ErrorKind::OwnershipMismatch,
+                            "native turn notification after terminal response",
+                        ));
+                    }
+                    if let Some(text) = self.evidence.update(
                         &self.request.worktree,
                         &value["params"],
                         self.session
@@ -713,10 +743,10 @@ impl Actor {
                             .expect("active native UUID"),
                         &self.prompt,
                         self.request.role != SessionRole::Executor,
-                    )?
-                {
-                    self.events
-                        .send_modify(|status| append_output(status, text.as_bytes()));
+                    )? {
+                        self.events
+                            .send_modify(|status| append_output(status, text.as_bytes()));
+                    }
                 }
                 continue;
             }
@@ -747,6 +777,24 @@ impl Actor {
         }
     }
     async fn callback(&mut self, value: Value) -> AdapterResult<()> {
+        if !(value["id"].as_u64().is_some() || value["id"].as_str().is_some_and(|s| s.len() <= 128))
+        {
+            return Err(failure(
+                ErrorKind::ParseFailure,
+                "invalid reverse request ID before side effects",
+            ));
+        }
+        self.callbacks += 1;
+        if self.callbacks > 256
+            || value["params"]["path"]
+                .as_str()
+                .is_some_and(|s| s.len() > 4096)
+        {
+            return Err(failure(
+                ErrorKind::InvalidInput,
+                "native callback/path budget exceeded",
+            ));
+        }
         let method = value["method"].as_str().unwrap_or("");
         let params = &value["params"];
         let owner = self.owner();
@@ -761,7 +809,8 @@ impl Actor {
                 "session/request_permission",
             ]
             .contains(&method)
-            || (self.request.role != SessionRole::Executor && method.starts_with("fs/"));
+            || (self.request.role != SessionRole::Executor
+                && (method.starts_with("fs/") || method == "session/request_permission"));
         let result = if !valid {
             Err(failure(
                 ErrorKind::OwnershipMismatch,
@@ -780,12 +829,12 @@ impl Actor {
             }
         } else if self.request.role == SessionRole::Executor && method.starts_with("fs/") {
             let path = params["path"].as_str().unwrap_or("");
-            self.evidence.callback(&self.request.worktree, path);
             let files = self.files.as_ref().expect("executor FS").clone();
             let params = params.clone();
             let write = method == "fs/write_text_file";
             // Mutating workers are never detached on timeout/cancel. Until join returns,
             // stop cannot imply their death or free the executor reservation.
+            let started = tokio::time::Instant::now();
             let result = tokio::task::spawn_blocking(move || {
                 let mut files = files
                     .lock()
@@ -799,6 +848,11 @@ impl Actor {
             .await
             .map_err(|_| failure(ErrorKind::ProcessFailure, "scoped FS worker failed"))?;
             self.store.lock().map_err(|_|failure(ErrorKind::StateFailure,"state poisoned"))?.audit(&self.session.scope,"grok.fs_observed",json!({"session":self.session.id,"native":self.session.native_ref,"prompt":self.prompt,"method":method,"path":path,"succeeded":result.is_ok()})).map_err(state_error)?;
+            self.evidence
+                .callback(&self.request.worktree, path, result.is_ok());
+            if started.elapsed() > Duration::from_secs(5) {
+                fatal = true;
+            }
             let current = self.owner();
             if current.is_err() {
                 fatal = true;
@@ -913,7 +967,7 @@ async fn supervise(mut actor: Actor, load: Option<String>) {
         command.args(["--disable-web-search","--sandbox",if decision{"read-only"}else{"strict"},"agent","--no-leader","--agent-profile"]).arg(&owned.path).arg("stdio")
             .current_dir(&actor.request.worktree).env_clear().envs(&actor.environment).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true).process_group(0);
         actor.owner()?;
-        let child=ProcessGroup::new(command.spawn().map_err(|_|failure(ErrorKind::LaunchFailure,"native Grok could not spawn"))?,ownership.group())?;
+        let child=ProcessGroup::new(command.spawn().map_err(|e|failure(if e.kind()==std::io::ErrorKind::NotFound {ErrorKind::ExecutableMissing}else{ErrorKind::LaunchFailure},"native Grok could not spawn"))?,ownership.group())?;
         actor.session.pid=child.child.id();process=Some(child);actor.publish()?;
         let child=process.as_mut().expect("owned child");
         actor.rpc=Some(Rpc::new(child.child.stdin.take().expect("piped stdin"),child.child.stdout.take().expect("piped stdout")));
@@ -921,7 +975,7 @@ async fn supervise(mut actor: Actor, load: Option<String>) {
         let initialize=actor.request("initialize",json!({"protocolVersion":1,"clientCapabilities":{"fs":{"readTextFile":!decision,"writeTextFile":!decision},"terminal":false},"_meta":{"startupHints":{"nonInteractive":true}}}),Duration::from_secs(30)).await?;
         if initialize["protocolVersion"]!=1 || initialize["_meta"]["agentVersion"]!=NATIVE_VERSION || initialize["agentCapabilities"]["loadSession"]!=true {return Err(failure(ErrorKind::UnsupportedCapability,"untested native Grok protocol/version/load contract"));}
         if !initialize["authMethods"].as_array().is_some_and(|a|a.iter().any(|v|v["id"]=="cached_token")){return Err(failure(ErrorKind::AuthenticationUnavailable,"native cached-token method unavailable"));}
-        actor.request("authenticate",json!({"methodId":"cached_token","_meta":{"headless":true}}),Duration::from_secs(30)).await.map_err(|_|failure(ErrorKind::AuthenticationUnavailable,"native cached authentication unavailable; no interactive fallback"))?;
+        actor.request("authenticate",json!({"methodId":"cached_token","_meta":{"headless":true}}),Duration::from_secs(30)).await.map_err(|e|if e.kind==ErrorKind::ProcessFailure && e.message=="native ACP returned error" {failure(ErrorKind::AuthenticationUnavailable,"native cached authentication unavailable; no interactive fallback")}else{e})?;
         let mut params=json!({"cwd":actor.request.worktree,"mcpServers":[]});if let Some(id)=&load{params["sessionId"]=json!(id);}
         let session=actor.request(if load.is_some(){"session/load"}else{"session/new"},params,Duration::from_secs(30)).await?;
         let native=if let Some(id)=load {id}else{session["sessionId"].as_str().ok_or_else(||failure(ErrorKind::ParseFailure,"native Session ID missing"))?.to_owned()};
@@ -946,7 +1000,7 @@ async fn supervise(mut actor: Actor, load: Option<String>) {
         actor.dispatched=true;
         actor.rpc.as_mut().expect("RPC").send(&frame).await?;
         actor.active=true;
-        let response=actor.response(id,TURN_TIMEOUT).await?;
+        let response=actor.response(id,TURN_TIMEOUT).await?;actor.active=false;
         if response["_meta"]["sessionId"]==native && response["_meta"]["promptId"]==actor.prompt && ["end_turn","max_tokens","max_turn_requests","refusal","cancelled"].contains(&response["stopReason"].as_str().unwrap_or("")){actor.native_outcome=true;}
         if actor.native_outcome { *actor.entry.usage.lock().map_err(|_|failure(ErrorKind::StateFailure,"usage poisoned"))?=response["_meta"]["usage"].clone(); }
         if !actor.native_outcome || response["stopReason"]!="end_turn" {return Err(failure(ErrorKind::ProcessFailure,"native turn did not complete with owned end_turn evidence"));}
@@ -1182,4 +1236,105 @@ async fn index_digest(root: &Path, ownership: &mut ProcessOwnership) -> AdapterR
     )
     .await?;
     Ok(digest(&bytes))
+}
+
+#[cfg(test)]
+mod registry_tests {
+    use super::*;
+    #[test]
+    fn successful_retirement_permanently_fences_previously_handed_entry() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().canonicalize().unwrap();
+        let store = Arc::new(Mutex::new(
+            crate::state::Store::open(&root.join("state.db")).unwrap(),
+        ));
+        let mut project = Project::new(
+            "fixture".into(),
+            root.clone(),
+            "fixture".into(),
+            "main".into(),
+        );
+        store.lock().unwrap().put_project(&mut project).unwrap();
+        let scope = Scope::project(project.id);
+        let session = Session {
+            id: SessionId::new(),
+            scope: scope.clone(),
+            agent: "grok".into(),
+            provider: "grok".into(),
+            role: SessionRole::Consultant,
+            native_ref: None,
+            pid: None,
+            worktree: root.clone(),
+            state: SessionState::Exited,
+            model: None,
+            effort: None,
+            recovery: json!({}),
+            started_at: now_ms(),
+        };
+        store.lock().unwrap().put_session(&session, 0).unwrap();
+        let (events, status) = watch::channel(SessionStatus {
+            session: session.clone(),
+            exit_code: None,
+            stdout: vec![],
+            stderr: vec![],
+            stdout_truncated: false,
+            stderr_truncated: false,
+            failure: None,
+        });
+        let entry = Arc::new(OwnedEntry {
+            scope: scope.clone(),
+            transition: Mutex::new(()),
+            status,
+            events,
+            request: Mutex::new(LaunchRequest {
+                project,
+                scope: scope.clone(),
+                worktree: root,
+                role: SessionRole::Consultant,
+                mode: LaunchMode::NonInteractive,
+                input: PreparedInput {
+                    scope,
+                    kind: InputKind::ContextPack,
+                    revision: "a".repeat(40),
+                    version: 1,
+                    source_versions: BTreeMap::new(),
+                    payload: "fixture".into(),
+                },
+                environment: BTreeMap::new(),
+                model: None,
+                effort: None,
+            }),
+            schema: None,
+            busy: AtomicBool::new(false),
+            stopping: AtomicBool::new(false),
+            stop: Notify::new(),
+            completed: AtomicBool::new(false),
+            cleaned: AtomicBool::new(false),
+            usage: Mutex::new(Value::Null),
+        });
+        let adapter = GrokAdapter::new("grok".into(), PathBuf::from("/bin/sh"), store).unwrap();
+        adapter
+            .sessions
+            .lock()
+            .unwrap()
+            .insert(session.id, entry.clone());
+        // Models a concurrent begin that obtained the private Arc immediately
+        // before release. Cleanup failure must keep it registered and usable.
+        let previously_handed = adapter.entry(&(&session).into()).unwrap();
+        assert_eq!(
+            adapter.release((&session).into()).unwrap_err().kind,
+            ErrorKind::SessionLost
+        );
+        assert!(!previously_handed.busy.load(Ordering::SeqCst));
+        assert!(adapter.entry(&(&session).into()).is_ok());
+        entry.cleaned.store(true, Ordering::SeqCst);
+        adapter.release((&session).into()).unwrap();
+        assert!(adapter.entry(&(&session).into()).is_err());
+        assert!(
+            previously_handed
+                .busy
+                .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+                .is_err()
+        );
+    }
 }

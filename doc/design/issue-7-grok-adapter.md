@@ -40,11 +40,12 @@ internally, not shell-interpolated. Explicit intentional native baseline environ
 retained; project leakage and Git overrides are rejected. Native authentication/config,
 loader and permission override variables may only equal the constructor-captured intentional
 runtime baseline; per-launch replacement HOME/GROK_HOME/config/auth/library injection or
-native safety overrides fail. Additional ordinary explicit environment remains scoped.
+native safety overrides fail. Additional scoped keys are restricted to LANG, LC_ALL, LC_CTYPE, TERM, COLORTERM, TZ
+and the runtime-reserved RRX_* namespace. Other unknown caller keys are rejected.
 Exact baseline-only names: HOME, PATH, TMPDIR, XDG_CONFIG_HOME, XDG_DATA_HOME,
 XDG_STATE_HOME, XDG_CACHE_HOME, NODE_OPTIONS, SSL_CERT_FILE, SSL_CERT_DIR,
 REQUESTS_CA_BUNDLE, CURL_CA_BUNDLE, HTTP_PROXY, HTTPS_PROXY, ALL_PROXY, NO_PROXY
-(and lowercase proxy equivalents). All GROK_*, XAI_*, DYLD_*, LD_* variables are
+(and lowercase proxy equivalents). SSLKEYLOGFILE, BASH_ENV, ENV, SHELL and ZDOTDIR are also baseline-only. All GROK_*, XAI_*, DYLD_*, LD_*, NODE_*, BUN_* and OPENSSL_* variables are
 baseline-only, including unknown future suffixes. GIT_* is always rejected. The
 constructor captures these intentional baseline values; launch cannot alter/add them. Preserve native auth home;
 never create an empty replacement config/auth home. No native trust bypass is introduced.
@@ -79,7 +80,11 @@ model/effort current values must match explicit requested values before promptin
 
 ## Actor and native I/O
 
-One Tokio actor owns each private process and NDJSON channel. It correlates exact RPC IDs,
+One Tokio actor owns each private process and NDJSON channel. Partial frame bytes remain
+owned across receive cancellation. Reverse-request IDs are validated before side effects.
+Each turn allows at most 256 callbacks and 4096-byte callback paths. FS workers exceeding
+five seconds invalidate the turn once joined; no worker is detached to claim termination.
+OS filesystem stalls can delay cleanup indefinitely, an explicit availability limit. It correlates exact RPC IDs,
 bounds every frame/output/pending request, drains stderr concurrently, and rejects
 unknown/wrong-session reverse requests. It preserves structured native result/error and
 scoped factual audit. Prepared text receives a fixed non-command first-line envelope; its
@@ -91,7 +96,8 @@ Executor client FS supports ACP read/write only. Resolve relative paths against 
 Task root and walk pinned directory descriptors with no-follow flags; check directory/file
 identity, regular-file type and hard-link count. Reject foreign paths, every dot-prefixed
 component (including .git/.grok/.claude/.codex/.agents/.rrx/.github), AGENTS.md/CLAUDE.md/GROK.md
-case-insensitively, and exact configured Project rule/config paths and their inode aliases.
+case-insensitively, and exact configured absolute Project rule/config paths and their inode aliases.
+Source-checkout refs also protect the corresponding Task-relative path/copy inode.
 The baseline accepts ASCII path components only, so Unicode/case-normalization ambiguity
 cannot grant authority on macOS. Read and write share this conservative baseline; non-secret
 dotfile/rule reads are intentionally unsupported, not an accidental full-repository claim.
@@ -126,7 +132,9 @@ metadata alone does not validate a result. Post-turn identity/count checks are m
 decision toolCallCount must remain zero, and any FS/terminal callback invalidates decision
 success. Any live tool_call/tool_call_update invalidates a decision; executor native tool
 metadata must name exactly read_file/search_replace and correlate each successful tool
-with its requested-path ACP callbacks. A native tool that resolves a directory/stat or
+with successful requested-path ACP callbacks. Denied callbacks never authorize a
+completed native tool. The correlated terminal response immediately closes live callback
+authority; late model notifications/callbacks invalidate completion. A native tool that resolves a directory/stat or
 fallback locally without callbacks cannot establish completed executor transport. Native
 search/tool invocation fields invalidate decision success if present. Missing post-turn
 counts fail; old history/cumulative counts are not new activity. Executor must retain its
@@ -161,6 +169,8 @@ outcome remains Lost/reserved even after verified process death and PID clearing
 correlated native terminal failure can be Failed; cancellation never supplies that evidence.
 
 Private registry state prevents duplicate live launches or concurrent same-Session resume.
+Successful release permanently closes the retired entry begin fence, including any Arc
+handed to a concurrent caller before registry removal.
 Checkpoint accepts explicit scope/version/source-bound fresh PreparedInput, persists only
 authority metadata, and retains payload/environment in memory. Resume requires a higher
 input version than the last dispatched turn, unchanged owning path/provider/role and
@@ -171,7 +181,16 @@ its exact digest/contract is checked before dispatch and matched on load. After 
 setter, verify both model and effort together from returned options. Native per-prompt
 aggregate usage after load is collected once; unknown fields stay null. No picker/title/continue heuristics and no automatic old-prompt replay.
 
-Release requires owned verified terminal state; Lost cannot be released. After runtime
+Consultant admission rechecks concurrent executor authority around native dispatch; the
+shared CAS does not mutually exclude future consultant/executor overlap. Such overlap
+invalidates observed authority rather than providing a false completed result.
+Release requires owned verified terminal state; Lost cannot be released. Aborted decision
+turns with unknown native outcome remain Lost and block workflow until Issue 13 verifies
+explicit recovery, even when model tools were denied and the private process is dead.
+Consume transport success before checkpoint/release; a refreshed checkpoint changes the
+private terminal snapshot, so old status objects cannot authorize the new turn.
+Terminal native/OS observations are separate scoped audits; dispatch metadata remains
+a conservative consumption marker rather than a mutable completion assertion. After runtime
 restart, absent private ownership returns SessionLost until Issue 13 supplies explicit
 verified reconstruction. PTY/attach/shell/native Goal support remain typed Unsupported.
 

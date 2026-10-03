@@ -14,6 +14,7 @@ pub(super) struct Rpc {
     writer: ChildStdin,
     reader: BufReader<ChildStdout>,
     next: u64,
+    partial: Vec<u8>,
 }
 impl Rpc {
     pub fn new(writer: ChildStdin, reader: ChildStdout) -> Self {
@@ -21,6 +22,7 @@ impl Rpc {
             writer,
             reader: BufReader::new(reader),
             next: 1,
+            partial: vec![],
         }
     }
     pub fn frame(&mut self, method: &str, params: Value) -> AdapterResult<(u64, Vec<u8>)> {
@@ -41,7 +43,6 @@ impl Rpc {
             .map_err(|_| failure(ErrorKind::ProcessFailure, "ACP pipe write failed"))
     }
     pub async fn receive(&mut self) -> AdapterResult<Value> {
-        let mut frame = vec![];
         loop {
             let chunk = self
                 .reader
@@ -55,16 +56,17 @@ impl Rpc {
                 .iter()
                 .position(|b| *b == b'\n')
                 .map_or(chunk.len(), |p| p + 1);
-            if frame.len().saturating_add(length) > FRAME_LIMIT {
+            if self.partial.len().saturating_add(length) > FRAME_LIMIT {
                 return Err(failure(ErrorKind::ParseFailure, "ACP frame exceeds budget"));
             }
             let end = chunk[length - 1] == b'\n';
-            frame.extend_from_slice(&chunk[..length]);
+            self.partial.extend_from_slice(&chunk[..length]);
             self.reader.consume(length);
             if end {
                 break;
             }
         }
+        let frame = std::mem::take(&mut self.partial);
         let value: Value = serde_json::from_slice(&frame)
             .map_err(|_| failure(ErrorKind::ParseFailure, "malformed ACP JSON"))?;
         if value["jsonrpc"] != "2.0" || !value.is_object() {
@@ -131,7 +133,7 @@ fn absolute(root: &Path, path: &str) -> PathBuf {
     result
 }
 impl TurnEvidence {
-    pub fn callback(&mut self, root: &Path, path: &str) {
+    pub fn callback(&mut self, root: &Path, path: &str, succeeded: bool) {
         self.callbacks += 1;
         let path = absolute(root, path);
         for tool in self
@@ -139,7 +141,7 @@ impl TurnEvidence {
             .values_mut()
             .filter(|t| !t.finished && t.path == path)
         {
-            tool.callbacks += 1;
+            tool.callbacks += usize::from(succeeded);
         }
     }
     pub fn update(
@@ -245,7 +247,13 @@ impl TurnEvidence {
                     Ok(None)
                 }
             }
-            _ => Ok(None),
+            Some("agent_thought_chunk" | "plan" | "usage_update" | "available_commands_update") => {
+                Ok(None)
+            }
+            _ => Err(failure(
+                ErrorKind::OwnershipMismatch,
+                "unsupported native live notification",
+            )),
         }
     }
     pub fn finished(&self) -> AdapterResult<()> {
@@ -289,5 +297,37 @@ mod tests {
                 .update(root, &params, "native", "prompt", false)
                 .is_err()
         );
+    }
+}
+
+#[cfg(test)]
+mod cancellation_tests {
+    use super::*;
+    #[tokio::test]
+    async fn cancelled_receive_retains_already_consumed_partial_frame() {
+        let directory = tempfile::tempdir().unwrap();
+        let ready = directory.path().join("ready");
+        let mut child = tokio::process::Command::new("python3")
+            .args(["-u", "-c", "import sys,time,pathlib;sys.stdout.write('{\"jsonrpc\":\"2.0\",');sys.stdout.flush();pathlib.Path(sys.argv[1]).touch();time.sleep(0.2);print('\"id\":1,\"result\":{}}')"])
+            .arg(&ready).stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).kill_on_drop(true).spawn().unwrap();
+        let mut rpc = Rpc::new(child.stdin.take().unwrap(), child.stdout.take().unwrap());
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while !ready.exists() {
+                tokio::time::sleep(Duration::from_millis(1)).await;
+            }
+        })
+        .await
+        .unwrap();
+        assert!(
+            tokio::time::timeout(Duration::from_millis(10), rpc.receive())
+                .await
+                .is_err()
+        );
+        let value = tokio::time::timeout(Duration::from_secs(5), rpc.receive())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(value["id"], 1);
+        assert!(child.wait().await.unwrap().success());
     }
 }

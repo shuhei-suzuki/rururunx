@@ -196,8 +196,15 @@ for line in sys.stdin:
   if p['configId']=='model':model=p['value']
   else:effort=p['value']
   result={'configOptions':[{'id':'model','currentValue':model if mode!='config' else 'wrong'},{'id':'reasoning_effort','currentValue':effort}]}
- elif method=='_x.ai/session/info':result={'result':{'sessionId':sid,'cwd':os.getcwd(),'agentName':'rururunx-decision' if decision else 'rururunx-executor','context':{'toolDefinitionsCount':(0 if decision else 2)+(1 if mode=='inventory' else 0),'toolCallCount':calls}}}
+ elif method=='_x.ai/session/info':
+  if mode=='pause_info' and calls==0:
+   pause=pathlib.Path(os.environ['RRX_PAUSE']);pause.write_text('native preflight paused')
+   while not pause.with_suffix('.continue').exists():time.sleep(0.01)
+  if calls and mode=='late_write':assert fs('fs/write_text_file','late.txt','forbidden late effect').get('error')
+  if calls and mode=='late_tool':tool('search_replace','late.txt',99)
+  result={'result':{'sessionId':sid,'cwd':os.getcwd(),'agentName':'rururunx-decision' if decision else 'rururunx-executor','context':{'toolDefinitionsCount':(0 if decision else 2)+(1 if mode=='inventory' else 0),'toolCallCount':calls}}}
  elif method=='session/prompt':
+  if os.getenv('RRX_PROMPT_OBSERVED'):pathlib.Path(os.environ['RRX_PROMPT_OBSERVED']).write_text('actual prompt received')
   prompt=p['_meta']['promptId'];assert 'bash_command' not in p['prompt'][0].get('_meta',{})
   assert p['prompt'][0]['text'].startswith('Prepared Task input follows:\n\n'), 'native slash command authority escaped envelope'
   if os.getenv('RRX_EXPECT_INPUT'):assert p['prompt'][0]['text'].endswith(os.environ['RRX_EXPECT_INPUT'])
@@ -207,23 +214,27 @@ for line in sys.stdin:
   if mode=='hang':time.sleep(60)
   if mode=='malformed':print('invalid-json',flush=True);continue
   if mode=='oversize':print('x'*1100000,flush=True);continue
+  if mode=='invalid_callback_id':
+   send({'jsonrpc':'2.0','id':None,'method':'fs/write_text_file','params':{'sessionId':sid,'path':'invalid-id.txt','content':'forbidden'}});json.loads(sys.stdin.readline())
+  if mode=='config_update':update({'sessionUpdate':'config_option_update','configOptions':[]})
   if mode=='permission':
    send({'jsonrpc':'2.0','id':'permission','method':'session/request_permission','params':{'sessionId':sid,'options':[{'kind':'allow_once','optionId':'allow'},{'kind':'reject_once','optionId':'deny'}]}})
    answer=json.loads(sys.stdin.readline());assert answer['result']['outcome']['optionId']=='deny'
   if not decision:
-   n=tool('read_file','own.txt',1);assert fs('fs/read_text_file','own.txt').get('result');done(n)
+   n=tool('read_file','own.txt',1);assert fs('fs/read_text_file','own.txt').get('result')
+   if mode!='unfinished':done(n)
    if mode=='bypass':
     n=tool('search_replace','result.txt',2);done(n)
    else:
     n=tool('search_replace','result.txt',2);fs('fs/read_text_file','result.txt');assert fs('fs/write_text_file','result.txt','owned edit\n').get('result')=={};done(n)
-   n=tool('search_replace',os.environ['RRX_FOREIGN'],3);assert fs('fs/write_text_file',os.environ['RRX_FOREIGN'],'forbidden').get('error');done(n,True)
+   n=tool('search_replace',os.environ['RRX_FOREIGN'],3);assert fs('fs/write_text_file',os.environ['RRX_FOREIGN'],'forbidden').get('error');done(n,mode!='denied_completed')
   elif mode=='decision_tool':tool('read_file','own.txt',1)
   if mode=='hook':pathlib.Path('unexplained.txt').write_text('native hook effect')
   output={'verdict':'DENY','reason':'native fixture'}
   if mode=='schema_enum':output={'verdict':'ALLOW','reason':'native fixture'}
   elif mode=='schema_required':output={'verdict':'DENY'}
   elif mode=='schema_extra':output={'verdict':'DENY','reason':'native fixture','extra':True}
-  result={'stopReason':'end_turn','_meta':{'sessionId':sid,'promptId':prompt,'usage':{'inputTokens':101,'outputTokens':11,'cachedReadTokens':0,'cacheCreationTokens':0},'structuredOutput':output}}
+  result={'stopReason':'end_turn','_meta':{'sessionId':sid,'promptId':prompt,'usage':{'inputTokens':202 if 'explicit fresh continuation' in p['prompt'][0]['text'] else 101,'outputTokens':22 if 'explicit fresh continuation' in p['prompt'][0]['text'] else 11,'cachedReadTokens':0,'cacheCreationTokens':0},'structuredOutput':output}}
  send({'jsonrpc':'2.0','id':d['id'],'result':result})
 "#;
 
@@ -297,6 +308,12 @@ async fn native_auth_inventory_config_parser_and_tool_evidence_fail_closed() {
         "oversize",
         "bypass",
         "hook",
+        "unfinished",
+        "denied_completed",
+        "late_write",
+        "late_tool",
+        "invalid_callback_id",
+        "config_update",
     ] {
         let mut fixture = Fixture::new();
         fixture.mode(mode);
@@ -305,7 +322,16 @@ async fn native_auth_inventory_config_parser_and_tool_evidence_fail_closed() {
         let status = finished(&adapter, &session).await;
         assert_eq!(
             status.session.state,
-            if ["malformed", "oversize", "bypass"].contains(&mode) {
+            if [
+                "malformed",
+                "oversize",
+                "bypass",
+                "denied_completed",
+                "invalid_callback_id",
+                "config_update"
+            ]
+            .contains(&mode)
+            {
                 SessionState::Lost
             } else {
                 SessionState::Failed
@@ -316,6 +342,14 @@ async fn native_auth_inventory_config_parser_and_tool_evidence_fail_closed() {
         assert!(!adapter.transport_succeeded(&status));
         assert!(status.failure.is_some(), "{mode}");
         assert!(status.session.pid.is_none(), "{mode}");
+        assert!(
+            !fixture.request.worktree.join("late.txt").exists(),
+            "{mode}: late callback mutated Task"
+        );
+        assert!(
+            !fixture.request.worktree.join("invalid-id.txt").exists(),
+            "{mode}: malformed request mutated Task"
+        );
     }
 }
 #[tokio::test]
@@ -340,6 +374,12 @@ async fn native_resume_requires_fresh_checkpoint_preserves_uuid_and_discards_rep
     assert!(adapter.transport_succeeded(&second), "{:?}", second.failure);
     assert!(!String::from_utf8_lossy(&second.stdout).contains("REPLAY"));
     assert_eq!(second.session.recovery["input_version"], 2);
+    let usage = adapter
+        .usage((&resumed).into(), "resume".into(), None)
+        .await
+        .unwrap();
+    assert_eq!(usage.input_tokens, Some(202));
+    assert_eq!(usage.output_tokens, Some(22));
 }
 #[tokio::test]
 async fn native_stop_permissions_foreign_refs_and_environment_guards_are_explicit() {
@@ -367,6 +407,17 @@ async fn native_stop_permissions_foreign_refs_and_environment_guards_are_explici
         "LD_PRELOAD",
         "DYLD_INSERT_LIBRARIES",
         "NODE_OPTIONS",
+        "NODE_TLS_REJECT_UNAUTHORIZED",
+        "NODE_EXTRA_CA_CERTS",
+        "NODE_PATH",
+        "BUN_OPTIONS",
+        "OPENSSL_CONF",
+        "SSLKEYLOGFILE",
+        "BASH_ENV",
+        "ENV",
+        "SHELL",
+        "ZDOTDIR",
+        "UNKNOWN_NATIVE_OVERRIDE",
         "HTTPS_PROXY",
     ] {
         let mut request = fixture.request.clone();
@@ -607,4 +658,54 @@ async fn native_structured_consumer_rejects_each_schema_violation_and_live_decis
         assert!(!adapter.transport_succeeded(&status));
         assert!(status.failure.is_some());
     }
+}
+
+#[tokio::test]
+async fn parent_replacement_after_native_preflight_never_reaches_prompt_wire() {
+    let mut fixture = Fixture::new();
+    fixture.mode("pause_info");
+    let pause = fixture.directory.path().join("pause");
+    let prompt_observed = fixture.directory.path().join("prompt-observed");
+    fixture
+        .request
+        .environment
+        .insert("RRX_PAUSE".into(), pause.to_str().unwrap().into());
+    fixture.request.environment.insert(
+        "RRX_PROMPT_OBSERVED".into(),
+        prompt_observed.to_str().unwrap().into(),
+    );
+    let adapter = fixture.adapter();
+    let session = adapter.start(fixture.request.clone()).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(10), async {
+        while !pause.exists() {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    let mut other = Store::open(&fixture.directory.path().join("state.db")).unwrap();
+    let mut task = other
+        .task(fixture.request.scope.task_id.unwrap())
+        .unwrap()
+        .unwrap();
+    task.title = "concurrent replacement after native admission".into();
+    other.put_task(&mut task).unwrap();
+    std::fs::write(pause.with_extension("continue"), "resume native response").unwrap();
+    let status = finished(&adapter, &session).await;
+    assert_eq!(
+        status.session.state,
+        SessionState::Failed,
+        "{:?}",
+        status.failure
+    );
+    assert!(!adapter.transport_succeeded(&status));
+    assert!(status.session.pid.is_none());
+    assert!(
+        !prompt_observed.exists(),
+        "native prompt was sent under replaced parent authority"
+    );
+    let saved = other.session(session.id).unwrap().unwrap().0;
+    assert!(saved.recovery.get("prompt_id").is_none());
+    assert_ne!(saved.recovery["dispatch_state"], "dispatching");
+    assert_eq!(other.task(task.id).unwrap().unwrap().title, task.title);
 }
