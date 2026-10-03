@@ -332,7 +332,7 @@ async fn failed_launch_nonzero_exit_and_bounded_output_are_observable() {
     assert_eq!(status.session.state, SessionState::Failed);
     assert_eq!(status.exit_code, Some(17));
     let missing = GenericCliAdapter::new(
-        "missing".into(),
+        "fake".into(),
         vec!["/no/such/agent".into()],
         fixture.store.clone(),
     )
@@ -731,5 +731,48 @@ async fn executable_symlink_keeps_configured_argv_zero_and_terminal_goal_cannot_
             .unwrap_err()
             .kind,
         ErrorKind::InvalidInput
+    );
+}
+
+#[test]
+fn runtime_shutdown_terminates_native_group_and_preserves_uncertain_reservation() {
+    let fixture = Fixture::new();
+    let adapter = fixture
+        .adapter("/bin/cat; sleep 60 >/dev/null 2>&1 & printf 'descendant=%s\n' \"$!\"; wait");
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let (session, descendant) = runtime.block_on(async {
+        let session = adapter.start(fixture.request.clone()).await.unwrap();
+        let mut events = adapter.subscribe((&session).into()).unwrap();
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while !String::from_utf8_lossy(&events.borrow().stdout).contains("descendant=") {
+                events.changed().await.unwrap();
+            }
+        })
+        .await
+        .unwrap();
+        let pid: i32 = String::from_utf8_lossy(&events.borrow().stdout)
+            .lines()
+            .find_map(|line| line.strip_prefix("descendant="))
+            .unwrap()
+            .parse()
+            .unwrap();
+        (session, pid)
+    });
+    drop(runtime);
+    assert_process_dead(descendant);
+    assert_eq!(
+        fixture
+            .store
+            .lock()
+            .unwrap()
+            .session(session.id)
+            .unwrap()
+            .unwrap()
+            .0
+            .state,
+        SessionState::Running
     );
 }
