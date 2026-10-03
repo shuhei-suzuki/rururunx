@@ -52,6 +52,61 @@ fn session(task: &Task, worktree: std::path::PathBuf) -> Session {
 }
 
 #[test]
+fn current_scope_audit_rechecks_versions_and_activity_across_connections() {
+    let temp = tempfile::tempdir().unwrap();
+    let db = temp.path().join("state.db");
+    let mut first = Store::open(&db).unwrap();
+    let mut p = project(&mut first, "one", temp.path());
+    let g = goal(&mut first, &p);
+    let mut t = task(&mut first, &p, &g);
+    let scope = t.scope();
+    let old = [p.version, g.version, t.version];
+    let mut second = Store::open(&db).unwrap();
+    t.title = "independent connection update".into();
+    second.put_task(&mut t).unwrap();
+    let before = first.events(&scope, 0, 100).unwrap().len();
+    let error = first
+        .audit_if_current(&scope, old, "context.selection", json!({"ready":true}))
+        .unwrap_err();
+    assert!(matches!(
+        error.downcast_ref::<rrx::state::StateGuardError>(),
+        Some(rrx::state::StateGuardError::SnapshotChanged { .. })
+    ));
+    assert_eq!(first.events(&scope, 0, 100).unwrap().len(), before);
+    first
+        .audit_if_current(
+            &scope,
+            [p.version, g.version, t.version],
+            "context.selection",
+            json!({"ready":true}),
+        )
+        .unwrap();
+    p.state = ProjectState::Blocked;
+    p.blocked_reason = Some("source changed".into());
+    second.put_project(&mut p).unwrap();
+    assert!(
+        first
+            .audit_if_current(
+                &scope,
+                [p.version, g.version, t.version],
+                "context.selection",
+                json!({"ready":true})
+            )
+            .is_err()
+    );
+    assert!(
+        first
+            .audit_if_current(
+                &scope,
+                [p.version, g.version, t.version],
+                "context.created",
+                json!({})
+            )
+            .is_err()
+    );
+}
+
+#[test]
 fn restart_preserves_hierarchy_decisions_dag_sessions_context_and_nullable_usage() {
     let dir = tempfile::tempdir().unwrap();
     let db = dir.path().join("state.db");

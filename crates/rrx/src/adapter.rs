@@ -885,7 +885,7 @@ impl AgentAdapter for GenericCliAdapter {
     }
 }
 
-fn resolve_executable(command: &str) -> AdapterResult<PathBuf> {
+pub(crate) fn resolve_executable(command: &str) -> AdapterResult<PathBuf> {
     use std::os::unix::fs::PermissionsExt;
     let executable = |path: &Path| {
         path.is_file()
@@ -1270,7 +1270,7 @@ async fn validate_git(
     Ok(())
 }
 
-async fn bounded_git(
+pub(crate) async fn bounded_git(
     executable: &Path,
     cwd: &Path,
     args: &[String],
@@ -1278,6 +1278,29 @@ async fn bounded_git(
     deadline: tokio::time::Instant,
     process_uncertain: Arc<AtomicBool>,
 ) -> AdapterResult<String> {
+    let output = bounded_git_raw(
+        executable,
+        cwd,
+        args,
+        environment,
+        deadline,
+        process_uncertain,
+    )
+    .await?;
+    String::from_utf8(output)
+        .map(|value| value.trim().to_string())
+        .map_err(|_| error(ErrorKind::ParseFailure, "invalid Git metadata encoding"))
+}
+
+/// Preserve NUL-delimited inventory bytes; scalar callers retain trimming above.
+pub(crate) async fn bounded_git_raw(
+    executable: &Path,
+    cwd: &Path,
+    args: &[String],
+    environment: Vec<(std::ffi::OsString, std::ffi::OsString)>,
+    deadline: tokio::time::Instant,
+    process_uncertain: Arc<AtomicBool>,
+) -> AdapterResult<Vec<u8>> {
     if tokio::time::Instant::now() >= deadline {
         return Err(error(
             ErrorKind::Timeout,
@@ -1362,9 +1385,7 @@ async fn bounded_git(
             "Git ownership preflight failed",
         ));
     }
-    String::from_utf8(output)
-        .map(|value| value.trim().to_string())
-        .map_err(|_| error(ErrorKind::ParseFailure, "invalid Git metadata encoding"))
+    Ok(output)
 }
 async fn read_git_output(reader: impl AsyncRead + Unpin) -> AdapterResult<Vec<u8>> {
     let mut bytes = vec![];

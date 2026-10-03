@@ -310,7 +310,7 @@ impl WorktreeManager {
                 "--verify",
                 &format!("{}@{{upstream}}", status.branch),
             ],
-        )
+        )?
         .output()?;
         let delete_target = if upstream.status.success() {
             String::from_utf8(upstream.stdout)?.trim().to_owned()
@@ -562,17 +562,19 @@ pub(crate) fn native_environment() -> Vec<(std::ffi::OsString, std::ffi::OsStrin
         .filter(|(name, _)| !ROUTING.iter().any(|route| name == route))
         .collect()
 }
-fn command(cwd: &Path, args: &[&str]) -> Command {
-    let mut cmd = Command::new("git");
+fn command(cwd: &Path, args: &[&str]) -> Result<Command> {
+    let executable = crate::adapter::resolve_executable("git")
+        .map_err(|e| anyhow::anyhow!("native Git unavailable: {e:?}"))?;
+    let mut cmd = Command::new(executable);
     cmd.current_dir(cwd)
         .args(args)
         .env_clear()
         .envs(native_environment());
-    cmd
+    Ok(cmd)
 }
 
 fn git(cwd: &Path, args: &[&str]) -> Result<Output> {
-    let output = command(cwd, args).output().context("cannot start Git")?;
+    let output = command(cwd, args)?.output().context("cannot start Git")?;
     ensure!(
         output.status.success(),
         "Git {:?} failed: {}",
@@ -582,7 +584,7 @@ fn git(cwd: &Path, args: &[&str]) -> Result<Output> {
     Ok(output)
 }
 fn git_success(cwd: &Path, args: &[&str]) -> Result<bool> {
-    let status = command(cwd, args).output()?.status;
+    let status = command(cwd, args)?.output()?.status;
     ensure!(
         matches!(status.code(), Some(0 | 1)),
         "Git check failed: {status}"

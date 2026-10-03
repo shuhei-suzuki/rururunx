@@ -502,6 +502,56 @@ fn git_routing_env_does_not_redirect_registry_to_other_project() {
         rrx::git::repository_identity(&f.a, "main").unwrap()
     );
 }
+
+#[test]
+fn relative_path_cannot_replace_native_git_and_global_git_config_remains_authoritative() {
+    use std::os::unix::fs::PermissionsExt;
+    let f = Fixture::new();
+    let fake = f.a.join("git");
+    std::fs::write(&fake, "#!/bin/sh\nprintf FAKE > fake-git-ran\nexit 125\n").unwrap();
+    std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let run = |global: Option<&Path>| {
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_rrx"));
+        cmd.current_dir(&f.a)
+            .env("PATH", ".:/usr/bin:/bin")
+            .env(
+                "GIT_CONFIG_GLOBAL",
+                global.unwrap_or(Path::new("/dev/null")),
+            )
+            .arg("--state")
+            .arg(&f.db)
+            .args(["project", "add"])
+            .arg(&f.a);
+        cmd.output().unwrap()
+    };
+    let normal = run(None);
+    assert!(
+        normal.status.success(),
+        "{}",
+        String::from_utf8_lossy(&normal.stderr)
+    );
+    assert!(!f.a.join("fake-git-ran").exists());
+    assert!(run(None).status.success(), "same-root add is idempotent");
+    let config = f.root.join("native-global.gitconfig");
+    let included = f.root.join("malformed-native.gitconfig");
+    std::fs::write(&included, "native configuration syntax error\n").unwrap();
+    std::fs::write(
+        &config,
+        format!("[include]\npath = {}\n", included.display()),
+    )
+    .unwrap();
+    let guarded = run(Some(&config));
+    assert!(
+        !guarded.status.success(),
+        "native configured include failures must remain authoritative"
+    );
+    assert!(
+        String::from_utf8_lossy(&guarded.stderr).contains(included.to_str().unwrap()),
+        "{}",
+        String::from_utf8_lossy(&guarded.stderr)
+    );
+    assert!(!f.a.join("fake-git-ran").exists());
+}
 #[test]
 fn global_default_state_and_help_config_check_are_independent_of_cwd() {
     let f = Fixture::new();
