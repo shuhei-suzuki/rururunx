@@ -44,6 +44,8 @@ Suggested fields:
 - relevant diff/state context
 - project policy context
 - timestamp
+- minimal relevant context-pack/repository references
+- context bundle version
 
 ## 4. Deterministic policy
 
@@ -154,7 +156,27 @@ The same reviewer-set abstraction is reused for development reviews, but permiss
 
 A two-reviewer development review and a two-reviewer permission decision use the same scheduling/aggregation primitives but different schemas.
 
-## 11. Audit
+## 11. Approval context minimization
+
+Permission review should not receive an executor's entire session history.
+
+The broker asks Context Efficiency for a minimal Approval Bundle containing only what is needed to judge the operation, such as:
+
+- normalized operation
+- worktree/branch/environment
+- relevant project policy
+- affected paths/resources
+- minimal diff/state context
+- reversibility/destructive hints
+- required evidence for the policy class
+
+A reviewer can request context expansion when necessary.
+
+Multiple independent approval reviewers receive equivalent factual bundles. Their conclusions are not shared until aggregation.
+
+For recurring structurally identical permission requests, deterministic policy should be preferred over repeated LLM review when project policy safely permits it.
+
+## 12. Audit
 
 Every approval path records:
 
@@ -167,7 +189,7 @@ Every approval path records:
 - final action
 - timestamps
 
-## 12. Failure handling
+## 13. Failure handling
 
 Reviewer timeout/failure must not silently become approval.
 
