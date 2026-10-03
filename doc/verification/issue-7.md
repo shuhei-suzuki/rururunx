@@ -290,3 +290,16 @@ was a test-only compile correction, not a mutation result or runtime failure.
 The earlier outcome-only `9d233b1` exact Linux/macOS CI run `37161109321` also succeeds.
 Final immutable Registry-consumer rereview and exact-head publication checks are
 recorded on PR 40; no native/runtime code changed since reviewed `29f0613`.
+
+Public immutable `77b5f7b`: focused independent native Round 7 completes in 64.036
+seconds with no Critical/High/Medium/Low actual defects or blockers. It verifies genuine
+dynamic Registry dispatch for concurrent launch, subscribe, status, owned completion
+and release, plus truthful coverage of all five Issue criteria. Exact default-concurrency
+Linux/macOS CI run `37161473710` succeeds with all required test/lint/build gates.
+Reviewer trait start already requests a minimal object schema; the Registry fixture
+asserts transport/lifecycle rather than that output's contents. Explicit constrained
+schema collection is verified by the retained native pair and installed acceptance.
+Custom schema dispatch through the generic trait remains the upcoming Issue 6 additive
+integration. The status comparison is backed by `entry`'s persisted Session ownership
+check; no extra Registry-specific mutation result is claimed. Final outcome-only docs
+preserve this independently reviewed implementation and consumer test.
