@@ -82,6 +82,25 @@ impl RepositoryMap {
     pub fn skipped(&self) -> &BTreeMap<String, String> {
         &self.skipped
     }
+    pub(crate) fn phase_mandatory_payload(&self) -> Result<String> {
+        Ok(mandatory_payload(self, &[], false)?.0)
+    }
+    pub(crate) fn phase_rule_bytes(&self) -> Result<usize> {
+        let mut bytes = 1usize; // Engine's prefix separator.
+        for reference in &self.snapshot.project.rule_refs {
+            let path = crate::project::resolve_file(&self.snapshot.project, reference)?;
+            let text = self
+                .mandatory
+                .get(&format!("rule:{}", path.display()))
+                .context("captured Project rule unavailable")?;
+            bytes = bytes
+                .checked_add(
+                    format!("\nMandatory Project rule {}:\n{}\n", path.display(), text).len(),
+                )
+                .context("rule byte count overflow")?;
+        }
+        Ok(bytes)
+    }
 }
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

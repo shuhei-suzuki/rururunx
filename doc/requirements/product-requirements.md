@@ -1061,8 +1061,10 @@ publication, actual source/state freshness, primary-root read-only Goal packs an
 immutable finalized Task references. Deterministic typed-event checkpoints preserve
 semantic facts and bound only transient history by a labeled byte estimate.
 Consultant promotion preserves scoped historical provenance without copying its
-transcript. Automatic native event classification, transport and Workflow phase
-publication are separate integrations. See [Issue 19 requirements](issue-19-requirements.md).
+transcript. The actual Workflow phase port publishes exact typed artifacts and
+preserves reserved Cleanup provenance after disposal. Goal context-pointer updates
+have independent ContextVersion authority, preserving semantic/lifecycle Goal
+versions. Automatic native event classification and transport remain separate integrations. See [Issue 19 requirements](issue-19-requirements.md).
 
 Each Task must maintain a versioned Context Pack containing durable working context such as:
 

@@ -116,3 +116,28 @@ Starting→Running publication, so an intervening checkpoint prevents stale laun
 Existing Running/terminal observations remain valid and preserve immutable active
 attempt identity. `Store::validate_checkpoint_source` exposes the pure bounded
 comparison for native adapters; it performs no Git/filesystem work.
+
+Admitted native Sessions keep their immutable launch head through approval/human/
+Lost state reentry. Only new reservations and Starting→Running publication compare
+the current head. Finalized frozen Cleanup binds its original historical head; a
+checkpoint appended during Waiting Cleanup remains durable and cannot prevent
+final persistence after actual disposal. Goal descriptors preserve exact opaque
+legacy context envelopes with `typed_context=false`, without asserting typed pack
+semantics. Provider configurations can be released with `clear_inputs`; configured
+own references are validated then normalized to fresh current-head capture.
+
+A bound owned worktree is a precondition of this source provider; Issue 9 must
+provision it before Engine initialization, including STANDARD/STRICT workflows.
+Checkpoint/fact changes remain conservative source-authority changes in the current
+Engine: they can invalidate earlier generations/evidence, and changes after PR may
+hold for explicit recovery. The implementation does not silently exclude newly
+added constraints or facts from formal freshness. Lifecycle versus source-version
+separation and post-PR reconciliation remain explicit Issue 23/13 integrations.
+
+Checkpoint admission projects the complete mandatory Task/phase artifact plus
+current captured rules before committing a new head. The checkpoint's 1 MiB
+envelope limit is an upper bound, not a promise that all such envelopes fit a
+rendered input: combined mandatory-state capacity can reject earlier. Existing
+scoped facts/references are included when available. Rejection leaves the old
+head/audit unchanged; it does not accept an unrenderable new mandatory history.
+Later explicit input or rule changes can still require decomposition/extra budget.

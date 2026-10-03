@@ -1654,10 +1654,7 @@ async fn typed_pack_generic_writers_cannot_move_pointers_or_hide_unresolved_fact
         let mut stale = stale_goal.clone();
         stale.blockers.push("concurrent metadata".into());
         let error = f.store.lock().unwrap().put_goal(&mut stale).unwrap_err();
-        assert!(matches!(
-            error.downcast_ref::<rrx::state::StateGuardError>(),
-            Some(rrx::state::StateGuardError::SnapshotChanged { .. })
-        ));
+        assert!(error.to_string().contains("typed pack pointer"));
         let mut append = f
             .store
             .lock()
@@ -2184,6 +2181,7 @@ fn pack_fixture_error(error: anyhow::Error) -> rrx::adapter::AdapterError {
 }
 struct PackFixtureGates {
     cleanup: Mutex<Option<serde_json::Value>>,
+    cleanup_wait_once: Mutex<bool>,
 }
 impl rrx::workflow::PhaseGates for PackFixtureGates {
     fn complete(
@@ -2193,6 +2191,14 @@ impl rrx::workflow::PhaseGates for PackFixtureGates {
     ) -> rrx::workflow::WorkflowFuture<'_, rrx::workflow::GateOutcome> {
         Box::pin(async move {
             if i.phase == rrx::workflow::Phase::Cleanup {
+                let mut wait = self.cleanup_wait_once.lock().unwrap();
+                if *wait {
+                    *wait = false;
+                    return Ok(rrx::workflow::GateOutcome::Waiting(
+                        "fixture checkpoint during Cleanup wait".into(),
+                    ));
+                }
+                drop(wait);
                 *self.cleanup.lock().unwrap() = Some(i.context.data["task_pack"].clone());
                 git(
                     &i.project.root,
@@ -2270,6 +2276,7 @@ async fn actual_workflow_publishes_typed_phase_packs_and_freezes_cleanup_provena
     }
     let gates = Arc::new(PackFixtureGates {
         cleanup: Mutex::new(None),
+        cleanup_wait_once: Mutex::new(true),
     });
     let engine = WorkflowEngine::new(
         f.store.clone(),
@@ -2318,13 +2325,56 @@ async fn actual_workflow_publishes_typed_phase_packs_and_freezes_cleanup_provena
             break;
         }
         let result = engine.step(task.id, Default::default()).await.unwrap();
-        assert!(
-            !matches!(
-                result,
-                StepResult::Waiting { .. } | StepResult::Failed { .. }
-            ),
-            "{result:?}"
-        );
+        if let StepResult::Waiting {
+            phase: rrx::workflow::Phase::Cleanup,
+            ..
+        } = result
+        {
+            assert!(worktree.exists());
+            let native = {
+                let store = f.store.lock().unwrap();
+                store
+                    .records(&task.scope(), RecordKind::Session)
+                    .unwrap()
+                    .into_iter()
+                    .map(|r| serde_json::from_value::<Session>(r.data).unwrap())
+                    .find(|s| s.role == SessionRole::Executor && s.state == SessionState::Exited)
+                    .unwrap()
+            };
+            let late = packs
+                .checkpoint(
+                    &task.scope(),
+                    native.id,
+                    None,
+                    vec![event(
+                        1,
+                        EventKind::Failure,
+                        "late Cleanup checkpoint remains durable",
+                    )],
+                    HistoryPolicy {
+                        recent_history_bytes: 0,
+                    },
+                )
+                .await
+                .unwrap();
+            assert!(
+                packs
+                    .load_checkpoint(&late)
+                    .unwrap()
+                    .retained
+                    .iter()
+                    .any(|e| e.event.text == "late Cleanup checkpoint remains durable")
+            );
+            engine.resume_gate(task.id).await.unwrap();
+        } else {
+            assert!(
+                !matches!(
+                    result,
+                    StepResult::Waiting { .. } | StepResult::Failed { .. }
+                ),
+                "{result:?}"
+            );
+        }
     }
     let final_state = engine.snapshot(task.id).unwrap();
     assert!(final_state.finished);
@@ -2503,6 +2553,7 @@ async fn actual_engine_tiny_discretionary_budget_preserves_facts_and_provider_re
         sources,
         Arc::new(PackFixtureGates {
             cleanup: Mutex::new(None),
+            cleanup_wait_once: Mutex::new(false),
         }),
     )
     .unwrap();
@@ -2596,6 +2647,7 @@ async fn actual_engine_mandatory_rules_exceeding_absolute_cap_never_publish() {
         Arc::new(WorkflowPackSources::new(f.packs())),
         Arc::new(PackFixtureGates {
             cleanup: Mutex::new(None),
+            cleanup_wait_once: Mutex::new(false),
         }),
     )
     .unwrap();
@@ -2613,4 +2665,266 @@ async fn actual_engine_mandatory_rules_exceeding_absolute_cap_never_publish() {
             .unwrap()
             .is_empty()
     );
+}
+
+#[tokio::test]
+async fn admitted_session_reentry_preserves_launch_head_after_incremental_checkpoint() {
+    let f = Fixture::new();
+    let packs = f.packs();
+    let draft = packs.draft_task(&f.task.scope(), input()).await.unwrap();
+    let reference = packs.publish_task(&draft).await.unwrap();
+    let PreparedPack::Ready(prepared) = packs
+        .prepare_task(&reference, SelectionRequest::default(), budget())
+        .await
+        .unwrap()
+    else {
+        panic!("budget")
+    };
+    let (mut native, mut version) = session(&f, SessionRole::Executor, SessionState::Starting);
+    native.recovery = serde_json::json!({"source_versions":prepared.source_versions});
+    native.state = SessionState::Running;
+    version = f
+        .store
+        .lock()
+        .unwrap()
+        .put_session(&native, version)
+        .unwrap();
+    packs
+        .checkpoint(
+            &f.task.scope(),
+            native.id,
+            None,
+            vec![event(1, EventKind::Constraint, "new mandatory constraint")],
+            HistoryPolicy {
+                recent_history_bytes: 0,
+            },
+        )
+        .await
+        .unwrap();
+    let initial = native.recovery.clone();
+    for waiting in [
+        SessionState::WaitingApproval,
+        SessionState::WaitingHuman,
+        SessionState::Lost,
+    ] {
+        native.state = waiting;
+        version = f
+            .store
+            .lock()
+            .unwrap()
+            .put_session(&native, version)
+            .unwrap();
+        native.state = SessionState::Running;
+        version = f
+            .store
+            .lock()
+            .unwrap()
+            .put_session(&native, version)
+            .unwrap();
+        assert_eq!(native.recovery, initial);
+    }
+    let mut stale = native.clone();
+    stale.id = SessionId::new();
+    stale.state = SessionState::Starting;
+    assert!(f.store.lock().unwrap().put_session(&stale, 0).is_err());
+    native.state = SessionState::Exited;
+    f.store
+        .lock()
+        .unwrap()
+        .put_session(&native, version)
+        .unwrap();
+    assert!(f.store.lock().unwrap().put_session(&stale, 0).is_err());
+    let mut missing = stale;
+    missing.recovery = serde_json::json!({});
+    assert!(f.store.lock().unwrap().put_session(&missing, 0).is_err());
+}
+
+#[tokio::test]
+async fn goal_pointer_publication_preserves_admitted_task_authority_and_rejects_stale_goal_refs() {
+    let f = Fixture::new();
+    let packs = f.packs();
+    let task_ref = packs
+        .publish_task(&packs.draft_task(&f.task.scope(), input()).await.unwrap())
+        .await
+        .unwrap();
+    let PreparedPack::Ready(prepared) = packs
+        .prepare_task(&task_ref, SelectionRequest::default(), budget())
+        .await
+        .unwrap()
+    else {
+        panic!("budget")
+    };
+    let (mut native, mut version) = session(&f, SessionRole::Executor, SessionState::Running);
+    native.recovery = serde_json::json!({"source_versions":prepared.source_versions});
+    let before = f
+        .store
+        .lock()
+        .unwrap()
+        .goal(f.task.goal_id)
+        .unwrap()
+        .unwrap();
+    let goal = packs
+        .publish_goal(&before.scope(), vec![], Default::default())
+        .await
+        .unwrap();
+    let current = packs
+        .publish_goal(
+            &before.scope(),
+            vec!["new Goal summary observation".into()],
+            Default::default(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        f.store
+            .lock()
+            .unwrap()
+            .goal(f.task.goal_id)
+            .unwrap()
+            .unwrap()
+            .version,
+        before.version
+    );
+    assert!(current.version > goal.version);
+    assert!(packs.validate_goal(&goal).await.is_err());
+    packs.validate_goal(&current).await.unwrap();
+    packs.validate_task(&task_ref).await.unwrap();
+    native.state = SessionState::WaitingApproval;
+    version = f
+        .store
+        .lock()
+        .unwrap()
+        .put_session(&native, version)
+        .unwrap();
+    native.state = SessionState::Running;
+    version = f
+        .store
+        .lock()
+        .unwrap()
+        .put_session(&native, version)
+        .unwrap();
+    native.state = SessionState::Exited;
+    f.store
+        .lock()
+        .unwrap()
+        .put_session(&native, version)
+        .unwrap();
+    let reopened = Store::open(&f._temp.path().join("state.db")).unwrap();
+    let g = reopened.goal(f.task.goal_id).unwrap().unwrap();
+    assert_eq!(g.version, before.version);
+    assert_eq!(g.context_version, current.version);
+    let mut stale = before;
+    stale.blockers.push("stale writer".into());
+    assert!(f.store.lock().unwrap().put_goal(&mut stale).is_err());
+    let PreparedPack::Ready(new_launch) = packs
+        .prepare_task(&task_ref, SelectionRequest::default(), budget())
+        .await
+        .unwrap()
+    else {
+        panic!("budget")
+    };
+    assert_eq!(new_launch.version, prepared.version);
+}
+
+#[tokio::test]
+async fn goal_summary_preserves_opaque_legacy_context_without_typed_claims() {
+    let f = Fixture::new();
+    let packs = f.packs();
+    let context = ContextVersion {
+        scope: f.task.scope(),
+        version: 1,
+        revision: git(&f.worktree, &["rev-parse", "HEAD"]),
+        source_hashes: Default::default(),
+        data: serde_json::json!({"legacy":"source-only Workflow provider"}),
+    };
+    {
+        let mut store = f.store.lock().unwrap();
+        store.put_context(&context).unwrap();
+        let mut t = store.task(f.task.id).unwrap().unwrap();
+        t.context_version = 1;
+        store.put_task(&mut t).unwrap();
+    }
+    let reference = packs
+        .publish_goal(
+            &Scope::goal(f.project.id, f.task.goal_id),
+            vec![],
+            Default::default(),
+        )
+        .await
+        .unwrap();
+    let pack = packs.goal_pack(&reference).unwrap();
+    let descriptor = pack.tasks.iter().find(|t| t.id == f.task.id).unwrap();
+    assert!(!descriptor.typed_context);
+    assert!(descriptor.context.is_some());
+    assert!(
+        packs
+            .task_pack(descriptor.context.as_ref().unwrap())
+            .is_err()
+    );
+    packs.validate_goal(&reference).await.unwrap();
+}
+
+#[tokio::test]
+async fn checkpoint_admission_preserves_renderable_mandatory_headroom() {
+    let f = Fixture::new();
+    let packs = f.packs();
+    let (native, _) = session(&f, SessionRole::Executor, SessionState::Exited);
+    std::fs::write(f.root.join("RULES.md"), "R".repeat(220_000)).unwrap();
+    let events = (1..=110)
+        .map(|n| event(n, EventKind::Constraint, &"C".repeat(8192)))
+        .collect();
+    let before = f
+        .store
+        .lock()
+        .unwrap()
+        .events(&f.task.scope(), 0, 10000)
+        .unwrap()
+        .len();
+    let error = packs
+        .checkpoint(
+            &f.task.scope(),
+            native.id,
+            None,
+            events,
+            HistoryPolicy {
+                recent_history_bytes: 0,
+            },
+        )
+        .await
+        .unwrap_err();
+    assert!(
+        format!("{error:#}").contains("checkpoint admission"),
+        "{error:#}"
+    );
+    assert!(
+        f.store
+            .lock()
+            .unwrap()
+            .records(&f.task.scope(), RecordKind::Checkpoint)
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        f.store
+            .lock()
+            .unwrap()
+            .events(&f.task.scope(), 0, 10000)
+            .unwrap()
+            .len(),
+        before
+    );
+    let current = packs
+        .checkpoint(
+            &f.task.scope(),
+            native.id,
+            None,
+            vec![event(1, EventKind::Constraint, "admitted mandatory fact")],
+            HistoryPolicy {
+                recent_history_bytes: 0,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(packs.load_checkpoint(&current).unwrap().chain_version, 1);
+    packs.draft_task(&f.task.scope(), input()).await.unwrap();
 }

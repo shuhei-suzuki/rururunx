@@ -82,6 +82,14 @@ pub(super) fn guard_context_checkpoint(
                         == serde_json::to_value(crate::workflow::Phase::Cleanup)?,
                 "only finalized Cleanup may preserve historical capture guards"
             );
+            ensure!(
+                context.source_hashes.get("checkpoint:head")
+                    == artifact.source_versions.get("checkpoint:head"),
+                "frozen Cleanup checkpoint provenance changed"
+            );
+            // Terminal history preserves the admitted attempt, not a new launch.
+            // Later checkpoint facts remain in their immutable journal chain.
+            return Ok(());
         } else {
             pack_guard(tx, &context.scope, artifact.authority_versions)?;
         }
@@ -111,7 +119,7 @@ pub(super) fn guard_launch_checkpoint(tx: &Transaction<'_>, record: &Record) -> 
     let previous = read_tx::<Record>(tx, "records", &record.id.to_string())?
         .map(|r| serde_json::from_value::<Session>(r.data))
         .transpose()?;
-    if previous.is_some_and(|s| s.state == SessionState::Running) {
+    if previous.is_some_and(|s| s.state != SessionState::Starting) {
         return Ok(());
     }
     let key = session.recovery["source_versions"]["checkpoint:head"].as_str();
@@ -636,7 +644,8 @@ impl Store {
         tx.execute("INSERT INTO context_versions(project_id,goal_id,task_id,owner,version,body) VALUES(?1,?2,NULL,?3,?4,?5)",params![p.id.to_string(),g.id.to_string(),owner,context.version,serde_json::to_string(context)?])?;
         let expected_version = g.version;
         g.context_version = context.version;
-        bump(&mut g.version)?;
+        // Pointer-only publication changes its independent ContextVersion head;
+        // it must not invalidate admitted Tasks' Goal lifecycle authority.
         g.updated_at = now_ms();
         write_snapshot(
             &tx,
@@ -651,7 +660,7 @@ impl Store {
         append_event(
             &tx,
             &g.scope(),
-            "goal.saved",
+            "goal.context_updated",
             json!({"version":g.version,"context_version":g.context_version}),
         )?;
         append_event(
@@ -835,6 +844,45 @@ mod tests {
             .publish_goal_context_pack(expected, &context, &current)
             .unwrap();
         assert_eq!(f.store.goal(f.g.id).unwrap().unwrap().context_version, 1);
+    }
+    #[test]
+    fn goal_context_head_is_independent_from_semantic_version_and_has_one_winner() {
+        let mut f = Fixture::new();
+        let scope = f.g.scope();
+        let mut context = f.context(scope.clone());
+        context.data = json!({"format":"rrx.goal-pack.v1","observation":"first"});
+        let expected = [f.p.version, f.g.version];
+        let captured = vec![(f.t.id, f.t.version)];
+        f.store
+            .publish_goal_context_pack(expected, &context, &captured)
+            .unwrap();
+        let mut other = Store::open(&f.db).unwrap();
+        let mut contender = context.clone();
+        contender.data["observation"] = json!("different concurrent content");
+        assert!(
+            other
+                .publish_goal_context_pack(expected, &contender, &captured)
+                .is_err()
+        );
+        assert_eq!(
+            other.context(&scope, None).unwrap().unwrap().data,
+            context.data
+        );
+        let stored = other.goal(f.g.id).unwrap().unwrap();
+        assert_eq!(stored.version, f.g.version);
+        assert_eq!(stored.context_version, 1);
+        f.g.blockers.push("stale pointer rollback".into());
+        assert!(other.put_goal(&mut f.g).is_err());
+        let mut semantic = stored;
+        semantic.blockers.push("semantic authority mutation".into());
+        other.put_goal(&mut semantic).unwrap();
+        assert_eq!(semantic.version, expected[1] + 1);
+        context.version = 2;
+        assert!(
+            f.store
+                .publish_goal_context_pack(expected, &context, &captured)
+                .is_err()
+        );
     }
     #[test]
     fn goal_pack_transaction_rechecks_summary_activity_and_goal_session() {

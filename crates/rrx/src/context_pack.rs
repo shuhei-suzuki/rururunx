@@ -280,6 +280,8 @@ pub struct TaskDescriptor {
     pub blockers: Vec<String>,
     pub next_action: Option<String>,
     pub context: Option<PackRef>,
+    /// Opaque legacy references preserve exact envelopes without typed pack claims.
+    pub typed_context: bool,
     /// Terminal Task provenance is historical and never launchable.
     pub historical: bool,
     /// Source freshness is checked by Task preparation; Goal summaries never launch refs.
@@ -546,6 +548,7 @@ impl ContextPacks {
         let cross = cp.scope != *scope;
         if !cross {
             self.ensure_checkpoint_head(reference)?;
+            return Ok(own_history(&cp));
         }
         ensure!(
             !cross || cp.role == SessionRole::Consultant,
@@ -1093,6 +1096,25 @@ impl ContextPacks {
             measured_tokens: None,
         };
         bounded(&cp)?;
+        let previous_context = self
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Store poisoned"))?
+            .context(scope, None)?;
+        let previous_pack = previous_context
+            .as_ref()
+            .filter(|c| c.data.get("task_pack").is_some() || c.data["format"] == FORMAT)
+            .map(|c| self.task_pack(&reference(c)?))
+            .transpose()?;
+        workflow::validate_checkpoint_capacity(
+            &map,
+            &p,
+            &g,
+            &t,
+            &cp,
+            previous_pack,
+            previous_context.as_ref(),
+        )?;
         self.source().validate(&map).await?;
         let mut record = Record::new(
             scope.clone(),
@@ -1148,6 +1170,14 @@ impl ContextPacks {
                     .is_some_and(|c| c.version == reference.version),
             "foreign/stale Task reference"
         );
+        let context = self.load_context(reference)?;
+        if context.data.get("task_pack").is_none() && context.data["format"] != FORMAT {
+            ensure!(
+                context.scope == task.scope() && !context.revision.is_empty(),
+                "invalid opaque Task context provenance"
+            );
+            return Ok(());
+        }
         let pack = self.task_pack(reference)?;
         // Immutable provenance only: a finalized worktree may already be disposed.
         ensure!(
@@ -1248,6 +1278,9 @@ impl ContextPacks {
                 task.project_id == p.id && task.goal_id == g.id,
                 "foreign DAG Task"
             );
+            let typed_context = context
+                .as_ref()
+                .is_some_and(|c| c.data.get("task_pack").is_some() || c.data["format"] == FORMAT);
             let context = context.map(|c| reference(&c)).transpose()?;
             if let Some(r) = &context {
                 self.validate_task_reference(&task, r).await?;
@@ -1263,6 +1296,7 @@ impl ContextPacks {
                 blockers: task.blockers,
                 next_action: task.next_action,
                 context,
+                typed_context,
                 historical: crate::state::task_terminal(task.state),
                 source_validation_required: !crate::state::task_terminal(task.state),
             });
@@ -1409,6 +1443,16 @@ impl ContextPacks {
                 "stale Goal Task summary"
             );
             task_versions.push((t.id, t.version));
+            let typed_context = if let Some(r) = &d.context {
+                let context = self.load_context(r)?;
+                context.data.get("task_pack").is_some() || context.data["format"] == FORMAT
+            } else {
+                false
+            };
+            ensure!(
+                d.typed_context == typed_context,
+                "Goal context typing differs from exact envelope"
+            );
             if let Some(r) = &d.context {
                 self.validate_task_reference(&t, r).await?;
             }
@@ -1495,6 +1539,9 @@ fn goal_candidates(g: &Goal, tasks: &[TaskDescriptor]) -> Vec<TaskId> {
         })
         .map(|t| t.id)
         .collect()
+}
+fn own_history(cp: &Checkpoint) -> Value {
+    json!({"scope":cp.scope,"session":cp.session,"revision":cp.authority.revision,"role":cp.role,"retained":cp.retained,"mandatory_goal_at_checkpoint":cp.mandatory_goal,"mandatory_rules_at_checkpoint":cp.mandatory_rules,"mandatory_task_at_checkpoint":cp.mandatory_task,"recent":cp.recent})
 }
 fn versions(p: &Project, g: &Goal, t: &Task) -> [u64; 3] {
     [p.version, g.version, t.version]

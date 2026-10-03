@@ -87,8 +87,11 @@ work; immutable finalized refs remain historical. Task preparation selects curre
 sources under the complete
 rendered budget; dirty files, rules/config and state changes invalidate stale packs.
 Database/pointer versions are CAS guards, separate from phase-stable physical and
-instruction hashes. The Workflow Engine publication port is pending Issue 19 integration;
-standalone publishers reject workflow ownership and live/Lost launch contexts.
+instruction hashes. The actual Workflow Engine phase publication port owns launch
+ContextVersions; standalone publishers reject workflow ownership and live/Lost
+launch contexts. Goal semantic/lifecycle versions remain unchanged for typed
+pointer-only publication; the consecutive ContextVersion head is separate atomic
+authority. Stale generic Goal writes cannot restore an older typed pointer.
 See [durable pack design](../issue-19-design.md).
 
 Maintain a compact repository index inspired by repository-map approaches:

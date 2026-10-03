@@ -62,3 +62,11 @@ required; concurrent dirty execution does not disable the Goal summary. Task
 launch preparation separately validates current sources. Core limits are 128 Goal
 Tasks/4096 DAG edges and 4096 retained semantic events/1 MiB per checkpoint. There
 is no destructive checkpoint reset or semantic deduplication; overflow is explicit.
+
+Checkpoint admission projects the complete mandatory Task/phase artifact plus
+current captured rules before committing a new head. The checkpoint's 1 MiB
+envelope limit is an upper bound, not a promise that all such envelopes fit a
+rendered input: combined mandatory-state capacity can reject earlier. Existing
+scoped facts/references are included when available. Rejection leaves the old
+head/audit unchanged; it does not accept an unrenderable new mandatory history.
+Later explicit input or rule changes can still require decomposition/extra budget.

@@ -46,9 +46,20 @@ impl WorkflowPackSources {
             captured: Mutex::new(VecDeque::new()),
         }
     }
-    pub fn set_inputs(&self, scope: &Scope, inputs: TaskInputs) -> Result<()> {
+    pub fn set_inputs(&self, scope: &Scope, mut inputs: TaskInputs) -> Result<()> {
         self.packs.snapshot(scope)?;
         validate_inputs(&inputs)?;
+        if inputs
+            .checkpoint
+            .as_ref()
+            .is_some_and(|r| r.scope == *scope)
+        {
+            self.packs
+                .ensure_own_head(scope, inputs.checkpoint.as_ref())?;
+            // Workflow captures always adopt its current own chain, not a fixed
+            // reference that prevents the next incremental checkpoint.
+            inputs.checkpoint = None;
+        }
         let mut configured = self
             .inputs
             .lock()
@@ -58,6 +69,31 @@ impl WorkflowPackSources {
             "provider scoped-input limit reached"
         );
         configured.insert(scope.task_id.unwrap(), (scope.clone(), inputs));
+        Ok(())
+    }
+    /// Release scoped configuration at Task retirement; the bounded cache does
+    /// not impose a lifetime limit on a daemon that manages successive Tasks.
+    pub fn clear_inputs(&self, scope: &Scope) -> Result<()> {
+        let task_id = scope.task_id.context("inputs require Task scope")?;
+        let task = self
+            .packs
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Store poisoned"))?
+            .task(task_id)?
+            .context("unknown Task")?;
+        ensure!(task.scope() == *scope, "foreign provider input cleanup");
+        let mut configured = self
+            .inputs
+            .lock()
+            .map_err(|_| anyhow::anyhow!("pack inputs poisoned"))?;
+        ensure!(
+            configured
+                .get(&task_id)
+                .is_none_or(|(owned, _)| owned == scope),
+            "foreign configured inputs"
+        );
+        configured.remove(&task_id);
         Ok(())
     }
     async fn capture_owned(
@@ -274,6 +310,16 @@ pub(crate) fn validate_capture(
             && a.optional_bytes <= budget.discretionary_tokens,
         "invalid mandatory/optional phase accounting"
     );
+    let header = format!(
+        "{}\n",
+        serde_json::to_string(
+            &json!({"kind":"phase_context_pack","phase":phase,"budget":budget,"body":a.pack})
+        )?
+    );
+    ensure!(
+        source.payload.starts_with(&header),
+        "typed phase metadata differs from actual mandatory payload"
+    );
     ensure!(
         a.format == PHASE_FORMAT
             && a.phase == phase
@@ -341,4 +387,110 @@ pub(crate) fn physical_manifest(context: &ContextVersion) -> Result<String> {
     } else {
         digest(&context.source_hashes)
     }
+}
+
+/// Admission uses the full projected mandatory pack plus rules, not the checkpoint
+/// envelope alone. Optional sources can always be omitted; constraints cannot.
+pub(crate) fn validate_checkpoint_capacity(
+    map: &RepositoryMap,
+    project: &Project,
+    goal: &Goal,
+    task: &Task,
+    checkpoint: &Checkpoint,
+    previous: Option<TaskPack>,
+    previous_context: Option<&ContextVersion>,
+) -> Result<()> {
+    use crate::workflow::BudgetClass;
+    let mut pack = previous.unwrap_or(TaskPack {
+        format: FORMAT.into(),
+        scope: task.scope(),
+        repository_identity: project.repository_identity.clone(),
+        task: projection(task)?,
+        goal: projection(goal)?,
+        project_rules: rules(map),
+        authority_digest: authority(project, goal, task)?,
+        repository: RepositoryRef::of(map, vec![])?,
+        artifacts: vec![],
+        referenced_sources: vec![],
+        decisions: vec![],
+        completed_work: vec![],
+        failures: vec![],
+        verification: vec![],
+        unresolved_findings: vec![],
+        impact_summary: None,
+        checkpoint: None,
+        promoted_consultation: None,
+        historical_checkpoint: None,
+        historical_consultation: None,
+    });
+    pack.task = projection(task)?;
+    pack.goal = projection(goal)?;
+    pack.project_rules = rules(map);
+    pack.authority_digest = authority(project, goal, task)?;
+    pack.repository = RepositoryRef::of(map, pack.repository.additional_paths.clone())?;
+    let reference = CheckpointRef {
+        scope: task.scope(),
+        id: RecordId::new(),
+        version: 1,
+        digest: digest(checkpoint)?,
+    };
+    pack.checkpoint = Some(reference);
+    pack.historical_checkpoint = Some(own_history(checkpoint));
+    bounded(&pack).context("checkpoint admission exceeds mandatory Task pack capacity")?;
+    let budget = ContextBudget {
+        class: BudgetClass::Normal,
+        discretionary_tokens: 16 * MAX_BYTES,
+    };
+    let phase = Phase::ImplementationReview;
+    let header = format!(
+        "{}\n",
+        serde_json::to_string(
+            &json!({"kind":"phase_context_pack","phase":phase,"budget":budget,"body":pack})
+        )?
+    );
+    let payload = format!("{header}{}", map.phase_mandatory_payload()?);
+    let rules = map.phase_rule_bytes()?;
+    ensure!(
+        payload
+            .len()
+            .checked_add(rules)
+            .is_some_and(|n| n <= MAX_BYTES),
+        "checkpoint admission exceeds absolute mandatory phase input capacity"
+    );
+    let mut sources = previous_context.map_or_else(BTreeMap::new, |c| c.source_hashes.clone());
+    sources.retain(|k, _| !k.starts_with("workflow:") && !k.starts_with("rules:"));
+    sources.extend(map.freshness().source_hashes.clone());
+    sources.extend(instruction_versions(project, goal, task)?);
+    sources.insert(
+        "repository:inventory".into(),
+        map.freshness().inventory_hash.clone(),
+    );
+    sources.insert(
+        "repository:identity".into(),
+        digest(&project.repository_identity)?,
+    );
+    sources.insert(
+        "checkpoint:head".into(),
+        head_digest(pack.checkpoint.as_ref()),
+    );
+    sources.insert("instruction:pack_facts".into(), digest(&pack)?);
+    let artifact = PhasePackArtifact {
+        format: PHASE_FORMAT.into(),
+        phase,
+        budget,
+        pack,
+        authority_versions: versions(project, goal, task),
+        scope: task.scope(),
+        revision: map.freshness().revision.clone(),
+        source_versions: sources,
+        payload_digest: payload_digest(&payload),
+        estimated_bytes: payload.len(),
+        estimated_tokens: payload.len(),
+        mandatory_bytes: payload.len(),
+        optional_bytes: 0,
+        estimate_method: "utf8_bytes_v1".into(),
+        measured_tokens: None,
+    };
+    bounded(&artifact).context("checkpoint admission exceeds typed phase artifact capacity")?;
+    Ok(())
 }

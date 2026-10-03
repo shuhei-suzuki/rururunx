@@ -296,3 +296,13 @@ Goal may continue automatically only inside those boundaries.
 - TUI Goal view
 - optional native-goal adapter capability
 - provider-independent continuation
+
+Typed Goal context publication has separate metadata authority: `Goal.version`
+tracks semantic/lifecycle changes, while `ContextVersion.version` is a consecutive
+immutable head and the Goal's context pointer changes in the same Immediate
+transaction with its audit. Pointer-only publication does not increment the Goal
+semantic version or invalidate admitted Task input authority. Generic stale Goal
+writes cannot restore an older typed pointer. Concurrent differing publications
+compete on the latest ContextVersion head; identical publications reuse that head.
+Consumers of a Goal pack must validate its exact head/pointer/digest, independently
+of Goal semantic version. Goal packs are non-launchable summaries.
