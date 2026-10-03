@@ -172,8 +172,8 @@ agent, role or worktree. Workflow frames preserve their active attempt authority
 
 Standalone prepared payloads render stable scoped instruction and Task policy
 hashes and publish exact private byte/hash authority. Sibling progress, blockers,
-next-action and pointer-only bookkeeping cannot strand pending semantic input;
-constraints, refs, identity, policy and lifecycle changes remain fenced. Physical
+pointer-only and sibling bookkeeping cannot strand pending semantic input;
+constraints, refs, identity, own standalone directives/policy and lifecycle changes remain fenced. Physical
 HEAD/source hashes remain authoritative. Explicit idle consecutive republish must
 allow safe old-frame migration and higher-version terminal continuation; default
 publication remains idempotent and active launches immutable.
@@ -188,3 +188,10 @@ Consultant checkpoint history is supported; live role-specific consultation need
 its own exact prepared-frame port. ApprovalReviewer uses a separate operation-free
 decision Task through the Approval Broker, never an Executor-writable Task's native
 rules/config/hooks. Arbitrary role changes cannot bypass frame authority.
+
+Migration must refuse before mutation while typed active/held/post-effect Workflow
+or protected live/Lost Session ownership remains; complete or explicitly cancel/
+drain with the compatible old runtime first. New semantic projection definitions
+are versioned and exhaustively classified. Every typed actor, including Reviewer,
+binds the exact Task worktree and single-actor phase allocation atomically; two
+Sessions cannot consume the same attempt before Engine Session binding.

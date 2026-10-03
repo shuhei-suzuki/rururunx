@@ -427,10 +427,10 @@ owned higher-version terminal continuation binds fresh authority first. These ar
 Store input-admission facts, separate from Workflow actor Session binding and
 provider wire-delivery evidence. Caller JSON/generic writes cannot assert them.
 
-Semantic instruction projection defaults to including new fields, excluding only
-explicit lifecycle/progress/pointer bookkeeping. Physical HEAD is source authority;
+Semantic instruction projection is versioned and exhaustively classifies each
+domain field; adding fields requires explicit authority review. Physical HEAD is source authority;
 Engine effective workflow/risk/budget belongs to immutable phase authority.
-Standalone frames additionally render and bind their Task policy digest and admit
+Standalone frames additionally render and bind their Task policy/directive digest and admit
 only the exact Executor agent/role/worktree. Explicit idle consecutive republish
 provides migration/terminal-continuation versions without changing active input.
 Consultant history remains supported; live consultation needs a separate scoped
@@ -443,3 +443,10 @@ writes, including metadata/audit. Actual compiled live-connection and fresh-open
 old-writer fixtures must prove refusal without state change. No historical input
 admission rows are synthesized. See Issue19 design for field inventory, exact
 transition predicates, canonical hashing and native proof requirements.
+
+All typed Workflow actors bind the actual Task worktree and one private Session
+allocation per immutable single-actor phase context. Future parallel review uses
+its own scoped roster authority. Semantic instruction changes are versioned;
+projection definitions never change silently. Persistence upgrade requires typed
+Workflow and live/Lost Session ownership to drain under the compatible old runtime
+before any migration mutation. Finalized immutable history remains available.

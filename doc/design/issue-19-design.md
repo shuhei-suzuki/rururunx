@@ -128,8 +128,8 @@ legacy context envelopes with `typed_context=false`, without asserting typed pac
 semantics. Provider configurations can be released with `clear_inputs`; configured
 own references are validated then normalized to fresh current-head capture.
 
-A bound owned worktree is a precondition of this source provider; Issue 9 must
-provision it before Engine initialization, including STANDARD/STRICT workflows.
+A bound owned worktree provisioned by WorktreeManager is a precondition before
+Engine initialization, including STANDARD/STRICT workflows.
 Checkpoint/fact changes remain conservative source-authority changes in the current
 Engine: they can invalidate earlier generations/evidence, and changes after PR may
 hold for explicit recovery. The implementation does not silently exclude newly
@@ -279,34 +279,72 @@ Standalone prepared frames are Executor inputs only. Session admission requires
 exact Task.executor, Executor role and Task.worktree as well as scoped frame bytes,
 revision, version, hashes, owner lifecycle and existing lock/worktree gates. This
 applies to initial Starting and Running. Workflow frames retain their exact active
-attempt agent/role/Session fences. No arbitrary Consultant/ApprovalReviewer role
+attempt agent/role/Session fences AND require Session.worktree == Task.worktree
+for every native actor, including Reviewer, on initial Starting and Running. No arbitrary Consultant/ApprovalReviewer role
 can adopt an Executor frame. Existing scoped Consultant history may be condensed;
 live consultation needs a separate prepared-frame port. ApprovalReviewer requires
 an operation-free decision Task through the Approval Broker.
 
+The single-actor Workflow port also allocates one private `phase_session_owners`
+row per (Project, Goal, Task, context_version), containing Session ID. Context
+version uniquely identifies the immutable phase attempt. First valid Starting or
+Running Session insertion allocates it atomically with Record/audit; later writes
+must be by that same Session. Another Session cannot reserve or consume the frame
+even before Engine binds attempt.session_id. Allocation is immutable across
+terminal history, foreign keys bind the Session and Task, and generic writes have
+no allocator API. A failed Session/audit transaction leaves no allocation. Future
+multi-reviewer rounds require their own reviewed slot authority; they cannot use
+this single-actor allocation as a blanket role bypass.
+
 ### Semantic input inventory
 
-Use a default-fenced projection with explicit bookkeeping exclusions. Project
-instructions include every field except version/timestamps/state/blocked_reason;
-registration/lifecycle is separately checked. Goal instructions exclude only
-version/timestamps/context_version/state/DAG/blockers and criterion satisfaction/
-evidence, retaining criterion ID/description and all other fields, including title
-and followups. Task instructions exclude version/timestamps/context_version/state/
-phase/revision/workflow/risk/blockers/next_action; all remaining fields are included,
-including issue, worktree/branch, executor/reviewers and artifact reference names.
-New domain fields therefore become instructions unless explicitly reviewed as
-bookkeeping. Nonterminal/active lifecycle gates remain independent of hashes.
+Define projection version2 as a fixed-order typed struct, serialized as compact
+UTF-8 JSON with a domain/version tag. Nested maps use recursively sorted keys;
+paths are exact UTF-8 strings, Options encode explicit null, enums retain their
+serde spelling. Reject nonrepresentable paths; never normalize a scoped identity
+into another path. Exhaustively destructure domain structs when forming the
+projection, so adding a field fails to compile until its authority classification
+is reviewed. Authority changes require a projection version change and a reviewed
+persistence/drain policy; they cannot silently redefine an existing source key.
+New durable Task packs record `instruction_projection_version=2` (historical
+packs decode a missing value as unknown, preserved without asserting v2 authority).
+This marker makes migration-only consecutive republish eligibility observable;
+it is not private launch authority by itself. New frames use versioned instruction keys (`instruction:project.v2`,
+`instruction:goal.v2`, `instruction:task.v2`) and explicit projection_version=2.
 
-Task.revision is synchronized from captured physical Git HEAD and is checked by
-frame/source revision authority, not a self-invalidating DB hash. Workflow/risk
-may change during Engine preparation/escalation; its effective class/risk/budget
-belongs to the immutable phase wrapper and exact current Workflow attempt, not the
-phase-stable source digest. Standalone frames add a separate Task policy digest
-for workflow/risk; standalone Session admission compares it. Source physical hashes,
-repository identity, current checkpoint head and complete frame digest remain
-mandatory in both paths. Sibling criterion satisfaction/DAG progress, blockers and
-next-action changes alone cannot invalidate an already prepared semantic frame.
-Pack construction still uses complete snapshot CAS and renders current facts.
+Project instructions include ID/root/identity/base/worktree namespace/config/rules/
+environment refs. Project name and max_tasks are label/scheduler bookkeeping;
+version/timestamps/state/blocked_reason are separately guarded lifecycle metadata.
+Goal instructions include ID/scope/title/objective, criterion IDs/descriptions,
+constraints/non_goals/source_refs. DAG, criterion satisfied/evidence, followup
+proposal/disposition, blockers, version/timestamps/context pointer and active-state
+progress are bookkeeping. An accepted followup's actual scope constraint must be
+promoted explicitly into authoritative constraints or its own Task before launch;
+a sibling proposal or disposition alone cannot strand input.
+Task instructions include ID/scope/issue/title/criteria/worktree/branch/executor/
+reviewers/artifact reference names. Phase/source-synchronized revision, workflow/
+risk, blockers/next_action, lifecycle/pointers/versions/timestamps are separate
+phase or captured status. Task.revision is verified against physical captured Git
+HEAD and frame revision. Engine effective workflow/risk/budget is immutable phase
+wrapper/attempt authority, not a phase-stable source hash.
+
+For standalone admission, additionally bind workflow/risk and its OWN Task
+blockers/next_action plus Goal blockers in a versioned policy digest. Thus a new
+operator directive on that standalone Task fences its pending input. Sibling
+Task status, Goal criterion satisfaction/DAG/followups and Project scheduling or
+label changes remain usable. Phase packs describe Engine-owned hold/blocker state
+as nonauthoritative status at capture; authoritative new stop/scope constraints
+must use Goal.constraints/Task.acceptance_criteria or lifecycle pause, which are
+always fenced. The rendered phase header labels capture status explicitly. No
+status field can grant launch, approval, cleanup or other authority.
+
+Standalone admission REPLACES the current full authority_digest/pack.task/pack.goal
+projection-equality checks with exact equality of freshly derived version2
+instruction/policy keys against the private frame source map. Its private frame
+must still match exact scope/version/revision/bytes/SHA256/complete source map;
+latest pointer, active lifecycle, physical/source revision and checkpoint head
+checks remain. Full projections and authority_digest remain mandatory during
+pack preparation/publication snapshot CAS, not pending-input admission.
 
 Standalone preparation renders the canonical instruction and policy digest map in
 its complete mandatory payload and privately publishes the same map with frame
@@ -315,13 +353,32 @@ same-payload old-schema collisions. Old pending inputs without these hashes fail
 closed. Add an explicit forced consecutive Task pack publication option (default
 idempotent reuse unchanged). It uses the existing idle/owner/source/head CAS and
 audit, never changes an active launch, and provides a strictly higher context
-version for terminal continuation or migration recovery. Private variants remain
-bounded per context. Test recovery from an actual schema5 prepared frame through
+version for terminal continuation or migration recovery. Permit forced publication only when the latest context is actually referenced by
+an owned terminal Session input, or lacks the required v2 instruction contract
+for migration. Otherwise identical reuse remains required. Private variants stay
+bounded per context; unused identical force calls cannot create endless versions. Test recovery from an actual schema5 prepared frame through
 terminal state, forced higher publication, preparation and fresh admission.
 
 ### Migration and already-open writers
 
-Ordered 5-to-6 migration creates the empty admission table and write fences in one
+Schema6 does not implement hot migration of active native work. Before ANY schema
+mutation, under the same Immediate lock, inspect persisted scopes and REFUSE
+migration if a typed nonterminal Task owns an unfinished Workflow (including idle,
+held, or post-PR phases), or if any protected Task Session is nonterminal, including
+Lost. No PID inference or automatic release is allowed. The operator must finish
+or explicitly cancel/drain using the compatible old runtime, retaining actual
+native terminal/cleanup evidence, then retry. Lost or orphan ownership requires
+verified recovery, not migration. An explicitly terminal Task's finalized Workflow
+history is preserved and nonlaunchable. Existing Goal/project-only Consultant
+history remains outside this typed launch contract. Apply the preflight to every
+older supported schema path that contains typed authority, not only direct5-to-6.
+Refusal rolls back without table/marker/audit changes and is tested on real old5
+Running-plus-checkpoint and pending/post-effect Workflow fixtures. This avoids
+both silently accepting old weaker projections and gratuitously invalidating an
+in-flight post-effect generation. Existing unlaunched standalone frames require
+explicit v2 preparation/republish; no model is already running to strand.
+
+Ordered 5-to-6 migration creates the empty admission/allocation tables and write fences in one
 transaction, preserving earlier migrations. Fresh databases install the identical
 final schema. Migration never claims old Running inputs were admitted: actually
 consumed historical inputs retain their pinned observations; old unconsumed inputs
@@ -333,7 +390,11 @@ Every v6 Store connection registers a private zero-argument SQLite function
 BEFORE INSERT/UPDATE/DELETE fence triggers to EVERY application table: projects,
 goals, tasks, records, context_versions, usage, audit, checkpoint_heads,
 prepared_pack_inputs and session_input_acks. Each requires this function to return
-6. Preserve all existing immutable/append-only/domain triggers; fences only add
+6. Register UTF8|DETERMINISTIC|INNOCUOUS, never DIRECTONLY, and verify
+writes with trusted_schema=OFF. Add `phase_session_owners` to the fenced table
+inventory. A schema-enumerating regression requires every non-sqlite_ application
+table to have all three compatibility triggers; new tables cannot silently escape.
+Preserve all existing immutable/append-only/domain triggers; fences only add
 writer compatibility checks. Include private runtime metadata and audit writes,
 not just Session updates. An already-open old5 connection cannot resolve the
 function and its SQL write fails atomically after schema6 migration. Public Store
@@ -341,6 +402,9 @@ has no caller function registration or trigger-bypass API. Privileged arbitrary
 SQLite schema editing is outside the Store contract. Future migrations must retain
 required earlier functions and install their own exact-version write fence.
 
+The actual old5 native fixture is compiled from immutable public source
+`e6cf75dc61d0c9c9a6a225c64c8f9aaf7d6ffd26`, never from modified current source.
+Save binary/source hashes and verify no writer-v6 registration in that source.
 Prove both native old5 open refusal and a real compiled old5 Store held open BEFORE
 migration, then released to attempt public writes AFTER migration. Test Session,
 owner metadata and audit paths, including a previously prepared statement. All
@@ -356,7 +420,28 @@ Tests cover pending Starting-to-each-waiting/Lost-to-Running head rejection, unk
 flag forgery, caller JSON ack forgery, successful first Running then historical
 reentry, forbidden Running-to-Starting-to-old-terminal rollback, exact prewire
 restore, higher-version continuation, Session/ack/audit rollback and reopening.
-Wrong standalone role/agent/worktree must fail on initial Starting AND Running.
+Wrong standalone role/agent/worktree and wrong Workflow Reviewer worktree must
+fail on initial Starting AND Running. Two independent Store connections racing to
+reserve the same Reviewer attempt must yield exactly one Session allocation;
+neither JSON nor prebinding session_id=None can admit a second actor.
 Changed instructions/policy/ref hashes fail; sibling progress remains usable.
 Typed Workflow-owned contexts cannot silently downgrade to opaque legacy payloads.
 Important guards receive caller-level mutation proof and immutable source review.
+
+The private ack row additionally stores input_version and checks SHA length64.
+Its single row may be replaced only by Validated/ConsumedHistorical with a strictly
+higher input_version; equal matching metadata is idempotent, unequal equal-version
+metadata is rejected. There is no plural ack history: while higher input is pending,
+the single row still describes the previous admitted input until replacement.
+Canonicalize nested JSON keys before restore/checkpoint/instruction hashing. Keep
+the restore Session outer fixed serde field order for compatibility with the shared
+native helper; native adapters must call that helper instead of hashing arbitrary
+recovery insertion order. Payload SHA continues to hash exact actual input bytes,
+not canonicalized JSON or transport envelopes.
+
+This contract fences Issue19 typed native inputs; generic Store history writes are
+not permission to launch a model. Project/Goal-only history records remain allowed
+for existing callers, but Issue19 prepares no launchable Goal input or standalone
+consultation/ApprovalReviewer input. Current native caller ownership validation
+requires an actual Task/worktree. The future Broker decision-Task isolation remains
+a required integration, not a claim that generic history records enforce it today.
