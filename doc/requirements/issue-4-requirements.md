@@ -27,7 +27,8 @@ variables. Callers supply intentional native baseline HOME/PATH/config/auth
 environment; the adapter neither creates a safety-free home nor bypass flags.
 
 The supervisor must drain output without deadlock, bound memory, report truncation
-and I/O failure, reap stopped children and their process group, preserve stable
+and I/O failure, terminate the owned group before reaping on both stop and natural exit, cap
+terminal retention, preserve stable
 identity on terminal state persistence and report SessionLost after restart
 instead of trusting an old PID. It must avoid high-frequency process polling.
 
@@ -35,3 +36,8 @@ Verification uses real fake subprocesses in isolated temporary Git repositories,
 tests ownership/locks/failure/stop/output limits/concurrent isolation, and mutation
 proof for critical boundaries. Native Claude/Codex/Grok implementation and user
 execution CLI belong to #5/#6/#7 and later runtime issues.
+
+Lost/uncertain executor state keeps the worktree reserved until explicit verified-dead
+recovery; an unavailable supervisor must not silently release review safety. Native
+Goal references must carry Project/Goal ownership. Session writes must retain their
+optimistic version and surface concurrent state changes without overwrite.

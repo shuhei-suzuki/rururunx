@@ -15,7 +15,7 @@ toml.workspace = true
 rusqlite.workspace = true
 uuid.workspace = true
 tokio.workspace = true
-nix.workspace = true
+rustix.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

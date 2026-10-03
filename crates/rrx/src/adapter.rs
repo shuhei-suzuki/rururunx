@@ -9,12 +9,10 @@ use std::{
     time::Duration,
 };
 
-use nix::{
-    sys::signal::{Signal, killpg},
-    unistd::Pid,
-};
+use rustix::process::{Pid, Signal, WaitId, WaitIdOptions, kill_process_group, waitid};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use std::os::unix::process::CommandExt;
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWriteExt},
     process::{Child, Command},
@@ -78,6 +76,11 @@ pub enum ErrorKind {
     InvalidConfiguration,
     InvalidInput,
     OwnershipMismatch,
+    StateFailure,
+    StateConflict,
+    Locked,
+    AuthenticationUnavailable,
+    ParseFailure,
     LaunchFailure,
     SessionLost,
     ProcessFailure,
@@ -160,6 +163,13 @@ impl From<&Session> for SessionRef {
 }
 
 #[derive(Debug, Clone)]
+pub struct NativeGoalRef {
+    pub scope: Scope,
+    pub session_id: Option<SessionId>,
+    pub native_ref: String,
+}
+
+#[derive(Debug, Clone)]
 pub struct SessionStatus {
     pub session: Session,
     pub exit_code: Option<i32>,
@@ -190,6 +200,8 @@ pub trait AgentAdapter: Send + Sync {
     fn stop(&self, session: SessionRef) -> AdapterFuture<'_, SessionStatus>;
     fn attach(&self, session: SessionRef) -> AdapterFuture<'_, ()>;
     fn resume(&self, session: SessionRef) -> AdapterFuture<'_, Session>;
+    /// Release collected terminal output; running sessions must remain supervised.
+    fn release(&self, session: SessionRef) -> AdapterResult<()>;
     fn subscribe(&self, session: SessionRef) -> AdapterResult<watch::Receiver<SessionStatus>>;
     fn usage(
         &self,
@@ -203,17 +215,17 @@ pub trait AgentAdapter: Send + Sync {
     fn checkpoint(&self, _session: SessionRef, _input: PreparedInput) -> AdapterFuture<'_, ()> {
         Box::pin(async { Err(unsupported(Capability::ContextCheckpoint)) })
     }
-    fn start_native_goal(&self, _input: PreparedInput) -> AdapterFuture<'_, String> {
+    fn start_native_goal(&self, _input: PreparedInput) -> AdapterFuture<'_, NativeGoalRef> {
         Box::pin(async { Err(unsupported(Capability::NativeGoal)) })
     }
-    fn native_goal_status(&self, _native_ref: String) -> AdapterFuture<'_, Value> {
+    fn native_goal_status(&self, _native_ref: NativeGoalRef) -> AdapterFuture<'_, Value> {
         Box::pin(async { Err(unsupported(Capability::NativeGoalStatus)) })
     }
     fn resume_native_goal(
         &self,
-        _native_ref: String,
+        _native_ref: NativeGoalRef,
         _input: PreparedInput,
-    ) -> AdapterFuture<'_, String> {
+    ) -> AdapterFuture<'_, NativeGoalRef> {
         Box::pin(async { Err(unsupported(Capability::NativeGoalResume)) })
     }
 }
@@ -277,13 +289,72 @@ struct Entry {
 }
 struct Reservation {
     store: SharedStore,
-    session: Option<Session>,
+    session: Option<(Session, u64)>,
+}
+
+/// Owns the unreaped leader so PGID cannot be recycled before group cleanup.
+struct ProcessGroup {
+    child: Child,
+    pid: Pid,
+    group_owned: bool,
+}
+impl ProcessGroup {
+    fn new(child: Child) -> AdapterResult<Self> {
+        let raw = child
+            .id()
+            .filter(|pid| *pid > 1)
+            .ok_or_else(|| error(ErrorKind::LaunchFailure, "child has no valid owned PID"))?;
+        let pid = Pid::from_raw(raw as i32)
+            .ok_or_else(|| error(ErrorKind::LaunchFailure, "invalid native PID"))?;
+        Ok(Self {
+            child,
+            pid,
+            group_owned: true,
+        })
+    }
+    async fn observe_exit(&self) -> std::io::Result<()> {
+        let mut signals = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::child())?;
+        loop {
+            match waitid(
+                WaitId::Pid(self.pid),
+                WaitIdOptions::EXITED | WaitIdOptions::NOWAIT | WaitIdOptions::NOHANG,
+            ) {
+                Ok(Some(_)) => return Ok(()),
+                Ok(None) => {}
+                Err(rustix::io::Errno::INTR) => continue,
+                Err(e) => return Err(e.into()),
+            }
+            if signals.recv().await.is_none() {
+                return Err(std::io::Error::other("SIGCHLD observer closed"));
+            }
+        }
+    }
+    fn kill_group(&mut self) -> std::io::Result<()> {
+        match kill_process_group(self.pid, Signal::KILL) {
+            Ok(()) | Err(rustix::io::Errno::SRCH) => {
+                self.group_owned = false;
+                Ok(())
+            }
+            Err(e) => Err(e.into()),
+        }
+    }
+    async fn reap(&mut self) -> std::io::Result<std::process::ExitStatus> {
+        self.child.wait().await
+    }
+}
+impl Drop for ProcessGroup {
+    fn drop(&mut self) {
+        if self.group_owned {
+            let _ = self.kill_group();
+        }
+        // Child's kill_on_drop/reaper follows group termination, including Tokio shutdown.
+    }
 }
 impl Drop for Reservation {
     fn drop(&mut self) {
-        if let Some(mut session) = self.session.take() {
+        if let Some((mut session, version)) = self.session.take() {
             session.state = SessionState::Failed;
-            let _ = save_session(&self.store, &session);
+            let _ = save_session(&self.store, &session, version);
         }
     }
 }
@@ -294,6 +365,7 @@ pub struct GenericCliAdapter {
     sessions: Mutex<HashMap<SessionId, Entry>>,
 }
 const OUTPUT_LIMIT: usize = 64 * 1024;
+const TERMINAL_RETENTION_LIMIT: usize = 32;
 impl GenericCliAdapter {
     pub fn new(agent: String, command: Vec<String>, store: SharedStore) -> AdapterResult<Self> {
         if agent.trim().is_empty()
@@ -372,7 +444,8 @@ impl AgentAdapter for GenericCliAdapter {
                     Capability::Review
                 }));
             }
-            validate_persisted(&self.store, &request, &worktree)?;
+            validate_persisted(&self.store, &request, &worktree, &self.agent)?;
+            ensure_unlocked(&self.store, &request.scope)?;
             let executable = self.probe()?.executable;
             let mut session = Session {
                 id: SessionId::new(),
@@ -386,15 +459,15 @@ impl AgentAdapter for GenericCliAdapter {
                 state: SessionState::Starting,
                 model: None,
                 effort: None,
-                recovery: json!({"reconnect_supported":false,"project_root":request.project.root,"input_revision":request.input.revision,"input_version":request.input.version,"source_versions":request.input.source_versions}),
+                recovery: json!({"reconnect_supported":false,"project_root":request.project.root,"input_revision":request.input.revision,"input_version":request.input.version,"source_versions":request.input.source_versions,"input_bytes":request.input.payload.len()}),
                 started_at: now_ms(),
             };
             // Reserve before asynchronous preflight. Store's task lock/session exclusion is
             // authoritative; recovery must explicitly resolve a stale reservation.
-            save_session(&self.store, &session)?;
+            let mut version = save_session(&self.store, &session, 0)?;
             let mut reservation = Reservation {
                 store: self.store.clone(),
-                session: Some(session.clone()),
+                session: Some((session.clone(), version)),
             };
             let launch = async {
                 ensure_unlocked(&self.store, &request.scope)?;
@@ -411,28 +484,32 @@ impl AgentAdapter for GenericCliAdapter {
                     .kill_on_drop(true);
                 // PTY handling is a separate native capability, never simulated with pipes.
                 command.process_group(0);
+                command.as_std_mut().arg0(&self.command[0]);
                 command
                     .spawn()
                     .map_err(|e| error(ErrorKind::LaunchFailure, e.to_string()))
             }
             .await;
             let mut child = match launch {
-                Ok(child) => child,
+                Ok(child) => ProcessGroup::new(child)?,
                 Err(e) => {
                     session.state = SessionState::Failed;
-                    save_session(&self.store, &session)?;
+                    save_session(&self.store, &session, version)?;
+                    reservation.session = None;
                     return Err(e);
                 }
             };
-            session.pid = child.id();
+            session.pid = child.child.id();
             session.state = SessionState::Running;
-            if let Err(e) = save_session(&self.store, &session) {
-                if let Some(pid) = child.id() {
-                    let _ = killpg(Pid::from_raw(pid as i32), Signal::SIGKILL);
+            version = match save_session(&self.store, &session, version) {
+                Ok(version) => version,
+                Err(e) => {
+                    let _ = child.kill_group();
+                    let _ = child.reap().await;
+                    return Err(e);
                 }
-                let _ = child.wait().await;
-                return Err(e);
-            }
+            };
+            reservation.session = Some((session.clone(), version));
             let initial = SessionStatus {
                 session: session.clone(),
                 exit_code: None,
@@ -444,9 +521,9 @@ impl AgentAdapter for GenericCliAdapter {
             };
             let (events, status) = watch::channel(initial);
             let (stop, controls) = mpsc::channel(1);
-            let mut stdin = child.stdin.take().expect("piped stdin");
-            let stdout = child.stdout.take().expect("piped stdout");
-            let stderr = child.stderr.take().expect("piped stderr");
+            let mut stdin = child.child.stdin.take().expect("piped stdin");
+            let stdout = child.child.stdout.take().expect("piped stdout");
+            let stderr = child.child.stderr.take().expect("piped stderr");
             let input = request.input.payload.into_bytes();
             let writer = tokio::spawn(async move {
                 stdin.write_all(&input).await?;
@@ -454,10 +531,22 @@ impl AgentAdapter for GenericCliAdapter {
             });
             let stdout = tokio::spawn(drain(stdout, events.clone(), true));
             let stderr = tokio::spawn(drain(stderr, events.clone(), false));
-            self.sessions
-                .lock()
-                .map_err(|_| error(ErrorKind::ProcessFailure, "session registry poisoned"))?
-                .insert(
+            {
+                let mut sessions = self
+                    .sessions
+                    .lock()
+                    .map_err(|_| error(ErrorKind::ProcessFailure, "session registry poisoned"))?;
+                let mut terminal: Vec<_> = sessions
+                    .iter()
+                    .filter(|(_, e)| e.status.borrow().terminal())
+                    .map(|(id, e)| (*id, e.status.borrow().session.started_at))
+                    .collect();
+                terminal.sort_by_key(|(_, time)| *time);
+                let excess = terminal.len().saturating_sub(TERMINAL_RETENTION_LIMIT - 1);
+                for (id, _) in terminal.into_iter().take(excess) {
+                    sessions.remove(&id);
+                }
+                sessions.insert(
                     session.id,
                     Entry {
                         scope: request.scope,
@@ -465,6 +554,7 @@ impl AgentAdapter for GenericCliAdapter {
                         stop,
                     },
                 );
+            }
             tokio::spawn(supervise(
                 child,
                 controls,
@@ -473,6 +563,7 @@ impl AgentAdapter for GenericCliAdapter {
                 stdout,
                 stderr,
                 self.store.clone(),
+                version,
             ));
             reservation.session = None;
             Ok(session)
@@ -518,6 +609,32 @@ impl AgentAdapter for GenericCliAdapter {
             Err(unsupported(Capability::Resume))
         })
     }
+    fn release(&self, reference: SessionRef) -> AdapterResult<()> {
+        let mut sessions = self
+            .sessions
+            .lock()
+            .map_err(|_| error(ErrorKind::ProcessFailure, "session registry poisoned"))?;
+        let entry = sessions.get(&reference.id).ok_or_else(|| {
+            error(
+                ErrorKind::SessionLost,
+                "session already released or unavailable",
+            )
+        })?;
+        if entry.scope != reference.scope {
+            return Err(error(
+                ErrorKind::OwnershipMismatch,
+                "session ownership mismatch",
+            ));
+        }
+        if !entry.status.borrow().terminal() {
+            return Err(error(
+                ErrorKind::InvalidInput,
+                "running session cannot be released",
+            ));
+        }
+        sessions.remove(&reference.id);
+        Ok(())
+    }
     fn subscribe(&self, reference: SessionRef) -> AdapterResult<watch::Receiver<SessionStatus>> {
         Ok(self.entry(&reference)?.0)
     }
@@ -541,7 +658,7 @@ impl AgentAdapter for GenericCliAdapter {
                 output_tokens: None,
                 estimated_cost: None,
                 context_pack_version: status.session.recovery["input_version"].as_u64(),
-                context_pack_size: None,
+                context_pack_size: status.session.recovery["input_bytes"].as_u64(),
                 repo_map_size: None,
                 cache_metadata: Value::Null,
                 missing_reason: Some("generic CLI exposes no usage or cache telemetry".into()),
@@ -663,76 +780,119 @@ fn with_store<T>(
     let mut store = store
         .lock()
         .map_err(|_| error(ErrorKind::ProcessFailure, "state store poisoned"))?;
-    f(&mut store).map_err(|e| error(ErrorKind::InvalidInput, e.to_string()))
+    f(&mut store).map_err(|e| error(ErrorKind::StateFailure, e.to_string()))
 }
 
-fn save_session(store: &SharedStore, session: &Session) -> AdapterResult<()> {
-    with_store(store, |store| {
-        let version = store.session(session.id)?.map_or(0, |(_, version)| version);
-        store.put_session(session, version)?;
-        Ok(())
-    })
+fn save_session(
+    store: &SharedStore,
+    session: &Session,
+    expected_version: u64,
+) -> AdapterResult<u64> {
+    let mut store = store
+        .lock()
+        .map_err(|_| error(ErrorKind::StateFailure, "state store poisoned"))?;
+    let current = store
+        .session(session.id)
+        .map_err(|e| error(ErrorKind::StateFailure, e.to_string()))?
+        .map_or(0, |(_, v)| v);
+    if current != expected_version {
+        return Err(error(
+            ErrorKind::StateConflict,
+            "session snapshot changed concurrently",
+        ));
+    }
+    store
+        .put_session(session, expected_version)
+        .map_err(|e| error(ErrorKind::StateFailure, e.to_string()))
 }
 
+fn state_error(error_value: anyhow::Error) -> AdapterError {
+    error(ErrorKind::StateFailure, error_value.to_string())
+}
 fn validate_persisted(
     store: &SharedStore,
     request: &LaunchRequest,
     worktree: &Path,
+    agent: &str,
 ) -> AdapterResult<()> {
-    with_store(store, |store| {
-        let project = store
-            .project(request.scope.project_id)?
-            .ok_or_else(|| anyhow::anyhow!("Project not registered"))?;
-        anyhow::ensure!(
-            project.state == ProjectState::Registered
-                && project.root == request.project.root
-                && project.worktree_root == request.project.worktree_root
-                && project.base_branch == request.project.base_branch,
-            "Project snapshot does not match registry"
-        );
-        let goal = store
-            .goal(
-                request
-                    .scope
-                    .goal_id
-                    .ok_or_else(|| anyhow::anyhow!("Goal required"))?,
-            )?
-            .ok_or_else(|| anyhow::anyhow!("Goal not found"))?;
-        let task = store
-            .task(
-                request
-                    .scope
-                    .task_id
-                    .ok_or_else(|| anyhow::anyhow!("Task required"))?,
-            )?
-            .ok_or_else(|| anyhow::anyhow!("Task not found"))?;
-        anyhow::ensure!(
-            goal.project_id == project.id && task.scope() == request.scope,
-            "persisted Project/Goal/Task ownership mismatch"
-        );
-        anyhow::ensure!(
-            task.worktree
-                .as_deref()
-                .map(Path::canonicalize)
-                .transpose()?
-                .as_deref()
-                == Some(worktree),
-            "Task worktree does not match launch CWD"
-        );
-        Ok(())
-    })
+    use crate::domain::{GoalState, TaskState};
+    let store = store
+        .lock()
+        .map_err(|_| error(ErrorKind::StateFailure, "state store poisoned"))?;
+    let owned = || {
+        error(
+            ErrorKind::OwnershipMismatch,
+            "persisted Project/Goal/Task/worktree ownership mismatch",
+        )
+    };
+    let project = store
+        .project(request.scope.project_id)
+        .map_err(state_error)?
+        .ok_or_else(owned)?;
+    if project.state != ProjectState::Registered
+        || project.root != request.project.root
+        || project.worktree_root != request.project.worktree_root
+        || project.base_branch != request.project.base_branch
+    {
+        return Err(owned());
+    }
+    let goal = store
+        .goal(request.scope.goal_id.ok_or_else(owned)?)
+        .map_err(state_error)?
+        .ok_or_else(owned)?;
+    let task = store
+        .task(request.scope.task_id.ok_or_else(owned)?)
+        .map_err(state_error)?
+        .ok_or_else(owned)?;
+    if goal.project_id != project.id
+        || task.scope() != request.scope
+        || task.executor != agent
+        || task
+            .worktree
+            .as_deref()
+            .map(Path::canonicalize)
+            .transpose()
+            .map_err(|e| error(ErrorKind::OwnershipMismatch, e.to_string()))?
+            .as_deref()
+            != Some(worktree)
+    {
+        return Err(owned());
+    }
+    if matches!(
+        goal.state,
+        GoalState::Paused | GoalState::Completed | GoalState::Cancelled | GoalState::Failed
+    ) || matches!(
+        task.state,
+        TaskState::Completed
+            | TaskState::Cancelled
+            | TaskState::Merged
+            | TaskState::Failed
+            | TaskState::ReadyForPr
+            | TaskState::PrCreated
+    ) {
+        return Err(error(
+            ErrorKind::InvalidInput,
+            "Task/Goal lifecycle does not allow executor launch",
+        ));
+    }
+    Ok(())
 }
-
 fn ensure_unlocked(store: &SharedStore, scope: &Scope) -> AdapterResult<()> {
-    with_store(store, |store| {
-        for lock in store.records(scope, RecordKind::WorktreeLock)? {
-            anyhow::ensure!(
-                lock.data["active"].as_bool() == Some(false),
-                "worktree is review locked or lock state is malformed"
-            );
+    let store = store
+        .lock()
+        .map_err(|_| error(ErrorKind::StateFailure, "state store poisoned"))?;
+    for lock in store
+        .records(scope, RecordKind::WorktreeLock)
+        .map_err(state_error)?
+    {
+        if lock.data["active"].as_bool() != Some(false) {
+            return Err(error(
+                ErrorKind::Locked,
+                "worktree is review locked or lock state is malformed",
+            ));
         }
-        Ok(())
-    })
+    }
+    Ok(())
 }
 
 async fn git_value(
@@ -845,27 +1005,34 @@ async fn drain<R: AsyncRead + Unpin>(
 }
 
 async fn supervise(
-    mut child: Child,
+    mut child: ProcessGroup,
     mut controls: mpsc::Receiver<()>,
     events: watch::Sender<SessionStatus>,
     writer: JoinHandle<std::io::Result<()>>,
     mut stdout: JoinHandle<()>,
     mut stderr: JoinHandle<()>,
     store: SharedStore,
+    version: u64,
 ) {
     let mut stopped = false;
     let mut stop_failure = None;
-    let result = tokio::select! {
-        result = child.wait() => result,
-        _ = controls.recv() => {
-            stopped = true;
-            if let Some(pid) = child.id() {
-                // Only a process group created and still owned by this supervisor is signalled.
-                if let Err(e) = killpg(Pid::from_raw(pid as i32), Signal::SIGKILL)
-                    && e != nix::errno::Errno::ESRCH { stop_failure = Some(format!("native process group stop failed: {e}")); }
-            }
-            child.wait().await
+    let exited = tokio::select! {
+        result = child.observe_exit() => result,
+        _ = controls.recv() => { stopped = true; Ok(()) }
+    };
+    if exited.is_ok() {
+        if let Err(e) = child.kill_group() {
+            stop_failure = Some(format!("native process group cleanup failed: {e}"));
         }
+    } else {
+        stop_failure = exited.err().map(|e| {
+            format!("native exit observation failed; recovery must verify process death: {e}")
+        });
+    }
+    let result = if stop_failure.is_none() {
+        child.reap().await
+    } else {
+        Err(std::io::Error::other("owned process cleanup not confirmed"))
     };
     let delivery_cancelled = !writer.is_finished() && !stopped;
     if !writer.is_finished() {
@@ -910,13 +1077,13 @@ async fn supervise(
             }
             Err(e) => {
                 status.failure = Some(format!("native process wait failed: {e}"));
-                status.session.state = SessionState::Failed;
+                status.session.state = SessionState::Lost;
             }
         }
     }
-    if let Err(e) = save_session(&store, &terminal.session) {
+    if let Err(e) = save_session(&store, &terminal.session, version) {
         terminal.failure = Some(format!("terminal state persistence failed: {e}"));
-        terminal.session.state = SessionState::Failed;
+        terminal.session.state = SessionState::Lost;
     }
     events.send_replace(terminal);
 }

@@ -257,8 +257,17 @@ remain authoritative. The adapter never supplies bypass flags or an empty native
 configuration home.
 
 Tokio supervises private process groups without busy polling. Concurrent output
-drains retain bounded 64 KiB byte tails and report truncation/I/O failures. Stop
-kills the owned group and reaps its child; terminal stop is idempotent. Persisted
+drains retain bounded 64 KiB byte tails and report truncation/I/O failures. Natural exit uses waitid NOWAIT and SIGCHLD to kill the owned group before
+reaping the leader, avoiding PID reuse. Stop/drop kills the owned group; terminal
+stop is idempotent. Runtime crash/SIGKILL leaves reservations conservatively
+blocked, including Lost, until verified-dead recovery; intentional process-group
+escapes require stronger future containment. Up to 32 terminal Sessions are
+retained; release or eviction drops transient output but preserves durable state. Persisted
 Session IDs remain independent from PID and native references. Restart without a
 live supervisor yields SessionLost, not a fabricated reconnect. See
 [issue design](../issue-4-design.md) for lifecycle and current boundaries.
+
+NativeGoalRef contains Scope, optional SessionId and opaque provider reference.
+Implementations must validate the persisted owner on status/resume and require
+checkpoint input Scope to equal Session Scope. Generic prepared payload size is
+observable in bytes; provider token/cache values remain unknown.

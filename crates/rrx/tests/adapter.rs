@@ -78,7 +78,7 @@ impl Fixture {
         task.worktree = Some(worktree.canonicalize().unwrap());
         task.branch = Some("feature/task".into());
         let scope = task.scope();
-        let mut store = Store::memory().unwrap();
+        let mut store = Store::open(&temp.path().join("state.sqlite3")).unwrap();
         store.put_project(&mut project).unwrap();
         store.put_goal(&mut goal).unwrap();
         store.put_task(&mut task).unwrap();
@@ -215,7 +215,11 @@ async fn explicit_unsupported_operations_and_registry_preserve_provider_independ
     );
     assert_eq!(
         adapter
-            .native_goal_status("unknown".into())
+            .native_goal_status(NativeGoalRef {
+                scope: fixture.request.scope.clone(),
+                session_id: Some(session.id),
+                native_ref: "unknown".into()
+            })
             .await
             .unwrap_err()
             .kind,
@@ -223,7 +227,14 @@ async fn explicit_unsupported_operations_and_registry_preserve_provider_independ
     );
     assert_eq!(
         adapter
-            .resume_native_goal("unknown".into(), fixture.request.input.clone())
+            .resume_native_goal(
+                NativeGoalRef {
+                    scope: fixture.request.scope.clone(),
+                    session_id: Some(session.id),
+                    native_ref: "unknown".into()
+                },
+                fixture.request.input.clone()
+            )
             .await
             .unwrap_err()
             .kind,
@@ -532,4 +543,189 @@ async fn immediate_stop_and_adapter_drop_do_not_leave_running_children() {
     .await
     .unwrap();
     assert_eq!(events.borrow().session.state, SessionState::Stopped);
+}
+
+fn assert_process_dead(pid: i32) {
+    let output = Command::new("ps")
+        .args(["-o", "stat=", "-p", &pid.to_string()])
+        .output()
+        .unwrap();
+    let state = String::from_utf8_lossy(&output.stdout);
+    let alive = !state.trim().is_empty() && !state.trim().starts_with('Z');
+    // Clean a failed regression's known fixture child before asserting, so mutations
+    // cannot leave an unrelated long-lived process behind.
+    if alive {
+        let _ = rustix::process::kill_process(
+            rustix::process::Pid::from_raw(pid).unwrap(),
+            rustix::process::Signal::KILL,
+        );
+    }
+    assert!(!alive, "fixture descendant still running: {state}");
+}
+
+#[tokio::test]
+async fn natural_exit_cleans_redirected_background_descendants_before_terminal_persistence() {
+    let fixture = Fixture::new();
+    let adapter = fixture
+        .adapter("/bin/cat; sleep 60 >/dev/null 2>&1 & printf 'descendant=%s\n' \"$!\"; exit 0");
+    let session = adapter.start(fixture.request.clone()).await.unwrap();
+    let status = finished(&adapter, &session).await;
+    let pid = String::from_utf8_lossy(&status.stdout)
+        .lines()
+        .find_map(|line| line.strip_prefix("descendant="))
+        .unwrap()
+        .parse()
+        .unwrap();
+    assert_process_dead(pid);
+    assert_eq!(status.session.state, SessionState::Exited);
+    assert_eq!(
+        fixture
+            .store
+            .lock()
+            .unwrap()
+            .session(session.id)
+            .unwrap()
+            .unwrap()
+            .0
+            .state,
+        SessionState::Exited
+    );
+}
+
+#[tokio::test]
+async fn concurrent_snapshot_updates_are_not_overwritten_and_identity_survives_reopen() {
+    let fixture = Fixture::new();
+    let adapter = fixture.adapter("/bin/cat; sleep 60");
+    let session = adapter.start(fixture.request.clone()).await.unwrap();
+    {
+        let mut store = fixture.store.lock().unwrap();
+        let (mut newer, version) = store.session(session.id).unwrap().unwrap();
+        newer.state = SessionState::Lost;
+        newer.recovery["operator_note"] = json!("verify process death");
+        store.put_session(&newer, version).unwrap();
+    }
+    let status = adapter.stop((&session).into()).await.unwrap();
+    assert!(status.failure.unwrap().contains("changed concurrently"));
+    let reopened = Arc::new(Mutex::new(
+        Store::open(&fixture._temp.path().join("state.sqlite3")).unwrap(),
+    ));
+    let saved = reopened
+        .lock()
+        .unwrap()
+        .session(session.id)
+        .unwrap()
+        .unwrap()
+        .0;
+    assert_eq!(saved.id, session.id);
+    assert_eq!(saved.scope, session.scope);
+    assert_eq!(saved.state, SessionState::Lost);
+    assert_eq!(saved.recovery["operator_note"], "verify process death");
+    let restarted =
+        GenericCliAdapter::new("fake".into(), vec!["/bin/cat".into()], reopened).unwrap();
+    assert_eq!(
+        restarted.status((&session).into()).await.unwrap_err().kind,
+        ErrorKind::SessionLost
+    );
+}
+
+#[tokio::test]
+async fn cancelled_preflight_marks_reserved_session_failed_and_large_unread_stdin_is_failed() {
+    let fixture = Fixture::new();
+    let adapter = fixture.adapter("/bin/cat");
+    let mut launch = adapter.start(fixture.request.clone());
+    std::future::poll_fn(|context| {
+        assert!(
+            launch.as_mut().poll(context).is_pending(),
+            "preflight should yield for native Git"
+        );
+        std::task::Poll::Ready(())
+    })
+    .await;
+    drop(launch);
+    let records = fixture
+        .store
+        .lock()
+        .unwrap()
+        .records(&fixture.request.scope, RecordKind::Session)
+        .unwrap();
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].data["state"], "FAILED");
+    let adapter = fixture.adapter("exit 0");
+    let mut request = fixture.request.clone();
+    request.input.payload = "x".repeat(2 * 1024 * 1024);
+    let session = adapter.start(request).await.unwrap();
+    let status = finished(&adapter, &session).await;
+    assert_eq!(status.session.state, SessionState::Failed);
+    assert!(status.failure.unwrap().contains("stdin"));
+}
+
+#[tokio::test]
+async fn terminal_retention_is_bounded_and_output_can_be_released() {
+    let fixture = Fixture::new();
+    let adapter = fixture.adapter("/bin/cat");
+    let first = adapter.start(fixture.request.clone()).await.unwrap();
+    finished(&adapter, &first).await;
+    let mut last = first.clone();
+    for _ in 0..33 {
+        last = adapter.start(fixture.request.clone()).await.unwrap();
+        finished(&adapter, &last).await;
+    }
+    assert_eq!(
+        adapter.status((&first).into()).await.unwrap_err().kind,
+        ErrorKind::SessionLost
+    );
+    adapter.release((&last).into()).unwrap();
+    assert_eq!(
+        adapter.status((&last).into()).await.unwrap_err().kind,
+        ErrorKind::SessionLost
+    );
+    assert_eq!(
+        fixture
+            .store
+            .lock()
+            .unwrap()
+            .session(first.id)
+            .unwrap()
+            .unwrap()
+            .0
+            .state,
+        SessionState::Exited
+    );
+}
+
+#[tokio::test]
+async fn executable_symlink_keeps_configured_argv_zero_and_terminal_goal_cannot_launch() {
+    let fixture = Fixture::new();
+    let alias = fixture._temp.path().join("fake-shell");
+    std::os::unix::fs::symlink("/bin/sh", &alias).unwrap();
+    let adapter = GenericCliAdapter::new(
+        "fake".into(),
+        vec![
+            alias.to_str().unwrap().into(),
+            "-c".into(),
+            "/bin/cat; printf '%s' \"$0\"".into(),
+        ],
+        fixture.store.clone(),
+    )
+    .unwrap();
+    let session = adapter.start(fixture.request.clone()).await.unwrap();
+    let status = finished(&adapter, &session).await;
+    assert!(String::from_utf8_lossy(&status.stdout).ends_with(alias.to_str().unwrap()));
+    {
+        let mut store = fixture.store.lock().unwrap();
+        let mut goal = store
+            .goal(fixture.request.scope.goal_id.unwrap())
+            .unwrap()
+            .unwrap();
+        goal.state = GoalState::Paused;
+        store.put_goal(&mut goal).unwrap();
+    }
+    assert_eq!(
+        adapter
+            .start(fixture.request.clone())
+            .await
+            .unwrap_err()
+            .kind,
+        ErrorKind::InvalidInput
+    );
 }
