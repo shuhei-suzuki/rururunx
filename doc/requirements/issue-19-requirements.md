@@ -99,7 +99,7 @@ effects, any new checkpoint source authority can restart the entire generation;
 after PR/merge effects, an append may hold the Task until explicit Issue 13/23
 reconciliation is available. This core demonstrates auditable condensation and
 constraint preservation, but does not claim automatic post-PR recovery. A bound
-owned worktree supplied by Issue 9 remains necessary before Engine initialization.
+owned worktree created by the existing WorktreeManager remains necessary before Engine initialization.
 Cross-Task promotion copies Consultant-origin facts only; it preserves the target
 Goal/Project/rule constraints and does not implicitly copy source Executor facts.
 
@@ -152,3 +152,40 @@ uses the new CAS in the same existing atomic Workflow transition. Changed
 constraints, scoped references, Task/attempt authority or paused owners remain
 fenced; acknowledgement is not another model dispatch. Legacy sources retain
 strict Project/Goal version equality.
+
+## First acknowledgement and role scope
+
+A protected input remains pending until a current-head/frame-validated Running
+publication or an exact consumed native dispatch. WaitingApproval, WaitingHuman
+and Lost do not imply acknowledgement. The first Running publication after those
+states must recheck live input authority. A conservative Lost update must remain
+possible without claiming delivery. An already admitted same input may later
+reenter Running without replacing its historical frame after a checkpoint.
+
+Acknowledgement authority must be privately published in the same Session
+transaction, bound to exact Scope, Session ID and pinned input metadata. Caller
+JSON, generic Records and public audit writes cannot assert it. Fresh higher-input
+continuation must not inherit an earlier input's acknowledgement. Exact permitted
+prewire terminal restoration preserves the earlier input's authority. Storage is
+bounded to one current acknowledgement row per Session, with an indexed lookup.
+Atomic audit failure must roll back both the Session and acknowledgement.
+
+The persistence contract advances to schema 6 through ordered 5→6 migration.
+Older schema 5 writers must refuse it without changing database bytes. Migration
+creates no delivery or acknowledgement claims for old Sessions. Pending old
+inputs lacking current instruction hashes fail closed until explicitly prepared
+again; consumed historical observations retain their existing input pins.
+
+Standalone launch inputs privately publish stable Project/Goal/Task instruction
+hashes with their exact prepared frame. Admission compares these hashes, while
+pack preparation and publication retain complete snapshot freshness. Goal
+satisfaction/DAG progress and Task blockers/next-action updates alone must not
+strand a pending input. Actual constraint, scoped-reference, identity or lifecycle
+changes remain fenced.
+
+Checkpoint condensation accepts existing scoped Executor/Consultant history;
+this core does not create live role-specific consultation inputs on a typed
+workflow-owned Task. Such a port must publish its own exact scoped frame/source
+pins before live admission. ApprovalReviewer runs on a separate operation-free
+decision Task through the Approval Broker, not by adopting an Executor-writable
+Task's native rules/config/hooks. Arbitrary role changes never bypass frame guards.

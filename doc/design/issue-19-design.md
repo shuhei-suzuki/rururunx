@@ -172,7 +172,7 @@ effects, any new checkpoint source authority can restart the entire generation;
 after PR/merge effects, an append may hold the Task until explicit Issue 13/23
 reconciliation is available. This core demonstrates auditable condensation and
 constraint preservation, but does not claim automatic post-PR recovery. A bound
-owned worktree supplied by Issue 9 remains necessary before Engine initialization.
+owned worktree created by the existing WorktreeManager remains necessary before Engine initialization.
 Cross-Task promotion copies Consultant-origin facts only; it preserves the target
 Goal/Project/rule constraints and does not implicitly copy source Executor facts.
 
@@ -225,3 +225,56 @@ uses the new CAS in the same existing atomic Workflow transition. Changed
 constraints, scoped references, Task/attempt authority or paused owners remain
 fenced; acknowledgement is not another model dispatch. Legacy sources retain
 strict Project/Goal version equality.
+
+## Private Session input acknowledgement design
+
+Use a private `session_input_acks` table with one row per Session. Columns are
+`session_id`, `project_id`, `goal_id`, `task_id`, `metadata_sha256`; Session and
+owned Task foreign keys anchor scope. The primary key is Session ID. The table
+is reached only by private Store transaction helpers; it has no generic writer
+API and no public Record/audit representation that can create authority.
+
+`metadata_sha256` is lowerhex SHA256 of a deterministic serialized tuple of
+Scope, agent, provider, role, worktree, then the five pinned recovery values:
+input_version, input_revision, input_bytes, input_sha256, source_versions. PID,
+state, native response/ref fields and dispatch diagnostic fields are excluded.
+The digest proves a prior validated publication of those exact inputs, not native
+wire delivery. Actual providers preserve their separate private request-to-wire
+correspondence and consumed dispatch protocol.
+
+`guard_launch_checkpoint` treats an input as admitted only when the previous
+Session has the exact consumed dispatch authority or the private row matches its
+current metadata digest. Otherwise its next Starting/Running publication validates
+current typed frame and live checkpoint head, even after intermediate waiting or
+Lost states. Non-Running waiting/Lost observations do not publish an ack. Unknown
+native dispatch alone permits conservative Lost bookkeeping, never a fresh model
+admission. Metadata/restore/intent pins continue to apply on every observation.
+
+After a Running Session write succeeds inside `put_record_tx`, privately upsert
+its exact acknowledgement digest before the transaction's audit/commit. This
+covers both newly validated Running and a known consumed acknowledgement after
+late checkpoint changes. A higher-input fresh Starting has a different digest,
+so the prior row cannot acknowledge it. An exact allowed prewire restore still
+matches the prior digest. The next successfully admitted Running atomically
+replaces the one row; no unbounded variant history or prompt copy is required.
+
+Ordered migration 5→6 creates only the empty table and installs the version marker
+in one transaction, preserving earlier migration order. Existing Running records
+are not retrospectively marked acknowledged. Already-consumed observations use
+their immutable existing intent; older unconsumed sessions must validate current
+input on first reentry. Old schema 5 writers reject format 6 before any write.
+
+Standalone preparation adds `instruction_versions` to PreparedInput.source_versions
+before private exact-frame publication. Store standalone admission compares these
+hashes to current scoped Project/Goal/Task instructions. The privately published
+row must still equal the complete frame metadata/hash, and checkpoint binding is
+unchanged. Preparation/republish remains full-projection strict so newly rendered
+facts have an exact fresh snapshot; existing admitted model input is separate.
+
+Tests must demonstrate pending Starting→each waiting/Lost→Running head rejection,
+caller JSON ack forgery rejection, valid first Running then historical reentry,
+fresh input and exact restore behavior, ack/Session atomic rollback, reopening,
+and actual native old5 refusal with equal before/after database hashes. Semantic
+admission tests distinguish sibling progress from changed constraints and refs.
+Consultant/ApprovalReviewer tests preserve safe refusal of live typed actor-frame
+reuse while accepting existing scoped Consultant checkpoint history.

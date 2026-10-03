@@ -338,3 +338,19 @@ uses the new CAS in the same existing atomic Workflow transition. Changed
 constraints, scoped references, Task/attempt authority or paused owners remain
 fenced; acknowledgement is not another model dispatch. Legacy sources retain
 strict Project/Goal version equality.
+
+### Private native input acknowledgement
+
+First Running publication of an unconsumed prepared input rechecks its live frame
+and checkpoint head even after intermediate waiting or Lost observations. A
+private, indexed, single-row-per-Session acknowledgement stores only exact scoped
+input-metadata digest, atomically with validated Session persistence and audit.
+JSON assertions cannot grant this authority. A new input digest requires fresh
+validation; an already admitted same input retains historical source pins. The
+acknowledgement is a Store publication fact, not provider wire-delivery proof.
+
+Standalone admission uses stable instruction hashes for semantic authority while
+new pack preparation/publication uses complete snapshot CAS. Consultation history
+can be condensed from existing scoped Sessions; live role-specific consultation
+needs its own exact prepared-frame port. Approval review uses a separate
+operation-free decision Task, preserving executor/decision context independence.
