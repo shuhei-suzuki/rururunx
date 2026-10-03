@@ -1076,7 +1076,9 @@ async fn supervise(
                 };
             }
             Err(e) => {
-                status.failure = Some(format!("native process wait failed: {e}"));
+                status
+                    .failure
+                    .get_or_insert_with(|| format!("native process wait failed: {e}"));
                 status.session.state = SessionState::Lost;
             }
         }
