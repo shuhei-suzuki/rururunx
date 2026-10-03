@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 
 use crate::domain::*;
 
-pub const SCHEMA_VERSION: i64 = 2;
+pub const SCHEMA_VERSION: i64 = 3;
 pub const APPLICATION_ID: i64 = 0x52525831; // ASCII RRX1.
 
 /// Typed transactional guards let callers distinguish contention from storage failure.
@@ -43,6 +43,15 @@ impl std::fmt::Display for StateGuardError {
     }
 }
 impl std::error::Error for StateGuardError {}
+
+/// Launch-time access check; native integrations must still use their owning
+/// Git/Session transactional guards at the actual side effect boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorkflowAccess {
+    StateOnly,
+    ReadOnly,
+    Mutating,
+}
 
 pub struct Store {
     connection: Connection,
@@ -101,9 +110,11 @@ impl Store {
                 let application: i64 =
                     tx.pragma_query_value(None, "application_id", |row| row.get(0))?;
                 ensure!(application == APPLICATION_ID, "not an rrx state database");
-                // v1 → v2 adds Project blocked_reason JSON metadata (default None).
-                // SQL layout is unchanged; older binaries must refuse the new format.
-                tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
+                // Ordered JSON-format migrations; SQL layout and ownership/audit stay intact.
+                // v2 adds Project blocked_reason; v3 adds authoritative Workflow records.
+                for next in (locked_version + 1)..=SCHEMA_VERSION {
+                    tx.pragma_update(None, "user_version", next)?;
+                }
             }
             tx.commit()?;
         }
@@ -303,183 +314,128 @@ impl Store {
     }
 
     pub fn put_task(&mut self, task: &mut Task) -> Result<()> {
-        ensure!(
-            !task.title.trim().is_empty() && !task.executor.trim().is_empty(),
-            "task title/executor must be nonempty"
-        );
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        if !task_terminal(task.state) {
-            let previous = read_tx::<Task>(&tx, "tasks", &task.id.to_string())?;
-            let safe_update = if let Some(old) = &previous {
-                let mut metadata = task.clone();
-                metadata.state = old.state;
-                metadata.blockers = old.blockers.clone();
-                metadata.next_action = old.next_action.clone();
-                !task_terminal(old.state)
-                    && (old.state == task.state || task.state == TaskState::WaitingHuman)
-                    && serde_json::to_value(metadata)? == serde_json::to_value(old)?
-            } else {
-                false
-            };
-            ensure_activity_write(&tx, task.project_id, safe_update)?;
-        }
-        if let Some(previous) = read_tx::<Task>(&tx, "tasks", &task.id.to_string())? {
-            ensure!(
-                previous.project_id == task.project_id && previous.goal_id == task.goal_id,
-                "task ownership is immutable"
-            );
-            ensure!(
-                previous
-                    .worktree
-                    .as_ref()
-                    .is_none_or(|path| task.worktree.as_ref() == Some(path))
-                    && previous
-                        .branch
-                        .as_ref()
-                        .is_none_or(|branch| task.branch.as_ref() == Some(branch)),
-                "assigned task worktree/branch binding is immutable"
-            );
-            ensure!(
-                task.workflow >= previous.workflow,
-                "workflow downgrade is forbidden"
-            );
-        }
-        ensure!(
-            task.worktree.is_some() == task.branch.is_some(),
-            "task path/branch must bind together"
-        );
-        if let (Some(path), Some(branch)) = (&task.worktree, &task.branch) {
-            let project: Project = read_tx(&tx, "projects", &task.project_id.to_string())?
-                .context("unknown project")?;
-            ensure!(
-                path.is_absolute()
-                    && path.parent() == Some(project.worktree_root.as_path())
-                    && path.components().all(|c| !matches!(
-                        c,
-                        std::path::Component::ParentDir | std::path::Component::CurDir
-                    )),
-                "task path must be normal direct child of Project namespace"
-            );
-            ensure!(!branch.trim().is_empty(), "task branch must be nonempty");
-            let mut statement =
-                tx.prepare("SELECT body FROM tasks WHERE project_id=?1 AND id<>?2")?;
-            for body in statement.query_map(
-                params![task.project_id.to_string(), task.id.to_string()],
-                |row| row.get::<_, String>(0),
-            )? {
-                let other: Task = decode(body?)?;
-                ensure!(
-                    other.worktree.as_ref() != Some(path) && other.branch.as_ref() != Some(branch),
-                    "task worktree/branch already owned"
-                );
-            }
-        }
-        let mut next = task.clone();
-        bump(&mut next.version)?;
-        next.updated_at = now_ms();
-        let body = serde_json::to_string(&next)?;
-        write_snapshot(
-            &tx,
-            "tasks",
-            &next.id.to_string(),
-            task.version,
-            "INSERT INTO tasks(id,project_id,goal_id,issue,version,body) VALUES(?1,?2,?3,?4,?5,?6)",
-            params![
-                next.id.to_string(),
-                next.project_id.to_string(),
-                next.goal_id.to_string(),
-                next.issue,
-                next.version,
-                body
-            ],
-            &body,
-            next.version,
-        )?;
-        // Issue is query metadata and may be linked after Task creation.
-        tx.execute(
-            "UPDATE tasks SET issue=?1 WHERE id=?2",
-            params![next.issue, next.id.to_string()],
-        )?;
-        append_event(
-            &tx,
-            &next.scope(),
-            "task.saved",
-            json!({"version":next.version,"state":next.state,"phase":next.phase,"workflow":next.workflow}),
-        )?;
+        let next = put_task_tx(&tx, task)?;
         tx.commit()?;
         *task = next;
         Ok(())
     }
-
     pub fn put_record(&mut self, record: &mut Record) -> Result<()> {
-        validate_scope(&record.scope)?;
-        if record.kind == RecordKind::Session {
-            let session: Session =
-                serde_json::from_value(record.data.clone()).context("invalid session payload")?;
-            ensure!(
-                session.scope == record.scope && session.id.0 == record.id.0,
-                "session identity/scope mismatch"
-            );
-        }
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        if let Some(previous) = read_tx::<Record>(&tx, "records", &record.id.to_string())? {
-            ensure!(
-                previous.scope == record.scope && previous.kind == record.kind,
-                "record scope/kind is immutable"
-            );
-        }
-        if record.kind == RecordKind::Session
-            && let Some(previous) = read_tx::<Record>(&tx, "records", &record.id.to_string())?
-        {
-            let old: Session = serde_json::from_value(previous.data)?;
-            let new: Session = serde_json::from_value(record.data.clone())?;
-            ensure!(
-                old.agent == new.agent
-                    && old.provider == new.provider
-                    && old.role == new.role
-                    && old.worktree == new.worktree,
-                "session actor/worktree identity is immutable"
-            );
-        }
-        validate_worktree_exclusion(&tx, record)?;
-        let mut next = record.clone();
-        bump(&mut next.version)?;
-        next.updated_at = now_ms();
-        let body = serde_json::to_string(&next)?;
-        write_snapshot(
-            &tx,
-            "records",
-            &next.id.to_string(),
-            record.version,
-            "INSERT INTO records(id,kind,project_id,goal_id,task_id,version,body) VALUES(?1,?2,?3,?4,?5,?6,?7)",
-            params![
-                next.id.to_string(),
-                next.kind.key(),
-                next.scope.project_id.to_string(),
-                str_id(next.scope.goal_id),
-                str_id(next.scope.task_id),
-                next.version,
-                body
-            ],
-            &body,
-            next.version,
-        )?;
-        append_event(
-            &tx,
-            &next.scope,
-            &format!("{}.saved", next.kind.key()),
-            json!({"id":next.id,"version":next.version,"evidence": match next.kind {
-                RecordKind::Review | RecordKind::Approval | RecordKind::WorktreeLock => next.data.clone(),
-                RecordKind::Session => json!({"state":next.data["state"],"agent":next.data["agent"],"provider":next.data["provider"],"role":next.data["role"],"native_ref":next.data["native_ref"]}),
-                _ => Value::Null,
-            }}),
-        )?;
+        let next = put_record_tx(&tx, record)?;
         tx.commit()?;
         *record = next;
+        Ok(())
+    }
+    /// Atomic Task workflow transition. Every ownership snapshot is checked under
+    /// the same immediate transaction; failed context/history writes roll back Task.
+    pub fn put_workflow_transition(
+        &mut self,
+        task: &mut Task,
+        workflow: &mut Record,
+        context: Option<&ContextVersion>,
+        project_version: u64,
+        goal_version: u64,
+        access: WorkflowAccess,
+    ) -> Result<()> {
+        ensure!(
+            workflow.kind == RecordKind::Workflow && workflow.scope == task.scope(),
+            "workflow requires exact owning Task scope"
+        );
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        ensure_project_registered(&tx, task.project_id)?;
+        let project: Project =
+            read_tx(&tx, "projects", &task.project_id.to_string())?.context("unknown project")?;
+        let goal: Goal =
+            read_tx(&tx, "goals", &task.goal_id.to_string())?.context("unknown goal")?;
+        for (table, id, actual, expected) in [
+            (
+                "projects",
+                project.id.to_string(),
+                project.version,
+                project_version,
+            ),
+            ("goals", goal.id.to_string(), goal.version, goal_version),
+        ] {
+            if actual != expected {
+                bail!(StateGuardError::SnapshotChanged {
+                    table: table.into(),
+                    id,
+                    expected
+                });
+            }
+        }
+        ensure!(
+            goal.project_id == task.project_id
+                && matches!(
+                    goal.state,
+                    GoalState::Created | GoalState::Analyzing | GoalState::Running
+                ),
+            "goal is inactive for workflow progression"
+        );
+        if access != WorkflowAccess::StateOnly {
+            let mut statement = tx.prepare(
+                "SELECT body FROM records WHERE project_id=?1 AND goal_id=?2 AND task_id=?3",
+            )?;
+            for body in statement.query_map(
+                params![
+                    task.project_id.to_string(),
+                    task.goal_id.to_string(),
+                    task.id.to_string()
+                ],
+                |r| r.get::<_, String>(0),
+            )? {
+                let record: Record = decode(body?)?;
+                if record.kind == RecordKind::Session {
+                    let session: Session = serde_json::from_value(record.data)?;
+                    if session.role == SessionRole::Executor
+                        && crate::git::executor_reserved(&session)
+                    {
+                        bail!(StateGuardError::ExecutorReserved);
+                    }
+                } else if access == WorkflowAccess::Mutating
+                    && record.kind == RecordKind::WorktreeLock
+                    && serde_json::from_value::<crate::git::WorktreeLock>(record.data)?.active
+                {
+                    bail!(StateGuardError::WorktreeLocked);
+                }
+            }
+        }
+        let previous_task: Task = read_tx(&tx, "tasks", &task.id.to_string())?
+            .context("workflow requires existing Task")?;
+        ensure!(
+            !task_terminal(previous_task.state),
+            "terminal Task cannot resume workflow progression"
+        );
+        let count: i64 = tx.query_row("SELECT COUNT(*) FROM records WHERE project_id=?1 AND goal_id=?2 AND task_id=?3 AND kind='workflow' AND id<>?4",
+            params![task.project_id.to_string(),task.goal_id.to_string(),task.id.to_string(),workflow.id.to_string()], |r| r.get(0))?;
+        ensure!(count == 0, "Task already owns a workflow");
+        if let Some(context) = context {
+            ensure!(
+                context.scope == task.scope() && context.version == task.context_version,
+                "context pointer/scope differs from workflow Task"
+            );
+            put_context_tx(&tx, context)?;
+        } else {
+            let owner = context_owner(&task.scope())?;
+            let latest: u64 = tx.query_row("SELECT COALESCE(MAX(version),0) FROM context_versions WHERE project_id=?1 AND owner=?2",
+                params![task.project_id.to_string(),owner], |r| r.get(0))?;
+            ensure!(
+                latest == task.context_version,
+                "workflow context pointer is stale"
+            );
+        }
+        let next_task = put_task_tx(&tx, task)?;
+        let next_workflow = put_record_tx(&tx, workflow)?;
+        tx.commit()?;
+        *task = next_task;
+        *workflow = next_workflow;
         Ok(())
     }
 
@@ -512,38 +468,13 @@ impl Store {
     }
 
     pub fn put_context(&mut self, context: &ContextVersion) -> Result<()> {
-        validate_scope(&context.scope)?;
-        ensure!(
-            context.scope.goal_id.is_some(),
-            "context must belong to a goal/task"
-        );
-        ensure!(
-            !context.revision.is_empty(),
-            "context revision must be explicit"
-        );
-        let owner = context_owner(&context.scope)?;
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let latest: u64 = tx.query_row("SELECT COALESCE(MAX(version),0) FROM context_versions WHERE project_id=?1 AND owner=?2",
-            params![context.scope.project_id.to_string(), owner], |row| row.get(0))?;
-        ensure!(
-            context.version == latest.checked_add(1).context("context version overflow")?,
-            "context versions must be consecutive, expected {}",
-            latest + 1
-        );
-        tx.execute("INSERT INTO context_versions(project_id,goal_id,task_id,owner,version,body) VALUES(?1,?2,?3,?4,?5,?6)",
-            params![context.scope.project_id.to_string(), str_id(context.scope.goal_id), str_id(context.scope.task_id), owner, context.version, serde_json::to_string(context)?])?;
-        append_event(
-            &tx,
-            &context.scope,
-            "context.created",
-            json!({"version":context.version,"revision":context.revision}),
-        )?;
+        put_context_tx(&tx, context)?;
         tx.commit()?;
         Ok(())
     }
-
     pub fn context(&self, scope: &Scope, version: Option<u64>) -> Result<Option<ContextVersion>> {
         let owner = context_owner(scope)?;
         let body: Option<String> = self.connection.query_row(
@@ -784,6 +715,208 @@ impl Store {
         })?;
         rows.map(|row| decode(row?)).collect()
     }
+}
+
+fn put_task_tx(tx: &Transaction<'_>, task: &Task) -> Result<Task> {
+    ensure!(
+        !task.title.trim().is_empty() && !task.executor.trim().is_empty(),
+        "task title/executor must be nonempty"
+    );
+    if !task_terminal(task.state) {
+        let previous = read_tx::<Task>(tx, "tasks", &task.id.to_string())?;
+        let safe_update = if let Some(old) = &previous {
+            let mut metadata = task.clone();
+            metadata.state = old.state;
+            metadata.blockers = old.blockers.clone();
+            metadata.next_action = old.next_action.clone();
+            !task_terminal(old.state)
+                && (old.state == task.state || task.state == TaskState::WaitingHuman)
+                && serde_json::to_value(metadata)? == serde_json::to_value(old)?
+        } else {
+            false
+        };
+        ensure_activity_write(tx, task.project_id, safe_update)?;
+    }
+    if let Some(previous) = read_tx::<Task>(tx, "tasks", &task.id.to_string())? {
+        ensure!(
+            previous.project_id == task.project_id && previous.goal_id == task.goal_id,
+            "task ownership is immutable"
+        );
+        ensure!(
+            previous
+                .worktree
+                .as_ref()
+                .is_none_or(|path| task.worktree.as_ref() == Some(path))
+                && previous
+                    .branch
+                    .as_ref()
+                    .is_none_or(|branch| task.branch.as_ref() == Some(branch)),
+            "assigned task worktree/branch binding is immutable"
+        );
+        ensure!(
+            task.workflow >= previous.workflow,
+            "workflow downgrade is forbidden"
+        );
+    }
+    ensure!(
+        task.worktree.is_some() == task.branch.is_some(),
+        "task path/branch must bind together"
+    );
+    if let (Some(path), Some(branch)) = (&task.worktree, &task.branch) {
+        let project: Project =
+            read_tx(tx, "projects", &task.project_id.to_string())?.context("unknown project")?;
+        ensure!(
+            path.is_absolute()
+                && path.parent() == Some(project.worktree_root.as_path())
+                && path.components().all(|c| !matches!(
+                    c,
+                    std::path::Component::ParentDir | std::path::Component::CurDir
+                )),
+            "task path must be normal direct child of Project namespace"
+        );
+        ensure!(!branch.trim().is_empty(), "task branch must be nonempty");
+        let mut statement = tx.prepare("SELECT body FROM tasks WHERE project_id=?1 AND id<>?2")?;
+        for body in statement.query_map(
+            params![task.project_id.to_string(), task.id.to_string()],
+            |row| row.get::<_, String>(0),
+        )? {
+            let other: Task = decode(body?)?;
+            ensure!(
+                other.worktree.as_ref() != Some(path) && other.branch.as_ref() != Some(branch),
+                "task worktree/branch already owned"
+            );
+        }
+    }
+    let mut next = task.clone();
+    bump(&mut next.version)?;
+    next.updated_at = now_ms();
+    let body = serde_json::to_string(&next)?;
+    write_snapshot(
+        tx,
+        "tasks",
+        &next.id.to_string(),
+        task.version,
+        "INSERT INTO tasks(id,project_id,goal_id,issue,version,body) VALUES(?1,?2,?3,?4,?5,?6)",
+        params![
+            next.id.to_string(),
+            next.project_id.to_string(),
+            next.goal_id.to_string(),
+            next.issue,
+            next.version,
+            body
+        ],
+        &body,
+        next.version,
+    )?;
+    // Issue is query metadata and may be linked after Task creation.
+    tx.execute(
+        "UPDATE tasks SET issue=?1 WHERE id=?2",
+        params![next.issue, next.id.to_string()],
+    )?;
+    append_event(
+        tx,
+        &next.scope(),
+        "task.saved",
+        json!({"version":next.version,"state":next.state,"phase":next.phase,"workflow":next.workflow}),
+    )?;
+    Ok(next)
+}
+
+fn put_record_tx(tx: &Transaction<'_>, record: &Record) -> Result<Record> {
+    validate_scope(&record.scope)?;
+    if record.kind == RecordKind::Session {
+        let session: Session =
+            serde_json::from_value(record.data.clone()).context("invalid session payload")?;
+        ensure!(
+            session.scope == record.scope && session.id.0 == record.id.0,
+            "session identity/scope mismatch"
+        );
+    }
+    if let Some(previous) = read_tx::<Record>(tx, "records", &record.id.to_string())? {
+        ensure!(
+            previous.scope == record.scope && previous.kind == record.kind,
+            "record scope/kind is immutable"
+        );
+    }
+    if record.kind == RecordKind::Session
+        && let Some(previous) = read_tx::<Record>(tx, "records", &record.id.to_string())?
+    {
+        let old: Session = serde_json::from_value(previous.data)?;
+        let new: Session = serde_json::from_value(record.data.clone())?;
+        ensure!(
+            old.agent == new.agent
+                && old.provider == new.provider
+                && old.role == new.role
+                && old.worktree == new.worktree,
+            "session actor/worktree identity is immutable"
+        );
+    }
+    validate_worktree_exclusion(tx, record)?;
+    let mut next = record.clone();
+    bump(&mut next.version)?;
+    next.updated_at = now_ms();
+    let body = serde_json::to_string(&next)?;
+    write_snapshot(
+        tx,
+        "records",
+        &next.id.to_string(),
+        record.version,
+        "INSERT INTO records(id,kind,project_id,goal_id,task_id,version,body) VALUES(?1,?2,?3,?4,?5,?6,?7)",
+        params![
+            next.id.to_string(),
+            next.kind.key(),
+            next.scope.project_id.to_string(),
+            str_id(next.scope.goal_id),
+            str_id(next.scope.task_id),
+            next.version,
+            body
+        ],
+        &body,
+        next.version,
+    )?;
+    append_event(
+        tx,
+        &next.scope,
+        &format!("{}.saved", next.kind.key()),
+        json!({"id":next.id,"version":next.version,"evidence": match next.kind {
+            RecordKind::Review | RecordKind::Approval | RecordKind::WorktreeLock => next.data.clone(),
+            RecordKind::Session => json!({"state":next.data["state"],"agent":next.data["agent"],"provider":next.data["provider"],"role":next.data["role"],"native_ref":next.data["native_ref"]}),
+            _ => Value::Null,
+        }}),
+    )?;
+    Ok(next)
+}
+
+fn put_context_tx(tx: &Transaction<'_>, context: &ContextVersion) -> Result<()> {
+    validate_scope(&context.scope)?;
+    ensure!(
+        context.scope.goal_id.is_some(),
+        "context must belong to a goal/task"
+    );
+    ensure!(
+        !context.revision.is_empty(),
+        "context revision must be explicit"
+    );
+    let owner = context_owner(&context.scope)?;
+    let latest: u64 = tx.query_row(
+        "SELECT COALESCE(MAX(version),0) FROM context_versions WHERE project_id=?1 AND owner=?2",
+        params![context.scope.project_id.to_string(), owner],
+        |row| row.get(0),
+    )?;
+    ensure!(
+        context.version == latest.checked_add(1).context("context version overflow")?,
+        "context versions must be consecutive, expected {}",
+        latest + 1
+    );
+    tx.execute("INSERT INTO context_versions(project_id,goal_id,task_id,owner,version,body) VALUES(?1,?2,?3,?4,?5,?6)",
+            params![context.scope.project_id.to_string(), str_id(context.scope.goal_id), str_id(context.scope.task_id), owner, context.version, serde_json::to_string(context)?])?;
+    append_event(
+        tx,
+        &context.scope,
+        "context.created",
+        json!({"version":context.version,"revision":context.revision}),
+    )?;
+    Ok(())
 }
 
 pub(crate) fn goal_terminal(state: GoalState) -> bool {

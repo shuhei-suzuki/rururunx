@@ -267,6 +267,14 @@ TBD.
 Development of rururunx should dogfood QUICK / STANDARD / STRICT classification where project rules permit. Verification should be proportional to risk: safety-critical runtime/Git/state/process changes may require STRICT treatment, while small local/documentation changes should not inherit STRICT-only gates unless policy or discovered impact requires escalation.
 
 Install [Rust with rustup](https://www.rust-lang.org/tools/install) and Git.
+The Rust workflow library now drives QUICK/STANDARD/STRICT phases through adapters
+and explicit evidence ports, persists phase/context history atomically, and raises
+workflow requirements when risk or scoped policy changes. Missing test/review/PR/
+merge integrations wait for evidence; review exit zero alone cannot pass a gate.
+The generic CLI cannot review. Workflow CLI/TUI, independent review sets (#9),
+approval routing (#12), recovery (#13), and repository-context selection (#18)
+remain pending. See [Workflow Engine](doc/design/master/workflow-engine.md).
+
 The repository pins Rust 1.91.1 (minimum supported Rust 1.91) with rustfmt/clippy.
 
 ```bash

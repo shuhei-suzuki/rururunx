@@ -1,6 +1,6 @@
 # Workflow Engine Design
 
-**Status:** Draft
+**Status:** Rust phase runner implemented (Issue #8); dependent integrations pending
 **Scope:** MVP workflow orchestration
 
 ## 1. Goal
@@ -271,3 +271,49 @@ Goal Runtime consumes these events to continue execution without requiring a new
 All emitted Task events include project_id and goal_id so global scheduling/status cannot confuse Tasks from different repositories.
 
 A Goal may define minimum workflow constraints for all child Tasks, but project-level minimums remain authoritative.
+
+## 17. Implemented Rust contract
+
+`workflow::WorkflowEngine` initializes one exact Task workflow, then `step` reserves
+and dispatches a phase or polls its stable native Session. QUICK, STANDARD and
+STRICT execute against `AgentAdapter`; formal requirements/design/impact phases
+use executor capability and review phases require explicit Review capability.
+Generic CLI's honest Execute-only contract therefore cannot act as a reviewer.
+The baseline delegates one configured reviewer Session; independent multi-reviewer
+sets, completion policy and remediation reconciliation remain #9 integration.
+
+`WorkflowSources` supplies factual scoped revision/source versions and selected
+payload (#18). Authority versions remain comparable across phases; phase and budget
+change discretionary selection, not which authority changes are detected. The
+runner reloads canonical owning Project config/rule files outside SharedStore and
+hashes the same bytes it parses. Mandatory rule text is always included. Runtime
+minimum, Project overlay, stored class, explicit stricter choice and risk mapping
+combine by maximum. Policy changes retain previously mandatory optional gates.
+
+Every phase carries `ContextBudget` (Small/Normal/Broad plus configured discretionary
+limit), ContextVersion and exact source versions. Each transition creates a new
+phase-tagged pack, retaining older immutable versions. Revision/source/rule changes
+between phases or during review/verification invalidate completion evidence and
+restart prerequisites conservatively; mutating requirements/design/implementation
+milestones may publish their newly observed sources. Commit/PR cannot carry stale
+verification/review evidence across changed targets. Dynamic escalation keeps
+attempt history but starts a new generation and context version.
+
+`PhaseGates` is an explicit trusted integration port for external actions and actual
+evidence. It receives valid ordered prerequisites, source snapshot, prepared context
+and optional native transport result. Passed evidence must match phase, Scope,
+revision, source versions and Session, with durable artifact references. Reviews
+require an explicit approved verdict. Missing integration (`PendingGates`) waits;
+no successful exit invents verification, approval, PR, merge or cleanup evidence.
+Ports must use their own Git/Session ownership and transactional guards at actual
+native side effects. #12 approval and #13 recovery remain pending; uncertain phase
+reservations never trigger automatic retry. Explicit retry preserves prior attempt
+and reason history and rejects live/Lost executor reservations.
+
+Store format v3 persists Workflow record authority. Task state, workflow history
+and ContextVersion pointer commit atomically with Project/Goal/Task/record CAS;
+rollback leaves no orphan context or overwritten concurrent metadata. Blocked,
+Removed, paused/terminal owners cannot progress. Mutation dispatch rejects active
+review locks and all agent dispatch rejects reserved executors. This is a phase
+runner library; scheduling, workflow CLI/TUI and actual GitHub publication/merge
+ports remain dependent work. See [Issue #8 design](../issue-8-workflow-engine.md).

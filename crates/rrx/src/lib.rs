@@ -6,3 +6,4 @@ pub mod domain;
 pub mod git;
 pub mod project;
 pub mod state;
+pub mod workflow;

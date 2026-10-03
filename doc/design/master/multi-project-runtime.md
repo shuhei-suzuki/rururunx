@@ -210,8 +210,8 @@ and WorktreeManager. Native forwarding, Goal loops, concurrency/fairness and
 bundle generation remain dependent work. See `../issue-26-design.md` for contract
 limitations and `../../requirements/issue-26-requirements.md` for acceptance.
 
-Registry format version 2 migrates version 1 without changing SQL ownership or
-audit history. Explicit clear-reference flags support recovery after file removal.
+Snapshot format version 3 migrates v1→v2→v3 atomically without changing SQL
+ownership or audit history. v2 adds blocked_reason; v3 adds Task Workflow authority. Explicit clear-reference flags support recovery after file removal.
 Latest-Store scoped APIs reject removed state; runtime integrations must perform
 Git/filesystem preflight off shared Store locks and revalidate version/scope before
 launch. Existing blocked work can record Lost/blockers without starting new work.
