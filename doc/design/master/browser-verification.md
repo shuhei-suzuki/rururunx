@@ -37,9 +37,21 @@ reports `adaptive=false` and typed `Unsupported` before effects; Playwright
 discovery and the configured safe deterministic fallback remain usable.
 
 The request declares a short exact-origin allowlist. Native URL parsing rejects
-credentials, non-HTTP(S) protocols and noncanonical origins. Navigation and redirects
-must remain in that list. Playwright HTTP interception denies other origins and
-write verbs in read-only sessions; downloads are denied. This is a browser
+credentials, non-HTTP(S) protocols and noncanonical origins. Navigation must remain in that list. Every redirect is held before following it:
+Playwright `route.continue` does not re-run handlers for redirect hops, so the helper
+uses `route.fetch(maxRedirects: 0)` and rejects 3xx responses before fulfillment.
+HTTP interception denies other origins and write verbs in read-only sessions;
+continuing a write marks `effect_possible` even if no click has started. Downloads
+and all page WebSockets are denied. Document responses add `worker-src 'none'`
+as an additional CSP policy, preserving the target's existing CSP. Worker script
+destinations are blocked before dispatch; a private CDP connection also closes page
+workers. These restrictions include blob workers. Apps requiring redirect, socket
+or worker behavior return a hold and require a future explicit policy capability.
+The exact packaged Stagehand extension resource/worker remains trusted. Installed
+4.1.0 defaults OTLP exports to `https://example.com/v1/traces`; exports attributed
+to that exact extension source plus `/v1/traces` POST/OPTIONS are aborted before
+network dispatch, without making optional tracing a correctness dependency. Page
+requests receive no trace exception. This is a browser
 verification policy, not an OS network firewall for untrusted browser content.
 Browser callbacks/native authentication intentionally use their provider connection.
 
@@ -97,14 +109,25 @@ precedes this browser-phase deadline. The unreaped leader reserves its PGID;
 cannot interrupt a completed bridge or recycle its group identity. Group signals
 use Rust syscalls rather than an external `kill` executable. On macOS, the shared
 bounded native `/bin/ps` inspection accepts EPERM only for a verified dead group.
-Reaping and pipe drain each have a 500 ms cleanup grace. An escaped pipe holder
+A live bridge gets up to 1 second between TERM and KILL to emit partial scoped
+outcomes; an already exited bridge uses 100 ms. Reaping and pipe drain each have a
+500 ms cleanup grace. Valid scoped terminal output remains available when the core
+normalizes timeout/cleanup failure. `browser_phase_ms` measures attempts/profile
+cleanup without attributing Git pre/postflight time to the browser deadline. An escaped pipe holder
 produces typed `Cleanup` instead of an indefinite join; trusted callbacks must
-inherit the owned group. An unreapable direct child stays with a private reaper.
+inherit the owned group. An unreapable direct child stays with a private reaper. Thread creation is fallible:
+if a reaper cannot start, its unreaped Child is retained and polled on a later browser
+call. A self-detaching custom child with private stdio cannot be detected from group
+or pipe observations; custom callbacks are trusted programs, not an untrusted OS
+sandbox.
 Consumers must hold an uncertain Cleanup result rather than replay the request.
 Failures normalize to unavailable, unsupported, policy_hold, timeout, assertion,
 operation, protocol, output_limit or cleanup. Raw native errors, SDK stack traces,
 full HTML and model conversations are not returned. Selected text and semantic
-data are individually limited; adaptive operations require an explicit DOM subtree.
+data are individually limited (8192 serialized UTF-8 bytes per selected fact), with
+a cumulative evidence budget reserving 16 KiB for scope/failure/usage metadata.
+The packaged helper rejects output budgets below 16 KiB before launching Chrome.
+Selected text truncates at a code-point boundary; adaptive operations require an explicit DOM subtree.
 The caller should still avoid selecting secrets and treat screenshots as private.
 
 Private process groups are created for the bridge; browser and bundled model
@@ -136,13 +159,23 @@ Native Claude 2.1.283's `--json-schema` cannot consume the SDK draft-2020-12 sch
 The original schema remains factual input; native terminal JSON must be successful,
 and its answer is validated with `z.fromJSONSchema` before the SDK receives it.
 Native session UUIDs are fresh, terminal-verified and retained in the exact Scope's
-usage metadata; there is no resumed cumulative-cost ambiguity.
+usage metadata; `native_session_attempts` separately records IDs supplied to
+successfully launched native children when no confirming terminal arrives.
+Attempt IDs do not claim successful native session establishment. Failed/aborted
+callbacks retain these IDs with unknown numeric telemetry rather than stale
+successful-call totals. The inner native deadline precedes SDK/outer callback
+bounds by 1.5 seconds; in-flight callbacks are aborted/awaited during bounded
+cleanup. Native pipe drain after direct-child exit is bounded to 100 ms: a held
+pipe produces failure while retaining complete, verified terminal usage, and
+Rust cleans the still-owned group. No callback PID is signalled after Node reaps
+it. There is no resumed cumulative-cost ambiguity.
 `llm_calls` here counts observed SDK/native callback invocations, not unreported
 internal provider API retries. Native terminal tokens, cache read/write, reported
 USD cost and API duration are aggregated only when present on every callback;
 terminal-verified usage remains available even when native generation/schema
 validation fails, without returning raw model errors or webpage content.
-unknown fields remain null. Custom generation stops before a 65th callback.
+Unknown fields remain null. Admission counts concurrent invocations before their
+first await, so custom generation stops before a 65th callback.
 For ordinary API models the helper reads actual fresh
 Stagehand session metrics; unreported price/callback count remains null.
 Deterministic runs report measured `llm_calls=0` without inventing token/cost zeros.
@@ -153,6 +186,8 @@ Deterministic runs report measured `llm_calls=0` without inventing token/cost ze
 cd scripts/browser
 npm ci --ignore-scripts --no-audit --no-fund
 node --test *.test.mjs
+# Explicit local Chrome attack/budget tests; no model calls:
+RRX_BROWSER_REAL_TESTS=1 node --test network-real.test.mjs
 node smoke.mjs
 node smoke.mjs --headed
 # Explicit real inference through existing native Claude auth:
@@ -193,8 +228,8 @@ click, text assertion and screenshot succeeded with zero model calls. An owned
 temporary Git Project/Task also completed the Rust→helper→Chrome assertion and
 screenshot. Actual headed Stagehand observe→act→assert→extract→screenshot succeeded,
 returning reference **42**; CDP-reported launch arguments proved headed mode.
-Its four callback invocations reported input 8, output 192, cached input 8640,
-cache write 49661, USD 0.402888 and API duration 8408 ms. These are one measured
+Its four callback invocations reported input 8, output 375, cached input 8656,
+cache write 50141, USD 0.4103912 and API duration 8324 ms. These are one measured
 fixture run from native-reported counters, including native cost accounting; they
 are not a performance guarantee. Synthetic fallback/contract
 tests do not stand in for these real SDK operations.
@@ -203,7 +238,9 @@ artifact symlinks, cross-Project provider credentials, output/time bounds,
 native child group inheritance, strict empty MCP, exact CDP extension origin and
 independent deterministic availability when the adaptive SDK is missing.
 The harness also checks group-signal effectiveness, primary fallback profile/usage
-retention and escaped pipe cleanup bounds. Restored-source Rust/Node suites run
+retention, primary artifact validation, and escaped pipe cleanup bounds. Real
+receiver-zero tests cover redirect, WebSocket, service/dedicated/blob workers;
+a Japanese-text batch proves cumulative output failure still emits bounded usage. Restored-source Rust/Node suites run
 after every mutation round.
 Rust checks and the no-model Node contract checks run on both Linux and macOS CI;
 the explicit real Chrome/native-model fixtures require host setup and authorization.
@@ -218,5 +255,9 @@ the explicit real Chrome/native-model fixtures require host setup and authorizat
 - [official Stagehand source and releases](https://github.com/browserbase/stagehand)
 - [Playwright BrowserType/CDP](https://playwright.dev/docs/api/class-browsertype#browser-type-connect-over-cdp)
 - [Chromium unpacked extension ID algorithm](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/components/crx_file/id_util.cc)
+- [Playwright route redirect behavior](https://playwright.dev/docs/api/class-page#page-route)
+- [Playwright WebSocket routing](https://playwright.dev/docs/api/class-websocketroute)
+- [CSP worker-src and intersecting policies](https://w3c.github.io/webappsec-csp/#directive-worker-src)
+- [CDP Target auto-attach](https://chromedevtools.github.io/devtools-protocol/tot/Target/#method-setAutoAttach)
 - [native Claude CLI](https://code.claude.com/docs/en/cli-reference)
 - [native Claude permissions](https://code.claude.com/docs/en/agent-sdk/permissions)

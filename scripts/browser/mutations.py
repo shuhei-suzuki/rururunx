@@ -26,6 +26,15 @@ mutations = [
     ('fallback_profile', RUST, 'profiles[0].cleanup().is_err()', 'false', rust_test('fallback_clears_primary_profile_and_retains_all_attempt_telemetry'), 'test result: FAILED'),
     ('fallback_usage', RUST, 'merge_usage(&mut result.usage, &primary.usage);', 'let _ = &primary.usage;', rust_test('fallback_clears_primary_profile_and_retains_all_attempt_telemetry'), 'test result: FAILED'),
     ('escaped_pipe_bound', RUST, 'let io_deadline = Instant::now() + Duration::from_millis(500)', 'let io_deadline = Instant::now() + Duration::from_secs(5)', rust_test('escaped_pipe_holder_cannot_wedge_the_bounded_supervisor'), 'test result: FAILED'),
+    ('primary_artifact', RUST, 'validate_artifacts(&mut result, &artifacts, request);', 'let _ = &artifacts;', rust_test('fallback_authorities_and_primary_evidence_fail_closed'), 'test result: FAILED'),
+    ('fallback_cookie_final', RUST, 'profiles.push(PrivateProfile(fallback_directory.join("profile")));', 'let _ = &fallback_directory;', rust_test('fallback_clears_primary_profile_and_retains_all_attempt_telemetry'), 'test result: FAILED'),
+    ('timeout_metadata', RUST, '.and_then(|bytes| serde_json::from_slice::<VerificationResult>(bytes).ok())', '.and_then(|_| None::<VerificationResult>)', rust_test('timeout_retains_a_verified_graceful_terminal_result'), 'test result: FAILED'),
+    ('native_inner_deadline', ROOT / 'scripts/browser/native-claude.mjs', 'input.timeout_ms - 1500', 'input.timeout_ms + 1500', ['node', '--test', 'scripts/browser/native-claude.test.mjs'], 'not ok'),
+    ('utf8_text', ROOT / 'scripts/browser/policy.mjs', '<= 8192', '<= 32768', ['node', '--test', 'scripts/browser/network.test.mjs'], 'not ok'),
+    ('redirect_hops', ROOT / 'scripts/browser/network.mjs', 'maxRedirects: 0', 'maxRedirects: 5', ['node', '--test', 'scripts/browser/network.test.mjs'], 'not ok'),
+    ('worker_pause', ROOT / 'scripts/browser/network.mjs', 'waitForDebuggerOnStart: true', 'waitForDebuggerOnStart: false', ['node', '--test', 'scripts/browser/network.test.mjs'], 'not ok'),
+    ('native_pipe_drain', ROOT / 'scripts/browser/io.mjs', 'finish(code); }, 100)', 'finish(code); }, 5000)', ['node', '--test', 'scripts/browser/native-claude.test.mjs'], 'not ok'),
+
 ]
 
 subprocess.run(['git', 'diff', '--exit-code', '--', *sorted({str(m[1].relative_to(ROOT)) for m in mutations})], cwd=ROOT, check=True, capture_output=True)

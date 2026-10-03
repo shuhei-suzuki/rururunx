@@ -9,7 +9,7 @@ import { invoke } from './io.mjs';
 test('unavailable adaptive SDK preserves deterministic discovery and safe typed fallback', async () => {
   const folder = await mkdtemp(path.join(tmpdir(), 'rrx-browser-sdk-contract-'));
   try {
-    for (const file of ['bridge.mjs', 'io.mjs', 'policy.mjs']) await copyFile(new URL(file, import.meta.url), path.join(folder, file));
+    for (const file of ['bridge.mjs', 'io.mjs', 'policy.mjs', 'network.mjs']) await copyFile(new URL(file, import.meta.url), path.join(folder, file));
     const modules = path.join(folder, 'node_modules');
     await mkdir(path.join(modules, '@browserbasehq', 'stagehand'), {recursive: true});
     // Mask any ancestor installation without modifying installed SDK packages.

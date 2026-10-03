@@ -5,7 +5,7 @@ use std::{
     io::{Read, Write},
     path::{Path, PathBuf},
     process::{Child, Command, ExitStatus, Stdio},
-    sync::mpsc,
+    sync::{Arc, Mutex, mpsc},
     thread,
     time::{Duration, Instant},
 };
@@ -222,6 +222,8 @@ pub struct Capabilities {
 #[serde(default, deny_unknown_fields)]
 pub struct Usage {
     pub native_sessions: Vec<SessionId>,
+    /// IDs explicitly supplied to launched native children; terminal confirmation may be absent.
+    pub native_session_attempts: Vec<SessionId>,
     pub llm_calls: Option<u64>,
     pub input_tokens: Option<u64>,
     pub output_tokens: Option<u64>,
@@ -457,7 +459,8 @@ impl BrowserVerifier for BridgeVerifier {
         let mut result_directory = artifacts.clone();
         // One deadline covers all browser/helper attempts. Ownership validation
         // precedes this external browser phase and never consumes a short SDK budget.
-        let deadline = Instant::now() + Duration::from_millis(self.config.timeout_ms);
+        let phase_started = Instant::now();
+        let deadline = phase_started + Duration::from_millis(self.config.timeout_ms);
         let mut result = self.attempt(
             &AttemptContext {
                 binding,
@@ -469,6 +472,7 @@ impl BrowserVerifier for BridgeVerifier {
             request,
             backend,
         );
+        validate_artifacts(&mut result, &artifacts, request);
         if may_fallback(&self.config, request, &result) {
             let fallback = VerificationRequest {
                 scope: request.scope.clone(),
@@ -507,16 +511,10 @@ impl BrowserVerifier for BridgeVerifier {
             }
         }
         // Scope and paths are facts checked by Rust, never inferred from helper text.
-        if result.artifacts.iter().any(|path| {
-            !safe_name(path)
-                || !path.ends_with(".png")
-                || !fs::symlink_metadata(result_directory.join(path)).is_ok_and(|m| m.is_file())
-        }) {
-            result.artifacts.clear();
-            fail_result(&mut result, Failure::Protocol, "invalid_artifact");
-            result.effect_possible |= request.steps.iter().any(Step::mutating);
-        }
-        if result.usage.native_sessions.len() > 64 {
+        validate_artifacts(&mut result, &result_directory, request);
+        if result.usage.native_sessions.len() > 64
+            || result.usage.native_session_attempts.len() > 64
+        {
             fail_result(
                 &mut result,
                 Failure::Protocol,
@@ -526,13 +524,16 @@ impl BrowserVerifier for BridgeVerifier {
         result.artifact_directory = Some(result_directory);
         result.worktree = Some(cwd.clone());
         result.revision = Some(initial_revision.clone());
-        match WorktreeManager::validate_binding(&binding.project, &binding.task) {
-            Ok(current) if current.revision == initial_revision => {}
-            _ => fail_result(&mut result, Failure::Protocol, "binding_changed"),
-        }
         // Cookies/auth profiles are ephemeral even after an abnormal child exit.
         if profiles.iter().any(|profile| profile.cleanup().is_err()) {
             fail_result(&mut result, Failure::Cleanup, "profile_cleanup");
+        }
+        result
+            .evidence
+            .push(serde_json::json!({"browser_phase_ms": phase_started.elapsed().as_millis()}));
+        match WorktreeManager::validate_binding(&binding.project, &binding.task) {
+            Ok(current) if current.revision == initial_revision => {}
+            _ => fail_result(&mut result, Failure::Protocol, "binding_changed"),
         }
         let record = artifacts.join("verification.json");
         result.verification_file = Some(record.clone());
@@ -612,11 +613,24 @@ impl BridgeVerifier {
                 }
             },
             Err(error) => {
-                let failure = error
-                    .downcast_ref::<BridgeFailure>()
-                    .map_or(Failure::Operation, |e| e.0);
-                let mut result = empty_result(request, session_id, backend, failure);
-                result.effect_possible = request.steps.iter().any(Step::mutating);
+                let partial = error.downcast_ref::<BridgePartial>();
+                let failure = partial.map(|p| p.failure).unwrap_or_else(|| {
+                    error
+                        .downcast_ref::<BridgeFailure>()
+                        .map_or(Failure::Operation, |e| e.0)
+                });
+                let mut result = partial
+                    .and_then(|p| p.output.as_ref())
+                    .and_then(|bytes| serde_json::from_slice::<VerificationResult>(bytes).ok())
+                    .filter(|r| {
+                        r.backend == backend
+                            && r.scope == request.scope
+                            && r.session_id == session_id
+                            && r.success == r.failure.is_none()
+                    })
+                    .unwrap_or_else(|| empty_result(request, session_id, backend, failure));
+                fail_result(&mut result, failure, "bridge_supervision");
+                result.effect_possible |= request.steps.iter().any(Step::mutating);
                 result
             }
         }
@@ -629,6 +643,7 @@ impl BridgeVerifier {
         capabilities: bool,
         deadline: Instant,
     ) -> Result<Vec<u8>> {
+        reap_deferred();
         let command = &self.config.bridge_command;
         ensure!(
             !command.is_empty() && !command[0].is_empty(),
@@ -708,11 +723,13 @@ impl BridgeVerifier {
         let input = payload.to_vec();
         let (tx, rx) = mpsc::channel();
         let sender = tx.clone();
-        let writer = thread::spawn(move || {
-            let outcome = stdin.write_all(&input);
-            drop(stdin);
-            let _ = sender.send(outcome.map(|_| None));
-        });
+        let writer = thread::Builder::new()
+            .spawn(move || {
+                let outcome = stdin.write_all(&input);
+                drop(stdin);
+                let _ = sender.send(outcome.map(|_| None));
+            })
+            .map_err(|_| BridgeFailure(Failure::Cleanup))?;
         let stdout = child
             .child
             .as_mut()
@@ -721,11 +738,13 @@ impl BridgeVerifier {
             .take()
             .context("bridge stdout missing")?;
         let bound = self.config.max_output_bytes;
-        let reader = thread::spawn(move || {
-            let mut output = vec![];
-            let outcome = stdout.take((bound + 1) as u64).read_to_end(&mut output);
-            let _ = tx.send(outcome.map(|_| Some(output)));
-        });
+        let reader = thread::Builder::new()
+            .spawn(move || {
+                let mut output = vec![];
+                let outcome = stdout.take((bound + 1) as u64).read_to_end(&mut output);
+                let _ = tx.send(outcome.map(|_| Some(output)));
+            })
+            .map_err(|_| BridgeFailure(Failure::Cleanup))?;
         let mut output = None;
         let mut failed = None;
         loop {
@@ -785,7 +804,7 @@ impl BridgeVerifier {
             failed = Some(Failure::Cleanup);
         }
         if let Some(failure) = failed {
-            return Err(BridgeFailure(failure).into());
+            return Err(BridgePartial { failure, output }.into());
         }
         if !status
             .map_err(|_| BridgeFailure(Failure::Cleanup))?
@@ -798,6 +817,17 @@ impl BridgeVerifier {
 }
 #[derive(Debug)]
 struct BridgeFailure(Failure);
+#[derive(Debug)]
+struct BridgePartial {
+    failure: Failure,
+    output: Option<Vec<u8>>,
+}
+impl std::fmt::Display for BridgePartial {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "browser bridge {:?}", self.failure)
+    }
+}
+impl std::error::Error for BridgePartial {}
 fn native_environment(key: &str) -> bool {
     key.starts_with("CLAUDE_")
         || key.starts_with("ANTHROPIC_")
@@ -855,8 +885,13 @@ impl OwnedChild {
         self.stopped = true;
         #[cfg(unix)]
         {
+            let grace = if self.exited().unwrap_or(false) {
+                100
+            } else {
+                1000
+            };
             let _ = signal_owned_group(self.id, rustix::process::Signal::TERM);
-            thread::sleep(Duration::from_millis(100));
+            thread::sleep(Duration::from_millis(grace));
             let cleanup = signal_owned_group(self.id, rustix::process::Signal::KILL);
             if cleanup.is_err() {
                 let _ = self.child.as_mut().unwrap().kill();
@@ -870,9 +905,7 @@ impl OwnedChild {
             if !observed_exit {
                 // Retain the direct child in a reaper; never signal a recycled
                 // group after reaping. Caller receives uncertain Cleanup.
-                thread::spawn(move || {
-                    let _ = child.wait();
-                });
+                defer_reap(child);
                 return Err(std::io::Error::other("owned child cleanup unconfirmed"));
             }
             let status = child.wait();
@@ -884,6 +917,33 @@ impl OwnedChild {
             Err(std::io::Error::other("owned process groups require Unix"))
         }
     }
+}
+// A resource-exhausted host must not panic inside Drop. If even a reaper thread
+// cannot start, retain the unreaped Child/PID until a later browser call polls it.
+static DEFERRED_CHILDREN: Mutex<Vec<Child>> = Mutex::new(Vec::new());
+fn defer_reap(child: Child) {
+    let slot = Arc::new(Mutex::new(Some(child)));
+    let worker = Arc::clone(&slot);
+    if thread::Builder::new()
+        .spawn(move || {
+            if let Some(mut child) = worker.lock().unwrap_or_else(|p| p.into_inner()).take() {
+                let _ = child.wait();
+            }
+        })
+        .is_err()
+        && let Some(child) = slot.lock().unwrap_or_else(|p| p.into_inner()).take()
+    {
+        DEFERRED_CHILDREN
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .push(child);
+    }
+}
+fn reap_deferred() {
+    DEFERRED_CHILDREN
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .retain_mut(|child| !matches!(child.try_wait(), Ok(Some(_))));
 }
 impl Drop for OwnedChild {
     fn drop(&mut self) {
@@ -911,6 +971,21 @@ fn fail_result(result: &mut VerificationResult, failure: Failure, code: &str) {
     result
         .evidence
         .push(serde_json::json!({"failure_code": code}));
+}
+fn validate_artifacts(
+    result: &mut VerificationResult,
+    directory: &Path,
+    request: &VerificationRequest,
+) {
+    if result.artifacts.iter().any(|name| {
+        !safe_name(name)
+            || !name.ends_with(".png")
+            || !fs::symlink_metadata(directory.join(name)).is_ok_and(|m| m.is_file())
+    }) {
+        result.artifacts.clear();
+        fail_result(result, Failure::Protocol, "invalid_artifact");
+        result.effect_possible |= request.steps.iter().any(Step::mutating);
+    }
 }
 fn private_directory(path: &Path) -> std::io::Result<()> {
     let mut builder = fs::DirBuilder::new();
@@ -946,6 +1021,9 @@ fn merge_usage(final_usage: &mut Usage, primary: &Usage) {
     final_usage
         .native_sessions
         .extend_from_slice(&primary.native_sessions);
+    final_usage
+        .native_session_attempts
+        .extend_from_slice(&primary.native_session_attempts);
     final_usage.source = Some("browser-attempts".into());
 }
 fn empty_result(

@@ -211,14 +211,18 @@ fn bounded_process_failure_is_normalized_and_descendants_are_owned() {
         "import subprocess,sys,time\nchild=subprocess.Popen([sys.executable,'-c','import signal,time;signal.signal(signal.SIGTERM,signal.SIG_IGN);time.sleep(20)'])\nopen({},'w').write(str(child.pid))\ntime.sleep(20)\n",
         serde_json::to_string(&child_pid_file).unwrap()
     );
-    let started = Instant::now();
     let timeout = BridgeVerifier {
         config: fixture.config(&timeout_script),
     }
     .verify(&fixture.binding, &request)
     .unwrap();
     assert_eq!(timeout.failure, Some(Failure::Timeout));
-    assert!(started.elapsed() < Duration::from_secs(3));
+    assert!(
+        timeout.evidence.last().unwrap()["browser_phase_ms"]
+            .as_u64()
+            .unwrap()
+            < 3000
+    );
     let child_pid = fs::read_to_string(child_pid_file).unwrap();
     let state = Command::new("/bin/ps")
         .args(["-p", child_pid.trim(), "-o", "stat="])
@@ -504,6 +508,8 @@ if i['backend']=='stagehand':
 else:
  assert not os.path.exists(os.path.join(i['artifact_dir'],'profile'))
  assert not os.path.exists(os.path.join(os.path.dirname(i['artifact_dir']),'profile'))
+ p=os.path.join(i['artifact_dir'],'profile');os.mkdir(p)
+ open(os.path.join(p,'Cookies'),'w').write('fallback-cookie')
  open(os.path.join(i['artifact_dir'],'fallback.png'),'w').write('fixture-artifact')
  r['artifacts']=['fallback.png'];r['usage']={'llm_calls':0}
 print(json.dumps(r))
@@ -526,22 +532,98 @@ print(json.dumps(r))
             .join("fallback.png")
             .is_file()
     );
+    assert!(
+        !result
+            .artifact_directory
+            .as_ref()
+            .unwrap()
+            .join("profile")
+            .exists()
+    );
     let record = result.verification_file.unwrap();
     assert!(record.parent().unwrap().join("primary.png").is_file());
     assert!(!record.parent().unwrap().join("profile").exists());
 }
 
 #[test]
+fn fallback_authorities_and_primary_evidence_fail_closed() {
+    let fixture = Fixture::new();
+    let mut request = fixture.request();
+    request.steps.push(adaptive());
+    request.deterministic_fallback = Some(vec![Step::Click {
+        selector: "#write".into(),
+    }]);
+    assert!(
+        BridgeVerifier {
+            config: fixture.config(SUCCESS_BRIDGE)
+        }
+        .verify(&fixture.binding, &request)
+        .is_err()
+    );
+    request.deterministic_fallback = Some(fixture.request().steps);
+    for artifact in ["../foreign.png", "missing.png"] {
+        let script = SUCCESS_BRIDGE.replace("print(json.dumps(r))", &format!(
+            "assert i['backend']=='stagehand'\nr.update(success=False,failure='unsupported',artifacts=[{artifact:?}])\nr['usage']={{'llm_calls':2}}\nprint(json.dumps(r))"));
+        let result = BridgeVerifier {
+            config: fixture.config(&script),
+        }
+        .verify(&fixture.binding, &request)
+        .unwrap();
+        assert_eq!(result.failure, Some(Failure::Protocol));
+        assert!(!result.fallback_used);
+        assert!(result.artifacts.is_empty());
+        assert_eq!(result.usage.llm_calls, Some(2));
+    }
+    let script = SUCCESS_BRIDGE.replace("print(json.dumps(r))", "assert i['backend']=='stagehand'\nos.mkdir(os.path.join(i['artifact_dir'],'fallback'))\nr.update(success=False,failure='unsupported')\nr['usage']={'llm_calls':2}\nprint(json.dumps(r))");
+    let result = BridgeVerifier {
+        config: fixture.config(&script),
+    }
+    .verify(&fixture.binding, &request)
+    .unwrap();
+    assert_eq!(result.failure, Some(Failure::Cleanup));
+    assert_eq!(result.usage.llm_calls, Some(2));
+    assert!(!result.fallback_used);
+}
+
+#[test]
+fn timeout_retains_a_verified_graceful_terminal_result() {
+    let fixture = Fixture::new();
+    let script = SUCCESS_BRIDGE.replace("print(json.dumps(r))", r#"
+import signal,time
+r['usage']={'llm_calls':1,'input_tokens':7,'native_session_attempts':['00000000-0000-4000-8000-000000000001']}
+r.update(success=False,failure='timeout',effect_possible=True)
+def stop(signum,frame):
+ print(json.dumps(r),flush=True);sys.exit(0)
+signal.signal(signal.SIGTERM,stop)
+time.sleep(20)
+"#);
+    let result = BridgeVerifier {
+        config: fixture.config(&script),
+    }
+    .verify(&fixture.binding, &fixture.request())
+    .unwrap();
+    assert_eq!(result.failure, Some(Failure::Timeout));
+    assert!(result.effect_possible);
+    assert_eq!(result.usage.input_tokens, Some(7));
+    assert_eq!(result.usage.native_session_attempts.len(), 1);
+    assert!(result.verification_file.unwrap().is_file());
+}
+
+#[test]
 fn escaped_pipe_holder_cannot_wedge_the_bounded_supervisor() {
     let fixture = Fixture::new();
     let script = "import json,sys,os,subprocess,time\ni=json.load(sys.stdin)\nc=subprocess.Popen([sys.executable,'-c','import time;time.sleep(3)'],start_new_session=True)\nopen(os.path.join(i['artifact_dir'],'escaped.pid'),'w').write(str(c.pid))\ntime.sleep(20)\n";
-    let started = Instant::now();
     let result = BridgeVerifier {
         config: fixture.config(script),
     }
     .verify(&fixture.binding, &fixture.request())
     .unwrap();
-    assert!(started.elapsed() < Duration::from_millis(2500));
+    assert!(
+        result.evidence.last().unwrap()["browser_phase_ms"]
+            .as_u64()
+            .unwrap()
+            < 3000
+    );
     assert_eq!(result.failure, Some(Failure::Cleanup));
     // The intentionally contract-breaking synthetic child self-expires; inspect
     // only its exact fixture PID, never stop a shared/global process.

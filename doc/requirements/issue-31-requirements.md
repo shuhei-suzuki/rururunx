@@ -44,6 +44,10 @@ tokens, scheduling and automatic Store persistence are not claimed here.
   tools, exact empty strict MCP config, preserved defaults, missing nullable usage,
   and termination when a child ignores SIGTERM. These are synthetic contract tests,
   separate from the real Stagehand/browser evidence.
+- Actual no-model adversarial Chrome tests prove unlisted receiver contact stays
+  zero for redirect, WebSocket, service/dedicated/blob workers. Cumulative UTF-8
+  evidence bounds must emit typed failure with known usage retained. Optional SDK
+  tracing is blocked before external dispatch and cannot determine correctness.
 - Meaningful mutation checks must make the relevant routing, replay, isolation and
   bounded-lifecycle tests fail, then pass after restoring the implementation.
 

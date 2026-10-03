@@ -13,3 +13,14 @@ export function checkChromeArguments(arguments_, headed, extensionOrigin) {
   if (headless === headed) throw new Error('protocol');
   return { session: 'browser_mode', headed: !headless };
 }
+
+export function boundedText(text) {
+  const points = Array.from(text.slice(0, 4096));
+  let low = 0, high = points.length;
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2);
+    if (Buffer.byteLength(JSON.stringify({ text: points.slice(0, middle).join('') })) <= 8192) low = middle;
+    else high = middle - 1;
+  }
+  return { text: points.slice(0, low).join('') };
+}
