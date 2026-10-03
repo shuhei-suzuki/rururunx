@@ -335,12 +335,48 @@ impl ProcessGroup {
                 self.group_owned = false;
                 Ok(())
             }
+            #[cfg(target_os = "macos")]
+            Err(rustix::io::Errno::PERM) if macos_group_is_dead(self.pid)? => {
+                // XNU excludes zombies from group signalling and returns EPERM
+                // for a group with no live signalable members. Do not blindly
+                // treat EPERM as success: inspect the still-reserved group.
+                self.group_owned = false;
+                Ok(())
+            }
             Err(e) => Err(e.into()),
         }
     }
     async fn reap(&mut self) -> std::io::Result<std::process::ExitStatus> {
         self.child.wait().await
     }
+}
+
+#[cfg(target_os = "macos")]
+fn macos_group_is_dead(pid: Pid) -> std::io::Result<bool> {
+    let output = std::process::Command::new("/bin/ps")
+        .args(["-axo", "pgid=,stat="])
+        .env_clear()
+        .output()?;
+    if !output.status.success() {
+        return Err(std::io::Error::other(
+            "cannot verify owned process group death",
+        ));
+    }
+    let text = std::str::from_utf8(&output.stdout).map_err(std::io::Error::other)?;
+    for row in text.lines().filter(|row| !row.trim().is_empty()) {
+        let mut fields = row.split_whitespace();
+        let group = fields
+            .next()
+            .and_then(|v| v.parse::<i32>().ok())
+            .ok_or_else(|| std::io::Error::other("invalid process-group inspection"))?;
+        let state = fields
+            .next()
+            .ok_or_else(|| std::io::Error::other("missing process-group state"))?;
+        if group == pid.as_raw_nonzero().get() && !state.starts_with('Z') {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 impl Drop for ProcessGroup {
     fn drop(&mut self) {
