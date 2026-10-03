@@ -90,3 +90,25 @@ passed with no crate diff. Source inspection additionally verified a release/beg
 race; successful retirement now leaves its begin fence permanently closed, with a private
 causal regression. A real paused-native-info second-Store Task replacement fixture checks
 no prompt reaches the wire and no durable dispatch consumption is written.
+
+## Implementation Review 2 and verified residual fixes
+
+Exact `4fad23d`: 170 workspace tests, fmt/clippy/debug/release pass; installed Grok
+acceptance passes in 33.81 seconds. Linux and macOS CI run `37120879240` both succeed.
+Ten scoped delta mutants all fail by assertions, including the original unfinished-tool
+survivor. Across both rounds: 20 executions, 19 distinct boundaries, 19 assertion kills
+plus the original survivor subsequently killed by its missing fixture. No build errors.
+Restored baseline has no crate diff, normal fake nine-test suite passes; owned detached
+mutation worktree removed normally.
+
+Independent Round 2 completed in 266.556 seconds on public immutable `4fad23d`, with no
+Critical/High/Medium and no unresolved blockers. Five Low residuals were verified and
+fixed/hardened for Round 3: R2-01 terminal actor guard disarms before publishing idle,
+preventing late Drop from clearing retirement/new claims (causal old-guard/release/Drop
+private test); 02 an observed preflight stop prevents native spawn (actual fake startup
+sentinel); 03 absent rule-copy protection folds ASCII case and directory refs are invalid;
+04 successful read/write method binds one unambiguous live tool, post-count delta equals
+observed native tools; 05 failed dispatched turns also reconcile after verified cleanup,
+with separate factual attempt/error audit. Unknown outcome remains Lost regardless of
+reconciliation or process death; known failures are not converted into successful results.
+These changes await committed verification and immutable scoped rereview.

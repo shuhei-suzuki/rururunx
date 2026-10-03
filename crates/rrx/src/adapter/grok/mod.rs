@@ -33,6 +33,15 @@ struct OwnedEntry {
     usage: Mutex<Value>,
 }
 struct Busy(Option<Arc<OwnedEntry>>);
+impl Busy {
+    /// Publish idle once while the terminal transition is held. Disarming before
+    /// opening the flag prevents a later guard drop from clearing a new claim.
+    fn publish_idle(&mut self) {
+        if let Some(entry) = self.0.take() {
+            entry.busy.store(false, Ordering::SeqCst);
+        }
+    }
+}
 impl Drop for Busy {
     fn drop(&mut self) {
         if let Some(entry) = &self.0 {
@@ -849,7 +858,7 @@ impl Actor {
             .map_err(|_| failure(ErrorKind::ProcessFailure, "scoped FS worker failed"))?;
             self.store.lock().map_err(|_|failure(ErrorKind::StateFailure,"state poisoned"))?.audit(&self.session.scope,"grok.fs_observed",json!({"session":self.session.id,"native":self.session.native_ref,"prompt":self.prompt,"method":method,"path":path,"succeeded":result.is_ok()})).map_err(state_error)?;
             self.evidence
-                .callback(&self.request.worktree, path, result.is_ok());
+                .callback(&self.request.worktree, path, method, result.is_ok())?;
             if started.elapsed() > Duration::from_secs(5) {
                 fatal = true;
             }
@@ -916,12 +925,16 @@ impl Actor {
                 "decision native tool calls observed",
             ));
         }
-        if !self.active {
+        if !self.dispatched {
             self.native_before_calls = calls;
-        } else if calls < self.native_before_calls {
+        } else if self
+            .native_before_calls
+            .checked_add(self.evidence.tool_count() as u64)
+            != Some(calls)
+        {
             return Err(failure(
                 ErrorKind::ParseFailure,
-                "native tool count reset during turn",
+                "native tool count differs from owned live notifications",
             ));
         }
         Ok(())
@@ -944,7 +957,7 @@ fn append_output(status: &mut SessionStatus, bytes: &[u8]) {
 }
 
 async fn supervise(mut actor: Actor, load: Option<String>) {
-    let _busy = Busy(Some(actor.entry.clone()));
+    let mut busy_guard = Busy(Some(actor.entry.clone()));
     let mut ownership = ProcessOwnership::default();
     let mut process = None;
     let mut stderr = None;
@@ -966,7 +979,7 @@ async fn supervise(mut actor: Actor, load: Option<String>) {
         let mut command=Command::new(&actor.executable);
         command.args(["--disable-web-search","--sandbox",if decision{"read-only"}else{"strict"},"agent","--no-leader","--agent-profile"]).arg(&owned.path).arg("stdio")
             .current_dir(&actor.request.worktree).env_clear().envs(&actor.environment).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true).process_group(0);
-        actor.owner()?;
+        actor.owner()?;if actor.stopped(){return Err(failure(ErrorKind::ProcessFailure,"native stop before spawn"));}
         let child=ProcessGroup::new(command.spawn().map_err(|e|failure(if e.kind()==std::io::ErrorKind::NotFound {ErrorKind::ExecutableMissing}else{ErrorKind::LaunchFailure},"native Grok could not spawn"))?,ownership.group())?;
         actor.session.pid=child.child.id();process=Some(child);actor.publish()?;
         let child=process.as_mut().expect("owned child");
@@ -1047,7 +1060,8 @@ async fn supervise(mut actor: Actor, load: Option<String>) {
         output_verified = false;
     }
     drop(profile);
-    let reconciled = if cleanup.is_ok() && result.is_ok() {
+    let reconciliation_attempted = cleanup.is_ok() && (result.is_ok() || actor.dispatched);
+    let reconciled = if reconciliation_attempted {
         async {
             actor
                 .snapshot
@@ -1090,6 +1104,7 @@ async fn supervise(mut actor: Actor, load: Option<String>) {
     };
     let clean = cleanup.is_ok() && !ownership.uncertain() && output_verified;
     let completed = result.is_ok() && reconciled.is_ok() && clean && !actor.stopped();
+    let reconciliation_error = reconciled.as_ref().err().map(ToString::to_string);
     let mut diagnostic = result
         .err()
         .or_else(|| {
@@ -1111,7 +1126,7 @@ async fn supervise(mut actor: Actor, load: Option<String>) {
             ),
         ));
     }
-    let _=actor.store.lock().map(|mut store|store.audit(&actor.session.scope,"grok.turn_observed",json!({"session":actor.session.id,"native":actor.session.native_ref,"prompt":actor.prompt,"completed":completed,"cleanup_verified":clean,"exit_code":cleanup.as_ref().ok().copied().flatten(),"diagnostic":diagnostic.as_ref().map(ToString::to_string)})));
+    let _=actor.store.lock().map(|mut store|store.audit(&actor.session.scope,"grok.turn_observed",json!({"session":actor.session.id,"native":actor.session.native_ref,"prompt":actor.prompt,"completed":completed,"cleanup_verified":clean,"reconciliation_attempted":reconciliation_attempted,"reconciliation_error":reconciliation_error,"exit_code":cleanup.as_ref().ok().copied().flatten(),"diagnostic":diagnostic.as_ref().map(ToString::to_string)})));
     let state = if !clean || (actor.dispatched && !actor.native_outcome) {
         SessionState::Lost
     } else if actor.stopped() {
@@ -1138,7 +1153,7 @@ async fn supervise(mut actor: Actor, load: Option<String>) {
         .entry
         .completed
         .store(completed && saved.is_ok(), Ordering::SeqCst);
-    actor.entry.busy.store(false, Ordering::SeqCst);
+    busy_guard.publish_idle();
     actor.events.send_modify(|status| {
         status.session = actor.session.clone();
         status.exit_code = cleanup.ok().flatten();
@@ -1327,7 +1342,13 @@ mod registry_tests {
         assert!(!previously_handed.busy.load(Ordering::SeqCst));
         assert!(adapter.entry(&(&session).into()).is_ok());
         entry.cleaned.store(true, Ordering::SeqCst);
+        entry.busy.store(true, Ordering::SeqCst);
+        let mut completing_actor = Busy(Some(entry.clone()));
+        completing_actor.publish_idle();
         adapter.release((&session).into()).unwrap();
+        // Terminal publication can wake a releaser before the old actor scope
+        // ends. Its still-live guard must never reopen the retired entry.
+        drop(completing_actor);
         assert!(adapter.entry(&(&session).into()).is_err());
         assert!(
             previously_handed

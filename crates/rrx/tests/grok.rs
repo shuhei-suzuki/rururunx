@@ -164,6 +164,7 @@ async fn finished(adapter: &GrokAdapter, session: &Session) -> SessionStatus {
 const FAKE: &str = r#"#!/usr/bin/env python3
 import json,os,sys,uuid,sqlite3,time,pathlib
 mode=os.getenv('RRX_MODE','good');sid=None;prompt=None;calls=0;model='native-default';effort='high'
+if os.getenv('RRX_SPAWN_OBSERVED'):pathlib.Path(os.environ['RRX_SPAWN_OBSERVED']).write_text('native process started')
 profile=pathlib.Path(sys.argv[sys.argv.index('--agent-profile')+1]).read_text();decision='name: rururunx-decision' in profile
 assert 'injectDefaultTools: false' in profile and 'GrokBuild:read_file' in profile and 'GrokBuild:search_replace' in profile
 assert 'web_search, x_search, web_fetch' in profile and '--disable-web-search' in sys.argv
@@ -202,7 +203,7 @@ for line in sys.stdin:
    while not pause.with_suffix('.continue').exists():time.sleep(0.01)
   if calls and mode=='late_write':assert fs('fs/write_text_file','late.txt','forbidden late effect').get('error')
   if calls and mode=='late_tool':tool('search_replace','late.txt',99)
-  result={'result':{'sessionId':sid,'cwd':os.getcwd(),'agentName':'rururunx-decision' if decision else 'rururunx-executor','context':{'toolDefinitionsCount':(0 if decision else 2)+(1 if mode=='inventory' else 0),'toolCallCount':calls}}}
+  result={'result':{'sessionId':sid,'cwd':os.getcwd(),'agentName':'rururunx-decision' if decision else 'rururunx-executor','context':{'toolDefinitionsCount':(0 if decision else 2)+(1 if mode=='inventory' else 0),'toolCallCount':calls+(1 if calls and mode=='unnotified' else 0)}}}
  elif method=='session/prompt':
   if os.getenv('RRX_PROMPT_OBSERVED'):pathlib.Path(os.environ['RRX_PROMPT_OBSERVED']).write_text('actual prompt received')
   prompt=p['_meta']['promptId'];assert 'bash_command' not in p['prompt'][0].get('_meta',{})
@@ -225,7 +226,9 @@ for line in sys.stdin:
    send({'jsonrpc':'2.0','id':'permission','method':'session/request_permission','params':{'sessionId':sid,'options':[{'kind':'allow_once','optionId':'allow'},{'kind':'reject_once','optionId':'deny'}]}})
    answer=json.loads(sys.stdin.readline());assert answer['result']['outcome']['optionId']=='deny'
   if not decision:
-   n=tool('read_file','own.txt',1);assert fs('fs/read_text_file','own.txt').get('result')
+   n=tool('search_replace' if mode=='wrong_method' else 'read_file','own.txt',1)
+   if mode=='ambiguous':tool('read_file','own.txt',99)
+   assert fs('fs/read_text_file','own.txt').get('result')
    if mode!='unfinished':done(n)
    if mode=='bypass':
     n=tool('search_replace','result.txt',2);done(n)
@@ -233,12 +236,12 @@ for line in sys.stdin:
     n=tool('search_replace','result.txt',2);fs('fs/read_text_file','result.txt');assert fs('fs/write_text_file','result.txt','owned edit\n').get('result')=={};done(n)
    n=tool('search_replace',os.environ['RRX_FOREIGN'],3);assert fs('fs/write_text_file',os.environ['RRX_FOREIGN'],'forbidden').get('error');done(n,mode!='denied_completed')
   elif mode=='decision_tool':tool('read_file','own.txt',1)
-  if mode=='hook':pathlib.Path('unexplained.txt').write_text('native hook effect')
+  if mode in ['hook','hook_failure']:pathlib.Path('unexplained.txt').write_text('native hook effect')
   output={'verdict':'DENY','reason':'native fixture'}
   if mode=='schema_enum':output={'verdict':'ALLOW','reason':'native fixture'}
   elif mode=='schema_required':output={'verdict':'DENY'}
   elif mode=='schema_extra':output={'verdict':'DENY','reason':'native fixture','extra':True}
-  result={'stopReason':'end_turn','_meta':{'sessionId':sid,'promptId':prompt,'usage':{'inputTokens':202 if 'explicit fresh continuation' in p['prompt'][0]['text'] else 101,'outputTokens':22 if 'explicit fresh continuation' in p['prompt'][0]['text'] else 11,'cachedReadTokens':0,'cacheCreationTokens':0},'structuredOutput':output}}
+  result={'stopReason':'max_tokens' if mode=='hook_failure' else 'end_turn','_meta':{'sessionId':sid,'promptId':prompt,'usage':{'inputTokens':202 if 'explicit fresh continuation' in p['prompt'][0]['text'] else 101,'outputTokens':22 if 'explicit fresh continuation' in p['prompt'][0]['text'] else 11,'cachedReadTokens':0,'cacheCreationTokens':0},'structuredOutput':output}}
  send({'jsonrpc':'2.0','id':d['id'],'result':result})
 "#;
 
@@ -320,6 +323,10 @@ async fn native_auth_inventory_config_parser_and_tool_evidence_fail_closed() {
         "config_update",
         "callback_budget",
         "path_budget",
+        "wrong_method",
+        "ambiguous",
+        "unnotified",
+        "hook_failure",
     ] {
         let mut fixture = Fixture::new();
         fixture.mode(mode);
@@ -336,7 +343,9 @@ async fn native_auth_inventory_config_parser_and_tool_evidence_fail_closed() {
                 "invalid_callback_id",
                 "config_update",
                 "callback_budget",
-                "path_budget"
+                "path_budget",
+                "wrong_method",
+                "ambiguous"
             ]
             .contains(&mode)
             {
@@ -349,6 +358,25 @@ async fn native_auth_inventory_config_parser_and_tool_evidence_fail_closed() {
         );
         assert!(!adapter.transport_succeeded(&status));
         assert!(status.failure.is_some(), "{mode}");
+        if mode == "hook_failure" {
+            let events = fixture
+                .store
+                .lock()
+                .unwrap()
+                .events(&fixture.request.scope, 0, 100)
+                .unwrap();
+            let observation = events
+                .iter()
+                .find(|e| e.kind == "grok.turn_observed")
+                .unwrap();
+            assert_eq!(observation.data["reconciliation_attempted"], true);
+            assert!(
+                observation.data["reconciliation_error"]
+                    .as_str()
+                    .unwrap()
+                    .contains("unexplained native/concurrent worktree effect")
+            );
+        }
         assert!(status.session.pid.is_none(), "{mode}");
         assert!(
             !fixture.request.worktree.join("late.txt").exists(),
@@ -403,9 +431,18 @@ async fn native_stop_permissions_foreign_refs_and_environment_guards_are_explici
         ErrorKind::OwnershipMismatch
     );
     fixture.mode("hang");
+    let spawn_observed = fixture.directory.path().join("spawn-observed");
+    fixture.request.environment.insert(
+        "RRX_SPAWN_OBSERVED".into(),
+        spawn_observed.to_str().unwrap().into(),
+    );
     let session = adapter.start(fixture.request.clone()).await.unwrap();
     let stopped = adapter.stop((&session).into()).await.unwrap();
     assert_eq!(stopped.session.state, SessionState::Stopped);
+    assert!(
+        !spawn_observed.exists(),
+        "stop during preflight still spawned native process"
+    );
     assert!(stopped.session.pid.is_none());
     assert!(!adapter.transport_succeeded(&stopped));
     for key in [

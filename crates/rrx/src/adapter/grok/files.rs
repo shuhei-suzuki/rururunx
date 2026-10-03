@@ -63,6 +63,15 @@ fn text(file: &mut File) -> AdapterResult<String> {
     String::from_utf8(bytes).map_err(io_error)
 }
 
+fn protected_name(relative: &Path) -> AdapterResult<PathBuf> {
+    let name = relative.to_str().filter(|s| s.is_ascii()).ok_or_else(|| {
+        failure(
+            ErrorKind::InvalidConfiguration,
+            "Task rule/config paths must be ASCII",
+        )
+    })?;
+    Ok(PathBuf::from(name.to_ascii_lowercase()))
+}
 pub(super) struct ScopedFiles {
     root: PathBuf,
     pinned: File,
@@ -91,14 +100,20 @@ impl ScopedFiles {
                 ));
             }
             let canonical = path.canonicalize().map_err(io_error)?;
+            if !canonical.metadata().map_err(io_error)?.is_file() {
+                return Err(failure(
+                    ErrorKind::InvalidConfiguration,
+                    "Project rule/config refs must name files",
+                ));
+            }
             if let Ok(relative) = canonical.strip_prefix(&project.root) {
-                protected.insert(relative.to_path_buf());
+                protected.insert(protected_name(relative)?);
                 if let Ok(metadata) = root.join(relative).metadata() {
                     protected_inodes.insert((metadata.dev(), metadata.ino()));
                 }
             }
             if let Ok(relative) = canonical.strip_prefix(&root) {
-                protected.insert(relative.to_path_buf());
+                protected.insert(protected_name(relative)?);
             }
             let metadata = canonical.metadata().map_err(io_error)?;
             protected_inodes.insert((metadata.dev(), metadata.ino()));
@@ -131,7 +146,9 @@ impl ScopedFiles {
                 }),
                 _ => true,
             })
-            || self.protected.contains(relative)
+            || self.protected.contains(&PathBuf::from(
+                relative.to_string_lossy().to_ascii_lowercase(),
+            ))
         {
             return Err(failure(
                 ErrorKind::OwnershipMismatch,
@@ -621,6 +638,19 @@ mod configured_rule_tests {
             std::fs::read_to_string(task_root.join("docs/rules.txt")).unwrap(),
             "authoritative rule"
         );
+        std::fs::remove_file(task_root.join("docs/rules.txt")).unwrap();
+        if !task_root.join("Docs").exists() {
+            std::fs::create_dir(task_root.join("Docs")).unwrap();
+        }
+        let mut absent = ScopedFiles::new(task_root.clone(), &project).unwrap();
+        assert!(
+            absent
+                .write(&json!({"path":"Docs/RULES.txt","content":"case alias"}))
+                .is_err()
+        );
+        assert!(!task_root.join("Docs/RULES.txt").exists());
+        project.rule_refs = vec![source.join("docs")];
+        assert!(ScopedFiles::new(task_root.clone(), &project).is_err());
         project.rule_refs = vec![PathBuf::from("docs/rules.txt")];
         assert!(ScopedFiles::new(task_root, &project).is_err());
     }

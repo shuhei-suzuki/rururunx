@@ -98,6 +98,8 @@ identity, regular-file type and hard-link count. Reject foreign paths, every dot
 component (including .git/.grok/.claude/.codex/.agents/.rrx/.github), AGENTS.md/CLAUDE.md/GROK.md
 case-insensitively, and exact configured absolute Project rule/config paths and their inode aliases.
 Source-checkout refs also protect the corresponding Task-relative path/copy inode.
+Authority refs must name files; mapped Task-relative names must be ASCII and use
+case-folded protection even before a Task copy exists. Directory refs fail explicitly.
 The baseline accepts ASCII path components only, so Unicode/case-normalization ambiguity
 cannot grant authority on macOS. Read and write share this conservative baseline; non-secret
 dotfile/rule reads are intentionally unsupported, not an accidental full-repository claim.
@@ -132,7 +134,10 @@ metadata alone does not validate a result. Post-turn identity/count checks are m
 decision toolCallCount must remain zero, and any FS/terminal callback invalidates decision
 success. Any live tool_call/tool_call_update invalidates a decision; executor native tool
 metadata must name exactly read_file/search_replace and correlate each successful tool
-with successful requested-path ACP callbacks. Denied callbacks never authorize a
+with successful requested-path ACP callbacks of the matching read/write method.
+Concurrent same-kind/same-path pending tool correlation is explicitly unsupported; one
+callback never credits multiple tools. Post-turn tool count delta must equal observed
+live tool notifications. Denied callbacks never authorize a
 completed native tool. The correlated terminal response immediately closes live callback
 authority; late model notifications/callbacks invalidate completion. A native tool that resolves a directory/stat or
 fallback locally without callbacks cannot establish completed executor transport. Native
@@ -148,7 +153,10 @@ status, and bounded Task file inventory/content hashes, including ignored files.
 32 directory levels and a five-second observation deadline. Repositories with large ignored
 build trees must use a clean isolated Task worktree; no weak metadata fallback is claimed.
 Over-budget is explicit observation failure. Executor
-changes must match recorded ACP writes; decision changes must be empty. Missing/over-budget
+changes must match recorded ACP writes; decision changes must be empty. After verified
+cleanup, every dispatched turn is observed even on a known native failure; the scoped
+audit records whether reconciliation was attempted and its error, separately from native
+outcome and terminal classification. Missing/over-budget
 observations or unexplained hook/native/concurrent effects fail completion. Preserve hooks
 and report evidence rather than silently roll back effects. Other Project/native-global
 lifecycle effects are outside the model tool authority claim. Owned group cleanup includes
@@ -169,6 +177,8 @@ outcome remains Lost/reserved even after verified process death and PID clearing
 correlated native terminal failure can be Failed; cancellation never supplies that evidence.
 
 Private registry state prevents duplicate live launches or concurrent same-Session resume.
+Terminal idle publication disarms its busy guard before opening the flag under the
+transition mutex, so a late actor guard drop cannot clear a new or retired claim.
 Successful release permanently closes the retired entry begin fence, including any Arc
 handed to a concurrent caller before registry removal.
 Checkpoint accepts explicit scope/version/source-bound fresh PreparedInput, persists only

@@ -108,6 +108,7 @@ struct Tool {
     path: PathBuf,
     callbacks: usize,
     finished: bool,
+    write: bool,
 }
 #[derive(Default)]
 pub(super) struct TurnEvidence {
@@ -133,16 +134,37 @@ fn absolute(root: &Path, path: &str) -> PathBuf {
     result
 }
 impl TurnEvidence {
-    pub fn callback(&mut self, root: &Path, path: &str, succeeded: bool) {
+    pub fn callback(
+        &mut self,
+        root: &Path,
+        path: &str,
+        method: &str,
+        succeeded: bool,
+    ) -> AdapterResult<()> {
         self.callbacks += 1;
+        if !succeeded {
+            return Ok(());
+        }
         let path = absolute(root, path);
-        for tool in self
+        let write = method == "fs/write_text_file";
+        let mut matching = self
             .tools
             .values_mut()
-            .filter(|t| !t.finished && t.path == path)
-        {
-            tool.callbacks += usize::from(succeeded);
+            .filter(|t| !t.finished && t.path == path && t.write == write);
+        let target = matching.next();
+        if matching.next().is_some() {
+            return Err(failure(
+                ErrorKind::OwnershipMismatch,
+                "ambiguous concurrent native file tool callbacks",
+            ));
         }
+        if let Some(tool) = target {
+            tool.callbacks += 1;
+        }
+        Ok(())
+    }
+    pub fn tool_count(&self) -> usize {
+        self.tools.len()
     }
     pub fn update(
         &mut self,
@@ -220,6 +242,7 @@ impl TurnEvidence {
                         id.to_owned(),
                         Tool {
                             path: absolute(root, path),
+                            write: name == "search_replace",
                             ..Tool::default()
                         },
                     );
