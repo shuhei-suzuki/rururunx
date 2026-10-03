@@ -981,7 +981,9 @@ async fn supervise(mut actor: Actor, load: Option<String>) {
             .current_dir(&actor.request.worktree).env_clear().envs(&actor.environment).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true).process_group(0);
         actor.owner()?;if actor.stopped(){return Err(failure(ErrorKind::ProcessFailure,"native stop before spawn"));}
         let child=ProcessGroup::new(command.spawn().map_err(|e|failure(if e.kind()==std::io::ErrorKind::NotFound {ErrorKind::ExecutableMissing}else{ErrorKind::LaunchFailure},"native Grok could not spawn"))?,ownership.group())?;
-        actor.session.pid=child.child.id();process=Some(child);actor.publish()?;
+        actor.session.pid=child.child.id();process=Some(child);
+        actor.store.lock().map_err(|_|failure(ErrorKind::StateFailure,"state poisoned"))?.audit(&actor.session.scope,"grok.process_spawned",json!({"session":actor.session.id,"pid":actor.session.pid})).map_err(state_error)?;
+        actor.publish()?;
         let child=process.as_mut().expect("owned child");
         actor.rpc=Some(Rpc::new(child.child.stdin.take().expect("piped stdin"),child.child.stdout.take().expect("piped stdout")));
         stderr=Some(tokio::spawn(drain(child.child.stderr.take().expect("piped stderr"),actor.events.clone(),false)));profile=Some(owned);

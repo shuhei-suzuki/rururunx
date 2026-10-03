@@ -230,6 +230,7 @@ for line in sys.stdin:
    if mode=='ambiguous':tool('read_file','own.txt',99)
    assert fs('fs/read_text_file','own.txt').get('result')
    if mode!='unfinished':done(n)
+   if mode=='ambiguous':done('99')
    if mode=='bypass':
     n=tool('search_replace','result.txt',2);done(n)
    else:
@@ -442,6 +443,18 @@ async fn native_stop_permissions_foreign_refs_and_environment_guards_are_explici
     assert!(
         !spawn_observed.exists(),
         "stop during preflight still spawned native process"
+    );
+    let events = fixture
+        .store
+        .lock()
+        .unwrap()
+        .events(&fixture.request.scope, 0, 100)
+        .unwrap();
+    assert!(
+        !events
+            .iter()
+            .any(|e| e.kind == "grok.process_spawned" && e.data["session"] == json!(session.id)),
+        "stopped native process was spawned but killed before fixture startup"
     );
     assert!(stopped.session.pid.is_none());
     assert!(!adapter.transport_succeeded(&stopped));

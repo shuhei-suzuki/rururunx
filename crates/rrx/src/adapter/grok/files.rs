@@ -649,6 +649,16 @@ mod configured_rule_tests {
                 .is_err()
         );
         assert!(!task_root.join("Docs/RULES.txt").exists());
+        std::fs::remove_file(source.join("docs/rules.txt")).unwrap();
+        std::fs::write(source.join("docs/RULES.txt"), "uppercase authority ref").unwrap();
+        project.rule_refs = vec![source.join("docs/RULES.txt")];
+        let mut uppercase = ScopedFiles::new(task_root.clone(), &project).unwrap();
+        assert!(
+            uppercase
+                .write(&json!({"path":"docs/rules.txt","content":"lowercase alias"}))
+                .is_err()
+        );
+        assert!(!task_root.join("docs/rules.txt").exists());
         project.rule_refs = vec![source.join("docs")];
         assert!(ScopedFiles::new(task_root.clone(), &project).is_err());
         project.rule_refs = vec![PathBuf::from("docs/rules.txt")];
