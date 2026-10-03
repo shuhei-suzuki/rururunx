@@ -771,7 +771,11 @@ async fn atomic_starting_reservation_excludes_duplicate_executor_and_review_acqu
         adapter.start(fixture.request.clone())
     );
     assert_eq!(usize::from(left.is_ok()) + usize::from(right.is_ok()), 1);
-    let session = left.ok().or_else(|| right.ok()).unwrap();
+    let (session, rejected) = match (left, right) {
+        (Ok(session), Err(error)) | (Err(error), Ok(session)) => (session, error),
+        _ => unreachable!("one executor is reserved"),
+    };
+    assert_eq!(rejected.kind, ErrorKind::StateConflict);
     let mut lock = Record::new(
         fixture.request.scope.clone(),
         RecordKind::WorktreeLock,

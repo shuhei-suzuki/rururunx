@@ -874,11 +874,19 @@ fn save_session(
     }
     store
         .put_session(session, expected_version)
-        .map_err(|e| error(ErrorKind::StateFailure, e.to_string()))
+        .map_err(state_error)
 }
 
 fn state_error(error_value: anyhow::Error) -> AdapterError {
-    error(ErrorKind::StateFailure, error_value.to_string())
+    use crate::state::StateGuardError;
+    let kind = match error_value.downcast_ref::<StateGuardError>() {
+        Some(StateGuardError::WorktreeLocked) => ErrorKind::Locked,
+        Some(StateGuardError::ExecutorReserved | StateGuardError::SnapshotChanged { .. }) => {
+            ErrorKind::StateConflict
+        }
+        None => ErrorKind::StateFailure,
+    };
+    error(kind, error_value.to_string())
 }
 fn validate_persisted(
     store: &SharedStore,
@@ -1263,7 +1271,7 @@ struct ProcessIo {
 }
 
 async fn supervise(
-    mut child: ProcessGroup,
+    child: ProcessGroup,
     mut controls: mpsc::Receiver<()>,
     events: watch::Sender<SessionStatus>,
     io: ProcessIo,
@@ -1381,8 +1389,7 @@ mod tests {
         assert!(resolve_macos_signal_result(Err(rustix::io::Errno::ACCESS), || Ok(true)).is_err());
     }
 
-    #[tokio::test]
-    async fn hanging_git_preflight_times_out_without_holding_shared_store() {
+    fn preflight_fixture() -> (tempfile::TempDir, SharedStore, Project, Task, PathBuf) {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path().join("repo");
         std::fs::create_dir(&root).unwrap();
@@ -1435,6 +1442,12 @@ mod tests {
             .unwrap()
             .worktree;
         let store = Arc::new(Mutex::new(state));
+        (temp, store, project, task, worktree)
+    }
+
+    #[tokio::test]
+    async fn hanging_git_preflight_times_out_without_holding_shared_store() {
+        let (temp, store, project, task, worktree) = preflight_fixture();
         let marker = temp.path().join("started");
         let shim = temp.path().join("slow-git");
         let quoted = marker.to_str().unwrap().replace('\'', "'\\''");
@@ -1501,6 +1514,73 @@ mod tests {
                 .unwrap()[0]
                 .data["state"],
             "FAILED"
+        );
+    }
+
+    #[tokio::test]
+    async fn ownership_change_during_native_preflight_prevents_executor_launch() {
+        let (temp, store, project, task, worktree) = preflight_fixture();
+        let marker = temp.path().join("started");
+        let release = temp.path().join("release");
+        let shim = temp.path().join("gated-git");
+        let quote = |path: &Path| path.to_str().unwrap().replace('\'', "'\\''");
+        std::fs::write(&shim, format!(
+            "#!/bin/sh\ntouch '{}'\nwhile [ ! -f '{}' ]; do sleep 0.02; done\nexec /usr/bin/git \"$@\"\n",
+            quote(&marker), quote(&release),
+        )).unwrap();
+        std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let mut adapter =
+            GenericCliAdapter::new("fake".into(), vec!["/bin/cat".into()], store.clone()).unwrap();
+        adapter.git_executable = Some(shim);
+        let scope = task.scope();
+        let request = LaunchRequest {
+            project,
+            scope: scope.clone(),
+            worktree,
+            role: SessionRole::Executor,
+            mode: LaunchMode::NonInteractive,
+            input: PreparedInput {
+                scope: scope.clone(),
+                kind: InputKind::ContextPack,
+                revision: "fixture".into(),
+                version: 1,
+                source_versions: BTreeMap::new(),
+                payload: "fixture".into(),
+            },
+            environment: BTreeMap::from([("PATH".into(), "/usr/bin:/bin".into())]),
+            model: None,
+            effort: None,
+        };
+        let launch = tokio::spawn(async move { adapter.start(request).await });
+        tokio::time::timeout(Duration::from_secs(3), async {
+            while !marker.exists() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+        {
+            let mut state = store.lock().unwrap();
+            let mut goal = state.goal(scope.goal_id.unwrap()).unwrap().unwrap();
+            goal.objective = "changed during preflight".into();
+            state.put_goal(&mut goal).unwrap();
+        }
+        std::fs::write(release, "ready").unwrap();
+        let result = tokio::time::timeout(Duration::from_secs(5), launch)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(result.unwrap_err().kind, ErrorKind::StateConflict);
+        let records = store
+            .lock()
+            .unwrap()
+            .records(&scope, RecordKind::Session)
+            .unwrap();
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].data["state"], "FAILED");
+        assert!(
+            records[0].data["pid"].is_null(),
+            "executor must never spawn"
         );
     }
 }

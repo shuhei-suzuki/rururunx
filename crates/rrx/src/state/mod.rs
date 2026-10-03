@@ -11,6 +11,37 @@ use crate::domain::*;
 pub const SCHEMA_VERSION: i64 = 2;
 pub const APPLICATION_ID: i64 = 0x52525831; // ASCII RRX1.
 
+/// Typed transactional guards let callers distinguish contention from storage failure.
+#[derive(Debug)]
+pub enum StateGuardError {
+    WorktreeLocked,
+    ExecutorReserved,
+    SnapshotChanged {
+        table: String,
+        id: String,
+        expected: u64,
+    },
+}
+impl std::fmt::Display for StateGuardError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::WorktreeLocked => {
+                f.write_str("worktree has an active immutable/maintenance lock")
+            }
+            Self::ExecutorReserved => f.write_str("executor is reserved/live"),
+            Self::SnapshotChanged {
+                table,
+                id,
+                expected,
+            } => write!(
+                f,
+                "stale snapshot {table}/{id}, expected version {expected}"
+            ),
+        }
+    }
+}
+impl std::error::Error for StateGuardError {}
+
 pub struct Store {
     connection: Connection,
 }
@@ -893,14 +924,15 @@ fn validate_worktree_exclusion(tx: &Transaction<'_>, record: &Record) -> Result<
         match other.kind {
             RecordKind::WorktreeLock => {
                 let lock: WorktreeLock = serde_json::from_value(other.data)?;
-                ensure!(
-                    !lock.active,
-                    "worktree has an active immutable/maintenance lock"
-                );
+                if lock.active {
+                    bail!(StateGuardError::WorktreeLocked);
+                }
             }
             RecordKind::Session if acquiring || executor => {
                 let session: Session = serde_json::from_value(other.data)?;
-                ensure!(!executor_reserved(&session), "executor is reserved/live");
+                if executor_reserved(&session) {
+                    bail!(StateGuardError::ExecutorReserved);
+                }
             }
             _ => {}
         }
@@ -963,7 +995,11 @@ fn write_snapshot(
             params![version, body, id, expected],
         )?;
         if changed != 1 {
-            bail!("stale snapshot {table}/{id}, expected version {expected}");
+            bail!(StateGuardError::SnapshotChanged {
+                table: table.into(),
+                id: id.into(),
+                expected
+            });
         }
     }
     Ok(())
