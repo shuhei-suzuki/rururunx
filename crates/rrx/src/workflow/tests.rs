@@ -3384,23 +3384,35 @@ async fn native_gate_requires_persisted_owned_status_and_sessionless_completion_
             WorkflowAccess::StateOnly,
         )
         .unwrap(); // valid control
+    let evidence = Evidence {
+        scope: task.scope(),
+        phase: Phase::Implement,
+        revision: snapshot.sources.revision.clone(),
+        source_versions: snapshot.sources.source_versions.clone(),
+        artifacts: vec!["forged-sessionless-output".into()],
+        dependencies: snapshot.sources.source_versions.clone(),
+        review_approved: None,
+        session_id: None,
+        context_version: snapshot.context_version,
+    };
+    store
+        .observe_workflow_gate(
+            &mut record,
+            index,
+            &snapshot.history[index],
+            GateObservation {
+                sources: super::authority_only(&snapshot.sources),
+                outcome: Some(GateOutcome::Passed(evidence.clone())),
+                error: None,
+                at: now_ms(),
+            },
+        )
+        .unwrap();
+    snapshot = serde_json::from_value(record.data.clone()).unwrap();
     snapshot.history[index].state = AttemptState::Succeeded;
     snapshot.history[index].completed_at = Some(now_ms());
     snapshot.active = None;
-    snapshot.completed.insert(
-        Phase::Implement,
-        Evidence {
-            scope: task.scope(),
-            phase: Phase::Implement,
-            revision: snapshot.sources.revision.clone(),
-            source_versions: snapshot.sources.source_versions.clone(),
-            artifacts: vec!["forged-sessionless-output".into()],
-            dependencies: snapshot.sources.source_versions.clone(),
-            review_approved: None,
-            session_id: None,
-            context_version: snapshot.context_version,
-        },
-    );
+    snapshot.completed.insert(Phase::Implement, evidence);
     record.data = serde_json::to_value(snapshot).unwrap();
     assert!(
         store
@@ -3493,7 +3505,12 @@ async fn resumed_round_claim_never_replays_prior_outcome_during_poll_restart_or_
         let engine = fixture.engine.clone();
         let id = fixture.task.id;
         let pending = tokio::spawn(async move { engine.resume_gate(id).await });
-        fixture.gates.entered.notified().await;
+        tokio::time::timeout(
+            std::time::Duration::from_secs(3),
+            fixture.gates.entered.notified(),
+        )
+        .await
+        .expect("resumed gate must reach its exact current claim");
         let snapshot = fixture.engine.snapshot(id).unwrap();
         let index = snapshot.active.unwrap();
         assert_eq!(snapshot.history[index].claimed_observations, 1);
