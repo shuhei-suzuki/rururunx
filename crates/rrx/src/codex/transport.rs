@@ -212,6 +212,12 @@ impl NativeServer {
     pub async fn observe_exit(&self) -> std::io::Result<()> {
         self.process.observe_exit().await
     }
+    pub async fn receive(&mut self) -> AdapterResult<super::protocol::Event> {
+        tokio::select! {
+            event = self.rpc.receive() => event,
+            _ = self.process.observe_exit() => Err(failure(ErrorKind::ProcessFailure, "native server exited during its turn")),
+        }
+    }
     pub async fn shutdown(self) -> AdapterResult<ExitStatus> {
         // Drop IPC only after group cleanup has run on a blocking worker and the
         // still-owned leader has been reaped. Uncertainty remains armed on error.
