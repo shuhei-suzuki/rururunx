@@ -179,7 +179,7 @@ impl WorkflowPackSources {
             "optional phase source exceeds selected budget"
         );
         ensure_phase_payload(&payload)?;
-        self.packs.audit_preparation(&draft.pack,&draft.map,None,json!({"ready":true,"phase":phase,"budget":budget,"estimated_bytes":payload.len(),"estimated_tokens":payload.len(),"mandatory_bytes":mandatory_bytes,"optional_bytes":optional_bytes,"estimate_method":"utf8_bytes_v1","measured_tokens":null,"rules_supplied_by_engine":true}))?;
+        self.packs.audit_preparation(&draft.pack,&draft.map,None,json!({"ready":true,"phase":phase,"budget":budget,"estimated_bytes":payload.len(),"estimated_tokens":payload.len(),"mandatory_bytes":mandatory_bytes,"optional_bytes":optional_bytes,"estimate_method":"utf8_bytes_v1","measured_tokens":null,"rules_supplied_by_engine":true}), None)?;
         let source = SourceSnapshot {
             scope: task.scope(),
             revision: draft.pack.repository.revision.clone(),

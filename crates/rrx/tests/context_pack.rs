@@ -2157,7 +2157,7 @@ impl rrx::adapter::AgentAdapter for PackFixtureAgent {
         Box::pin(async move {
             let mut s = Session {
                 id: SessionId::new(),
-                scope: request.scope,
+                scope: request.scope.clone(),
                 agent: self.name.clone(),
                 provider: "fixture".into(),
                 role: request.role,

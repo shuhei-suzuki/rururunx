@@ -111,15 +111,15 @@ fn validate(
     context: &ContextVersion,
     frame: &Frame,
 ) -> Result<()> {
-    let task: Task = read_tx(
-        connection,
-        "tasks",
-        &scope
+    let body: String = connection.query_row(
+        "SELECT body FROM tasks WHERE id=?1",
+        [scope
             .task_id
             .context("typed input requires Task")?
-            .to_string(),
-    )?
-    .context("unknown native Task")?;
+            .to_string()],
+        |r| r.get(0),
+    )?;
+    let task: Task = decode(body)?;
     ensure!(
         frame.version == context.version
             && task.context_version == context.version
