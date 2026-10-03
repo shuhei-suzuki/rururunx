@@ -38,6 +38,9 @@ structured_output
 usage_telemetry
 prompt_cache_telemetry
 context_checkpoint
+native_goal
+native_goal_status
+native_goal_resume
 ```
 
 ## 4. Logical interface
@@ -66,6 +69,9 @@ parseStructuredReview(result)
 usage(sessionRef) -> UsageSnapshot
 cacheUsage(sessionRef) -> CacheUsageSnapshot
 checkpoint(sessionRef, contextCheckpoint)
+startNativeGoal?(goalContext) -> NativeGoalRef
+nativeGoalStatus?(nativeGoalRef) -> NativeGoalStatus
+resumeNativeGoal?(nativeGoalRef, goalContext)
 ```
 
 ## 5. AgentInfo
@@ -82,6 +88,7 @@ Contains:
 - usage/token telemetry support
 - provider/native prompt-cache telemetry support
 - native context/checkpoint support where available
+- native goal capability support where available
 
 ## 6. Session model
 
@@ -190,7 +197,24 @@ If a native CLI owns its own context retrieval/caching internally, the adapter s
 
 Absence of telemetry must not make the adapter unusable; it is an explicit capability limitation.
 
-## 13. Failure behavior
+## 13. Native Goal integration
+
+A provider may offer a native long-running goal mechanism.
+
+Adapters may expose this as an optional capability, but the rururunx Goal entity remains authoritative.
+
+Requirements:
+
+- native goal use is optional
+- native goal/session identifiers are persisted only as execution references
+- provider-specific goal state is normalized into rururunx events
+- loss of native goal state must not lose objective/completion criteria/Task DAG
+- another provider can continue the Goal
+- adapter fallback uses ordinary execute/consult/review interfaces with Goal/Task Context Packs
+
+For Codex, native `/goal` may be used when technically and programmatically appropriate, but the core runtime must not require it.
+
+## 14. Failure behavior
 
 Adapters must return explicit failure categories such as:
 
