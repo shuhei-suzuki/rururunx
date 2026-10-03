@@ -112,6 +112,54 @@ impl Reservation {
         sender.send_replace(status.clone());
         Ok(())
     }
+    fn terminal(
+        &mut self,
+        status: &mut SessionStatus,
+        result: &AdapterResult<bool>,
+        cleanup: &AdapterResult<std::process::ExitStatus>,
+    ) -> bool {
+        let uncertain = cleanup.is_err() || self.ownership.uncertain();
+        self.session.state = if uncertain {
+            SessionState::Lost
+        } else {
+            match result {
+                Ok(true) => SessionState::Exited,
+                Ok(false) => SessionState::Stopped,
+                Err(_) => SessionState::Failed,
+            }
+        };
+        if !uncertain {
+            self.session.pid = None;
+        }
+        // The server process's exit status is not a native model-turn outcome.
+        status.exit_code = None;
+        status.failure = cleanup
+            .as_ref()
+            .err()
+            .or(result.as_ref().err())
+            .map(|error| error.to_string());
+        if uncertain {
+            status
+                .failure
+                .get_or_insert_with(|| "owned process cleanup is unverified".into());
+            let diagnostic = json!({
+                "session_id":self.session.id,"native_uuid":self.session.native_ref,
+                "native_pid":self.session.pid,"native_group_cleanup_confirmed":cleanup.is_ok(),
+                "other_owned_group_uncertain":self.ownership.uncertain(),
+                "state_intent":"Lost","failure":status.failure,
+            });
+            let audit = self.store.lock().map_err(|_| ()).and_then(|mut store| {
+                store
+                    .audit(&self.session.scope, "codex.cleanup.unverified", diagnostic)
+                    .map_err(|_| ())
+            });
+            if audit.is_err() {
+                status.failure =
+                    Some("owned cleanup and diagnostic publication are unverified".into());
+            }
+        }
+        matches!(result, Ok(true)) && !uncertain
+    }
 }
 impl Drop for Reservation {
     fn drop(&mut self) {
@@ -976,20 +1024,7 @@ async fn supervise(
     status.stderr = stderr.bytes;
     status.stderr_truncated = stderr.truncated;
     let cleanup = native.shutdown().await;
-    let completed = matches!(result, Ok(true)) && cleanup.is_ok();
-    reservation.session.state = match (&result, &cleanup) {
-        (_, Err(_)) => SessionState::Lost,
-        (Ok(true), _) => SessionState::Exited,
-        (Ok(false), _) => SessionState::Stopped,
-        (Err(_), _) => SessionState::Failed,
-    };
-    reservation.session.pid = None;
-    status.exit_code = cleanup.as_ref().ok().and_then(|exit| exit.code());
-    status.failure = cleanup
-        .as_ref()
-        .err()
-        .or(result.as_ref().err())
-        .map(|error| error.to_string());
+    let completed = reservation.terminal(&mut status, &result, &cleanup);
     if let Ok(mut evidence) = evidence.lock() {
         evidence.completed = completed;
         evidence.counters = tracker.turn_counters();
@@ -1147,6 +1182,89 @@ mod tests {
     use super::*;
     use crate::domain::{ProjectId, Scope};
     use futures_util::StreamExt;
+
+    #[tokio::test]
+    async fn any_uncertain_owned_group_retains_lost_reservation_and_scoped_diagnostic() {
+        use std::{os::unix::process::ExitStatusExt, sync::atomic::Ordering};
+        for uncertain_git in [false, true] {
+            let mut fixture = ApprovalFixture::new(true).await;
+            fixture.reservation.session.pid = Some(42);
+            let cleanup = if uncertain_git {
+                fixture
+                    .reservation
+                    .ownership
+                    .group()
+                    .store(true, Ordering::SeqCst);
+                Ok(std::process::ExitStatus::from_raw(0))
+            } else {
+                Err(failure(
+                    ErrorKind::ProcessFailure,
+                    "injected unverified shutdown",
+                ))
+            };
+            assert!(
+                !fixture
+                    .reservation
+                    .terminal(&mut fixture.status, &Ok(true), &cleanup)
+            );
+            fixture
+                .reservation
+                .publish(&fixture.sender, &mut fixture.status)
+                .unwrap();
+            assert_eq!(fixture.status.session.state, SessionState::Lost);
+            assert_eq!(fixture.status.session.pid, Some(42));
+            assert!(crate::git::executor_reserved(&fixture.status.session));
+            let store = fixture.reservation.store.lock().unwrap();
+            assert_eq!(
+                store
+                    .session(fixture.status.session.id)
+                    .unwrap()
+                    .unwrap()
+                    .0
+                    .state,
+                SessionState::Lost
+            );
+            let diagnostic = store
+                .events(&fixture.status.session.scope, 0, 1000)
+                .unwrap()
+                .into_iter()
+                .find(|event| event.kind == "codex.cleanup.unverified")
+                .unwrap();
+            assert_eq!(diagnostic.scope, fixture.status.session.scope);
+            assert_eq!(diagnostic.data["native_pid"], 42);
+            assert_eq!(
+                diagnostic.data["other_owned_group_uncertain"],
+                uncertain_git
+            );
+            assert_eq!(fixture.status.exit_code, None);
+        }
+    }
+    #[tokio::test]
+    async fn server_exit_zero_does_not_fabricate_a_stopped_or_failed_turn_success() {
+        use std::os::unix::process::ExitStatusExt;
+        for outcome in [
+            Ok(false),
+            Err(failure(ErrorKind::ProcessFailure, "native failed")),
+        ] {
+            let mut fixture = ApprovalFixture::new(true).await;
+            fixture.reservation.session.pid = Some(42);
+            assert!(!fixture.reservation.terminal(
+                &mut fixture.status,
+                &outcome,
+                &Ok(std::process::ExitStatus::from_raw(0))
+            ));
+            fixture
+                .reservation
+                .publish(&fixture.sender, &mut fixture.status)
+                .unwrap();
+            assert!(matches!(
+                fixture.status.session.state,
+                SessionState::Stopped | SessionState::Failed
+            ));
+            assert_eq!(fixture.status.session.pid, None);
+            assert_eq!(fixture.status.exit_code, None);
+        }
+    }
 
     struct ApprovalFixture {
         _owned: Fixture,
