@@ -90,10 +90,7 @@ impl WorkflowPackSources {
             })
             .transpose()?
             .unwrap_or_default();
-        let draft = self
-            .packs
-            .draft_task_internal(&task.scope(), inputs, true)
-            .await?;
+        let draft = self.packs.draft_task(&task.scope(), inputs).await?;
         let header = format!(
             "{}\n",
             serde_json::to_string(

@@ -3,7 +3,7 @@ use std::{collections::BTreeMap, future::Future, pin::Pin, sync::Arc};
 
 use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 use crate::{
@@ -604,14 +604,16 @@ impl WorkflowEngine {
             class >= config.minimum_workflow && class >= risk_workflow(&config, task.risk),
             "workflow policy changed while preparing Context Pack"
         );
-        Ok(make_context(
-            task,
-            &source,
-            phase,
-            class,
-            generation,
-            selected_budget,
-            self.next_context(&task.scope())?,
+        Ok(attach_context(
+            make_context(
+                task,
+                &source,
+                phase,
+                class,
+                generation,
+                selected_budget,
+                self.next_context(&task.scope())?,
+            ),
             attachment,
         ))
     }
@@ -1827,14 +1829,16 @@ impl WorkflowEngine {
                 snapshot.workflow.sources = source.clone();
                 let next = next_phase(&snapshot.workflow);
                 let context = if phase == Phase::Cleanup {
-                    let mut context = make_context(
-                        &snapshot.task,
-                        &source,
-                        phase,
-                        snapshot.workflow.workflow,
-                        snapshot.workflow.generation,
-                        selected_budget,
-                        self.next_context(&snapshot.task.scope())?,
+                    let mut context = attach_context(
+                        make_context(
+                            &snapshot.task,
+                            &source,
+                            phase,
+                            snapshot.workflow.workflow,
+                            snapshot.workflow.generation,
+                            selected_budget,
+                            self.next_context(&snapshot.task.scope())?,
+                        ),
                         frozen_attachment(&self.context(&snapshot)?)?,
                     );
                     if context.data.get("task_pack").is_some() {
@@ -2543,25 +2547,31 @@ fn make_context(
     generation: u64,
     budget: ContextBudget,
     version: u64,
-    attachment: Option<PackAttachment>,
 ) -> ContextVersion {
     let mut source_hashes = source.source_versions.clone();
     source_hashes.insert("workflow:phase".into(), phase.key().into());
     source_hashes.insert("workflow:generation".into(), generation.to_string());
-    let mut data = json!({"phase":phase,"workflow":class,"generation":generation,"budget":budget,"payload":source.payload});
-    if let Some(attachment) = attachment {
-        data["task_pack"] = attachment.artifact;
-        data["source_payload_offset"] = json!(attachment.source_payload_offset);
-        data["rendered_estimate"] = json!({"estimated_bytes":source.payload.len(),"estimated_tokens":source.payload.len(),"estimate_method":"utf8_bytes_v1","measured_tokens":null,"mandatory_rule_bytes":attachment.source_payload_offset});
-    }
     ContextVersion {
         scope: task.scope(),
         version,
         revision: source.revision.clone(),
         source_hashes,
-        data,
+        data: json!({"phase":phase,"workflow":class,"generation":generation,"budget":budget,"payload":source.payload}),
     }
 }
+fn attach_context(
+    mut context: ContextVersion,
+    attachment: Option<PackAttachment>,
+) -> ContextVersion {
+    if let Some(attachment) = attachment {
+        let bytes = context.data["payload"].as_str().map_or(0, str::len);
+        context.data["task_pack"] = attachment.artifact;
+        context.data["source_payload_offset"] = json!(attachment.source_payload_offset);
+        context.data["rendered_estimate"] = json!({"estimated_bytes":bytes,"estimated_tokens":bytes,"estimate_method":"utf8_bytes_v1","measured_tokens":null,"mandatory_rule_bytes":attachment.source_payload_offset});
+    }
+    context
+}
+
 fn load_rules(
     project: &Project,
     runtime: Config,
