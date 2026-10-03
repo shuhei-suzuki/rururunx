@@ -80,6 +80,8 @@ pub(super) struct ScopedFiles {
     /// Existing writes require an unchanged successful prior read.
     reads: BTreeMap<PathBuf, String>,
     pub writes: BTreeMap<PathBuf, String>,
+    #[cfg(test)]
+    pub(super) fail_sync: bool,
 }
 impl ScopedFiles {
     pub fn new(root: PathBuf, project: &Project) -> AdapterResult<Self> {
@@ -131,6 +133,8 @@ impl ScopedFiles {
             protected_inodes,
             reads: BTreeMap::new(),
             writes: BTreeMap::new(),
+            #[cfg(test)]
+            fail_sync: false,
         })
     }
     fn relative(&self, path: &str) -> AdapterResult<PathBuf> {
@@ -237,8 +241,18 @@ impl ScopedFiles {
         self.reads.insert(relative, digest(content.as_bytes()));
         Ok(json!({"content":content}))
     }
-    /// Return factual outcome separately so caller audits actual effects before policy rechecks.
+    #[cfg(test)]
     pub fn write(&mut self, params: &Value) -> AdapterResult<Value> {
+        self.write_observed(params).0
+    }
+    /// An error may follow creation or partial writes; success and possible effect
+    /// must remain separate facts for the caller's audit and completion policy.
+    pub fn write_observed(&mut self, params: &Value) -> (AdapterResult<Value>, bool) {
+        let mut effect = false;
+        let result = self.write_inner(params, &mut effect);
+        (result, effect)
+    }
+    fn write_inner(&mut self, params: &Value, effect: &mut bool) -> AdapterResult<Value> {
         let relative = self.relative(
             params["path"]
                 .as_str()
@@ -288,20 +302,24 @@ impl ScopedFiles {
                 }
                 file
             }
-            Err(rustix::io::Errno::NOENT) => File::from(
-                openat(
-                    &parent,
-                    name.as_str(),
-                    OFlags::WRONLY
-                        | OFlags::CREATE
-                        | OFlags::EXCL
-                        | OFlags::NOFOLLOW
-                        | OFlags::NONBLOCK
-                        | OFlags::CLOEXEC,
-                    Mode::from_raw_mode(0o600),
+            Err(rustix::io::Errno::NOENT) => {
+                // A failed create syscall cannot be assumed side-effect-free.
+                *effect = true;
+                File::from(
+                    openat(
+                        &parent,
+                        name.as_str(),
+                        OFlags::WRONLY
+                            | OFlags::CREATE
+                            | OFlags::EXCL
+                            | OFlags::NOFOLLOW
+                            | OFlags::NONBLOCK
+                            | OFlags::CLOEXEC,
+                        Mode::from_raw_mode(0o600),
+                    )
+                    .map_err(io_error)?,
                 )
-                .map_err(io_error)?,
-            ),
+            }
             Err(error) => return Err(io_error(error)),
         };
         regular(&file)?;
@@ -309,8 +327,15 @@ impl ScopedFiles {
         // Effects may be partial on I/O failure: they remain in the reconciliation journal.
         let result = (|| {
             file.seek(SeekFrom::Start(0)).map_err(io_error)?;
+            *effect = true;
             file.write_all(content.as_bytes()).map_err(io_error)?;
             file.set_len(content.len() as u64).map_err(io_error)?;
+            #[cfg(test)]
+            if self.fail_sync {
+                return Err(io_error(std::io::Error::other(
+                    "injected sync_data failure",
+                )));
+            }
             file.sync_data().map_err(io_error)
         })();
         self.writes

@@ -108,7 +108,11 @@ conservatively protected even though it is not a verified discovered rule name. 
 are UTF-8 and bounded; unsupported ranges or absent parents fail explicitly. New files use
 exclusive no-follow creation under the pinned parent. Existing files preserve their mode
 and are only written after identity/type/content checks; partial failed effects remain
-factual failures, never rolled back or accepted. Recheck root/parent identity and scoped
+factual failures, never rolled back or accepted. Write authority is correlated before
+any creation/write syscall, independently of the eventual I/O result. The host outcome
+separates success from possible effects; a failed write with possible effects permanently
+invalidates turn completion, even when its observed bytes match the intended journal.
+Recheck root/parent identity and scoped
 owner versions around operations. Bound content and line/range requests. Perform
 I/O off SharedStore, recheck owner/source snapshots before action, and journal actual
 effects before post-operation policy checks. A denied foreign request is a tool failure,
@@ -137,7 +141,9 @@ metadata must name exactly read_file/search_replace and correlate each successfu
 with successful requested-path ACP callbacks of the matching read/write method.
 Successful writes require an unfinished owned search_replace tool at the requested path.
 A search_replace target read is an allowed dependency. Native supplemental reads may
-also revisit a successfully correlated finished tool path from this same turn; they
+also revisit a finished tool path with a successful FS callback from this same turn,
+including a tool that subsequently reports failed; its final native status gives no
+additional credit. These reads
 remain descriptor-scoped and give no new tool or write completion credit. Unseen successful
 reads or unaccounted writes invalidate completion and retain
 unknown outcomes as Lost. Concurrent same-kind/same-path pending tool correlation is explicitly unsupported; one

@@ -241,11 +241,11 @@ for line in sys.stdin:
    n=tool('search_replace' if mode=='wrong_method' else 'read_file','own.txt',1)
    if mode=='ambiguous':tool('read_file','own.txt',99)
    assert fs('fs/read_text_file','own.txt').get('result')
-   if mode!='unfinished':done(n)
+   if mode!='unfinished':done(n,mode!='failed_called_read')
    if mode=='ambiguous':done('99')
    if mode=='unowned_write':fs('fs/write_text_file','unowned.txt','unaccounted effect')
    if mode=='unowned_read':fs('fs/read_text_file','unseen.txt')
-   if mode=='supplemental_read':assert fs('fs/read_text_file','own.txt').get('result')
+   if mode in ['supplemental_read','failed_called_read']:assert fs('fs/read_text_file','own.txt').get('result')
    if mode=='bypass':
     n=tool('search_replace','result.txt',2);done(n)
    else:
@@ -315,6 +315,14 @@ async fn native_execute_edits_only_owned_files_and_preserves_actual_exit() {
         supplemental.failure
     );
     let mut forged = status.clone();
+    fixture.mode("failed_called_read");
+    let failed_called = adapter.start(fixture.request.clone()).await.unwrap();
+    let failed_called = finished(&adapter, &failed_called).await;
+    assert!(
+        adapter.transport_succeeded(&failed_called),
+        "{:?}",
+        failed_called.failure
+    );
     forged.session.recovery["prompt_id"] = json!("forged");
     assert!(!adapter.transport_succeeded(&forged));
     adapter.release((&session).into()).unwrap();
@@ -416,6 +424,12 @@ async fn native_auth_inventory_config_parser_and_tool_evidence_fail_closed() {
                     .as_str()
                     .unwrap()
                     .contains("unexplained native/concurrent worktree effect")
+            );
+        }
+        if mode == "unowned_write" {
+            assert!(
+                !fixture.request.worktree.join("unowned.txt").exists(),
+                "unowned write must be rejected before effects"
             );
         }
         assert!(status.session.pid.is_none(), "{mode}");

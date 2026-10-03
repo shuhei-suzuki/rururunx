@@ -185,3 +185,23 @@ whitespace staging failure occurred before any test and is excluded from executi
 
 Exact `83bc484` and `7d2d2a5` Linux/macOS CI pass using default test concurrency. The
 latest supplemental-read refinements await immutable delta rereview and exact-head CI.
+
+## Implementation Review 4 dispositions
+
+Public immutable `8074e6c`: independent native Round 4 completed in 144.190 seconds,
+with no Critical/High/Medium or unresolved blockers, verifying all R3 dispositions.
+Exact default-concurrency Linux/macOS CI run `37158507627` passes. Three Low refinements
+were verified: possible write effects preceding a failed sync must remain separate from
+success and invalidate completion (R4-01); supplemental reads require a finished tool
+with an actually successful FS callback, including one that later reports failed, pinned
+by a fake process case without any new credit (02, semantic clarification); foreign
+notification diagnostics now use booleans instead of copying native-controlled kind text
+(03, bounded diagnostic refinement).
+
+Write authority is checked before any worker can create/write; attempted unowned writes
+remain Lost without file effects. Host results independently carry possible-effects
+evidence and are audited before post-operation checks. A sticky failed-effect marker
+denies completion even if native reports end_turn and inventory matches intended bytes.
+A test-only sync_data fault applies bytes, reports failure, proves reconciliation alone
+would accept them, and requires the same callback-evidence consumer to reject completion.
+These refinements await committed gates, scoped compiled mutants and immutable rereview.

@@ -845,29 +845,40 @@ impl Actor {
                 fatal = true;
                 Ok(json!({"outcome":{"outcome":"cancelled"}}))
             }
-        } else if self.request.role == SessionRole::Executor && method.starts_with("fs/") {
+        } else if self.request.role == SessionRole::Executor
+            && ["fs/read_text_file", "fs/write_text_file"].contains(&method)
+        {
             let path = params["path"].as_str().unwrap_or("");
             let files = self.files.as_ref().expect("executor FS").clone();
             let params = params.clone();
             let write = method == "fs/write_text_file";
+            if write {
+                self.evidence
+                    .authorize_write(&self.request.worktree, path)?;
+            }
             // Mutating workers are never detached on timeout/cancel. Until join returns,
             // stop cannot imply their death or free the executor reservation.
             let started = tokio::time::Instant::now();
-            let result = tokio::task::spawn_blocking(move || {
+            let (result, effect_may_have_occurred) = tokio::task::spawn_blocking(move || {
                 let mut files = files
                     .lock()
                     .map_err(|_| failure(ErrorKind::StateFailure, "scoped FS poisoned"))?;
                 if write {
-                    files.write(&params)
+                    Ok(files.write_observed(&params))
                 } else {
-                    files.read(&params)
+                    Ok((files.read(&params), false))
                 }
             })
             .await
-            .map_err(|_| failure(ErrorKind::ProcessFailure, "scoped FS worker failed"))?;
-            self.store.lock().map_err(|_|failure(ErrorKind::StateFailure,"state poisoned"))?.audit(&self.session.scope,"grok.fs_observed",json!({"session":self.session.id,"native":self.session.native_ref,"prompt":self.prompt,"method":method,"path":path,"succeeded":result.is_ok()})).map_err(state_error)?;
-            self.evidence
-                .callback(&self.request.worktree, path, method, result.is_ok())?;
+            .map_err(|_| failure(ErrorKind::ProcessFailure, "scoped FS worker failed"))??;
+            self.store.lock().map_err(|_|failure(ErrorKind::StateFailure,"state poisoned"))?.audit(&self.session.scope,"grok.fs_observed",json!({"session":self.session.id,"native":self.session.native_ref,"prompt":self.prompt,"method":method,"path":path,"succeeded":result.is_ok(),"effect_may_have_occurred":effect_may_have_occurred})).map_err(state_error)?;
+            self.evidence.callback(
+                &self.request.worktree,
+                path,
+                method,
+                result.is_ok(),
+                effect_may_have_occurred,
+            )?;
             if started.elapsed() > Duration::from_secs(5) {
                 fatal = true;
             }

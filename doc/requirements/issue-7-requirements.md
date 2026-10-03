@@ -42,6 +42,8 @@ credentials extraction, bypass mode, always-approve flag or snapshot restoration
 - Native prompt completion and actual OS exit status remain separate. Unexplained native/hook
   worktree changes invalidate completion; decision-only covers model tool authority. A successful
   native turn requires private owned completion evidence, verified process cleanup and
+  no failed host write with possible effects; native end_turn or matching final bytes
+  cannot establish success after an I/O failure.
   successful terminal persistence before `transport_succeeded` can return true.
 - Resume preserves the owned native UUID and rururunx Session ID; it requires an explicit
   fresh checkpoint input version, never repeats an old mutating prompt. Missing in-memory

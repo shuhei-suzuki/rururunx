@@ -114,6 +114,7 @@ struct Tool {
 pub(super) struct TurnEvidence {
     tools: BTreeMap<String, Tool>,
     pub callbacks: usize,
+    failed_write_effect: bool,
 }
 /// Lexical correlation only; never used to authorize filesystem access.
 fn absolute(root: &Path, path: &str) -> PathBuf {
@@ -134,14 +135,34 @@ fn absolute(root: &Path, path: &str) -> PathBuf {
     result
 }
 impl TurnEvidence {
+    /// Correlate before any write syscall, including calls that might fail after
+    /// creation or partial effects. Scope authorization remains in ScopedFiles.
+    pub fn authorize_write(&self, root: &Path, path: &str) -> AdapterResult<()> {
+        let path = absolute(root, path);
+        let mut candidates = self
+            .tools
+            .values()
+            .filter(|t| !t.finished && t.write && t.path == path);
+        if candidates.next().is_none() || candidates.next().is_some() {
+            return Err(failure(
+                ErrorKind::OwnershipMismatch,
+                "unowned or ambiguous native file write callback",
+            ));
+        }
+        Ok(())
+    }
     pub fn callback(
         &mut self,
         root: &Path,
         path: &str,
         method: &str,
         succeeded: bool,
+        effect_may_have_occurred: bool,
     ) -> AdapterResult<()> {
         self.callbacks += 1;
+        if method == "fs/write_text_file" && !succeeded && effect_may_have_occurred {
+            self.failed_write_effect = true;
+        }
         if !succeeded {
             return Ok(());
         }
@@ -218,8 +239,8 @@ impl TurnEvidence {
             return Err(failure(
                 ErrorKind::OwnershipMismatch,
                 format!(
-                    "foreign/replayed ACP notification kind={:?} session_matches={} prompt_matches={} prompt_present={}",
-                    params["update"]["sessionUpdate"].as_str(),
+                    "foreign/replayed ACP notification kind_present={} session_matches={} prompt_matches={} prompt_present={}",
+                    params["update"]["sessionUpdate"].is_string(),
                     params["sessionId"] == native,
                     params["_meta"]["promptId"] == prompt,
                     params["_meta"].get("promptId").is_some()
@@ -308,6 +329,12 @@ impl TurnEvidence {
         }
     }
     pub fn finished(&self) -> AdapterResult<()> {
+        if self.failed_write_effect {
+            return Err(failure(
+                ErrorKind::ProcessFailure,
+                "owned native write failed after possible effects",
+            ));
+        }
         if self.tools.values().any(|t| !t.finished) {
             Err(failure(
                 ErrorKind::ParseFailure,
@@ -322,6 +349,66 @@ impl TurnEvidence {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn failed_sync_after_owned_effect_never_establishes_completion() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().canonicalize().unwrap();
+        let project = crate::domain::Project::new(
+            "fixture".into(),
+            root.clone(),
+            "fixture".into(),
+            "main".into(),
+        );
+        let before = super::super::files::Inventory::capture(&root).unwrap();
+        let mut files = super::super::files::ScopedFiles::new(root.clone(), &project).unwrap();
+        files.fail_sync = true;
+        let mut evidence = TurnEvidence::default();
+        let update = |status: &str| json!({"sessionId":"native","_meta":{"promptId":"prompt"},"update":{"sessionUpdate":"tool_call_update","toolCallId":"write","status":status}});
+        evidence.update(&root, &json!({"sessionId":"native","_meta":{"promptId":"prompt"},"update":{"sessionUpdate":"tool_call","toolCallId":"write","title":"search_replace","status":"pending","rawInput":{"file_path":"effect.txt"}}}), "native", "prompt", false).unwrap();
+        assert!(evidence.authorize_write(&root, "unowned.txt").is_err());
+        assert!(!root.join("unowned.txt").exists());
+        evidence.authorize_write(&root, "effect.txt").unwrap();
+        let (result, possible_effect) = files
+            .write_observed(&json!({"path":"effect.txt","content":"applied before sync error"}));
+        assert!(result.is_err());
+        assert!(possible_effect);
+        assert_eq!(
+            std::fs::read_to_string(root.join("effect.txt")).unwrap(),
+            "applied before sync error"
+        );
+        // Even if inventory agrees with the planned write, failed I/O remains
+        // independently authoritative for completion. No rollback is invented.
+        before
+            .reconcile(
+                &super::super::files::Inventory::capture(&root).unwrap(),
+                &files.writes,
+            )
+            .unwrap();
+        evidence
+            .callback(
+                &root,
+                "effect.txt",
+                "fs/write_text_file",
+                result.is_ok(),
+                possible_effect,
+            )
+            .unwrap();
+        evidence
+            .update(&root, &update("failed"), "native", "prompt", false)
+            .unwrap();
+        assert_eq!(
+            evidence.finished().unwrap_err().kind,
+            ErrorKind::ProcessFailure
+        );
+    }
+    #[test]
+    fn foreign_notification_diagnostics_never_copy_untrusted_kind() {
+        let mut evidence = TurnEvidence::default();
+        let native_kind = "private_native_kind".repeat(8192);
+        let error = evidence.update(Path::new("/owned"), &json!({"sessionId":"foreign","_meta":{"promptId":"prompt"},"update":{"sessionUpdate":native_kind}}), "native", "prompt", false).unwrap_err();
+        assert!(!error.message.contains("private_native_kind"));
+        assert!(error.message.len() < 256);
+    }
     #[test]
     fn native_title_housekeeping_never_grants_prompt_or_tool_authority() {
         let mut evidence = TurnEvidence::default();
