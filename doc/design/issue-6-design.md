@@ -389,3 +389,10 @@ filter those records before constructing the CAS lock set. A source-only Project
 or Goal consultation must not inherit another Task's active or historical review
 lock. Task-scoped execution/review continues to fence its full exact lock set,
 including inactive versions so unlock/relock ABA remains detectable.
+
+Rejected grant preflight checks cleanup uncertainty only for groups created by
+that preflight. The already running native server has an owned live group flag;
+it must not make every rejected grant fatal. Retain all new group flags in the
+Session owner throughout cancellation. A new unverified Git cleanup still ends
+the attempt as Lost; a scoped path/version rejection with confirmed cleanup keeps
+the native request pending and deniable without an accept intent or wire reply.
