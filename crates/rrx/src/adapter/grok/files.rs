@@ -100,6 +100,12 @@ impl ScopedFiles {
                 ));
             }
             let canonical = path.canonicalize().map_err(io_error)?;
+            if path.as_os_str() != canonical.as_os_str() {
+                return Err(failure(
+                    ErrorKind::InvalidConfiguration,
+                    "Project rule/config refs must be canonical without aliases",
+                ));
+            }
             if !canonical.metadata().map_err(io_error)?.is_file() {
                 return Err(failure(
                     ErrorKind::InvalidConfiguration,
@@ -659,6 +665,14 @@ mod configured_rule_tests {
                 .is_err()
         );
         assert!(!task_root.join("docs/rules.txt").exists());
+        let alias = source.join("docs/alias.txt");
+        std::os::unix::fs::symlink(source.join("docs/RULES.txt"), &alias).unwrap();
+        project.rule_refs = vec![alias];
+        // An absent Task copy of a configured source symlink must never become
+        // an ordinary writable file at the authority name.
+        let error = ScopedFiles::new(task_root.clone(), &project).err().unwrap();
+        assert_eq!(error.kind, ErrorKind::InvalidConfiguration);
+        assert!(!task_root.join("docs/alias.txt").exists());
         project.rule_refs = vec![source.join("docs")];
         assert!(ScopedFiles::new(task_root.clone(), &project).is_err());
         project.rule_refs = vec![PathBuf::from("docs/rules.txt")];

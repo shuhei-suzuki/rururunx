@@ -145,3 +145,16 @@ contain no raw IDs, result content or credentials. No numeric/string coercion, u
 exception, inspection-deadline increase, death-guard relaxation or uncertainty-latch reset
 was introduced. The bounded inspector may conservatively require explicit recovery under
 host load; actual native dispatch completion and process death remain separate authorities.
+
+## Implementation Review 3 dispositions
+
+Independent native Round 3 of immutable public `83bc484` completed in 190.001 seconds,
+with no Critical/High/Medium or unresolved blockers, and verified all R2 dispositions.
+Five Low refinements were verified: reject noncanonical/symlinked configured authority
+refs instead of protecting only their target name (R3-01); reduce unmatched-response
+diagnostics to shape/equality booleans including local numeric counters (02); assert
+Grok's own atomic dispatch intent audit from the fake process before prompt handling
+(03); require successful callbacks to correspond to an unfinished owned tool, allowing
+search_replace read dependencies without write credit (04); document stop/reconciliation
+latency and helper uncertainty raising known failure to Lost (05, availability only).
+These refinements await clean committed gates, scoped mutants and immutable delta rereview.

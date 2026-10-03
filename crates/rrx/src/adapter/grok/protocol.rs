@@ -160,6 +160,24 @@ impl TurnEvidence {
         }
         if let Some(tool) = target {
             tool.callbacks += 1;
+        } else if !write {
+            // search_replace may read its target before its write callback.
+            // This dependency never counts as successful write evidence.
+            let mut dependencies = self
+                .tools
+                .values()
+                .filter(|t| !t.finished && t.path == path && t.write);
+            if dependencies.next().is_none() || dependencies.next().is_some() {
+                return Err(failure(
+                    ErrorKind::OwnershipMismatch,
+                    "unowned native file read callback",
+                ));
+            }
+        } else {
+            return Err(failure(
+                ErrorKind::OwnershipMismatch,
+                "unowned native file write callback",
+            ));
         }
         Ok(())
     }

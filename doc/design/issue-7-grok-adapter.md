@@ -98,8 +98,8 @@ identity, regular-file type and hard-link count. Reject foreign paths, every dot
 component (including .git/.grok/.claude/.codex/.agents/.rrx/.github), AGENTS.md/CLAUDE.md/GROK.md
 case-insensitively, and exact configured absolute Project rule/config paths and their inode aliases.
 Source-checkout refs also protect the corresponding Task-relative path/copy inode.
-Authority refs must name files; mapped Task-relative names must be ASCII and use
-case-folded protection even before a Task copy exists. Directory refs fail explicitly.
+Authority refs must name canonical files without path/symlink aliases; mapped Task-relative names must be ASCII and use
+case-folded protection even before a Task copy exists. Directory or aliased refs fail explicitly.
 The baseline accepts ASCII path components only, so Unicode/case-normalization ambiguity
 cannot grant authority on macOS. Read and write share this conservative baseline; non-secret
 dotfile/rule reads are intentionally unsupported, not an accidental full-repository claim.
@@ -135,7 +135,10 @@ decision toolCallCount must remain zero, and any FS/terminal callback invalidate
 success. Any live tool_call/tool_call_update invalidates a decision; executor native tool
 metadata must name exactly read_file/search_replace and correlate each successful tool
 with successful requested-path ACP callbacks of the matching read/write method.
-Concurrent same-kind/same-path pending tool correlation is explicitly unsupported; one
+Every successful callback also requires an unfinished owned tool at the requested path.
+A search_replace target read is an allowed dependency, but never counts as successful
+write evidence. Unaccounted successful reads/writes invalidate completion and retain
+unknown outcomes as Lost. Concurrent same-kind/same-path pending tool correlation is explicitly unsupported; one
 callback never credits multiple tools. Post-turn tool count delta must equal observed
 live tool notifications. Denied callbacks never authorize a
 completed native tool. The correlated terminal response immediately closes live callback
@@ -175,6 +178,11 @@ cancelled/max_tokens/refusal/unknown reasons do not. Once stop is requested, rej
 file/permission work while cleaning up. Uncertain cleanup/persistence or a dispatched prompt without authoritative native terminal
 outcome remains Lost/reserved even after verified process death and PID clearing. A known
 correlated native terminal failure can be Failed; cancellation never supplies that evidence.
+Post-dispatch reconciliation adds bounded Git/index/inventory work before terminal
+publication. Stop's five-second wait may return Timeout while that work finishes;
+it leaves supervision and reservation intact. Uncertain death of a reconciliation
+helper also raises an otherwise known Failed outcome to Lost. This is separate from
+the factual native terminal observation and preserves the shared process-death guard.
 
 Private registry state prevents duplicate live launches or concurrent same-Session resume.
 Terminal idle publication disarms its busy guard before opening the flag under the

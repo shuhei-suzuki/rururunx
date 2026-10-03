@@ -210,8 +210,13 @@ for line in sys.stdin:
   assert p['prompt'][0]['text'].startswith('Prepared Task input follows:\n\n'), 'native slash command authority escaped envelope'
   if os.getenv('RRX_EXPECT_INPUT'):assert p['prompt'][0]['text'].endswith(os.environ['RRX_EXPECT_INPUT'])
   send({'jsonrpc':'2.0','method':'session/update','params':{'sessionId':sid,'update':{'sessionUpdate':'session_info_update','title':'native title'}}})
-  connection=sqlite3.connect(os.environ['RRX_DATABASE']);rows=connection.execute("select body from records where kind='session'").fetchall();connection.close()
-  assert any(json.loads(row[0])['data']['recovery'].get('prompt_id')==prompt and json.loads(row[0])['data']['recovery'].get('input_version') in [1,2] for row in rows),'dispatch not durable'
+  connection=sqlite3.connect(os.environ['RRX_DATABASE']);rows=connection.execute("select body from records where kind='session'").fetchall()
+  owned=[json.loads(row[0]) for row in rows if json.loads(row[0])['data']['recovery'].get('prompt_id')==prompt];assert len(owned)==1,'dispatch not durable'
+  record=owned[0];recovery=record['data']['recovery'];assert recovery['input_version'] in [1,2]
+  audit=connection.execute("select data from audit where kind='session.saved' order by sequence desc").fetchall();connection.close()
+  saved=next(json.loads(row[0]) for row in audit if json.loads(row[0])['id']==record['id'])
+  assert saved['evidence']['dispatch_intent']=={'input_version':recovery['input_version'],'prompt_id':prompt},'Grok dispatch intent was not atomically durable before wire'
+  assert set(saved['evidence'])=={'state','agent','provider','role','native_ref','dispatch_intent'},'private recovery payload leaked into audit'
   if mode=='hang':time.sleep(60)
   if mode=='malformed':print('invalid-json',flush=True);continue
   if mode=='oversize':print('x'*1100000,flush=True);continue
@@ -231,6 +236,8 @@ for line in sys.stdin:
    assert fs('fs/read_text_file','own.txt').get('result')
    if mode!='unfinished':done(n)
    if mode=='ambiguous':done('99')
+   if mode=='unowned_write':fs('fs/write_text_file','unowned.txt','unaccounted effect')
+   if mode=='unowned_read':fs('fs/read_text_file','own.txt')
    if mode=='bypass':
     n=tool('search_replace','result.txt',2);done(n)
    else:
@@ -328,6 +335,8 @@ async fn native_auth_inventory_config_parser_and_tool_evidence_fail_closed() {
         "ambiguous",
         "unnotified",
         "hook_failure",
+        "unowned_write",
+        "unowned_read",
     ] {
         let mut fixture = Fixture::new();
         fixture.mode(mode);
@@ -346,7 +355,9 @@ async fn native_auth_inventory_config_parser_and_tool_evidence_fail_closed() {
                 "callback_budget",
                 "path_budget",
                 "wrong_method",
-                "ambiguous"
+                "ambiguous",
+                "unowned_write",
+                "unowned_read"
             ]
             .contains(&mode)
             {
