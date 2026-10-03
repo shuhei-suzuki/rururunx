@@ -129,7 +129,11 @@ async fn finished(adapter: &dyn AgentAdapter, session: &Session) -> SessionStatu
         while !status.borrow().terminal() {
             status.changed().await.unwrap();
         }
-        status.borrow().clone()
+        let result = status.borrow().clone();
+        if result.session.state == SessionState::Lost {
+            eprintln!("native supervisor loss: {:?}", result.failure);
+        }
+        result
     })
     .await
     .unwrap()
