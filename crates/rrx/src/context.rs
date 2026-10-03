@@ -812,10 +812,16 @@ impl ScopedReader {
         )?;
         let (common, _): (PathBuf, Vec<String>) =
             serde_json::from_str(&project.repository_identity)?;
+        let mut forbidden = vec![common];
+        // The authorized Task root itself lives below the namespace. Its own
+        // descendants remain readable; primary-source refs cannot enter any Task.
+        if root == project.root {
+            forbidden.push(project.worktree_root.clone());
+        }
         Ok(Self {
             root: root.to_path_buf(),
             fd,
-            forbidden: vec![project.worktree_root.clone(), common],
+            forbidden,
         })
     }
     fn read(&self, name: &str) -> Result<Option<Vec<u8>>> {
