@@ -314,7 +314,9 @@ impl ApprovalLedger {
         }
         if params["threadId"].as_str() != Some(self.thread.as_str())
             || params["turnId"].as_str() != Some(self.turn.as_str())
-            || params["itemId"].as_str().is_none_or(str::is_empty)
+            || params["itemId"]
+                .as_str()
+                .is_none_or(|value| value.is_empty() || value.len() > 256)
         {
             return Err(failure(
                 ErrorKind::OwnershipMismatch,
@@ -428,6 +430,22 @@ impl ApprovalLedger {
     }
     pub fn is_empty(&self) -> bool {
         self.pending.is_empty()
+    }
+    pub fn pending(&self) -> Vec<PendingRequest> {
+        self.pending.values().cloned().collect()
+    }
+    pub fn preview_reply(&self, id: &RpcId, decision: OperationDecision) -> AdapterResult<Value> {
+        let mut preview = Self {
+            thread: self.thread.clone(),
+            turn: self.turn.clone(),
+            pending: self
+                .pending
+                .get(id)
+                .map(|request| BTreeMap::from([(id.clone(), request.clone())]))
+                .unwrap_or_default(),
+            seen: BTreeMap::new(),
+        };
+        preview.reply(id, decision)
     }
 }
 

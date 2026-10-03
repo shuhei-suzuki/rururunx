@@ -1,16 +1,20 @@
 //! Scoped native session supervision. Workflow verdicts remain caller-owned.
+use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{
     collections::{BTreeSet, HashMap},
     path::PathBuf,
     sync::{Arc, Mutex},
 };
-use tokio::sync::{mpsc, watch};
+use tokio::sync::{mpsc, oneshot, watch};
 
 use super::{
     ownership::{ProcessOwnership, ScopeSnapshot, filesystem},
     policy::{DecisionPolicy, native_environment},
-    protocol::{Event, TokenCounters, UsageTracker, failure},
+    protocol::{
+        ApprovalLedger, Event, NativeRpc, OperationDecision, RpcId, TokenCounters, UsageTracker,
+        failure,
+    },
     transport::NativeServer,
 };
 use crate::{
@@ -29,10 +33,12 @@ pub struct CodexAdapter {
     executable: PathBuf,
     store: SharedStore,
     sessions: Mutex<HashMap<SessionId, Entry>>,
+    runtime_broker: bool,
 }
 struct Entry {
     status: watch::Receiver<SessionStatus>,
     stop: mpsc::Sender<()>,
+    reply: mpsc::Sender<Reply>,
     evidence: Arc<Mutex<Evidence>>,
     request: LaunchRequest,
     schema: Option<Value>,
@@ -41,19 +47,36 @@ type OwnedReference = (
     watch::Receiver<SessionStatus>,
     mpsc::Sender<()>,
     Arc<Mutex<Evidence>>,
+    mpsc::Sender<Reply>,
 );
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DecisionRequest {
+    native_turn: String,
+    request_id: RpcId,
+    decision: OperationDecision,
+}
+struct Reply {
+    request: DecisionRequest,
+    result: oneshot::Sender<AdapterResult<()>>,
+}
 #[derive(Default)]
 struct Evidence {
     completed: bool,
     turn: Option<String>,
     counters: Option<TokenCounters>,
     cumulative: Option<TokenCounters>,
+    pending: Option<ApprovalLedger>,
 }
 struct NativeTurn {
     thread: String,
     turn: String,
     previous_turn: Option<String>,
     previous_cumulative: Option<TokenCounters>,
+    authority: ScopeSnapshot,
+    request: LaunchRequest,
+    binding: Value,
+    runtime_broker: bool,
 }
 struct Reservation {
     store: SharedStore,
@@ -71,6 +94,22 @@ impl Reservation {
         self.version = store
             .put_session(&self.session, self.version)
             .map_err(|e| failure(ErrorKind::StateConflict, e.to_string()))?;
+        Ok(())
+    }
+    fn publish(
+        &mut self,
+        sender: &watch::Sender<SessionStatus>,
+        status: &mut SessionStatus,
+    ) -> AdapterResult<()> {
+        let mut store = self
+            .store
+            .lock()
+            .map_err(|_| failure(ErrorKind::StateFailure, "state store poisoned"))?;
+        self.version = store
+            .put_session(&self.session, self.version)
+            .map_err(|error| failure(ErrorKind::StateConflict, error.to_string()))?;
+        status.session = self.session.clone();
+        sender.send_replace(status.clone());
         Ok(())
     }
 }
@@ -100,7 +139,15 @@ impl CodexAdapter {
             executable,
             store,
             sessions: Mutex::new(HashMap::new()),
+            runtime_broker: false,
         })
+    }
+    /// Opt-in integration for a trusted runtime Approval Broker. Native policy
+    /// must already select its user/client route; automatic review is retained
+    /// otherwise and launch fails explicitly before inference.
+    pub fn with_runtime_broker(mut self) -> Self {
+        self.runtime_broker = true;
+        self
     }
     fn registry(&self) -> AdapterResult<std::sync::MutexGuard<'_, HashMap<SessionId, Entry>>> {
         self.sessions
@@ -125,15 +172,16 @@ impl CodexAdapter {
             entry.status.clone(),
             entry.stop.clone(),
             entry.evidence.clone(),
+            entry.reply.clone(),
         ))
     }
     fn current(&self, reference: &SessionRef) -> AdapterResult<SessionStatus> {
-        let (receiver, _, _) = self.reference(reference)?;
-        let status = receiver.borrow().clone();
+        let (receiver, _, _, _) = self.reference(reference)?;
         let store = self
             .store
             .lock()
             .map_err(|_| failure(ErrorKind::StateFailure, "state store poisoned"))?;
+        let status = receiver.borrow().clone();
         let persisted = store
             .session(reference.id)
             .map_err(|e| failure(ErrorKind::StateFailure, e.to_string()))?
@@ -172,7 +220,7 @@ impl CodexAdapter {
         // The baseline comes only from the owned supervisor, never caller JSON
         // or a native UUID hint. Missing history remains unknown on resume.
         let previous_cumulative = if let Some(previous) = &resume {
-            let (_, _, evidence) = self.reference(&SessionRef::from(previous))?;
+            let (_, _, evidence, _) = self.reference(&SessionRef::from(previous))?;
             evidence
                 .lock()
                 .map_err(|_| failure(ErrorKind::StateFailure, "native telemetry poisoned"))?
@@ -284,6 +332,15 @@ impl CodexAdapter {
         .await;
         discovery.shutdown().await?;
         let policy = discovered?;
+        if self.runtime_broker
+            && request.role == SessionRole::Executor
+            && !policy.permits_runtime_broker()
+        {
+            return Err(failure(
+                ErrorKind::UnsupportedCapability,
+                "native approval policy does not expose the runtime-broker client route; native reviewer retained",
+            ));
+        }
         let mut native = NativeServer::launch(
             &executable,
             &request.worktree,
@@ -412,8 +469,10 @@ impl CodexAdapter {
         };
         let (sender, receiver) = watch::channel(status);
         let (stop, stopped) = mpsc::channel(1);
+        let (reply, replies) = mpsc::channel(16);
         let evidence = Arc::new(Mutex::new(Evidence {
             turn: Some(turn.clone()),
+            pending: Some(ApprovalLedger::new(thread.clone(), turn.clone())),
             ..Evidence::default()
         }));
         {
@@ -432,8 +491,9 @@ impl CodexAdapter {
                 Entry {
                     status: receiver,
                     stop,
+                    reply,
                     evidence: evidence.clone(),
-                    request,
+                    request: request.clone(),
                     schema,
                 },
             );
@@ -444,6 +504,7 @@ impl CodexAdapter {
             sender,
             stopped,
             evidence,
+            replies,
             NativeTurn {
                 thread,
                 turn,
@@ -451,6 +512,10 @@ impl CodexAdapter {
                     session.recovery["native_turn"].as_str().map(str::to_owned)
                 }),
                 previous_cumulative,
+                authority: snapshot,
+                request,
+                binding,
+                runtime_broker: self.runtime_broker,
             },
         ));
         Ok(session)
@@ -469,6 +534,7 @@ impl AgentAdapter for CodexAdapter {
             Capability::PromptCacheTelemetry,
             Capability::Resume,
             Capability::ContextCheckpoint,
+            Capability::PermissionInterception,
         ]
         .into()
     }
@@ -499,7 +565,7 @@ impl AgentAdapter for CodexAdapter {
     }
     fn stop(&self, session: SessionRef) -> AdapterFuture<'_, SessionStatus> {
         Box::pin(async move {
-            let (mut receiver, stop, _) = self.reference(&session)?;
+            let (mut receiver, stop, _, _) = self.reference(&session)?;
             if !receiver.borrow().terminal() {
                 stop.try_send(()).map_err(|_| {
                     failure(
@@ -552,7 +618,7 @@ impl AgentAdapter for CodexAdapter {
         Ok(())
     }
     fn subscribe(&self, session: SessionRef) -> AdapterResult<watch::Receiver<SessionStatus>> {
-        self.reference(&session).map(|(receiver, _, _)| receiver)
+        self.reference(&session).map(|(receiver, _, _, _)| receiver)
     }
     fn usage(
         &self,
@@ -565,7 +631,7 @@ impl AgentAdapter for CodexAdapter {
                 return Err(failure(ErrorKind::InvalidInput, "usage phase is blank"));
             }
             let status = self.current(&session)?;
-            let (_, _, evidence) = self.reference(&session)?;
+            let (_, _, evidence, _) = self.reference(&session)?;
             let evidence = evidence
                 .lock()
                 .map_err(|_| failure(ErrorKind::StateFailure, "native telemetry poisoned"))?;
@@ -593,6 +659,68 @@ impl AgentAdapter for CodexAdapter {
                     .into(),
                 ),
             })
+        })
+    }
+    fn pending_approvals(&self, session: SessionRef) -> AdapterFuture<'_, Value> {
+        Box::pin(async move {
+            let status = self.current(&session)?;
+            let (_, _, evidence, _) = self.reference(&session)?;
+            let evidence = evidence
+                .lock()
+                .map_err(|_| failure(ErrorKind::StateFailure, "native approval state poisoned"))?;
+            Ok(
+                json!({"scope":status.session.scope,"session_id":session.id,"native_uuid":status.session.native_ref,"native_turn":evidence.turn,"requires_human":!self.runtime_broker,"requests":evidence.pending.as_ref().map(ApprovalLedger::pending).unwrap_or_default()}),
+            )
+        })
+    }
+    fn submit_approval(&self, session: SessionRef, decision: Value) -> AdapterFuture<'_, ()> {
+        Box::pin(async move {
+            if serde_json::to_vec(&decision).map_or(true, |value| value.len() > 4096) {
+                return Err(failure(
+                    ErrorKind::InvalidInput,
+                    "native approval reply exceeds limit",
+                ));
+            }
+            let request: DecisionRequest = serde_json::from_value(decision).map_err(|_| {
+                failure(
+                    ErrorKind::InvalidInput,
+                    "native approval reply needs exact turn/request ID and one operation decision",
+                )
+            })?;
+            if self.current(&session)?.terminal() {
+                return Err(failure(
+                    ErrorKind::StateConflict,
+                    "terminal native Session has no pending operations",
+                ));
+            }
+            if matches!(request.decision, OperationDecision::Approve) && !self.runtime_broker {
+                return Err(failure(
+                    ErrorKind::UnsupportedCapability,
+                    "native approval requires its Human/client route; automatic review cannot be replaced by a runtime grant",
+                ));
+            }
+            let (_, _, _, replies) = self.reference(&session)?;
+            let (result, receiver) = oneshot::channel();
+            replies.try_send(Reply { request, result }).map_err(|_| {
+                failure(
+                    ErrorKind::StateConflict,
+                    "native approval channel unavailable or full",
+                )
+            })?;
+            tokio::time::timeout(std::time::Duration::from_secs(40), receiver)
+                .await
+                .map_err(|_| {
+                    failure(
+                        ErrorKind::Timeout,
+                        "native approval acknowledgement timed out; inspect its durable intent",
+                    )
+                })?
+                .map_err(|_| {
+                    failure(
+                        ErrorKind::SessionLost,
+                        "native approval supervisor disappeared",
+                    )
+                })?
         })
     }
     fn checkpoint(&self, session: SessionRef, input: PreparedInput) -> AdapterFuture<'_, ()> {
@@ -626,12 +754,112 @@ impl AgentAdapter for CodexAdapter {
     }
 }
 
+struct ApprovalAuthority {
+    snapshot: ScopeSnapshot,
+    request: LaunchRequest,
+    binding: Value,
+    runtime_broker: bool,
+}
+
+async fn answer_approval(
+    native: &mut NativeRpc,
+    reservation: &mut Reservation,
+    evidence: &Arc<Mutex<Evidence>>,
+    authority: &ApprovalAuthority,
+    sender: &watch::Sender<SessionStatus>,
+    status: &mut SessionStatus,
+    reply: Reply,
+) -> AdapterResult<bool> {
+    if reply.result.is_closed() {
+        return Ok(false);
+    }
+    let preview = (|| {
+        let evidence = evidence
+            .lock()
+            .map_err(|_| failure(ErrorKind::StateFailure, "native approval state poisoned"))?;
+        if evidence.turn.as_deref() != Some(reply.request.native_turn.as_str()) {
+            return Err(failure(
+                ErrorKind::OwnershipMismatch,
+                "approval belongs to another native turn",
+            ));
+        }
+        if matches!(reply.request.decision, OperationDecision::Approve) && !authority.runtime_broker
+        {
+            return Err(failure(
+                ErrorKind::UnsupportedCapability,
+                "native Human approval cannot be granted through the runtime-broker route",
+            ));
+        }
+        let pending = evidence
+            .pending
+            .as_ref()
+            .ok_or_else(|| failure(ErrorKind::SessionLost, "native approval ledger unavailable"))?;
+        pending.preview_reply(&reply.request.request_id, reply.request.decision)
+    })();
+    let preview = match preview {
+        Ok(preview) => preview,
+        Err(error) => {
+            let _ = reply.result.send(Err(error));
+            return Ok(false);
+        }
+    };
+    let validated = async {
+        if matches!(reply.request.decision, OperationDecision::Approve) {
+            authority.snapshot.verify_binding(&authority.request, &mut reservation.ownership, &authority.binding).await?;
+            authority.snapshot.recheck(&reservation.store, &authority.request, &reservation.session.agent)?;
+        }
+        if reply.result.is_closed() { return Ok(false); }
+        {
+            let mut store = reservation.store.lock().map_err(|_| failure(ErrorKind::StateFailure, "state store poisoned"))?;
+            let (persisted, version) = store.session(reservation.session.id).map_err(|error| failure(ErrorKind::StateFailure, error.to_string()))?
+                .ok_or_else(|| failure(ErrorKind::SessionLost, "native approval Session disappeared"))?;
+            if version != reservation.version || serde_json::to_value(persisted).ok() != serde_json::to_value(&reservation.session).ok() {
+                return Err(failure(ErrorKind::StateConflict, "native approval owner changed before reply"));
+            }
+            let data = json!({"session_id":reservation.session.id,"native_uuid":reservation.session.native_ref,"native_turn":reply.request.native_turn,"request_id":reply.request.request_id,"reply":preview,"effect":"intent_only"});
+            if matches!(reply.request.decision, OperationDecision::Approve) {
+                store.audit_if_current(&reservation.session.scope, [authority.snapshot.project.version, authority.snapshot.goal.as_ref().expect("Executor Goal validated").version, authority.snapshot.task.as_ref().expect("Executor Task validated").version], "codex.approval.reply_intent", data)
+            } else {
+                store.audit(&reservation.session.scope, "codex.approval.reply_intent", data)
+            }.map_err(|error| failure(ErrorKind::StateConflict, error.to_string()))?;
+            // Fence the still-owned Session immediately before the native reply.
+            reservation.version = store.put_session(&reservation.session, reservation.version).map_err(|error| failure(ErrorKind::StateConflict, error.to_string()))?;
+        }
+        native.send(preview).await?;
+        let empty = {
+            let mut evidence = evidence.lock().map_err(|_| failure(ErrorKind::StateFailure, "native approval state poisoned"))?;
+            let pending = evidence.pending.as_mut().ok_or_else(|| failure(ErrorKind::SessionLost, "native approval ledger unavailable"))?;
+            pending.reply(&reply.request.request_id, reply.request.decision)?;
+            pending.is_empty()
+        };
+        if matches!(reply.request.decision, OperationDecision::Cancel) { return Ok(true); }
+        if empty {
+            reservation.session.state = SessionState::Running;
+            reservation.publish(sender, status)?;
+        }
+        Ok(false)
+    }.await;
+    match validated {
+        Ok(cancelled) => {
+            let _ = reply.result.send(Ok(()));
+            Ok(cancelled)
+        }
+        Err(error) => {
+            let kind = error.kind;
+            let message = error.to_string();
+            let _ = reply.result.send(Err(failure(kind, message.clone())));
+            Err(failure(kind, message))
+        }
+    }
+}
+
 async fn supervise(
     mut native: NativeServer,
     mut reservation: Reservation,
     sender: watch::Sender<SessionStatus>,
     mut stop: mpsc::Receiver<()>,
     evidence: Arc<Mutex<Evidence>>,
+    mut replies: mpsc::Receiver<Reply>,
     identity: NativeTurn,
 ) {
     let NativeTurn {
@@ -639,6 +867,10 @@ async fn supervise(
         turn,
         previous_turn,
         previous_cumulative,
+        authority,
+        request,
+        binding,
+        runtime_broker,
     } = identity;
     let mut status = sender.borrow().clone();
     let mut tracker = if previous_turn.is_some() {
@@ -646,14 +878,62 @@ async fn supervise(
     } else {
         UsageTracker::new(thread.clone(), turn.clone())
     };
+    let approval_authority = ApprovalAuthority {
+        snapshot: authority,
+        request,
+        binding,
+        runtime_broker,
+    };
     let result = loop {
         let event = tokio::select! {
+            biased;
             _ = stop.recv() => {
                 let _ = native.rpc.call("turn/interrupt", json!({"threadId":thread,"turnId":turn})).await;
                 break Ok(false);
             },
+            Some(reply) = replies.recv() => {
+                match answer_approval(&mut native.rpc, &mut reservation, &evidence, &approval_authority, &sender, &mut status, reply).await {
+                    Ok(true) => break Ok(false),
+                    Ok(false) => continue,
+                    Err(error) => break Err(error),
+                }
+            },
             event = native.receive() => event,
         };
+        if let Ok(Event::Request { id, method, params }) = &event {
+            let pending = (|| {
+                if reservation.session.role != SessionRole::Executor {
+                    return Err(failure(
+                        ErrorKind::UnsupportedCapability,
+                        "decision-only native Session cannot request an operation",
+                    ));
+                }
+                let observed = evidence
+                    .lock()
+                    .map_err(|_| {
+                        failure(ErrorKind::StateFailure, "native approval state poisoned")
+                    })?
+                    .pending
+                    .as_mut()
+                    .ok_or_else(|| {
+                        failure(ErrorKind::SessionLost, "native approval ledger unavailable")
+                    })?
+                    .insert(id.clone(), method.clone(), params.clone())?;
+                reservation.store.lock().map_err(|_| failure(ErrorKind::StateFailure, "state store poisoned"))?
+                    .audit(&reservation.session.scope, "codex.approval.requested", json!({"session_id":reservation.session.id,"native_uuid":reservation.session.native_ref,"native_turn":turn,"request":observed,"requires_human":!runtime_broker}))
+                    .map_err(|error| failure(ErrorKind::StateFailure, error.to_string()))?;
+                reservation.session.state = if runtime_broker {
+                    SessionState::WaitingApproval
+                } else {
+                    SessionState::WaitingHuman
+                };
+                reservation.publish(&sender, &mut status)
+            })();
+            if let Err(error) = pending {
+                break Err(error);
+            }
+            continue;
+        }
         match event.and_then(|event| {
             if resumed_usage(&event, &thread, previous_turn.as_deref())? {
                 return Ok(None);
@@ -696,17 +976,20 @@ async fn supervise(
         .err()
         .or(result.as_ref().err())
         .map(|error| error.to_string());
-    match reservation.persist() {
+    if let Ok(mut evidence) = evidence.lock() {
+        evidence.completed = completed;
+        evidence.counters = tracker.turn_counters();
+        evidence.cumulative = tracker.total;
+        evidence.pending = None;
+    }
+    match reservation.publish(&sender, &mut status) {
         Ok(()) => {
             reservation.armed = false;
-            status.session = reservation.session.clone();
-            if let Ok(mut evidence) = evidence.lock() {
-                evidence.completed = completed;
-                evidence.counters = tracker.turn_counters();
-                evidence.cumulative = tracker.total;
-            }
         }
         Err(error) => {
+            if let Ok(mut evidence) = evidence.lock() {
+                evidence.completed = false;
+            }
             status.session.state = SessionState::Lost;
             status.failure = Some(format!("native terminal persistence failed: {error}"));
         }
@@ -824,8 +1107,293 @@ fn decision_event(
 
 #[cfg(test)]
 mod tests {
+    use super::super::ownership::tests::Fixture;
     use super::*;
     use crate::domain::{ProjectId, Scope};
+    use futures_util::StreamExt;
+
+    struct ApprovalFixture {
+        _owned: Fixture,
+        reservation: Reservation,
+        evidence: Arc<Mutex<Evidence>>,
+        authority: ApprovalAuthority,
+        sender: watch::Sender<SessionStatus>,
+        status: SessionStatus,
+    }
+    impl ApprovalFixture {
+        async fn new(runtime_broker: bool) -> Self {
+            let owned = Fixture::new(true);
+            let snapshot = ScopeSnapshot::capture(&owned.store, &owned.request, "codex").unwrap();
+            let binding = snapshot
+                .verify_git(&owned.request, &mut ProcessOwnership::default())
+                .await
+                .unwrap();
+            let mut status = status();
+            status.session.scope = owned.request.scope.clone();
+            status.session.worktree = owned.request.worktree.clone();
+            status.session.role = SessionRole::Executor;
+            status.session.native_ref = Some("thread".into());
+            status.session.state = SessionState::Starting;
+            let mut reservation = Reservation {
+                store: owned.store.clone(),
+                session: status.session.clone(),
+                version: 0,
+                ownership: ProcessOwnership::default(),
+                armed: false,
+            };
+            reservation.persist().unwrap();
+            reservation.session.state = if runtime_broker {
+                SessionState::WaitingApproval
+            } else {
+                SessionState::WaitingHuman
+            };
+            reservation.persist().unwrap();
+            status.session = reservation.session.clone();
+            let (sender, _) = watch::channel(status.clone());
+            let mut pending = ApprovalLedger::new("thread".into(), "turn".into());
+            pending.insert(RpcId::Number(1), "item/commandExecution/requestApproval".into(), json!({"threadId":"thread","turnId":"turn","itemId":"item","command":"exact native operation"})).unwrap();
+            let evidence = Arc::new(Mutex::new(Evidence {
+                turn: Some("turn".into()),
+                pending: Some(pending),
+                ..Evidence::default()
+            }));
+            let authority = ApprovalAuthority {
+                snapshot,
+                request: owned.request.clone(),
+                binding,
+                runtime_broker,
+            };
+            Self {
+                _owned: owned,
+                reservation,
+                evidence,
+                authority,
+                sender,
+                status,
+            }
+        }
+        async fn answer(&mut self, rpc: &mut NativeRpc, reply: Reply) -> AdapterResult<bool> {
+            answer_approval(
+                rpc,
+                &mut self.reservation,
+                &self.evidence,
+                &self.authority,
+                &self.sender,
+                &mut self.status,
+                reply,
+            )
+            .await
+        }
+        fn intents(&self) -> usize {
+            self.reservation
+                .store
+                .lock()
+                .unwrap()
+                .events(&self.reservation.session.scope, 0, 1000)
+                .unwrap()
+                .into_iter()
+                .filter(|event| event.kind == "codex.approval.reply_intent")
+                .count()
+        }
+    }
+    fn reply(
+        decision: OperationDecision,
+        turn: &str,
+    ) -> (Reply, oneshot::Receiver<AdapterResult<()>>) {
+        let (result, receiver) = oneshot::channel();
+        (
+            Reply {
+                request: DecisionRequest {
+                    native_turn: turn.into(),
+                    request_id: RpcId::Number(1),
+                    decision,
+                },
+                result,
+            },
+            receiver,
+        )
+    }
+    async fn rpc_peer() -> (
+        NativeRpc,
+        mpsc::Receiver<Value>,
+        tokio::task::JoinHandle<()>,
+    ) {
+        let (client, server) = tokio::net::UnixStream::pair().unwrap();
+        let (sender, receiver) = mpsc::channel(16);
+        let peer = tokio::spawn(async move {
+            let mut socket = tokio_tungstenite::accept_async(server).await.unwrap();
+            while let Some(Ok(message)) = socket.next().await {
+                if let Ok(text) = message.to_text() {
+                    let value = serde_json::from_str(text).unwrap();
+                    if sender.send(value).await.is_err() {
+                        break;
+                    }
+                }
+            }
+        });
+        (NativeRpc::connect(client).await.unwrap(), receiver, peer)
+    }
+
+    #[tokio::test]
+    async fn native_reply_is_correlated_one_time_and_audited_before_real_wire_delivery() {
+        let mut fixture = ApprovalFixture::new(true).await;
+        let (mut rpc, mut wire, peer) = rpc_peer().await;
+        let (answer, result) = reply(OperationDecision::Approve, "turn");
+        assert!(!fixture.answer(&mut rpc, answer).await.unwrap());
+        result.await.unwrap().unwrap();
+        assert_eq!(
+            wire.recv().await.unwrap(),
+            json!({"id":1,"result":{"decision":"accept"}})
+        );
+        assert_eq!(fixture.intents(), 1);
+        assert!(
+            fixture
+                .evidence
+                .lock()
+                .unwrap()
+                .pending
+                .as_ref()
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(fixture.status.session.state, SessionState::Running);
+        let (duplicate, result) = reply(OperationDecision::Approve, "turn");
+        assert!(!fixture.answer(&mut rpc, duplicate).await.unwrap());
+        assert_eq!(
+            result.await.unwrap().unwrap_err().kind,
+            ErrorKind::OwnershipMismatch
+        );
+        assert_eq!(fixture.intents(), 1);
+        assert!(wire.try_recv().is_err());
+        drop(rpc);
+        peer.abort();
+    }
+
+    #[tokio::test]
+    async fn native_human_route_can_be_denied_but_cannot_be_silently_granted_by_broker() {
+        let mut fixture = ApprovalFixture::new(false).await;
+        let (mut rpc, mut wire, peer) = rpc_peer().await;
+        let (answer, result) = reply(OperationDecision::Approve, "turn");
+        assert!(!fixture.answer(&mut rpc, answer).await.unwrap());
+        assert_eq!(
+            result.await.unwrap().unwrap_err().kind,
+            ErrorKind::UnsupportedCapability
+        );
+        assert_eq!(fixture.intents(), 0);
+        assert_eq!(fixture.status.session.state, SessionState::WaitingHuman);
+        assert!(wire.try_recv().is_err());
+        let (denial, result) = reply(OperationDecision::Deny, "turn");
+        assert!(!fixture.answer(&mut rpc, denial).await.unwrap());
+        result.await.unwrap().unwrap();
+        assert_eq!(
+            wire.recv().await.unwrap(),
+            json!({"id":1,"result":{"decision":"decline"}})
+        );
+        assert_eq!(fixture.intents(), 1);
+        drop(rpc);
+        peer.abort();
+    }
+
+    #[tokio::test]
+    async fn cancelled_or_previous_turn_replies_cannot_claim_a_pending_native_request() {
+        let mut fixture = ApprovalFixture::new(true).await;
+        let (mut rpc, mut wire, peer) = rpc_peer().await;
+        let (cancelled, result) = reply(OperationDecision::Approve, "turn");
+        drop(result);
+        assert!(!fixture.answer(&mut rpc, cancelled).await.unwrap());
+        let (foreign, result) = reply(OperationDecision::Approve, "previous-turn");
+        assert!(!fixture.answer(&mut rpc, foreign).await.unwrap());
+        assert_eq!(
+            result.await.unwrap().unwrap_err().kind,
+            ErrorKind::OwnershipMismatch
+        );
+        assert_eq!(fixture.intents(), 0);
+        assert!(
+            !fixture
+                .evidence
+                .lock()
+                .unwrap()
+                .pending
+                .as_ref()
+                .unwrap()
+                .is_empty()
+        );
+        assert!(wire.try_recv().is_err());
+        let (cancel, result) = reply(OperationDecision::Cancel, "turn");
+        assert!(fixture.answer(&mut rpc, cancel).await.unwrap());
+        result.await.unwrap().unwrap();
+        assert_eq!(
+            wire.recv().await.unwrap(),
+            json!({"id":1,"result":{"decision":"cancel"}})
+        );
+        drop(rpc);
+        peer.abort();
+    }
+
+    #[tokio::test]
+    async fn failed_intent_audit_prevents_delivery_of_native_acceptance() {
+        let mut fixture = ApprovalFixture::new(true).await;
+        let database = fixture
+            .authority
+            .snapshot
+            .project
+            .root
+            .parent()
+            .unwrap()
+            .join("state.sqlite3");
+        rusqlite::Connection::open(database).unwrap().execute_batch("CREATE TRIGGER reject_native_intent BEFORE INSERT ON audit WHEN NEW.kind='codex.approval.reply_intent' BEGIN SELECT RAISE(ABORT,'injected audit failure'); END;").unwrap();
+        let (mut rpc, mut wire, peer) = rpc_peer().await;
+        let (answer, result) = reply(OperationDecision::Approve, "turn");
+        assert!(fixture.answer(&mut rpc, answer).await.is_err());
+        assert!(result.await.unwrap().is_err());
+        assert_eq!(fixture.intents(), 0);
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(100), wire.recv())
+                .await
+                .is_err()
+        );
+        drop(rpc);
+        peer.abort();
+    }
+
+    #[tokio::test]
+    async fn changed_durable_owner_or_paused_goal_prevents_native_operation_grant() {
+        for paused in [false, true] {
+            let mut fixture = ApprovalFixture::new(true).await;
+            {
+                let mut store = fixture.reservation.store.lock().unwrap();
+                if paused {
+                    let mut goal = fixture.authority.snapshot.goal.clone().unwrap();
+                    goal.state = crate::domain::GoalState::Paused;
+                    store.put_goal(&mut goal).unwrap();
+                } else {
+                    let mut session = fixture.reservation.session.clone();
+                    session.state = SessionState::Stopped;
+                    store
+                        .put_session(&session, fixture.reservation.version)
+                        .unwrap();
+                }
+            }
+            let (mut rpc, mut wire, peer) = rpc_peer().await;
+            let (answer, result) = reply(OperationDecision::Approve, "turn");
+            assert!(fixture.answer(&mut rpc, answer).await.is_err());
+            assert!(result.await.unwrap().is_err());
+            assert_eq!(fixture.intents(), 0);
+            assert!(
+                !fixture
+                    .evidence
+                    .lock()
+                    .unwrap()
+                    .pending
+                    .as_ref()
+                    .unwrap()
+                    .is_empty()
+            );
+            assert!(wire.try_recv().is_err());
+            drop(rpc);
+            peer.abort();
+        }
+    }
     fn status() -> SessionStatus {
         SessionStatus {
             session: Session {
