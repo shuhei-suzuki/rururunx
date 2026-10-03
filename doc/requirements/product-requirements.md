@@ -1,6 +1,6 @@
 # rururunx Product Requirements
 
-**Version:** 0.6
+**Version:** 0.7
 **Status:** Draft
 **Project:** rururunx
 **CLI:** `rrx`
@@ -36,6 +36,7 @@ rururunx automates that supervision layer while preserving native agent behavior
 10. **Quality before savings** — token reduction must never remove mandatory safety rules, hide required evidence, or weaken independent review.
 11. **High-performance runtime** — the MVP core runtime is implemented in **Rust** and must minimize orchestration overhead, idle resource usage, and process-management latency.
 12. **Goal-oriented autonomy** — rururunx owns long-running Goals above Tasks so the runtime can continue selecting, scheduling, and verifying work until explicit completion criteria are satisfied.
+13. **Multi-project by default** — one rururunx Runtime can supervise multiple repositories/projects, Goals, and Tasks concurrently while strictly isolating project rules, context, worktrees, credentials, and state.
 
 ## 4. MVP success definition
 
@@ -47,9 +48,30 @@ The MVP includes the current strict development practices, not only process mult
 
 ## 5. Core entities
 
+### Project
+
+A registered repository/workspace managed by rururunx.
+
+A Project contains at least:
+
+- project ID / display name
+- canonical repository/workspace path
+- repository identity / remote when available
+- default/base branch
+- project-scoped configuration
+- project rule/source-of-truth references
+- worktree root/convention
+- active Goals / Tasks
+- per-project concurrency policy
+- project-level audit/metrics references
+
+Project identity is stable across Runtime restarts and must prevent state/context from one repository from being accidentally reused in another.
+
 ### Goal
 
 A long-running objective above individual Tasks and Issues.
+
+For MVP, a Goal belongs to exactly one Project. A Project may have multiple Goals. Cross-project Goals are not required for MVP; the Runtime itself provides cross-project concurrency.
 
 A Goal contains at least:
 
@@ -123,6 +145,8 @@ rrx goal --file goal.md
 A Goal is different from a single `rrx run` Task:
 
 ```text
+Project
+  ↓
 Goal
   ↓
 Task DAG
@@ -134,7 +158,15 @@ Workflow
 Agent Sessions
 ```
 
-### 6.1 Goal completion
+### 6.1 Goal project binding
+
+For MVP, every Goal is bound to one Project/repository.
+
+Goal execution must load rules, source-of-truth documents, worktree policy, and context only from that Project unless an explicit external reference is allowed.
+
+Multiple Goals from different Projects may run concurrently in one Runtime.
+
+### 6.3 Goal completion
 
 A Goal must define explicit completion criteria.
 
@@ -151,7 +183,7 @@ After meaningful Task/phase transitions, rururunx reevaluates:
 
 If the Goal is incomplete and runnable work exists, execution continues without requiring the user to re-prompt the runtime.
 
-### 6.2 Goal Task DAG
+### 6.3 Goal Task DAG
 
 A Goal may contain:
 
@@ -163,7 +195,7 @@ Dependencies should be represented as a DAG when possible.
 
 The scheduler may run independent ready Tasks in parallel and must not start a Task whose declared hard dependencies are incomplete.
 
-### 6.3 Goal-driven follow-up work
+### 6.4 Goal-driven follow-up work
 
 During implementation or review, rururunx may discover work required to satisfy Goal completion criteria.
 
@@ -178,7 +210,7 @@ New work must:
 
 Material scope expansion requires Human escalation.
 
-### 6.4 Goal lifecycle
+### 6.5 Goal lifecycle
 
 Minimum Goal states:
 
@@ -192,7 +224,7 @@ Minimum Goal states:
 - CANCELLED
 - FAILED
 
-### 6.5 Goal CLI
+### 6.6 Goal CLI
 
 MVP supports at least:
 
@@ -208,7 +240,7 @@ rrx goal attach [goal-id]
 
 A default/current Goal may be inferred when unambiguous.
 
-### 6.6 Goal progress
+### 6.7 Goal progress
 
 Goal status must expose:
 
@@ -220,7 +252,7 @@ Goal status must expose:
 - aggregate token/cost metrics when available
 - Goal elapsed time
 
-### 6.7 Goal context
+### 6.8 Goal context
 
 Goal context must be compact and durable.
 
@@ -237,7 +269,7 @@ A Goal-level Context Pack should contain:
 
 Task-level details remain in Task Context Packs rather than being blindly duplicated into Goal context.
 
-### 6.8 Native agent goal support
+### 6.9 Native agent goal support
 
 Goal correctness must not depend on any provider-specific goal feature.
 
@@ -252,7 +284,7 @@ However:
 - another provider must be able to continue the Goal
 - runtime restart must recover without depending on one provider session
 
-### 6.9 Consultation to Goal promotion
+### 6.10 Consultation to Goal promotion
 
 A consultation may be promoted directly into a Goal:
 
@@ -677,7 +709,118 @@ Tasks are not bound conceptually to terminal windows. The unit is:
 Task → Worktree → Agent Session → Adapter
 ```
 
-## 32. Scheduler and states
+## 32. Multi-project Runtime
+
+Multi-project orchestration is an MVP requirement.
+
+One `rrx` Runtime must manage multiple registered Projects simultaneously:
+
+```text
+rururunx Runtime
+  ├─ Project A
+  │    ├─ Goal A1
+  │    │    └─ Task DAG
+  │    └─ Goal A2
+  ├─ Project B
+  │    └─ Goal B1
+  │         └─ Task DAG
+  └─ Project C
+       └─ Goal C1
+            └─ Task DAG
+```
+
+### 32.1 Project registry
+
+The Runtime must maintain a persistent registry of Projects.
+
+MVP CLI should support at least:
+
+```bash
+rrx project add <path>
+rrx project list
+rrx project status [project]
+rrx project remove <project>
+```
+
+Starting `rrx` inside an unregistered Git repository may offer or perform project registration according to policy.
+
+### 32.2 Project isolation
+
+Each Project must isolate:
+
+- repository/worktree paths
+- project configuration
+- project rules/skills
+- Goal/Task Context Packs
+- Review Bundles
+- credentials/environment references
+- Git operations
+- audit events
+
+Context from another Project must never be injected into an agent session unless an explicit cross-project reference exists.
+
+### 32.3 Global scheduler
+
+Concurrency is governed globally as well as per Project and per Agent.
+
+Configuration must support concepts equivalent to:
+
+```yaml
+scheduler:
+  global_max_sessions: 12
+  max_tasks_per_project: 4
+
+agents:
+  claude:
+    max_concurrent: 4
+  codex:
+    max_concurrent: 6
+```
+
+The Scheduler must enforce:
+
+- global session limits
+- per-project Task/session limits
+- per-agent/provider limits where configured
+- Goal Task-DAG readiness
+- reviewer concurrency
+- fair progress across Projects so one large Goal does not unintentionally starve every other Project
+
+### 32.4 Multi-project status and TUI
+
+The global TUI/status view must group activity by Project and Goal.
+
+It must expose at least:
+
+- Project
+- Goal
+- Task
+- Agent
+- phase/state
+- reviewer state
+- Human attention
+- elapsed/wait time
+- token/cost metrics when available
+
+`rrx status --all` or an equivalent command must provide a Runtime-wide view.
+
+### 32.5 Multi-project recovery
+
+After Runtime restart, rururunx must restore:
+
+- Project registry
+- active Goals per Project
+- Task DAG state
+- active/recoverable sessions
+- worktree state
+- pending approval/review state
+- global/per-project concurrency accounting
+
+### 32.6 Multi-project dogfood
+
+MVP dogfooding must demonstrate at least two separate repositories/Projects progressing concurrently, with multiple Tasks overall and no cross-project context/worktree contamination.
+
+## 34. Scheduler and states
 
 The scheduler manages running, idle, waiting, review, human-waiting, failure, resume, and concurrency.
 
@@ -700,7 +843,7 @@ Minimum Task states:
 - COMPLETED
 - CANCELLED
 
-## 33. CLI and TUI
+## 34. CLI and TUI
 
 Primary commands:
 
@@ -726,7 +869,7 @@ The TUI must expose active tasks, agents, phases, waiting states, reviewer statu
 
 `rrx attach <task>` must attach to the native agent session rather than replacing it with a proprietary chat UI.
 
-## 34. Restart and recovery
+## 35. Restart and recovery
 
 Runtime restart must not lose Task state.
 
@@ -744,7 +887,7 @@ Persist at least:
 - pending approvals
 - audit trail needed for recovery
 
-## 35. Master design review
+## 36. Master design review
 
 The runtime must support periodic master-design review triggered by configurable thresholds such as:
 
@@ -753,7 +896,7 @@ The runtime must support periodic master-design review triggered by configurable
 - number of new master-design files
 - accumulated line-change threshold
 
-## 36. Audit and observability
+## 37. Audit and observability
 
 Record:
 
@@ -790,7 +933,7 @@ Secondary KPI:
 
 > **Human Attention Time**
 
-## 37. Local-first
+## 38. Local-first
 
 MVP must operate without a hosted control plane.
 
@@ -800,7 +943,7 @@ Local state may use SQLite or another lightweight local store.
 
 The Rust implementation should target low startup latency, low idle overhead, efficient async process supervision, reliable PTY/process handling, and single-binary distribution where practical.
 
-## 38. MVP non-goals
+## 39. MVP non-goals
 
 Do not build in MVP:
 
@@ -814,7 +957,7 @@ Do not build in MVP:
 - long-term vector-memory platform
 - proprietary RAG stack
 
-## 39. Context and token efficiency
+## 40. Context and token efficiency
 
 Context/token efficiency is a **core MVP requirement**, not a post-MVP optimization.
 
@@ -964,7 +1107,7 @@ Dogfooding must compare a representative workflow with Context Efficiency enable
 
 See `doc/design/master/context-efficiency.md`.
 
-## 40. MVP acceptance criteria
+## 41. MVP acceptance criteria
 
 The MVP is accepted when all of the following are demonstrable:
 
