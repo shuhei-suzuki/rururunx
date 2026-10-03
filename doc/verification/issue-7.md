@@ -35,8 +35,8 @@ transient impossible or reinterpret its uncertain dispatch as completed.
 
 Two immutable published native formal design reviews identified and refined scope,
 auth/profile, dispatch CAS, live-tool evidence, schema, filesystem and resume requirements.
-Implementation review, compiled boundary mutants, final build gates and exact Linux/macOS
-CI are pending. Independent review preserves the default native Claude model and hooks,
+Implementation review and compiled boundary mutants are recorded below; final scoped
+rereview and exact Linux/macOS CI remain pending. Independent review preserves the default native Claude model and hooks,
 with tools disabled and an empty strict MCP inventory; it is a manual read-only source
 review under the native read-only exception, not Triple Review dogfood.
 
@@ -111,4 +111,37 @@ sentinel); 03 absent rule-copy protection folds ASCII case and directory refs ar
 observed native tools; 05 failed dispatched turns also reconcile after verified cleanup,
 with separate factual attempt/error audit. Unknown outcome remains Lost regardless of
 reconciliation or process death; known failures are not converted into successful results.
-These changes await committed verification and immutable scoped rereview.
+These changes passed committed verification below and await immutable scoped rereview.
+
+## Round 3 committed gates and native observations
+
+Clean `5bf217c`: 170 locked workspace checks pass with serial fixture execution
+(including two doctests); two installed-native tests are explicitly ignored in ordinary CI.
+Fmt, locked all-target clippy with warnings denied, debug and release builds pass.
+The three cross-connection dispatch CAS tests also verify atomic scoped intent journaling,
+rollback and exclusion of private recovery payload. Shared `Session.saved` projects only
+`dispatch_intent` alongside existing ownership evidence; Grok records input version and
+prompt ID before the same atomic consumption/write fence. No schema/helper contract change.
+Copied scope snapshots filter wildcard record queries to exact nullable scope.
+
+Seven new compiled R2 mutants all fail by assertions: terminal guard disarm, requested
+and configured rule-case aliases, observed-stop/no-native-creation, callback method,
+post-tool count and failed-turn observation. Totals: 27 executions, 26 distinct boundaries,
+26 assertion kills and the original survivor subsequently killed. Restored baseline has no
+crate diff; nine fake subprocess tests pass. Owned detached mutation worktree removed normally.
+
+Installed acceptance at clean `5bf217c` passes in 40.08 seconds: exact owned edit, foreign
+write denial, explicit higher-version continuation with the same native UUID and immutable
+locked zero-tool schema-constrained DENY. A separate isolated decision-only correlation
+test at `80d3e42` passes in 8.79 seconds with no worktree changes.
+
+Two intervening actual-native trials failed conservatively. At `fbb0c0f`, execution and
+fresh continuation succeeded, but the decision received an unexpected string RPC response
+ID while a numeric ID was owned. At `1d3f15d`, continuation cleanup could not verify group
+death because the trusted macOS `/bin/ps` inspector exceeded its unchanged 250 ms deadline.
+Neither cause is retroactively attributed to the other or declared impossible by later
+success. Both retain Lost reservation. Safe response-shape/ownership boolean diagnostics
+contain no raw IDs, result content or credentials. No numeric/string coercion, unknown-frame
+exception, inspection-deadline increase, death-guard relaxation or uncertainty-latch reset
+was introduced. The bounded inspector may conservatively require explicit recovery under
+host load; actual native dispatch completion and process death remain separate authorities.
