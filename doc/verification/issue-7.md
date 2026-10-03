@@ -152,9 +152,36 @@ Independent native Round 3 of immutable public `83bc484` completed in 190.001 se
 with no Critical/High/Medium or unresolved blockers, and verified all R2 dispositions.
 Five Low refinements were verified: reject noncanonical/symlinked configured authority
 refs instead of protecting only their target name (R3-01); reduce unmatched-response
-diagnostics to shape/equality booleans including local numeric counters (02); assert
+diagnostics to shape/equality booleans including local numeric-counter checks (02); assert
 Grok's own atomic dispatch intent audit from the fake process before prompt handling
-(03); require successful callbacks to correspond to an unfinished owned tool, allowing
-search_replace read dependencies without write credit (04); document stop/reconciliation
+(03); require successful writes to correspond to an unfinished owned search_replace tool,
+and fence reads by current-turn correlated paths (04); document stop/reconciliation
 latency and helper uncertainty raising known failure to Lost (05, availability only).
-These refinements await clean committed gates, scoped mutants and immutable delta rereview.
+R3-04's initial strict read gate at `470a57e` failed installed-native acceptance in
+16.77 seconds. Boolean-only diagnostics at `f0a7269` reproduced it in 20.12 seconds and
+proved the extra successful read revisited a path already correlated to a finished tool
+in that same turn. Its native purpose is not inferred. The narrow compatibility rule
+permits that descriptor-scoped supplemental read, or a single pending search_replace
+target-read dependency, without any extra tool or write completion credit. Unseen
+existing-file reads and unmatched writes remain fatal Lost outcomes; decision roles
+still expose no filesystem callbacks.
+
+Clean `d2a9f8f`: nine fake ACP subprocess tests pass (two installed-native tests ignored),
+including positive existing-file read-before-write and finished-path supplemental reads,
+and negative unseen-file reads/unmatched writes. All-target clippy, fmt and debug/release
+builds pass. Installed native combined acceptance passes in 29.97 seconds after resume:
+owned edit, absent foreign write, explicit higher-version same-UUID continuation and
+locked schema-constrained zero-tool DENY. This isolated native acceptance establishes
+the named scope boundary; it is not a default-concurrency or four-Task throughput proof.
+
+Three R3 compiled mutants assertion-kill configured symlink alias protection, Grok's own
+pre-wire dispatch-intent assignment and reverse callback evidence. The reverse mutant
+causally returns Exited for an unmatched write where Lost is required. One additional
+supplemental-path mutant returns Exited for an unseen existing-file read and is killed.
+Totals: 31 executions, 30 distinct boundaries, 30 assertion kills and the original
+survivor subsequently killed. Latest restored baseline passes all nine fake tests with
+no crate diff; owned detached mutation worktree removed normally. A temporary mutant
+whitespace staging failure occurred before any test and is excluded from execution counts.
+
+Exact `83bc484` and `7d2d2a5` Linux/macOS CI pass using default test concurrency. The
+latest supplemental-read refinements await immutable delta rereview and exact-head CI.
