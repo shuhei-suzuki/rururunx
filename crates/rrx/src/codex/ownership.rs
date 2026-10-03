@@ -41,6 +41,18 @@ impl ProcessOwnership {
     pub fn uncertain(&self) -> bool {
         self.flags.iter().any(|flag| flag.load(Ordering::SeqCst))
     }
+    /// Retain identities of groups already owned before a bounded operation.
+    /// A live server is expected here and is not a failure of that operation.
+    pub fn checkpoint(&self) -> Self {
+        Self {
+            flags: self.flags.clone(),
+        }
+    }
+    pub fn uncertain_since(&self, before: &Self) -> bool {
+        self.flags.iter().any(|flag| {
+            flag.load(Ordering::SeqCst) && !before.flags.iter().any(|old| Arc::ptr_eq(old, flag))
+        })
+    }
 }
 
 #[derive(Clone)]
@@ -563,6 +575,26 @@ pub(super) mod tests {
         state::Store,
     };
     use std::{collections::BTreeMap, process::Command, sync::Mutex};
+
+    #[test]
+    fn operation_cleanup_excludes_live_prior_groups_but_retains_new_uncertainty() {
+        let mut ownership = ProcessOwnership::default();
+        let server = ownership.group();
+        server.store(true, Ordering::SeqCst);
+        let before = ownership.checkpoint();
+        assert!(ownership.uncertain());
+        assert!(!ownership.uncertain_since(&before));
+        let git = ownership.group();
+        git.store(true, Ordering::SeqCst);
+        assert!(ownership.uncertain_since(&before));
+        git.store(false, Ordering::SeqCst);
+        assert!(!ownership.uncertain_since(&before));
+        let another_git = ownership.group();
+        another_git.store(true, Ordering::SeqCst);
+        assert!(ownership.uncertain_since(&before));
+        assert!(ownership.uncertain());
+        assert!(server.load(Ordering::SeqCst));
+    }
 
     pub(in crate::codex) struct Fixture {
         _temp: tempfile::TempDir,

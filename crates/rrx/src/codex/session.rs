@@ -1301,6 +1301,7 @@ async fn answer_approval(
         }
     };
     if matches!(reply.request.decision, OperationDecision::Approve) {
+        let preflight_ownership = reservation.ownership.checkpoint();
         let preflight = async {
             let paths = operation_paths(&operation, &authority.request.worktree)?;
             let workspace = authority.request.worktree.clone();
@@ -1376,7 +1377,7 @@ async fn answer_approval(
         }
         .await;
         if let Err(error) = preflight {
-            let fatal = reservation.ownership.uncertain();
+            let fatal = reservation.ownership.uncertain_since(&preflight_ownership);
             let kind = error.kind;
             let message = error.to_string();
             let _ = reply.result.send(Err(error));
@@ -2972,6 +2973,10 @@ mod tests {
     #[tokio::test]
     async fn failed_grant_preflight_keeps_the_native_request_pending_and_deniable() {
         let mut fixture = ApprovalFixture::new(true).await;
+        // Production always owns a live app-server group during approval.
+        // That preexisting flag must not turn this rejected grant into Lost.
+        let server = fixture.reservation.ownership.group();
+        server.store(true, std::sync::atomic::Ordering::SeqCst);
         fixture.authority.request.input.revision = "0".repeat(40);
         let (mut rpc, mut wire, peer) = rpc_peer().await;
         let (answer, result) = reply(OperationDecision::Approve, "turn");
@@ -3001,6 +3006,8 @@ mod tests {
             json!({"id":1,"result":{"decision":"decline"}})
         );
         assert_eq!(fixture.intents(), 1);
+        assert!(server.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(fixture.reservation.ownership.uncertain());
         drop(rpc);
         peer.abort();
     }
@@ -3076,6 +3083,11 @@ mod tests {
         use std::os::unix::fs::symlink;
         for hard_link in [false, true] {
             let mut fixture = ApprovalFixture::new(true).await;
+            fixture
+                .reservation
+                .ownership
+                .group()
+                .store(true, std::sync::atomic::Ordering::SeqCst);
             let outside = fixture
                 .authority
                 .snapshot
