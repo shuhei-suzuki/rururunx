@@ -525,7 +525,13 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&target).unwrap(), "foreign");
         std::fs::write(directory.path().join("binary"), [0, 1, 255]).unwrap();
         assert!(files.read(&json!({"path":"binary"})).is_err());
-        rustix::fs::mkfifoat(&files.pinned, "fifo", Mode::from_raw_mode(0o600)).unwrap();
+        assert!(
+            std::process::Command::new("mkfifo")
+                .arg(directory.path().join("fifo"))
+                .status()
+                .unwrap()
+                .success()
+        );
         assert!(files.read(&json!({"path":"fifo"})).is_err());
         assert!(
             files
