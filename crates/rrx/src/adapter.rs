@@ -635,17 +635,11 @@ impl AgentAdapter for GenericCliAdapter {
             Ok(status.borrow().clone())
         })
     }
-    fn attach(&self, reference: SessionRef) -> AdapterFuture<'_, ()> {
-        Box::pin(async move {
-            self.entry(&reference)?;
-            Err(unsupported(Capability::Attach))
-        })
+    fn attach(&self, _reference: SessionRef) -> AdapterFuture<'_, ()> {
+        Box::pin(async { Err(unsupported(Capability::Attach)) })
     }
-    fn resume(&self, reference: SessionRef) -> AdapterFuture<'_, Session> {
-        Box::pin(async move {
-            self.entry(&reference)?;
-            Err(unsupported(Capability::Resume))
-        })
+    fn resume(&self, _reference: SessionRef) -> AdapterFuture<'_, Session> {
+        Box::pin(async { Err(unsupported(Capability::Resume)) })
     }
     fn release(&self, reference: SessionRef) -> AdapterResult<()> {
         let mut sessions = self

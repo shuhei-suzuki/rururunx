@@ -444,7 +444,7 @@ async fn project_goal_task_context_cwd_branch_and_lock_boundaries_fail_closed() 
     );
     assert_eq!(
         adapter.attach(reference).await.unwrap_err().kind,
-        ErrorKind::OwnershipMismatch
+        ErrorKind::UnsupportedCapability
     );
     let fresh = fixture.adapter("/bin/cat");
     assert_eq!(
