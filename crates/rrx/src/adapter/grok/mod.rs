@@ -637,7 +637,7 @@ struct Actor {
 impl Actor {
     fn owner(&self) -> AdapterResult<()> {
         self.snapshot
-            .recheck(&self.store, &self.request, &self.agent)?;
+            .recheck_scope(&self.store, &self.request, &self.agent)?;
         let version = assert_saved(&self.store, &self.session)?;
         if version != self.version {
             return Err(failure(

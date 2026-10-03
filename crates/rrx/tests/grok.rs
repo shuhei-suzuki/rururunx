@@ -24,7 +24,7 @@ fn git(root: &Path, args: &[&str]) -> String {
         .args(args)
         .current_dir(root)
         .env_clear()
-        .envs(rrx::git::native_environment())
+        .envs(std::env::vars_os().filter(|(key, _)| !key.to_string_lossy().starts_with("GIT_")))
         .output()
         .unwrap();
     assert!(
@@ -142,6 +142,7 @@ impl Fixture {
         rrx::git::WorktreeManager::lock_review(
             &mut self.store.lock().unwrap(),
             self.request.scope.task_id.unwrap(),
+            &self.request.input.revision,
             "native review",
         )
         .unwrap();
