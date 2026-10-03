@@ -1,7 +1,7 @@
 # Issue #4 verification
 
 Workflow: STRICT. Host: macOS arm64, pinned Rust 1.91.1.
-Foundation: merged #3 `e51e069`; integrated adapter code at `9d8b13f`.
+Foundation: merged #3 `e51e069`; integrated adapter fixes at `45a1e01`.
 Native provider adapters and runtime CLI orchestration remain separate.
 
 ## Acceptance and regression evidence
@@ -27,9 +27,11 @@ Native provider adapters and runtime CLI orchestration remain separate.
   overwriting them. Provider token/cache metrics are null with a reason; prepared
   payload size is observable in bytes and Usage remains attributable through Store.
 - Two isolated Projects execute concurrently with distinct context/environment.
-- 53 workspace tests pass after #3 integration: 16 native adapter regressions plus
-  37 existing Git/state/config/CLI tests. Clippy `-D warnings`, fmt-check, debug and release builds passed at `5ff14a5`.
-  Final Linux/macOS CI gates are recorded before merge. On this macOS host real signal/ps tests require native
+- 56 workspace tests pass at `45a1e01`: 16 native integration regressions, three
+  adapter unit regressions (one macOS-specific), and 37 existing tests. Clippy
+  `-D warnings`, fmt-check, locked debug/release builds also pass. Earlier integrated
+  `5ecfff7` passed Linux and macOS [CI](https://github.com/shuhei-suzuki/rururunx/actions/runs/37094557400).
+  Exact final-head Linux/macOS CI gates are recorded before merge. On this macOS host real signal/ps tests require native
   OS access; sandbox ps was denied and Tokio subprocess waits timed out. Authorized
   `require_escalated` verification uses temporary Git fixtures only.
 
@@ -61,7 +63,21 @@ descendants were killed and the original tree restored clean.
 The reviewer requested Triple Review evidence as a merge blocker. That requirement
 does not apply to this one-reviewer implementation round: the user explicitly
 allows configurable reviewer counts. Triple Review dogfood remains #16's obligation.
-Final delta re-review verifies the fixes and the merged #3 safety boundary.
+The second immutable delta review at `5ecfff7` verified the original fixes and
+merged #3 safety boundary, and raised one Medium liveness issue plus four Low
+cleanup/coverage/error details. Each was verified in code and corrected:
+
+| Finding | Verification and correction |
+| --- | --- |
+| D1 unbounded Git under Store mutex | Real hanging Git regression; bounded native metadata outside mutex, shared pure ownership validation, and Project/Goal/Task version recheck |
+| D2 unconfirmed post-spawn cleanup released reservation | Discarded error verified; failed cleanup retains Starting, cancellation retains Lost if process death is uncertain |
+| D3 EPERM negative paths untested | Pure liveness/signal helpers cover live, zombie, malformed and failed inspection; unconditional PERM-success mutation must fail |
+| D4 atomic rejection categories | Typed Store guards distinguish lock, duplicate executor and stale snapshot; adapter maps Locked/StateConflict and atomic regression asserts category |
+| D5 synchronous normal cleanup inspection | Ordinary cleanup moved to blocking worker; synchronous Drop fallback remains necessary |
+
+A native metadata gate regression also changes the Goal during preflight and
+proves StateConflict occurs before the executor spawns. Final delta review covers
+these corrections and full unchanged adapter source.
 
 ## Isolated mutation evidence
 
