@@ -210,6 +210,11 @@ The command examples above describe the MVP target. Currently implemented:
 - Library Git/worktree management with project ownership checks, protected branches,
   dirty-state checks, durable logical review locks and safe merged cleanup. CLI/workflow
   integration and interrupted-operation reconciliation are pending.
+- `rrx project add <path>`, `project list`, `project status [UUID/name]`, and
+  `project remove <UUID/name>` persist an isolated multi-repository registry.
+  Missing/moved or changed sources become BLOCKED; repeat validated add for
+  recovery. Removal keeps source/worktree files and history and rejects active
+  work. This registry foundation does not yet run concurrent Goals/sessions.
 - `rrx --help`, `rrx --version`, and `rrx config-check`. The library also provides
 typed runtime entities and transactional SQLite state/audit persistence; native
 execution and workflow commands are not yet implemented.
@@ -273,3 +278,15 @@ python3 scripts/measure-startup.py target/release/rrx --runs 30
 
 This reports observed wall time and platform, not scheduler idle resource usage.
 See [bootstrap decision](doc/design/issue-1-design.md).
+
+Project commands share runtime-global SQLite state: `--state <file>` overrides
+`RRX_STATE_PATH`, `$XDG_STATE_HOME/rururunx/state.sqlite3`, or
+`$HOME/.local/state/rururunx/state.sqlite3`. The default never changes with CWD.
+For registration, the supplied path must be an exact primary Git root with a
+committed local base branch. `--base`, `--name`, `--max-tasks`, `--worktree-root`,
+repeatable `--rule` and `--env-ref` set project metadata. `--project-config` for
+`project add` and `--rule` paths are relative to the source root and must stay
+inside it. Environment references are names only, never `NAME=value`; native
+credential forwarding is pending. Status infers registered source/task CWD or
+takes a unique name/UUID. `list --all` includes removed history; list/status
+support `--json`. Display-name ambiguity requires a UUID.

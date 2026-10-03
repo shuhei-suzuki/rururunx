@@ -130,6 +130,13 @@ impl Config {
         Ok(result)
     }
 
+    pub fn with_project_file(&self, path: &Path) -> Result<Self> {
+        let mut result = self.clone();
+        result.apply_project(parse_file(path)?)?;
+        result.validate()?;
+        Ok(result)
+    }
+
     fn apply_project(&mut self, project: ProjectOverlay) -> Result<()> {
         if let Some(minimum) = project.minimum_workflow {
             self.minimum_workflow = self.minimum_workflow.max(minimum);

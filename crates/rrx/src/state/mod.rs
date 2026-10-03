@@ -136,6 +136,9 @@ impl Store {
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        if project.state == ProjectState::Removed {
+            ensure_project_idle(&tx, project.id)?;
+        }
         if let Some(previous) = read_tx::<Project>(&tx, "projects", &project.id.to_string())? {
             ensure!(
                 previous.root == project.root
@@ -166,7 +169,11 @@ impl Store {
                     !project.root.starts_with(&other.root)
                         && !other.root.starts_with(&project.root)
                         && !project.worktree_root.starts_with(&other.worktree_root)
-                        && !other.worktree_root.starts_with(&project.worktree_root),
+                        && !other.worktree_root.starts_with(&project.worktree_root)
+                        && !project.root.starts_with(&other.worktree_root)
+                        && !other.worktree_root.starts_with(&project.root)
+                        && !other.root.starts_with(&project.worktree_root)
+                        && !project.worktree_root.starts_with(&other.root),
                     "Project roots/worktree namespaces overlap"
                 );
             }
@@ -204,6 +211,9 @@ impl Store {
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        if !goal_terminal(goal.state) {
+            ensure_project_registered(&tx, goal.project_id)?;
+        }
         if let Some(previous) = read_tx::<Goal>(&tx, "goals", &goal.id.to_string())? {
             ensure!(
                 previous.project_id == goal.project_id,
@@ -249,6 +259,9 @@ impl Store {
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        if !task_terminal(task.state) {
+            ensure_project_registered(&tx, task.project_id)?;
+        }
         if let Some(previous) = read_tx::<Task>(&tx, "tasks", &task.id.to_string())? {
             ensure!(
                 previous.project_id == task.project_id && previous.goal_id == task.goal_id,
@@ -638,6 +651,63 @@ impl Store {
     }
 }
 
+pub(crate) fn goal_terminal(state: GoalState) -> bool {
+    matches!(
+        state,
+        GoalState::Completed | GoalState::Cancelled | GoalState::Failed
+    )
+}
+pub(crate) fn task_terminal(state: TaskState) -> bool {
+    matches!(
+        state,
+        TaskState::Completed | TaskState::Cancelled | TaskState::Failed | TaskState::Merged
+    )
+}
+fn session_terminal(state: SessionState) -> bool {
+    matches!(
+        state,
+        SessionState::Exited | SessionState::Stopped | SessionState::Failed
+    )
+}
+fn ensure_project_registered(tx: &Transaction<'_>, id: ProjectId) -> Result<()> {
+    let project: Project = read_tx(tx, "projects", &id.to_string())?.context("unknown project")?;
+    ensure!(
+        project.state == ProjectState::Registered,
+        "project is not registered/active"
+    );
+    Ok(())
+}
+/// Checked in the same write transaction as removal, including Lost sessions.
+fn ensure_project_idle(tx: &Transaction<'_>, id: ProjectId) -> Result<()> {
+    for table in ["goals", "tasks", "records"] {
+        let mut statement = tx.prepare(&format!("SELECT body FROM {table} WHERE project_id=?1"))?;
+        for row in statement.query_map([id.to_string()], |row| row.get::<_, String>(0))? {
+            let body = row?;
+            let idle = match table {
+                "goals" => goal_terminal(decode::<Goal>(body)?.state),
+                "tasks" => task_terminal(decode::<Task>(body)?.state),
+                _ => {
+                    let record: Record = decode(body)?;
+                    match record.kind {
+                        RecordKind::Session => {
+                            session_terminal(serde_json::from_value::<Session>(record.data)?.state)
+                        }
+                        RecordKind::WorktreeLock => {
+                            !serde_json::from_value::<crate::git::WorktreeLock>(record.data)?.active
+                        }
+                        _ => true,
+                    }
+                }
+            };
+            ensure!(
+                idle,
+                "cannot remove project with active {table}; complete/cancel or reconcile them first"
+            );
+        }
+    }
+    Ok(())
+}
+
 fn str_id<T: std::fmt::Display>(id: Option<T>) -> Option<String> {
     id.map(|id| id.to_string())
 }
@@ -680,6 +750,18 @@ fn decode<T: DeserializeOwned>(body: String) -> Result<T> {
 /// Reservations and immutable locks serialize across independent SQLite connections.
 fn validate_worktree_exclusion(tx: &Transaction<'_>, record: &Record) -> Result<()> {
     use crate::git::{WorktreeLock, executor_reserved};
+    if record.kind == RecordKind::Session {
+        let session: Session = serde_json::from_value(record.data.clone())?;
+        if !session_terminal(session.state) {
+            ensure_project_registered(tx, record.scope.project_id)?;
+        }
+    }
+    if record.kind == RecordKind::WorktreeLock
+        && serde_json::from_value::<WorktreeLock>(record.data.clone())?.active
+    {
+        ensure_project_registered(tx, record.scope.project_id)?;
+    }
+
     if record.kind == RecordKind::Session {
         let session: Session = serde_json::from_value(record.data.clone())?;
         if session.role == SessionRole::Executor {

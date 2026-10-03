@@ -185,3 +185,26 @@ Inactive Projects should have near-zero active CPU usage.
 - Runtime-wide grouped TUI/status
 - restart recovery across Projects
 - dogfood with at least two separate repositories
+
+## 13. Implemented registry foundation (Issue 26)
+
+`project::ProjectRegistry` persistently registers canonical exact primary Git
+roots with UUIDs, base branch, scoped config/rule refs, environment names and
+source-local worktree namespace. `rrx project add/list/status/remove` is available;
+`--state` is runtime-global, defaulting to absolute RRX_STATE_PATH, XDG state or
+home state independent of CWD. Help/version/config-check do not open state.
+
+Reopening project commands validates registered paths, Git identity and scoped
+references. Missing/moved/replaced identity or foreign refs persist BLOCKED with
+a reason; explicit repeated add validates same-identity recovery. No silent
+rebinding or automatic unblock occurs. Removal retains history/files and atomically
+rejects nonterminal Goals/Tasks, unresolved sessions (including Lost) and locks;
+new active writes require REGISTERED. Name ambiguity requires an explicit UUID.
+
+Scoped input APIs revalidate identity/state and reject foreign or nested Git
+source refs, symlink escapes and Git/task metadata paths. Environment values are
+never loaded/stored; validated names cannot override Git/runtime/agent routing.
+Context ownership and worktree Git checks use the existing Project-scoped Store
+and WorktreeManager. Native forwarding, Goal loops, concurrency/fairness and
+bundle generation remain dependent work. See `../issue-26-design.md` for contract
+limitations and `../../requirements/issue-26-requirements.md` for acceptance.
