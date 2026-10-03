@@ -1,4 +1,6 @@
 //! Durable compact coordination artifacts. Native source observations stay in context.
+pub mod workflow;
+
 use crate::{
     adapter::{InputKind, PreparedInput, SharedStore},
     context::{
@@ -506,7 +508,11 @@ impl ContextPacks {
     }
     pub fn task_pack(&self, reference: &PackRef) -> Result<TaskPack> {
         let c = self.load_context(reference)?;
-        let pack: TaskPack = serde_json::from_value(c.data)?;
+        let pack: TaskPack = if c.data.get("task_pack").is_some() {
+            workflow::context_artifact(&c)?.pack
+        } else {
+            serde_json::from_value(c.data.clone())?
+        };
         ensure!(
             pack.format == FORMAT
                 && pack.scope == reference.scope
@@ -705,6 +711,13 @@ impl ContextPacks {
         Ok(cp)
     }
     async fn validate_task_map(&self, reference: &PackRef) -> Result<(TaskPack, RepositoryMap)> {
+        ensure!(
+            self.load_context(reference)?
+                .data
+                .get("task_pack")
+                .is_none(),
+            "workflow phase pack is prepared only by its Engine"
+        );
         let pack = self.task_pack(reference)?;
         let (p, g, t) = self.snapshot(&reference.scope)?;
         ensure!(
@@ -1143,7 +1156,7 @@ impl ContextPacks {
                 && pack.task["project_id"] == serde_json::to_value(task.project_id)?
                 && pack.task["goal_id"] == serde_json::to_value(task.goal_id)?
                 && pack.repository.manifest_digest
-                    == digest(&self.load_context(reference)?.source_hashes)?
+                    == workflow::physical_manifest(&self.load_context(reference)?)?
                 && !pack.repository.revision.is_empty(),
             "invalid historical Task provenance"
         );

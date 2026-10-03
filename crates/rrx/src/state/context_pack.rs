@@ -70,8 +70,22 @@ fn validate_checkpoint_source(
 }
 pub(super) fn guard_context_checkpoint(
     tx: &Transaction<'_>,
+    task: &Task,
     context: &ContextVersion,
 ) -> Result<()> {
+    if context.data.get("task_pack").is_some() {
+        let artifact = crate::context_pack::workflow::context_artifact(context)?;
+        if context.data["frozen_task_pack"] == true {
+            ensure!(
+                task.state == TaskState::Completed
+                    && context.data["phase"]
+                        == serde_json::to_value(crate::workflow::Phase::Cleanup)?,
+                "only finalized Cleanup may preserve historical capture guards"
+            );
+        } else {
+            pack_guard(tx, &context.scope, artifact.authority_versions)?;
+        }
+    }
     validate_checkpoint_source(
         tx,
         &context.scope,

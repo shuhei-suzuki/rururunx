@@ -295,6 +295,24 @@ impl RepositoryContext {
         request: &SelectionRequest,
         budget: Budget,
     ) -> Result<SelectionOutcome> {
+        self.select_rules(map, request, budget, true).await
+    }
+    /// Workflow Engine supplies its independently verified mandatory rules once.
+    pub(crate) async fn select_for_workflow(
+        &self,
+        map: &RepositoryMap,
+        request: &SelectionRequest,
+        budget: Budget,
+    ) -> Result<SelectionOutcome> {
+        self.select_rules(map, request, budget, false).await
+    }
+    async fn select_rules(
+        &self,
+        map: &RepositoryMap,
+        request: &SelectionRequest,
+        budget: Budget,
+        include_rules: bool,
+    ) -> Result<SelectionOutcome> {
         budget.validate()?;
         validate_request(request)?;
         for path in &request.changed_files {
@@ -306,7 +324,8 @@ impl RepositoryContext {
             );
         }
         self.validate(map).await?;
-        let (mandatory, required) = mandatory_payload(map, &request.mandatory_evidence)?;
+        let (mandatory, required) =
+            mandatory_payload(map, &request.mandatory_evidence, include_rules)?;
         let terms = words(&request.task_text);
         ensure!(
             terms.len() <= 512,
@@ -417,7 +436,8 @@ impl RepositoryContext {
         budget.validate()?;
         validate_request(request)?;
         self.validate(map).await?;
-        let (mut mandatory, mut required) = mandatory_payload(map, &request.mandatory_evidence)?;
+        let (mut mandatory, mut required) =
+            mandatory_payload(map, &request.mandatory_evidence, true)?;
         let paths = expansion_paths(map, expansion)?;
         ensure!(
             paths.len() <= MAX_REFS,
@@ -1288,6 +1308,7 @@ fn validate_request(request: &SelectionRequest) -> Result<()> {
 fn mandatory_payload(
     map: &RepositoryMap,
     evidence: &[String],
+    include_rules: bool,
 ) -> Result<(String, BTreeSet<String>)> {
     let p = &map.snapshot;
     let mut payload = format!(
@@ -1297,6 +1318,9 @@ fn mandatory_payload(
         )?
     );
     for (path, text) in &map.mandatory {
+        if !include_rules {
+            continue;
+        }
         payload.push_str(&section(
             "project_rule",
             path,

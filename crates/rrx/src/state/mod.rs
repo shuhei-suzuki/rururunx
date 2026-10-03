@@ -599,7 +599,7 @@ impl Store {
                 "context pointer/scope differs from workflow Task"
             );
             crate::workflow::validate_context(task, workflow, context)?;
-            context_pack::guard_context_checkpoint(&tx, context)?;
+            context_pack::guard_context_checkpoint(&tx, task, context)?;
             put_context_tx(&tx, context)?;
         } else {
             let owner = context_owner(&task.scope())?;

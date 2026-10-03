@@ -208,6 +208,25 @@ pub struct SourceSnapshot {
     pub source_versions: BTreeMap<String, String>,
     pub payload: String,
 }
+#[derive(Clone)]
+struct PackAttachment {
+    artifact: Value,
+    source_payload_offset: usize,
+}
+fn frozen_attachment(context: &ContextVersion) -> Result<Option<PackAttachment>> {
+    if let Some(value) = context.data.get("task_pack") {
+        crate::context_pack::workflow::context_artifact(context)?;
+        Ok(Some(PackAttachment {
+            artifact: value.clone(),
+            source_payload_offset: context.data["source_payload_offset"]
+                .as_u64()
+                .context("phase source offset missing")?
+                as usize,
+        }))
+    } else {
+        Ok(None)
+    }
+}
 pub trait WorkflowSources: Send + Sync {
     fn capture(
         &self,
@@ -216,6 +235,11 @@ pub trait WorkflowSources: Send + Sync {
         phase: Phase,
         budget: ContextBudget,
     ) -> WorkflowFuture<'_, SourceSnapshot>;
+    /// Typed optional metadata for this exact pre-rule capture. Legacy providers
+    /// remain source-only; Engine always owns ContextVersion and attempt identity.
+    fn pack_artifact(&self, _source: &SourceSnapshot) -> Result<Option<Value>> {
+        Ok(None)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -509,7 +533,12 @@ impl WorkflowEngine {
         task: &Task,
         phase: Phase,
         class: WorkflowClass,
-    ) -> Result<(Config, SourceSnapshot, ContextBudget)> {
+    ) -> Result<(
+        Config,
+        SourceSnapshot,
+        ContextBudget,
+        Option<PackAttachment>,
+    )> {
         let project_for_rules = project.clone();
         let runtime = self.runtime.clone();
         let (config, rules, versions) =
@@ -535,10 +564,26 @@ impl WorkflowEngine {
                 .all(|key| !key.starts_with("workflow:") && !key.starts_with("rules:")),
             "context source cannot overwrite workflow/rule versions"
         );
+        let attachment = self
+            .sources
+            .pack_artifact(&source)?
+            .map(|artifact| {
+                crate::context_pack::workflow::validate_capture(
+                    &artifact,
+                    &source,
+                    phase,
+                    &selected_budget,
+                )?;
+                Ok::<_, anyhow::Error>(PackAttachment {
+                    artifact,
+                    source_payload_offset: rules.len() + 1,
+                })
+            })
+            .transpose()?;
         source.source_versions.extend(versions);
         // Mandatory rules are retained outside discretionary repository budgeting.
         source.payload = format!("{rules}\n{}", source.payload);
-        Ok((config, source, selected_budget))
+        Ok((config, source, selected_budget, attachment))
     }
     async fn prepare_pack(
         &self,
@@ -549,7 +594,8 @@ impl WorkflowEngine {
         class: WorkflowClass,
         generation: u64,
     ) -> Result<ContextVersion> {
-        let (config, source, selected_budget) = self.inputs(project, task, phase, class).await?;
+        let (config, source, selected_budget, attachment) =
+            self.inputs(project, task, phase, class).await?;
         ensure!(
             same_sources(expected, &source),
             "authority changed while preparing phase Context Pack"
@@ -566,6 +612,7 @@ impl WorkflowEngine {
             generation,
             selected_budget,
             self.next_context(&task.scope())?,
+            attachment,
         ))
     }
     pub async fn initialize(
@@ -581,7 +628,7 @@ impl WorkflowEngine {
             owners(&store, task_id)?
         };
         active(&project, &goal, &task)?;
-        let (config, source, _) = self
+        let (config, source, _, _) = self
             .inputs(&project, &task, Phase::Worktree, task.workflow)
             .await?;
         let workflow = task
@@ -683,7 +730,7 @@ impl WorkflowEngine {
             snapshot.workflow.active.is_none(),
             "resolve active phase before escalation"
         );
-        let (config, source, _) = self
+        let (config, source, _, _) = self
             .inputs(
                 &snapshot.project,
                 &snapshot.task,
@@ -766,7 +813,7 @@ impl WorkflowEngine {
             self.persist(&mut snapshot, None)?;
             return Ok(StepResult::Finished);
         };
-        let (config, source, selected_budget) = self
+        let (config, source, selected_budget, _) = self
             .inputs(
                 &snapshot.project,
                 &snapshot.task,
@@ -894,7 +941,7 @@ impl WorkflowEngine {
         if phase.actor() == Actor::EvidencePort {
             return self.evaluate(snapshot, index, None).await;
         }
-        let (fresh_config, fresh_source, _) = self
+        let (fresh_config, fresh_source, _, _) = self
             .inputs(&snapshot.project, &snapshot.task, phase, class)
             .await?;
         if !same_sources(&fresh_source, &snapshot.workflow.sources)
@@ -929,7 +976,7 @@ impl WorkflowEngine {
             });
         }
         self.refresh_owners(&mut snapshot)?;
-        let (_, observed, _) = self
+        let (_, observed, _, _) = self
             .inputs(&snapshot.project, &snapshot.task, phase, class)
             .await?;
         if !same_sources(&observed, &snapshot.workflow.sources) {
@@ -1267,7 +1314,7 @@ impl WorkflowEngine {
                 && snapshot.workflow.completed.contains_key(&Phase::Pr),
             "finalization requires finished QUICK PR evidence"
         );
-        let (_, source, _) = self
+        let (_, source, _, _) = self
             .inputs(
                 &snapshot.project,
                 &snapshot.task,
@@ -1351,7 +1398,7 @@ impl WorkflowEngine {
                 "external side effect held; reconcile explicitly (#13)",
             );
         }
-        let (config, fresh, _) = self
+        let (config, fresh, _, _) = self
             .inputs(
                 &snapshot.project,
                 &snapshot.task,
@@ -1494,11 +1541,12 @@ impl WorkflowEngine {
         ) {
             remove_attempt_blocker(&mut snapshot.task, &snapshot.workflow.history[index]);
         }
-        let (config, source, selected_budget) = if phase == Phase::Cleanup {
+        let (config, source, selected_budget, _) = if phase == Phase::Cleanup {
             (
                 self.runtime.clone(),
                 snapshot.workflow.sources.clone(),
                 snapshot.workflow.history[index].budget.clone(),
+                frozen_attachment(&self.context(&snapshot)?)?,
             )
         } else {
             self.inputs(
@@ -1779,7 +1827,7 @@ impl WorkflowEngine {
                 snapshot.workflow.sources = source.clone();
                 let next = next_phase(&snapshot.workflow);
                 let context = if phase == Phase::Cleanup {
-                    make_context(
+                    let mut context = make_context(
                         &snapshot.task,
                         &source,
                         phase,
@@ -1787,7 +1835,12 @@ impl WorkflowEngine {
                         snapshot.workflow.generation,
                         selected_budget,
                         self.next_context(&snapshot.task.scope())?,
-                    )
+                        frozen_attachment(&self.context(&snapshot)?)?,
+                    );
+                    if context.data.get("task_pack").is_some() {
+                        context.data["frozen_task_pack"] = json!(true);
+                    }
+                    context
                 } else {
                     self.prepare_pack(
                         &snapshot.project,
@@ -1998,6 +2051,9 @@ pub(crate) fn validate_context(
     context: &ContextVersion,
 ) -> Result<()> {
     let workflow: WorkflowSnapshot = serde_json::from_value(record.data.clone())?;
+    if context.data.get("task_pack").is_some() {
+        crate::context_pack::workflow::context_artifact(context)?;
+    }
     ensure!(
         context.scope == task.scope()
             && context.version == task.context_version
@@ -2487,16 +2543,23 @@ fn make_context(
     generation: u64,
     budget: ContextBudget,
     version: u64,
+    attachment: Option<PackAttachment>,
 ) -> ContextVersion {
     let mut source_hashes = source.source_versions.clone();
     source_hashes.insert("workflow:phase".into(), phase.key().into());
     source_hashes.insert("workflow:generation".into(), generation.to_string());
+    let mut data = json!({"phase":phase,"workflow":class,"generation":generation,"budget":budget,"payload":source.payload});
+    if let Some(attachment) = attachment {
+        data["task_pack"] = attachment.artifact;
+        data["source_payload_offset"] = json!(attachment.source_payload_offset);
+        data["rendered_estimate"] = json!({"estimated_bytes":source.payload.len(),"estimated_tokens":source.payload.len(),"estimate_method":"utf8_bytes_v1","measured_tokens":null,"mandatory_rule_bytes":attachment.source_payload_offset});
+    }
     ContextVersion {
         scope: task.scope(),
         version,
         revision: source.revision.clone(),
         source_hashes,
-        data: json!({"phase":phase,"workflow":class,"generation":generation,"budget":budget,"payload":source.payload}),
+        data,
     }
 }
 fn load_rules(
