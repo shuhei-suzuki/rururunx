@@ -297,3 +297,21 @@ Each owned group was verified dead before reaping. These checks do not prove
 network/Unix-socket confinement, actual native PTY conversation, trust projection,
 descendant cleanup or complete frontend bootstrap. Existing native authentication,
 trust and global configuration were not modified. Interactive/Attach remain pending.
+
+## Historical turn identity fix (1725914)
+
+Verified lifecycle review F7's stale identity concern: fresh Starting input still
+carried the previous native_turn. pin_starting_input now moves it to explicitly
+historical previous_native_turn; the acknowledged new turn supplies native_turn.
+The actual checkpoint/resume regression uses SQLite Starting triggers to require
+both absent current turn and exact historical turn alongside the already checked
+input SHA/metadata and rollback checksum. Original terminal Session/watch restore
+remains byte-equivalent after checkpoint or pre-inference failure.
+
+Exact source17259143fddee59b8c3e90b27fe84fa0561997fe: focused caller regression
+passed (1 test, 1.89s). Compiled mutant M629 removes the production identity move
+and is assertion-killed by that caller; byte-exact restoration passes the original.
+Evidence: /private/tmp/rururunx-issue6-172-turn-identity.log,
+/private/tmp/rururunx-issue6-172-M629.log and
+/private/tmp/rururunx-issue6-mutation172-extra-result.json. This does not resolve
+the remaining independent review blockers or establish new native/TUI acceptance.
