@@ -234,6 +234,13 @@ Workflow Engine decides whether to retry, choose a fallback agent, or escalate.
 
 ## 15. Implemented Rust baseline (Issue #4)
 
+Native Grok Issue 7's scoped ACP file-executor and zero-tool decision modes are specified
+in [its design](../issue-7-grok-adapter.md) and [requirements](../../requirements/issue-7-requirements.md).
+Implementation acceptance is pending. Native sandbox labels alone do not prove Task-only
+filesystem scope; Grok execution delegates its two allowed file tools to scoped ACP FS.
+Pre-prompt native inventory, applied model/effort and schema output must be validated.
+Shell/PTY/universal permission interception remain unsupported until separately proven.
+
 `adapter::AgentAdapter` supplies an object-safe async contract and extensible
 `AgentRegistry`. Generic registrations load runtime argv unchanged; model/effort
 settings require a native implementation and fail explicitly in the generic
