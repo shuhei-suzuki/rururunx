@@ -230,6 +230,7 @@ impl WorkflowSources for Sources {
         })
     }
 }
+type CompleteHook = Box<dyn FnOnce(&PhaseInvocation) -> Option<SourceSnapshot> + Send>;
 struct Gates {
     approved: AtomicBool,
     waiting: AtomicBool,
@@ -237,7 +238,7 @@ struct Gates {
     hold: Mutex<Option<Arc<Notify>>>,
     entered: Notify,
     corrupt: AtomicU8,
-    on_complete: Mutex<Option<Box<dyn FnOnce(&PhaseInvocation) -> Option<SourceSnapshot> + Send>>>,
+    on_complete: Mutex<Option<CompleteHook>>,
     unknown: AtomicBool,
 }
 impl Gates {
