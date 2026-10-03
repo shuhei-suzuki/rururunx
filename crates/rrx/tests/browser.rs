@@ -322,6 +322,55 @@ fn project_overlay_tightens_policy_and_cannot_supply_executables() {
 }
 
 #[test]
+fn provider_baseline_does_not_leak_another_projects_scoped_api_key() {
+    if std::env::var_os("RRX_BROWSER_ENV_FIXTURE_CHILD").is_none() {
+        let output = Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "provider_baseline_does_not_leak_another_projects_scoped_api_key",
+            ])
+            .env("RRX_BROWSER_ENV_FIXTURE_CHILD", "true")
+            .env("ANTHROPIC_API_KEY", "synthetic-other-project-key")
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+        return;
+    }
+    let mut fixture = Fixture::new();
+    let other = Fixture::new();
+    let mut project = Project::new(
+        "other".into(),
+        other.binding.project().root.clone(),
+        other.binding.project().repository_identity.clone(),
+        other.binding.project().base_branch.clone(),
+    );
+    project.environment_refs = vec!["ANTHROPIC_API_KEY".into()];
+    fixture.store.put_project(&mut project).unwrap();
+    fixture.binding =
+        BrowserBinding::capture(&fixture.store, &fixture.binding.task().scope()).unwrap();
+    let request = fixture.request();
+    let script = SUCCESS_BRIDGE.replace(
+        "'owned_group':os.getpid()==os.getpgrp()",
+        "'key_present':'ANTHROPIC_API_KEY' in os.environ",
+    );
+    let verifier = BridgeVerifier {
+        config: fixture.config(&script),
+    };
+    let result = verifier.verify(&fixture.binding, &request).unwrap();
+    assert_eq!(result.evidence[0]["key_present"], json!(false));
+    let mut current = fixture.binding.project().clone();
+    current.environment_refs = vec!["ANTHROPIC_API_KEY".into()];
+    fixture.store.put_project(&mut current).unwrap();
+    fixture.binding = BrowserBinding::capture(&fixture.store, &request.scope).unwrap();
+    let result = verifier.verify(&fixture.binding, &request).unwrap();
+    assert_eq!(result.evidence[0]["key_present"], json!(true));
+}
+
+#[test]
 fn arbitrary_external_connection_is_typed_unsupported_and_profiles_are_ephemeral() {
     let fixture = Fixture::new();
     let request = fixture.request();
@@ -360,6 +409,26 @@ fn explicit_fallback_is_exercised_only_before_effects() {
         selector: "button".into(),
     }]);
     assert!(verifier.verify(&fixture.binding, &request).is_err());
+}
+
+#[test]
+fn fallback_attempts_share_one_total_deadline() {
+    let fixture = Fixture::new();
+    let mut request = fixture.request();
+    request.steps.push(adaptive());
+    request.deterministic_fallback = Some(fixture.request().steps);
+    let script = SUCCESS_BRIDGE.replace("import json,sys,os", "import json,sys,os,time")
+        .replace("i=json.load(sys.stdin)", "i=json.load(sys.stdin)\ntime.sleep(.45 if i['backend']=='stagehand' else 1)")
+        .replace("'success':True,'failure':None", "'success':i['backend']=='playwright','failure':'unavailable' if i['backend']=='stagehand' else None");
+    let mut config = fixture.config(&script);
+    config.timeout_ms = 1000;
+    let start = Instant::now();
+    let result = BridgeVerifier { config }
+        .verify(&fixture.binding, &request)
+        .unwrap();
+    assert!(result.fallback_used);
+    assert_eq!(result.failure, Some(Failure::Timeout));
+    assert!(start.elapsed() < Duration::from_millis(1550));
 }
 
 /// Real backend, explicit because Chrome and pinned Node SDK installation are host prerequisites.

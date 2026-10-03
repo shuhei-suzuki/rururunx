@@ -1,5 +1,6 @@
 //! Scoped, provider-neutral browser verification. SDKs live behind a bounded private bridge.
 use std::{
+    collections::BTreeSet,
     fs::{self, File},
     io::{Read, Write},
     path::{Path, PathBuf},
@@ -290,6 +291,7 @@ pub fn may_fallback(
 pub struct BrowserBinding {
     project: Project,
     task: Task,
+    other_project_environment: BTreeSet<String>,
 }
 impl BrowserBinding {
     pub fn project(&self) -> &Project {
@@ -313,7 +315,17 @@ impl BrowserBinding {
             project.state == ProjectState::Registered,
             "Project is not registered"
         );
-        Ok(Self { project, task })
+        let other_project_environment = store
+            .projects()?
+            .into_iter()
+            .filter(|other| other.id != project.id && other.state != ProjectState::Removed)
+            .flat_map(|other| other.environment_refs)
+            .collect();
+        Ok(Self {
+            project,
+            task,
+            other_project_environment,
+        })
     }
     pub fn validate(&self, scope: &Scope) -> Result<PathBuf> {
         ensure!(
@@ -376,7 +388,13 @@ impl BrowserVerifier for BridgeVerifier {
     fn capabilities(&self, binding: &BrowserBinding) -> Result<Capabilities> {
         self.config.validate()?;
         let cwd = binding.validate(&binding.task.scope())?;
-        let output = self.run(binding, &cwd, b"", true)?;
+        let output = self.run(
+            binding,
+            &cwd,
+            b"",
+            true,
+            Instant::now() + Duration::from_millis(self.config.timeout_ms),
+        )?;
         let caps: Capabilities =
             serde_json::from_slice(&output).context("invalid browser capabilities")?;
         ensure!(caps.protocol_version == 1, "unsupported browser protocol");
@@ -394,6 +412,7 @@ impl BrowserVerifier for BridgeVerifier {
         request: &VerificationRequest,
     ) -> Result<VerificationResult> {
         self.config.validate()?;
+        let deadline = Instant::now() + Duration::from_millis(self.config.timeout_ms);
         let cwd = binding.validate(&request.scope)?;
         let initial_revision =
             WorktreeManager::validate_binding(&binding.project, &binding.task)?.revision;
@@ -425,7 +444,8 @@ impl BrowserVerifier for BridgeVerifier {
         }
         let artifacts = artifact_dir(&self.config.artifact_root, &request.scope, session_id)?;
         let profile = PrivateProfile(artifacts.join("profile"));
-        let mut result = self.attempt(binding, &cwd, request, session_id, backend, &artifacts)?;
+        let mut result =
+            self.attempt(binding, request, session_id, backend, &artifacts, deadline)?;
         if may_fallback(&self.config, request, &result) {
             let fallback = VerificationRequest {
                 scope: request.scope.clone(),
@@ -435,11 +455,11 @@ impl BrowserVerifier for BridgeVerifier {
             };
             result = self.attempt(
                 binding,
-                &cwd,
                 &fallback,
                 session_id,
                 Backend::Playwright,
                 &artifacts,
+                deadline,
             )?;
             result.fallback_used = true;
         }
@@ -511,12 +531,17 @@ impl BridgeVerifier {
     fn attempt(
         &self,
         binding: &BrowserBinding,
-        cwd: &Path,
         request: &VerificationRequest,
         session_id: SessionId,
         backend: Backend,
         artifacts: &Path,
+        deadline: Instant,
     ) -> Result<VerificationResult> {
+        let cwd = binding
+            .task
+            .worktree
+            .as_deref()
+            .context("Task worktree missing")?;
         let payload = serde_json::to_vec(&BridgeRequest {
             protocol_version: 1,
             request,
@@ -529,7 +554,7 @@ impl BridgeVerifier {
             payload.len() <= 65_536,
             "browser request exceeds input budget"
         );
-        match self.run(binding, cwd, &payload, false) {
+        match self.run(binding, cwd, &payload, false, deadline) {
             Ok(bytes) => match serde_json::from_slice::<VerificationResult>(&bytes) {
                 Ok(result)
                     if result.backend == backend
@@ -560,12 +585,16 @@ impl BridgeVerifier {
         cwd: &Path,
         payload: &[u8],
         capabilities: bool,
+        deadline: Instant,
     ) -> Result<Vec<u8>> {
         let command = &self.config.bridge_command;
         ensure!(
             !command.is_empty() && !command[0].is_empty(),
             "browser bridge command is not configured"
         );
+        if Instant::now() >= deadline {
+            return Err(BridgeFailure(Failure::Timeout).into());
+        }
         let mut process = Command::new(&command[0]);
         process
             .args(&command[1..])
@@ -594,7 +623,15 @@ impl BridgeVerifier {
             }
         }
         for (key, value) in std::env::vars_os() {
-            if key.to_str().is_some_and(native_environment) {
+            if key.to_str().is_some_and(|key| {
+                native_environment(key)
+                    && (!binding.other_project_environment.contains(key)
+                        || binding
+                            .project
+                            .environment_refs
+                            .iter()
+                            .any(|reference| reference == key))
+            }) {
                 process.env(key, value);
             }
         }
@@ -619,7 +656,6 @@ impl BridgeVerifier {
             id,
             stopped: false,
         };
-        let deadline = Instant::now() + Duration::from_millis(self.config.timeout_ms);
         let mut stdin = child.child.stdin.take().context("bridge stdin missing")?;
         let input = payload.to_vec();
         let (tx, rx) = mpsc::channel();

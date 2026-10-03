@@ -75,6 +75,11 @@ the native user baseline (HOME/PATH/config paths/locale, native Claude/Anthropic
 policy/auth/model variables and proxy/TLS/Node settings) and authorized references.
 Provider-account baseline variables are reserved for native model access; explicit
 Stagehand API mode still requires the Project's authorized key-name reference.
+The Store snapshot collects other registered/blocked Projects' environment names:
+even a provider-prefixed baseline variable is excluded when another Project declares
+it, unless the current Project also explicitly declares the same name. Only names
+are snapshotted; values never enter rows or logs. Consumers recapture this snapshot
+before dispatch when registry/environment ownership changes.
 API account credentials remain in their native user auth system.
 
 The bridge receives at most 64 KiB stdin. Rust bounds output (default 256 KiB,
