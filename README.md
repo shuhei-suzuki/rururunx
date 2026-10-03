@@ -264,6 +264,8 @@ TBD.
 
 ## Development
 
+Development of rururunx should dogfood QUICK / STANDARD / STRICT classification where project rules permit. Verification should be proportional to risk: safety-critical runtime/Git/state/process changes may require STRICT treatment, while small local/documentation changes should not inherit STRICT-only gates unless policy or discovered impact requires escalation.
+
 Install [Rust with rustup](https://www.rust-lang.org/tools/install) and Git.
 The repository pins Rust 1.91.1 (minimum supported Rust 1.91) with rustfmt/clippy.
 
