@@ -408,9 +408,12 @@ numbers and PIDs are metadata, not global identity. Goal snapshots preserve expl
 criteria/DAG data; task workflow and process state are separate from phase.
 
 SQLite (bundled via rusqlite) stores indexed ownership columns with JSON snapshots.
-`PRAGMA user_version = 1` is the schema version and `application_id = 0x52525831`
-identifies rrx databases. Foreign/unmarked v1 and nonempty v0 databases are rejected. New databases initialize in one
-transaction; unsupported future versions fail before migration. Each connection
+`PRAGMA user_version = 2` marks the current snapshot format and
+`application_id = 0x52525831` identifies rrx databases. Tagged v1 databases upgrade
+atomically to the v2 marker; Project blocked_reason defaults to None, and SQL
+ownership/audit layout is unchanged. Foreign/unmarked v1 and nonempty v0 databases
+are rejected. New databases initialize in one transaction; unsupported future
+versions fail before migration. Each connection
 enables foreign keys and a bounded busy timeout; WAL supports concurrent readers.
 Composite foreign keys enforce Goal/Task ownership and scoped records/context/usage.
 Project roots/identity and Goal/Task ownership cannot silently change on updates.

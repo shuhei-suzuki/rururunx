@@ -231,3 +231,53 @@ Adapters must return explicit failure categories such as:
 - permission interception unavailable
 
 Workflow Engine decides whether to retry, choose a fallback agent, or escalate.
+
+## 15. Implemented Rust baseline (Issue #4)
+
+`adapter::AgentAdapter` supplies an object-safe async contract and extensible
+`AgentRegistry`. Generic registrations load runtime argv unchanged; model/effort
+settings require a native implementation and fail explicitly in the generic
+baseline. PreparedInput carries exact Scope, kind, revision/version, source
+versions and selected payload. ReviewBundle and ContextPack are distinct inputs.
+
+Generic CLI advertises only `execute` and `non_interactive`. It cannot promise
+read-only consultation/review/approval, interactive PTY/attach, resume, native
+Goals, checkpointing or token/cache telemetry. These operations fail explicitly;
+Usage uses nullable fields with an unavailable reason. Provider authentication is
+unknown rather than guessed from executable presence. Native #5/#6/#7 adapters
+must enforce provider-specific safety modes before advertising capabilities.
+
+Generic launch requires persisted Project/Goal/Task ownership, exact canonical
+Task worktree/branch and owning Git common directory. Base/main/master/detached
+execution and Git environment overrides are rejected. Starting reserves the Task
+before bounded async Git metadata preflight outside the shared Store mutex.
+The adapter rechecks original lifecycle-validation Project/Goal/Task versions
+before spawn and uses the same runtime-native Git environment as Git management,
+while Store's task-level lock/session exclusion prevents
+review/executor races. Native processes receive only explicit environment; callers
+must include intentional native baseline HOME/PATH/config/auth so safety settings
+remain authoritative. The adapter never supplies bypass flags or an empty native
+configuration home.
+
+Tokio supervises private process groups without busy polling. Concurrent output
+drains retain bounded 64 KiB byte tails and report truncation/I/O failures. Natural exit uses waitid NOWAIT and SIGCHLD to kill the owned group before
+reaping the leader, avoiding PID reuse. Stop/drop kills the owned group; terminal
+stop is idempotent. Runtime crash/SIGKILL leaves reservations conservatively
+blocked, including Lost, until verified-dead recovery; intentional process-group
+escapes require stronger future containment. Up to 32 terminal Sessions are
+retained; release or eviction drops transient output but preserves durable state. Persisted
+Session IDs remain independent from PID and native references. Restart without a
+live supervisor yields SessionLost, not a fabricated reconnect. See
+[issue design](../issue-4-design.md) for lifecycle and current boundaries.
+
+NativeGoalRef contains Scope, optional SessionId and opaque provider reference.
+Implementations must validate the persisted owner on status/resume and require
+checkpoint input Scope to equal Session Scope. Generic prepared payload size is
+observable in bytes; provider token/cache values remain unknown.
+
+On macOS, native /bin/ps inspection must be available. Its trusted direct-child
+execution/output is bounded; failed inspection preserves Lost reservations. Launch
+post-spawn executor cleanup diagnostics use scoped audit events and preserve
+Blocked Project native ownership metadata. Preflight/cancelled Lost may lack
+native PID evidence; generic reconnection is unsupported and explicit recovery
+remains necessary.

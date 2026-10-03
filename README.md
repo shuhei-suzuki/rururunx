@@ -206,7 +206,6 @@ See [Product Requirements](doc/requirements/product-requirements.md), [Architect
 
 Rust executable foundation; workflow components are being implemented incrementally.
 The command examples above describe the MVP target. Currently implemented:
-
 - Library Git/worktree management with project ownership checks, protected branches,
   dirty-state checks, durable logical review locks and safe merged cleanup. CLI/workflow
   integration and interrupted-operation reconciliation are pending.
@@ -215,9 +214,15 @@ The command examples above describe the MVP target. Currently implemented:
   Missing/moved or changed sources become BLOCKED; repeat validated add for
   recovery. Removal keeps source/worktree files and history and rejects active
   work. This registry foundation does not yet run concurrent Goals/sessions.
-- `rrx --help`, `rrx --version`, and `rrx config-check`. The library also provides
-typed runtime entities and transactional SQLite state/audit persistence; native
-execution and workflow commands are not yet implemented.
+- `rrx --help`, `rrx --version`, and `rrx config-check`. Typed runtime entities and
+  transactional SQLite state/audit persistence are available in the library.
+- An extensible asynchronous Agent Adapter registry and task-scoped generic native
+  process supervision. Generic adapters support noninteractive execution with
+  prepared context and explicit environment. Unsupported attach/resume/review,
+  interactive modes and native Goals fail explicitly; unavailable token/cache
+  usage remains null. Provider adapters and execution/workflow CLI commands are
+  still being implemented. See [adapter design](doc/design/issue-4-design.md).
+
 
 ## License
 

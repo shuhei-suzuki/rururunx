@@ -26,6 +26,73 @@ pub struct WorktreeStatus {
     pub dirty: bool,
 }
 
+/// Observed Git metadata, validated identically by synchronous management and
+/// bounded asynchronous adapter preflight. Collectors must use native Git.
+pub struct WorktreeOwnershipFacts {
+    pub source_top: PathBuf,
+    pub source_git_dir: PathBuf,
+    pub source_common: PathBuf,
+    pub source_roots: Vec<String>,
+    pub task_top: PathBuf,
+    pub task_common: PathBuf,
+    pub branch: String,
+    pub revision: String,
+}
+
+pub fn validate_worktree_ownership(
+    project: &Project,
+    task: &Task,
+    facts: WorktreeOwnershipFacts,
+) -> Result<WorktreeStatus> {
+    let root = project.root.canonicalize()?;
+    ensure!(
+        root == project.root && facts.source_top.canonicalize()? == root,
+        "Project root must be exact canonical Git top-level"
+    );
+    let common = facts.source_common.canonicalize()?;
+    ensure!(
+        facts.source_git_dir.canonicalize()? == common,
+        "Project source root cannot be a linked worktree"
+    );
+    let mut roots = facts.source_roots;
+    roots.sort();
+    ensure!(
+        !roots.is_empty()
+            && serde_json::to_string(&(common.clone(), roots))? == project.repository_identity,
+        "Project repository identity changed"
+    );
+    ensure!(task.project_id == project.id, "foreign Task Project");
+    let ns = namespace(project, &root)?;
+    let path = task.worktree.as_ref().context("task has no worktree")?;
+    ensure!(
+        path.parent() == Some(ns.as_path()) && path.canonicalize()? == *path,
+        "task path must be canonical direct child of namespace"
+    );
+    ensure!(
+        facts.task_top.canonicalize()? == *path && *path != root,
+        "Task must use exact independent worktree"
+    );
+    ensure!(
+        facts.task_common.canonicalize()? == common,
+        "Task worktree belongs to another repository"
+    );
+    protect_branch(&facts.branch, &project.base_branch)?;
+    ensure!(
+        task.branch.as_deref() == Some(facts.branch.as_str()),
+        "task branch mismatch"
+    );
+    ensure!(
+        !facts.revision.trim().is_empty(),
+        "missing worktree revision"
+    );
+    Ok(WorktreeStatus {
+        worktree: path.clone(),
+        branch: facts.branch,
+        revision: facts.revision,
+        dirty: false,
+    })
+}
+
 pub struct WorktreeManager;
 impl WorktreeManager {
     pub fn create(store: &mut Store, task_id: TaskId) -> Result<WorktreeStatus> {
@@ -376,6 +443,11 @@ pub fn repository_identity(root: &Path, base_branch: &str) -> Result<String> {
 }
 fn namespace(project: &Project, root: &Path) -> Result<PathBuf> {
     let path = &project.worktree_root;
+    let (common, _): (PathBuf, Vec<String>) = serde_json::from_str(&project.repository_identity)?;
+    ensure!(
+        !path.starts_with(&common) && !common.starts_with(path),
+        "Task namespace overlaps Git metadata"
+    );
     ensure!(
         !path.starts_with(root.join(".git")),
         "worktree namespace cannot use Git metadata"
@@ -429,12 +501,24 @@ fn owned_status(project: &Project, task: &Task) -> Result<WorktreeStatus> {
         "task worktree belongs to another repository"
     );
     let branch = git_text(path, &["symbolic-ref", "--quiet", "--short", "HEAD"])?;
-    protect_branch(&branch, &project.base_branch)?;
-    ensure!(
-        task.branch.as_deref() == Some(branch.as_str()),
-        "task branch mismatch"
-    );
     let revision = git_text(path, &["rev-parse", "--verify", "HEAD^{commit}"])?;
+    // project_root has just verified these source facts against native Git.
+    let (source_common, source_roots): (PathBuf, Vec<String>) =
+        serde_json::from_str(&project.repository_identity)?;
+    let mut status = validate_worktree_ownership(
+        project,
+        task,
+        WorktreeOwnershipFacts {
+            source_top: root.clone(),
+            source_git_dir: source_common.clone(),
+            source_common,
+            source_roots,
+            task_top: top,
+            task_common: common(path)?,
+            branch,
+            revision,
+        },
+    )?;
     let dirty = !git(
         path,
         &[
@@ -448,12 +532,8 @@ fn owned_status(project: &Project, task: &Task) -> Result<WorktreeStatus> {
     )?
     .stdout
     .is_empty();
-    Ok(WorktreeStatus {
-        worktree: path.clone(),
-        branch,
-        revision,
-        dirty,
-    })
+    status.dirty = dirty;
+    Ok(status)
 }
 fn protect_branch(branch: &str, base: &str) -> Result<()> {
     ensure!(
@@ -465,11 +545,9 @@ fn protect_branch(branch: &str, base: &str) -> Result<()> {
 fn text_path(path: &Path) -> Result<&str> {
     path.to_str().context("Git path is not UTF-8")
 }
-fn command(cwd: &Path, args: &[&str]) -> Command {
-    let mut cmd = Command::new("git");
-    cmd.current_dir(cwd).args(args);
-    // Prevent inherited routing from silently crossing Project boundaries; retain native hooks/config.
-    for name in [
+/// Runtime/native configuration is authoritative for all Git ownership collectors.
+pub(crate) fn native_environment() -> Vec<(std::ffi::OsString, std::ffi::OsString)> {
+    const ROUTING: &[&str] = &[
         "GIT_DIR",
         "GIT_WORK_TREE",
         "GIT_COMMON_DIR",
@@ -479,11 +557,20 @@ fn command(cwd: &Path, args: &[&str]) -> Command {
         "GIT_NAMESPACE",
         "GIT_CEILING_DIRECTORIES",
         "GIT_DISCOVERY_ACROSS_FILESYSTEM",
-    ] {
-        cmd.env_remove(name);
-    }
+    ];
+    std::env::vars_os()
+        .filter(|(name, _)| !ROUTING.iter().any(|route| name == route))
+        .collect()
+}
+fn command(cwd: &Path, args: &[&str]) -> Command {
+    let mut cmd = Command::new("git");
+    cmd.current_dir(cwd)
+        .args(args)
+        .env_clear()
+        .envs(native_environment());
     cmd
 }
+
 fn git(cwd: &Path, args: &[&str]) -> Result<Output> {
     let output = command(cwd, args).output().context("cannot start Git")?;
     ensure!(
