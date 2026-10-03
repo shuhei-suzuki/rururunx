@@ -43,3 +43,10 @@ formal artifact dependency invalidation, known stale zero-call gates, same-Sessi
 waiting reevaluation, restart diagnostics, ordinary Store authority bypass rejection,
 and impossible initial/completed/finished/history transitions. Unknown outcomes retain
 reservations; no state transition substitutes for verified native termination.
+
+Known gate outcomes must resume after transient owner/source/CAS errors without another
+external operation. Irreversible PR/merge/cleanup observations must never be discarded
+into duplicate operations; drift holds them for explicit reconciliation. Cleanup reentry
+uses frozen pre-disposal authority. Cancellation under inactive owners must remain
+possible, and only verified termination can close its retained reservation. Both public
+audit APIs reserve engine-owned factual journal kinds.

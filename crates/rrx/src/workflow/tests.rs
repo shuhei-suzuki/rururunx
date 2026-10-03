@@ -2280,7 +2280,7 @@ async fn atomic_authority_rejects_invented_initial_history_completion_and_finish
         .step(fixture.task.id, BTreeMap::new())
         .await
         .unwrap(); // Running Implement
-    for mutation in 0..4 {
+    for mutation in 0..5 {
         let mut store = fixture.store.lock().unwrap();
         let mut task = store.task(fixture.task.id).unwrap().unwrap();
         let mut record = store
@@ -2295,22 +2295,33 @@ async fn atomic_authority_rejects_invented_initial_history_completion_and_finish
                 snapshot.completed.insert(Phase::Pr, evidence);
             }
             2 => snapshot.history[snapshot.active.unwrap()].state = AttemptState::Succeeded,
-            _ => snapshot.active = None,
+            3 => snapshot.active = None,
+            _ => {}
         }
         record.data = serde_json::to_value(snapshot).unwrap();
         let goal_version = store.goal(task.goal_id).unwrap().unwrap().version;
-        assert!(
-            store
-                .put_workflow_transition(
-                    &mut task,
-                    &mut record,
-                    None,
-                    fixture.project.version,
-                    goal_version,
-                    WorkflowAccess::StateOnly
-                )
-                .is_err()
+        let result = store.put_workflow_transition(
+            &mut task,
+            &mut record,
+            None,
+            fixture.project.version,
+            goal_version,
+            WorkflowAccess::StateOnly,
         );
+        if mutation == 4 {
+            result.unwrap();
+        } else {
+            let error = result.unwrap_err().to_string();
+            assert!(
+                error.contains(match mutation {
+                    0 => "finished requires all configured gates",
+                    1 => "completion requires Evaluating",
+                    2 => "attempt state regression",
+                    _ => "active reservation can only close",
+                }),
+                "mutation {mutation}: {error}"
+            );
+        }
     }
 }
 
@@ -2609,6 +2620,37 @@ async fn observed_gate_outcome_survives_paused_blocked_or_missing_postgate_sourc
                         == "fixture://commit")
         );
         assert!(!workflow.completed.contains_key(&Phase::Commit));
+        let calls = fixture.gates.calls.lock().unwrap().len();
+        if failure == 2 {
+            fixture.sources.capture_error.store(false, Ordering::SeqCst);
+        } else {
+            let mut store = fixture.store.lock().unwrap();
+            if failure == 0 {
+                let mut goal = store.goal(fixture.task.goal_id).unwrap().unwrap();
+                goal.state = GoalState::Running;
+                store.put_goal(&mut goal).unwrap();
+            } else {
+                let mut project = store.project(fixture.project.id).unwrap().unwrap();
+                project.state = ProjectState::Registered;
+                project.blocked_reason = None;
+                store.put_project(&mut project).unwrap();
+            }
+        }
+        assert!(matches!(
+            fixture
+                .engine
+                .step(fixture.task.id, BTreeMap::new())
+                .await
+                .unwrap(),
+            StepResult::Completed {
+                phase: Phase::Commit
+            }
+        ));
+        assert_eq!(
+            fixture.gates.calls.lock().unwrap().len(),
+            calls,
+            "known outcome must not repeat operation"
+        );
     }
 }
 #[tokio::test]
@@ -2754,6 +2796,12 @@ async fn quick_requires_actual_merge_cleanup_before_terminal_and_cancel_never_im
             .put_project(&mut removed)
             .is_err()
     );
+    {
+        let mut store = fixture.store.lock().unwrap();
+        let mut task = store.task(fixture.task.id).unwrap().unwrap();
+        task.state = TaskState::WaitingHuman;
+        store.put_task(&mut task).unwrap();
+    }
     fixture
         .engine
         .request_finalization(fixture.task.id, "actual merge/cleanup requested".into())
@@ -2784,6 +2832,17 @@ async fn quick_requires_actual_merge_cleanup_before_terminal_and_cancel_never_im
     );
     fixture.gates.waiting.store(false, Ordering::SeqCst);
     fixture.engine.resume_gate(fixture.task.id).await.unwrap();
+    assert!(
+        fixture
+            .store
+            .lock()
+            .unwrap()
+            .task(fixture.task.id)
+            .unwrap()
+            .unwrap()
+            .blockers
+            .is_empty()
+    );
     fixture.finish().await;
     let workflow = fixture.engine.snapshot(fixture.task.id).unwrap();
     assert!(
@@ -2876,4 +2935,338 @@ async fn quick_requires_actual_merge_cleanup_before_terminal_and_cancel_never_im
             .state,
         TaskState::Failed
     );
+}
+
+#[tokio::test]
+async fn known_irreversible_drift_holds_single_operation_and_cleanup_reuses_frozen_authority() {
+    for phase in [Phase::Pr, Phase::MergeGate] {
+        let fixture = Fixture::new(WorkflowClass::Standard);
+        fixture
+            .engine
+            .initialize(fixture.task.id, None)
+            .await
+            .unwrap();
+        fixture
+            .through(if phase == Phase::Pr {
+                Phase::ImplementationReview
+            } else {
+                Phase::Pr
+            })
+            .await;
+        let sources = fixture.sources.clone();
+        *fixture.gates.on_complete.lock().unwrap() = Some(Box::new(move |_| {
+            sources.snapshot.lock().unwrap().revision = "changed-after-external-effect".into();
+            None
+        }));
+        let generation = fixture.engine.snapshot(fixture.task.id).unwrap().generation;
+        assert!(
+            matches!(fixture.engine.step(fixture.task.id, BTreeMap::new()).await.unwrap(), StepResult::Waiting { phase: actual, .. } if actual == phase)
+        );
+        let calls = fixture.gates.calls.lock().unwrap().len();
+        assert!(matches!(
+            fixture
+                .engine
+                .step(fixture.task.id, BTreeMap::new())
+                .await
+                .unwrap(),
+            StepResult::Waiting { .. }
+        ));
+        assert_eq!(fixture.gates.calls.lock().unwrap().len(), calls);
+        let snapshot = fixture.engine.snapshot(fixture.task.id).unwrap();
+        assert_eq!(snapshot.generation, generation);
+        assert!(
+            snapshot.history[snapshot.active.unwrap()]
+                .observations
+                .last()
+                .unwrap()
+                .outcome
+                .is_some()
+        );
+        assert!(
+            fixture
+                .engine
+                .retry(fixture.task.id, "must not duplicate external effect".into())
+                .is_err()
+        );
+    }
+    for failed in [false, true] {
+        let fixture = Fixture::new(WorkflowClass::Standard);
+        fixture
+            .engine
+            .initialize(fixture.task.id, None)
+            .await
+            .unwrap();
+        fixture.through(Phase::MergeGate).await;
+        let sources = fixture.sources.clone();
+        *fixture.gates.on_complete.lock().unwrap() = Some(Box::new(move |_| {
+            sources.capture_error.store(true, Ordering::SeqCst);
+            None
+        }));
+        if failed {
+            fixture.gates.corrupt.store(1, Ordering::SeqCst);
+        } else {
+            fixture.gates.waiting.store(true, Ordering::SeqCst);
+        }
+        let result = fixture
+            .engine
+            .step(fixture.task.id, BTreeMap::new())
+            .await
+            .unwrap();
+        assert!(matches!(
+            result,
+            StepResult::Waiting {
+                phase: Phase::Cleanup,
+                ..
+            } | StepResult::Failed {
+                phase: Phase::Cleanup,
+                ..
+            }
+        ));
+        let captures = fixture.sources.captures.load(Ordering::SeqCst);
+        fixture.gates.waiting.store(false, Ordering::SeqCst);
+        fixture.gates.corrupt.store(0, Ordering::SeqCst);
+        assert!(matches!(
+            fixture.engine.resume_gate(fixture.task.id).await.unwrap(),
+            StepResult::Completed {
+                phase: Phase::Cleanup
+            }
+        ));
+        assert_eq!(fixture.sources.captures.load(Ordering::SeqCst), captures);
+        assert_eq!(
+            fixture
+                .gates
+                .calls
+                .lock()
+                .unwrap()
+                .last()
+                .unwrap()
+                .prior_observations
+                .len(),
+            1
+        );
+        assert_eq!(
+            fixture
+                .store
+                .lock()
+                .unwrap()
+                .task(fixture.task.id)
+                .unwrap()
+                .unwrap()
+                .state,
+            TaskState::Completed
+        );
+    }
+}
+
+#[tokio::test]
+async fn inactive_owners_allow_cancel_but_terminal_release_requires_verified_session() {
+    for owner in 0..3 {
+        let fixture = Fixture::new(WorkflowClass::Quick);
+        fixture
+            .engine
+            .initialize(fixture.task.id, None)
+            .await
+            .unwrap();
+        fixture.through(Phase::Worktree).await;
+        let StepResult::Started {
+            session: Some(id), ..
+        } = fixture
+            .engine
+            .step(fixture.task.id, BTreeMap::new())
+            .await
+            .unwrap()
+        else {
+            panic!("native required")
+        };
+        {
+            let mut store = fixture.store.lock().unwrap();
+            if owner == 2 {
+                let mut project = store.project(fixture.project.id).unwrap().unwrap();
+                project.state = ProjectState::Blocked;
+                project.blocked_reason = Some("fixture blocked".into());
+                store.put_project(&mut project).unwrap();
+            } else {
+                let mut goal = store.goal(fixture.task.goal_id).unwrap().unwrap();
+                goal.state = if owner == 0 {
+                    GoalState::Paused
+                } else {
+                    GoalState::Cancelled
+                };
+                store.put_goal(&mut goal).unwrap();
+            }
+        }
+        fixture
+            .engine
+            .cancel(fixture.task.id, "cancel under inactive owners".into())
+            .unwrap();
+        assert!(
+            fixture
+                .engine
+                .release_terminal_reservation(fixture.task.id, "cannot imply death".into())
+                .unwrap_err()
+                .to_string()
+                .contains("verified native termination")
+        );
+        {
+            let mut store = fixture.store.lock().unwrap();
+            let (mut session, version) = store.session(id).unwrap().unwrap();
+            session.state = SessionState::Lost;
+            store.put_session(&session, version).unwrap();
+        }
+        assert!(
+            fixture
+                .engine
+                .release_terminal_reservation(fixture.task.id, "Lost is still reserved".into())
+                .is_err()
+        );
+        {
+            let mut store = fixture.store.lock().unwrap();
+            let (mut session, version) = store.session(id).unwrap().unwrap();
+            session.state = SessionState::Stopped;
+            session.pid = None;
+            store.put_session(&session, version).unwrap(); // trusted recovery boundary; fixture has no OS child
+        }
+        fixture
+            .engine
+            .release_terminal_reservation(
+                fixture.task.id,
+                "fixture recovery verified termination".into(),
+            )
+            .unwrap();
+        let snapshot = fixture.engine.snapshot(fixture.task.id).unwrap();
+        assert!(snapshot.active.is_none());
+        assert_eq!(
+            snapshot.history.last().unwrap().state,
+            AttemptState::Interrupted
+        );
+        assert!(snapshot.terminal_decision.is_some());
+        assert_eq!(
+            fixture
+                .store
+                .lock()
+                .unwrap()
+                .task(fixture.task.id)
+                .unwrap()
+                .unwrap()
+                .state,
+            TaskState::Cancelled
+        );
+    }
+}
+
+#[tokio::test]
+async fn final_claim_cas_loss_recovers_only_proven_undispatched_reservations() {
+    for native in [false, true] {
+        let fixture = Fixture::new(WorkflowClass::Quick);
+        fixture
+            .engine
+            .initialize(fixture.task.id, None)
+            .await
+            .unwrap();
+        fixture
+            .through(if native {
+                Phase::Worktree
+            } else {
+                Phase::Implement
+            })
+            .await;
+        let store = fixture.store.clone();
+        let id = fixture.task.id;
+        let target = fixture.sources.captures.load(Ordering::SeqCst) + 4;
+        *fixture.sources.on_numbered_capture.lock().unwrap() = Some((
+            target,
+            Box::new(move || {
+                let mut store = store.lock().unwrap();
+                let mut task = store.task(id).unwrap().unwrap();
+                task.next_action = Some("last window CAS race".into());
+                store.put_task(&mut task).unwrap();
+            }),
+        ));
+        assert!(fixture.engine.step(id, BTreeMap::new()).await.is_err());
+        let calls = fixture.gates.calls.lock().unwrap().len();
+        let result = fixture.engine.step(id, BTreeMap::new()).await.unwrap();
+        if native {
+            assert!(matches!(result, StepResult::Invalidated { .. }));
+            assert!(matches!(
+                fixture.engine.step(id, BTreeMap::new()).await.unwrap(),
+                StepResult::Started {
+                    phase: Phase::Implement,
+                    ..
+                }
+            ));
+            assert_eq!(
+                fixture
+                    .store
+                    .lock()
+                    .unwrap()
+                    .records(&fixture.task.scope(), RecordKind::Session)
+                    .unwrap()
+                    .len(),
+                1
+            );
+        } else {
+            assert!(matches!(
+                result,
+                StepResult::Completed {
+                    phase: Phase::Commit
+                }
+            ));
+            assert_eq!(fixture.gates.calls.lock().unwrap().len(), calls + 1);
+        }
+        assert_eq!(
+            fixture
+                .store
+                .lock()
+                .unwrap()
+                .task(id)
+                .unwrap()
+                .unwrap()
+                .next_action
+                .as_deref(),
+            Some("last window CAS race")
+        );
+    }
+}
+
+#[tokio::test]
+async fn all_public_audit_entrypoints_reject_reserved_gate_journal_kinds() {
+    let fixture = Fixture::new(WorkflowClass::Quick);
+    let mut store = fixture.store.lock().unwrap();
+    let goal = store.goal(fixture.task.goal_id).unwrap().unwrap();
+    let versions = [fixture.project.version, goal.version, fixture.task.version];
+    for kind in [
+        "project.saved",
+        "workflow.saved",
+        "context.created",
+        "usage.recorded",
+        "workflow.gate_observed",
+    ] {
+        assert!(
+            store
+                .audit(&fixture.task.scope(), kind, json!({"forged":true}))
+                .unwrap_err()
+                .to_string()
+                .contains("reserved")
+        );
+        assert!(
+            store
+                .audit_if_current(
+                    &fixture.task.scope(),
+                    versions,
+                    kind,
+                    json!({"forged":true})
+                )
+                .unwrap_err()
+                .to_string()
+                .contains("reserved")
+        );
+    }
+    store
+        .audit_if_current(
+            &fixture.task.scope(),
+            versions,
+            "fixture.observed",
+            json!({"positive":true}),
+        )
+        .unwrap();
 }

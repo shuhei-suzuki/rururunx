@@ -136,8 +136,9 @@ Each gate return (including integration error) is journaled immediately in its e
 active attempt and a scoped workflow.gate_observed event, before postgate ownership,
 activity, filesystem or CAS checks. The observation preserves its actual artifact
 references and error even if a Goal is paused or a Project becomes Blocked. It does
-not approve the evidence, change Task/native state or release a reservation. Repeated
-or interrupted Evaluating operations await #13 reconciliation, never another side effect.
+not approve the evidence, change Task/native state or release a reservation. Known definitive Evaluating observations retain their pre-operation source authority and
+resume only the postgate validation/publication path after a transient owner/source/CAS
+error, without repeating the port. Unknown observations await #13 reconciliation.
 The closing fence checks the attempt's own native Session plus executor/Lost reservations;
 an unrelated live consultant may coexist with read-only review, while mutation admission
 still fences all live agents. Native completion requires the owned persisted Exited state
@@ -157,3 +158,27 @@ worktree or claim post-disposal freshness for subsequent execution.
 
 If identical foreign blocker text makes ownership ambiguous, retry retains it rather
 than removing another component's blocker. Typed blocker routing remains #12 integration.
+
+## Reconciliation after external effects
+
+Pr, MergeGate and Cleanup are irreversible phases. Their observations and prior artifact
+references are passed to the same attempt on explicit resume; ports must reconcile them
+idempotently. Source/dependency drift after an actual operation holds the known outcome
+for explicit #13/human reconciliation rather than invalidating and creating a duplicate
+PR or restarting implementation after a merge. Accepted PR/merge evidence also prevents
+subsequent drift or escalation from discarding the generation. Ordinary retry cannot
+release these phases. Failed/Waiting Cleanup resumes its frozen pre-disposal source,
+including the next final pack, without reopening a removed worktree.
+
+Cancellation/failure decisions are conservative and remain available under Paused,
+Cancelled or Blocked Goals and Blocked Projects. Removed Projects reject them.
+`release_terminal_reservation` only closes the immutable decision's recorded attempt,
+keeps Task/decision/context/evidence unchanged, and requires its owned persisted native
+termination plus all executor/Lost fences. Unknown gate outcomes and unbound native
+dispatch remain reserved for #13's explicit reconciliation authority. This method cannot
+prove process death; the existing trusted provider/recovery Session boundary must do so.
+Workflow progression remains forbidden for terminal Tasks. External WaitingHuman is a
+conservative interruption, while the next accepted workflow transition owns its phase
+state; finished QUICK finalization therefore uses workflow PR evidence rather than the
+interruption state. Blocker removal uses refreshed owner data and retains ambiguous
+identical foreign text until typed #12 ownership is available.

@@ -49,6 +49,8 @@ impl std::error::Error for StateGuardError {}
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum WorkflowAccess {
     StateOnly,
+    TerminalDecision,
+    TerminalRecovery,
     ReadOnly,
     Mutating,
 }
@@ -367,7 +369,13 @@ impl Store {
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        ensure_project_registered(&tx, task.project_id)?;
+        let conservative = matches!(
+            access,
+            WorkflowAccess::TerminalDecision | WorkflowAccess::TerminalRecovery
+        );
+        if !conservative {
+            ensure_project_registered(&tx, task.project_id)?;
+        }
         let project: Project =
             read_tx(&tx, "projects", &task.project_id.to_string())?.context("unknown project")?;
         let goal: Goal =
@@ -389,15 +397,17 @@ impl Store {
                 });
             }
         }
+        ensure!(project.state != ProjectState::Removed, "Project removed");
         ensure!(
             goal.project_id == task.project_id
-                && matches!(
-                    goal.state,
-                    GoalState::Created | GoalState::Analyzing | GoalState::Running
-                ),
+                && (conservative
+                    || matches!(
+                        goal.state,
+                        GoalState::Created | GoalState::Analyzing | GoalState::Running
+                    )),
             "goal is inactive for workflow progression"
         );
-        if access != WorkflowAccess::StateOnly {
+        if matches!(access, WorkflowAccess::ReadOnly | WorkflowAccess::Mutating) {
             let mut statement = tx.prepare(
                 "SELECT body FROM records WHERE project_id=?1 AND goal_id=?2 AND task_id=?3",
             )?;
@@ -429,13 +439,81 @@ impl Store {
         let previous_task: Task = read_tx(&tx, "tasks", &task.id.to_string())?
             .context("workflow requires existing Task")?;
         ensure!(
-            !task_terminal(previous_task.state),
+            !task_terminal(previous_task.state) || access == WorkflowAccess::TerminalRecovery,
             "terminal Task cannot resume workflow progression"
         );
         let count: i64 = tx.query_row("SELECT COUNT(*) FROM records WHERE project_id=?1 AND goal_id=?2 AND task_id=?3 AND kind='workflow' AND id<>?4",
             params![task.project_id.to_string(),task.goal_id.to_string(),task.id.to_string(),workflow.id.to_string()], |r| r.get(0))?;
         ensure!(count == 0, "Task already owns a workflow");
         let previous_workflow: Option<Record> = read_tx(&tx, "records", &workflow.id.to_string())?;
+        if conservative {
+            ensure!(
+                context.is_none(),
+                "terminal decision/recovery cannot publish context"
+            );
+            let previous = previous_workflow
+                .as_ref()
+                .context("terminal operation requires existing workflow")?;
+            let before: crate::workflow::WorkflowSnapshot =
+                serde_json::from_value(previous.data.clone())?;
+            let after: crate::workflow::WorkflowSnapshot =
+                serde_json::from_value(workflow.data.clone())?;
+            let mut expected = before.clone();
+            if access == WorkflowAccess::TerminalDecision {
+                ensure!(
+                    !task_terminal(previous_task.state)
+                        && before.terminal_decision.is_none()
+                        && matches!(task.state, TaskState::Cancelled | TaskState::Failed),
+                    "invalid terminal decision"
+                );
+                expected.terminal_decision = after.terminal_decision.clone();
+                ensure!(
+                    expected.terminal_decision.is_some(),
+                    "terminal decision required"
+                );
+            } else {
+                ensure!(
+                    task.state == previous_task.state && before.terminal_decision.is_some(),
+                    "terminal recovery cannot change Task decision"
+                );
+                let index = before.active.context("terminal reservation missing")?;
+                let attempt = &before.history[index];
+                ensure!(
+                    attempt.state != crate::workflow::AttemptState::Evaluating
+                        || attempt
+                            .observations
+                            .last()
+                            .is_some_and(|o| o.outcome.is_some()),
+                    "unknown external outcome requires explicit recovery"
+                );
+                ensure!(
+                    attempt.session_id.is_some() || !attempt.dispatch_started,
+                    "unbound dispatch requires explicit recovery"
+                );
+                expected.active = None;
+                expected.history[index].state = crate::workflow::AttemptState::Interrupted;
+                expected.history[index].completed_at = after.history[index].completed_at;
+                expected.history[index].detail = after.history[index].detail.clone();
+                ensure!(
+                    expected.history[index].completed_at.is_some()
+                        && expected.history[index]
+                            .detail
+                            .as_ref()
+                            .is_some_and(|s| !s.trim().is_empty()),
+                    "recovery requires timestamp/reason"
+                );
+            }
+            ensure!(
+                serde_json::to_value(expected)? == serde_json::to_value(&after)?,
+                "terminal operation may only record decision or close its reservation"
+            );
+            let mut expected_task = previous_task.clone();
+            expected_task.state = task.state;
+            ensure!(
+                serde_json::to_value(expected_task)? == serde_json::to_value(&*task)?,
+                "terminal operation may only change Task decision"
+            );
+        }
         crate::workflow::validate_transition(task, workflow, previous_workflow.as_ref())?;
         if let Some(previous) = &previous_workflow {
             let before: crate::workflow::WorkflowSnapshot =
@@ -444,6 +522,10 @@ impl Store {
                 serde_json::from_value(workflow.data.clone())?;
             if before.active.is_some() && after.active != before.active {
                 let mut statement = tx.prepare("SELECT body FROM records WHERE project_id=?1 AND goal_id=?2 AND task_id=?3 AND kind='session'")?;
+                let own_id = before
+                    .active
+                    .and_then(|index| before.history[index].session_id);
+                let mut own_found = own_id.is_none();
                 for body in statement.query_map(
                     params![
                         task.project_id.to_string(),
@@ -470,6 +552,7 @@ impl Store {
                                 )),
                         "closing workflow reservation requires verified native termination"
                     );
+                    own_found |= own;
                     if own
                         && before.active.is_some_and(|index| {
                             after.history[index].state == crate::workflow::AttemptState::Succeeded
@@ -481,6 +564,10 @@ impl Store {
                         );
                     }
                 }
+                ensure!(
+                    own_found,
+                    "closing workflow reservation requires persisted owned Session"
+                );
             }
         }
         if let Some(context) = context {
@@ -689,10 +776,7 @@ impl Store {
         validate_scope(scope)?;
         ensure!(!kind.trim().is_empty(), "audit kind must be nonempty");
         ensure!(
-            !kind.ends_with(".saved")
-                && kind != "context.created"
-                && kind != "usage.recorded"
-                && kind != "workflow.gate_observed",
+            !reserved_audit_kind(kind),
             "audit kind is reserved for Store mutations"
         );
         let tx = self
@@ -714,10 +798,7 @@ impl Store {
     ) -> Result<()> {
         validate_scope(scope)?;
         ensure!(
-            !kind.trim().is_empty()
-                && !kind.ends_with(".saved")
-                && kind != "context.created"
-                && kind != "usage.recorded",
+            !kind.trim().is_empty() && !reserved_audit_kind(kind),
             "invalid/reserved audit kind"
         );
         let goal_id = scope.goal_id.context("current audit requires Goal scope")?;
@@ -1367,4 +1448,12 @@ fn append_event(tx: &Transaction<'_>, scope: &Scope, kind: &str, data: Value) ->
         ],
     )?;
     Ok(())
+}
+
+fn reserved_audit_kind(kind: &str) -> bool {
+    kind.ends_with(".saved")
+        || matches!(
+            kind,
+            "context.created" | "usage.recorded" | "workflow.gate_observed"
+        )
 }

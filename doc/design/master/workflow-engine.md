@@ -349,3 +349,13 @@ before Completed. Native termination state is a trusted provider/recovery attest
 never an inference from arbitrary JSON or caller cancellation. A live unrelated consultant
 may coexist with read-only review; owned and Lost/executor termination fences remain.
 Cleanup freezes its pre-disposal source pack because the owning worktree is removed.
+
+Known definitive gate observations can resume postgate validation/publication without
+calling the external port again. Irreversible Pr/MergeGate/Cleanup outcomes and accepted
+PR/merge evidence prevent generation invalidation into duplicate operations; drift holds
+for explicit reconciliation (#13). Their ports receive prior attempt observations and
+resume idempotently; Cleanup freezes pre-disposal sources even after Waiting/Failed.
+Cancel/fail decisions are conservative under inactive Goals or Blocked Projects; a narrow
+terminal reservation release keeps Task/decision/context/evidence immutable and requires
+owned persisted termination plus all executor/Lost fences. Unknown outcomes or unbound
+dispatch stay reserved. General workflow progression cannot resurrect terminal Tasks.
