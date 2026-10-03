@@ -180,6 +180,25 @@ no kill credit. No production branch was mutated by these runs.
 
 ## Native TUI gateway reconnaissance
 
+At `4d2aa5e343c1f1e158f819711ad8d8f50fa6d98c`, the complete workspace passed
+216 Rust tests and 2 doctests; fmt, all-targets clippy with warnings denied and
+release build passed. Nine newly compiled semantic mutants were killed by
+assertions: actual dispatch caller CAS (M616), unknown native outcome after
+loss/stop (M617), abandoned consumed resume (M618B), complete JSON wire bound
+(M619), each parent version (M620C), lock ABA (M621), Session CAS (M622), atomic
+intent audit (M623), and pre-wire consumed boundary (M624). Originals were restored
+byte for byte and all 65 Codex regressions passed after every batch. Initial
+ambiguous M618/M620/M620B attempts have no credit; only their separately compiled
+replacement variants count. This is regression evidence, not native TUI acceptance.
+
+Linux CI passed at that head. macOS CI run `37119853652` failed the existing
+same-HEAD replacement test's successful fresh Git check. That assertion hid the
+returned cause; replace it with `unwrap` to preserve sanitized adapter diagnostics.
+The cause remains unverified, and no process-ownership guard, cleanup latch or
+deadline has been relaxed. Independent TUI design re-reviews still request changes
+to live human-turn state, native-home isolation, trust/policy and PTY cleanup;
+no implementation or merge verdict is implied by completed design reviews.
+
 At `7075fcd`, two further compiled semantic mutants (M614/M615) removing cleanup
 uncertainty handling from discovery success or setup failure were killed by
 assertions. The original 60 Codex regressions passed after byte-exact restoration.
