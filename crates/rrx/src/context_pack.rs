@@ -172,10 +172,21 @@ pub struct TaskDraft {
     pack: TaskPack,
     map: RepositoryMap,
     versions: [u64; 3],
+    instructions: BTreeMap<String, String>,
 }
 impl TaskDraft {
     pub fn pack(&self) -> &TaskPack {
         &self.pack
+    }
+    /// Phase-stable authority: launch bookkeeping changes payload, never hashes.
+    pub fn source_versions(&self) -> BTreeMap<String, String> {
+        let mut versions = self.map.freshness().source_hashes.clone();
+        versions.extend(self.instructions.clone());
+        versions.insert(
+            "repository:inventory".into(),
+            self.pack.repository.inventory_hash.clone(),
+        );
+        versions
     }
     /// Engine owns the version/pointer transaction, never the source provider.
     pub fn context_version(&self, version: u64) -> Result<ContextVersion> {
@@ -213,7 +224,8 @@ pub struct GoalPack {
     pub goal: Value,
     pub tasks: Vec<TaskDescriptor>,
     pub cross_task_decisions: Vec<String>,
-    pub next_runnable: Vec<TaskId>,
+    /// Goal/Task/DAG eligibility hints; scheduler admission remains authoritative.
+    pub next_work_candidates: Vec<TaskId>,
     /// Nullable caller-supplied observations; no guessed provider measurement.
     pub metrics: BTreeMap<String, Option<u64>>,
     pub authority_digest: String,
@@ -318,6 +330,7 @@ impl ContextPacks {
             pack,
             map,
             versions: versions(&p, &g, &t),
+            instructions: instruction_versions(&p, &g, &t)?,
         })
     }
     pub async fn publish_task(&self, draft: &TaskDraft) -> Result<PackRef> {
@@ -469,20 +482,14 @@ impl ContextPacks {
             )?
         );
         let available = budget.bytes.min(budget.estimated_tokens);
-        if header.len() >= available {
-            return Ok(PreparedPack::NeedsBudget {
-                required_bytes: header.len().saturating_add(1),
-                budget,
-            });
-        }
         let selection = self
             .source()
             .select(
                 map,
                 &request,
                 Budget {
-                    bytes: available - header.len(),
-                    estimated_tokens: available - header.len(),
+                    bytes: available.saturating_sub(header.len()).max(1),
+                    estimated_tokens: available.saturating_sub(header.len()).max(1),
                 },
             )
             .await?;
@@ -711,10 +718,11 @@ impl ContextPacks {
                 context,
             });
         }
-        let next_runnable = descriptors
+        let next_work_candidates = descriptors
             .iter()
             .filter(|t| {
-                matches!(t.state, TaskState::Created | TaskState::Planning)
+                g.state == GoalState::Running
+                    && matches!(t.state, TaskState::Created)
                     && t.blockers.is_empty()
                     && g.dag
                         .edges
@@ -750,7 +758,7 @@ impl ContextPacks {
             goal: projection(&g)?,
             tasks: descriptors,
             cross_task_decisions: decisions,
-            next_runnable,
+            next_work_candidates,
             metrics,
             authority_digest,
         };
@@ -823,6 +831,16 @@ impl ContextPacks {
                 self.validate_task(r).await?;
             }
         }
+        ensure!(
+            digest(&(
+                projection(&p)?,
+                projection(&g)?,
+                &pack.tasks,
+                &pack.cross_task_decisions,
+                &pack.metrics
+            ))? == pack.authority_digest,
+            "stale Goal pack authority"
+        );
         let map = self
             .source()
             .index(&pack.anchor, pack.repository.additional_paths.clone())
@@ -928,4 +946,23 @@ fn validate_inputs(inputs: &TaskInputs) -> Result<()> {
         text_list(std::slice::from_ref(s))?;
     }
     Ok(())
+}
+
+fn instruction_versions(p: &Project, g: &Goal, t: &Task) -> Result<BTreeMap<String, String>> {
+    Ok(BTreeMap::from([
+        (
+            "repository:identity".into(),
+            digest(&p.repository_identity)?,
+        ),
+        (
+            "instruction:goal".into(),
+            digest(&json!({"id":g.id,"objective":g.objective,
+            "criteria":g.completion_criteria.iter().map(|c|json!({"id":c.id,"description":c.description})).collect::<Vec<_>>(),
+            "constraints":g.constraints,"non_goals":g.non_goals,"source_refs":g.source_refs}))?,
+        ),
+        (
+            "instruction:task".into(),
+            digest(&json!({"id":t.id,"title":t.title,"criteria":t.acceptance_criteria}))?,
+        ),
+    ]))
 }
