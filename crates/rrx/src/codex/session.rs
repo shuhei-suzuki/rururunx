@@ -61,6 +61,11 @@ fn pin_starting_input(
         ));
     }
     if let Some(recovery) = session.recovery.as_object_mut() {
+        // Historical identity cannot describe the newly pinned input. Keep it
+        // explicitly historical until the new native turn is acknowledged.
+        if let Some(previous_turn) = recovery.remove("native_turn") {
+            recovery.insert("previous_native_turn".into(), previous_turn);
+        }
         recovery.remove("dispatch_intent");
         recovery.remove("native_dispatch_unobserved");
     }
@@ -2342,6 +2347,8 @@ mod tests {
                 hash IS NOT json_extract(NEW.body,'$.data.recovery.input_sha256') OR
                 restore IS NOT json_extract(NEW.body,'$.data.recovery.pre_dispatch_restore_sha256') OR
                 sources IS NOT json_extract(NEW.body,'$.data.recovery.source_versions') OR
+                json_extract(NEW.body,'$.data.recovery.native_turn') IS NOT NULL OR
+                json_extract(NEW.body,'$.data.recovery.previous_native_turn') IS NOT 'turn' OR
                 json_extract(NEW.body,'$.data.recovery.dispatch_intent') IS NOT NULL)
             BEGIN SELECT RAISE(ABORT,'reserved input differs from fresh checkpoint'); END;").unwrap();
         connection
