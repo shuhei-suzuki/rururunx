@@ -205,14 +205,26 @@ fn scope_and_policy_hold_prevent_process_launch() {
 fn bounded_process_failure_is_normalized_and_descendants_are_owned() {
     let fixture = Fixture::new();
     let request = fixture.request();
+    let child_pid_file = fixture.temp.path().join("owned-child.pid");
+    let timeout_script = format!(
+        "import subprocess,sys,time\nchild=subprocess.Popen([sys.executable,'-c','import signal,time;signal.signal(signal.SIGTERM,signal.SIG_IGN);time.sleep(20)'])\nopen({},'w').write(str(child.pid))\ntime.sleep(20)\n",
+        serde_json::to_string(&child_pid_file).unwrap()
+    );
     let started = Instant::now();
     let timeout = BridgeVerifier {
-        config: fixture.config("import time\ntime.sleep(20)\n"),
+        config: fixture.config(&timeout_script),
     }
     .verify(&fixture.binding, &request)
     .unwrap();
     assert_eq!(timeout.failure, Some(Failure::Timeout));
     assert!(started.elapsed() < Duration::from_secs(3));
+    let child_pid = fs::read_to_string(child_pid_file).unwrap();
+    let state = Command::new("/bin/ps")
+        .args(["-p", child_pid.trim(), "-o", "stat="])
+        .output()
+        .unwrap();
+    let state = String::from_utf8(state.stdout).unwrap();
+    assert!(state.trim().is_empty() || state.trim().starts_with('Z'));
     let overflow = BridgeVerifier {
         config: fixture.config("print('x' * 10000)\n"),
     }
