@@ -1,0 +1,207 @@
+# Context Efficiency Design
+
+**Status:** Draft
+**Scope:** MVP token/context efficiency
+
+## 1. Goal
+
+Parallel agents and multi-reviewer workflows can multiply the same repository and conversation context across model calls. rururunx must reduce redundant context without reducing required review independence or safety evidence.
+
+The Context Efficiency Layer optimizes **what context is sent**, **when it is refreshed**, and **what can be reused**, while native provider caching remains the provider's responsibility whenever possible.
+
+## 2. Principles
+
+1. **Retrieve, don't dump** — do not inject the entire repository or full task history by default.
+2. **Progressive disclosure** — load detailed rules/skills/files only when relevant.
+3. **Stable context + dynamic delta** — separate reusable stable context from frequently changing task context.
+4. **Share artifacts, not chats** — reviewers receive durable task/review artifacts rather than another agent's full conversation transcript.
+5. **Condense history** — bound long-running session context while preserving goals, decisions, critical files, failures, and next actions.
+6. **Prefer deltas for re-review** — later review rounds focus on changes since the previously reviewed revision plus unresolved findings.
+7. **Preserve independence** — token reduction must not cause reviewers to inherit another reviewer's conclusions before performing independent review.
+8. **Measure everything** — token/cached-token/cost estimates should be recorded when adapters expose them.
+
+## 3. Context Pack
+
+Each Task may maintain a versioned Context Pack containing concise durable context:
+
+- task purpose and acceptance criteria
+- workflow/risk class
+- relevant project rules
+- architecture/design references
+- relevant repository map slice
+- changed files/symbols
+- impact-analysis summary
+- current diff/revision identifiers
+- test/verification results
+- unresolved findings
+- current blockers/next actions
+
+The Context Pack is not a replacement for source code. Agents may retrieve source files as needed.
+
+Context Packs are versioned by Task state/revision so stale information can be detected.
+
+## 4. Repository Map / Context Index
+
+Maintain a compact repository index inspired by repository-map approaches:
+
+- file paths
+- important symbols/signatures
+- imports/dependencies
+- references/call relationships where cheaply available
+- optional language-specific parser data
+
+A token/size budget limits what is injected into an agent prompt.
+
+Selection should prioritize context relevant to:
+
+- task text
+- changed symbols/files
+- dependency/reference graph
+- review focus
+
+The full index may exist locally; only selected slices are sent to agents.
+
+## 5. Progressive Rule and Skill Loading
+
+Do not send all global/project workflow documentation on every call.
+
+Maintain lightweight metadata for available rules/skills and load full content only when triggered by task/phase/file scope.
+
+Mandatory safety/project rules are never omitted merely to save tokens.
+
+## 6. Conversation Condensation
+
+Long sessions may be periodically condensed into a durable checkpoint.
+
+Checkpoint must preserve at least:
+
+- user/task goal
+- confirmed requirements/decisions
+- work already completed
+- current revision/worktree
+- critical files/symbols
+- commands/tests already run and outcomes
+- unresolved errors/findings
+- next intended action
+- important safety constraints
+
+Recent events remain verbatim for a configurable window.
+
+Condensation must be auditable and must not overwrite authoritative requirements/design artifacts.
+
+## 7. Review Bundle
+
+For each review phase, construct a deterministic Review Bundle rather than forwarding executor chat history.
+
+Typical contents:
+
+- immutable commit/revision
+- requirement/design artifacts required for phase
+- relevant project rules
+- compact repo-map slice
+- diff or changed-file list
+- impact-analysis artifact
+- test/verification evidence
+- review instructions
+
+All reviewers in the same independent review round should receive equivalent factual inputs unless reviewer specialization explicitly requires additional material.
+
+Reviewer findings are hidden from peer reviewers until independent reviews complete, unless the workflow explicitly defines a consensus/reconciliation phase.
+
+## 8. Delta Re-review
+
+For review round N > 1, avoid resending all prior transient context when possible.
+
+Provide:
+
+- baseline reviewed revision
+- new revision
+- delta/diff
+- prior verified unresolved findings
+- fixes claimed
+- new test/verification evidence
+- stable requirements/design references
+
+Reviewer may request broader context if needed.
+
+## 9. Prompt / Context Cache Awareness
+
+Adapters may expose provider-native cache capabilities and usage telemetry.
+
+rururunx should:
+
+- keep stable instructions/tool definitions ordered consistently when it controls prompts
+- keep reusable repository/project context in stable prefixes when provider semantics make this useful
+- avoid invalidating stable prefixes with volatile data unnecessarily
+- use provider-native explicit cache only when the adapter/provider supports it and policy allows it
+- never depend on cache presence for correctness
+
+Caching reduces provider computation/cost; it does not necessarily reduce logical context-window token count. Therefore caching and context minimization are separate optimizations.
+
+## 10. Token Budgets
+
+Configurable budgets may exist per:
+
+- task
+- phase
+- review
+- reviewer
+- context-pack/repo-map injection
+
+Example:
+
+```yaml
+context:
+  repo_map_tokens: 2000
+  review_context_tokens: 12000
+  recent_history_tokens: 8000
+  condensation_threshold: 0.70
+```
+
+Exact defaults are implementation decisions and must be validated empirically.
+
+## 11. Context Request / Expansion
+
+An agent must be able to request more context rather than being forced to guess.
+
+Examples:
+
+- fetch file
+- expand symbol
+- include caller/callee
+- include design section
+- include previous review evidence
+
+Context expansion is logged for observability.
+
+## 12. Cost and token telemetry
+
+When exposed by native agents/providers, record:
+
+- input tokens
+- cached input tokens
+- output tokens
+- context size
+- estimated cost
+- context-pack size
+- repo-map injected size
+- condensation events
+- context expansion events
+
+Metrics should be attributable by Task, phase, and agent.
+
+## 13. MVP acceptance
+
+MVP must demonstrate:
+
+- repository-map/context-index generation
+- token-budgeted relevant context selection
+- versioned Context Pack
+- progressive loading of optional rules/skills
+- session condensation/checkpointing
+- deterministic Review Bundle
+- delta-based re-review
+- provider cache-awareness hooks
+- per-task/per-agent token telemetry when available
+
+A dogfood comparison should measure the same representative workflow with and without Context Efficiency features and report token/cost/time differences plus any quality regressions.
