@@ -300,3 +300,93 @@ fn pack_idle(tx: &Transaction<'_>, scope: &Scope) -> Result<()> {
     }
     Ok(())
 }
+
+impl Store {
+    pub(crate) fn publish_goal_context_pack(
+        &mut self,
+        expected: [u64; 2],
+        context: &ContextVersion,
+        task_versions: &[(TaskId, u64)],
+    ) -> Result<()> {
+        ensure!(
+            context.scope.task_id.is_none() && context.scope.goal_id.is_some(),
+            "Goal publication requires exact Goal scope"
+        );
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let p: Project = read_tx(&tx, "projects", &context.scope.project_id.to_string())?
+            .context("unknown Project")?;
+        let mut g: Goal = read_tx(&tx, "goals", &context.scope.goal_id.unwrap().to_string())?
+            .context("unknown Goal")?;
+        ensure!(
+            p.version == expected[0]
+                && g.version == expected[1]
+                && p.state == ProjectState::Registered
+                && g.scope() == context.scope
+                && !goal_terminal(g.state),
+            "Goal publication authority changed/inactive"
+        );
+        pack_idle(&tx, &context.scope)?;
+        for (id, version) in task_versions {
+            let t: Task =
+                read_tx(&tx, "tasks", &id.to_string())?.context("missing referenced Task")?;
+            ensure!(
+                t.project_id == p.id && t.goal_id == g.id && t.version == *version,
+                "Goal Task summary changed during publication"
+            );
+        }
+        let owner = context_owner(&context.scope)?;
+        let latest:Option<String>=tx.query_row("SELECT body FROM context_versions WHERE project_id=?1 AND owner=?2 ORDER BY version DESC LIMIT 1",params![p.id.to_string(),owner],|r|r.get(0)).optional()?;
+        let latest: Option<ContextVersion> = latest.map(decode).transpose()?;
+        if let Some(old) = &latest
+            && old.version == context.version
+        {
+            ensure!(
+                serde_json::to_value(old)? == serde_json::to_value(context)?
+                    && g.context_version == context.version,
+                "Goal context reuse mismatch"
+            );
+            tx.commit()?;
+            return Ok(());
+        }
+        ensure!(
+            context.version
+                == latest.as_ref().map_or(Ok(1), |c| c
+                    .version
+                    .checked_add(1)
+                    .context("Goal context overflow"))?
+                && !context.revision.is_empty(),
+            "Goal context must be consecutive"
+        );
+        tx.execute("INSERT INTO context_versions(project_id,goal_id,task_id,owner,version,body) VALUES(?1,?2,NULL,?3,?4,?5)",params![p.id.to_string(),g.id.to_string(),owner,context.version,serde_json::to_string(context)?])?;
+        let expected_version = g.version;
+        g.context_version = context.version;
+        bump(&mut g.version)?;
+        g.updated_at = now_ms();
+        write_snapshot(
+            &tx,
+            "goals",
+            &g.id.to_string(),
+            expected_version,
+            "",
+            params![],
+            &serde_json::to_string(&g)?,
+            g.version,
+        )?;
+        append_event(
+            &tx,
+            &g.scope(),
+            "goal.saved",
+            json!({"version":g.version,"context_version":g.context_version}),
+        )?;
+        append_event(
+            &tx,
+            &context.scope,
+            "context.created",
+            json!({"version":context.version,"revision":context.revision,"format":context.data["format"]}),
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+}

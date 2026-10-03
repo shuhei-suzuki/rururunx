@@ -35,6 +35,10 @@ no supervisor model or transcript summarization model is introduced.
   publication uses the workflow phase port; standalone publication cannot rewrite
   its phase/attempt context. No schema migration is needed for this Issue.
 
+Goal-only packs use read-only exact primary-root identity/source validation and
+atomic Project/Goal/Task-summary CAS, including before Tasks and after worktree
+cleanup. Finalized Task refs remain historical and non-launchable.
+
 Core checkpoints use a registered Goal and bound Task, including consultation
 Sessions. Goal-before-Task consultation creation and CLI/TUI/session transport are
 separate integrations. Native checkpoint capability is not fabricated. The real

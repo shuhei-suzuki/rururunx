@@ -1426,6 +1426,22 @@ pub struct GoalSourceSnapshot {
 }
 impl RepositoryContext {
     pub async fn goal_sources(&self, scope: &Scope) -> Result<GoalSourceSnapshot> {
+        self.goal_sources_with_files(scope, vec![]).await
+    }
+    pub async fn goal_sources_with_files(
+        &self,
+        scope: &Scope,
+        mut paths: Vec<String>,
+    ) -> Result<GoalSourceSnapshot> {
+        ensure!(
+            paths.len() <= MAX_REFS && paths.iter().all(|p| p.len() <= 4096),
+            "too many/oversized Goal artifacts"
+        );
+        paths.sort();
+        paths.dedup();
+        for path in &paths {
+            relative(path)?;
+        }
         ensure!(
             scope.goal_id.is_some() && scope.task_id.is_none(),
             "primary Goal observation requires exact Goal scope"
@@ -1449,8 +1465,8 @@ impl RepositoryContext {
             project.rule_refs.len() <= MAX_REFS,
             "too many Goal rule references"
         );
-        let first = observe_primary(&project).await?;
-        let second = observe_primary(&project).await?;
+        let first = observe_primary(&project, paths.clone()).await?;
+        let second = observe_primary(&project, paths.clone()).await?;
         ensure!(
             first.root_file_id == second.root_file_id
                 && first.revision == second.revision
@@ -1520,7 +1536,7 @@ async fn primary_revision(project: &Project, deadline: tokio::time::Instant) -> 
     )
     .await
 }
-async fn observe_primary(project: &Project) -> Result<GoalSourceSnapshot> {
+async fn observe_primary(project: &Project, paths: Vec<String>) -> Result<GoalSourceSnapshot> {
     let opening = project.clone();
     let reader = Arc::new(bounded_fs(move || ScopedReader::new(&opening.root, &opening)).await?);
     let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
@@ -1557,6 +1573,21 @@ async fn observe_primary(project: &Project) -> Result<GoalSourceSnapshot> {
                 ),
                 hash(&bytes),
             );
+        }
+        for path in paths {
+            let (bytes, _) = source
+                .read(&path)?
+                .context("Goal authoritative artifact missing")?;
+            total = total
+                .checked_add(bytes.len())
+                .context("Goal source size overflow")?;
+            ensure!(
+                total <= MAX_TOTAL_BYTES,
+                "Goal artifacts exceed source limit"
+            );
+            let text = std::str::from_utf8(&bytes).context("Goal artifact must be UTF8")?;
+            ensure!(!text.contains('\0'), "Goal artifact cannot be binary");
+            result.insert(format!("project:{path}"), hash(&bytes));
         }
         source.unchanged()?;
         Ok(result)

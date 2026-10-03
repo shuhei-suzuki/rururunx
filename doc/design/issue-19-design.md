@@ -20,8 +20,11 @@ serialized caller-provided repository map.
 
 Goal packs contain compact Task descriptors and exact pack version/digest refs,
 DAG edges, cross-Task facts and aggregate metrics. They do not embed Task packs,
-source slices or Task chat. An owned bound Task anchors repository/rule observation;
-referenced Tasks remain explicitly scoped. Known stale Task references are rejected.
+source slices or Task chat. The exact registered primary root anchors read-only rule/config and explicit Goal
+artifact observation before Tasks exist and after their worktrees are disposed.
+Referenced nonterminal Tasks require fresh owned sources; terminal Task refs retain
+immutable provenance, are marked historical and never become launch input. No dummy
+Task or protected-root execution is authorized by Goal observation.
 
 Deterministic condensation operates on typed event classifications. Semantic events
 are retained with sequence/provenance; duplicate semantic facts can be deduplicated

@@ -1,7 +1,10 @@
 //! Durable compact coordination artifacts. Native source observations stay in context.
 use crate::{
     adapter::{InputKind, PreparedInput, SharedStore},
-    context::{Budget, RepositoryContext, RepositoryMap, SelectionOutcome, SelectionRequest},
+    context::{
+        Budget, GoalSourceSnapshot, RepositoryContext, RepositoryMap, SelectionOutcome,
+        SelectionRequest,
+    },
     domain::*,
 };
 use anyhow::{Context, Result, ensure};
@@ -212,6 +215,34 @@ pub struct TaskDescriptor {
     pub blockers: Vec<String>,
     pub next_action: Option<String>,
     pub context: Option<PackRef>,
+    /// Terminal Task provenance is historical and never launchable.
+    pub historical: bool,
+}
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct GoalRepositoryRef {
+    pub root: std::path::PathBuf,
+    pub root_file_id: String,
+    pub revision: String,
+    pub manifest_digest: String,
+    pub additional_paths: Vec<String>,
+}
+impl GoalRepositoryRef {
+    fn of(source: &GoalSourceSnapshot, additional_paths: Vec<String>) -> Result<Self> {
+        Ok(Self {
+            root: source.root.clone(),
+            root_file_id: source.root_file_id.clone(),
+            revision: source.revision.clone(),
+            manifest_digest: digest(&source.source_hashes)?,
+            additional_paths,
+        })
+    }
+}
+#[derive(Debug, Clone, Default)]
+pub struct GoalInputs {
+    pub artifacts: Vec<ArtifactRequest>,
+    pub decisions: Vec<String>,
+    pub metrics: BTreeMap<String, Option<u64>>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -219,8 +250,8 @@ pub struct GoalPack {
     pub format: String,
     pub scope: Scope,
     pub repository_identity: String,
-    pub anchor: Scope,
-    pub repository: RepositoryRef,
+    pub repository: GoalRepositoryRef,
+    pub artifacts: Vec<ArtifactRef>,
     pub goal: Value,
     pub tasks: Vec<TaskDescriptor>,
     pub cross_task_decisions: Vec<String>,
@@ -725,24 +756,100 @@ impl ContextPacks {
             digest: digest(&record.data)?,
         })
     }
+    fn goal_snapshot(&self, scope: &Scope) -> Result<(Project, Goal)> {
+        ensure!(
+            scope.goal_id.is_some() && scope.task_id.is_none(),
+            "requires exact Goal scope"
+        );
+        let store = self
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Store poisoned"))?;
+        let p = crate::project::registered_project(&store, scope.project_id)?;
+        let g = store
+            .goal(scope.goal_id.unwrap())?
+            .context("unknown Goal")?;
+        ensure!(g.scope() == *scope, "foreign Goal pack scope");
+        Ok((p, g))
+    }
+    async fn validate_task_reference(&self, task: &Task, reference: &PackRef) -> Result<()> {
+        ensure!(
+            reference.scope == task.scope() && reference.version == task.context_version,
+            "foreign/stale Task reference"
+        );
+        if crate::state::task_terminal(task.state) {
+            let pack = self.task_pack(reference)?;
+            // Immutable provenance only: a finalized worktree may already be disposed.
+            ensure!(
+                pack.scope == task.scope()
+                    && pack.task["id"] == serde_json::to_value(task.id)?
+                    && pack.task["project_id"] == serde_json::to_value(task.project_id)?
+                    && pack.task["goal_id"] == serde_json::to_value(task.goal_id)?
+                    && pack.repository.manifest_digest
+                        == digest(&self.load_context(reference)?.source_hashes)?
+                    && !pack.repository.revision.is_empty(),
+                "invalid historical Task provenance"
+            );
+        } else {
+            self.validate_task(reference).await?;
+        }
+        Ok(())
+    }
+    /// Compatibility selector accepts an owned Task, but observes the Goal's
+    /// registered primary root without adopting or launching that Task.
     pub async fn publish_goal(
         &self,
-        anchor: &Scope,
+        selector: &Scope,
         decisions: Vec<String>,
         metrics: BTreeMap<String, Option<u64>>,
     ) -> Result<PackRef> {
-        text_list(&decisions)?;
+        if selector.task_id.is_some() {
+            self.snapshot(selector)?;
+        }
+        let scope = Scope::goal(
+            selector.project_id,
+            selector.goal_id.context("requires Goal")?,
+        );
+        self.publish_goal_with_inputs(
+            &scope,
+            GoalInputs {
+                decisions,
+                metrics,
+                ..Default::default()
+            },
+        )
+        .await
+    }
+    pub async fn publish_goal_with_inputs(
+        &self,
+        scope: &Scope,
+        inputs: GoalInputs,
+    ) -> Result<PackRef> {
+        text_list(&inputs.decisions)?;
         ensure!(
-            metrics.len() <= MAX_REFS
-                && metrics
+            inputs.artifacts.len() <= MAX_REFS
+                && inputs.metrics.len() <= MAX_REFS
+                && inputs
+                    .metrics
                     .keys()
                     .all(|s| s.len() <= 128 && !s.trim().is_empty()),
-            "invalid metric metadata"
+            "invalid Goal pack metadata"
         );
-        let (p, g, t) = self.snapshot(anchor)?;
+        let (p, g) = self.goal_snapshot(scope)?;
         ensure!(
             g.dag.nodes.len() <= MAX_REFS && g.dag.edges.len() <= MAX_EVENTS,
             "Goal DAG exceeds pack limits"
+        );
+        let mut paths: Vec<String> = inputs.artifacts.iter().map(|a| a.path.clone()).collect();
+        paths.sort();
+        paths.dedup();
+        let source = self
+            .source()
+            .goal_sources_with_files(scope, paths.clone())
+            .await?;
+        ensure!(
+            [p.version, g.version] == [source.project_version, source.goal_version],
+            "Goal changed during source capture"
         );
         let mut task_versions = vec![];
         let mut descriptors = vec![];
@@ -770,7 +877,7 @@ impl ContextPacks {
             );
             let context = context.map(|c| reference(&c)).transpose()?;
             if let Some(r) = &context {
-                self.validate_task(r).await?;
+                self.validate_task_reference(&task, r).await?;
             }
             task_versions.push((*id, task.version));
             descriptors.push(TaskDescriptor {
@@ -783,105 +890,124 @@ impl ContextPacks {
                 blockers: task.blockers,
                 next_action: task.next_action,
                 context,
+                historical: crate::state::task_terminal(task.state),
             });
         }
-        let next_work_candidates = descriptors
+        let next_work_candidates = goal_candidates(&g, &descriptors);
+        let artifacts = inputs
+            .artifacts
             .iter()
-            .filter(|t| {
-                g.state == GoalState::Running
-                    && matches!(t.state, TaskState::Created)
-                    && t.blockers.is_empty()
-                    && g.dag
-                        .edges
-                        .iter()
-                        .filter(|e| e.hard && e.dependent == t.id)
-                        .all(|e| {
-                            descriptors.iter().any(|p| {
-                                p.id == e.prerequisite
-                                    && matches!(p.state, TaskState::Completed | TaskState::Merged)
-                            })
-                        })
+            .map(|a| {
+                Ok(ArtifactRef {
+                    scope: scope.clone(),
+                    kind: a.kind,
+                    path: a.path.clone(),
+                    digest: source
+                        .source_hashes
+                        .get(&format!("project:{}", a.path))
+                        .context("missing Goal artifact")?
+                        .clone(),
+                })
             })
-            .map(|t| t.id)
-            .collect();
-        let map = self.source().index(anchor, vec![]).await?;
-        ensure!(
-            versions(&p, &g, &t) == map_versions(&map),
-            "Goal state changed during pack capture"
-        );
+            .collect::<Result<Vec<_>>>()?;
         let authority_digest = digest(&(
             projection(&p)?,
             projection(&g)?,
             &descriptors,
-            &decisions,
-            &metrics,
+            &inputs.decisions,
+            &inputs.metrics,
+            &artifacts,
         ))?;
         let pack = GoalPack {
             format: GOAL_FORMAT.into(),
-            scope: g.scope(),
+            scope: scope.clone(),
             repository_identity: p.repository_identity,
-            anchor: anchor.clone(),
-            repository: RepositoryRef::of(&map, vec![])?,
+            repository: GoalRepositoryRef::of(&source, paths.clone())?,
+            artifacts,
             goal: projection(&g)?,
             tasks: descriptors,
-            cross_task_decisions: decisions,
+            cross_task_decisions: inputs.decisions,
             next_work_candidates,
-            metrics,
+            metrics: inputs.metrics,
             authority_digest,
         };
         bounded(&pack)?;
-        self.source().validate(&map).await?;
+        let fresh = self.source().goal_sources_with_files(scope, paths).await?;
+        ensure!(
+            source.root_file_id == fresh.root_file_id
+                && source.revision == fresh.revision
+                && source.source_hashes == fresh.source_hashes
+                && [source.project_version, source.goal_version]
+                    == [fresh.project_version, fresh.goal_version],
+            "Goal source changed before publication"
+        );
         let mut store = self
             .store
             .lock()
             .map_err(|_| anyhow::anyhow!("Store poisoned"))?;
         let data = serde_json::to_value(&pack)?;
-        let latest = store.context(&pack.scope, None)?;
-        let version = match latest {
-            Some(c) if c.data == data && c.source_hashes == map.freshness().source_hashes => {
+        let version = match store.context(scope, None)? {
+            Some(c)
+                if c.data == data
+                    && c.revision == source.revision
+                    && c.source_hashes == source.source_hashes =>
+            {
                 c.version
             }
             Some(c) => c.version.checked_add(1).context("context overflow")?,
             None => 1,
         };
         let context = ContextVersion {
-            scope: pack.scope,
+            scope: scope.clone(),
             version,
-            revision: map.freshness().revision.clone(),
-            source_hashes: map.freshness().source_hashes.clone(),
+            revision: source.revision,
+            source_hashes: source.source_hashes,
             data,
         };
-        store.publish_context_pack(anchor, map_versions(&map), &context, &task_versions)?;
+        store.publish_goal_context_pack(
+            [source.project_version, source.goal_version],
+            &context,
+            &task_versions,
+        )?;
         reference(&context)
     }
-    pub async fn validate_goal(&self, reference: &PackRef) -> Result<()> {
+    pub fn goal_pack(&self, reference: &PackRef) -> Result<GoalPack> {
         let c = self.load_context(reference)?;
         let pack: GoalPack = serde_json::from_value(c.data)?;
         ensure!(
             pack.format == GOAL_FORMAT
                 && pack.scope == reference.scope
-                && pack.scope.task_id.is_none(),
+                && pack.scope.task_id.is_none()
+                && pack.repository.revision == c.revision,
             "invalid Goal pack envelope"
         );
         bounded(&pack)?;
-        let (p, g, _) = self.snapshot(&pack.anchor)?;
+        Ok(pack)
+    }
+    pub async fn validate_goal(&self, reference: &PackRef) -> Result<()> {
+        let c = self.load_context(reference)?;
+        let pack = self.goal_pack(reference)?;
+        let (p, g) = self.goal_snapshot(&pack.scope)?;
         ensure!(
-            g.scope() == pack.scope
-                && g.context_version == reference.version
+            g.context_version == reference.version
                 && projection(&g)? == pack.goal
                 && p.repository_identity == pack.repository_identity,
             "stale/foreign Goal pack"
         );
+        ensure!(
+            pack.tasks.len() == g.dag.nodes.len()
+                && pack.tasks.iter().map(|t| t.id).collect::<Vec<_>>() == g.dag.nodes,
+            "invalid Goal Task set/order"
+        );
         for d in &pack.tasks {
-            let t = {
-                self.store
-                    .lock()
-                    .map_err(|_| anyhow::anyhow!("Store poisoned"))?
-                    .task(d.id)?
-                    .context("missing Task")?
-            };
+            let t = self
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("Store poisoned"))?
+                .task(d.id)?
+                .context("missing Task")?;
             ensure!(
-                t.scope().project_id == pack.scope.project_id
+                t.project_id == p.id
                     && t.goal_id == g.id
                     && t.title == d.title
                     && t.state == d.state
@@ -890,35 +1016,71 @@ impl ContextPacks {
                     && t.risk == d.risk
                     && t.blockers == d.blockers
                     && t.next_action == d.next_action
-                    && t.context_version == d.context.as_ref().map_or(0, |r| r.version),
+                    && t.context_version == d.context.as_ref().map_or(0, |r| r.version)
+                    && crate::state::task_terminal(t.state) == d.historical,
                 "stale Goal Task summary"
             );
             if let Some(r) = &d.context {
-                ensure!(r.scope == t.scope(), "foreign Goal Task pack");
-                self.validate_task(r).await?;
+                self.validate_task_reference(&t, r).await?;
             }
         }
         ensure!(
-            digest(&(
-                projection(&p)?,
-                projection(&g)?,
-                &pack.tasks,
-                &pack.cross_task_decisions,
-                &pack.metrics
-            ))? == pack.authority_digest,
-            "stale Goal pack authority"
+            goal_candidates(&g, &pack.tasks) == pack.next_work_candidates
+                && digest(&(
+                    projection(&p)?,
+                    projection(&g)?,
+                    &pack.tasks,
+                    &pack.cross_task_decisions,
+                    &pack.metrics,
+                    &pack.artifacts
+                ))? == pack.authority_digest,
+            "stale Goal authority"
         );
-        let map = self
+        let source = self
             .source()
-            .index(&pack.anchor, pack.repository.additional_paths.clone())
+            .goal_sources_with_files(&pack.scope, pack.repository.additional_paths.clone())
             .await?;
         ensure!(
-            RepositoryRef::of(&map, pack.repository.additional_paths.clone())? == pack.repository
-                && c.source_hashes == map.freshness().source_hashes,
+            GoalRepositoryRef::of(&source, pack.repository.additional_paths.clone())?
+                == pack.repository
+                && source.source_hashes == c.source_hashes
+                && source.project_version == p.version
+                && source.goal_version == g.version,
             "stale Goal repository sources"
         );
+        for artifact in &pack.artifacts {
+            ensure!(
+                artifact.scope == pack.scope
+                    && source
+                        .source_hashes
+                        .get(&format!("project:{}", artifact.path))
+                        == Some(&artifact.digest),
+                "invalid Goal artifact reference"
+            );
+        }
         Ok(())
     }
+}
+fn goal_candidates(g: &Goal, tasks: &[TaskDescriptor]) -> Vec<TaskId> {
+    tasks
+        .iter()
+        .filter(|t| {
+            g.state == GoalState::Running
+                && t.state == TaskState::Created
+                && t.blockers.is_empty()
+                && g.dag
+                    .edges
+                    .iter()
+                    .filter(|e| e.hard && e.dependent == t.id)
+                    .all(|e| {
+                        tasks.iter().any(|p| {
+                            p.id == e.prerequisite
+                                && matches!(p.state, TaskState::Completed | TaskState::Merged)
+                        })
+                    })
+        })
+        .map(|t| t.id)
+        .collect()
 }
 fn versions(p: &Project, g: &Goal, t: &Task) -> [u64; 3] {
     [p.version, g.version, t.version]
