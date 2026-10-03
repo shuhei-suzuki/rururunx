@@ -16,10 +16,12 @@ retrieve, condense, cross-project cache or replay executor conversations. Review
 Bundle input is distinct from Context Pack; generic review is unsupported until a
 native adapter can enforce a read-only mode. Review quorum belongs upstream.
 
-Generic execute checks persisted Project/Goal/Task and delegates authoritative Git
-source identity, unique Task binding, namespace, common directory/top-level and exact
-non-base branch checks to WorktreeManager::ensure_mutation_allowed. This synchronous
-Git boundary runs on a Tokio blocking worker rather than the async executor.
+Generic execute checks persisted Project/Goal/Task and collects native Git metadata
+outside the shared Store mutex, with a five-second total deadline and bounded output.
+The shared pure `git::validate_worktree_ownership` validates source identity, unique
+Task binding, namespace, common directory/top-level and exact non-base branch.
+Project/Goal/Task versions are checked again before spawn. Native status/fsmonitor
+hooks are not needed for launch ownership; no unbounded Git runs under the Store lock.
 Git environment overrides fail before preflight. No shell interpolation is added:
 configured argv is passed directly; a user explicitly configuring a shell owns its
 script. Model/effort are rejected by generic adapters rather than silently ignored.
@@ -28,7 +30,9 @@ and completed/PR-ready Task launch is rejected; DAG/resource eligibility remains
 the scheduler responsibility and executor fallback must update Task assignment.
 
 Generic adapters require a shared Store. Starting is persisted before async Git
-preflight; launch failure/cancellation records Failed. The Store transaction
+preflight; confirmed cleanup after launch failure/cancellation records Failed.
+Unconfirmed cleanup retains a Lost/Starting reservation, including cancellation
+while a blocking cleanup worker still owns the process group. The Store transaction
 atomically excludes active WorktreeLock and reserved/live executor Session for the
 same Task, so a reviewer cannot start between preflight and spawn. Running and
 terminal snapshots are persisted through existing optimistic Store/audit APIs with the last written version; concurrent
@@ -81,5 +85,6 @@ No browser/staging deployment target exists for this library boundary.
 
 On macOS, XNU excludes zombie members from group signalling and may return EPERM
 for a zombie-only group. The adapter accepts that result only after /bin/ps confirms
-no live member of the still-reserved PGID; actual permission/inspection failure
+no live member of the still-reserved PGID; ordinary inspection runs on a blocking
+worker. The Drop fallback stays synchronous. Actual permission/inspection failure
 remains Lost. See [Apple XNU killpg1](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_sig.c).

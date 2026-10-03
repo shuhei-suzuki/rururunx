@@ -5,7 +5,10 @@ use std::{
     path::{Path, PathBuf},
     pin::Pin,
     process::Stdio,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
     time::Duration,
 };
 
@@ -290,6 +293,7 @@ struct Entry {
 struct Reservation {
     store: SharedStore,
     session: Option<(Session, u64)>,
+    process_uncertain: Arc<AtomicBool>,
 }
 
 /// Owns the unreaped leader so PGID cannot be recycled before group cleanup.
@@ -297,19 +301,22 @@ struct ProcessGroup {
     child: Child,
     pid: Pid,
     group_owned: bool,
+    process_uncertain: Arc<AtomicBool>,
 }
 impl ProcessGroup {
-    fn new(child: Child) -> AdapterResult<Self> {
+    fn new(child: Child, process_uncertain: Arc<AtomicBool>) -> AdapterResult<Self> {
         let raw = child
             .id()
             .filter(|pid| *pid > 1)
             .ok_or_else(|| error(ErrorKind::LaunchFailure, "child has no valid owned PID"))?;
         let pid = Pid::from_raw(raw as i32)
             .ok_or_else(|| error(ErrorKind::LaunchFailure, "invalid native PID"))?;
+        process_uncertain.store(true, Ordering::SeqCst);
         Ok(Self {
             child,
             pid,
             group_owned: true,
+            process_uncertain,
         })
     }
     async fn observe_exit(&self) -> std::io::Result<()> {
@@ -330,21 +337,19 @@ impl ProcessGroup {
         }
     }
     fn kill_group(&mut self) -> std::io::Result<()> {
-        match kill_process_group(self.pid, Signal::KILL) {
-            Ok(()) | Err(rustix::io::Errno::SRCH) => {
-                self.group_owned = false;
-                Ok(())
-            }
-            #[cfg(target_os = "macos")]
-            Err(rustix::io::Errno::PERM) if macos_group_is_dead(self.pid)? => {
-                // XNU excludes zombies from group signalling and returns EPERM
-                // for a group with no live signalable members. Do not blindly
-                // treat EPERM as success: inspect the still-reserved group.
-                self.group_owned = false;
-                Ok(())
-            }
+        let result = kill_process_group(self.pid, Signal::KILL);
+        #[cfg(target_os = "macos")]
+        let result = resolve_macos_signal_result(result, || macos_group_is_dead(self.pid));
+        #[cfg(not(target_os = "macos"))]
+        let result = match result {
+            Ok(()) | Err(rustix::io::Errno::SRCH) => Ok(()),
             Err(e) => Err(e.into()),
+        };
+        if result.is_ok() {
+            self.group_owned = false;
+            self.process_uncertain.store(false, Ordering::SeqCst);
         }
+        result
     }
     async fn reap(&mut self) -> std::io::Result<std::process::ExitStatus> {
         self.child.wait().await
@@ -362,7 +367,22 @@ fn macos_group_is_dead(pid: Pid) -> std::io::Result<bool> {
             "cannot verify owned process group death",
         ));
     }
-    let text = std::str::from_utf8(&output.stdout).map_err(std::io::Error::other)?;
+    process_group_is_dead(&output.stdout, pid.as_raw_nonzero().get())
+}
+#[cfg(target_os = "macos")]
+fn resolve_macos_signal_result(
+    result: Result<(), rustix::io::Errno>,
+    inspection: impl FnOnce() -> std::io::Result<bool>,
+) -> std::io::Result<()> {
+    match result {
+        Ok(()) | Err(rustix::io::Errno::SRCH) => Ok(()),
+        Err(rustix::io::Errno::PERM) if inspection()? => Ok(()),
+        Err(e) => Err(e.into()),
+    }
+}
+#[cfg(target_os = "macos")]
+fn process_group_is_dead(output: &[u8], pid: i32) -> std::io::Result<bool> {
+    let text = std::str::from_utf8(output).map_err(std::io::Error::other)?;
     for row in text.lines().filter(|row| !row.trim().is_empty()) {
         let mut fields = row.split_whitespace();
         let group = fields
@@ -372,12 +392,13 @@ fn macos_group_is_dead(pid: Pid) -> std::io::Result<bool> {
         let state = fields
             .next()
             .ok_or_else(|| std::io::Error::other("missing process-group state"))?;
-        if group == pid.as_raw_nonzero().get() && !state.starts_with('Z') {
+        if group == pid && !state.starts_with('Z') {
             return Ok(false);
         }
     }
     Ok(true)
 }
+
 impl Drop for ProcessGroup {
     fn drop(&mut self) {
         if self.group_owned {
@@ -389,7 +410,11 @@ impl Drop for ProcessGroup {
 impl Drop for Reservation {
     fn drop(&mut self) {
         if let Some((mut session, version)) = self.session.take() {
-            session.state = SessionState::Failed;
+            session.state = if self.process_uncertain.load(Ordering::SeqCst) {
+                SessionState::Lost
+            } else {
+                SessionState::Failed
+            };
             let _ = save_session(&self.store, &session, version);
         }
     }
@@ -398,6 +423,7 @@ pub struct GenericCliAdapter {
     agent: String,
     command: Vec<String>,
     store: SharedStore,
+    git_executable: Option<PathBuf>,
     sessions: Mutex<HashMap<SessionId, Entry>>,
 }
 const OUTPUT_LIMIT: usize = 64 * 1024;
@@ -417,6 +443,7 @@ impl GenericCliAdapter {
             agent,
             command,
             store,
+            git_executable: None,
             sessions: Mutex::new(HashMap::new()),
         })
     }
@@ -466,7 +493,6 @@ impl AgentAdapter for GenericCliAdapter {
             if request.mode == LaunchMode::Interactive {
                 return Err(unsupported(Capability::Interactive));
             }
-            let worktree = validate_request(&request)?;
             if request.model.is_some() || request.effort.is_some() {
                 return Err(error(
                     ErrorKind::InvalidConfiguration,
@@ -480,6 +506,7 @@ impl AgentAdapter for GenericCliAdapter {
                     Capability::Review
                 }));
             }
+            let worktree = validate_request(&request)?;
             validate_persisted(&self.store, &request, &worktree, &self.agent)?;
             ensure_unlocked(&self.store, &request.scope)?;
             let executable = self.probe()?.executable;
@@ -504,10 +531,18 @@ impl AgentAdapter for GenericCliAdapter {
             let mut reservation = Reservation {
                 store: self.store.clone(),
                 session: Some((session.clone(), version)),
+                process_uncertain: Arc::new(AtomicBool::new(false)),
             };
             let launch = async {
                 ensure_unlocked(&self.store, &request.scope)?;
-                validate_git(&self.store, &request, &worktree).await?;
+                validate_git(
+                    &self.store,
+                    &request,
+                    &worktree,
+                    self.git_executable.as_deref(),
+                    reservation.process_uncertain.clone(),
+                )
+                .await?;
                 let mut command = Command::new(executable);
                 command
                     .args(&self.command[1..])
@@ -527,9 +562,14 @@ impl AgentAdapter for GenericCliAdapter {
             }
             .await;
             let mut child = match launch {
-                Ok(child) => ProcessGroup::new(child)?,
+                Ok(child) => ProcessGroup::new(child, reservation.process_uncertain.clone())?,
                 Err(e) => {
-                    session.state = SessionState::Failed;
+                    session.state = if e.kind == ErrorKind::SessionLost {
+                        SessionState::Lost
+                    } else {
+                        SessionState::Failed
+                    };
+                    session.recovery["launch_failure"] = json!(e.message);
                     save_session(&self.store, &session, version)?;
                     reservation.session = None;
                     return Err(e);
@@ -540,7 +580,16 @@ impl AgentAdapter for GenericCliAdapter {
             version = match save_session(&self.store, &session, version) {
                 Ok(version) => version,
                 Err(e) => {
-                    let _ = child.kill_group();
+                    if let Err(cleanup) = child.kill_group() {
+                        // Unknown native group death must not release the reservation.
+                        reservation.session = None;
+                        return Err(error(
+                            ErrorKind::SessionLost,
+                            format!(
+                                "{e}; native cleanup failed: {cleanup}; Starting reservation retained"
+                            ),
+                        ));
+                    }
                     let _ = child.reap().await;
                     return Err(e);
                 }
@@ -921,30 +970,261 @@ async fn validate_git(
     store: &SharedStore,
     request: &LaunchRequest,
     worktree: &Path,
+    executable: Option<&Path>,
+    process_uncertain: Arc<AtomicBool>,
 ) -> AdapterResult<()> {
-    let store = store.clone();
-    let task_id = request.scope.task_id.expect("validated Task");
-    let status = tokio::task::spawn_blocking(move || {
+    let (project, task, goal) = {
         let store = store
             .lock()
             .map_err(|_| error(ErrorKind::StateFailure, "state store poisoned"))?;
-        crate::git::WorktreeManager::ensure_mutation_allowed(&store, task_id)
-            .map_err(|e| error(ErrorKind::OwnershipMismatch, e.to_string()))
+        (
+            store
+                .project(request.scope.project_id)
+                .map_err(state_error)?
+                .ok_or_else(|| error(ErrorKind::OwnershipMismatch, "Project lost"))?,
+            store
+                .task(request.scope.task_id.expect("validated Task"))
+                .map_err(state_error)?
+                .ok_or_else(|| error(ErrorKind::OwnershipMismatch, "Task lost"))?,
+            store
+                .goal(request.scope.goal_id.expect("validated Goal"))
+                .map_err(state_error)?
+                .ok_or_else(|| error(ErrorKind::OwnershipMismatch, "Goal lost"))?,
+        )
+    };
+    // Never hold the shared Store across external Git or project hooks.
+    let executable = match executable {
+        Some(path) => path.to_path_buf(),
+        None => resolve_executable("git")?,
+    };
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    let text = |cwd: PathBuf, args: Vec<String>| {
+        let executable = executable.clone();
+        let environment = request.environment.clone();
+        let process_uncertain = process_uncertain.clone();
+        async move {
+            bounded_git(
+                &executable,
+                &cwd,
+                &args,
+                environment,
+                deadline,
+                process_uncertain,
+            )
+            .await
+        }
+    };
+    let args = |args: &[&str]| args.iter().map(|s| (*s).to_string()).collect();
+    text(
+        project.root.clone(),
+        args(&["check-ref-format", "--branch", &project.base_branch]),
+    )
+    .await?;
+    let source_top = text(
+        project.root.clone(),
+        args(&["rev-parse", "--show-toplevel"]),
+    )
+    .await?;
+    let source_git_dir = text(
+        project.root.clone(),
+        args(&["rev-parse", "--path-format=absolute", "--git-dir"]),
+    )
+    .await?;
+    let source_common = text(
+        project.root.clone(),
+        args(&["rev-parse", "--path-format=absolute", "--git-common-dir"]),
+    )
+    .await?;
+    let roots = text(
+        project.root.clone(),
+        vec![
+            "rev-list".into(),
+            "--max-parents=0".into(),
+            format!("refs/heads/{}", project.base_branch),
+        ],
+    )
+    .await?;
+    let task_top = text(
+        worktree.to_path_buf(),
+        args(&["rev-parse", "--show-toplevel"]),
+    )
+    .await?;
+    let task_common = text(
+        worktree.to_path_buf(),
+        args(&["rev-parse", "--path-format=absolute", "--git-common-dir"]),
+    )
+    .await?;
+    let branch = text(
+        worktree.to_path_buf(),
+        args(&["symbolic-ref", "--quiet", "--short", "HEAD"]),
+    )
+    .await?;
+    let revision = text(
+        worktree.to_path_buf(),
+        args(&["rev-parse", "--verify", "HEAD^{commit}"]),
+    )
+    .await?;
+    crate::git::validate_worktree_ownership(
+        &project,
+        &task,
+        crate::git::WorktreeOwnershipFacts {
+            source_top: source_top.into(),
+            source_git_dir: source_git_dir.into(),
+            source_common: source_common.into(),
+            source_roots: roots.lines().map(str::to_owned).collect(),
+            task_top: task_top.into(),
+            task_common: task_common.into(),
+            branch,
+            revision,
+        },
+    )
+    .map_err(|e| error(ErrorKind::OwnershipMismatch, e.to_string()))?;
+    let store = store
+        .lock()
+        .map_err(|_| error(ErrorKind::StateFailure, "state store poisoned"))?;
+    if store
+        .project(project.id)
+        .map_err(state_error)?
+        .is_none_or(|p| p.version != project.version)
+        || store
+            .task(task.id)
+            .map_err(state_error)?
+            .is_none_or(|t| t.version != task.version)
+        || store
+            .goal(goal.id)
+            .map_err(state_error)?
+            .is_none_or(|g| g.version != goal.version)
+    {
+        return Err(error(
+            ErrorKind::StateConflict,
+            "Project/Goal/Task changed during Git preflight",
+        ));
+    }
+    Ok(())
+}
+
+async fn bounded_git(
+    executable: &Path,
+    cwd: &Path,
+    args: &[String],
+    environment: BTreeMap<String, String>,
+    deadline: tokio::time::Instant,
+    process_uncertain: Arc<AtomicBool>,
+) -> AdapterResult<String> {
+    if tokio::time::Instant::now() >= deadline {
+        return Err(error(
+            ErrorKind::Timeout,
+            "Git ownership preflight timed out",
+        ));
+    }
+    let mut command = Command::new(executable);
+    command
+        .args(args)
+        .current_dir(cwd)
+        .env_clear()
+        .envs(environment)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true)
+        .process_group(0);
+    let mut child = ProcessGroup::new(
+        command
+            .spawn()
+            .map_err(|e| error(ErrorKind::ProcessFailure, e.to_string()))?,
+        process_uncertain,
+    )?;
+    let stdout = child.child.stdout.take().expect("piped Git stdout");
+    let stderr = child.child.stderr.take().expect("piped Git stderr");
+    let mut stdout = tokio::spawn(read_git_output(stdout));
+    let mut stderr = tokio::spawn(read_git_output(stderr));
+    let observed = tokio::time::timeout_at(deadline, child.observe_exit()).await;
+    child = cleanup_group(child).await?;
+    let exit = child.reap().await.map_err(|e| {
+        error(
+            ErrorKind::SessionLost,
+            format!("Git child reap failed: {e}"),
+        )
+    })?;
+    if observed.is_err() {
+        stdout.abort();
+        stderr.abort();
+        return Err(error(
+            ErrorKind::Timeout,
+            "Git ownership preflight timed out",
+        ));
+    }
+    observed.expect("checked deadline").map_err(|e| {
+        error(
+            ErrorKind::SessionLost,
+            format!("Git child observation failed: {e}"),
+        )
+    })?;
+    let output = tokio::time::timeout(Duration::from_millis(250), async {
+        let out = (&mut stdout)
+            .await
+            .map_err(|e| error(ErrorKind::ProcessFailure, e.to_string()))??;
+        let _ = (&mut stderr)
+            .await
+            .map_err(|e| error(ErrorKind::ProcessFailure, e.to_string()))??;
+        Ok::<_, AdapterError>(out)
+    })
+    .await;
+    let output = match output {
+        Ok(output) => output?,
+        Err(_) => {
+            stdout.abort();
+            stderr.abort();
+            return Err(error(
+                ErrorKind::ProcessFailure,
+                "Git output remained open after cleanup",
+            ));
+        }
+    };
+    if !exit.success() {
+        return Err(error(
+            ErrorKind::OwnershipMismatch,
+            "Git ownership preflight failed",
+        ));
+    }
+    String::from_utf8(output)
+        .map(|value| value.trim().to_string())
+        .map_err(|_| error(ErrorKind::ParseFailure, "invalid Git metadata encoding"))
+}
+async fn read_git_output(reader: impl AsyncRead + Unpin) -> AdapterResult<Vec<u8>> {
+    let mut bytes = vec![];
+    reader
+        .take((OUTPUT_LIMIT + 1) as u64)
+        .read_to_end(&mut bytes)
+        .await
+        .map_err(|e| error(ErrorKind::ProcessFailure, e.to_string()))?;
+    if bytes.len() > OUTPUT_LIMIT {
+        return Err(error(
+            ErrorKind::InvalidInput,
+            "Git metadata exceeds output budget",
+        ));
+    }
+    Ok(bytes)
+}
+async fn cleanup_group(mut child: ProcessGroup) -> AdapterResult<ProcessGroup> {
+    let (child, result) = tokio::task::spawn_blocking(move || {
+        let result = child.kill_group();
+        (child, result)
     })
     .await
     .map_err(|e| {
         error(
-            ErrorKind::ProcessFailure,
-            format!("Git preflight worker failed: {e}"),
+            ErrorKind::SessionLost,
+            format!("native cleanup worker failed: {e}"),
         )
-    })??;
-    if status.worktree != worktree {
-        return Err(error(
-            ErrorKind::OwnershipMismatch,
-            "Git preflight CWD mismatch",
-        ));
-    }
-    Ok(())
+    })?;
+    result.map_err(|e| {
+        error(
+            ErrorKind::SessionLost,
+            format!("native process group cleanup failed: {e}"),
+        )
+    })?;
+    Ok(child)
 }
 
 async fn drain<R: AsyncRead + Unpin>(
@@ -1001,19 +1281,21 @@ async fn supervise(
         result = child.observe_exit() => result,
         _ = controls.recv() => { stopped = true; Ok(()) }
     };
-    if exited.is_ok() {
-        if let Err(e) = child.kill_group() {
-            stop_failure = Some(format!("native process group cleanup failed: {e}"));
+    let result = match exited {
+        Ok(()) => match cleanup_group(child).await {
+            Ok(mut child) => child.reap().await,
+            Err(e) => {
+                stop_failure = Some(e.to_string());
+                Err(std::io::Error::other("owned process cleanup not confirmed"))
+            }
+        },
+        Err(e) => {
+            stop_failure = Some(format!(
+                "native exit observation failed; recovery must verify process death: {e}"
+            ));
+            drop(child);
+            Err(e)
         }
-    } else {
-        stop_failure = exited.err().map(|e| {
-            format!("native exit observation failed; recovery must verify process death: {e}")
-        });
-    }
-    let result = if stop_failure.is_none() {
-        child.reap().await
-    } else {
-        Err(std::io::Error::other("owned process cleanup not confirmed"))
     };
     let delivery_cancelled = !writer.is_finished() && !stopped;
     if !writer.is_finished() {
@@ -1069,4 +1351,156 @@ async fn supervise(
         terminal.session.state = SessionState::Lost;
     }
     events.send_replace(terminal);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::{CompletionCriterion, Goal, Task};
+    use std::os::unix::fs::PermissionsExt;
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn signal_permission_failure_requires_verified_dead_group() {
+        let denied = || Err(rustix::io::Errno::PERM);
+        assert!(
+            resolve_macos_signal_result(denied(), || process_group_is_dead(b"42 R\n", 42)).is_err()
+        );
+        assert!(
+            resolve_macos_signal_result(denied(), || process_group_is_dead(b"42 Z\n99 R\n", 42))
+                .is_ok()
+        );
+        assert!(
+            resolve_macos_signal_result(denied(), || process_group_is_dead(b"malformed\n", 42))
+                .is_err()
+        );
+        assert!(
+            resolve_macos_signal_result(denied(), || Err(std::io::Error::other("ps failed")))
+                .is_err()
+        );
+        assert!(resolve_macos_signal_result(Err(rustix::io::Errno::ACCESS), || Ok(true)).is_err());
+    }
+
+    #[tokio::test]
+    async fn hanging_git_preflight_times_out_without_holding_shared_store() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("repo");
+        std::fs::create_dir(&root).unwrap();
+        let git = |args: &[&str]| {
+            let output = std::process::Command::new("git")
+                .args(args)
+                .current_dir(&root)
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        };
+        git(&["init", "-b", "main"]);
+        git(&[
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=fixture@example.invalid",
+            "commit",
+            "--allow-empty",
+            "-m",
+            "fixture",
+        ]);
+        let root = root.canonicalize().unwrap();
+        let mut project = Project::new(
+            "timeout fixture".into(),
+            root.clone(),
+            crate::git::repository_identity(&root, "main").unwrap(),
+            "main".into(),
+        );
+        let mut goal = Goal::new(
+            project.id,
+            "bounded preflight".into(),
+            vec![CompletionCriterion {
+                id: "bounded".into(),
+                description: "Git must terminate".into(),
+                evidence: None,
+                satisfied: false,
+            }],
+        );
+        let mut task = Task::new(project.id, goal.id, "timeout".into(), "fake".into());
+        let mut state = Store::memory().unwrap();
+        state.put_project(&mut project).unwrap();
+        state.put_goal(&mut goal).unwrap();
+        state.put_task(&mut task).unwrap();
+        let worktree = crate::git::WorktreeManager::create(&mut state, task.id)
+            .unwrap()
+            .worktree;
+        let store = Arc::new(Mutex::new(state));
+        let marker = temp.path().join("started");
+        let shim = temp.path().join("slow-git");
+        let quoted = marker.to_str().unwrap().replace('\'', "'\\''");
+        std::fs::write(
+            &shim,
+            format!("#!/bin/sh\nprintf '%s' \"$$\" > '{quoted}'\nsleep 60\n"),
+        )
+        .unwrap();
+        std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let mut adapter =
+            GenericCliAdapter::new("fake".into(), vec!["/bin/cat".into()], store.clone()).unwrap();
+        adapter.git_executable = Some(shim);
+        let scope = task.scope();
+        let request = LaunchRequest {
+            project,
+            scope: scope.clone(),
+            worktree,
+            role: SessionRole::Executor,
+            mode: LaunchMode::NonInteractive,
+            input: PreparedInput {
+                scope,
+                kind: InputKind::ContextPack,
+                revision: "fixture".into(),
+                version: 1,
+                source_versions: BTreeMap::new(),
+                payload: "fixture\n".into(),
+            },
+            environment: BTreeMap::from([("PATH".into(), "/usr/bin:/bin".into())]),
+            model: None,
+            effort: None,
+        };
+        let scope = request.scope.clone();
+        let launch = tokio::spawn(async move { adapter.start(request).await });
+        tokio::time::timeout(Duration::from_secs(3), async {
+            while !marker.exists() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+        assert!(
+            store.try_lock().is_ok(),
+            "external Git must not own the shared Store mutex"
+        );
+        let result = tokio::time::timeout(Duration::from_secs(7), launch)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(result.unwrap_err().kind, ErrorKind::Timeout);
+        let pid = std::fs::read_to_string(marker).unwrap();
+        let output = std::process::Command::new("ps")
+            .args(["-o", "stat=", "-p", &pid])
+            .output()
+            .unwrap();
+        assert!(
+            output.stdout.is_empty(),
+            "timed-out Git leader must be reaped"
+        );
+        assert_eq!(
+            store
+                .lock()
+                .unwrap()
+                .records(&scope, RecordKind::Session)
+                .unwrap()[0]
+                .data["state"],
+            "FAILED"
+        );
+    }
 }

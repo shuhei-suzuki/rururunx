@@ -250,7 +250,8 @@ must enforce provider-specific safety modes before advertising capabilities.
 Generic launch requires persisted Project/Goal/Task ownership, exact canonical
 Task worktree/branch and owning Git common directory. Base/main/master/detached
 execution and Git environment overrides are rejected. Starting reserves the Task
-before async preflight, while Store's task-level lock/session exclusion prevents
+before bounded async Git metadata preflight outside the shared Store mutex.
+The adapter rechecks Project/Goal/Task versions before spawn, while Store's task-level lock/session exclusion prevents
 review/executor races. Native processes receive only explicit environment; callers
 must include intentional native baseline HOME/PATH/config/auth so safety settings
 remain authoritative. The adapter never supplies bypass flags or an empty native
