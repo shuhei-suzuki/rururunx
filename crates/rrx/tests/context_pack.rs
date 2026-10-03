@@ -2182,7 +2182,9 @@ fn pack_fixture_error(error: anyhow::Error) -> rrx::adapter::AdapterError {
         message: error.to_string(),
     }
 }
-struct PackFixtureGates;
+struct PackFixtureGates {
+    cleanup: Mutex<Option<serde_json::Value>>,
+}
 impl rrx::workflow::PhaseGates for PackFixtureGates {
     fn complete(
         &self,
@@ -2191,6 +2193,7 @@ impl rrx::workflow::PhaseGates for PackFixtureGates {
     ) -> rrx::workflow::WorkflowFuture<'_, rrx::workflow::GateOutcome> {
         Box::pin(async move {
             if i.phase == rrx::workflow::Phase::Cleanup {
+                *self.cleanup.lock().unwrap() = Some(i.context.data["task_pack"].clone());
                 git(
                     &i.project.root,
                     &[
@@ -2265,12 +2268,15 @@ async fn actual_workflow_publishes_typed_phase_packs_and_freezes_cleanup_provena
             )
             .unwrap();
     }
+    let gates = Arc::new(PackFixtureGates {
+        cleanup: Mutex::new(None),
+    });
     let engine = WorkflowEngine::new(
         f.store.clone(),
         Arc::new(registry),
         phase_config(),
         sources,
-        Arc::new(PackFixtureGates),
+        gates.clone(),
     )
     .unwrap();
     let first = engine.initialize(task.id, None).await.unwrap();
@@ -2297,7 +2303,6 @@ async fn actual_workflow_publishes_typed_phase_packs_and_freezes_cleanup_provena
             .unwrap() as usize,
         c.data["payload"].as_str().unwrap().len()
     );
-    let mut saved_cleanup = None;
     let mut finalized = false;
     for _ in 0..40 {
         let snapshot = engine.snapshot(task.id).unwrap();
@@ -2311,26 +2316,6 @@ async fn actual_workflow_publishes_typed_phase_packs_and_freezes_cleanup_provena
                 continue;
             }
             break;
-        }
-        if f.store
-            .lock()
-            .unwrap()
-            .context(&task.scope(), Some(snapshot.context_version))
-            .unwrap()
-            .unwrap()
-            .data["phase"]
-            == serde_json::to_value(Phase::Cleanup).unwrap()
-        {
-            saved_cleanup = Some(
-                f.store
-                    .lock()
-                    .unwrap()
-                    .context(&task.scope(), Some(snapshot.context_version))
-                    .unwrap()
-                    .unwrap()
-                    .data["task_pack"]
-                    .clone(),
-            );
         }
         let result = engine.step(task.id, Default::default()).await.unwrap();
         assert!(
@@ -2352,7 +2337,10 @@ async fn actual_workflow_publishes_typed_phase_packs_and_freezes_cleanup_provena
         .unwrap()
         .unwrap();
     assert_eq!(c.data["frozen_task_pack"], true);
-    assert_eq!(c.data["task_pack"], saved_cleanup.unwrap());
+    assert_eq!(
+        c.data["task_pack"],
+        gates.cleanup.lock().unwrap().clone().unwrap()
+    );
     let proof = f.store.lock().unwrap().task(task.id).unwrap().unwrap();
     assert_eq!(proof.state, TaskState::Completed);
     let goal = packs
