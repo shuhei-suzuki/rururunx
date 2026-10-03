@@ -1,6 +1,6 @@
 # Workflow Engine Design
 
-**Status:** Draft
+**Status:** Rust phase runner implemented (Issue #8); dependent integrations pending
 **Scope:** MVP workflow orchestration
 
 ## 1. Goal
@@ -16,9 +16,9 @@ Task Workflow Engine operates below Goal Runtime and always within a Project bou
 ```text
 Prepare Worktree
 → Implement
+→ Commit
 → Relevant Verification
 → Review
-→ Commit
 → PR
 ```
 
@@ -28,11 +28,14 @@ Prepare Worktree
 Issue
 → Worktree
 → Requirements
+→ Requirements Commit
 → Requirements Review
 → Design
+→ Design Commit
 → Design Review
 → Implement
 → Impact Analysis
+→ Commit
 → Tests
 → Implementation Review
 → PR
@@ -53,12 +56,10 @@ STANDARD plus configured:
 
 ## 3. Workflow selection
 
-Selection sources, highest precedence first:
-
-1. project policy minimum
-2. explicit stricter user choice
-3. risk classifier recommendation
-4. default workflow
+Selection takes the monotonic maximum of stored Task workflow, runtime/Project policy
+minimum, explicit stricter user choice and risk classifier recommendation. The configured
+default is reserved for Task creation integration (#11), not a phase-engine floor;
+Task::new currently uses STANDARD until its caller supplies a classified stored workflow.
 
 A user may make a workflow stricter.
 
@@ -271,3 +272,102 @@ Goal Runtime consumes these events to continue execution without requiring a new
 All emitted Task events include project_id and goal_id so global scheduling/status cannot confuse Tasks from different repositories.
 
 A Goal may define minimum workflow constraints for all child Tasks, but project-level minimums remain authoritative.
+
+## 17. Implemented Rust contract
+
+`workflow::WorkflowEngine` initializes one exact Task workflow, then `step` reserves
+and dispatches a phase or polls its stable native Session. QUICK, STANDARD and
+STRICT execute against `AgentAdapter`; formal requirements/design/impact phases
+use executor capability and review phases require explicit Review capability.
+Generic CLI's honest Execute-only contract therefore cannot act as a reviewer.
+The baseline delegates one configured reviewer Session; independent multi-reviewer
+sets, completion policy and remediation reconciliation remain #9 integration.
+
+`WorkflowSources` supplies factual scoped revision/source versions and selected
+payload (#18). Authority versions remain comparable across phases; phase and budget
+change discretionary selection, not which authority changes are detected. The
+runner reloads canonical owning Project config/rule files outside SharedStore and
+hashes the same bytes it parses. Mandatory rule text is always included. Runtime
+minimum, Project overlay, stored class, explicit stricter choice and risk mapping
+combine by maximum. Policy changes retain previously mandatory optional gates.
+
+Every phase carries `ContextBudget` (Small/Normal/Broad plus configured discretionary
+limit), ContextVersion and exact source versions. Each transition creates a new
+phase-tagged pack, retaining older immutable versions. Revision/source/rule changes
+between phases or during review/verification invalidate completion evidence and
+restart prerequisites conservatively; mutating requirements/design/implementation
+milestones may publish their newly observed sources. Commit/PR cannot carry stale
+verification/review evidence across changed targets. Dynamic escalation keeps
+attempt history but starts a new generation and context version.
+
+`PhaseGates` is an explicit trusted integration port for external actions and actual
+evidence. It receives valid ordered prerequisites, source snapshot, prepared context
+and optional native transport result. Passed evidence must match phase, Scope,
+revision, source versions and Session, with durable artifact references. Reviews
+require an explicit approved verdict. Missing integration (`PendingGates`) waits;
+no successful exit invents verification, approval, PR, merge or cleanup evidence.
+Ports must use their own Git/Session ownership and transactional guards at actual
+native side effects. #12 approval and #13 recovery remain pending; uncertain phase
+reservations never trigger automatic retry. Explicit retry preserves prior attempt
+and reason history and rejects live/Lost executor reservations.
+
+Store format v3 persists Workflow record authority. Task state, workflow history
+and ContextVersion pointer commit atomically with Project/Goal/Task/record CAS;
+gate evaluation is separately reserved to prevent concurrent duplicate port calls,
+and completed attempt/decision history is immutable. Workflow authority uses only
+the atomic transition API. Initial authority cannot contain fabricated completion;
+new completion requires the active Evaluating→Succeeded phase with exact scoped
+evidence. General Store Task/context writes cannot override workflow-owned fields.
+A rollback leaves no orphan context or overwritten concurrent metadata. Blocked,
+Removed, paused/terminal owners cannot progress. Mutation dispatch rejects active
+review locks and all agent dispatch rejects reserved executors. This is a phase
+runner library; scheduling, workflow CLI/TUI and actual GitHub publication/merge
+ports remain dependent work. See [Issue #8 design](../issue-8-workflow-engine.md).
+
+User Goal §35 sets the executable order: each requirements/design/implementation
+milestone commits before its verification or formal review. Target-producing commit
+ports attest the captured final HEAD. Target-preserving PR/merge gates never receive
+known stale prerequisites. Review evidence binds explicit source dependency digests
+(including mandatory rules), so changed approved artifacts restart prerequisites.
+Definitive rejected/invalid evidence persists Failed; uncertain integration errors
+retain Evaluating for recovery. `resume_gate` reevaluates a definitive Waiting result
+with the same Session and launch context; `retry` explicitly relaunches only resolved
+attempts. Native restart diagnostics never imply verified process death. Invalidation
+history records old/new revision/source digests and cause independently of escalation.
+Default class is creation fallback; class-specific breadth is interpreted by #18 within
+configured phase token caps, with mandatory rules retained outside those caps.
+
+The Store Workflow mutation API is crate-private. Actual external gate observations
+are recorded before postgate activity/freshness checks, including artifact refs when
+a Goal becomes paused or a Project Blocked; observation does not authorize completion.
+A same-generation source rebind requires target-producing completion, and unknown
+Evaluating reservations cannot be released by changing generation. An immutable native
+dispatch marker distinguishes undispatched reservations from possible launch interruption.
+Explicit cancel/fail decisions retain native/phase reservations until verified recovery.
+QUICK PR-created is nonterminal; request_finalization adds actual MergeGate/Cleanup ports
+before Completed. Native termination state is a trusted provider/recovery attestation,
+never an inference from arbitrary JSON or caller cancellation. A live unrelated consultant
+may coexist with read-only review; owned and Lost/executor termination fences remain.
+Cleanup freezes its pre-disposal source pack because the owning worktree is removed.
+
+Known definitive gate observations can resume postgate validation/publication without
+calling the external port again. Irreversible Pr/MergeGate/Cleanup outcomes and accepted
+PR/merge evidence prevent generation invalidation into duplicate operations; drift holds
+for explicit reconciliation (#13). Their ports receive prior attempt observations and
+resume idempotently; Cleanup freezes pre-disposal sources even after Waiting/Failed.
+Cancel/fail decisions are conservative under inactive Goals or Blocked Projects; a narrow
+terminal reservation release keeps Task/decision/context/evidence immutable and requires
+owned persisted termination plus all executor/Lost fences. Unknown outcomes or unbound
+dispatch stay reserved. General workflow progression cannot resurrect terminal Tasks.
+
+An evaluation claim binds the exact prior observation count. The private observer
+appends exactly one scope/phase/generation/Session/ContextVersion-bound outcome at that
+index; poll/restart/release/invalidation use only the current claim's result, never a
+prior resumed round. Completion requires that actual Passed evidence. Unknown in-flight
+resumed claims stay reserved, including after cancellation. Terminal ordinary Failed
+attempts can close as Interrupted only for the immutable decision with native fences.
+Durable irreversible holds publish held_reason/WaitingHuman/blocker and await actual
+[Issue #13](https://github.com/shuhei-suzuki/rururunx/issues/13) outcome reconciliation.
+Observation/audit metadata retain authority digests without copied Context Pack text.
+Cleanup freezes the reserved class/phases, independent of later runtime policy capture.
+Project risk-mapping recommendations can strengthen but cannot weaken runtime mappings.

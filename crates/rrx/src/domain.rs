@@ -363,7 +363,8 @@ states!(RecordKind {
     Context,
     Checkpoint,
     Verification,
-    WorktreeLock
+    WorktreeLock,
+    Workflow
 });
 impl RecordKind {
     pub fn key(self) -> &'static str {
@@ -376,6 +377,7 @@ impl RecordKind {
             Self::Checkpoint => "checkpoint",
             Self::Verification => "verification",
             Self::WorktreeLock => "worktree_lock",
+            Self::Workflow => "workflow",
         }
     }
 }
