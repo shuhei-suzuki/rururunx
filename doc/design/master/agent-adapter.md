@@ -97,11 +97,14 @@ A session must have a stable rururunx identity independent from OS PID.
 Fields:
 
 - session ID
+- project ID
+- goal ID
 - task ID
 - agent ID
 - role: executor / reviewer / consultant
 - native session/process reference
 - worktree
+- repository/project root identity
 - start timestamp
 - status
 - restart/reconnect metadata
