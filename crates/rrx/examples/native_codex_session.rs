@@ -146,7 +146,7 @@ async fn main() -> Result<()> {
         effort: None,
     };
     let verdict = if execute { "EXECUTED" } else { "DEFECT" };
-    let schema = json!({"type":"object","properties":{"verdict":{"type":"string","enum":[verdict]},"reason":{"type":"string"}},"required":["verdict","reason"],"additionalProperties":false});
+    let schema = json!({"type":"object","properties":{"verdict":{"type":"string","enum":[verdict,"FAILED"]},"reason":{"type":"string"}},"required":["verdict","reason"],"additionalProperties":false});
     let session = adapter.start_structured(request, schema).await?;
     let first = finished(&adapter, &session).await?;
     ensure!(
@@ -155,10 +155,15 @@ async fn main() -> Result<()> {
         first.failure
     );
     let answer: Value = serde_json::from_slice(&first.stdout)?;
-    ensure!(answer["verdict"] == verdict, "native verdict is not valid");
+    ensure!(
+        answer["verdict"] == verdict,
+        "native fixture verdict failed: {answer}"
+    );
     if execute {
         ensure!(
-            std::fs::read_to_string(session.worktree.join("result.txt"))? == "NATIVE_EXECUTED\n",
+            std::fs::read_to_string(session.worktree.join("result.txt"))
+                .with_context(|| format!("native requested artifact missing; answer={answer}"))?
+                == "NATIVE_EXECUTED\n",
             "native executor did not create exact owning artifact"
         );
         ensure!(

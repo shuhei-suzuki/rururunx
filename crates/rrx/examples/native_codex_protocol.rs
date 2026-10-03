@@ -168,7 +168,7 @@ async fn main() -> Result<()> {
                 }
             }
         }
-        Ok::<_,rrx::adapter::AdapterError>(json!({"native_account_observed":native_account_observed,"native_uuid":thread,"private_socket_verified":native.socket().is_ok(),"native_model":started["model"],"native_effort":started["reasoningEffort"],"instruction_source_count":started["instructionSources"].as_array().map(Vec::len),"scoped_profile_verified":true,"filesystem_canaries":filesystem_canaries,"native_approval_policy":started["approvalPolicy"],"native_approval_reviewer":started["approvalsReviewer"],"external_tool_count":0,"model_turn_sent":review,"structured_answer":answer,"cumulative_tokens":usage,"estimated_cost":null}))
+        Ok::<_,rrx::adapter::AdapterError>(json!({"native_account_observed":native_account_observed,"native_uuid":thread,"private_socket_verified":native.socket().is_ok(),"native_model":started["model"],"native_effort":started["reasoningEffort"],"instruction_source_count":started["instructionSources"].as_array().map(Vec::len),"scoped_profile_verified":true,"filesystem_canaries":filesystem_canaries,"native_execution_features":{"shell_tool":config["config"]["features"]["shell_tool"],"unified_exec":config["config"]["features"]["unified_exec"],"code_mode":config["config"]["features"]["code_mode"],"code_mode_host":config["config"]["features"]["code_mode_host"],"code_mode_only":config["config"]["features"]["code_mode_only"]},"native_approval_policy":started["approvalPolicy"],"native_approval_reviewer":started["approvalsReviewer"],"external_tool_count":0,"model_turn_sent":review,"structured_answer":answer,"cumulative_tokens":usage,"estimated_cost":null}))
     }.await;
     native.shutdown().await?;
     ensure!(
