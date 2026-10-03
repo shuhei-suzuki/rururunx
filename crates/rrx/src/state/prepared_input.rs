@@ -206,9 +206,20 @@ impl Store {
         if let Some(context) = latest_context(&self.connection, scope)?
             && typed_pack(&context.data)
         {
+            let expected = if context.data.get("task_pack").is_some() {
+                let phase: crate::workflow::Phase =
+                    serde_json::from_value(context.data["phase"].clone())?;
+                if phase.actor() == crate::workflow::Actor::Reviewer {
+                    InputKind::ReviewBundle
+                } else {
+                    InputKind::ContextPack
+                }
+            } else {
+                InputKind::ContextPack
+            };
             ensure!(
-                input.kind == InputKind::ContextPack,
-                "typed Context requires ContextPack input"
+                input.kind == expected,
+                "typed input kind differs from owned phase"
             );
             validate(&self.connection, scope, &context, &Frame::input(input))
         } else {
