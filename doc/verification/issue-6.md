@@ -269,8 +269,8 @@ Default parallel Codex execution failed 14 tests with inspection-timeout evidenc
 the targeted grant regressions passed in that run. No timeout, death guard or
 cleanup latch was relaxed.
 
-Other verified/open findings remain before merge: stop/cancel currently discards
-native terminal events instead of bounded draining; stop during resume setup can
+Other verified/open findings remain before merge: the stop/cancel bounded-drain
+fix below still needs independent source re-review; stop during resume setup can
 target the retired channel; ApprovalReviewer lacks the immutable decision-CWD
 boundary; provider environment references lack native config-layer provenance;
 and Blocked-owner conservative Lost publication needs the narrow shared Store
@@ -315,3 +315,35 @@ Evidence: /private/tmp/rururunx-issue6-172-turn-identity.log,
 /private/tmp/rururunx-issue6-172-M629.log and
 /private/tmp/rururunx-issue6-mutation172-extra-result.json. This does not resolve
 the remaining independent review blockers or establish new native/TUI acceptance.
+
+
+## Stop/cancel bounded drain (cb913fd)
+
+Interrupt sends only the correlated RPC through the sole supervisor-owned writer;
+the supervisor keeps reading until an exact current-thread/current-turn native
+terminal, transport failure, or the unchanged five-second bounded interrupt drain.
+The interrupt acknowledgement alone does not establish terminal state. Grants
+received during drain are audited and denied without granting the operation.
+Valid interrupted completion plus verified owned group death yields Stopped;
+ack-only, foreign completion and unknown termination remain conservative Lost.
+
+At source cb913fd3669ffc57c08c4a9de34a0941d7b8baeb, the actual supervisor regression
+passes (1 test, 10.55s), with synthetic native RPC and a real owned subprocess;
+this is not an installed-native bootstrap/containment acceptance claim. M630
+(stop premature break), M631 (cancel premature break), M632 (draining callback
+approval) and M633 (omitted exact completion identity) all compiled and failed
+consumer assertions. Byte-exact restored control passes. The initial 3762598
+compile failure lacked a test-only SinkExt import and receives no test credit.
+
+Exact cb913fd formatting and all-target clippy with warnings denied pass. Full
+workspace **serial** execution passes 220 Rust tests plus two doctests, including
+133 library, 19 adapter, 5 CLI, 16 context, 18 domain, 16 Git and 13 Store tests.
+This does not establish default-parallel conformance or explain earlier inspection
+timeouts. No native process inspection deadline or cleanup uncertainty guard was
+relaxed. Remaining high-severity source-review findings continue to block merge.
+
+Evidence: /private/tmp/rururunx-issue6-stop-drain-compilefix.log,
+/private/tmp/rururunx-issue6-mutation-stop-drain-extra-result.json,
+/private/tmp/rururunx-issue6-cb9-fmt.log,
+/private/tmp/rururunx-issue6-cb9-clippy.log,
+/private/tmp/rururunx-issue6-cb9-workspace-serial.log.
