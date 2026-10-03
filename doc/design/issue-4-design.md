@@ -17,10 +17,14 @@ Bundle input is distinct from Context Pack; generic review is unsupported until 
 native adapter can enforce a read-only mode. Review quorum belongs upstream.
 
 Generic execute checks persisted Project/Goal/Task and collects native Git metadata
-outside the shared Store mutex, with a five-second total deadline and bounded output.
+outside the shared Store mutex, with a five-second Git observation budget and bounded output. Each final group
+inspection, direct-child reap, and output drain has a separate 250 ms cleanup bound.
 The shared pure `git::validate_worktree_ownership` validates source identity, unique
 Task binding, namespace, common directory/top-level and exact non-base branch.
-Project/Goal/Task versions are checked again before spawn. Native status/fsmonitor
+The original lifecycle-validation Project/Goal/Task versions are checked before
+Git collection and again before spawn. Both collectors use the same runtime-native
+Git environment, retaining native configuration/hooks and excluding routing
+overrides; agent-specific HOME/config/credentials are only given to the agent. Native status/fsmonitor
 hooks are not needed for launch ownership; no unbounded Git runs under the Store lock.
 Git environment overrides fail before preflight. No shell interpolation is added:
 configured argv is passed directly; a user explicitly configuring a shell owns its
@@ -31,7 +35,9 @@ the scheduler responsibility and executor fallback must update Task assignment.
 
 Generic adapters require a shared Store. Starting is persisted before async Git
 preflight; confirmed cleanup after launch failure/cancellation records Failed.
-Unconfirmed cleanup retains a Lost/Starting reservation, including cancellation
+Unconfirmed cleanup retains a Lost/Starting reservation and appends scoped PID/PGID
+diagnostics to audit without modifying Blocked native ownership hints. Original
+launch error categories survive a diagnostic-state persistence failure. This includes cancellation
 while a blocking cleanup worker still owns the process group. The Store transaction
 atomically excludes active WorktreeLock and reserved/live executor Session for the
 same Task, so a reviewer cannot start between preflight and spawn. Running and
@@ -77,14 +83,17 @@ to explicit unsupported failures and never control rururunx Goal truth.
 
 ## Impact and limitations
 
-Adds adapter library and Tokio/rustix dependencies without changing durable entity
-shapes, SQLite schema, existing project overlays or CLI behavior. Registry/config,
+Adds adapter library and Tokio/rustix dependencies without its own SQLite migration
+or changing existing project overlays or CLI behavior. Integrated schema2 comes
+from merged Issue #26. Registry/config,
 Session Store, future scheduler/review/approval/CLI/recovery and native adapters
 are consumers. Tests use native subprocesses, temporary Git fixtures and Store.
 No browser/staging deployment target exists for this library boundary.
 
 On macOS, XNU excludes zombie members from group signalling and may return EPERM
 for a zombie-only group. The adapter accepts that result only after /bin/ps confirms
-no live member of the still-reserved PGID; ordinary inspection runs on a blocking
-worker. The Drop fallback stays synchronous. Actual permission/inspection failure
+no live member of the still-reserved PGID. Inspection requires an available trusted
+/bin/ps on macOS, runs on a blocking worker, drains at most 1 MiB concurrently, and
+kills/reaps the inspector after a 250 ms deadline. Denied, oversized or failed
+inspection fails closed into a reserved Lost Session. The Drop fallback stays synchronous. Actual permission/inspection failure
 remains Lost. See [Apple XNU killpg1](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_sig.c).

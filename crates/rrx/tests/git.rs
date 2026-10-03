@@ -506,3 +506,42 @@ fn cleanup_after_upstream_tracking_ref_is_pruned() {
     Manager::cleanup(&mut f.store, t.id).unwrap();
     assert!(!s.worktree.exists());
 }
+
+#[test]
+fn separate_git_metadata_namespace_is_rejected_before_binding_or_native_creation() {
+    let mut fixture = Fixture::new();
+    let metadata = fixture.root.join("metadata");
+    git(
+        &fixture.root,
+        &["init", "--separate-git-dir", metadata.to_str().unwrap()],
+    );
+    fixture.store = Store::memory().unwrap();
+    fixture.project = Project::new(
+        "separate metadata".into(),
+        fixture.root.clone(),
+        rrx::git::repository_identity(&fixture.root, "main").unwrap(),
+        "main".into(),
+    );
+    fixture.project.worktree_root = metadata.join("worktrees");
+    fixture.store.put_project(&mut fixture.project).unwrap();
+    fixture.goal.id = GoalId::new();
+    fixture.goal.project_id = fixture.project.id;
+    fixture.goal.version = 0;
+    fixture.store.put_goal(&mut fixture.goal).unwrap();
+    let task = fixture.task(99);
+    assert!(Manager::create(&mut fixture.store, task.id).is_err());
+    let persisted = fixture.store.task(task.id).unwrap().unwrap();
+    assert!(persisted.worktree.is_none() && persisted.branch.is_none());
+    assert!(!fixture.project.worktree_root.exists());
+    let branch = Command::new("git")
+        .current_dir(&fixture.root)
+        .args([
+            "show-ref",
+            "--verify",
+            "--quiet",
+            "refs/heads/feature/issue-99",
+        ])
+        .status()
+        .unwrap();
+    assert!(!branch.success());
+}

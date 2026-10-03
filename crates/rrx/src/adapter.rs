@@ -301,6 +301,8 @@ struct ProcessGroup {
     child: Child,
     pid: Pid,
     group_owned: bool,
+    #[cfg(test)]
+    fail_cleanup: bool,
     process_uncertain: Arc<AtomicBool>,
 }
 impl ProcessGroup {
@@ -316,6 +318,8 @@ impl ProcessGroup {
             child,
             pid,
             group_owned: true,
+            #[cfg(test)]
+            fail_cleanup: false,
             process_uncertain,
         })
     }
@@ -337,6 +341,13 @@ impl ProcessGroup {
         }
     }
     fn kill_group(&mut self) -> std::io::Result<()> {
+        #[cfg(test)]
+        if self.fail_cleanup {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "injected native cleanup failure",
+            ));
+        }
         let result = kill_process_group(self.pid, Signal::KILL);
         #[cfg(target_os = "macos")]
         let result = resolve_macos_signal_result(result, || macos_group_is_dead(self.pid));
@@ -347,28 +358,73 @@ impl ProcessGroup {
         };
         if result.is_ok() {
             self.group_owned = false;
-            self.process_uncertain.store(false, Ordering::SeqCst);
         }
         result
     }
     async fn reap(&mut self) -> std::io::Result<std::process::ExitStatus> {
-        self.child.wait().await
+        let result = self.child.wait().await;
+        if result.is_ok() {
+            self.process_uncertain.store(false, Ordering::SeqCst);
+        }
+        result
     }
 }
 
 #[cfg(target_os = "macos")]
 fn macos_group_is_dead(pid: Pid) -> std::io::Result<bool> {
-    let output = std::process::Command::new("/bin/ps")
+    process_group_inspection(Path::new("/bin/ps"), pid.as_raw_nonzero().get())
+}
+#[cfg(target_os = "macos")]
+fn process_group_inspection(executable: &Path, pid: i32) -> std::io::Result<bool> {
+    use std::io::Read;
+    let mut child = std::process::Command::new(executable)
         .args(["-axo", "pgid=,stat="])
         .env_clear()
-        .output()?;
-    if !output.status.success() {
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()?;
+    let stdout = child.stdout.take().expect("piped inspector stdout");
+    // Drain concurrently so a full process table cannot block ps on its pipe.
+    let reader = std::thread::spawn(move || {
+        let mut bytes = vec![];
+        stdout
+            .take(1024 * 1024 + 1)
+            .read_to_end(&mut bytes)
+            .map(|_| bytes)
+    });
+    let deadline = std::time::Instant::now() + Duration::from_millis(250);
+    let result = loop {
+        match child.try_wait() {
+            Ok(Some(exit)) => break Ok(exit),
+            Ok(None) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(Duration::from_millis(5))
+            }
+            Ok(None) => {
+                break Err(std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    "native process inspection timed out",
+                ));
+            }
+            Err(e) => break Err(e),
+        }
+    };
+    if result.is_err() {
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+    let bytes = reader
+        .join()
+        .map_err(|_| std::io::Error::other("process inspection reader failed"))??;
+    let exit = result?;
+    if !exit.success() || bytes.len() > 1024 * 1024 {
         return Err(std::io::Error::other(
             "cannot verify owned process group death",
         ));
     }
-    process_group_is_dead(&output.stdout, pid.as_raw_nonzero().get())
+    process_group_is_dead(&bytes, pid)
 }
+
 #[cfg(target_os = "macos")]
 fn resolve_macos_signal_result(
     result: Result<(), rustix::io::Errno>,
@@ -424,6 +480,14 @@ pub struct GenericCliAdapter {
     command: Vec<String>,
     store: SharedStore,
     git_executable: Option<PathBuf>,
+    #[cfg(test)]
+    before_running_write: Option<(
+        Arc<tokio::sync::Notify>,
+        Arc<tokio::sync::Notify>,
+        Arc<std::sync::atomic::AtomicU32>,
+    )>,
+    #[cfg(test)]
+    fail_executor_cleanup: bool,
     sessions: Mutex<HashMap<SessionId, Entry>>,
 }
 const OUTPUT_LIMIT: usize = 64 * 1024;
@@ -444,6 +508,10 @@ impl GenericCliAdapter {
             command,
             store,
             git_executable: None,
+            #[cfg(test)]
+            before_running_write: None,
+            #[cfg(test)]
+            fail_executor_cleanup: false,
             sessions: Mutex::new(HashMap::new()),
         })
     }
@@ -507,7 +575,7 @@ impl AgentAdapter for GenericCliAdapter {
                 }));
             }
             let worktree = validate_request(&request)?;
-            validate_persisted(&self.store, &request, &worktree, &self.agent)?;
+            let expected = validate_persisted(&self.store, &request, &worktree, &self.agent)?;
             ensure_unlocked(&self.store, &request.scope)?;
             let executable = self.probe()?.executable;
             let mut session = Session {
@@ -541,6 +609,7 @@ impl AgentAdapter for GenericCliAdapter {
                     &worktree,
                     self.git_executable.as_deref(),
                     reservation.process_uncertain.clone(),
+                    expected,
                 )
                 .await?;
                 let mut command = Command::new(executable);
@@ -569,28 +638,76 @@ impl AgentAdapter for GenericCliAdapter {
                     } else {
                         SessionState::Failed
                     };
-                    session.recovery["launch_failure"] = json!(e.message);
-                    save_session(&self.store, &session, version)?;
-                    reservation.session = None;
-                    return Err(e);
+                    audit_launch_failure(&self.store, &session, None, &e.message);
+                    return match save_session(&self.store, &session, version) {
+                        Ok(_) => {
+                            reservation.session = None;
+                            Err(e)
+                        }
+                        Err(state) => Err(error(
+                            e.kind,
+                            format!("{e}; failure state persistence failed: {state}"),
+                        )),
+                    };
                 }
             };
             session.pid = child.child.id();
+            #[cfg(test)]
+            {
+                child.fail_cleanup = self.fail_executor_cleanup;
+                if let Some((spawned, proceed, pid)) = &self.before_running_write {
+                    pid.store(session.pid.expect("owned child"), Ordering::SeqCst);
+                    spawned.notify_one();
+                    proceed.notified().await;
+                }
+            }
             session.state = SessionState::Running;
             version = match save_session(&self.store, &session, version) {
                 Ok(version) => version,
                 Err(e) => {
-                    if let Err(cleanup) = child.kill_group() {
-                        // Unknown native group death must not release the reservation.
-                        reservation.session = None;
+                    let pid = session.pid;
+                    child = match cleanup_group(child).await {
+                        Ok(child) => child,
+                        Err(cleanup) => {
+                            audit_launch_failure(
+                                &self.store,
+                                &session,
+                                pid,
+                                &format!("{e}; {cleanup}"),
+                            );
+                            let (mut lost, expected) = reservation
+                                .session
+                                .take()
+                                .expect("armed launch reservation");
+                            lost.state = SessionState::Lost;
+                            let _ = save_session(&self.store, &lost, expected);
+                            return Err(error(
+                                ErrorKind::SessionLost,
+                                format!("{e}; {cleanup}; reservation retained"),
+                            ));
+                        }
+                    };
+                    if !matches!(
+                        tokio::time::timeout(Duration::from_millis(250), child.reap()).await,
+                        Ok(Ok(_))
+                    ) {
+                        audit_launch_failure(
+                            &self.store,
+                            &session,
+                            pid,
+                            "child death not confirmed after failed Running write",
+                        );
+                        let (mut lost, expected) = reservation
+                            .session
+                            .take()
+                            .expect("armed launch reservation");
+                        lost.state = SessionState::Lost;
+                        let _ = save_session(&self.store, &lost, expected);
                         return Err(error(
                             ErrorKind::SessionLost,
-                            format!(
-                                "{e}; native cleanup failed: {cleanup}; Starting reservation retained"
-                            ),
+                            "native child death not confirmed; reservation retained",
                         ));
                     }
-                    let _ = child.reap().await;
                     return Err(e);
                 }
             };
@@ -877,10 +994,20 @@ fn save_session(
         .map_err(state_error)
 }
 
+fn audit_launch_failure(store: &SharedStore, session: &Session, pid: Option<u32>, reason: &str) {
+    if let Ok(mut store) = store.lock() {
+        let _ = store.audit(
+            &session.scope,
+            "adapter.launch_failure",
+            json!({"session_id":session.id,"pid":pid,"pgid":pid,"reason":reason}),
+        );
+    }
+}
 fn state_error(error_value: anyhow::Error) -> AdapterError {
     use crate::state::StateGuardError;
     let kind = match error_value.downcast_ref::<StateGuardError>() {
         Some(StateGuardError::WorktreeLocked) => ErrorKind::Locked,
+        Some(StateGuardError::ProjectInactive) => ErrorKind::InvalidInput,
         Some(StateGuardError::ExecutorReserved | StateGuardError::SnapshotChanged { .. }) => {
             ErrorKind::StateConflict
         }
@@ -893,7 +1020,7 @@ fn validate_persisted(
     request: &LaunchRequest,
     worktree: &Path,
     agent: &str,
-) -> AdapterResult<()> {
+) -> AdapterResult<(u64, u64, u64)> {
     use crate::domain::{GoalState, TaskState};
     let store = store
         .lock()
@@ -908,8 +1035,13 @@ fn validate_persisted(
         .project(request.scope.project_id)
         .map_err(state_error)?
         .ok_or_else(owned)?;
-    if project.state != ProjectState::Registered
-        || project.root != request.project.root
+    if project.state != ProjectState::Registered {
+        return Err(error(
+            ErrorKind::InvalidInput,
+            "Project is not registered/active",
+        ));
+    }
+    if project.root != request.project.root
         || project.worktree_root != request.project.worktree_root
         || project.base_branch != request.project.base_branch
     {
@@ -954,7 +1086,7 @@ fn validate_persisted(
             "Task/Goal lifecycle does not allow executor launch",
         ));
     }
-    Ok(())
+    Ok((project.version, goal.version, task.version))
 }
 fn ensure_unlocked(store: &SharedStore, scope: &Scope) -> AdapterResult<()> {
     let store = store
@@ -980,6 +1112,7 @@ async fn validate_git(
     worktree: &Path,
     executable: Option<&Path>,
     process_uncertain: Arc<AtomicBool>,
+    expected: (u64, u64, u64),
 ) -> AdapterResult<()> {
     let (project, task, goal) = {
         let store = store
@@ -1000,6 +1133,12 @@ async fn validate_git(
                 .ok_or_else(|| error(ErrorKind::OwnershipMismatch, "Goal lost"))?,
         )
     };
+    if (project.version, goal.version, task.version) != expected {
+        return Err(error(
+            ErrorKind::StateConflict,
+            "Project/Goal/Task changed after lifecycle validation",
+        ));
+    }
     // Never hold the shared Store across external Git or project hooks.
     let executable = match executable {
         Some(path) => path.to_path_buf(),
@@ -1008,7 +1147,7 @@ async fn validate_git(
     let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
     let text = |cwd: PathBuf, args: Vec<String>| {
         let executable = executable.clone();
-        let environment = request.environment.clone();
+        let environment = crate::git::native_environment();
         let process_uncertain = process_uncertain.clone();
         async move {
             bounded_git(
@@ -1115,7 +1254,7 @@ async fn bounded_git(
     executable: &Path,
     cwd: &Path,
     args: &[String],
-    environment: BTreeMap<String, String>,
+    environment: Vec<(std::ffi::OsString, std::ffi::OsString)>,
     deadline: tokio::time::Instant,
     process_uncertain: Arc<AtomicBool>,
 ) -> AdapterResult<String> {
@@ -1148,12 +1287,20 @@ async fn bounded_git(
     let mut stderr = tokio::spawn(read_git_output(stderr));
     let observed = tokio::time::timeout_at(deadline, child.observe_exit()).await;
     child = cleanup_group(child).await?;
-    let exit = child.reap().await.map_err(|e| {
-        error(
-            ErrorKind::SessionLost,
-            format!("Git child reap failed: {e}"),
-        )
-    })?;
+    let exit = tokio::time::timeout(Duration::from_millis(250), child.reap())
+        .await
+        .map_err(|_| {
+            error(
+                ErrorKind::SessionLost,
+                "Git child death not confirmed after cleanup",
+            )
+        })?
+        .map_err(|e| {
+            error(
+                ErrorKind::SessionLost,
+                format!("Git child reap failed: {e}"),
+            )
+        })?;
     if observed.is_err() {
         stdout.abort();
         stderr.abort();
@@ -1445,6 +1592,27 @@ mod tests {
         (temp, store, project, task, worktree)
     }
 
+    fn fixture_request(project: Project, task: &Task, worktree: PathBuf) -> LaunchRequest {
+        let scope = task.scope();
+        LaunchRequest {
+            project,
+            scope: scope.clone(),
+            worktree,
+            role: SessionRole::Executor,
+            mode: LaunchMode::NonInteractive,
+            input: PreparedInput {
+                scope,
+                kind: InputKind::ContextPack,
+                revision: "fixture".into(),
+                version: 1,
+                source_versions: BTreeMap::new(),
+                payload: "fixture".into(),
+            },
+            environment: BTreeMap::from([("PATH".into(), "/usr/bin:/bin".into())]),
+            model: None,
+            effort: None,
+        }
+    }
     #[tokio::test]
     async fn hanging_git_preflight_times_out_without_holding_shared_store() {
         let (temp, store, project, task, worktree) = preflight_fixture();
@@ -1582,5 +1750,158 @@ mod tests {
             records[0].data["pid"].is_null(),
             "executor must never spawn"
         );
+    }
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn native_inspection_timeout_kills_and_reaps_its_trusted_direct_child() {
+        let temp = tempfile::tempdir().unwrap();
+        let shim = temp.path().join("inspector");
+        std::fs::write(&shim, "#!/bin/sh\nexec /bin/sleep 2\n").unwrap();
+        std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let started = std::time::Instant::now();
+        let result = process_group_inspection(&shim, 42).unwrap_err();
+        assert_eq!(result.kind(), std::io::ErrorKind::TimedOut);
+        assert!(started.elapsed() < Duration::from_secs(1));
+    }
+
+    #[tokio::test]
+    async fn lifecycle_change_before_git_snapshot_is_detected_from_original_versions() {
+        let (_temp, store, project, task, worktree) = preflight_fixture();
+        let request = fixture_request(project, &task, worktree);
+        let versions = validate_persisted(&store, &request, &request.worktree, "fake").unwrap();
+        {
+            let mut store = store.lock().unwrap();
+            let mut goal = store.goal(task.goal_id).unwrap().unwrap();
+            goal.state = crate::domain::GoalState::Paused;
+            store.put_goal(&mut goal).unwrap();
+        }
+        assert_eq!(
+            validate_git(
+                &store,
+                &request,
+                &request.worktree,
+                None,
+                Arc::new(AtomicBool::new(false)),
+                versions
+            )
+            .await
+            .unwrap_err()
+            .kind,
+            ErrorKind::StateConflict
+        );
+    }
+
+    #[tokio::test]
+    async fn running_write_failure_cleans_confirmed_groups_and_reserves_uncertain_groups_with_audit()
+     {
+        for fail_cleanup in [false, true] {
+            let (temp, store, project, task, worktree) = preflight_fixture();
+            let descendant_file = temp.path().join("descendant");
+            let quoted = descendant_file.to_str().unwrap().replace('\'', "'\\''");
+            let script = format!("sleep 60 & printf '%s' \"$!\" > '{quoted}'; wait");
+            let mut adapter = GenericCliAdapter::new(
+                "fake".into(),
+                vec!["/bin/sh".into(), "-c".into(), script],
+                store.clone(),
+            )
+            .unwrap();
+            let spawned = Arc::new(tokio::sync::Notify::new());
+            let proceed = Arc::new(tokio::sync::Notify::new());
+            let pid = Arc::new(std::sync::atomic::AtomicU32::new(0));
+            adapter.before_running_write = Some((spawned.clone(), proceed.clone(), pid.clone()));
+            adapter.fail_executor_cleanup = fail_cleanup;
+            let request = fixture_request(project, &task, worktree);
+            let launch = tokio::spawn(async move { adapter.start(request).await });
+            tokio::time::timeout(Duration::from_secs(3), spawned.notified())
+                .await
+                .unwrap();
+            let owned_pid = Pid::from_raw(pid.load(Ordering::SeqCst) as i32).unwrap();
+            // The test injector intentionally prevents real cleanup. Its known native group
+            // is cleaned independently even if an assertion or start outcome fails.
+            struct FixtureCleanup(Option<Pid>);
+            impl Drop for FixtureCleanup {
+                fn drop(&mut self) {
+                    if let Some(pid) = self.0 {
+                        let _ = kill_process_group(pid, Signal::KILL);
+                    }
+                }
+            }
+            let _cleanup = FixtureCleanup(fail_cleanup.then_some(owned_pid));
+            tokio::time::timeout(Duration::from_secs(3), async {
+                while !descendant_file.exists() {
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+            })
+            .await
+            .unwrap();
+            let original;
+            {
+                let mut state = store.lock().unwrap();
+                if fail_cleanup {
+                    let mut project = state.project(task.project_id).unwrap().unwrap();
+                    project.state = ProjectState::Blocked;
+                    project.blocked_reason = Some("post-spawn fixture".into());
+                    state.put_project(&mut project).unwrap();
+                    original = None;
+                } else {
+                    let record = state
+                        .records(&task.scope(), RecordKind::Session)
+                        .unwrap()
+                        .remove(0);
+                    let (mut session, version) = state
+                        .session(serde_json::from_value(record.data["id"].clone()).unwrap())
+                        .unwrap()
+                        .unwrap();
+                    session.state = SessionState::Lost;
+                    session.recovery["operator"] = json!("retain this evidence");
+                    state.put_session(&session, version).unwrap();
+                    original = Some(session);
+                }
+            }
+            proceed.notify_one();
+            let outcome = tokio::time::timeout(Duration::from_secs(2), launch)
+                .await
+                .unwrap()
+                .unwrap()
+                .unwrap_err();
+            let state = store.lock().unwrap();
+            let records = state.records(&task.scope(), RecordKind::Session).unwrap();
+            let session: Session = serde_json::from_value(records[0].data.clone()).unwrap();
+            assert_eq!(session.state, SessionState::Lost);
+            if fail_cleanup {
+                assert_eq!(outcome.kind, ErrorKind::SessionLost);
+                assert!(
+                    session.pid.is_none(),
+                    "Blocked native ownership hint remains unchanged"
+                );
+                let audit = state.events(&task.scope(), 0, 100).unwrap();
+                assert!(
+                    audit
+                        .iter()
+                        .any(|event| event.kind == "adapter.launch_failure"
+                            && event.data["pid"] == pid.load(Ordering::SeqCst))
+                );
+            } else {
+                assert_eq!(outcome.kind, ErrorKind::StateConflict);
+                assert_eq!(
+                    serde_json::to_value(session).unwrap(),
+                    serde_json::to_value(original.unwrap()).unwrap()
+                );
+                for native_pid in [
+                    owned_pid.as_raw_nonzero().get().to_string(),
+                    std::fs::read_to_string(&descendant_file).unwrap(),
+                ] {
+                    let output = std::process::Command::new("ps")
+                        .args(["-o", "stat=", "-p", &native_pid])
+                        .output()
+                        .unwrap();
+                    let state = String::from_utf8(output.stdout).unwrap();
+                    assert!(
+                        state.trim().is_empty() || state.trim().starts_with('Z'),
+                        "owned process still live: {native_pid}"
+                    );
+                }
+            }
+        }
     }
 }

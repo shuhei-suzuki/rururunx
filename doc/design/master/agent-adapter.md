@@ -251,7 +251,9 @@ Generic launch requires persisted Project/Goal/Task ownership, exact canonical
 Task worktree/branch and owning Git common directory. Base/main/master/detached
 execution and Git environment overrides are rejected. Starting reserves the Task
 before bounded async Git metadata preflight outside the shared Store mutex.
-The adapter rechecks Project/Goal/Task versions before spawn, while Store's task-level lock/session exclusion prevents
+The adapter rechecks original lifecycle-validation Project/Goal/Task versions
+before spawn and uses the same runtime-native Git environment as Git management,
+while Store's task-level lock/session exclusion prevents
 review/executor races. Native processes receive only explicit environment; callers
 must include intentional native baseline HOME/PATH/config/auth so safety settings
 remain authoritative. The adapter never supplies bypass flags or an empty native
@@ -272,3 +274,8 @@ NativeGoalRef contains Scope, optional SessionId and opaque provider reference.
 Implementations must validate the persisted owner on status/resume and require
 checkpoint input Scope to equal Session Scope. Generic prepared payload size is
 observable in bytes; provider token/cache values remain unknown.
+
+On macOS, native /bin/ps inspection must be available. Its trusted direct-child
+execution/output is bounded; failed inspection preserves Lost reservations. Launch
+cleanup diagnostics use scoped audit events and preserve Blocked Project native
+ownership metadata.

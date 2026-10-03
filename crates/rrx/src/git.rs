@@ -63,10 +63,6 @@ pub fn validate_worktree_ownership(
     );
     ensure!(task.project_id == project.id, "foreign Task Project");
     let ns = namespace(project, &root)?;
-    ensure!(
-        !ns.starts_with(&common) && !common.starts_with(&ns),
-        "Task namespace overlaps Git metadata"
-    );
     let path = task.worktree.as_ref().context("task has no worktree")?;
     ensure!(
         path.parent() == Some(ns.as_path()) && path.canonicalize()? == *path,
@@ -447,6 +443,11 @@ pub fn repository_identity(root: &Path, base_branch: &str) -> Result<String> {
 }
 fn namespace(project: &Project, root: &Path) -> Result<PathBuf> {
     let path = &project.worktree_root;
+    let (common, _): (PathBuf, Vec<String>) = serde_json::from_str(&project.repository_identity)?;
+    ensure!(
+        !path.starts_with(&common) && !common.starts_with(path),
+        "Task namespace overlaps Git metadata"
+    );
     ensure!(
         !path.starts_with(root.join(".git")),
         "worktree namespace cannot use Git metadata"
@@ -544,11 +545,9 @@ fn protect_branch(branch: &str, base: &str) -> Result<()> {
 fn text_path(path: &Path) -> Result<&str> {
     path.to_str().context("Git path is not UTF-8")
 }
-fn command(cwd: &Path, args: &[&str]) -> Command {
-    let mut cmd = Command::new("git");
-    cmd.current_dir(cwd).args(args);
-    // Prevent inherited routing from silently crossing Project boundaries; retain native hooks/config.
-    for name in [
+/// Runtime/native configuration is authoritative for all Git ownership collectors.
+pub(crate) fn native_environment() -> Vec<(std::ffi::OsString, std::ffi::OsString)> {
+    const ROUTING: &[&str] = &[
         "GIT_DIR",
         "GIT_WORK_TREE",
         "GIT_COMMON_DIR",
@@ -558,11 +557,20 @@ fn command(cwd: &Path, args: &[&str]) -> Command {
         "GIT_NAMESPACE",
         "GIT_CEILING_DIRECTORIES",
         "GIT_DISCOVERY_ACROSS_FILESYSTEM",
-    ] {
-        cmd.env_remove(name);
-    }
+    ];
+    std::env::vars_os()
+        .filter(|(name, _)| !ROUTING.iter().any(|route| name == route))
+        .collect()
+}
+fn command(cwd: &Path, args: &[&str]) -> Command {
+    let mut cmd = Command::new("git");
+    cmd.current_dir(cwd)
+        .args(args)
+        .env_clear()
+        .envs(native_environment());
     cmd
 }
+
 fn git(cwd: &Path, args: &[&str]) -> Result<Output> {
     let output = command(cwd, args).output().context("cannot start Git")?;
     ensure!(

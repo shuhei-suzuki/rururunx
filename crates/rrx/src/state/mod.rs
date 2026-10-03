@@ -15,6 +15,7 @@ pub const APPLICATION_ID: i64 = 0x52525831; // ASCII RRX1.
 #[derive(Debug)]
 pub enum StateGuardError {
     WorktreeLocked,
+    ProjectInactive,
     ExecutorReserved,
     SnapshotChanged {
         table: String,
@@ -25,6 +26,7 @@ pub enum StateGuardError {
 impl std::fmt::Display for StateGuardError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::ProjectInactive => f.write_str("project is not registered/active"),
             Self::WorktreeLocked => {
                 f.write_str("worktree has an active immutable/maintenance lock")
             }
@@ -732,20 +734,19 @@ fn session_terminal(state: SessionState) -> bool {
 }
 fn ensure_project_registered(tx: &Transaction<'_>, id: ProjectId) -> Result<()> {
     let project: Project = read_tx(tx, "projects", &id.to_string())?.context("unknown project")?;
-    ensure!(
-        project.state == ProjectState::Registered,
-        "project is not registered/active"
-    );
+    if project.state != ProjectState::Registered {
+        bail!(StateGuardError::ProjectInactive);
+    }
     Ok(())
 }
 /// Blocked Projects may describe existing work conservatively, never start/resume it.
 fn ensure_activity_write(tx: &Transaction<'_>, id: ProjectId, safe_update: bool) -> Result<()> {
     let project: Project = read_tx(tx, "projects", &id.to_string())?.context("unknown project")?;
-    ensure!(
-        project.state == ProjectState::Registered
-            || (project.state == ProjectState::Blocked && safe_update),
-        "project is not registered/active; only conservative existing blocked-work updates allowed"
-    );
+    if project.state != ProjectState::Registered
+        && !(project.state == ProjectState::Blocked && safe_update)
+    {
+        bail!(StateGuardError::ProjectInactive);
+    }
     Ok(())
 }
 /// Checked in the same write transaction as removal, including Lost sessions.

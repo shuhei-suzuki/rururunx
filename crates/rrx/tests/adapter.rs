@@ -618,7 +618,7 @@ async fn concurrent_snapshot_updates_are_not_overwritten_and_identity_survives_r
 }
 
 #[tokio::test]
-async fn cancelled_preflight_marks_reserved_session_failed_and_large_unread_stdin_is_failed() {
+async fn cancelled_preflight_keeps_uncertain_session_reserved_and_large_unread_stdin_is_failed() {
     let fixture = Fixture::new();
     let adapter = fixture.adapter("/bin/cat");
     let mut launch = adapter.start(fixture.request.clone());
@@ -638,7 +638,16 @@ async fn cancelled_preflight_marks_reserved_session_failed_and_large_unread_stdi
         .records(&fixture.request.scope, RecordKind::Session)
         .unwrap();
     assert_eq!(records.len(), 1);
-    assert_eq!(records[0].data["state"], "FAILED");
+    assert_eq!(records[0].data["state"], "LOST");
+    assert_eq!(
+        adapter
+            .start(fixture.request.clone())
+            .await
+            .unwrap_err()
+            .kind,
+        ErrorKind::StateConflict
+    );
+    let fixture = Fixture::new();
     let adapter = fixture.adapter("exit 0");
     let mut request = fixture.request.clone();
     request.input.payload = "x".repeat(2 * 1024 * 1024);
@@ -834,7 +843,7 @@ async fn blocked_project_rejects_new_launch_and_allows_owned_native_stop() {
             .await
             .unwrap_err()
             .kind,
-        ErrorKind::OwnershipMismatch
+        ErrorKind::InvalidInput
     );
     let stopped = adapter.stop((&session).into()).await.unwrap();
     assert_eq!(stopped.session.state, SessionState::Stopped);
@@ -849,5 +858,28 @@ async fn blocked_project_rejects_new_launch_and_allows_owned_native_stop() {
             .unwrap()
             .len(),
         1
+    );
+}
+
+#[tokio::test]
+async fn agent_git_configuration_does_not_override_runtime_ownership_preflight() {
+    let fixture = Fixture::new();
+    let home = fixture._temp.path().join("agent-home");
+    std::fs::create_dir(&home).unwrap();
+    std::fs::write(home.join(".gitconfig"), "[deliberately invalid config\n").unwrap();
+    rrx::git::WorktreeManager::status(
+        &fixture.store.lock().unwrap(),
+        fixture.request.scope.task_id.unwrap(),
+    )
+    .unwrap();
+    let mut request = fixture.request.clone();
+    request
+        .environment
+        .insert("HOME".into(), home.to_str().unwrap().into());
+    let adapter = fixture.adapter("/bin/cat");
+    let session = adapter.start(request).await.unwrap();
+    assert_eq!(
+        finished(&adapter, &session).await.session.state,
+        SessionState::Exited
     );
 }
