@@ -180,6 +180,13 @@ no kill credit. No production branch was mutated by these runs.
 
 ## Native TUI gateway reconnaissance
 
+At `7075fcd`, two further compiled semantic mutants (M614/M615) removing cleanup
+uncertainty handling from discovery success or setup failure were killed by
+assertions. The original 60 Codex regressions passed after byte-exact restoration.
+The subsequent atomic dispatch/source pinning/Lost changes require fresh checks,
+mutations and full independent source review before merge; these earlier results
+do not validate later edits.
+
 An actual installed native CLI connected through a temporary private Unix gateway
 to stored mathematical-fixture UUID `01a10137-f77b-76c3-aa2c-407dd1ba0050`.
 Observed native client methods were `initialize`, `initialized`, `account/read`,

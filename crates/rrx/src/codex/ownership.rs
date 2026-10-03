@@ -66,6 +66,19 @@ fn state_error(error: anyhow::Error) -> crate::adapter::AdapterError {
 }
 
 impl ScopeSnapshot {
+    pub fn versions(&self) -> [u64; 3] {
+        [
+            self.project.version,
+            self.goal.as_ref().map_or(0, |goal| goal.version),
+            self.task.as_ref().map_or(0, |task| task.version),
+        ]
+    }
+    pub fn lock_versions(&self) -> Vec<(crate::domain::RecordId, u64)> {
+        self.locks
+            .iter()
+            .map(|record| (record.id, record.version))
+            .collect()
+    }
     pub fn capture(
         store: &SharedStore,
         request: &LaunchRequest,

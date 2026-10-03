@@ -22,6 +22,12 @@ wrapper process group is the cleanup unit. Reuse the existing adapter's validate
 group guard, kill-before-reap, optimistic Session persistence and cancellation
 reservation behavior. Native Git/filesystem preflight runs outside the shared
 Store mutex; persisted Project/Goal/Task versions are rechecked before dispatch.
+The final admission uses one SQLite Immediate transaction for those parent
+versions, the complete scoped lock/version set (including inactive lock ABA),
+Session CAS and its scoped `session.saved` audit. A metadata-only consumed-input
+intent contains a private submission ID, byte count, digest and input version;
+neither the native prompt nor credentials enter the audit. Failed admission
+restores the previous in-memory intent and sends no native inference request.
 
 Task roles validate exact worktree/common-dir ownership and prepared HEAD. Review
 also verifies a clean immutable locked revision. Source-only consultation does not
@@ -47,7 +53,11 @@ schemas come from the caller, not provider-specific workflow logic.
 Native turn completion and OS process completion are distinct. Persist the native
 UUID for owned resume, close the private session server and verify whole-group
 termination before releasing runtime reservations. A crash or unverified cleanup
-remains Lost. A native UUID or audited PID/PGID is never proof of process ownership
+remains Lost. After a consumed input, missing authoritative exact native terminal
+evidence also remains Lost even when every owned process is known dead; clear the
+dead PID but retain the operation reservation and never automatically replay.
+An interrupt acknowledgement alone does not establish the model/operation outcome.
+A native UUID or audited PID/PGID is never proof of process ownership
 after a restart.
 
 ## Decision-only sessions
@@ -228,6 +238,10 @@ from account payloads or persisted, and missing required login is a typed outcom
 
 A terminal resume requires explicitly checkpointed continuation input with a
 higher version than the last attempt. Do not repeat a cached mutating prompt.
+Persist the new input revision/version/bytes/source versions in the new Starting
+attempt before admission. Starting-to-Running and subsequent observations retain
+that same source binding; failure before dispatch restores the original terminal
+record and its watch state rather than consuming the new attempt.
 Checkpoint may refresh mutable own Project metadata, preserving its canonical
 repository/base/worktree identity. Observation of usage/pending grants/completion
 binds one registry owner to the exact persisted turn, preventing resume races.

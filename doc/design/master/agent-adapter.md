@@ -326,6 +326,11 @@ source review/mutation/CI evidence are pending; this section does not claim Issu
 Codex experimental protocol conformance currently targets native CLI 0.160.0;
 unknown versions fail before inference. Selected native provider credential/header
 references are scoped to the owning Project without extracting native credentials.
+Native Codex input admission atomically checks owning Project/Goal/Task versions,
+the full scoped lock/version set and Session CAS with metadata-only consumed-input
+audit. Unobserved native outcomes retain Lost reservations even after confirmed
+process death; interrupt acknowledgement alone cannot authorize replay. A fresh
+continuation pins its new source metadata in Starting before dispatch.
 Owned resume requires a freshly checkpointed continuation rather than an implicit
 repeat of the old mutating prompt. Checkpoint can refresh mutable own Project
 metadata but cannot rebind its repository/worktree. Transport completion and

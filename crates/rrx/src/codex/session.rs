@@ -1,6 +1,7 @@
 //! Scoped native session supervision. Workflow verdicts remain caller-owned.
 use serde::Deserialize;
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeSet, HashMap},
     path::PathBuf,
@@ -118,6 +119,47 @@ struct Reservation {
     inference_started: bool,
 }
 impl Reservation {
+    fn admit_dispatch(
+        &mut self,
+        authority: &ScopeSnapshot,
+        request: &LaunchRequest,
+    ) -> AdapterResult<()> {
+        let previous_intent = self.session.recovery.get("dispatch_intent").cloned();
+        self.session.recovery["dispatch_intent"] = json!({
+            "id":uuid::Uuid::new_v4(),"origin":"runtime","consumed":true,
+            "input_version":request.input.version,"input_bytes":request.input.payload.len(),
+            "input_sha256":format!("{:x}",Sha256::digest(request.input.payload.as_bytes())),
+            "authority_versions":authority.versions(),
+        });
+        let admitted = self
+            .store
+            .lock()
+            .map_err(|_| failure(ErrorKind::StateFailure, "state store poisoned"))
+            .and_then(|mut store| {
+                store
+                    .put_session_if_current(
+                        &self.session,
+                        self.version,
+                        authority.versions(),
+                        &authority.lock_versions(),
+                    )
+                    .map_err(|error| failure(ErrorKind::StateConflict, error.to_string()))
+            });
+        match admitted {
+            Ok(version) => {
+                self.version = version;
+                Ok(())
+            }
+            Err(error) => {
+                if let Some(previous) = previous_intent {
+                    self.session.recovery["dispatch_intent"] = previous;
+                } else if let Some(recovery) = self.session.recovery.as_object_mut() {
+                    recovery.remove("dispatch_intent");
+                }
+                Err(error)
+            }
+        }
+    }
     fn persist(&mut self) -> AdapterResult<()> {
         let mut store = self
             .store
@@ -154,8 +196,13 @@ impl Reservation {
         status: &mut SessionStatus,
         result: &AdapterResult<bool>,
         cleanup: &AdapterResult<std::process::ExitStatus>,
+        native_terminal_observed: bool,
     ) -> bool {
-        let uncertain = cleanup.is_err() || self.ownership.uncertain();
+        let group_uncertain = cleanup.is_err() || self.ownership.uncertain();
+        // Interrupt acknowledgement and owned process death do not establish
+        // the outcome of a consumed native input or its target operations.
+        let dispatch_uncertain = self.inference_started && !native_terminal_observed;
+        let uncertain = group_uncertain || dispatch_uncertain;
         self.session.state = if uncertain {
             SessionState::Lost
         } else {
@@ -165,8 +212,11 @@ impl Reservation {
                 Err(_) => SessionState::Failed,
             }
         };
-        if !uncertain {
+        if !group_uncertain {
             self.session.pid = None;
+        }
+        if dispatch_uncertain {
+            self.session.recovery["native_dispatch_unobserved"] = json!(true);
         }
         // The server process's exit status is not a native model-turn outcome.
         status.exit_code = None;
@@ -178,18 +228,34 @@ impl Reservation {
             (None, None) => None,
         };
         if uncertain {
-            status
-                .failure
-                .get_or_insert_with(|| "owned process cleanup is unverified".into());
+            status.failure.get_or_insert_with(|| {
+                if group_uncertain {
+                    "owned process cleanup is unverified"
+                } else {
+                    "consumed native input outcome is unobserved"
+                }
+                .into()
+            });
             let diagnostic = json!({
                 "session_id":self.session.id,"native_uuid":self.session.native_ref,
                 "native_pid":self.session.pid,"native_group_cleanup_confirmed":cleanup.is_ok(),
                 "other_owned_group_uncertain":self.ownership.uncertain(),
+                "native_terminal_observed":native_terminal_observed,
+                "native_dispatch_unobserved":dispatch_uncertain,
+                "dispatch_intent":self.session.recovery["dispatch_intent"],
                 "state_intent":"Lost","failure":status.failure,
             });
             let audit = self.store.lock().map_err(|_| ()).and_then(|mut store| {
                 store
-                    .audit(&self.session.scope, "codex.cleanup.unverified", diagnostic)
+                    .audit(
+                        &self.session.scope,
+                        if group_uncertain {
+                            "codex.cleanup.unverified"
+                        } else {
+                            "codex.dispatch.unobserved"
+                        },
+                        diagnostic,
+                    )
                     .map_err(|_| ())
             });
             if audit.is_err() {
@@ -215,13 +281,28 @@ impl Drop for Reservation {
             {
                 self.session = publication.previous.session.clone();
             } else {
-                self.session.state = if uncertain {
+                self.session.state = if uncertain || self.inference_started {
                     SessionState::Lost
                 } else {
                     SessionState::Failed
                 };
                 if !uncertain {
                     self.session.pid = None;
+                }
+                if self.inference_started {
+                    self.session.recovery["native_dispatch_unobserved"] = json!(true);
+                    let diagnostic = json!({"session_id":self.session.id,"native_uuid":self.session.native_ref,
+                        "native_pid":self.session.pid,"owned_groups_cleanup_confirmed":!uncertain,
+                        "dispatch_intent":self.session.recovery["dispatch_intent"],
+                        "reason":"native turn acknowledgement or owned supervisor was not established","state_intent":"Lost"});
+                    let audit = self.store.lock().map_err(|_| ()).and_then(|mut store| {
+                        store
+                            .audit(&self.session.scope, "codex.dispatch.unobserved", diagnostic)
+                            .map_err(|_| ())
+                    });
+                    if audit.is_err() {
+                        self.session.recovery["diagnostic_publication_unverified"] = json!(true);
+                    }
                 }
             }
             if let Some(publication) = &self.resume_publication {
@@ -478,6 +559,16 @@ impl CodexAdapter {
         };
         session.state = SessionState::Starting;
         session.pid = None;
+        // A fresh continuation is a new attempt: pin its source metadata while
+        // Starting, before admission. Later observations must not rebind it.
+        session.recovery["input_revision"] = json!(request.input.revision);
+        session.recovery["input_version"] = json!(request.input.version);
+        session.recovery["input_bytes"] = json!(request.input.payload.len());
+        session.recovery["source_versions"] = json!(request.input.source_versions);
+        if let Some(recovery) = session.recovery.as_object_mut() {
+            recovery.remove("dispatch_intent");
+            recovery.remove("native_dispatch_unobserved");
+        }
         let resume_publication = if let Some(previous) = &resume {
             let sessions = self.registry()?;
             let entry = sessions.get(&previous.id).ok_or_else(|| {
@@ -680,6 +771,7 @@ impl CodexAdapter {
             if let Some(effort) = &request.effort {
                 parameters["effort"] = json!(effort);
             }
+            reservation.admit_dispatch(&snapshot, &request)?;
             // A cancelled/failed call can already have started inference.
             reservation.inference_started = true;
             let turn = native.rpc.call("turn/start", parameters).await?;
@@ -702,10 +794,6 @@ impl CodexAdapter {
         };
         reservation.session.state = SessionState::Running;
         reservation.session.recovery["native_turn"] = json!(turn);
-        reservation.session.recovery["input_revision"] = json!(request.input.revision);
-        reservation.session.recovery["input_version"] = json!(request.input.version);
-        reservation.session.recovery["input_bytes"] = json!(request.input.payload.len());
-        reservation.session.recovery["source_versions"] = json!(request.input.source_versions);
         if let Err(error) = reservation.persist() {
             return Err(failure_after_cleanup(
                 error,
@@ -1274,8 +1362,13 @@ async fn answer_approval(
             } else {
                 store.audit(&reservation.session.scope, "codex.approval.reply_intent", data)
             }.map_err(|error| failure(ErrorKind::StateConflict, error.to_string()))?;
-            // Fence the still-owned Session immediately before the native reply.
-            reservation.version = store.put_session(&reservation.session, reservation.version).map_err(|error| failure(ErrorKind::StateConflict, error.to_string()))?;
+            // Approvals fence parent versions, lock ABA and Session CAS together,
+            // excluding a writer on a second SQLite connection after preflight.
+            reservation.version = if matches!(reply.request.decision, OperationDecision::Approve) {
+                store.put_session_if_current(&reservation.session, reservation.version, authority.snapshot.versions(), &authority.snapshot.lock_versions())
+            } else {
+                store.put_session(&reservation.session, reservation.version)
+            }.map_err(|error| failure(ErrorKind::StateConflict, error.to_string()))?;
         }
         native.send(preview).await?;
         let empty = {
@@ -1325,6 +1418,7 @@ async fn supervise(
         runtime_broker,
     } = identity;
     let mut status = sender.borrow().clone();
+    let mut native_terminal_observed = false;
     let mut tracker = if previous_turn.is_some() {
         UsageTracker::resumed(thread.clone(), turn.clone(), previous_cumulative)
     } else {
@@ -1404,6 +1498,7 @@ async fn supervise(
                 &mut tracker,
                 &mut status,
                 reservation.session.role == SessionRole::Executor,
+                &mut native_terminal_observed,
             )?;
             observe_approval_notification(
                 &event,
@@ -1429,7 +1524,7 @@ async fn supervise(
     status.stderr = stderr.bytes;
     status.stderr_truncated = stderr.truncated;
     let cleanup = native.shutdown().await;
-    let completed = reservation.terminal(&mut status, &result, &cleanup);
+    let completed = reservation.terminal(&mut status, &result, &cleanup, native_terminal_observed);
     if let Ok(mut evidence) = evidence.lock() {
         evidence.completed = completed;
         evidence.counters = tracker.turn_counters();
@@ -1555,6 +1650,7 @@ fn session_event(
     tracker: &mut UsageTracker,
     status: &mut SessionStatus,
     execute: bool,
+    native_terminal_observed: &mut bool,
 ) -> AdapterResult<Option<bool>> {
     let Event::Notification { method, params } = event else {
         return Err(failure(
@@ -1608,6 +1704,16 @@ fn session_event(
                     "native completion lacks exact thread/turn identity",
                 ));
             }
+            if !matches!(
+                params["turn"]["status"].as_str(),
+                Some("completed" | "failed" | "interrupted")
+            ) {
+                return Err(failure(
+                    ErrorKind::ParseFailure,
+                    "native terminal status is invalid",
+                ));
+            }
+            *native_terminal_observed = true;
             if params["turn"]["status"] != "completed" {
                 return Err(native_turn_error(&params["turn"]["error"]));
             }
@@ -1620,8 +1726,15 @@ fn session_event(
                     "native error lacks exact thread/turn identity",
                 ));
             }
-            if params["willRetry"] == true {
-                return Ok(None);
+            match params["willRetry"].as_bool() {
+                Some(true) => return Ok(None),
+                Some(false) => *native_terminal_observed = true,
+                None => {
+                    return Err(failure(
+                        ErrorKind::ParseFailure,
+                        "native error retry disposition is unavailable",
+                    ));
+                }
             }
             return Err(native_turn_error(&params["error"]));
         }
@@ -1681,7 +1794,7 @@ fn decision_event(
     tracker: &mut UsageTracker,
     status: &mut SessionStatus,
 ) -> AdapterResult<Option<bool>> {
-    session_event(event, thread, turn, tracker, status, false)
+    session_event(event, thread, turn, tracker, status, false, &mut false)
 }
 
 #[cfg(test)]
@@ -1713,7 +1826,7 @@ mod tests {
             assert!(
                 !fixture
                     .reservation
-                    .terminal(&mut fixture.status, &Ok(true), &cleanup)
+                    .terminal(&mut fixture.status, &Ok(true), &cleanup, true)
             );
             fixture
                 .reservation
@@ -1759,7 +1872,8 @@ mod tests {
             assert!(!fixture.reservation.terminal(
                 &mut fixture.status,
                 &outcome,
-                &Ok(std::process::ExitStatus::from_raw(0))
+                &Ok(std::process::ExitStatus::from_raw(0)),
+                true
             ));
             fixture
                 .reservation
@@ -1905,6 +2019,141 @@ mod tests {
                 },
             );
             (adapter, SessionRef::from(&self.status.session))
+        }
+    }
+
+    #[tokio::test]
+    async fn native_input_admission_is_atomic_with_scope_versions_and_durable_consumption() {
+        let mut fixture = ApprovalFixture::new(true).await;
+        let request = fixture.authority.request.clone();
+        fixture
+            .reservation
+            .admit_dispatch(&fixture.authority.snapshot, &request)
+            .unwrap();
+        let committed = fixture.reservation.session.recovery["dispatch_intent"].clone();
+        let scope = fixture.reservation.session.scope.clone();
+        {
+            let store = fixture.reservation.store.lock().unwrap();
+            let stored = store
+                .session(fixture.reservation.session.id)
+                .unwrap()
+                .unwrap()
+                .0;
+            assert_eq!(stored.recovery["dispatch_intent"], committed);
+            assert_eq!(committed["input_bytes"], request.input.payload.len());
+            assert_eq!(
+                committed["input_sha256"],
+                format!("{:x}", Sha256::digest(request.input.payload.as_bytes()))
+            );
+            assert_eq!(committed["consumed"], true);
+            let event = store
+                .events(&scope, 0, 1000)
+                .unwrap()
+                .into_iter()
+                .rev()
+                .find(|event| event.kind == "session.saved")
+                .unwrap();
+            assert_eq!(event.data["evidence"]["dispatch_intent"], committed);
+        }
+        // A second writer changes the owner after the old snapshot was captured;
+        // admission must neither overwrite it nor journal another consumed input.
+        let db = fixture
+            .authority
+            .request
+            .project
+            .root
+            .parent()
+            .unwrap()
+            .join("state.sqlite3");
+        let mut other = crate::state::Store::open(&db).unwrap();
+        let mut task = other.task(scope.task_id.unwrap()).unwrap().unwrap();
+        task.title = "changed after preflight".into();
+        other.put_task(&mut task).unwrap();
+        let before = fixture
+            .reservation
+            .store
+            .lock()
+            .unwrap()
+            .events(&scope, 0, 1000)
+            .unwrap()
+            .len();
+        assert_eq!(
+            fixture
+                .reservation
+                .admit_dispatch(&fixture.authority.snapshot, &request)
+                .unwrap_err()
+                .kind,
+            ErrorKind::StateConflict
+        );
+        assert_eq!(
+            fixture.reservation.session.recovery["dispatch_intent"],
+            committed
+        );
+        let store = fixture.reservation.store.lock().unwrap();
+        assert_eq!(store.events(&scope, 0, 1000).unwrap().len(), before);
+        assert_eq!(
+            store
+                .session(fixture.reservation.session.id)
+                .unwrap()
+                .unwrap()
+                .0
+                .recovery["dispatch_intent"],
+            committed
+        );
+    }
+
+    #[tokio::test]
+    async fn unobserved_native_input_stays_reserved_after_transport_loss_or_stop_with_dead_processes()
+     {
+        use std::os::unix::process::ExitStatusExt;
+        for (observed, stopped) in [(false, false), (true, false), (false, true), (true, true)] {
+            let mut fixture = ApprovalFixture::new(true).await;
+            fixture.reservation.inference_started = true;
+            fixture.reservation.session.pid = Some(42);
+            let result = if stopped {
+                Ok(false)
+            } else {
+                Err(failure(ErrorKind::ProcessFailure, "native response lost"))
+            };
+            assert!(!fixture.reservation.terminal(
+                &mut fixture.status,
+                &result,
+                &Ok(std::process::ExitStatus::from_raw(0)),
+                observed
+            ));
+            fixture
+                .reservation
+                .publish(&fixture.sender, &mut fixture.status)
+                .unwrap();
+            assert_eq!(
+                fixture.status.session.state,
+                if observed && stopped {
+                    SessionState::Stopped
+                } else if observed {
+                    SessionState::Failed
+                } else {
+                    SessionState::Lost
+                }
+            );
+            assert_eq!(fixture.status.session.pid, None);
+            assert_eq!(
+                crate::git::executor_reserved(&fixture.status.session),
+                !observed
+            );
+            if !observed {
+                assert_eq!(
+                    fixture.status.session.recovery["native_dispatch_unobserved"],
+                    true
+                );
+                let store = fixture.reservation.store.lock().unwrap();
+                let event = store
+                    .events(&fixture.status.session.scope, 0, 1000)
+                    .unwrap()
+                    .into_iter()
+                    .find(|event| event.kind == "codex.dispatch.unobserved")
+                    .unwrap();
+                assert_eq!(event.data["native_group_cleanup_confirmed"], true);
+            }
         }
     }
     #[tokio::test]
@@ -2172,15 +2421,12 @@ mod tests {
             }
             drop(reservation);
             let current = adapter.current(&reference).unwrap();
-            assert_eq!(
-                current.session.state,
-                if uncertain {
-                    SessionState::Lost
-                } else {
-                    SessionState::Failed
-                }
-            );
+            assert_eq!(current.session.state, SessionState::Lost);
             assert_eq!(current.session.pid, if uncertain { Some(42) } else { None });
+            assert_eq!(
+                current.session.recovery["native_dispatch_unobserved"],
+                if uncertain { Value::Null } else { json!(true) }
+            );
             assert!(!fixture.evidence.lock().unwrap().completed);
             adapter.release(reference).unwrap();
         }
@@ -2660,6 +2906,77 @@ mod tests {
         );
         assert_eq!(status.session.state, SessionState::Running);
         assert_eq!(status.exit_code, None);
+    }
+    #[test]
+    fn only_exact_authoritative_native_terminal_events_resolve_consumed_input() {
+        for (method, params, expected, success) in [
+            (
+                "turn/completed",
+                json!({"threadId":"foreign","turn":{"id":"turn","status":"failed"}}),
+                false,
+                false,
+            ),
+            (
+                "turn/completed",
+                json!({"threadId":"thread","turn":{"id":"other","status":"completed"}}),
+                false,
+                false,
+            ),
+            (
+                "turn/completed",
+                json!({"threadId":"thread","turn":{"id":"turn","status":"unknown"}}),
+                false,
+                false,
+            ),
+            (
+                "error",
+                json!({"threadId":"thread","turnId":"turn","willRetry":true}),
+                false,
+                true,
+            ),
+            (
+                "error",
+                json!({"threadId":"thread","turnId":"turn"}),
+                false,
+                false,
+            ),
+            (
+                "error",
+                json!({"threadId":"thread","turnId":"turn","willRetry":false}),
+                true,
+                false,
+            ),
+            (
+                "turn/completed",
+                json!({"threadId":"thread","turn":{"id":"turn","status":"failed"}}),
+                true,
+                false,
+            ),
+            (
+                "turn/completed",
+                json!({"threadId":"thread","turn":{"id":"turn","status":"completed"}}),
+                true,
+                true,
+            ),
+        ] {
+            let mut observed = false;
+            let mut status = status();
+            let mut tracker = UsageTracker::new("thread".into(), "turn".into());
+            let result = session_event(
+                Event::Notification {
+                    method: method.into(),
+                    params,
+                },
+                "thread",
+                "turn",
+                &mut tracker,
+                &mut status,
+                false,
+                &mut observed,
+            );
+            assert_eq!(result.is_ok(), success, "{method}");
+            assert_eq!(observed, expected, "{method}");
+        }
     }
     #[test]
     fn assistant_retention_is_bounded_and_failed_native_turns_are_explicit() {
