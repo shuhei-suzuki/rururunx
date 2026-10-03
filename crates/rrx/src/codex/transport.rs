@@ -387,7 +387,7 @@ fn verify_peer(stream: &UnixStream, leader: u32) -> AdapterResult<()> {
             "native peer process group unavailable",
         )
     })?;
-    if peer.uid() != rustix::process::geteuid().as_raw() || group.as_raw() != leader as i32 {
+    if peer.uid() != rustix::process::geteuid().as_raw() || group.as_raw_pid() != leader as i32 {
         return Err(failure(
             ErrorKind::OwnershipMismatch,
             "native Unix peer does not belong to the unreaped owned process group",
@@ -489,7 +489,7 @@ mod tests {
         binding.verify(&alias).unwrap();
         let client = UnixStream::connect(&target).await.unwrap();
         let (peer, _) = listener.accept().await.unwrap();
-        let own_group = rustix::process::getpgid(None).unwrap().as_raw() as u32;
+        let own_group = rustix::process::getpgid(None).unwrap().as_raw_pid() as u32;
         verify_peer(&client, own_group).unwrap();
         assert_eq!(
             verify_peer(&client, own_group.wrapping_add(10000))
