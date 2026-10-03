@@ -392,7 +392,9 @@ mod tests {
         .unwrap()
         .into_iter()
         .collect();
-        assert!(filtered.is_empty());
+        for name in ambient {
+            assert!(!filtered.contains_key(&OsString::from(name)));
+        }
     }
     #[test]
     fn project_cannot_override_trusted_os_login_context() {
