@@ -1,6 +1,6 @@
 # rururunx Product Requirements
 
-**Version:** 0.4
+**Version:** 0.5
 **Status:** Draft
 **Project:** rururunx
 **CLI:** `rrx`
@@ -32,6 +32,8 @@ rururunx automates that supervision layer while preserving native agent behavior
 6. **Human on escalation** — humans handle high-risk, unresolved, or disputed decisions.
 7. **Existing safety remains authoritative** — never bypass repository hooks, agent permissions, Git safety controls, or project rules.
 8. **CLI-first / local-first** — MVP requires no desktop app, web dashboard, or hosted control plane.
+9. **Context-efficient by design** — parallelism must not blindly multiply repository/history tokens. Stable context is reused; detailed context is retrieved progressively; long sessions are condensed; re-review prefers deltas.
+10. **Quality before savings** — token reduction must never remove mandatory safety rules, hide required evidence, or weaken independent review.
 
 ## 4. MVP success definition
 
@@ -622,26 +624,151 @@ Do not build in MVP:
 
 ## 38. Context and token efficiency
 
-Token efficiency is an MVP requirement because parallel tasks and multi-reviewer workflows multiply repeated context.
+Context/token efficiency is a **core MVP requirement**, not a post-MVP optimization.
 
-The runtime must provide a Context Efficiency Layer with at least:
+Parallel Tasks and 1/2/3+ reviewer workflows can otherwise multiply identical repository, design, rule, and conversation context. rururunx must reduce redundant context while preserving correctness, safety, and independent review.
 
-- a compact repository map/context index rather than full-repository prompt injection
-- token/size-budgeted selection of relevant repository context
-- versioned per-Task Context Packs containing durable facts and current state
-- progressive disclosure of optional rules/skills/context
-- bounded conversation history through condensation/checkpointing
-- deterministic Review Bundles instead of forwarding executor chat history
-- delta-based context for later review rounds
-- provider-native prompt/context-cache awareness where supported
-- context expansion on demand when an agent needs more information
-- input/output/cached-token telemetry when exposed by the native agent/provider
+### 38.1 Repository Map / Context Index
 
-Token-saving behavior must not omit mandatory safety/project rules or reduce reviewer independence.
+The runtime must maintain a compact local representation of the repository sufficient to select relevant context without injecting the full repository into every agent call.
 
-All reviewers in the same independent review round should receive equivalent factual review inputs; one reviewer's conclusions should not be injected into another reviewer's context before independent review completes.
+The index should support, where practical:
 
-Caching and context minimization are separate concerns: a provider cache may reduce cost/latency without reducing the logical context-window size, while Context Packs/maps/condensation reduce repeated context itself.
+- file paths
+- important symbols/signatures
+- imports/dependencies
+- callers/references
+- changed-file/symbol relationships
+
+Only a budgeted, task-relevant slice is injected by default.
+
+### 38.2 Versioned Task Context Pack
+
+Each Task must maintain a versioned Context Pack containing durable working context such as:
+
+- purpose and acceptance criteria
+- workflow/risk class
+- relevant project constraints
+- architecture/design references
+- relevant files/symbols
+- current revision/diff summary
+- impact-analysis summary
+- test/verification evidence
+- unresolved findings
+- blockers and next action
+
+The Context Pack is a compact coordination artifact, not a substitute for source code or authoritative requirements/design documents.
+
+### 38.3 Progressive disclosure
+
+Optional rules, skills, design sections, and repository detail should be loaded only when relevant.
+
+Mandatory safety rules and project-required constraints must not be omitted to save tokens.
+
+Agents must be able to request context expansion when selected context is insufficient.
+
+### 38.4 Conversation condensation
+
+Long-running consultation/execution sessions must support auditable condensation/checkpointing.
+
+A checkpoint must preserve at least:
+
+- current goal
+- confirmed decisions
+- completed work
+- current worktree/revision
+- important files/symbols
+- tests/commands already executed and results
+- unresolved findings/errors
+- next action
+- mandatory safety/project constraints
+
+Recent context may remain verbatim for a configurable window.
+
+### 38.5 Deterministic Review Bundle
+
+Reviewers must receive a deterministic factual Review Bundle rather than the executor's full conversation transcript.
+
+A bundle may include:
+
+- immutable target revision
+- required requirements/design artifacts
+- relevant project rules
+- relevant repository-map slice
+- diff/changed files
+- impact-analysis artifact
+- test/verification results
+- review instructions
+
+Reviewers in the same independent review round should receive equivalent factual inputs unless specialization explicitly requires extra material.
+
+One reviewer's conclusions must not be injected into another independent reviewer before that reviewer completes.
+
+### 38.6 Delta re-review
+
+Review round N > 1 should prefer:
+
+- previous reviewed revision
+- new revision
+- revision delta
+- prior verified unresolved findings
+- claimed fixes
+- new verification evidence
+
+instead of replaying all transient context from previous rounds.
+
+A reviewer may request broader context.
+
+### 38.7 Provider cache awareness
+
+Adapters should expose and use native prompt/context caching where the provider/agent supports it.
+
+rururunx should keep stable prompt components stable when it controls prompt construction, but correctness must never depend on a cache hit.
+
+Caching and logical context minimization are distinct:
+
+- caching reduces repeated provider processing/cost/latency
+- context selection/condensation reduces the amount of logical context sent
+
+### 38.8 Token budgets
+
+The runtime must allow configurable context budgets at least for:
+
+- repository-map injection
+- review bundle
+- recent uncondensed history
+- optional supporting artifacts
+
+Budget exhaustion must trigger context prioritization or explicit expansion behavior, not silent truncation of mandatory material.
+
+### 38.9 Token/cost telemetry
+
+When exposed by an adapter/provider, record:
+
+- input tokens
+- cached input tokens
+- output tokens
+- estimated cost
+- context size
+- Context Pack size/version
+- repository-map injected size
+- condensation events
+- context expansion events
+
+Metrics must be attributable by Task, phase, review round, and agent.
+
+### 38.10 Optimization KPI
+
+In addition to Human Interruptions per Task, rururunx should report:
+
+- Input Tokens per Task
+- Input Tokens per Review Round
+- Cached Token Ratio where available
+- Estimated Cost per Task
+- Token amplification from reviewer count
+- Context-efficiency reduction versus disabled/baseline mode
+
+Dogfooding must compare a representative workflow with Context Efficiency enabled and disabled, and report quality/safety regressions as well as savings.
 
 See `doc/design/master/context-efficiency.md`.
 
