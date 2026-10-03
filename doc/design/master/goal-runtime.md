@@ -73,7 +73,7 @@ Goal Runtime obtains project rules, repository root, worktree namespace, and sou
 
 Cross-project Goal DAG edges are not supported in MVP.
 
-## 6. Task DAG
+## 5. Task DAG
 
 A Goal graph contains Task nodes and hard/soft dependency edges.
 
