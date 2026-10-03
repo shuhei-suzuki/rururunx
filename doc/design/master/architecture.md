@@ -458,3 +458,13 @@ uses ordinary Git removal/local branch deletion, and retains durable provenance.
 Failures preserve intent/lock for explicit recovery; dependent runtime recovery
 integration is not yet implemented. Git calls are synchronous local operations and
 must run on a blocking worker when integrated with async scheduling.
+
+Git boundary hardening additionally reserves unique Project-scoped task paths/branches
+in the Store transaction, requires task-scoped executors at the exact bound path,
+and rejects overlapping Project roots/namespaces. `git::repository_identity` supplies
+canonical primary common-dir plus base root commits; Git operations reject linked
+source roots or changed/replaced identity. Registry integration must use this helper.
+Failed review acquisition releases its provisional lock and audits the failure.
+Cleanup prechecks native branch deletion's upstream/root-HEAD predicate and currently
+supports ancestry-preserving merges. External writers remain outside advisory lock
+control; ignored files present at the safety check block cleanup.

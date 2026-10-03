@@ -105,7 +105,7 @@ impl WorktreeManager {
                 "-b",
                 &branch,
                 text_path(&path)?,
-                &project.base_branch,
+                &format!("refs/heads/{}", project.base_branch),
             ],
         )?;
         let status = Self::status(store, task_id)?;
@@ -159,7 +159,15 @@ impl WorktreeManager {
         );
         // Store checks sessions/locks under the same SQLite write transaction as reservation.
         store.put_record(&mut record)?;
-        Self::verify_review(store, record.id)?;
+        if let Err(error) = Self::verify_review(store, record.id) {
+            release(store, &mut record)?;
+            store.audit(
+                &task.scope(),
+                "worktree.lock_acquisition_failed",
+                json!({"lock_id":record.id,"error":error.to_string()}),
+            )?;
+            return Err(error);
+        }
         Ok(record.id)
     }
 
@@ -221,6 +229,46 @@ impl WorktreeManager {
                 ]
             )?,
             "task branch is not merged into project base"
+        );
+        // Native branch -d uses upstream when set, otherwise root HEAD. Check it first.
+        let upstream = command(
+            &root,
+            &[
+                "rev-parse",
+                "--verify",
+                &format!("{}@{{upstream}}", status.branch),
+            ],
+        )
+        .output()?;
+        let delete_target = if upstream.status.success() {
+            String::from_utf8(upstream.stdout)?.trim().to_owned()
+        } else {
+            let remote = command(
+                &root,
+                &[
+                    "config",
+                    "--get",
+                    &format!("branch.{}.remote", status.branch),
+                ],
+            )
+            .output()?;
+            ensure!(
+                !remote.status.success(),
+                "configured task upstream is unavailable"
+            );
+            git_text(&root, &["rev-parse", "HEAD"])?
+        };
+        ensure!(
+            git_success(
+                &root,
+                &[
+                    "merge-base",
+                    "--is-ancestor",
+                    &status.revision,
+                    &delete_target
+                ]
+            )?,
+            "native branch deletion would reject task revision"
         );
         let lock_id = Self::lock_review(store, task_id, &status.revision, "worktree cleanup")?;
         Self::verify_review(store, lock_id)?;
@@ -295,7 +343,43 @@ fn project_root(project: &Project) -> Result<PathBuf> {
     let git_root =
         PathBuf::from(git_text(&root, &["rev-parse", "--show-toplevel"])?).canonicalize()?;
     ensure!(git_root == root, "project root must be exact Git top-level");
+    ensure!(
+        repository_identity(&root, &project.base_branch)? == project.repository_identity,
+        "Project repository identity changed"
+    );
     Ok(root)
+}
+
+/// Registry identity: canonical primary common-dir plus configured base's root commits.
+/// Missing/moved/replaced or rewritten repositories require explicit reconciliation.
+pub fn repository_identity(root: &Path, base_branch: &str) -> Result<String> {
+    git(root, &["check-ref-format", "--branch", base_branch])?;
+    let resolve = |arg| -> Result<PathBuf> {
+        Ok(PathBuf::from(git_text(
+            root,
+            &["rev-parse", "--path-format=absolute", arg],
+        )?)
+        .canonicalize()?)
+    };
+    let common = resolve("--git-common-dir")?;
+    ensure!(
+        resolve("--git-dir")? == common,
+        "Project source root cannot be a linked worktree"
+    );
+    let mut roots: Vec<String> = git_text(
+        root,
+        &[
+            "rev-list",
+            "--max-parents=0",
+            &format!("refs/heads/{base_branch}"),
+        ],
+    )?
+    .lines()
+    .map(str::to_owned)
+    .collect();
+    roots.sort();
+    ensure!(!roots.is_empty(), "repository has no base history");
+    Ok(serde_json::to_string(&(common, roots))?)
 }
 fn namespace(project: &Project, root: &Path) -> Result<PathBuf> {
     let path = &project.worktree_root;

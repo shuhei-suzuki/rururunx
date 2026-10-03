@@ -44,7 +44,7 @@ impl Fixture {
         let mut project = Project::new(
             "fixture".into(),
             root.clone(),
-            "fixture-id".into(),
+            rrx::git::repository_identity(&root, "main").unwrap(),
             "main".into(),
         );
         store.put_project(&mut project).unwrap();
@@ -196,8 +196,7 @@ fn rejects_main_master_detached_and_mismatched_branch() {
     let mut new = f.task(2);
     new.worktree = Some(f.root.clone());
     new.branch = Some("main".into());
-    f.store.put_task(&mut new).unwrap();
-    assert!(Manager::ensure_mutation_allowed(&f.store, new.id).is_err());
+    assert!(f.store.put_task(&mut new).is_err());
 }
 #[test]
 fn rejects_foreign_repository_and_existing_path_or_branch() {
@@ -403,4 +402,61 @@ fn linked_and_wrong_identity_project_roots_are_rejected() {
     let mut task = Task::new(nested.id, goal.id, "fixture".into(), "fake".into());
     separate.put_task(&mut task).unwrap();
     assert!(Manager::create(&mut separate, task.id).is_err());
+}
+
+#[test]
+fn concurrent_duplicate_issue_creation_has_one_durable_owner() {
+    use std::sync::{Arc, Barrier};
+    let mut f = Fixture::new();
+    let a = f.task(7);
+    let b = f.task(7);
+    let barrier = Arc::new(Barrier::new(2));
+    let db = f._temp.path().join("state.db");
+    let handles: Vec<_> = [a.id, b.id]
+        .into_iter()
+        .map(|id| {
+            let barrier = barrier.clone();
+            let db = db.clone();
+            std::thread::spawn(move || {
+                let mut store = Store::open(&db).unwrap();
+                barrier.wait();
+                Manager::create(&mut store, id).is_ok()
+            })
+        })
+        .collect();
+    let successes = handles
+        .into_iter()
+        .map(|h| usize::from(h.join().unwrap()))
+        .sum::<usize>();
+    assert_eq!(successes, 1);
+    let tasks = f.store.tasks(f.project.id, None).unwrap();
+    assert_eq!(tasks.iter().filter(|t| t.worktree.is_some()).count(), 1);
+}
+#[test]
+fn qualified_base_ref_wins_over_same_named_tag_and_replacement_is_blocked() {
+    let mut f = Fixture::new();
+    git(&f.root, &["tag", "main"]);
+    git(&f.root, &["commit", "--allow-empty", "-m", "base changed"]);
+    let t = f.task(1);
+    let s = Manager::create(&mut f.store, t.id).unwrap();
+    let out = Command::new("git")
+        .current_dir(&f.root)
+        .args(["rev-parse", "refs/heads/main"])
+        .output()
+        .unwrap();
+    assert_eq!(s.revision, String::from_utf8(out.stdout).unwrap().trim());
+    // Replacing the source checkout with unrelated history must not silently rebind Project.
+    let old = f.root.with_file_name("old-repo");
+    std::fs::rename(&f.root, &old).unwrap();
+    std::fs::create_dir(&f.root).unwrap();
+    git(&f.root, &["init", "-b", "main"]);
+    git(&f.root, &["config", "user.name", "Replacement"]);
+    git(
+        &f.root,
+        &["config", "user.email", "replacement@example.invalid"],
+    );
+    git(&f.root, &["config", "commit.gpgsign", "false"]);
+    git(&f.root, &["commit", "--allow-empty", "-m", "unrelated"]);
+    let other = f.task(2);
+    assert!(Manager::create(&mut f.store, other.id).is_err());
 }

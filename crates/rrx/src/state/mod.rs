@@ -138,6 +138,25 @@ impl Store {
                 "project identity/root cannot silently change"
             );
         }
+        {
+            let mut statement = tx.prepare("SELECT body FROM projects WHERE id<>?1")?;
+            for body in
+                statement.query_map([project.id.to_string()], |row| row.get::<_, String>(0))?
+            {
+                let other: Project = decode(body?)?;
+                ensure!(
+                    other.repository_identity != project.repository_identity,
+                    "repository identity already registered"
+                );
+                ensure!(
+                    !project.root.starts_with(&other.root)
+                        && !other.root.starts_with(&project.root)
+                        && !project.worktree_root.starts_with(&other.worktree_root)
+                        && !other.worktree_root.starts_with(&project.worktree_root),
+                    "Project roots/worktree namespaces overlap"
+                );
+            }
+        }
         let mut next = project.clone();
         bump(&mut next.version)?;
         next.updated_at = now_ms();
@@ -237,6 +256,36 @@ impl Store {
                 "workflow downgrade is forbidden"
             );
         }
+        ensure!(
+            task.worktree.is_some() == task.branch.is_some(),
+            "task path/branch must bind together"
+        );
+        if let (Some(path), Some(branch)) = (&task.worktree, &task.branch) {
+            let project: Project = read_tx(&tx, "projects", &task.project_id.to_string())?
+                .context("unknown project")?;
+            ensure!(
+                path.is_absolute()
+                    && path.parent() == Some(project.worktree_root.as_path())
+                    && path.components().all(|c| !matches!(
+                        c,
+                        std::path::Component::ParentDir | std::path::Component::CurDir
+                    )),
+                "task path must be normal direct child of Project namespace"
+            );
+            ensure!(!branch.trim().is_empty(), "task branch must be nonempty");
+            let mut statement =
+                tx.prepare("SELECT body FROM tasks WHERE project_id=?1 AND id<>?2")?;
+            for body in statement.query_map(
+                params![task.project_id.to_string(), task.id.to_string()],
+                |row| row.get::<_, String>(0),
+            )? {
+                let other: Task = decode(body?)?;
+                ensure!(
+                    other.worktree.as_ref() != Some(path) && other.branch.as_ref() != Some(branch),
+                    "task worktree/branch already owned"
+                );
+            }
+        }
         let mut next = task.clone();
         bump(&mut next.version)?;
         next.updated_at = now_ms();
@@ -293,6 +342,19 @@ impl Store {
                 "record scope/kind is immutable"
             );
         }
+        if record.kind == RecordKind::Session {
+            if let Some(previous) = read_tx::<Record>(&tx, "records", &record.id.to_string())? {
+                let old: Session = serde_json::from_value(previous.data)?;
+                let new: Session = serde_json::from_value(record.data.clone())?;
+                ensure!(
+                    old.agent == new.agent
+                        && old.provider == new.provider
+                        && old.role == new.role
+                        && old.worktree == new.worktree,
+                    "session actor/worktree identity is immutable"
+                );
+            }
+        }
         validate_worktree_exclusion(&tx, record)?;
         let mut next = record.clone();
         bump(&mut next.version)?;
@@ -321,7 +383,7 @@ impl Store {
             &next.scope,
             &format!("{}.saved", next.kind.key()),
             json!({"id":next.id,"version":next.version,"evidence": match next.kind {
-                RecordKind::Review | RecordKind::Approval => next.data.clone(),
+                RecordKind::Review | RecordKind::Approval | RecordKind::WorktreeLock => next.data.clone(),
                 RecordKind::Session => json!({"state":next.data["state"],"agent":next.data["agent"],"provider":next.data["provider"],"role":next.data["role"],"native_ref":next.data["native_ref"]}),
                 _ => Value::Null,
             }}),
@@ -604,6 +666,21 @@ fn decode<T: DeserializeOwned>(body: String) -> Result<T> {
 /// Reservations and immutable locks serialize across independent SQLite connections.
 fn validate_worktree_exclusion(tx: &Transaction<'_>, record: &Record) -> Result<()> {
     use crate::git::{WorktreeLock, executor_reserved};
+    if record.kind == RecordKind::Session {
+        let session: Session = serde_json::from_value(record.data.clone())?;
+        if session.role == SessionRole::Executor {
+            let id = session
+                .scope
+                .task_id
+                .context("executor requires task scope")?;
+            let task: Task =
+                read_tx(tx, "tasks", &id.to_string())?.context("unknown executor task")?;
+            ensure!(
+                task.scope() == session.scope && task.worktree.as_ref() == Some(&session.worktree),
+                "executor worktree/scope differs from task binding"
+            );
+        }
+    }
     let acquiring = if record.kind == RecordKind::WorktreeLock {
         ensure!(
             record.scope.task_id.is_some(),
