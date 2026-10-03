@@ -18,7 +18,7 @@ use super::{
         ApprovalLedger, Event, NativeRpc, OperationDecision, RpcId, TokenCounters, UsageTracker,
         failure, operation_paths,
     },
-    transport::NativeServer,
+    transport::{NativeServer, failure_after_cleanup, result_after_cleanup},
 };
 use crate::{
     adapter::{
@@ -193,8 +193,13 @@ impl Reservation {
                     .map_err(|_| ())
             });
             if audit.is_err() {
-                status.failure =
-                    Some("owned cleanup and diagnostic publication are unverified".into());
+                status.failure = Some(format!(
+                    "owned cleanup diagnostic publication is unverified; original failure: {}",
+                    status
+                        .failure
+                        .as_deref()
+                        .unwrap_or("owned process cleanup is unverified")
+                ));
             }
         }
         matches!(result, Ok(true)) && !uncertain
@@ -569,8 +574,8 @@ impl CodexAdapter {
             Ok::<_, crate::adapter::AdapterError>((policy, environment))
         }
         .await;
-        discovery.shutdown().await?;
-        let (policy, environment) = discovered?;
+        let (policy, environment) =
+            result_after_cleanup(discovered, discovery.shutdown().await.map(|_| ()))?;
         if self.runtime_broker
             && request.role == SessionRole::Executor
             && !policy.permits_runtime_broker()
@@ -689,8 +694,10 @@ impl CodexAdapter {
         let (thread, turn) = match setup {
             Ok(value) => value,
             Err(error) => {
-                native.shutdown().await?;
-                return Err(error);
+                return Err(failure_after_cleanup(
+                    error,
+                    native.shutdown().await.map(|_| ()),
+                ));
             }
         };
         reservation.session.state = SessionState::Running;
@@ -700,8 +707,10 @@ impl CodexAdapter {
         reservation.session.recovery["input_bytes"] = json!(request.input.payload.len());
         reservation.session.recovery["source_versions"] = json!(request.input.source_versions);
         if let Err(error) = reservation.persist() {
-            native.shutdown().await?;
-            return Err(error);
+            return Err(failure_after_cleanup(
+                error,
+                native.shutdown().await.map(|_| ()),
+            ));
         }
         let session = reservation.session.clone();
         let status = SessionStatus {
