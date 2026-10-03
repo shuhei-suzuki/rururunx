@@ -287,3 +287,51 @@ fn symlinks_and_native_hook_failures_are_not_bypassed() {
             .any(|r| r.data["active"] == true)
     );
 }
+
+#[test]
+fn immutable_review_detects_clean_head_change() {
+    let mut f = Fixture::new();
+    let t = f.task(1);
+    let s = Manager::create(&mut f.store, t.id).unwrap();
+    let lock = Manager::lock_review(&mut f.store, t.id, &s.revision, "review").unwrap();
+    git(
+        &s.worktree,
+        &["commit", "--allow-empty", "-m", "external head change"],
+    );
+    assert!(!Manager::status(&f.store, t.id).unwrap().dirty);
+    assert!(Manager::verify_review(&f.store, lock).is_err());
+    assert!(Manager::unlock_review(&mut f.store, lock).is_err());
+}
+#[test]
+fn protected_base_and_git_metadata_namespace_are_rejected() {
+    let mut f = Fixture::new();
+    let t = f.task(1);
+    let s = Manager::create(&mut f.store, t.id).unwrap();
+    f.project.base_branch = s.branch;
+    f.store.put_project(&mut f.project).unwrap();
+    assert!(Manager::ensure_mutation_allowed(&f.store, t.id).is_err());
+    f.project.base_branch = "main".into();
+    f.project.worktree_root = f.root.join(".git/nested");
+    f.store.put_project(&mut f.project).unwrap();
+    let new = f.task(2);
+    assert!(Manager::create(&mut f.store, new.id).is_err());
+    assert!(!f.root.join(".git/nested").exists());
+}
+#[test]
+fn duplicate_executors_and_malformed_locks_fail_closed() {
+    let mut f = Fixture::new();
+    let t = f.task(1);
+    Manager::create(&mut f.store, t.id).unwrap();
+    let task = f.store.task(t.id).unwrap().unwrap();
+    let mut first = f.session(&task, SessionState::Starting);
+    let version = f.store.put_session(&first, 0).unwrap();
+    assert!(
+        f.store
+            .put_session(&f.session(&task, SessionState::Starting), 0)
+            .is_err()
+    );
+    first.state = SessionState::Stopped;
+    f.store.put_session(&first, version).unwrap();
+    let mut malformed = Record::new(t.scope(), RecordKind::WorktreeLock, json!({"active":false}));
+    assert!(f.store.put_record(&mut malformed).is_err());
+}
