@@ -91,6 +91,8 @@ Each phase declares:
 - required reviews
 - allowed retry behavior
 - failure/escalation behavior
+- context inputs / Context Pack version
+- context budget class
 
 ## 6. Review policy
 
@@ -193,7 +195,37 @@ Project-specific configuration/rules override global defaults.
 
 The engine should load project rules before selecting a workflow and again when entering phases whose scoped rules may differ.
 
-## 13. Human override
+## 13. Context lifecycle
+
+Workflow Engine coordinates Context Efficiency artifacts at phase boundaries.
+
+Expected behavior:
+
+- Task creation establishes Context Pack v1
+- requirements/design/implementation milestones update the Context Pack
+- commit/revision changes invalidate stale diff/review slices
+- review launch freezes a deterministic Review Bundle for that Review Set
+- re-review prefers a delta bundle from the previous reviewed revision
+- dynamic workflow escalation may add required rules/artifacts and therefore creates a new Context Pack version
+- context expansion requested by an agent is recorded but does not silently rewrite authoritative artifacts
+
+A phase must not start with a Context Pack known to reference an obsolete target revision.
+
+## 14. Token-budget policy
+
+Workflow presets may define different default context budgets.
+
+Example direction:
+
+- QUICK: small repository-map/review budget
+- STANDARD: normal budget
+- STRICT: broader evidence/context budget
+
+Safety-critical context is mandatory and outside discretionary trimming.
+
+Budget exhaustion results in prioritization or explicit expansion, never silent removal of mandatory evidence.
+
+## 15. Human override
 
 Human actions should be explicit and audited.
 
