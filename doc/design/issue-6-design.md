@@ -78,64 +78,95 @@ historical Session, including its original turn and consumed-input marker.
 
 ## Preparing continuation cancellation (design pending independent review)
 
-Resume and checkpoint need a new private per-attempt stop control. Atomically
-install it under the registry lock when that operation claims the transition,
-before any await or Starting publication. A terminal watch alone cannot establish
-that no preparation is in flight. Stop reads the current control alongside the
-owned scope: during preparation it cancels that attempt even if the watch still
-shows the previous terminal Session. It never sends to the retired stop channel.
-The control is an invocation-owned Arc with a small synchronous mutex; lock order
-is registry then control, and admission takes control then Store. No reverse
-Store-to-control acquisition and no mutex held over await are permitted.
+Resume and checkpoint atomically install a new private per-attempt control when
+claiming the registry transition, before any await or Starting publication.
+A terminal shared watch does not exclude preparation. Stop captures the current
+control Arc and exact owned scope under the registry lock; its target remains that
+attempt for the whole call. It never re-resolves a later registry control, sends
+to the retired channel or waits on the shared watch's latest value. Existing
+public SessionRef stays unchanged; the first poll defines this invocation's target.
 
-The preparation state is Preparing, CancelledBeforeAdmission, or Consumed. A
-stop winning before admission atomically changes Preparing to cancelled. Final
-admission holds this same control mutex through the exact consumed-input Store
-CAS, rejects a cancelled attempt with no turn/start write, and sets Consumed only
-on successful CAS. A failed CAS remains Preparing/cancellable. Preparation
-completion carries publication failure explicitly; a completion notification alone
-never bypasses persisted/watch equality or establishes successful cleanup. Pre-encode the
-whole bounded wire frame before this boundary. Cancellation after successful CAS
-queues an interrupt in the new attempt's channel, which is transferred unchanged
-to the sole supervisor; it cannot retract consumption or replay the input. Native
-startup/RPC waits remain bounded and owned cleanup runs before rollback. Once a
-turn acknowledgement arrives, the queued cancellation uses the existing bounded
-terminal drain; missing acknowledgement/outcome remains conservative Lost.
+Use a small synchronous admission mutex with Preparing, CancelledBeforeAdmission
+and Consumed states, plus a separate level-triggered watch<AttemptPhase>.
+AttemptPhase is Preparing, AwaitingTurnAck, Supervised, or Finished(TypedOutcome).
+TypedOutcome is RestoredBeforeAdmission, Terminal{status,record_version},
+Lost{publication_result}, or RestoreUnpublished{error}. A captured attempt retains
+its own terminal snapshot and outcome even if a newer preparation replaces the
+shared watch. A waiter subscribes before checking the level and never relies on
+Notify edges. Finished is published only AFTER owned async cleanup and the final
+Session publication or its explicit failure; the Reservation owns this last act.
+Transferred supervision is Supervised, not Finished. The sole supervisor writes
+this same attempt's terminal outcome after cleanup/publication, including errors.
 
-Stop during preparation waits for that exact control's completion notification,
-not a transient Starting-to-Running watch update or a terminal watch from the old
-attempt. Completed preparation means either supervisor ownership transferred
-with that same stop channel, or owned cleanup and exact pre-dispatch restore have
-finished. Then it reads matching persisted/watch status and uses the current
-supervisor path if the attempt was consumed. Return old terminal status only after
-a cancelled unconsumed attempt has finished exact restore; this is no new native
-completion claim. A held cleanup or uncertainty remains observable and cannot be
-reported as successfully stopped.
+Stop atomically cancels Preparing, or queues an interrupt to the captured attempt's
+new channel if Consumed/Supervised. Hold the admission mutex through the exact
+consumed-input Store CAS, reject cancellation with zero turn/start writes, and set
+Consumed only on successful CAS. Failed CAS stays cancellable. Pre-encode the full
+bounded frame first. Use registry then control then Store lock order; admission
+uses control then Store. Never take control from Store or hold a lock over await.
+Checkpoint's final validated-request replacement uses registry/control/Store in
+that order with lock-held helpers, never current()/reference() reentry. Cancellation
+winning before replacement preserves the prior request and exact prior Session.
 
-Keep the new control installed until cleanup/publication is complete. A private
-transition guard restores the old terminal control only if its Arc identity still
-matches the installed attempt. On successful resume the registry and supervisor
-keep the same new control. Checkpoint never consumes model input: check cancellation
-under the control before committing its validated request replacement, restore the
-original Session, and publish completion only afterward. Its final request
-replacement takes registry then control then Store, without await, to serialize
-against stop and preserve the declared lock order. If cancellation wins,
-retain the old checkpoint request. Drop/abort also follows the existing owned
-cleanup/restore or Lost guard before completing this private attempt. Dropping an
-awaiting caller must not detach native startup or falsely mark preparation complete.
-No schema, persisted caller token, native auth/hook/trust changes are introduced.
+Stop awaits only its captured attempt's level-triggered outcome. For restored
+pre-admission cancellation return StateConflict with a factual cancellation/restore
+classification, rather than returning historical Exited as a new successful stop.
+Usage of that restored Session remains the prior actual turn, with no new turn
+attribution. For a consumed attempt, return its own terminal status only if the
+persisted record still matches the captured terminal version/status. If Session
+has advanced to attempt B, return StateConflict identifying advancement, with no
+cancellation or interrupt to B. Unpublished restore or cleanup uncertainty returns
+an explicit error; a completion signal alone never establishes successful stop.
 
-Tests hold real adapter resume at pre-Starting installation, persisted Starting,
-final admission, and post-consumption/pre-ack windows using bounded synthetic
-native RPC plus real owned groups. Assert no old-channel SessionLost, exact
-cancelled pre-consumption restore, zero turn/start writes and consumption, both
-linearized admission/stop orderings, queued interrupt after ack, unknown ack Lost,
-watch/Store consistency and confirmed cleanup. Checkpoint tests assert cancellation
-cannot replace input, and owner-future drop cannot leave live startup. Compiled
-consumer mutants omit current-control lookup, cancel check, admission lock/ordering,
-channel transfer or completion-after-cleanup; restore source and repeat controls.
-This design needs independent approval before implementation, and the installed
-native bootstrap/descendant containment findings remain separate merge blockers.
+The per-attempt task is owned independently of the caller future. Make the private
+adapter registry Arc-shared so the task can own immutable adapter handles and the
+TransitionClaim. Keep its JoinHandle in the registered attempt, release that handle
+on task completion, and never abort it when a caller disappears. A caller-side
+guard requests cancellation on drop; it cannot claim native completion. The owned
+task continues bounded cleanup and exact restore before completing the attempt.
+Panic/runtime shutdown retains the existing conservative Drop/Lost fallback and
+finishes with a typed uncertain/unpublished outcome, never a fabricated restore.
+No task may be spawned without its registered control/transition ownership.
+
+Check cancellation before Starting publication, every child spawn, thread/start or
+thread/resume, each inventory page, final binding and checkpoint publication.
+Cancellation-aware bounded Git waits retain their ProcessGroup outside the select:
+on cancel explicitly kill/inspect/reap asynchronously before returning. Preserve
+the existing five-second Git budget and process inspection/death guards. Expose
+this through an additive private helper; existing callers keep unchanged behavior.
+Native bootstrap similarly retains its group locally through cancellation and
+awaits owned shutdown. Cancellation of RPC setup borrows an existing NativeServer;
+drop only that RPC future, then await native.shutdown before restore. Never select
+away a whole future that exclusively owns a child and then claim cleanup proved.
+Read-only filesystem jobs retain existing bounded handling and carry no model
+input or Store write. Intermediate cancellation prevents later spawns/UUID setup,
+not merely the final turn/start. Once consumption commits, keep the same stop
+channel through the existing bounded turn acknowledgement; on acknowledgement
+use the five-second terminal drain. Missing acknowledgement remains Lost. No
+existing native RPC/start/cleanup/inspection deadline is relaxed.
+
+Controls live until final cleanup/publication. The transition owner restores the
+old terminal control only on matching installed Arc identity; successful resume
+keeps that same new control for supervision. Separate per-attempt phase/status
+channels prevent a later checkpoint/resume from stealing a stop completion.
+No schema, caller-provided ownership token, native auth/hook/trust change is added.
+
+Tests gate actual resume/checkpoint before Starting, during Git/native bootstrap,
+before admission and after consumption/before ack. Assert no later spawn or
+thread/resume after pre-admission cancel, zero input writes/consumption, exact
+restored Session/request/evidence, verified owned cleanup and bounded completion.
+Exercise both stop/admission orderings, queued interrupts and unobserved ack Lost.
+Stop after Finished-before-old-control restore and stop after long supervision
+must not miss notification. Gate stop-A's waiter; finish A and start checkpoint B
+and resume B, then wake A: no B cancellation or interrupt and A returns bounded.
+Inject restore CAS failure and consumed-then-RPC timeout to assert typed outcomes.
+Drop callers at every held preparation window: owned task restores asynchronously;
+panic remains Lost. Compiled mutants remove cancellation checks, mutex ordering,
+channel transfer, level-triggered Finished, attempt-bound lookup, publication-before-
+completion or owned task lifetime. Kill each with causal consumer assertions,
+restore exact source and run controls. The installed-native descendant/Decision-CWD/
+config-provenance findings remain separate merge blockers. Independent design
+approval precedes implementation; actual scope additions get shared-helper regression.
 
 ## Decision-only sessions
 
