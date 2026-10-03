@@ -610,7 +610,8 @@ impl Store {
         observation: crate::workflow::GateObservation,
     ) -> Result<()> {
         ensure!(
-            observation.outcome.is_some() != observation.error.is_some(),
+            observation.outcome.is_some() != observation.error.is_some()
+                && observation.sources.scope == record.scope,
             "observation needs exactly one actual outcome/error"
         );
         let tx = self

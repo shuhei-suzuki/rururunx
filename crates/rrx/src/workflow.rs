@@ -663,15 +663,16 @@ impl WorkflowEngine {
             "escalation needs reason/evidence"
         );
         let mut snapshot = self.read(task_id)?;
-        ensure!(
-            !has_external_effect(&snapshot.workflow),
-            "external side effect requires reconciliation before escalation"
-        );
         let previous_generation = snapshot.workflow.generation;
         ensure!(
             !snapshot.workflow.finished,
             "finished workflow requires a new Task, not escalation"
         );
+        ensure!(
+            !has_external_effect(&snapshot.workflow),
+            "external side effect requires reconciliation before escalation"
+        );
+
         active(&snapshot.project, &snapshot.goal, &snapshot.task)?;
         ensure!(
             snapshot.workflow.active.is_none(),
@@ -1409,7 +1410,7 @@ impl WorkflowEngine {
     fn fail(&self, mut snapshot: Snapshot, index: usize, reason: String) -> Result<StepResult> {
         let attempt = &mut snapshot.workflow.history[index];
         attempt.state = AttemptState::Failed;
-        attempt.completed_at = Some(now_ms());
+        attempt.completed_at.get_or_insert_with(now_ms);
         attempt.detail = Some(reason.clone());
         let phase = attempt.phase;
         snapshot.task.state = TaskState::WaitingHuman;
@@ -1674,7 +1675,7 @@ impl WorkflowEngine {
                 snapshot.workflow.completed.insert(phase, evidence);
                 let attempt = &mut snapshot.workflow.history[index];
                 attempt.state = AttemptState::Succeeded;
-                attempt.completed_at = Some(now_ms());
+                attempt.completed_at.get_or_insert_with(now_ms);
                 snapshot.workflow.active = None;
                 snapshot.workflow.sources = source.clone();
                 let next = next_phase(&snapshot.workflow);
