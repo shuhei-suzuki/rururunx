@@ -527,6 +527,7 @@ pub struct UsageTracker {
     // for missing native counters on resume.
     baseline: Option<Option<TokenCounters>>,
     valid: [bool; 6],
+    high_water: [Option<u64>; 6],
 }
 impl UsageTracker {
     pub fn new(thread: String, turn: String) -> Self {
@@ -537,10 +538,15 @@ impl UsageTracker {
             last: None,
             baseline: None,
             valid: [true; 6],
+            high_water: [None; 6],
         }
     }
     pub fn resumed(thread: String, turn: String, baseline: Option<TokenCounters>) -> Self {
         Self {
+            high_water: baseline
+                .as_ref()
+                .map(TokenCounters::fields)
+                .unwrap_or([None; 6]),
             baseline: Some(baseline),
             ..Self::new(thread, turn)
         }
@@ -592,16 +598,13 @@ impl UsageTracker {
         if self.total.as_ref() == Some(&total) && self.last.as_ref() == Some(&last) {
             return Ok(false);
         }
-        if let Some(previous) = &self.total {
-            for (index, (before, after)) in previous
-                .fields()
-                .into_iter()
-                .zip(total.fields())
-                .enumerate()
-            {
-                if matches!((before, after), (Some(before), Some(after)) if after < before) {
-                    self.valid[index] = false;
-                }
+        for (index, after) in total.fields().into_iter().enumerate() {
+            let before = self.high_water[index];
+            if matches!((before, after), (Some(before), Some(after)) if after < before) {
+                self.valid[index] = false;
+            }
+            if let Some(after) = after {
+                self.high_water[index] = Some(before.map_or(after, |before| before.max(after)));
             }
         }
         if let Some(Some(baseline)) = &self.baseline {
@@ -823,6 +826,34 @@ mod tests {
                 .unwrap();
         }
         assert_eq!(fresh.turn_counters().unwrap().input, None);
+    }
+    #[test]
+    fn missing_counter_snapshot_cannot_hide_a_later_native_reset() {
+        for resumed in [false, true] {
+            let mut tracker = if resumed {
+                UsageTracker::resumed(
+                    "thread".into(),
+                    "turn".into(),
+                    Some(
+                        TokenCounters::from_native(&json!({"inputTokens":10,"outputTokens":5}))
+                            .unwrap(),
+                    ),
+                )
+            } else {
+                UsageTracker::new("thread".into(), "turn".into())
+            };
+            for total in [
+                json!({"inputTokens":100,"outputTokens":20}),
+                json!({"outputTokens":25}),
+                json!({"inputTokens":80,"outputTokens":30}),
+                json!({"inputTokens":130,"outputTokens":35}),
+            ] {
+                tracker.update(&usage(total, json!({}))).unwrap();
+            }
+            let counters = tracker.turn_counters().unwrap();
+            assert_eq!(counters.input, None);
+            assert_eq!(counters.output, Some(if resumed { 30 } else { 35 }));
+        }
     }
 
     #[test]
