@@ -96,6 +96,24 @@ impl BrowserConfig {
 }
 impl BrowserConfig {
     pub fn validate(&self) -> Result<()> {
+        for executable in self
+            .bridge_command
+            .first()
+            .into_iter()
+            .chain(
+                self.model
+                    .as_ref()
+                    .and_then(|m| m.custom_command.as_ref())
+                    .and_then(|c| c.first()),
+            )
+            .map(String::as_str)
+            .chain(self.browser_executable.as_ref().and_then(|p| p.to_str()))
+        {
+            ensure!(
+                Path::new(executable).is_absolute() || !executable.contains('/'),
+                "browser executable paths must be absolute or resolved from runtime PATH"
+            );
+        }
         ensure!(
             (100..=600_000).contains(&self.timeout_ms),
             "browser timeout out of bounds"
@@ -578,12 +596,34 @@ impl BridgeVerifier {
         backend: Backend,
     ) -> VerificationResult {
         let session_id = context.session_id;
+        // Resolve runtime-owned programs before adopting a Project-controlled cwd.
+        let mut config = self.config.clone();
+        if let Some(executable) = &config.browser_executable {
+            let Some(name) = executable.to_str() else {
+                return empty_result(request, session_id, backend, Failure::Unavailable);
+            };
+            match crate::adapter::resolve_executable(name) {
+                Ok(path) => config.browser_executable = Some(path),
+                Err(_) => return empty_result(request, session_id, backend, Failure::Unavailable),
+            }
+        }
+        if backend == Backend::Stagehand
+            && let Some(command) = config
+                .model
+                .as_mut()
+                .and_then(|m| m.custom_command.as_mut())
+        {
+            match crate::adapter::resolve_executable(&command[0]) {
+                Ok(path) => command[0] = path.to_string_lossy().into_owned(),
+                Err(_) => return empty_result(request, session_id, backend, Failure::Unavailable),
+            }
+        }
         let payload = match serde_json::to_vec(&BridgeRequest {
             protocol_version: 1,
             request,
             session_id,
             backend,
-            config: &self.config,
+            config: &config,
             artifact_dir: context.artifacts,
         }) {
             Ok(payload) if payload.len() <= 65_536 => payload,
@@ -629,6 +669,7 @@ impl BridgeVerifier {
                             && r.success == r.failure.is_none()
                     })
                     .unwrap_or_else(|| empty_result(request, session_id, backend, failure));
+                result.fallback_used = false;
                 fail_result(&mut result, failure, "bridge_supervision");
                 result.effect_possible |= request.steps.iter().any(Step::mutating);
                 result
@@ -652,7 +693,9 @@ impl BridgeVerifier {
         if Instant::now() >= deadline {
             return Err(BridgeFailure(Failure::Timeout).into());
         }
-        let mut process = Command::new(&command[0]);
+        let executable = crate::adapter::resolve_executable(&command[0])
+            .map_err(|_| BridgeFailure(Failure::Unavailable))?;
+        let mut process = Command::new(executable);
         process
             .args(&command[1..])
             .current_dir(cwd)
@@ -670,13 +713,31 @@ impl BridgeVerifier {
             "LANG",
             "LC_ALL",
             "XDG_CONFIG_HOME",
-            "CLAUDE_CONFIG_DIR",
         ]
         .into_iter()
         .chain(binding.project.environment_refs.iter().map(String::as_str))
         {
             if let Some(value) = std::env::var_os(key) {
                 process.env(key, value);
+            }
+        }
+        if self.config.headed {
+            for key in [
+                "DISPLAY",
+                "WAYLAND_DISPLAY",
+                "XAUTHORITY",
+                "XDG_RUNTIME_DIR",
+            ] {
+                if (!binding.other_project_environment.contains(key)
+                    || binding
+                        .project
+                        .environment_refs
+                        .iter()
+                        .any(|reference| reference == key))
+                    && let Some(value) = std::env::var_os(key)
+                {
+                    process.env(key, value);
+                }
             }
         }
         for (key, value) in std::env::vars_os() {
@@ -810,7 +871,11 @@ impl BridgeVerifier {
             .map_err(|_| BridgeFailure(Failure::Cleanup))?
             .success()
         {
-            return Err(BridgeFailure(Failure::Operation).into());
+            return Err(BridgePartial {
+                failure: Failure::Operation,
+                output,
+            }
+            .into());
         }
         output.context("bridge output missing")
     }

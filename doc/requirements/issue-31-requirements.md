@@ -2,6 +2,9 @@
 
 Source: [user-authored Issue #31](https://github.com/shuhei-suzuki/rururunx/issues/31).
 
+Product v0.8 priority: deterministic headed verification is MVP Core; adaptive
+Stagehand/Jev acceptance is optional/stretch and must not delay Core work.
+
 ## Required behavior
 
 - A provider-neutral Rust `BrowserVerifier` manages a fresh bounded verification

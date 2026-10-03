@@ -2,6 +2,10 @@
 
 ## Interface and boundaries
 
+Product v0.8 treats deterministic headed verification as MVP Core. Adaptive
+Stagehand/Jev support is optional/stretch; its remaining review/acceptance must
+not gate the core supervision runtime.
+
 `rrx::browser::BrowserVerifier` exposes capability discovery and `verify` over a
 typed batch of `Step`s. `BrowserBinding::capture` copies durable Project/Task rows;
 release the caller's Store lock before `validate`, capability probes or verification.
@@ -181,6 +185,15 @@ Stagehand session metrics; unreported price/callback count remains null.
 Deterministic runs report measured `llm_calls=0` without inventing token/cost zeros.
 
 ## Setup and verification
+
+Executable paths must be absolute or bare program names resolved using the
+trusted runtime's absolute PATH entries before adopting the Task cwd. The same
+rule applies to explicitly configured Chrome and adaptive callback programs.
+Runtime-supplied arguments remain trusted; use absolute helper script paths.
+Headed sessions forward native display routing (DISPLAY/WAYLAND_DISPLAY/
+XAUTHORITY/XDG_RUNTIME_DIR), with other-Project environment references excluded
+unless the current Project also authorizes that name. Valid scoped terminal
+results retain usage even on nonzero exit; Rust sets actual fallback facts.
 
 ```sh
 cd scripts/browser

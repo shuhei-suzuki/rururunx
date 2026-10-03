@@ -313,6 +313,24 @@ fn artifact_ancestor_symlinks_cannot_cross_projects() {
 
 #[test]
 fn project_overlay_tightens_policy_and_cannot_supply_executables() {
+    for command in ["./project-program", "bin/project-program"] {
+        let mut invalid = BrowserConfig {
+            bridge_command: vec![command.into()],
+            ..Default::default()
+        };
+        assert!(invalid.validate().is_err());
+        invalid.bridge_command = vec!["node".into()];
+        assert!(invalid.validate().is_ok());
+        invalid.browser_executable = Some(command.into());
+        assert!(invalid.validate().is_err());
+        invalid.browser_executable = None;
+        invalid.model = Some(ModelConfig {
+            model_name: None,
+            api_key_env: None,
+            custom_command: Some(vec![command.into()]),
+        });
+        assert!(invalid.validate().is_err());
+    }
     let mut config = BrowserConfig {
         headed: true,
         safe_fallback: false,
@@ -348,6 +366,8 @@ fn provider_baseline_does_not_leak_another_projects_scoped_api_key() {
             ])
             .env("RRX_BROWSER_ENV_FIXTURE_CHILD", "true")
             .env("ANTHROPIC_API_KEY", "synthetic-other-project-key")
+            .env("CLAUDE_CONFIG_DIR", "synthetic-other-config")
+            .env("DISPLAY", ":99")
             .output()
             .unwrap();
         assert!(
@@ -365,26 +385,35 @@ fn provider_baseline_does_not_leak_another_projects_scoped_api_key() {
         other.binding.project().repository_identity.clone(),
         other.binding.project().base_branch.clone(),
     );
-    project.environment_refs = vec!["ANTHROPIC_API_KEY".into()];
+    // Defend even malformed lower-level Store rows; registry disallows CLAUDE_* refs.
+    project.environment_refs = vec!["ANTHROPIC_API_KEY".into(), "CLAUDE_CONFIG_DIR".into()];
     fixture.store.put_project(&mut project).unwrap();
     fixture.binding =
         BrowserBinding::capture(&fixture.store, &fixture.binding.task().scope()).unwrap();
     let request = fixture.request();
     let script = SUCCESS_BRIDGE.replace(
         "'owned_group':os.getpid()==os.getpgrp()",
-        "'key_present':'ANTHROPIC_API_KEY' in os.environ",
+        "'key_present':'ANTHROPIC_API_KEY' in os.environ,'config_present':'CLAUDE_CONFIG_DIR' in os.environ,'display_present':'DISPLAY' in os.environ",
     );
     let verifier = BridgeVerifier {
         config: fixture.config(&script),
     };
     let result = verifier.verify(&fixture.binding, &request).unwrap();
     assert_eq!(result.evidence[0]["key_present"], json!(false));
+    assert_eq!(result.evidence[0]["config_present"], json!(false));
+    assert_eq!(result.evidence[0]["display_present"], json!(false));
     let mut current = fixture.binding.project().clone();
     current.environment_refs = vec!["ANTHROPIC_API_KEY".into()];
     fixture.store.put_project(&mut current).unwrap();
     fixture.binding = BrowserBinding::capture(&fixture.store, &request.scope).unwrap();
-    let result = verifier.verify(&fixture.binding, &request).unwrap();
+    let mut headed = verifier.config.clone();
+    headed.headed = true;
+    let result = BridgeVerifier { config: headed }
+        .verify(&fixture.binding, &request)
+        .unwrap();
     assert_eq!(result.evidence[0]["key_present"], json!(true));
+    assert_eq!(result.evidence[0]["config_present"], json!(false));
+    assert_eq!(result.evidence[0]["display_present"], json!(true));
 }
 
 #[test]
@@ -448,7 +477,7 @@ fn fallback_attempts_share_one_total_deadline() {
 
 #[test]
 fn post_attempt_failures_preserve_effects_usage_and_scoped_results() {
-    for case in ["artifact", "binding", "record", "sessions"] {
+    for case in ["artifact", "binding", "record", "sessions", "nonzero"] {
         let fixture = Fixture::new();
         let mut request = fixture.request();
         request.steps.push(Step::Click {
@@ -459,12 +488,13 @@ fn post_attempt_failures_preserve_effects_usage_and_scoped_results() {
             "artifact" => "r['artifacts']=['missing.png']",
             "binding" => "os.rename(os.getcwd(),os.getcwd()+'.moved')",
             "record" => "os.mkdir(os.path.join(i['artifact_dir'],'verification.json'))",
+            "nonzero" => "r['fallback_used']=True",
             _ => {
                 "r['usage']['native_sessions']=[str(__import__('uuid').uuid4()) for _ in range(65)]"
             }
         };
         let script = script.replace("print(json.dumps(r))", &format!(
-            "r['usage']={{'llm_calls':1,'input_tokens':7,'native_sessions':['00000000-0000-4000-8000-000000000001']}}\n{extra}\nprint(json.dumps(r))"));
+            "r['usage']={{'llm_calls':1,'input_tokens':7,'native_sessions':['00000000-0000-4000-8000-000000000001']}}\n{extra}\nprint(json.dumps(r))\n{}", if case=="nonzero" {"sys.exit(1)"} else {""}));
         let mut config = fixture.config(&script);
         config.allow_loopback_actions = true;
         config.max_output_bytes = 16384;
@@ -475,11 +505,19 @@ fn post_attempt_failures_preserve_effects_usage_and_scoped_results() {
         assert!(result.effect_possible);
         assert_eq!(result.usage.input_tokens, Some(7), "{case}: {result:?}");
         assert_eq!(result.scope, request.scope);
+        assert!(!result.fallback_used);
         if case == "record" {
             assert_eq!(result.failure, Some(Failure::Cleanup));
             assert!(result.verification_file.is_none());
         } else {
-            assert_eq!(result.failure, Some(Failure::Protocol));
+            assert_eq!(
+                result.failure,
+                Some(if case == "nonzero" {
+                    Failure::Operation
+                } else {
+                    Failure::Protocol
+                })
+            );
             let stored: VerificationResult =
                 serde_json::from_slice(&fs::read(result.verification_file.unwrap()).unwrap())
                     .unwrap();
