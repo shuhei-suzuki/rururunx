@@ -166,7 +166,7 @@ Goal execution must load rules, source-of-truth documents, worktree policy, and 
 
 Multiple Goals from different Projects may run concurrently in one Runtime.
 
-### 6.3 Goal completion
+### 6.2 Goal completion
 
 A Goal must define explicit completion criteria.
 
@@ -820,7 +820,7 @@ After Runtime restart, rururunx must restore:
 
 MVP dogfooding must demonstrate at least two separate repositories/Projects progressing concurrently, with multiple Tasks overall and no cross-project context/worktree contamination.
 
-## 34. Scheduler and states
+## 33. Scheduler and states
 
 The scheduler manages running, idle, waiting, review, human-waiting, failure, resume, and concurrency.
 
