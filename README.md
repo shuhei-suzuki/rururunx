@@ -213,9 +213,18 @@ The command examples above describe the MVP target. Currently implemented:
   Inspect existing Task bindings locally with:
   `cargo run --example repository-context -- --state STATE.db --task TASK_UUID map`
   (or `select "task text"`, `expand file src/lib.rs`; `--include` admits a specific
-  ignored source, `--evidence` makes its full content mandatory). Workflow and
-  durable Context Pack integration remain pending. See
+  ignored source, `--evidence` makes its full content mandatory). Workflow
+  integration is being implemented separately. See
   [Issue 18 design](doc/design/issue-18-design.md) for limits and lexical accuracy.
+- Issue 19 adds the `ContextPacks` Rust API: append-only Task/Goal packs with
+  scoped artifact digests, explicit stale-reference checks, atomic context pointers,
+  and deterministic execution/consultation checkpoints. All typed semantic facts
+  survive condensation; a configurable byte window bounds transient history.
+  Goal packs reference Task packs and can observe primary rules/artifacts before
+  Tasks exist or after owned worktree cleanup. Terminal Task refs stay historical.
+  Provider token measurements remain null unless supplied. Automatic native event
+  normalization, CLI/TUI transport and the Workflow phase publication port remain
+  pending; see [Issue 19 design](doc/design/issue-19-design.md).
 - Library Git/worktree management with project ownership checks, protected branches,
   dirty-state checks, durable logical review locks and safe merged cleanup. CLI/workflow
   integration and interrupted-operation reconciliation are pending.

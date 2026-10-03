@@ -972,7 +972,7 @@ Issue 18's initial implementation is a Task-scoped local Rust library with a CLI
 inspection example, lexical graphs, deterministic budgeted selection/expansion,
 mandatory-context budget failures and content-based freshness. Its byte-derived
 token estimates are explicitly separate from measured provider usage. Full
-workflow/Context Pack integration remains pending; implementation requirements
+workflow integration remains pending; implementation requirements
 and bounds are in [Issue 18 requirements](issue-18-requirements.md).
 
 The runtime must maintain a compact local representation of the repository sufficient to select relevant context without injecting the full repository into every agent call.
@@ -988,6 +988,14 @@ The index should support, where practical:
 Only a budgeted, task-relevant slice is injected by default.
 
 ### 38.2 Versioned Task Context Pack
+
+Issue 19 implements the typed `ContextPacks` library: atomic version/pointer/audit
+publication, actual source/state freshness, primary-root read-only Goal packs and
+immutable finalized Task references. Deterministic typed-event checkpoints preserve
+semantic facts and bound only transient history by a labeled byte estimate.
+Consultant promotion preserves scoped historical provenance without copying its
+transcript. Automatic native event classification, transport and Workflow phase
+publication are separate integrations. See [Issue 19 requirements](issue-19-requirements.md).
 
 Each Task must maintain a versioned Context Pack containing durable working context such as:
 

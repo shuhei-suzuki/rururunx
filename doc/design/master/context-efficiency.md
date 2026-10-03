@@ -72,7 +72,15 @@ evidence and requested expansions must fit; otherwise it returns `NeedsBudget`.
 `utf8_bytes_v1` is a labeled packing estimate, with nullable provider measurement.
 Source and Git scans run outside the shared Store mutex and recheck state versions
 before audit mutation. See [bounded retrieval design](../issue-18-design.md).
-Durable Context Pack publishing and workflow integration remain separate work.
+Issue 19's `ContextPacks` service publishes typed Task and Goal artifacts atomically
+with their durable pointers and audit events. It captures primary Project sources
+read-only for Goal packs and retains terminal Task context refs as non-launchable
+history after cleanup. Task preparation selects current sources under the complete
+rendered budget; dirty files, rules/config and state changes invalidate stale packs.
+Database/pointer versions are CAS guards, separate from phase-stable physical and
+instruction hashes. The Workflow Engine integration is pending Issue 8's merge;
+standalone publishers reject workflow ownership and live/Lost launch contexts.
+See [durable pack design](../issue-19-design.md).
 
 Maintain a compact repository index inspired by repository-map approaches:
 
@@ -120,6 +128,17 @@ Checkpoint must preserve at least:
 Recent events remain verbatim for a configurable window.
 
 Condensation must be auditable and must not overwrite authoritative requirements/design artifacts.
+
+Issue 19 implements deterministic condensation over typed, consecutive events.
+Goals, decisions, completed work, failures, findings, next actions, constraints,
+critical references and verification remain intact across checkpoints. Only
+explicitly transient events leave the configurable serialized-byte tail. Mandatory
+state overflow fails explicitly; no summarizer guesses which text is safe to drop.
+Checkpoint refs bind exact Session/Task/Goal provenance and retain historical source
+metadata. Cross-Task Consultant promotion requires the same Project/Goal and copies
+semantic facts without its recent transcript. Native event normalization and
+checkpoint scheduling remain caller/transport integrations, not measured runtime
+model behavior.
 
 ## 7. Review Bundle
 
