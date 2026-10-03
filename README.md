@@ -365,3 +365,10 @@ support `--json`. Display-name ambiguity requires a UUID.
 Interrupted worktree creation or invalidated review locks can retain reservations;
 explicit audited lock reconciliation CLI is pending in restart/recovery work.
 Removal remains blocked until those reservations are reconciled.
+
+Issue 19 typed native input validation binds actual request bytes to the complete
+immutable Workflow frame or a privately prepared standalone frame hash. Ordered
+schema 4→5 fences older writers. Provider adapters must call the pure scoped
+`Store::validate_context_input` check and preserve request-to-wire correspondence;
+Session metadata alone is not evidence of delivered model input. Conservative
+checkpoint invalidation and post-PR reconciliation still depend on Issues 13/23.

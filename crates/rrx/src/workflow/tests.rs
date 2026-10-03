@@ -1155,6 +1155,9 @@ fn ordered_format_migration_preserves_v2_state_and_unknown_future_is_rejected() 
     let fixture = Fixture::new(WorkflowClass::Quick);
     let db = fixture.dir.path().join("state.db");
     let connection = rusqlite::Connection::open(&db).unwrap();
+    connection
+        .execute_batch("DROP TABLE prepared_pack_inputs; DROP TABLE checkpoint_heads;")
+        .unwrap();
     connection.pragma_update(None, "user_version", 2).unwrap();
     drop(connection);
     let restored = Store::open(&db).unwrap();

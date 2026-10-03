@@ -121,7 +121,9 @@ fn validate(
     )?;
     let task: Task = decode(body)?;
     ensure!(
-        frame.version == context.version
+        context.scope == *scope
+            && task.scope() == *scope
+            && frame.version == context.version
             && task.context_version == context.version
             && frame.revision == context.revision,
         "native input differs from latest typed Task authority"
