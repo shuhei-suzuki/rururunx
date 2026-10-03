@@ -1,0 +1,209 @@
+# Workflow Engine Design
+
+**Status:** Draft
+**Scope:** MVP workflow orchestration
+
+## 1. Goal
+
+Represent the current development process as an executable stateful workflow while allowing lighter paths for small changes.
+
+## 2. Built-in workflow presets
+
+### QUICK
+
+```text
+Prepare Worktree
+→ Implement
+→ Relevant Verification
+→ Review
+→ Commit
+→ PR
+```
+
+### STANDARD
+
+```text
+Issue
+→ Worktree
+→ Requirements
+→ Requirements Review
+→ Design
+→ Design Review
+→ Implement
+→ Impact Analysis
+→ Tests
+→ Implementation Review
+→ PR
+→ Merge Gate
+→ Cleanup
+```
+
+### STRICT
+
+STANDARD plus configured:
+
+- security review
+- expanded regression
+- mutation verification
+- headed browser verification
+- staging verification
+- stricter merge gate
+
+## 3. Workflow selection
+
+Selection sources, highest precedence first:
+
+1. project policy minimum
+2. explicit stricter user choice
+3. risk classifier recommendation
+4. default workflow
+
+A user may make a workflow stricter.
+
+A workflow must not be automatically downgraded below project minimum.
+
+## 4. Dynamic escalation
+
+Any phase may raise risk.
+
+Examples:
+
+- shared module discovered → QUICK to STANDARD
+- DB schema/auth/security boundary discovered → STRICT
+
+Escalation records:
+
+- old workflow
+- new workflow
+- reason
+- triggering evidence
+- timestamp
+
+## 5. Phase contract
+
+Each phase declares:
+
+- prerequisites
+- inputs
+- actor type
+- outputs/artifacts
+- success criteria
+- required reviews
+- allowed retry behavior
+- failure/escalation behavior
+
+## 6. Review policy
+
+Review policy is data, not hard-coded Triple Review logic.
+
+Example:
+
+```yaml
+implementation_review:
+  reviewers: [claude, codex]
+  completion: all
+  parallel: true
+```
+
+Example triple preset:
+
+```yaml
+implementation_review:
+  preset: triple-adversarial
+  reviewers: [claude, codex, grok]
+  completion: all
+  parallel: true
+```
+
+Example quorum:
+
+```yaml
+implementation_review:
+  reviewers: [claude, codex, grok]
+  completion: quorum
+  quorum: 2
+```
+
+Supported completion modes:
+
+- `all`
+- `quorum`
+- `any`
+
+## 7. Review rounds
+
+A failed/blocking review transitions to a remediation loop:
+
+```text
+Review
+→ Verify findings
+→ Fix
+→ Commit
+→ Re-run required verification
+→ Re-review
+```
+
+The workflow keeps round history rather than overwriting previous review results.
+
+## 8. Impact analysis gate
+
+STANDARD/STRICT may require an impact-analysis artifact before test completion.
+
+The artifact should include:
+
+- changed contract/symbol/value
+- consumers searched
+- impacted locations
+- non-impact rationale
+- tests selected from analysis
+
+## 9. Mutation gate
+
+When required by policy, mutation verification is a separate gate with evidence of:
+
+- mutation introduced
+- expected test failed
+- original implementation restored
+- test passed
+- worktree clean
+
+## 10. Browser and staging gates
+
+Project policy determines when these gates are mandatory.
+
+They should generate durable evidence references for PR/report generation.
+
+## 11. Merge gate
+
+Merge gate checks configured conditions such as:
+
+- required reviews satisfied
+- no unresolved Critical/High
+- security review satisfied
+- required tests passed
+- PR not draft
+- base branch allowed
+- production-impact policy satisfied
+
+If a configured condition requires a human, state becomes WAITING_HUMAN.
+
+## 12. Project rule precedence
+
+Project-specific configuration/rules override global defaults.
+
+The engine should load project rules before selecting a workflow and again when entering phases whose scoped rules may differ.
+
+## 13. Human override
+
+Human actions should be explicit and audited.
+
+Supported examples:
+
+- choose stricter workflow
+- approve an escalated decision
+- cancel task
+- retry failed phase
+- choose alternate reviewer/executor
+- require manual merge
+
+Human override should not silently disable mandatory project safety rules.
