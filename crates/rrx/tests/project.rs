@@ -327,18 +327,18 @@ fn config_rules_environment_and_symlinks_never_cross_project() {
         )
         .unwrap();
     let b = f.add(&mut s, &f.b);
-    let ac = effective_config(&a, &runtime).unwrap();
-    let bc = effective_config(&b, &runtime).unwrap();
+    let ac = effective_config(&s, a.id, &runtime).unwrap();
+    let bc = effective_config(&s, b.id, &runtime).unwrap();
     assert_eq!(ac.scheduler.max_tasks_per_project, 2);
     assert_eq!(ac.scheduler.global_max_sessions, 12);
     assert!(!ac.context.enabled);
     assert!(bc.context.enabled);
-    assert_eq!(environment_names(&a).unwrap(), ["PROJECT_A_TOKEN"]);
-    assert!(environment_names(&b).unwrap().is_empty());
+    assert_eq!(environment_names(&s, a.id).unwrap(), ["PROJECT_A_TOKEN"]);
+    assert!(environment_names(&s, b.id).unwrap().is_empty());
     assert_eq!(a.rule_refs, [f.a.join("rules.md")]);
     assert!(b.rule_refs.is_empty());
-    assert!(scoped_file(&a, &f.b.join("rules.md")).is_err());
-    assert!(scoped_file(&a, Path::new("../b/rules.md")).is_err());
+    assert!(scoped_file(&s, a.id, &f.b.join("rules.md")).is_err());
+    assert!(scoped_file(&s, a.id, Path::new("../b/rules.md")).is_err());
     std::os::unix::fs::symlink(f.b.join("rules.md"), f.a.join("foreign.md")).unwrap();
     assert!(
         Registry::new(&mut s)
@@ -360,6 +360,20 @@ fn config_rules_environment_and_symlinks_never_cross_project() {
         "LD_PRELOAD",
         "RRX_STATE_PATH",
         "1TOKEN",
+        "ANTHROPIC_BASE_URL",
+        "OPENAI_BASE_URL",
+        "HTTPS_PROXY",
+        "http_proxy",
+        "SSL_CERT_FILE",
+        "NODE_EXTRA_CA_CERTS",
+        "CLAUDE_CODE_DEBUG",
+        "CODEX_CONFIG",
+        "PYTHONHOME",
+        "EDITOR",
+        "RUBYOPT",
+        "NODE_PATH",
+        "TMPDIR",
+        "XDG_CACHE_HOME",
     ] {
         assert!(
             Registry::new(&mut s)
@@ -377,11 +391,11 @@ fn config_rules_environment_and_symlinks_never_cross_project() {
     }
     std::fs::remove_file(f.a.join("project.toml")).unwrap();
     std::os::unix::fs::symlink(f.b.join("rules.md"), f.a.join("project.toml")).unwrap();
-    assert!(effective_config(&a, &runtime).is_err());
+    assert!(effective_config(&s, a.id, &runtime).is_err());
     Registry::new(&mut s).reconcile().unwrap();
     let blocked = s.project(a.id).unwrap().unwrap();
     assert_eq!(blocked.state, ProjectState::Blocked);
-    assert!(effective_config(&blocked, &runtime).is_err());
+    assert!(effective_config(&s, blocked.id, &runtime).is_err());
     let out = f.cli(
         &f.root,
         &[
@@ -532,7 +546,7 @@ fn separate_git_directory_and_symlink_namespace_are_not_source_references() {
         ],
     );
     let p = f.add(&mut store, &f.a);
-    assert!(scoped_file(&p, Path::new("metadata/config")).is_err());
+    assert!(scoped_file(&store, p.id, Path::new("metadata/config")).is_err());
     assert!(
         Registry::new(&mut store)
             .add(
@@ -574,7 +588,7 @@ fn separate_git_directory_and_symlink_namespace_are_not_source_references() {
     std::fs::create_dir(&nested).unwrap();
     git(&nested, &["init", "-b", "main"]);
     std::fs::write(nested.join("rules.md"), "foreign").unwrap();
-    assert!(scoped_file(&p, &nested.join("rules.md")).is_err());
+    assert!(scoped_file(&store, p.id, &nested.join("rules.md")).is_err());
     assert!(
         Registry::new(&mut store)
             .add(
@@ -591,4 +605,235 @@ fn separate_git_directory_and_symlink_namespace_are_not_source_references() {
         store.project(p.id).unwrap().unwrap().worktree_root,
         p.worktree_root
     );
+}
+
+#[test]
+fn cleared_refs_recover_and_stale_input_snapshots_are_rejected() {
+    let f = Fixture::new();
+    std::fs::write(f.a.join("project.toml"), "[context]\nenabled = false").unwrap();
+    let text = f.good(&[
+        "--project-config",
+        "project.toml",
+        "project",
+        "add",
+        f.a.to_str().unwrap(),
+        "--rule",
+        "rules.md",
+        "--env-ref",
+        "PROJECT_A_TOKEN",
+    ]);
+    let id: ProjectId = text.split('\t').next().unwrap().parse().unwrap();
+    std::fs::remove_file(f.a.join("project.toml")).unwrap();
+    std::fs::remove_file(f.a.join("rules.md")).unwrap();
+    f.good(&["project", "list"]);
+    let text = f.good(&[
+        "project",
+        "add",
+        f.a.to_str().unwrap(),
+        "--clear-project-config",
+        "--clear-rules",
+        "--clear-env-refs",
+    ]);
+    assert!(text.starts_with(&id.to_string()));
+    let store = Store::open(&f.db).unwrap();
+    let p = store.project(id).unwrap().unwrap();
+    assert_eq!(p.state, ProjectState::Registered);
+    assert!(p.config_ref.is_none() && p.rule_refs.is_empty() && p.environment_refs.is_empty());
+    f.good(&["project", "remove", &id.to_string()]);
+    // Existing connection and old snapshot both predate removal in another process.
+    assert_eq!(p.state, ProjectState::Registered);
+    assert!(effective_config(&store, id, &Config::default()).is_err());
+    assert!(environment_names(&store, id).is_err());
+    assert!(scoped_file(&store, id, Path::new("rules.md")).is_err());
+}
+#[test]
+fn blocked_projects_accept_lost_and_blocker_updates_without_starting_new_work() {
+    let f = Fixture::new();
+    let mut s = Store::open(&f.db).unwrap();
+    let p = f.add(&mut s, &f.a);
+    let mut g = goal(&mut s, &p);
+    let mut t = task(&mut s, &p, &g);
+    let wt = WorktreeManager::create(&mut s, t.id).unwrap();
+    t = s.task(t.id).unwrap().unwrap();
+    let mut session = Session {
+        id: SessionId::new(),
+        scope: t.scope(),
+        agent: "fake".into(),
+        provider: "fixture".into(),
+        role: SessionRole::Executor,
+        native_ref: None,
+        pid: None,
+        worktree: wt.worktree,
+        state: SessionState::Running,
+        model: None,
+        effort: None,
+        recovery: json!({}),
+        started_at: now_ms(),
+    };
+    let version = s.put_session(&session, 0).unwrap();
+    // Reconciliation blocks source that has moved; existing process remains unknown/live.
+    std::fs::rename(&f.a, f.root.join("moved")).unwrap();
+    Registry::new(&mut s).reconcile().unwrap();
+    session.state = SessionState::Lost;
+    let version = s.put_session(&session, version).unwrap();
+    g.state = GoalState::Blocked;
+    g.blockers.push("source moved".into());
+    s.put_goal(&mut g).unwrap();
+    t.blockers.push("source moved".into());
+    s.put_task(&mut t).unwrap();
+    assert!(
+        Registry::new(&mut s)
+            .remove(&p.id.to_string(), &f.root)
+            .is_err()
+    );
+    session.state = SessionState::Running;
+    assert!(s.put_session(&session, version).is_err());
+    session.state = SessionState::Lost;
+    session.id = SessionId::new();
+    assert!(s.put_session(&session, 0).is_err());
+    g.state = GoalState::Running;
+    assert!(s.put_goal(&mut g).is_err());
+    let mut new_task = Task::new(p.id, g.id, "new".into(), "fake".into());
+    assert!(s.put_task(&mut new_task).is_err());
+}
+#[test]
+fn blocked_cwd_and_missing_git_never_infer_or_rebind_foreign_sources() {
+    let f = Fixture::new();
+    let mut store = Store::open(&f.db).unwrap();
+    let a = f.add(&mut store, &f.a);
+    let b = f.add(&mut store, &f.b);
+    let out = Command::new(env!("CARGO_BIN_EXE_rrx"))
+        .current_dir(&f.root)
+        .arg("--state")
+        .arg(&f.db)
+        .args(["project", "list"])
+        .env("PATH", "")
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    assert_eq!(
+        store.project(a.id).unwrap().unwrap().state,
+        ProjectState::Registered
+    );
+    assert_eq!(
+        store.project(b.id).unwrap().unwrap().state,
+        ProjectState::Registered
+    );
+    let mut p = a.clone();
+    p.state = ProjectState::Blocked;
+    p.blocked_reason = Some("fixture".into());
+    store.put_project(&mut p).unwrap();
+    let nested = f.a.join("nested");
+    std::fs::create_dir(&nested).unwrap();
+    git(&nested, &["init", "-b", "main"]);
+    assert!(Registry::new(&mut store).resolve(None, &nested).is_err());
+    assert!(
+        Registry::new(&mut store)
+            .resolve(None, &f.a.join(".git"))
+            .is_err()
+    );
+    assert_eq!(
+        Registry::new(&mut store).resolve(None, &f.a).unwrap().id,
+        a.id
+    );
+    std::fs::rename(&f.a, f.root.join("old-a")).unwrap();
+    std::fs::rename(&f.b, &f.a).unwrap();
+    assert!(Registry::new(&mut store).resolve(None, &f.a).is_err());
+}
+#[test]
+fn active_creation_and_removal_race_has_one_valid_winner() {
+    use std::sync::{Arc, Barrier};
+    let f = Fixture::new();
+    let mut s = Store::open(&f.db).unwrap();
+    let p = f.add(&mut s, &f.a);
+    let barrier = Arc::new(Barrier::new(2));
+    let db = f.db.clone();
+    let root = f.root.clone();
+    let project = p.clone();
+    let gate = barrier.clone();
+    let remove = std::thread::spawn(move || {
+        let mut s = Store::open(&db).unwrap();
+        gate.wait();
+        Registry::new(&mut s)
+            .remove(&project.id.to_string(), &root)
+            .is_ok()
+    });
+    let db = f.db.clone();
+    let project = p.clone();
+    let create = std::thread::spawn(move || {
+        let mut s = Store::open(&db).unwrap();
+        barrier.wait();
+        let mut g = Goal::new(
+            project.id,
+            "race".into(),
+            vec![CompletionCriterion {
+                id: "done".into(),
+                description: "race".into(),
+                evidence: None,
+                satisfied: false,
+            }],
+        );
+        s.put_goal(&mut g).is_ok()
+    });
+    assert_ne!(remove.join().unwrap(), create.join().unwrap());
+    let stored = s.project(p.id).unwrap().unwrap();
+    assert_eq!(
+        stored.state == ProjectState::Removed,
+        s.goals(p.id).unwrap().is_empty()
+    );
+}
+
+#[test]
+fn schema_one_project_migrates_without_changing_identity_or_history() {
+    let f = Fixture::new();
+    let mut store = Store::open(&f.db).unwrap();
+    let p = f.add(&mut store, &f.a);
+    let events = store.events(&Scope::project(p.id), 0, 100).unwrap();
+    drop(store);
+    let old = rusqlite::Connection::open(&f.db).unwrap();
+    // Version 1 has the same SQL tables, and Project JSON without blocked_reason.
+    old.execute(
+        "UPDATE projects SET body=json_remove(body,'$.blocked_reason')",
+        [],
+    )
+    .unwrap();
+    old.pragma_update(None, "user_version", 1).unwrap();
+    drop(old);
+    let reopened = Store::open(&f.db).unwrap();
+    assert_eq!(reopened.schema_version().unwrap(), 2);
+    let recovered = reopened.project(p.id).unwrap().unwrap();
+    assert_eq!(recovered.root, p.root);
+    assert_eq!(recovered.repository_identity, p.repository_identity);
+    assert!(recovered.blocked_reason.is_none());
+    assert_eq!(
+        reopened
+            .events(&Scope::project(p.id), 0, 100)
+            .unwrap()
+            .len(),
+        events.len()
+    );
+}
+
+#[test]
+fn invalid_xdg_state_directory_falls_back_to_absolute_home() {
+    let f = Fixture::new();
+    let home = f.root.join("isolated-home");
+    std::fs::create_dir(&home).unwrap();
+    for xdg in ["", "relative"] {
+        let out = Command::new(env!("CARGO_BIN_EXE_rrx"))
+            .current_dir(&f.root)
+            .env_remove("RRX_STATE_PATH")
+            .env("XDG_STATE_HOME", xdg)
+            .env("HOME", &home)
+            .args(["project", "list"])
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert!(home.join(".local/state/rururunx/state.sqlite3").exists());
+        assert!(!f.root.join("relative").exists());
+    }
 }

@@ -15,14 +15,21 @@ References are normalized after containment and repository ownership checks;
 worktree namespaces stay below the owning source root. Registration does not
 create worktrees or read rule contents. Repeated add preserves existing options
 unless explicitly supplied; `--max-tasks` overrides the stored concurrency policy.
-An initial project overlay supplies its per-project task default.
+An initial project overlay supplies its per-project task default. Explicit
+`--clear-project-config`, `--clear-rules` and `--clear-env-refs` remove saved refs,
+including recovery after intentional deletion; set/clear conflicts fail.
 
 Reconciliation validates all REGISTERED entries before commands. Invalid source
 or reference paths persist BLOCKED and a JSON-compatible `blocked_reason` field
-(default None for older snapshots, no SQL migration required). BLOCKED is sticky
+(default None for older snapshots). Format v1 → v2 migrates transactionally without
+changing SQL layout, IDs or audit, and makes older binaries refuse the newer JSON. BLOCKED is sticky
 until explicit validated add. Existing immutable identity/base cannot change.
-`effective_config`, `scoped_file`, and `environment_names` require REGISTERED and
-revalidate source identity before returning selected input. The environment API
+`effective_config`, `scoped_file`, and `environment_names` take Store + ProjectId,
+read the latest durable REGISTERED snapshot and revalidate source identity before
+returning selected input. `registered_project` is a pure state/version snapshot
+read for runtime preflight: release shared Store mutexes before running synchronous
+Git/filesystem validation, and recheck version/scope at launch reservation. The
+synchronous registry/scoped helpers are for CLI or off-lock blocking workers. The environment API
 returns reference names only; native launch isolation is a dependent adapter duty.
 
 CLI `--state` chooses a shared database. Default resolution is absolute
@@ -34,8 +41,11 @@ the saved reference and reject arbitrary overlay injection. `list --json` and
 
 Removal is a version-checked state update. Store checks Goals, Tasks, typed
 sessions and locks within the same SQLite IMMEDIATE transaction as REMOVED;
-active Goal/Task/session/lock writes also require REGISTERED under their write
-transaction. Terminal updates can reconcile/cancel blocked work. Locks and Lost
+new active Goal/Task/session/lock writes require REGISTERED under their write
+transaction. BLOCKED permits conservative existing Goal/Task blocker updates and
+existing sessions to Lost/wait states, while new/resumed work stays rejected.
+Terminal updates can reconcile/cancel blocked work. Historical records/telemetry
+remain appendable without granting launch or mutation authority. Locks and Lost
 sessions must be explicitly reconciled. No source/worktree/branch is deleted.
 
 Impact: CLI, Project JSON, configuration composition, transactional Store active
@@ -50,3 +60,12 @@ shared cross-database coordination or existing-worktree adoption is promised.
 Completed Task bindings retain names, so reuse of an old issue worktree name
 requires a later explicit recovery/naming policy. Rule contents, env values and
 native context/bundle construction are handled by dependent workflows.
+
+Independent round 1 found no Critical/High; verified stale-snapshot inputs,
+blocked Lost updates, clearing and CWD issues were fixed with regressions. Missing
+Git executable now fails before reconciliation writes. Safe-directory/native Git
+refusals and unavailable sources remain fail-closed BLOCKED (explicit recovery).
+Failed worktree creation and externally invalidated review locks may retain active
+reservations. Issue 14 must provide an explicit audited reconciliation command;
+this CLI cannot force-release locks, and remove correctly stays blocked. The
+public typed Store record API preserves audited reconciliation history.

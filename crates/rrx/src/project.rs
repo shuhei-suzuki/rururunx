@@ -22,6 +22,9 @@ pub struct AddProject {
     pub environment_refs: Vec<String>,
     pub worktree_root: Option<PathBuf>,
     pub max_tasks: Option<usize>,
+    pub clear_config: bool,
+    pub clear_rules: bool,
+    pub clear_environment: bool,
 }
 #[derive(Debug, Serialize)]
 pub struct ProjectStatus {
@@ -41,6 +44,7 @@ impl<'a> ProjectRegistry<'a> {
 
     /// Registration/reactivation is explicit and preserves an existing root's ID.
     pub fn add(&mut self, path: &Path, options: AddProject, runtime: &Config) -> Result<Project> {
+        runtime.validate()?;
         let root = source_root(path)?;
         let previous = self.store.projects()?.into_iter().find(|p| p.root == root);
         let base = options
@@ -69,6 +73,28 @@ impl<'a> ProjectRegistry<'a> {
             ),
         };
         let before = serde_json::to_value(&project)?;
+        ensure!(
+            !options.clear_config || options.config_ref.is_none(),
+            "cannot set and clear project config together"
+        );
+        ensure!(
+            !options.clear_rules || options.rule_refs.is_empty(),
+            "cannot set and clear rules together"
+        );
+        ensure!(
+            !options.clear_environment || options.environment_refs.is_empty(),
+            "cannot set and clear environment refs together"
+        );
+        if options.clear_config {
+            project.config_ref = None;
+        }
+        if options.clear_rules {
+            project.rule_refs.clear();
+        }
+        if options.clear_environment {
+            project.environment_refs.clear();
+        }
+
         if let Some(name) = options.name {
             project.name = name;
         }
@@ -95,7 +121,8 @@ impl<'a> ProjectRegistry<'a> {
         ensure!(
             project.name.trim() == project.name
                 && !project.name.is_empty()
-                && !project.name.chars().any(char::is_control),
+                && !project.name.chars().any(char::is_control)
+                && project.name.parse::<ProjectId>().is_err(),
             "invalid project display name"
         );
         validate_inputs(&project)?;
@@ -121,6 +148,8 @@ impl<'a> ProjectRegistry<'a> {
 
     /// Validation never automatically clears BLOCKED. `add` validates explicit recovery.
     pub fn reconcile(&mut self) -> Result<()> {
+        // A missing executable is runtime infrastructure failure, not project corruption.
+        git_text(&env::current_dir()?, &["--version"])?;
         for mut project in self.store.projects()? {
             if project.state != ProjectState::Registered {
                 continue;
@@ -188,11 +217,16 @@ impl<'a> ProjectRegistry<'a> {
                 if !found {
                     continue;
                 }
-            } else if project.state == ProjectState::Registered {
-                // Nested/foreign Git repositories inside a source tree are not its CWD.
-                let top = PathBuf::from(git_text(&cwd, &["rev-parse", "--show-toplevel"])?)
-                    .canonicalize()?;
-                if top != project.root {
+            } else {
+                let owned = (|| -> Result<bool> {
+                    let top = PathBuf::from(git_text(&cwd, &["rev-parse", "--show-toplevel"])?)
+                        .canonicalize()?;
+                    Ok(top == project.root
+                        && repository_identity(&project.root, &project.base_branch)?
+                            == project.repository_identity)
+                })()
+                .unwrap_or(false);
+                if !owned {
                     continue;
                 }
             }
@@ -321,23 +355,27 @@ fn validate_inputs(project: &Project) -> Result<()> {
     validate_environment(project)?;
     Ok(())
 }
-/// Return only this Project's validated reference names; never capture/store values.
-pub fn environment_names(project: &Project) -> Result<Vec<String>> {
+/// Pure Store read for runtime preflight: release the runtime mutex before `validate`.
+/// Launch reservation must recheck this version/scope under its write transaction.
+pub fn registered_project(store: &Store, id: ProjectId) -> Result<Project> {
+    let project = store.project(id)?.context("unknown project")?;
     ensure!(
         project.state == ProjectState::Registered,
         "project is not registered/active"
     );
-    validate(project)?;
-    Ok(project.environment_refs.clone())
+    Ok(project)
 }
-/// Obtain an owned reference only after revalidating repository identity and state.
-pub fn scoped_file(project: &Project, reference: &Path) -> Result<PathBuf> {
-    ensure!(
-        project.state == ProjectState::Registered,
-        "project is not registered/active"
-    );
-    validate(project)?;
-    resolve_file(project, reference)
+/// Return only this Project's validated reference names; never capture/store values.
+pub fn environment_names(store: &Store, id: ProjectId) -> Result<Vec<String>> {
+    let project = registered_project(store, id)?;
+    validate(&project)?;
+    Ok(project.environment_refs)
+}
+/// Read latest durable state and validate owning source before exposing a reference.
+pub fn scoped_file(store: &Store, id: ProjectId, reference: &Path) -> Result<PathBuf> {
+    let project = registered_project(store, id)?;
+    validate(&project)?;
+    resolve_file(&project, reference)
 }
 
 fn validate_environment(project: &Project) -> Result<Vec<String>> {
@@ -374,10 +412,51 @@ fn validate_environment(project: &Project) -> Result<Vec<String>> {
                     | "CLAUDE_CONFIG_DIR"
                     | "PYTHONPATH"
                     | "NODE_OPTIONS"
-            ) && !["GIT_", "LD_", "DYLD_", "RRX_"]
-                .iter()
-                .any(|prefix| name.starts_with(prefix)),
+                    | "NODE_PATH"
+                    | "PYTHONHOME"
+                    | "PYTHONSTARTUP"
+                    | "EDITOR"
+                    | "VISUAL"
+                    | "PAGER"
+                    | "SSH_ASKPASS"
+                    | "SSH_AUTH_SOCK"
+                    | "PERL5OPT"
+                    | "RUBYOPT"
+                    | "JAVA_TOOL_OPTIONS"
+                    | "JDK_JAVA_OPTIONS"
+                    | "TMPDIR"
+                    | "TEMP"
+                    | "TMP"
+                    | "IFS"
+                    | "PROMPT_COMMAND"
+                    | "XDG_CACHE_HOME"
+                    | "XDG_RUNTIME_DIR"
+                    | "ANTHROPIC_BASE_URL"
+                    | "OPENAI_BASE_URL"
+                    | "OPENAI_API_BASE"
+                    | "SSL_CERT_FILE"
+                    | "SSL_CERT_DIR"
+                    | "NODE_EXTRA_CA_CERTS"
+                    | "REQUESTS_CA_BUNDLE"
+                    | "CURL_CA_BUNDLE"
+            ) && ![
+                "GIT_",
+                "LD_",
+                "DYLD_",
+                "RRX_",
+                "CLAUDE_",
+                "CODEX_",
+                "ANTHROPIC_AUTH_",
+                "BASH_FUNC_"
+            ]
+            .iter()
+            .any(|prefix| name.starts_with(prefix)),
             "unsafe environment routing reference {name}"
+        );
+        ensure!(
+            !name.to_ascii_uppercase().ends_with("_PROXY")
+                && name.to_ascii_uppercase() != "ALL_PROXY",
+            "unsafe proxy routing reference {name}"
         );
         ensure!(
             unique.insert(name),
@@ -467,19 +546,15 @@ fn validate_namespace(project: &Project) -> Result<()> {
     }
     Ok(())
 }
-pub fn effective_config(project: &Project, runtime: &Config) -> Result<Config> {
-    ensure!(
-        project.state == ProjectState::Registered,
-        "project is not registered/active"
-    );
-    validate(project)?;
+pub fn effective_config(store: &Store, id: ProjectId, runtime: &Config) -> Result<Config> {
+    let project = registered_project(store, id)?;
+    validate(&project)?;
+    runtime.validate()?;
     let mut result = match &project.config_ref {
-        Some(path) => runtime.with_project_file(&resolve_file(project, path)?)?,
+        Some(path) => runtime.with_project_file(&resolve_file(&project, path)?)?,
         None => runtime.clone(),
     };
-    if project.version > 0 {
-        result.scheduler.max_tasks_per_project = project.max_tasks;
-    }
+    result.scheduler.max_tasks_per_project = project.max_tasks;
     Ok(result)
 }
 /// Runtime-global default, independent of CWD. Resolving a path has no filesystem effects.
@@ -491,8 +566,9 @@ pub fn default_state_path() -> Result<PathBuf> {
     }
     if let Some(path) = env::var_os("XDG_STATE_HOME") {
         let path = PathBuf::from(path);
-        ensure!(path.is_absolute(), "XDG_STATE_HOME must be absolute");
-        return Ok(path.join("rururunx/state.sqlite3"));
+        if path.is_absolute() {
+            return Ok(path.join("rururunx/state.sqlite3"));
+        }
     }
     if let Some(home) = env::var_os("HOME") {
         let home = PathBuf::from(home);

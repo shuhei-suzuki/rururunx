@@ -285,8 +285,13 @@ Project commands share runtime-global SQLite state: `--state <file>` overrides
 For registration, the supplied path must be an exact primary Git root with a
 committed local base branch. `--base`, `--name`, `--max-tasks`, `--worktree-root`,
 repeatable `--rule` and `--env-ref` set project metadata. `--project-config` for
-`project add` and `--rule` paths are relative to the source root and must stay
-inside it. Environment references are names only, never `NAME=value`; native
+`project add` and `--rule` paths resolve relative to the source root (absolute
+owned paths also work) and must stay inside it. `--clear-project-config`,
+`--clear-rules`, and `--clear-env-refs` explicitly remove stored references. Environment references are names only, never `NAME=value`; native
 credential forwarding is pending. Status infers registered source/task CWD or
 takes a unique name/UUID. `list --all` includes removed history; list/status
 support `--json`. Display-name ambiguity requires a UUID.
+
+Interrupted worktree creation or invalidated review locks can retain reservations;
+explicit audited lock reconciliation CLI is pending in restart/recovery work.
+Removal remains blocked until those reservations are reconciled.

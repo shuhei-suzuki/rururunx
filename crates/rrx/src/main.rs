@@ -51,6 +51,12 @@ enum ProjectCommand {
         worktree_root: Option<PathBuf>,
         #[arg(long)]
         max_tasks: Option<usize>,
+        #[arg(long)]
+        clear_project_config: bool,
+        #[arg(long)]
+        clear_rules: bool,
+        #[arg(long)]
+        clear_env_refs: bool,
     },
     /// Validate and list registered/blocked projects.
     List {
@@ -105,6 +111,9 @@ fn run(cli: Cli) -> Result<()> {
                     environment_refs,
                     worktree_root,
                     max_tasks,
+                    clear_project_config,
+                    clear_rules,
+                    clear_env_refs,
                 } => {
                     registry.reconcile()?;
                     let project = registry.add(
@@ -117,6 +126,9 @@ fn run(cli: Cli) -> Result<()> {
                             environment_refs,
                             worktree_root,
                             max_tasks,
+                            clear_config: clear_project_config,
+                            clear_rules,
+                            clear_environment: clear_env_refs,
                         },
                         &runtime,
                     )?;

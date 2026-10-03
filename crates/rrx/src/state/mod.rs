@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 
 use crate::domain::*;
 
-pub const SCHEMA_VERSION: i64 = 1;
+pub const SCHEMA_VERSION: i64 = 2;
 pub const APPLICATION_ID: i64 = 0x52525831; // ASCII RRX1.
 
 pub struct Store {
@@ -40,7 +40,7 @@ impl Store {
             "not an rrx state database (application_id={application})"
         );
         connection.pragma_update(None, "foreign_keys", true)?;
-        if version == 0 {
+        if version < SCHEMA_VERSION {
             let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
             // Recheck under the write lock: another runtime may have initialized it.
             let locked_version: i64 =
@@ -62,12 +62,15 @@ impl Store {
                 tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
             } else {
                 ensure!(
-                    locked_version == SCHEMA_VERSION,
+                    (1..=SCHEMA_VERSION).contains(&locked_version),
                     "unsupported state schema {locked_version}"
                 );
                 let application: i64 =
                     tx.pragma_query_value(None, "application_id", |row| row.get(0))?;
                 ensure!(application == APPLICATION_ID, "not an rrx state database");
+                // v1 → v2 adds Project blocked_reason JSON metadata (default None).
+                // SQL layout is unchanged; older binaries must refuse the new format.
+                tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
             }
             tx.commit()?;
         }
@@ -212,7 +215,15 @@ impl Store {
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         if !goal_terminal(goal.state) {
-            ensure_project_registered(&tx, goal.project_id)?;
+            let previous = read_tx::<Goal>(&tx, "goals", &goal.id.to_string())?;
+            let safe_update = previous.as_ref().is_some_and(|old| {
+                old.state == goal.state
+                    || matches!(
+                        goal.state,
+                        GoalState::Blocked | GoalState::WaitingHuman | GoalState::Paused
+                    )
+            });
+            ensure_activity_write(&tx, goal.project_id, safe_update)?;
         }
         if let Some(previous) = read_tx::<Goal>(&tx, "goals", &goal.id.to_string())? {
             ensure!(
@@ -260,7 +271,13 @@ impl Store {
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         if !task_terminal(task.state) {
-            ensure_project_registered(&tx, task.project_id)?;
+            let previous = read_tx::<Task>(&tx, "tasks", &task.id.to_string())?;
+            let safe_update = previous.as_ref().is_some_and(|old| {
+                (old.state == task.state || task.state == TaskState::WaitingHuman)
+                    && old.worktree == task.worktree
+                    && old.branch == task.branch
+            });
+            ensure_activity_write(&tx, task.project_id, safe_update)?;
         }
         if let Some(previous) = read_tx::<Task>(&tx, "tasks", &task.id.to_string())? {
             ensure!(
@@ -677,6 +694,16 @@ fn ensure_project_registered(tx: &Transaction<'_>, id: ProjectId) -> Result<()> 
     );
     Ok(())
 }
+/// Blocked Projects may describe existing work conservatively, never start/resume it.
+fn ensure_activity_write(tx: &Transaction<'_>, id: ProjectId, safe_update: bool) -> Result<()> {
+    let project: Project = read_tx(tx, "projects", &id.to_string())?.context("unknown project")?;
+    ensure!(
+        project.state == ProjectState::Registered
+            || (project.state == ProjectState::Blocked && safe_update),
+        "project is not registered/active; only conservative existing blocked-work updates allowed"
+    );
+    Ok(())
+}
 /// Checked in the same write transaction as removal, including Lost sessions.
 fn ensure_project_idle(tx: &Transaction<'_>, id: ProjectId) -> Result<()> {
     for table in ["goals", "tasks", "records"] {
@@ -753,7 +780,12 @@ fn validate_worktree_exclusion(tx: &Transaction<'_>, record: &Record) -> Result<
     if record.kind == RecordKind::Session {
         let session: Session = serde_json::from_value(record.data.clone())?;
         if !session_terminal(session.state) {
-            ensure_project_registered(tx, record.scope.project_id)?;
+            let safe_update = read_tx::<Record>(tx, "records", &record.id.to_string())?.is_some()
+                && matches!(
+                    session.state,
+                    SessionState::Lost | SessionState::WaitingHuman | SessionState::WaitingApproval
+                );
+            ensure_activity_write(tx, record.scope.project_id, safe_update)?;
         }
     }
     if record.kind == RecordKind::WorktreeLock

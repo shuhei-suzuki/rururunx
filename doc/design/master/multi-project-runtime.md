@@ -203,8 +203,16 @@ new active writes require REGISTERED. Name ambiguity requires an explicit UUID.
 
 Scoped input APIs revalidate identity/state and reject foreign or nested Git
 source refs, symlink escapes and Git/task metadata paths. Environment values are
-never loaded/stored; validated names cannot override Git/runtime/agent routing.
+never loaded/stored; known Git/runtime/agent routing names are rejected. Native forwarding must also
+apply provider-specific launch policy.
 Context ownership and worktree Git checks use the existing Project-scoped Store
 and WorktreeManager. Native forwarding, Goal loops, concurrency/fairness and
 bundle generation remain dependent work. See `../issue-26-design.md` for contract
 limitations and `../../requirements/issue-26-requirements.md` for acceptance.
+
+Registry format version 2 migrates version 1 without changing SQL ownership or
+audit history. Explicit clear-reference flags support recovery after file removal.
+Latest-Store scoped APIs reject removed state; runtime integrations must perform
+Git/filesystem preflight off shared Store locks and revalidate version/scope before
+launch. Existing blocked work can record Lost/blockers without starting new work.
+Interrupted active locks need the pending Issue 14 audited reconciliation flow.

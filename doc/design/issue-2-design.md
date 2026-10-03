@@ -23,7 +23,9 @@ a Task's Project/Goal cannot be silently rebound by an update.
 Use rusqlite with bundled SQLite. `application_id = 0x52525831` identifies rrx
 databases. Foreign/unmarked v1 databases and nonempty v0 databases are rejected.
 `PRAGMA user_version` is the transactional
-schema version; v0 → v1 initializes tables/indexes/triggers. An unsupported future
+schema version; v0 initializes tables/indexes/triggers. Issue 26 adds v1 → v2:
+unchanged SQL layout, Project blocked_reason JSON metadata with a default for old
+snapshots, preserved IDs/history, and an explicit older-binary refusal marker. An unsupported future
 version is rejected before migrations. Foreign keys and a bounded busy timeout
 are enabled on every connection; WAL permits readers while state is written.
 Future migrations are ordered, atomic, tested against real older fixtures and
