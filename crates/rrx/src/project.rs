@@ -378,7 +378,7 @@ pub fn scoped_file(store: &Store, id: ProjectId, reference: &Path) -> Result<Pat
     resolve_file(&project, reference)
 }
 
-fn validate_environment(project: &Project) -> Result<Vec<String>> {
+pub(crate) fn validate_environment(project: &Project) -> Result<Vec<String>> {
     let mut unique = BTreeSet::new();
     for name in &project.environment_refs {
         ensure!(
