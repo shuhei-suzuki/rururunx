@@ -448,5 +448,13 @@ All typed Workflow actors bind the actual Task worktree and one private Session
 allocation per immutable single-actor phase context. Future parallel review uses
 its own scoped roster authority. Semantic instruction changes are versioned;
 projection definitions never change silently. Persistence upgrade requires typed
-Workflow and live/Lost Session ownership to drain under the compatible old runtime
+active/nonterminal unfinished Workflow, all live/Lost Session and active lock ownership to drain under the compatible old runtime
 before any migration mutation. Finalized immutable history remains available.
+
+Fresh admissions require permitted standalone Task states or the exact typed
+phase Task state/key. Task holds before first consumption/Running block admission;
+historical observations retain pins. Typed context publication cannot transform a
+live legacy Session's protection contract. Forced identical publication requires
+private validated preparation/admission and exact terminal input, not raw history
+JSON. Terminal non-owning cancelled Workflow history may migrate; active claims
+remain operational ownership even on terminal Tasks.
