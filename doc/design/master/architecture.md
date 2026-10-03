@@ -384,3 +384,18 @@ MVP extensibility points:
 - provider cache telemetry
 
 Cloud execution, web dashboards, and long-term memory are outside MVP and should not shape the core architecture.
+
+## 12. Implemented Rust foundation
+
+Rust 2024 / minimum Rust 1.91 is the core standard; development and CI pin 1.91.1.
+The Cargo workspace contains `crates/rrx` with a library and a CLI binary.
+Native process/PTY supervision, persistence and terminal presentation are module
+boundaries; the bootstrap does not construct an async runtime for help/config
+validation. Tokio will own event-driven process IO, rusqlite local persistence,
+and a PTY backend native session transport when those components land.
+
+Initial dependencies are clap, serde/serde_json, TOML and anyhow. Config loading
+accepts explicit runtime and single-project inputs, validates typed limits, and
+does not act as a native permission grant. Agents are launched only through the
+future adapter layer. macOS/Linux source installation uses one release `rrx`
+binary; no hosted service is required. Details: `../issue-1-design.md`.

@@ -204,8 +204,63 @@ See [Product Requirements](doc/requirements/product-requirements.md), [Architect
 
 ## Status
 
-Early design / bootstrap phase.
+Rust executable foundation; workflow components are being implemented incrementally.
+The command examples above describe the MVP target. Currently implemented:
+`rrx --help`, `rrx --version`, and `rrx config-check`.
 
 ## License
 
 TBD.
+
+## Development
+
+Install [Rust with rustup](https://www.rust-lang.org/tools/install) and Git.
+The repository pins Rust 1.91.1 (minimum supported Rust 1.91) with rustfmt/clippy.
+
+```bash
+cargo build --locked --workspace
+cargo run --locked -p rrx -- --help
+cargo fmt --all -- --check
+cargo clippy --locked --workspace --all-targets -- -D warnings
+cargo test --locked --workspace
+cargo build --locked --release --workspace
+cargo install --locked --path crates/rrx
+```
+
+MVP hosts: macOS and Linux. Cargo produces the local `rrx` binary; prebuilt release
+packaging is not available yet. Native agents keep their own installation,
+authentication, hooks and permission settings.
+
+Configuration uses TOML. Inputs are explicit during bootstrap:
+
+```bash
+rrx --config runtime.toml --project-config project.toml config-check
+```
+
+Project overlays merge by key over runtime configuration; arrays replace.
+Unknown fields, unreadable explicit files and invalid limits fail with an error.
+Configuration checking does not start agents or write state. Example:
+
+```toml
+minimum_workflow = "STANDARD"
+[scheduler]
+global_max_sessions = 12
+max_tasks_per_project = 4
+[context]
+enabled = true
+repo_map_tokens = 2000
+review_context_tokens = 12000
+recent_history_tokens = 8000
+[agents.codex]
+max_concurrent = 6
+```
+
+Measure warm help startup after the release build (Python is only a benchmark
+utility, not part of the Rust runtime):
+
+```bash
+python3 scripts/measure-startup.py target/release/rrx --runs 30
+```
+
+This reports observed wall time and platform, not scheduler idle resource usage.
+See [bootstrap decision](doc/design/issue-1-design.md).

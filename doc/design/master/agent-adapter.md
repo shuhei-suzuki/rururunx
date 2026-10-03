@@ -45,7 +45,7 @@ native_goal_resume
 
 ## 4. Logical interface
 
-The exact implementation language is TBD. Logical API:
+The core implementation language is Rust. Logical API:
 
 ```text
 probe() -> AgentInfo
