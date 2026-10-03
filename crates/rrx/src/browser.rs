@@ -260,6 +260,7 @@ pub struct VerificationResult {
     pub fallback_used: bool,
     #[serde(default)]
     pub artifact_directory: Option<PathBuf>,
+    pub verification_file: Option<PathBuf>,
     #[serde(default)]
     pub worktree: Option<PathBuf>,
     #[serde(default)]
@@ -387,6 +388,13 @@ struct BridgeRequest<'a> {
     config: &'a BrowserConfig,
     artifact_dir: &'a Path,
 }
+struct AttemptContext<'a> {
+    binding: &'a BrowserBinding,
+    cwd: &'a Path,
+    session_id: SessionId,
+    artifacts: &'a Path,
+    deadline: Instant,
+}
 impl BrowserVerifier for BridgeVerifier {
     fn capabilities(&self, binding: &BrowserBinding) -> Result<Capabilities> {
         self.config.validate()?;
@@ -445,12 +453,22 @@ impl BrowserVerifier for BridgeVerifier {
             );
         }
         let artifacts = artifact_dir(&self.config.artifact_root, &request.scope, session_id)?;
-        let profile = PrivateProfile(artifacts.join("profile"));
+        let mut profiles = vec![PrivateProfile(artifacts.join("profile"))];
+        let mut result_directory = artifacts.clone();
         // One deadline covers all browser/helper attempts. Ownership validation
         // precedes this external browser phase and never consumes a short SDK budget.
         let deadline = Instant::now() + Duration::from_millis(self.config.timeout_ms);
-        let mut result =
-            self.attempt(binding, request, session_id, backend, &artifacts, deadline)?;
+        let mut result = self.attempt(
+            &AttemptContext {
+                binding,
+                cwd: &cwd,
+                session_id,
+                artifacts: &artifacts,
+                deadline,
+            },
+            request,
+            backend,
+        );
         if may_fallback(&self.config, request, &result) {
             let fallback = VerificationRequest {
                 scope: request.scope.clone(),
@@ -458,56 +476,75 @@ impl BrowserVerifier for BridgeVerifier {
                 steps: request.deterministic_fallback.clone().unwrap_or_default(),
                 deterministic_fallback: None,
             };
-            result = self.attempt(
-                binding,
-                &fallback,
-                session_id,
-                Backend::Playwright,
-                &artifacts,
-                deadline,
-            )?;
-            result.fallback_used = true;
+            let fallback_directory = artifacts.join("fallback");
+            if profiles[0].cleanup().is_err() || private_directory(&fallback_directory).is_err() {
+                fail_result(&mut result, Failure::Cleanup, "fallback_profile_cleanup");
+            } else {
+                let primary = result;
+                profiles.push(PrivateProfile(fallback_directory.join("profile")));
+                result_directory = fallback_directory;
+                result = self.attempt(
+                    &AttemptContext {
+                        binding,
+                        cwd: &cwd,
+                        session_id,
+                        artifacts: &result_directory,
+                        deadline,
+                    },
+                    &fallback,
+                    Backend::Playwright,
+                );
+                result.fallback_used = true;
+                result.evidence.insert(
+                    0,
+                    serde_json::json!({
+                        "attempt": "stagehand", "failure": primary.failure,
+                        "evidence": primary.evidence, "usage": primary.usage,
+                        "artifact_directory": artifacts, "artifacts": primary.artifacts,
+                    }),
+                );
+                merge_usage(&mut result.usage, &primary.usage);
+            }
         }
         // Scope and paths are facts checked by Rust, never inferred from helper text.
-        ensure!(
-            result.scope == request.scope && result.session_id == session_id,
-            "browser response ownership mismatch"
-        );
-        for path in &result.artifacts {
-            ensure!(
-                safe_name(path) && path.ends_with(".png"),
-                "invalid browser artifact reference"
-            );
-            let file = artifacts.join(path);
-            ensure!(
-                fs::symlink_metadata(&file)?.is_file(),
-                "artifact must be a regular owned file"
+        if result.artifacts.iter().any(|path| {
+            !safe_name(path)
+                || !path.ends_with(".png")
+                || !fs::symlink_metadata(result_directory.join(path)).is_ok_and(|m| m.is_file())
+        }) {
+            result.artifacts.clear();
+            fail_result(&mut result, Failure::Protocol, "invalid_artifact");
+            result.effect_possible |= request.steps.iter().any(Step::mutating);
+        }
+        if result.usage.native_sessions.len() > 64 {
+            fail_result(
+                &mut result,
+                Failure::Protocol,
+                "native_session_budget_exceeded",
             );
         }
-        ensure!(
-            result.usage.native_sessions.len() <= 64,
-            "native callback session budget exceeded"
-        );
-        result.artifact_directory = Some(artifacts.clone());
+        result.artifact_directory = Some(result_directory);
         result.worktree = Some(cwd.clone());
         result.revision = Some(initial_revision.clone());
-        if WorktreeManager::validate_binding(&binding.project, &binding.task)?.revision
-            != initial_revision
-        {
-            result.success = false;
-            result.failure = Some(Failure::Protocol);
-            result
-                .evidence
-                .push(serde_json::json!({"binding": "revision_changed"}));
+        match WorktreeManager::validate_binding(&binding.project, &binding.task) {
+            Ok(current) if current.revision == initial_revision => {}
+            _ => fail_result(&mut result, Failure::Protocol, "binding_changed"),
         }
         // Cookies/auth profiles are ephemeral even after an abnormal child exit.
-        if profile.cleanup().is_err() {
-            result.success = false;
-            result.failure = Some(Failure::Cleanup);
+        if profiles.iter().any(|profile| profile.cleanup().is_err()) {
+            fail_result(&mut result, Failure::Cleanup, "profile_cleanup");
         }
         let record = artifacts.join("verification.json");
-        let mut file = File::create_new(record)?;
-        serde_json::to_writer(&mut file, &result)?;
+        result.verification_file = Some(record.clone());
+        if File::create_new(record)
+            .and_then(|mut file| {
+                serde_json::to_writer(&mut file, &result).map_err(std::io::Error::other)
+            })
+            .is_err()
+        {
+            fail_result(&mut result, Failure::Cleanup, "record_write");
+            result.verification_file = None;
+        }
         Ok(result)
     }
 }
@@ -535,43 +572,43 @@ impl Drop for PrivateProfile {
 impl BridgeVerifier {
     fn attempt(
         &self,
-        binding: &BrowserBinding,
+        context: &AttemptContext<'_>,
         request: &VerificationRequest,
-        session_id: SessionId,
         backend: Backend,
-        artifacts: &Path,
-        deadline: Instant,
-    ) -> Result<VerificationResult> {
-        let cwd = binding
-            .task
-            .worktree
-            .as_deref()
-            .context("Task worktree missing")?;
-        let payload = serde_json::to_vec(&BridgeRequest {
+    ) -> VerificationResult {
+        let session_id = context.session_id;
+        let payload = match serde_json::to_vec(&BridgeRequest {
             protocol_version: 1,
             request,
             session_id,
             backend,
             config: &self.config,
-            artifact_dir: artifacts,
-        })?;
-        ensure!(
-            payload.len() <= 65_536,
-            "browser request exceeds input budget"
-        );
-        match self.run(binding, cwd, &payload, false, deadline) {
+            artifact_dir: context.artifacts,
+        }) {
+            Ok(payload) if payload.len() <= 65_536 => payload,
+            _ => return empty_result(request, session_id, backend, Failure::Protocol),
+        };
+        match self.run(
+            context.binding,
+            context.cwd,
+            &payload,
+            false,
+            context.deadline,
+        ) {
             Ok(bytes) => match serde_json::from_slice::<VerificationResult>(&bytes) {
-                Ok(result)
+                Ok(mut result)
                     if result.backend == backend
                         && result.scope == request.scope
-                        && result.session_id == session_id =>
+                        && result.session_id == session_id
+                        && result.success == result.failure.is_none() =>
                 {
-                    Ok(result)
+                    result.fallback_used = false;
+                    result
                 }
                 _ => {
                     let mut result = empty_result(request, session_id, backend, Failure::Protocol);
                     result.effect_possible = request.steps.iter().any(Step::mutating);
-                    Ok(result)
+                    result
                 }
             },
             Err(error) => {
@@ -580,7 +617,7 @@ impl BridgeVerifier {
                     .map_or(Failure::Operation, |e| e.0);
                 let mut result = empty_result(request, session_id, backend, failure);
                 result.effect_possible = request.steps.iter().any(Step::mutating);
-                Ok(result)
+                result
             }
         }
     }
@@ -657,11 +694,17 @@ impl BridgeVerifier {
             .map_err(|_| BridgeFailure(Failure::Unavailable))?;
         let id = child.id();
         let mut child = OwnedChild {
-            child,
+            child: Some(child),
             id,
             stopped: false,
         };
-        let mut stdin = child.child.stdin.take().context("bridge stdin missing")?;
+        let mut stdin = child
+            .child
+            .as_mut()
+            .unwrap()
+            .stdin
+            .take()
+            .context("bridge stdin missing")?;
         let input = payload.to_vec();
         let (tx, rx) = mpsc::channel();
         let sender = tx.clone();
@@ -670,7 +713,13 @@ impl BridgeVerifier {
             drop(stdin);
             let _ = sender.send(outcome.map(|_| None));
         });
-        let stdout = child.child.stdout.take().context("bridge stdout missing")?;
+        let stdout = child
+            .child
+            .as_mut()
+            .unwrap()
+            .stdout
+            .take()
+            .context("bridge stdout missing")?;
         let bound = self.config.max_output_bytes;
         let reader = thread::spawn(move || {
             let mut output = vec![];
@@ -708,21 +757,38 @@ impl BridgeVerifier {
         // Keep the leader unreaped until its group is stopped. This reserves its
         // PID/group identity and prevents signalling an unrelated reused PID.
         let status = child.stop();
-        let _ = writer.join();
-        let _ = reader.join();
+        let io_deadline = Instant::now() + Duration::from_millis(500);
+        while (!writer.is_finished() || !reader.is_finished()) && Instant::now() < io_deadline {
+            thread::sleep(Duration::from_millis(5));
+        }
+        if writer.is_finished() && reader.is_finished() {
+            let _ = writer.join();
+            let _ = reader.join();
+        } else {
+            // Trusted callbacks must inherit the owned group. An escaped pipe
+            // holder is uncertain cleanup, never an unbounded supervisor wait.
+            failed = Some(Failure::Cleanup);
+        }
         while let Ok(value) = rx.try_recv() {
             match value {
-                Ok(Some(bytes)) if bytes.len() > bound => failed = Some(Failure::OutputLimit),
+                Ok(Some(bytes)) if bytes.len() > bound => {
+                    failed.get_or_insert(Failure::OutputLimit);
+                }
                 Ok(Some(bytes)) => output = Some(bytes),
                 Ok(None) => {}
-                Err(_) => failed = Some(Failure::Protocol),
+                Err(_) => {
+                    failed.get_or_insert(Failure::Protocol);
+                }
             }
+        }
+        if status.is_err() {
+            failed = Some(Failure::Cleanup);
         }
         if let Some(failure) = failed {
             return Err(BridgeFailure(failure).into());
         }
         if !status
-            .map_err(|_| BridgeFailure(Failure::Operation))?
+            .map_err(|_| BridgeFailure(Failure::Cleanup))?
             .success()
         {
             return Err(BridgeFailure(Failure::Operation).into());
@@ -758,7 +824,7 @@ impl std::fmt::Display for BridgeFailure {
 }
 impl std::error::Error for BridgeFailure {}
 struct OwnedChild {
-    child: Child,
+    child: Option<Child>,
     id: u32,
     stopped: bool,
 }
@@ -787,7 +853,36 @@ impl OwnedChild {
     }
     fn stop(&mut self) -> std::io::Result<ExitStatus> {
         self.stopped = true;
-        terminate_group(&mut self.child, self.id)
+        #[cfg(unix)]
+        {
+            let _ = signal_owned_group(self.id, rustix::process::Signal::TERM);
+            thread::sleep(Duration::from_millis(100));
+            let cleanup = signal_owned_group(self.id, rustix::process::Signal::KILL);
+            if cleanup.is_err() {
+                let _ = self.child.as_mut().unwrap().kill();
+            }
+            let deadline = Instant::now() + Duration::from_millis(500);
+            while !self.exited().unwrap_or(false) && Instant::now() < deadline {
+                thread::sleep(Duration::from_millis(5));
+            }
+            let observed_exit = self.exited().unwrap_or(false);
+            let mut child = self.child.take().unwrap();
+            if !observed_exit {
+                // Retain the direct child in a reaper; never signal a recycled
+                // group after reaping. Caller receives uncertain Cleanup.
+                thread::spawn(move || {
+                    let _ = child.wait();
+                });
+                return Err(std::io::Error::other("owned child cleanup unconfirmed"));
+            }
+            let status = child.wait();
+            cleanup?;
+            status
+        }
+        #[cfg(not(unix))]
+        {
+            Err(std::io::Error::other("owned process groups require Unix"))
+        }
     }
 }
 impl Drop for OwnedChild {
@@ -797,22 +892,61 @@ impl Drop for OwnedChild {
         }
     }
 }
-fn terminate_group(child: &mut Child, id: u32) -> std::io::Result<ExitStatus> {
+#[cfg(unix)]
+fn signal_owned_group(id: u32, signal: rustix::process::Signal) -> std::io::Result<()> {
+    use rustix::process::{Pid, kill_process_group};
+    let pid = Pid::from_raw(id as i32)
+        .filter(|p| p.as_raw_nonzero().get() > 1)
+        .ok_or_else(|| std::io::Error::other("invalid owned process group"))?;
+    match kill_process_group(pid, signal) {
+        Ok(()) | Err(rustix::io::Errno::SRCH) => Ok(()),
+        #[cfg(target_os = "macos")]
+        Err(rustix::io::Errno::PERM) if crate::adapter::macos_group_is_dead(pid)? => Ok(()),
+        Err(error) => Err(error.into()),
+    }
+}
+fn fail_result(result: &mut VerificationResult, failure: Failure, code: &str) {
+    result.success = false;
+    result.failure = Some(failure);
+    result
+        .evidence
+        .push(serde_json::json!({"failure_code": code}));
+}
+fn private_directory(path: &Path) -> std::io::Result<()> {
+    let mut builder = fs::DirBuilder::new();
     #[cfg(unix)]
     {
-        let group = format!("-{id}");
-        let _ = Command::new("/bin/kill")
-            .args(["-TERM", "--", &group])
-            .stderr(Stdio::null())
-            .status();
-        thread::sleep(Duration::from_millis(100));
-        let _ = Command::new("/bin/kill")
-            .args(["-KILL", "--", &group])
-            .stderr(Stdio::null())
-            .status();
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
     }
-    let _ = child.kill();
-    child.wait()
+    builder.create(path)
+}
+fn merge_usage(final_usage: &mut Usage, primary: &Usage) {
+    for (current, earlier) in [
+        (&mut final_usage.llm_calls, primary.llm_calls),
+        (&mut final_usage.input_tokens, primary.input_tokens),
+        (&mut final_usage.output_tokens, primary.output_tokens),
+        (
+            &mut final_usage.cached_input_tokens,
+            primary.cached_input_tokens,
+        ),
+        (
+            &mut final_usage.cache_write_tokens,
+            primary.cache_write_tokens,
+        ),
+        (&mut final_usage.inference_ms, primary.inference_ms),
+    ] {
+        *current = current.zip(earlier).and_then(|(a, b)| a.checked_add(b));
+    }
+    final_usage.cost_usd = final_usage
+        .cost_usd
+        .zip(primary.cost_usd)
+        .map(|(a, b)| a + b)
+        .filter(|sum| sum.is_finite());
+    final_usage
+        .native_sessions
+        .extend_from_slice(&primary.native_sessions);
+    final_usage.source = Some("browser-attempts".into());
 }
 fn empty_result(
     request: &VerificationRequest,
@@ -832,6 +966,7 @@ fn empty_result(
         usage: Usage::default(),
         fallback_used: false,
         artifact_directory: None,
+        verification_file: None,
         worktree: None,
         revision: None,
     }

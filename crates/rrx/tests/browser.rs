@@ -119,6 +119,7 @@ fn result(request: &VerificationRequest, failure: Failure, effect: bool) -> Veri
         usage: Usage::default(),
         fallback_used: false,
         artifact_directory: None,
+        verification_file: None,
         worktree: None,
         revision: None,
     }
@@ -439,6 +440,128 @@ fn fallback_attempts_share_one_total_deadline() {
         .unwrap();
     assert!(result.fallback_used, "{result:?}");
     assert_eq!(result.failure, Some(Failure::Timeout));
+}
+
+#[test]
+fn post_attempt_failures_preserve_effects_usage_and_scoped_results() {
+    for case in ["artifact", "binding", "record", "sessions"] {
+        let fixture = Fixture::new();
+        let mut request = fixture.request();
+        request.steps.push(Step::Click {
+            selector: "button".into(),
+        });
+        let script = SUCCESS_BRIDGE.replace("'effect_possible':False", "'effect_possible':True");
+        let extra = match case {
+            "artifact" => "r['artifacts']=['missing.png']",
+            "binding" => "os.rename(os.getcwd(),os.getcwd()+'.moved')",
+            "record" => "os.mkdir(os.path.join(i['artifact_dir'],'verification.json'))",
+            _ => {
+                "r['usage']['native_sessions']=[str(__import__('uuid').uuid4()) for _ in range(65)]"
+            }
+        };
+        let script = script.replace("print(json.dumps(r))", &format!(
+            "r['usage']={{'llm_calls':1,'input_tokens':7,'native_sessions':['00000000-0000-4000-8000-000000000001']}}\n{extra}\nprint(json.dumps(r))"));
+        let mut config = fixture.config(&script);
+        config.allow_loopback_actions = true;
+        config.max_output_bytes = 16384;
+        let result = BridgeVerifier { config }
+            .verify(&fixture.binding, &request)
+            .unwrap();
+        assert!(!result.success, "{case}: {result:?}");
+        assert!(result.effect_possible);
+        assert_eq!(result.usage.input_tokens, Some(7), "{case}: {result:?}");
+        assert_eq!(result.scope, request.scope);
+        if case == "record" {
+            assert_eq!(result.failure, Some(Failure::Cleanup));
+            assert!(result.verification_file.is_none());
+        } else {
+            assert_eq!(result.failure, Some(Failure::Protocol));
+            let stored: VerificationResult =
+                serde_json::from_slice(&fs::read(result.verification_file.unwrap()).unwrap())
+                    .unwrap();
+            assert!(stored.effect_possible && !stored.success);
+            assert_eq!(
+                stored.usage.native_sessions.len(),
+                if case == "sessions" { 65 } else { 1 }
+            );
+        }
+    }
+}
+
+#[test]
+fn fallback_clears_primary_profile_and_retains_all_attempt_telemetry() {
+    let fixture = Fixture::new();
+    let mut request = fixture.request();
+    request.steps.push(adaptive());
+    request.deterministic_fallback = Some(fixture.request().steps);
+    let script = SUCCESS_BRIDGE.replace("print(json.dumps(r))", r#"
+if i['backend']=='stagehand':
+ p=os.path.join(i['artifact_dir'],'profile');os.mkdir(p)
+ open(os.path.join(p,'Cookies'),'w').write('fixture-cookie')
+ open(os.path.join(i['artifact_dir'],'primary.png'),'w').write('fixture-artifact')
+ r.update(success=False,failure='unsupported',artifacts=['primary.png'])
+ r['usage']={'llm_calls':2,'input_tokens':7,'cost_usd':.5,'native_sessions':['00000000-0000-4000-8000-000000000001']}
+else:
+ assert not os.path.exists(os.path.join(i['artifact_dir'],'profile'))
+ assert not os.path.exists(os.path.join(os.path.dirname(i['artifact_dir']),'profile'))
+ open(os.path.join(i['artifact_dir'],'fallback.png'),'w').write('fixture-artifact')
+ r['artifacts']=['fallback.png'];r['usage']={'llm_calls':0}
+print(json.dumps(r))
+"#);
+    let result = BridgeVerifier {
+        config: fixture.config(&script),
+    }
+    .verify(&fixture.binding, &request)
+    .unwrap();
+    assert!(result.success && result.fallback_used, "{result:?}");
+    assert_eq!(result.usage.llm_calls, Some(2));
+    assert_eq!(result.usage.native_sessions.len(), 1);
+    assert_eq!(result.usage.cost_usd, None);
+    assert_eq!(result.evidence[0]["usage"]["cost_usd"], json!(0.5));
+    assert!(
+        result
+            .artifact_directory
+            .as_ref()
+            .unwrap()
+            .join("fallback.png")
+            .is_file()
+    );
+    let record = result.verification_file.unwrap();
+    assert!(record.parent().unwrap().join("primary.png").is_file());
+    assert!(!record.parent().unwrap().join("profile").exists());
+}
+
+#[test]
+fn escaped_pipe_holder_cannot_wedge_the_bounded_supervisor() {
+    let fixture = Fixture::new();
+    let script = "import json,sys,os,subprocess,time\ni=json.load(sys.stdin)\nc=subprocess.Popen([sys.executable,'-c','import time;time.sleep(3)'],start_new_session=True)\nopen(os.path.join(i['artifact_dir'],'escaped.pid'),'w').write(str(c.pid))\ntime.sleep(20)\n";
+    let started = Instant::now();
+    let result = BridgeVerifier {
+        config: fixture.config(script),
+    }
+    .verify(&fixture.binding, &fixture.request())
+    .unwrap();
+    assert!(started.elapsed() < Duration::from_millis(2500));
+    assert_eq!(result.failure, Some(Failure::Cleanup));
+    // The intentionally contract-breaking synthetic child self-expires; inspect
+    // only its exact fixture PID, never stop a shared/global process.
+    let pid = fs::read_to_string(result.artifact_directory.unwrap().join("escaped.pid")).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let state = Command::new("/bin/ps")
+            .args(["-p", pid.trim(), "-o", "stat="])
+            .output()
+            .unwrap();
+        let state = String::from_utf8(state.stdout).unwrap();
+        if state.trim().is_empty() || state.trim().starts_with('Z') {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "owned synthetic child did not expire"
+        );
+        std::thread::sleep(Duration::from_millis(25));
+    }
 }
 
 /// Real backend, explicit because Chrome and pinned Node SDK installation are host prerequisites.

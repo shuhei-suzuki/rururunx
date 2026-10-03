@@ -54,15 +54,20 @@ Fallback requires `safe_fallback`, an unavailable/unsupported adaptive backend,
 `effect_possible=false`, and an explicit nonempty equivalent deterministic
 read-only batch. Assertions, timeouts, protocol errors and operation failures do
 not trigger fallback. `effect_possible` is set **before** starting any mutation;
-uncertain side effects are never replayed. A fallback uses a new ephemeral profile
-under the same scoped evidence session, and records `fallback_used=true`.
+uncertain side effects are never replayed. Rust cleans the primary profile before
+fallback, then creates an independent private `fallback` directory/profile under
+the same scoped evidence session. Primary failure, usage, evidence and artifact
+references remain in the final record; aggregate counters remain null whenever
+an attempt lacks the corresponding metric. `fallback_used=true` is set by Rust.
 
 ## Isolation, failures and evidence
 
 Artifacts are in canonical runtime root / ProjectId / TaskId / SessionId, with
 private 0700 directories and no symlink ancestors. Screenshot names are simple
 owned `.png` basenames; returned files must be regular files. `artifact_directory`
-plus these relative names forms the durable reference. `verification.json` includes
+plus these relative names forms the durable reference. `verification_file` identifies
+the session root's durable record, including when final screenshots use the separate
+fallback directory. `verification.json` includes
 Scope, backend, session, task worktree, Git revision, assertions and actual usage.
 If HEAD changes during verification, the result fails with binding-change evidence.
 Git revision does not fingerprint arbitrary concurrent uncommitted files: consumer
@@ -89,7 +94,13 @@ maximum 1 MiB), total browser/helper lifetime (maximum 10 minutes shared across
 fallback attempts), step lifetime and step count. Native Git ownership validation
 precedes this browser-phase deadline. The unreaped leader reserves its PGID;
 `waitid(NOWAIT)` observes exit before cleanup signals so an EOF-before-exit race
-cannot interrupt a completed bridge or recycle its group identity.
+cannot interrupt a completed bridge or recycle its group identity. Group signals
+use Rust syscalls rather than an external `kill` executable. On macOS, the shared
+bounded native `/bin/ps` inspection accepts EPERM only for a verified dead group.
+Reaping and pipe drain each have a 500 ms cleanup grace. An escaped pipe holder
+produces typed `Cleanup` instead of an indefinite join; trusted callbacks must
+inherit the owned group. An unreapable direct child stays with a private reaper.
+Consumers must hold an uncertain Cleanup result rather than replay the request.
 Failures normalize to unavailable, unsupported, policy_hold, timeout, assertion,
 operation, protocol, output_limit or cleanup. Raw native errors, SDK stack traces,
 full HTML and model conversations are not returned. Selected text and semantic
@@ -129,7 +140,10 @@ usage metadata; there is no resumed cumulative-cost ambiguity.
 `llm_calls` here counts observed SDK/native callback invocations, not unreported
 internal provider API retries. Native terminal tokens, cache read/write, reported
 USD cost and API duration are aggregated only when present on every callback;
-unknown fields remain null. For ordinary API models the helper reads actual fresh
+terminal-verified usage remains available even when native generation/schema
+validation fails, without returning raw model errors or webpage content.
+unknown fields remain null. Custom generation stops before a 65th callback.
+For ordinary API models the helper reads actual fresh
 Stagehand session metrics; unreported price/callback count remains null.
 Deterministic runs report measured `llm_calls=0` without inventing token/cost zeros.
 
@@ -181,13 +195,16 @@ screenshot. Actual headed Stagehand observe→act→assert→extract→screensho
 returning reference **42**; CDP-reported launch arguments proved headed mode.
 Its four callback invocations reported input 8, output 192, cached input 8640,
 cache write 49661, USD 0.402888 and API duration 8408 ms. These are one measured
-fixture run, not estimates or a performance guarantee. Synthetic fallback/contract
+fixture run from native-reported counters, including native cost accounting; they
+are not a performance guarantee. Synthetic fallback/contract
 tests do not stand in for these real SDK operations.
 The reversible mutation harness checks routing, uncertain replay, exact Scope,
 artifact symlinks, cross-Project provider credentials, output/time bounds,
 native child group inheritance, strict empty MCP, exact CDP extension origin and
 independent deterministic availability when the adaptive SDK is missing.
-All eleven faults were detected and restored-source Rust/Node suites passed.
+The harness also checks group-signal effectiveness, primary fallback profile/usage
+retention and escaped pipe cleanup bounds. Restored-source Rust/Node suites run
+after every mutation round.
 Rust checks and the no-model Node contract checks run on both Linux and macOS CI;
 the explicit real Chrome/native-model fixtures require host setup and authorization.
 

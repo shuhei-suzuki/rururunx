@@ -155,17 +155,19 @@ async function main() {
       if (data !== undefined && Buffer.byteLength(JSON.stringify(data)) > 8192) throw new Error('output_limit');
       result.evidence.push({ step: index, kind: step.kind, passed: true, ...(data === undefined ? {} : { data }) });
     }
-    if (stagehand && !config.model?.custom_command) {
-      const metrics = await stagehand.metrics();
-      Object.assign(result.usage, { input_tokens: metrics.totalPromptTokens, output_tokens: metrics.totalCompletionTokens,
-        cached_input_tokens: metrics.totalCachedInputTokens, inference_ms: metrics.totalInferenceTimeMs, source: 'stagehand-session-metrics' });
-    }
     result.success = true;
   } catch (error) {
     if (!result) { process.exitCode = 1; return; }
     const known = ['unavailable', 'unsupported', 'policy_hold', 'timeout', 'assertion', 'output_limit', 'protocol'];
     result.failure = known.includes(error.message) ? error.message : error.name === 'TimeoutError' ? 'timeout' : 'operation';
   } finally {
+    if (stagehand && !input.config.model?.custom_command) {
+      try {
+        const metrics = await stagehand.metrics();
+        Object.assign(result.usage, { input_tokens: metrics.totalPromptTokens, output_tokens: metrics.totalCompletionTokens,
+          cached_input_tokens: metrics.totalCachedInputTokens, inference_ms: metrics.totalInferenceTimeMs, source: 'stagehand-session-metrics' });
+      } catch {} // Missing failure-path telemetry remains null; never invent counters.
+    }
     clearTimeout(timer);
     await cleanup();
     if (result) process.stdout.write(JSON.stringify(result));
@@ -175,8 +177,9 @@ function configuredModel(config, scope, timeout, usage) {
   if (config?.custom_command?.length) {
     let calls = 0;
     return { generate: async params => {
+      if (calls >= 64) throw new Error('output_limit');
       const output = await invoke(config.custom_command, { params, scope, timeout_ms: timeout, model_name: config.model_name }, timeout);
-      if (!output.response || !output.usage) throw new Error('protocol');
+      if (!output.usage) throw new Error('protocol');
       for (const key of ['llm_calls', 'input_tokens', 'output_tokens', 'cached_input_tokens', 'cache_write_tokens', 'cost_usd', 'inference_ms']) {
         const value = output.usage[key];
         usage[key] = calls === 0 ? (typeof value === 'number' ? value : null)
@@ -185,6 +188,7 @@ function configuredModel(config, scope, timeout, usage) {
       usage.source = output.usage.source ?? null;
       if (Array.isArray(output.usage.native_sessions)) usage.native_sessions.push(...output.usage.native_sessions);
       calls++;
+      if (!output.response || output.failure) throw new Error('operation');
       return output.response;
     } };
   }

@@ -36,6 +36,20 @@ print(json.dumps({'type':'result','subtype':'success','is_error':False,'session_
     assert.equal(output.usage.cached_input_tokens, null);
     assert.equal(output.usage.cost_usd, null);
     assert.match(output.usage.native_sessions[0], /^[0-9a-f-]{36}$/);
+    await writeFile(path.join(folder, 'claude'), script.replace('{"answer":42}', '{"answer":"wrong"}'), {mode: 0o700});
+    const failed = await invoke(['/usr/bin/env', `PATH=${folder}:${process.env.PATH}`, `RRX_NATIVE_TEST_CWD=${process.cwd()}`, process.execPath,
+      path.join(path.dirname(fileURLToPath(import.meta.url)), 'native-claude.mjs')],
+      { scope: {project_id: 'fixture-project', task_id: 'fixture-task'}, params, timeout_ms: 5000, model_name: null }, 6000, 262144, true);
+    assert.equal(failed.response, undefined);
+    assert.equal(failed.failure, 'operation');
+    assert.equal(failed.usage.input_tokens, 7);
+    assert.match(failed.usage.native_sessions[0], /^[0-9a-f-]{36}$/);
+    await writeFile(path.join(folder, 'claude'), script.replace("'subtype':'success','is_error':False", "'subtype':'error_during_execution','is_error':True")+'\nsys.exit(1)\n', {mode: 0o700});
+    const errored = await invoke(['/usr/bin/env', `PATH=${folder}:${process.env.PATH}`, `RRX_NATIVE_TEST_CWD=${process.cwd()}`, process.execPath,
+      path.join(path.dirname(fileURLToPath(import.meta.url)), 'native-claude.mjs')],
+      { scope: {project_id: 'fixture-project', task_id: 'fixture-task'}, params, timeout_ms: 5000, model_name: null }, 6000, 262144, true);
+    assert.equal(errored.failure, 'operation');
+    assert.equal(errored.usage.input_tokens, 7);
   } finally { await rm(folder, {recursive: true, force: true}); }
 });
 

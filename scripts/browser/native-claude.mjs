@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { invoke, readInput } from './io.mjs';
 
+let reportedUsage;
 try {
   const input = await readInput();
   const request = input.params;
@@ -19,14 +20,11 @@ try {
     '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}', '--permission-prompts', 'none',
     '--session-id', sessionId, '--max-turns', '3'];
   if (input.model_name) args.push('--model', input.model_name);
-  const native = await invoke(args, prompt, input.timeout_ms, 262144);
-  if (native.type !== 'result' || native.subtype !== 'success' || native.is_error === true) throw new Error('unavailable');
+  const native = await invoke(args, prompt, input.timeout_ms, 262144, false, true);
+  if (native.type !== 'result') throw new Error('unavailable');
   if (native.session_id !== sessionId) throw new Error('protocol');
   // CLI --json-schema does not support the SDK's draft-2020-12 dialect. Preserve
   // the supplied schema as factual input and validate the returned data locally.
-  const text = native.result?.trim();
-  const json = text?.startsWith('```json\n') && text.endsWith('\n```') ? text.slice(8, -4) : text;
-  const data = z.fromJSONSchema(request.responseFormat.schema).parse(native.structured_output ?? JSON.parse(json));
   const u = native.usage;
   // Missing telemetry remains null. Fresh native session: no cumulative resume attribution.
   const usage = {
@@ -40,6 +38,11 @@ try {
     inference_ms: native.duration_api_ms ?? null,
     source: 'claude-native-terminal',
   };
+  reportedUsage = usage;
+  if (native.subtype !== 'success' || native.is_error === true) throw new Error('unavailable');
+  const text = native.result?.trim();
+  const json = text?.startsWith('```json\n') && text.endsWith('\n```') ? text.slice(8, -4) : text;
+  const data = z.fromJSONSchema(request.responseFormat.schema).parse(native.structured_output ?? JSON.parse(json));
   const response = { role: 'assistant', content: { type: 'text', text: JSON.stringify(data) }, outputFormat: 'json_schema', structuredContent: data };
   if (Number.isInteger(usage.input_tokens) && Number.isInteger(usage.output_tokens)) {
     response.usage = { inputTokens: usage.input_tokens, outputTokens: usage.output_tokens,
@@ -49,5 +52,6 @@ try {
   process.stdout.write(JSON.stringify({ response, usage }));
 } catch {
   // Never copy model prompts, native config, credentials, or raw provider errors into evidence.
-  process.exitCode = 1;
+  if (reportedUsage) process.stdout.write(JSON.stringify({ failure: 'operation', usage: reportedUsage }));
+  else process.exitCode = 1;
 }

@@ -382,7 +382,7 @@ impl ProcessGroup {
 }
 
 #[cfg(target_os = "macos")]
-fn macos_group_is_dead(pid: Pid) -> std::io::Result<bool> {
+pub(crate) fn macos_group_is_dead(pid: Pid) -> std::io::Result<bool> {
     process_group_inspection(Path::new("/bin/ps"), pid.as_raw_nonzero().get())
 }
 #[cfg(target_os = "macos")]

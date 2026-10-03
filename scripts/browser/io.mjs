@@ -11,7 +11,7 @@ export async function readInput(limit = 65536) {
 }
 
 // No shell, background leader, detached child, or global process lookup.
-export function invoke(command, input, timeout, limit = 262144, ownGroup = false) {
+export function invoke(command, input, timeout, limit = 262144, ownGroup = false, acceptErrorJson = false) {
   return new Promise((resolve, reject) => {
     const child = spawn(command[0], command.slice(1), { stdio: ['pipe', 'pipe', 'ignore'], detached: ownGroup });
     let chunks = [], size = 0, failure, killTimer;
@@ -27,7 +27,7 @@ export function invoke(command, input, timeout, limit = 262144, ownGroup = false
     child.on('close', code => {
       clearTimeout(timer);
       clearTimeout(killTimer);
-      if (failure || code !== 0) reject(new Error(failure ?? 'operation'));
+      if (failure || code !== 0 && !acceptErrorJson) reject(new Error(failure ?? 'operation'));
       else { try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8'))); } catch { reject(new Error('protocol')); } }
     });
     const bytes = JSON.stringify(input);

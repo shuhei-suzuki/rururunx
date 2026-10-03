@@ -22,6 +22,10 @@ mutations = [
     ('strict_mcp', ROOT / 'scripts/browser/native-claude.mjs', '{"mcpServers":{}}', '{"mcpServers":{"unexpected":{}}}', ['node', '--test', 'scripts/browser/native-claude.test.mjs'], 'not ok'),
     ('cdp_origin', ROOT / 'scripts/browser/policy.mjs', '`--remote-allow-origins=${extensionOrigin}`', '`--remote-allow-origins=*`', ['node', '--test', 'scripts/browser/policy.test.mjs'], 'not ok'),
     ('adaptive_sdk_optional', ROOT / 'scripts/browser/bridge.mjs', 'catch { return null; }', "catch { throw new Error('unavailable'); }", ['node', '--test', 'scripts/browser/availability.test.mjs'], 'not ok'),
+    ('native_group_signal', RUST, 'match kill_process_group(pid, signal)', 'match Ok::<(), rustix::io::Errno>(())', rust_test('bounded_process_failure_is_normalized_and_descendants_are_owned'), 'test result: FAILED'),
+    ('fallback_profile', RUST, 'profiles[0].cleanup().is_err()', 'false', rust_test('fallback_clears_primary_profile_and_retains_all_attempt_telemetry'), 'test result: FAILED'),
+    ('fallback_usage', RUST, 'merge_usage(&mut result.usage, &primary.usage);', 'let _ = &primary.usage;', rust_test('fallback_clears_primary_profile_and_retains_all_attempt_telemetry'), 'test result: FAILED'),
+    ('escaped_pipe_bound', RUST, 'let io_deadline = Instant::now() + Duration::from_millis(500)', 'let io_deadline = Instant::now() + Duration::from_secs(5)', rust_test('escaped_pipe_holder_cannot_wedge_the_bounded_supervisor'), 'test result: FAILED'),
 ]
 
 subprocess.run(['git', 'diff', '--exit-code', '--', *sorted({str(m[1].relative_to(ROOT)) for m in mutations})], cwd=ROOT, check=True, capture_output=True)
