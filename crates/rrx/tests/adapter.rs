@@ -815,3 +815,39 @@ async fn lost_executor_keeps_worktree_reserved_until_explicit_verified_dead_reso
     store.put_session(&snapshot, version).unwrap();
     store.put_record(&mut lock).unwrap();
 }
+
+#[tokio::test]
+async fn blocked_project_rejects_new_launch_and_allows_owned_native_stop() {
+    let fixture = Fixture::new();
+    let adapter = fixture.adapter("/bin/cat; sleep 60");
+    let session = adapter.start(fixture.request.clone()).await.unwrap();
+    {
+        let mut store = fixture.store.lock().unwrap();
+        let mut project = store.project(session.scope.project_id).unwrap().unwrap();
+        project.state = ProjectState::Blocked;
+        project.blocked_reason = Some("source unavailable fixture".into());
+        store.put_project(&mut project).unwrap();
+    }
+    assert_eq!(
+        adapter
+            .start(fixture.request.clone())
+            .await
+            .unwrap_err()
+            .kind,
+        ErrorKind::OwnershipMismatch
+    );
+    let stopped = adapter.stop((&session).into()).await.unwrap();
+    assert_eq!(stopped.session.state, SessionState::Stopped);
+    let store = fixture.store.lock().unwrap();
+    let (persisted, _) = store.session(session.id).unwrap().unwrap();
+    assert_eq!(persisted.state, SessionState::Stopped);
+    assert_eq!(persisted.recovery, session.recovery);
+    assert_eq!(persisted.native_ref, session.native_ref);
+    assert_eq!(
+        store
+            .records(&session.scope, RecordKind::Session)
+            .unwrap()
+            .len(),
+        1
+    );
+}

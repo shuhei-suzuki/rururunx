@@ -1,7 +1,8 @@
 # Issue #4 verification
 
 Workflow: STRICT. Host: macOS arm64, pinned Rust 1.91.1.
-Foundation: merged #3 `e51e069`; integrated adapter fixes at `45a1e01`.
+Foundation: merged #3 `e51e069` and #26 `5f442ab`; schema2 and conservative
+Blocked Project Session guards are integrated.
 Native provider adapters and runtime CLI orchestration remain separate.
 
 ## Acceptance and regression evidence
@@ -27,11 +28,15 @@ Native provider adapters and runtime CLI orchestration remain separate.
   overwriting them. Provider token/cache metrics are null with a reason; prepared
   payload size is observable in bytes and Usage remains attributable through Store.
 - Two isolated Projects execute concurrently with distinct context/environment.
-- 56 workspace tests pass at `45a1e01`: 16 native integration regressions, three
+- A Project blocked during native execution rejects a fresh launch but allows the
+  owned process to stop and persist Stopped without changing native recovery hints.
+- Before #26 integration, 56 workspace tests passed at `45a1e01`: 16 native integration regressions, three
   adapter unit regressions (one macOS-specific), and 37 existing tests. Clippy
   `-D warnings`, fmt-check, locked debug/release builds also pass. Earlier integrated
   `5ecfff7` passed Linux and macOS [CI](https://github.com/shuhei-suzuki/rururunx/actions/runs/37094557400).
-  Exact final-head Linux/macOS CI gates are recorded before merge. On this macOS host real signal/ps tests require native
+  #26 integration adds its 15 registry regressions and one direct adapter/Blocked
+  Project stop regression (72 macOS tests total; 71 Linux because EPERM is macOS-specific).
+  Exact final-head tests/lint/build/Linux/macOS CI gates are recorded before merge. On this macOS host real signal/ps tests require native
   OS access; sandbox ps was denied and Tokio subprocess waits timed out. Authorized
   `require_escalated` verification uses temporary Git fixtures only.
 
@@ -107,6 +112,19 @@ tests passed with a clean tree:
 | Session Scope | project_goal_task_context_cwd_branch_and_lock_boundaries_fail_closed |
 | Prepared context Scope | project_goal_task_context_cwd_branch_and_lock_boundaries_fail_closed |
 | Terminal retention eviction | terminal_retention_is_bounded_and_output_can_be_released |
+
+
+At pre-#26 immutable `45a1e01`, five review-fix mutations each failed its protected
+test. Original source bytes were restored; all 56 tests passed and the isolated
+tree was clean:
+
+| Removed guarantee | Failing regression |
+| --- | --- |
+| EPERM requires verified dead group | signal_permission_failure_requires_verified_dead_group |
+| Five-second Git deadline | hanging_git_preflight_times_out_without_holding_shared_store |
+| Goal version recheck | ownership_change_during_native_preflight_prevents_executor_launch |
+| Shared pure Git common directory check | foreign_git_repository_inside_namespace_detached_and_protected_branches_are_rejected |
+| Typed transactional contention | atomic_starting_reservation_excludes_duplicate_executor_and_review_acquisition |
 
 ## Limits
 
