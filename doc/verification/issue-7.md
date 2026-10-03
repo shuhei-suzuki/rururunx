@@ -31,12 +31,12 @@ unexplained. It retained Lost reservation after verified process cleanup. Safe r
 shape diagnostics were added; the next acceptance passed. That success does not prove the
 transient impossible or reinterpret its uncertain dispatch as completed.
 
-## Review and remaining gates
+## Independent review
 
 Two immutable published native formal design reviews identified and refined scope,
 auth/profile, dispatch CAS, live-tool evidence, schema, filesystem and resume requirements.
-Implementation review and compiled boundary mutants are recorded below; final scoped
-rereview and exact Linux/macOS CI remain pending. Independent review preserves the default native Claude model and hooks,
+Implementation review, compiled boundary mutants and exact Linux/macOS CI are recorded
+below. Independent review preserves the default native Claude model and hooks,
 with tools disabled and an empty strict MCP inventory; it is a manual read-only source
 review under the native read-only exception, not Triple Review dogfood.
 
@@ -220,8 +220,8 @@ authority creates an unowned file, caught independently of its eventual Lost sta
 Totals: 34 executions, 33 distinct boundaries, 33 assertion kills and the original
 survivor subsequently killed. Restored baseline has no crate diff; its full fake suite
 passes and the owned detached mutation worktree was removed normally. Immutable
-scoped Round 5 rereview and the latest exact default-concurrency Linux/macOS CI remain
-pending.
+scoped Round 5 rereview and exact default-concurrency Linux/macOS CI subsequently pass
+at `6f10dff`, as recorded below.
 
 ## Implementation Review 5 dispositions
 
@@ -249,5 +249,24 @@ the owned echo process is reaped before either failing assertion. Totals: 36 exe
 Restored baseline passes all eleven private Grok tests, has no crate diff, and the
 owned detached mutation worktree was removed normally. This final delta changes tests
 and documentation only; installed acceptance at `758bdf2` verifies the identical
-production implementation. Immutable scoped rereview and final exact-head CI remain
-pending.
+production implementation. Immutable scoped rereview and exact-head CI subsequently
+pass at `29f0613`, as recorded below.
+
+## Final scoped review and CI
+
+Public immutable `29f0613`: independent native Round 6 completes in 61.897 seconds,
+verifies every R5 disposition and finds no Critical/High/Medium/Low actual defects on
+the changed causal paths. Exact default-concurrency Linux/macOS CI run `37160836363`
+succeeds, including fmt, locked all-target clippy, full workspace tests and debug/release
+builds. The final outcome-only documentation delta preserves this reviewed code; its
+exact publication checks and conclusion are also recorded on PR 40.
+
+Two informational limits were verified and retained. The Actor sync-fault fixture ends
+at the shared TurnEvidence completion consumer; the supervise-to-transport composition
+is separately pinned by the unfinished-tool fake subprocess and its compiled mutant.
+A panicked FS worker or failed audit transaction may omit the factual possible-effects
+record, but propagates an error and keeps the consumed dispatch Lost, never completed
+or automatically replayable. Post-turn observation still checks unexplained effects.
+Optional extra audit method/path/count assertions do not represent an unverified
+completion or ownership claim. No process inspector deadline, death guard, uncertainty
+latch, shared CAS, schema or native safety/auth configuration was changed by this delta.
