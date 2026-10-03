@@ -114,9 +114,16 @@ impl DecisionPolicy {
                 "native decision controls are not effective",
             ));
         }
-        let filesystem = &effective["permissions"][PROFILE]["filesystem"];
+        let mut filesystem = effective["permissions"][PROFILE]["filesystem"].clone();
+        // Installed config/read normalizes the optional scan-depth metadata to
+        // null. It is not an extra path grant; every actual path rule still matches.
+        if let Some(object) = filesystem.as_object_mut() {
+            if object.get("glob_scan_max_depth") == Some(&Value::Null) {
+                object.remove("glob_scan_max_depth");
+            }
+        }
         if filesystem
-            != &json!({":root":"deny",":minimal":"read",":slash_tmp":"deny",":tmpdir":"deny",":workspace_roots":{".":"read"}})
+            != json!({":root":"deny",":minimal":"read",":slash_tmp":"deny",":tmpdir":"deny",":workspace_roots":{".":"read"}})
             || effective["permissions"][PROFILE]["network"]["enabled"] != false
         {
             return Err(failure(
@@ -186,8 +193,12 @@ pub fn verify_thread_identity(
         .as_str()
         .filter(|id| uuid::Uuid::parse_str(id).is_ok())
         .ok_or_else(|| failure(ErrorKind::ParseFailure, "invalid native thread UUID"))?;
-    if response["cwd"].as_str() != cwd.to_str()
-        || response["thread"]["cwd"].as_str() != cwd.to_str()
+    let cwd_text = cwd
+        .to_str()
+        .filter(|_| cwd.is_absolute())
+        .ok_or_else(|| failure(ErrorKind::InvalidInput, "native CWD must be absolute UTF-8"))?;
+    if response["cwd"].as_str() != Some(cwd_text)
+        || response["thread"]["cwd"].as_str() != Some(cwd_text)
         || expected.is_some_and(|expected| expected != id)
     {
         return Err(failure(
@@ -306,6 +317,11 @@ mod tests {
             && !arg.contains("ignore")
             && !arg.contains("dangerously")));
         policy.verify_configuration(&effective()).unwrap();
+        let mut normalized = effective();
+        normalized["permissions"][PROFILE]["filesystem"]["glob_scan_max_depth"] = Value::Null;
+        policy.verify_configuration(&normalized).unwrap();
+        normalized["permissions"][PROFILE]["filesystem"]["/tmp/foreign-project"] = json!("read");
+        assert!(policy.verify_configuration(&normalized).is_err());
         for feature in DISABLED_FEATURES {
             let mut wrong = effective();
             wrong["features"][*feature] = json!(true);
