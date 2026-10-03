@@ -157,7 +157,7 @@ impl Fixture {
         self.request.input.kind = InputKind::ReviewBundle;
     }
 }
-async fn finished(adapter: &GrokAdapter, session: &Session) -> SessionStatus {
+async fn finished(adapter: &dyn AgentAdapter, session: &Session) -> SessionStatus {
     let mut status = adapter.subscribe(session.into()).unwrap();
     tokio::time::timeout(Duration::from_secs(15), async {
         while !status.borrow().terminal() {
@@ -332,7 +332,7 @@ async fn native_execute_edits_only_owned_files_and_preserves_actual_exit() {
 async fn concurrent_native_reviewers_share_exact_lock_and_validate_structured_verdict() {
     let mut fixture = Fixture::new();
     fixture.review();
-    let adapter = fixture.adapter();
+    let adapter = Arc::new(fixture.adapter());
     let schema = json!({"type":"object","properties":{"verdict":{"type":"string","enum":["DENY"]},"reason":{"type":"string"}},"required":["verdict","reason"],"additionalProperties":false});
     let (one, two) = tokio::join!(
         adapter.start_structured(fixture.request.clone(), schema.clone()),
@@ -341,13 +341,41 @@ async fn concurrent_native_reviewers_share_exact_lock_and_validate_structured_ve
     let one = one.unwrap();
     let two = two.unwrap();
     assert_ne!(one.id, two.id);
-    let (a, b) = tokio::join!(finished(&adapter, &one), finished(&adapter, &two));
+    let (a, b) = tokio::join!(finished(&*adapter, &one), finished(&*adapter, &two));
     assert!(adapter.transport_succeeded(&a), "{:?}", a.failure);
     assert!(adapter.transport_succeeded(&b), "{:?}", b.failure);
     assert_eq!(
         serde_json::from_slice::<Value>(&a.stdout).unwrap()["verdict"],
         "DENY"
     );
+    // Issue 9 owns Review Set policy. Prove this provider's registered object-safe
+    // launch/status/completion lifecycle independently of its inherent schema API.
+    let mut registry = AgentRegistry::default();
+    registry.register("grok".into(), adapter).unwrap();
+    let registered = registry.get("grok").unwrap();
+    assert!(registered.capabilities().contains(&Capability::Review));
+    let (three, four) = tokio::join!(
+        registered.start(fixture.request.clone()),
+        registered.start(fixture.request.clone())
+    );
+    let three = three.unwrap();
+    let four = four.unwrap();
+    assert_ne!(three.id, four.id);
+    let (c, d) = tokio::join!(
+        finished(&*registered, &three),
+        finished(&*registered, &four)
+    );
+    assert!(registered.transport_succeeded(&c), "{:?}", c.failure);
+    assert!(registered.transport_succeeded(&d), "{:?}", d.failure);
+    assert_eq!(c.session.scope, fixture.request.scope);
+    assert_eq!(d.session.scope, fixture.request.scope);
+    assert_eq!(
+        registered.status((&three).into()).await.unwrap().session,
+        c.session
+    );
+    for session in [&one, &two, &three, &four] {
+        registered.release(session.into()).unwrap();
+    }
 }
 #[tokio::test]
 async fn native_auth_inventory_config_parser_and_tool_evidence_fail_closed() {

@@ -270,3 +270,17 @@ or automatically replayable. Post-turn observation still checks unexplained effe
 Optional extra audit method/path/count assertions do not represent an unverified
 completion or ownership claim. No process inspector deadline, death guard, uncertainty
 latch, shared CAS, schema or native safety/auth configuration was changed by this delta.
+
+## Issue acceptance coverage
+
+The current GitHub Issue 7's five criteria are mapped explicitly: configured prepared
+execution/review input and actual owned edits; ACP-verified explicit model/effort;
+collected locally validated native structured verdicts; normalized auth/unavailable/
+protocol/parse/state/timeout/Lost failures; and concurrent independent Reviewer Sessions
+through the explicitly registered object-safe AgentRegistry. The last fixture also
+retains a separate concurrent schema-constrained pair through the native inherent API.
+It proves adapter participation, not Review Set scheduling/policy/aggregation (Issue 9).
+ApprovalReviewer binding, native attach/PTY and configured provider factory are explicit
+later integration boundaries, not unimplemented GitHub Issue 7 acceptance criteria.
+The added Registry consumer test changes no production implementation; its committed
+targeted gates and final exact-head CI are recorded on PR 40.
