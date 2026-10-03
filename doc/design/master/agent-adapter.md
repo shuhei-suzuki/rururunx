@@ -307,7 +307,9 @@ environment or target operations. Native turn completion is separate from
 confirmed process-group cleanup and durable terminal state. Resume adopts only
 the current in-memory supervisor's exact owned UUID, never a persisted hint.
 
-Pending native approval callbacks expose their exact identities/arguments. The
+Pending native approval callbacks expose exact identities, bounded operation
+contents and a reviewed-operation digest. Unknown patch facts and unscoped targets
+cannot be granted; resolved native requests retire without a runtime grant. The
 default Human route cannot be auto-granted. An explicit trusted runtime-broker
 integration requires the existing native client reviewer route and revalidates
 ownership before one-time audited replies; automatic/managed review is never
@@ -319,3 +321,13 @@ owned cumulative gauge on resume without adding repeated notifications. Missing
 or reset counters and monetary cost stay null. Interactive/attach and final native
 source review/mutation/CI evidence are pending; this section does not claim Issue
 #6 completion. See [issue design](../issue-6-design.md).
+
+
+Codex experimental protocol conformance currently targets native CLI 0.160.0;
+unknown versions fail before inference. Selected native provider credential/header
+references are scoped to the owning Project without extracting native credentials.
+Owned resume requires a freshly checkpointed continuation rather than an implicit
+repeat of the old mutating prompt. Checkpoint can refresh mutable own Project
+metadata but cannot rebind its repository/worktree. Transport completion and
+telemetry compare the private owned turn journal with persisted Session authority;
+caller recovery metadata and a server's OS exit zero are never completion proof.
