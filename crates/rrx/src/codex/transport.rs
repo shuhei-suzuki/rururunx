@@ -249,7 +249,7 @@ impl NativeServer {
         Ok(result)
     }
 }
-fn failure_after_cleanup(
+pub(super) fn failure_after_cleanup(
     primary: crate::adapter::AdapterError,
     cleanup: AdapterResult<()>,
 ) -> crate::adapter::AdapterError {
@@ -259,6 +259,15 @@ fn failure_after_cleanup(
             ErrorKind::SessionLost,
             format!("owned cleanup unverified: {cleanup}; original failure: {primary}"),
         ),
+    }
+}
+pub(super) fn result_after_cleanup<T>(
+    result: AdapterResult<T>,
+    cleanup: AdapterResult<()>,
+) -> AdapterResult<T> {
+    match result {
+        Ok(value) => cleanup.map(|()| value),
+        Err(primary) => Err(failure_after_cleanup(primary, cleanup)),
     }
 }
 async fn terminate(process: ProcessGroup) -> AdapterResult<ExitStatus> {
@@ -563,6 +572,46 @@ mod tests {
         );
         assert_eq!(confirmed.kind, ErrorKind::Timeout);
         assert_eq!(confirmed.message, "native startup timed out");
+    }
+    #[test]
+    fn successful_discovery_cannot_survive_uncertain_shutdown_and_failed_setup_keeps_both_causes() {
+        let successful = result_after_cleanup(
+            Ok("discovered native profile"),
+            Err(failure(
+                ErrorKind::SessionLost,
+                "discovery child still unverified",
+            )),
+        );
+        assert_eq!(successful.unwrap_err().kind, ErrorKind::SessionLost);
+        let failed: AdapterResult<()> = result_after_cleanup(
+            Err(failure(
+                ErrorKind::AuthenticationUnavailable,
+                "native login required",
+            )),
+            Err(failure(
+                ErrorKind::SessionLost,
+                "native group death unverified",
+            )),
+        );
+        let failed = failed.unwrap_err();
+        assert_eq!(failed.kind, ErrorKind::SessionLost);
+        assert!(failed.message.contains("native login required"));
+        assert!(failed.message.contains("native group death unverified"));
+        let confirmed: AdapterResult<()> = result_after_cleanup(
+            Err(failure(
+                ErrorKind::AuthenticationUnavailable,
+                "native login required",
+            )),
+            Ok(()),
+        );
+        assert_eq!(
+            confirmed.unwrap_err().kind,
+            ErrorKind::AuthenticationUnavailable
+        );
+        assert_eq!(
+            result_after_cleanup(Ok("native profile"), Ok(())).unwrap(),
+            "native profile"
+        );
     }
     #[test]
     fn ipc_rejects_symlinks_non_sockets_and_permissive_objects() {
