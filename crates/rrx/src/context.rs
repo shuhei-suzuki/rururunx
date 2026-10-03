@@ -15,7 +15,10 @@ use std::{
     fs::File,
     io::Read,
     path::{Component, Path, PathBuf},
-    sync::{Arc, atomic::AtomicBool},
+    sync::{
+        Arc, OnceLock,
+        atomic::{AtomicBool, Ordering},
+    },
     time::Duration,
 };
 
@@ -32,6 +35,8 @@ pub struct Freshness {
     pub goal_version: u64,
     pub task_version: u64,
     pub worktree: PathBuf,
+    pub source_root_file_id: String,
+    pub worktree_file_id: String,
     pub revision: String,
     pub inventory_hash: String,
     pub source_hashes: BTreeMap<String, String>,
@@ -118,6 +123,7 @@ pub enum Expansion {
 }
 #[derive(Debug, Clone, Serialize)]
 pub struct SelectionEvidence {
+    pub required: BTreeMap<String, Vec<String>>,
     pub selected: BTreeMap<String, Vec<String>>,
     pub omitted: Vec<String>,
     pub required_bytes: usize,
@@ -176,6 +182,9 @@ struct Snapshot {
     task: Task,
 }
 impl Snapshot {
+    fn versions(&self) -> [u64; 3] {
+        [self.project.version, self.goal.version, self.task.version]
+    }
     fn read(store: &crate::state::Store, scope: &Scope) -> Result<Self> {
         let project = crate::project::registered_project(store, scope.project_id)?;
         let goal = store
@@ -257,7 +266,7 @@ impl RepositoryContext {
             .lock()
             .map_err(|_| anyhow::anyhow!("Store poisoned"))?;
         map.snapshot.recheck(&store)?;
-        store.audit(scope, "context.index.generated", json!({"revision":map.freshness.revision,"inventory_hash":map.freshness.inventory_hash,"files":map.files.len(),"skipped":map.skipped.len(),"source_bytes":map.files.values().map(|f|f.bytes).sum::<usize>(),"algorithm":"lexical-v1"}))?;
+        store.audit_if_current(scope,map.snapshot.versions(), "context.index.generated", json!({"revision":map.freshness.revision,"inventory_hash":map.freshness.inventory_hash,"source_manifest_hash":manifest_hash(&map),"additional_paths":map.additional_paths,"files":map.files.len(),"skipped":map.skipped.len(),"text_source_bytes":map.files.values().map(|f|f.bytes).sum::<usize>(),"algorithm":"lexical-v1"}))?;
         Ok(map)
     }
     pub async fn validate(&self, map: &RepositoryMap) -> Result<()> {
@@ -299,8 +308,17 @@ impl RepositoryContext {
         self.validate(map).await?;
         let (mandatory, required) = mandatory_payload(map, &request.mandatory_evidence)?;
         let terms = words(&request.task_text);
+        ensure!(
+            terms.len() <= 512,
+            "task text exceeds 512 distinct ranking terms"
+        );
+        let ranking_deadline = std::time::Instant::now() + Duration::from_secs(5);
         let mut ranked = vec![];
         for (path, file) in &map.files {
+            ensure!(
+                std::time::Instant::now() < ranking_deadline,
+                "context ranking exceeded time budget"
+            );
             let mut score = 0usize;
             let mut reasons = vec![];
             if file.changed || request.changed_files.contains(path) {
@@ -315,11 +333,10 @@ impl RepositoryContext {
                 score += 100;
                 reasons.push("changed_symbol".into());
             }
+            let folded_path = path.to_lowercase();
             let matches = terms
                 .iter()
-                .filter(|t| {
-                    path.to_lowercase().contains(t.as_str()) || file.references.contains(*t)
-                })
+                .filter(|t| folded_path.contains(t.as_str()) || file.references.contains(*t))
                 .count();
             if matches > 0 {
                 score += matches.min(32) * 10;
@@ -330,18 +347,24 @@ impl RepositoryContext {
             }
         }
         let roots: BTreeSet<_> = ranked.iter().map(|(_, p, _)| p.clone()).collect();
+        let mut neighbors = BTreeSet::new();
         for path in &roots {
             for dep in &map.files[path].dependencies {
                 if !roots.contains(dep) {
-                    ranked.push((5, dep.clone(), vec!["graph_neighbor".into()]));
-                }
-            }
-            for (caller, file) in &map.files {
-                if file.dependencies.contains(path) && !roots.contains(caller) {
-                    ranked.push((5, caller.clone(), vec!["graph_neighbor".into()]));
+                    neighbors.insert(dep.clone());
                 }
             }
         }
+        for (caller, file) in &map.files {
+            if !roots.contains(caller) && file.dependencies.iter().any(|p| roots.contains(p)) {
+                neighbors.insert(caller.clone());
+            }
+        }
+        ranked.extend(
+            neighbors
+                .into_iter()
+                .map(|p| (5, p, vec!["graph_neighbor".into()])),
+        );
         ranked.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
         for (path, reason) in &map.skipped {
             if request.changed_files.contains(path) || reason == "tracked/additional source missing"
@@ -355,14 +378,21 @@ impl RepositoryContext {
         let candidates = ranked
             .into_iter()
             .map(|(_, path, reasons)| {
+                let key = format!("worktree:{path}");
                 let text = if let Some(entry) = map.files.get(&path) {
-                    format!(
-                        "\nFILE {}\n{}\n",
-                        path,
-                        serde_json::to_string(entry).expect("serializable map entry")
+                    section(
+                        "file_map",
+                        &key,
+                        &map.freshness.source_hashes[&key],
+                        serde_json::to_value(entry).expect("serializable map entry"),
                     )
                 } else {
-                    format!("\nUNAVAILABLE {}\n{}\n", path, map.skipped[&path])
+                    section(
+                        "unavailable_source",
+                        &key,
+                        &map.freshness.source_hashes[&key],
+                        json!(map.skipped[&path]),
+                    )
                 };
                 (path, reasons, text)
             })
@@ -395,7 +425,13 @@ impl RepositoryContext {
         );
         for path in paths {
             if required.insert(path.clone()) {
-                mandatory.push_str(&format!("\nSOURCE {}\n{}\n", path, map.contents[&path]));
+                let key = format!("worktree:{path}");
+                mandatory.push_str(&section(
+                    "source",
+                    &key,
+                    &map.freshness.source_hashes[&key],
+                    json!(map.contents[&path]),
+                ));
             }
         }
         ensure!(
@@ -426,7 +462,7 @@ impl RepositoryContext {
             .iter()
             .map(|p| {
                 (
-                    p.clone(),
+                    format!("worktree:{p}"),
                     vec![if event == "context.expansion" {
                         "required_expansion_or_evidence".into()
                     } else {
@@ -438,7 +474,12 @@ impl RepositoryContext {
         for rule in map.mandatory.keys() {
             selected.insert(rule.clone(), vec!["mandatory_project_rule".into()]);
         }
+        selected.insert(
+            "context:header".into(),
+            vec!["mandatory_goal_task_scope".into()],
+        );
         let mut evidence = SelectionEvidence {
+            required: selected.clone(),
             selected,
             omitted: vec![],
             required_bytes,
@@ -448,7 +489,11 @@ impl RepositoryContext {
             budget,
         };
         let outcome = if !budget.fits(&payload) {
-            evidence.omitted = candidates.into_iter().map(|(p, _, _)| p).collect();
+            evidence.selected.clear();
+            evidence.omitted = candidates
+                .into_iter()
+                .map(|(p, _, _)| format!("worktree:{p}"))
+                .collect();
             SelectionOutcome::NeedsBudget {
                 evidence: evidence.clone(),
             }
@@ -458,9 +503,11 @@ impl RepositoryContext {
                     <= budget.bytes.min(budget.estimated_tokens)
                 {
                     payload.push_str(&text);
-                    evidence.selected.insert(path, reasons);
+                    evidence
+                        .selected
+                        .insert(format!("worktree:{path}"), reasons);
                 } else {
-                    evidence.omitted.push(path);
+                    evidence.omitted.push(format!("worktree:{path}"));
                 }
             }
             evidence.estimated_tokens = payload.len();
@@ -480,7 +527,7 @@ impl RepositoryContext {
             .lock()
             .map_err(|_| anyhow::anyhow!("Store poisoned"))?;
         map.snapshot.recheck(&store)?;
-        store.audit(&map.freshness.scope,event,json!({"revision":map.freshness.revision,"inventory_hash":map.freshness.inventory_hash,"ready":matches!(outcome,SelectionOutcome::Ready{..}),"evidence":evidence}))?;
+        store.audit_if_current(&map.freshness.scope,map.snapshot.versions(),event,json!({"revision":map.freshness.revision,"inventory_hash":map.freshness.inventory_hash,"source_manifest_hash":manifest_hash(map),"ready":matches!(outcome,SelectionOutcome::Ready{..}),"evidence":evidence}))?;
         Ok(outcome)
     }
 }
@@ -488,21 +535,39 @@ impl RepositoryContext {
 fn same_sources(a: &RepositoryMap, b: &RepositoryMap) -> bool {
     a.freshness.scope == b.freshness.scope
         && a.freshness.worktree == b.freshness.worktree
+        && a.freshness.source_root_file_id == b.freshness.source_root_file_id
+        && a.freshness.worktree_file_id == b.freshness.worktree_file_id
         && a.freshness.revision == b.freshness.revision
         && a.freshness.inventory_hash == b.freshness.inventory_hash
         && a.freshness.source_hashes == b.freshness.source_hashes
 }
 async fn git_value(root: &Path, args: &[&str], deadline: tokio::time::Instant) -> Result<String> {
-    crate::adapter::bounded_git(
-        Path::new("git"),
+    let executable = crate::adapter::resolve_executable("git")
+        .map_err(|e| anyhow::anyhow!("native Git unavailable: {e:?}"))?;
+    let uncertain = Arc::new(AtomicBool::new(false));
+    let observed = crate::adapter::bounded_git_raw(
+        &executable,
         root,
-        &args.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
+        &std::iter::once("--no-optional-locks".to_string())
+            .chain(args.iter().map(|s| s.to_string()))
+            .collect::<Vec<_>>(),
         git::native_environment(),
         deadline,
-        Arc::new(AtomicBool::new(false)),
+        uncertain.clone(),
     )
     .await
-    .map_err(|e| anyhow::anyhow!("bounded context Git: {e:?}"))
+    .map_err(|e| anyhow::anyhow!("bounded context Git: {e:?}"));
+    ensure!(
+        !uncertain.load(Ordering::SeqCst),
+        "native Git process-group cleanup uncertain; context operation blocked"
+    );
+    let value = String::from_utf8(observed?).context("Git source metadata is not UTF-8")?;
+    // NUL-separated lists must preserve leading whitespace filename bytes.
+    Ok(if args.contains(&"-z") {
+        value
+    } else {
+        value.trim_end_matches('\n').to_string()
+    })
 }
 async fn ownership(snapshot: &Snapshot, deadline: tokio::time::Instant) -> Result<String> {
     let p = &snapshot.project;
@@ -534,6 +599,7 @@ async fn ownership(snapshot: &Snapshot, deadline: tokio::time::Instant) -> Resul
             "rev-list",
             "--max-parents=0",
             &format!("refs/heads/{}", p.base_branch),
+            "--",
         ],
         deadline,
     )
@@ -582,6 +648,21 @@ async fn ownership(snapshot: &Snapshot, deadline: tokio::time::Instant) -> Resul
 async fn build(snapshot: Snapshot, mut additional_paths: Vec<String>) -> Result<RepositoryMap> {
     additional_paths.sort();
     additional_paths.dedup();
+    let open_snapshot = snapshot.clone();
+    let readers = bounded_fs(move || {
+        Ok((
+            ScopedReader::new(
+                open_snapshot
+                    .task
+                    .worktree
+                    .as_ref()
+                    .context("missing worktree")?,
+                &open_snapshot.project,
+            )?,
+            ScopedReader::new(&open_snapshot.project.root, &open_snapshot.project)?,
+        ))
+    })
+    .await?;
     let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
     let revision = ownership(&snapshot, deadline).await?;
     let worktree = snapshot.task.worktree.clone().context("missing worktree")?;
@@ -604,8 +685,9 @@ async fn build(snapshot: Snapshot, mut additional_paths: Vec<String>) -> Result<
             "--name-only",
             "--no-ext-diff",
             "--no-textconv",
-            "HEAD",
             "-z",
+            "HEAD",
+            "--",
         ],
         deadline,
     )
@@ -632,10 +714,15 @@ async fn build(snapshot: Snapshot, mut additional_paths: Vec<String>) -> Result<
         .filter(|p| !p.is_empty())
         .map(str::to_string)
         .collect();
-    let inventory_hash = hash(serde_json::to_string(&paths)?.as_bytes());
+    paths.extend(changed.iter().cloned());
+    ensure!(
+        paths.len() <= MAX_FILES,
+        "changed source inventory exceeds 4096 files"
+    );
+    let inventory_hash = hash(serde_json::to_string(&(&paths, &changed))?.as_bytes());
     let scan_snapshot = snapshot.clone();
     let scan_revision = revision.clone();
-    let scan = tokio::task::spawn_blocking(move || {
+    let scan = bounded_fs(move || {
         scan(
             scan_snapshot,
             scan_revision,
@@ -643,10 +730,10 @@ async fn build(snapshot: Snapshot, mut additional_paths: Vec<String>) -> Result<
             changed,
             inventory_hash,
             additional_paths,
+            readers,
         )
     })
-    .await
-    .context("context scanner failed")??;
+    .await?;
     ensure!(
         ownership(
             &snapshot,
@@ -665,19 +752,31 @@ fn scan(
     changed: BTreeSet<String>,
     inventory_hash: String,
     additional_paths: Vec<String>,
+    readers: (ScopedReader, ScopedReader),
 ) -> Result<RepositoryMap> {
     let worktree = snapshot.task.worktree.clone().context("missing worktree")?;
-    let reader = ScopedReader::new(&worktree, &snapshot.project)?;
-    let rules_reader = ScopedReader::new(&snapshot.project.root, &snapshot.project)?;
+    let (reader, rules_reader) = readers;
+    reader.unchanged()?;
+    rules_reader.unchanged()?;
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
     let mut files = BTreeMap::new();
     let mut skipped = BTreeMap::new();
     let mut contents = BTreeMap::new();
     let mut mandatory = BTreeMap::new();
     let mut source_hashes = BTreeMap::new();
     let mut total = 0usize;
+    let mut file_ids = BTreeMap::new();
     for path in paths {
+        ensure!(
+            std::time::Instant::now() < deadline,
+            "context scan exceeded time budget"
+        );
         match reader.read(&path)? {
-            Some(bytes) => {
+            Some((bytes, file_id)) => {
+                ensure!(
+                    file_ids.insert(file_id, path.clone()).is_none(),
+                    "duplicate source alias/case-folded path"
+                );
                 total = total
                     .checked_add(bytes.len())
                     .context("source byte overflow")?;
@@ -714,7 +813,11 @@ fn scan(
             .context("foreign Project rule reference")?
             .to_str()
             .context("rule path is not UTF-8")?;
-        let bytes = rules_reader
+        ensure!(
+            std::time::Instant::now() < deadline,
+            "rule scan exceeded time budget"
+        );
+        let (bytes, _) = rules_reader
             .read(path)?
             .context("mandatory Project rule missing")?;
         total = total
@@ -738,7 +841,9 @@ fn scan(
             mandatory.insert(format!("rule:{path}"), text);
         }
     }
-    graph(&mut files);
+    graph(&mut files, deadline)?;
+    reader.unchanged()?;
+    rules_reader.unchanged()?;
     let map = RepositoryMap {
         freshness: Freshness {
             scope: snapshot.task.scope(),
@@ -746,6 +851,8 @@ fn scan(
             goal_version: snapshot.goal.version,
             task_version: snapshot.task.version,
             worktree,
+            source_root_file_id: rules_reader.file_id.clone(),
+            worktree_file_id: reader.file_id.clone(),
             revision,
             inventory_hash,
             source_hashes,
@@ -762,6 +869,27 @@ fn scan(
     Ok(map)
 }
 struct BoundedSize(usize);
+/// A stalled filesystem job retains its slot even after the caller times out;
+/// at most two background filesystem jobs can exist process-wide.
+async fn bounded_fs<T: Send + 'static>(
+    operation: impl FnOnce() -> Result<T> + Send + 'static,
+) -> Result<T> {
+    static SLOTS: OnceLock<Arc<tokio::sync::Semaphore>> = OnceLock::new();
+    let slots = SLOTS
+        .get_or_init(|| Arc::new(tokio::sync::Semaphore::new(2)))
+        .clone();
+    let permit = tokio::time::timeout(Duration::from_secs(5), slots.acquire_owned())
+        .await
+        .context("context filesystem workers busy/timed out")??;
+    let job = tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        operation()
+    });
+    tokio::time::timeout(Duration::from_secs(5), job)
+        .await
+        .context("context filesystem operation timed out (worker reservation retained)")?
+        .context("context filesystem worker failed")?
+}
 impl std::io::Write for BoundedSize {
     fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
         self.0 = self.0.saturating_add(bytes.len());
@@ -776,6 +904,22 @@ impl std::io::Write for BoundedSize {
 }
 fn hash(bytes: &[u8]) -> String {
     format!("sha256:{:x}", Sha256::digest(bytes))
+}
+fn manifest_hash(map: &RepositoryMap) -> String {
+    hash(
+        serde_json::to_string(&map.freshness.source_hashes)
+            .expect("serializable hashes")
+            .as_bytes(),
+    )
+}
+fn section(kind: &str, path: &str, source_hash: &str, body: serde_json::Value) -> String {
+    format!(
+        "{}\n",
+        serde_json::to_string(
+            &json!({"kind":kind,"path":path,"source_hash":source_hash,"body":body})
+        )
+        .expect("serializable context section")
+    )
 }
 fn relative(value: &str) -> Result<PathBuf> {
     ensure!(
@@ -792,15 +936,24 @@ fn relative(value: &str) -> Result<PathBuf> {
             .all(|c| matches!(c,Component::Normal(n) if n != ".git")),
         "source must be a relative path without parent traversal or Git metadata"
     );
+    let normalized: PathBuf = path.components().collect();
+    ensure!(
+        normalized.as_os_str() == std::ffi::OsStr::new(value),
+        "source path must use exact normalized separators/components"
+    );
     Ok(path)
 }
 struct ScopedReader {
     root: PathBuf,
     fd: std::os::fd::OwnedFd,
     forbidden: Vec<PathBuf>,
+    file_id: String,
 }
 impl ScopedReader {
     fn new(root: &Path, project: &Project) -> Result<Self> {
+        use std::os::unix::fs::MetadataExt;
+        let expected = std::fs::symlink_metadata(root)?;
+        ensure!(expected.is_dir(), "context root must be a real directory");
         ensure!(
             root.canonicalize()? == root,
             "source root must be canonical"
@@ -810,6 +963,11 @@ impl ScopedReader {
             OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
             Mode::empty(),
         )?;
+        let file_id = file_id(&fd)?;
+        ensure!(
+            file_id == format!("{}:{}", expected.dev(), expected.ino()),
+            "context root changed while opening"
+        );
         let (common, _): (PathBuf, Vec<String>) =
             serde_json::from_str(&project.repository_identity)?;
         let mut forbidden = vec![common];
@@ -822,9 +980,26 @@ impl ScopedReader {
             root: root.to_path_buf(),
             fd,
             forbidden,
+            file_id,
         })
     }
-    fn read(&self, name: &str) -> Result<Option<Vec<u8>>> {
+    fn unchanged(&self) -> Result<()> {
+        ensure!(
+            self.root.canonicalize()? == self.root,
+            "source root ancestor changed"
+        );
+        let fd = open(
+            &self.root,
+            OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+            Mode::empty(),
+        )?;
+        ensure!(
+            file_id(&fd)? == self.file_id,
+            "source root directory identity changed during observation"
+        );
+        Ok(())
+    }
+    fn read(&self, name: &str) -> Result<Option<(Vec<u8>, String)>> {
         let path = relative(name)?;
         let absolute = self.root.join(&path);
         ensure!(
@@ -867,6 +1042,10 @@ impl ScopedReader {
         };
         let stat = rustix::fs::fstat(&fd)?;
         ensure!(
+            stat.st_nlink == 1,
+            "hard-linked context sources are outside isolated file ownership"
+        );
+        ensure!(
             FileType::from_raw_mode(stat.st_mode) == FileType::RegularFile,
             "context source must be a regular file"
         );
@@ -882,8 +1061,12 @@ impl ScopedReader {
             bytes.len() <= MAX_FILE_BYTES,
             "context source grew beyond 256 KiB"
         );
-        Ok(Some(bytes))
+        Ok(Some((bytes, format!("{}:{}", stat.st_dev, stat.st_ino))))
     }
+}
+fn file_id(fd: &std::os::fd::OwnedFd) -> Result<String> {
+    let stat = rustix::fs::fstat(fd)?;
+    Ok(format!("{}:{}", stat.st_dev, stat.st_ino))
 }
 fn words(text: &str) -> BTreeSet<String> {
     text.split(|c: char| !c.is_alphanumeric() && c != '_')
@@ -893,7 +1076,7 @@ fn words(text: &str) -> BTreeSet<String> {
 }
 fn lexical(path: &str, text: &str, changed: bool) -> FileEntry {
     let mut symbols = vec![];
-    let mut imports = vec![];
+    let mut imports: Vec<String> = vec![];
     let mut limited = false;
     for (index, line) in text.lines().enumerate() {
         let line = line.trim();
@@ -936,20 +1119,40 @@ fn lexical(path: &str, text: &str, changed: bool) -> FileEntry {
             }
         }
     }
-    let references = words(text);
-    limited |= references.len() > 512;
+    let mut counts: BTreeMap<String, usize> = BTreeMap::new();
+    for token in text
+        .split(|c: char| !c.is_alphanumeric() && c != '_')
+        .filter(|s| !s.is_empty() && s.len() <= 256)
+    {
+        *counts.entry(token.to_lowercase()).or_default() += 1;
+    }
+    let mut references: BTreeSet<String> = imports
+        .iter()
+        .flat_map(|s| words(s))
+        .chain(symbols.iter().map(|s| s.name.to_lowercase()))
+        .take(512)
+        .collect();
+    limited |= counts.len() > 512;
+    let mut frequent: Vec<_> = counts.into_iter().collect();
+    frequent.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    for (name, _) in frequent {
+        if references.len() >= 512 {
+            break;
+        }
+        references.insert(name);
+    }
     FileEntry {
         path: path.into(),
         symbols,
         imports,
-        references: references.into_iter().take(512).collect(),
+        references,
         dependencies: BTreeSet::new(),
         changed,
         bytes: text.len(),
         lexical_limits_reached: limited,
     }
 }
-fn graph(files: &mut BTreeMap<String, FileEntry>) {
+fn graph(files: &mut BTreeMap<String, FileEntry>, deadline: std::time::Instant) -> Result<()> {
     let mut targets: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     for (path, file) in files.iter() {
         let stem = Path::new(path)
@@ -966,10 +1169,29 @@ fn graph(files: &mut BTreeMap<String, FileEntry>) {
         }
     }
     let mut edge_bytes = 0usize;
+    let mut visits = 0usize;
     for (path, file) in files.iter_mut() {
+        ensure!(
+            std::time::Instant::now() < deadline,
+            "context graph exceeded time budget"
+        );
+        if visits >= 100_000 {
+            file.lexical_limits_reached = true;
+            continue;
+        }
         for name in &file.references {
+            visits += 1;
+            if visits >= 100_000 || file.dependencies.len() >= MAX_REFS {
+                file.lexical_limits_reached = true;
+                break;
+            }
             if let Some(targets) = targets.get(name) {
                 for target in targets.iter().take(MAX_REFS + 1) {
+                    visits += 1;
+                    if visits >= 100_000 || file.dependencies.len() >= MAX_REFS {
+                        file.lexical_limits_reached = true;
+                        break;
+                    }
                     if target != path && !file.dependencies.contains(target) {
                         if file.dependencies.len() < MAX_REFS
                             && edge_bytes.saturating_add(target.len()) <= 2 * 1024 * 1024
@@ -985,6 +1207,7 @@ fn graph(files: &mut BTreeMap<String, FileEntry>) {
             }
         }
     }
+    Ok(())
 }
 fn validate_request(request: &SelectionRequest) -> Result<()> {
     ensure!(
@@ -1017,20 +1240,31 @@ fn mandatory_payload(
 ) -> Result<(String, BTreeSet<String>)> {
     let p = &map.snapshot;
     let mut payload = format!(
-        "CONTEXT {}\n",
+        "{}\n",
         serde_json::to_string(
-            &json!({"scope":map.freshness.scope,"repository_identity":p.project.repository_identity,"worktree":map.freshness.worktree,"revision":map.freshness.revision,"inventory_hash":map.freshness.inventory_hash,"source_manifest_hash":hash(serde_json::to_string(&map.freshness.source_hashes)?.as_bytes()),"project_version":map.freshness.project_version,"goal_version":map.freshness.goal_version,"task_version":map.freshness.task_version,"goal":p.goal.objective,"completion_criteria":p.goal.completion_criteria,"constraints":p.goal.constraints,"non_goals":p.goal.non_goals,"task":p.task.title,"acceptance_criteria":p.task.acceptance_criteria,"workflow":p.task.workflow,"risk":p.task.risk,"estimate_method":"utf8_bytes_v1; not measured provider tokens"})
+            &json!({"kind":"context_header","scope":map.freshness.scope,"repository_identity":p.project.repository_identity,"worktree":map.freshness.worktree,"revision":map.freshness.revision,"inventory_hash":map.freshness.inventory_hash,"source_manifest_hash":manifest_hash(map),"project_version":map.freshness.project_version,"goal_version":map.freshness.goal_version,"task_version":map.freshness.task_version,"goal":p.goal.objective,"completion_criteria":p.goal.completion_criteria,"constraints":p.goal.constraints,"non_goals":p.goal.non_goals,"task":p.task.title,"acceptance_criteria":p.task.acceptance_criteria,"workflow":p.task.workflow,"risk":p.task.risk,"estimate_method":"utf8_bytes_v1; not measured provider tokens"})
         )?
     );
     for (path, text) in &map.mandatory {
-        payload.push_str(&format!("\nMANDATORY {}\n{}\n", path, text));
+        payload.push_str(&section(
+            "project_rule",
+            path,
+            &map.freshness.source_hashes[path],
+            json!(text),
+        ));
     }
     let required: BTreeSet<_> = evidence.iter().cloned().collect();
     for path in &required {
         let text = map.contents.get(path).context(
             "mandatory evidence missing/binary/unindexed; rebuild index with additional_paths",
         )?;
-        payload.push_str(&format!("\nEVIDENCE {}\n{}\n", path, text));
+        let key = format!("worktree:{path}");
+        payload.push_str(&section(
+            "evidence",
+            &key,
+            &map.freshness.source_hashes[&key],
+            json!(text),
+        ));
     }
     ensure!(
         payload.len() <= MAX_TOTAL_BYTES,
@@ -1082,5 +1316,66 @@ fn expansion_paths(map: &RepositoryMap, expansion: &Expansion) -> Result<BTreeSe
             .flat_map(|p| map.files[p].dependencies.iter().cloned())
             .collect()),
         _ => bail!("unsupported expansion"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn dense_graph_has_global_visit_bound_and_imports_survive_reference_limits() {
+        let mut files: BTreeMap<_, _> = (0..4096)
+            .map(|i| {
+                let path = format!("f{i:04}.rs");
+                let entry = lexical(&path, "pub fn shared() {}", false);
+                (path, entry)
+            })
+            .collect();
+        graph(
+            &mut files,
+            std::time::Instant::now() + Duration::from_secs(5),
+        )
+        .unwrap();
+        assert!(files.values().map(|f| f.dependencies.len()).sum::<usize>() <= 100_000);
+        assert!(files.values().any(|f| f.lexical_limits_reached));
+        let noisy = (0..600).map(|i| format!("a{i:04} ")).collect::<String>()
+            + "\nuse crate::zzcritical;\npub fn needed() {}";
+        let entry = lexical("noisy.rs", &noisy, false);
+        assert!(entry.references.contains("zzcritical"));
+        assert!(entry.references.contains("needed"));
+        assert!(entry.lexical_limits_reached);
+        assert!(
+            graph(
+                &mut files,
+                std::time::Instant::now() - Duration::from_secs(1)
+            )
+            .is_err()
+        );
+    }
+    #[test]
+    fn anchored_root_reader_cannot_read_a_replacement_project_directory() {
+        let temp = tempfile::tempdir().unwrap();
+        let parent = temp.path().canonicalize().unwrap();
+        let root = parent.join("own");
+        let foreign = parent.join("foreign");
+        std::fs::create_dir(&root).unwrap();
+        std::fs::create_dir(&foreign).unwrap();
+        std::fs::write(root.join("source"), "OWN").unwrap();
+        std::fs::write(foreign.join("source"), "FOREIGN").unwrap();
+        let project = Project::new(
+            "own".into(),
+            root.clone(),
+            serde_json::to_string(&(root.join(".git"), vec!["root".to_string()])).unwrap(),
+            "main".into(),
+        );
+        let reader = ScopedReader::new(&root, &project).unwrap();
+        std::fs::rename(&root, parent.join("held")).unwrap();
+        std::fs::rename(&foreign, &root).unwrap();
+        assert!(reader.unchanged().is_err());
+        assert_eq!(reader.read("source").unwrap().unwrap().0, b"OWN");
+        assert_ne!(
+            ScopedReader::new(&root, &project).unwrap().file_id,
+            reader.file_id
+        );
     }
 }

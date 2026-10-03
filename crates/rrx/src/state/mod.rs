@@ -635,6 +635,78 @@ impl Store {
         Ok(())
     }
 
+    /// Publish a Task-scoped observation only while its authority versions are
+    /// current. One Immediate transaction excludes independent SQLite writers.
+    pub fn audit_if_current(
+        &mut self,
+        scope: &Scope,
+        expected: [u64; 3],
+        kind: &str,
+        data: Value,
+    ) -> Result<()> {
+        validate_scope(scope)?;
+        ensure!(
+            !kind.trim().is_empty()
+                && !kind.ends_with(".saved")
+                && kind != "context.created"
+                && kind != "usage.recorded",
+            "invalid/reserved audit kind"
+        );
+        let goal_id = scope.goal_id.context("current audit requires Goal scope")?;
+        let task_id = scope.task_id.context("current audit requires Task scope")?;
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        for ((table, id), version) in [
+            ("projects", scope.project_id.to_string()),
+            ("goals", goal_id.to_string()),
+            ("tasks", task_id.to_string()),
+        ]
+        .into_iter()
+        .zip(expected)
+        {
+            let actual: Option<u64> = tx
+                .query_row(
+                    &format!("SELECT version FROM {table} WHERE id=?1"),
+                    [&id],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            if actual != Some(version) {
+                bail!(StateGuardError::SnapshotChanged {
+                    table: table.into(),
+                    id,
+                    expected: version
+                });
+            }
+        }
+        let project: Project = decode(tx.query_row(
+            "SELECT body FROM projects WHERE id=?1",
+            [scope.project_id.to_string()],
+            |row| row.get(0),
+        )?)?;
+        if project.state != ProjectState::Registered {
+            bail!(StateGuardError::ProjectInactive);
+        }
+        let goal: Goal = decode(tx.query_row(
+            "SELECT body FROM goals WHERE id=?1",
+            [goal_id.to_string()],
+            |row| row.get(0),
+        )?)?;
+        let task: Task = decode(tx.query_row(
+            "SELECT body FROM tasks WHERE id=?1",
+            [task_id.to_string()],
+            |row| row.get(0),
+        )?)?;
+        ensure!(
+            goal.project_id == project.id && task.scope() == *scope,
+            "foreign audit Project/Goal/Task scope"
+        );
+        append_event(&tx, scope, kind, data)?;
+        tx.commit()?;
+        Ok(())
+    }
+
     pub fn events(&self, scope: &Scope, after: i64, limit: usize) -> Result<Vec<AuditEvent>> {
         ensure!(
             (1..=10000).contains(&limit),
