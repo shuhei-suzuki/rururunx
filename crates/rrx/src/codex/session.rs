@@ -229,7 +229,7 @@ impl CodexAdapter {
         };
         reservation.persist()?;
         reservation.armed = true;
-        snapshot
+        let binding = snapshot
             .verify_git(&request, &mut reservation.ownership)
             .await?;
         snapshot.recheck(&self.store, &request, &self.agent)?;
@@ -363,7 +363,7 @@ impl CodexAdapter {
             reservation.persist()?;
             // No model receives stale context after native startup, hooks or discovery.
             snapshot
-                .verify_git(&request, &mut reservation.ownership)
+                .verify_binding(&request, &mut reservation.ownership, &binding)
                 .await?;
             snapshot.recheck(&self.store, &request, &self.agent)?;
             let mut parameters =

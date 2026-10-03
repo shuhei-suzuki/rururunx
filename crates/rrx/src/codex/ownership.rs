@@ -290,11 +290,26 @@ impl ScopeSnapshot {
         Ok(())
     }
 
+    pub async fn verify_binding(
+        &self,
+        request: &LaunchRequest,
+        ownership: &mut ProcessOwnership,
+        expected: &Value,
+    ) -> AdapterResult<()> {
+        if self.verify_git(request, ownership).await? != *expected {
+            return Err(failure(
+                ErrorKind::OwnershipMismatch,
+                "native workspace replaced during session initialization",
+            ));
+        }
+        Ok(())
+    }
+
     pub async fn verify_git(
         &self,
         request: &LaunchRequest,
         ownership: &mut ProcessOwnership,
-    ) -> AdapterResult<()> {
+    ) -> AdapterResult<Value> {
         let project = self.project.clone();
         let workspace = request.worktree.clone();
         let before = filesystem(move || canonical_binding(&project.root, &workspace)).await?;
@@ -447,7 +462,7 @@ impl ScopeSnapshot {
                 "native root/worktree inode identity changed",
             ));
         }
-        Ok(())
+        Ok(before)
     }
 }
 
@@ -630,6 +645,43 @@ mod tests {
             matches!(ScopeSnapshot::capture(&fixture.store,&fixture.request,"codex"),Err(error) if error.kind==ErrorKind::OwnershipMismatch)
         );
     }
+    #[tokio::test]
+    async fn a_valid_same_head_worktree_replacement_cannot_reuse_the_initial_binding() {
+        let fixture = Fixture::new(true);
+        let snapshot = ScopeSnapshot::capture(&fixture.store, &fixture.request, "codex").unwrap();
+        let mut ownership = ProcessOwnership::default();
+        let binding = snapshot
+            .verify_git(&fixture.request, &mut ownership)
+            .await
+            .unwrap();
+        snapshot
+            .verify_binding(&fixture.request, &mut ownership, &binding)
+            .await
+            .unwrap();
+        let original = fixture.request.worktree.with_extension("original");
+        std::fs::rename(&fixture.request.worktree, &original).unwrap();
+        std::fs::create_dir(&fixture.request.worktree).unwrap();
+        for name in [".git", ".gitignore"] {
+            std::fs::copy(original.join(name), fixture.request.worktree.join(name)).unwrap();
+        }
+        // Path, Git common directory, native registration and HEAD still match;
+        // only the previously authenticated directory inode changed.
+        assert!(
+            snapshot
+                .verify_git(&fixture.request, &mut ownership)
+                .await
+                .is_ok()
+        );
+        assert_eq!(
+            snapshot
+                .verify_binding(&fixture.request, &mut ownership, &binding)
+                .await
+                .unwrap_err()
+                .kind,
+            ErrorKind::OwnershipMismatch
+        );
+    }
+
     #[tokio::test]
     async fn task_branch_common_directory_and_exact_prepared_head_are_required() {
         let mut fixture = Fixture::new(true);
