@@ -410,7 +410,7 @@ impl AgentAdapter for GenericCliAdapter {
                     .stderr(Stdio::piped())
                     .kill_on_drop(true);
                 // PTY handling is a separate native capability, never simulated with pipes.
-                command.as_std_mut().process_group(0);
+                command.process_group(0);
                 command
                     .spawn()
                     .map_err(|e| error(ErrorKind::LaunchFailure, e.to_string()))
@@ -839,7 +839,7 @@ async fn supervise(
     mut child: Child,
     mut controls: mpsc::Receiver<()>,
     events: watch::Sender<SessionStatus>,
-    mut writer: JoinHandle<std::io::Result<()>>,
+    writer: JoinHandle<std::io::Result<()>>,
     mut stdout: JoinHandle<()>,
     mut stderr: JoinHandle<()>,
     store: SharedStore,
@@ -864,7 +864,7 @@ async fn supervise(
         writer.abort();
     }
     let input_failure = match writer.await {
-        Ok(Err(e)) => Some(format!("native stdin delivery failed: {e}")),
+        Ok(Err(e)) if !stopped => Some(format!("native stdin delivery failed: {e}")),
         _ if delivery_cancelled => {
             Some("native process exited before stdin delivery completed".into())
         }
