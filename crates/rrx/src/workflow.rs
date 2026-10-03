@@ -399,6 +399,11 @@ struct Snapshot {
     workflow: WorkflowSnapshot,
 }
 
+/// Raw Workflow Store mutation stays private to the engine implementation.
+/// ```compile_fail
+/// use rrx::state::Store;
+/// let _ = Store::put_workflow_transition;
+/// ```
 pub struct WorkflowEngine {
     store: SharedStore,
     registry: Arc<AgentRegistry>,

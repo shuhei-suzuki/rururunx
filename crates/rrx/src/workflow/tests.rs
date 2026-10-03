@@ -546,6 +546,7 @@ async fn all_presets_drive_real_adapter_calls_and_persist_phase_context_history(
         let saved = restored
             .records(&fixture.task.scope(), RecordKind::Workflow)
             .unwrap();
+        let authority_version = saved[0].version;
         let saved: WorkflowSnapshot = serde_json::from_value(saved[0].data.clone()).unwrap();
         assert!(saved.finished);
         assert_eq!(saved.history.len(), expected.len());
@@ -567,11 +568,25 @@ async fn all_presets_drive_real_adapter_calls_and_persist_phase_context_history(
         );
         let events = restored.events(&fixture.task.scope(), 0, 1000).unwrap();
         assert_eq!(
-            events.iter().filter(|e| e.kind == "workflow.saved").count(),
-            saved.history.len() * 3
-                + fixture.executor.launches.lock().unwrap().len()
-                + fixture.reviewer.launches.lock().unwrap().len()
-                + 1
+            events
+                .iter()
+                .filter(|event| event.kind == "workflow.saved")
+                .count() as u64,
+            authority_version
+        );
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| event.kind == "workflow.gate_observed")
+                .count(),
+            saved.history.len()
+        );
+        assert!(
+            saved
+                .history
+                .iter()
+                .all(|attempt| attempt.observations.len() == 1
+                    && attempt.dispatch_started == (attempt.phase.actor() != Actor::EvidencePort))
         );
     }
 }
@@ -980,13 +995,26 @@ async fn second_engine_cannot_dispatch_duplicate_phase_and_interrupt_does_not_au
             },
             state: AttemptState::Running,
             session_id: None,
-            dispatch_started: true,
+            dispatch_started: false,
             observations: vec![],
             agent: None,
             started_at: now_ms(),
             completed_at: None,
             detail: None,
         });
+        record.data = serde_json::to_value(wf).unwrap();
+        store
+            .put_workflow_transition(
+                &mut task,
+                &mut record,
+                None,
+                fixture.project.version,
+                1,
+                WorkflowAccess::StateOnly,
+            )
+            .unwrap();
+        let mut wf: WorkflowSnapshot = serde_json::from_value(record.data.clone()).unwrap();
+        wf.history[0].state = AttemptState::Evaluating;
         record.data = serde_json::to_value(wf).unwrap();
         store
             .put_workflow_transition(
@@ -2772,12 +2800,15 @@ async fn quick_requires_actual_merge_cleanup_before_terminal_and_cancel_never_im
             .state,
         TaskState::Completed
     );
-    fixture
-        .store
-        .lock()
-        .unwrap()
-        .put_project(&mut removed)
-        .unwrap();
+    {
+        let mut store = fixture.store.lock().unwrap();
+        assert!(store.put_project(&mut removed).is_err());
+        let mut goal = store.goal(fixture.task.goal_id).unwrap().unwrap();
+        goal.state = GoalState::Cancelled;
+        goal.blockers.push("fixture Goal explicitly closed".into());
+        store.put_goal(&mut goal).unwrap();
+        store.put_project(&mut removed).unwrap();
+    }
     for lost in [false, true] {
         let fixture = Fixture::new(WorkflowClass::Quick);
         fixture
