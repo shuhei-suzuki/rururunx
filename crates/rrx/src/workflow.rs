@@ -583,6 +583,9 @@ impl WorkflowEngine {
         source.source_versions.extend(versions);
         // Mandatory rules are retained outside discretionary repository budgeting.
         source.payload = format!("{rules}\n{}", source.payload);
+        if attachment.is_some() {
+            crate::context_pack::workflow::ensure_phase_payload(&source.payload)?;
+        }
         Ok((config, source, selected_budget, attachment))
     }
     async fn prepare_pack(
@@ -2576,7 +2579,13 @@ fn attach_context(
         let bytes = context.data["payload"].as_str().map_or(0, str::len);
         context.data["task_pack"] = attachment.artifact;
         context.data["source_payload_offset"] = json!(attachment.source_payload_offset);
-        context.data["rendered_estimate"] = json!({"estimated_bytes":bytes,"estimated_tokens":bytes,"estimate_method":"utf8_bytes_v1","measured_tokens":null,"mandatory_rule_bytes":attachment.source_payload_offset});
+        let mandatory_source_bytes = context.data["task_pack"]["mandatory_bytes"]
+            .as_u64()
+            .unwrap_or(0);
+        let optional_bytes = context.data["task_pack"]["optional_bytes"]
+            .as_u64()
+            .unwrap_or(0);
+        context.data["rendered_estimate"] = json!({"estimated_bytes":bytes,"estimated_tokens":bytes,"estimate_method":"utf8_bytes_v1","measured_tokens":null,"mandatory_bytes":mandatory_source_bytes + attachment.source_payload_offset as u64,"optional_bytes":optional_bytes,"mandatory_rule_bytes":attachment.source_payload_offset,"absolute_byte_cap":1024*1024});
     }
     context
 }

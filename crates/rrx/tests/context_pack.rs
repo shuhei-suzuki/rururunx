@@ -2420,3 +2420,197 @@ async fn workflow_capture_cache_binds_complete_scope_payload_phase_and_budget() 
     assert_ne!(original.payload, other.payload);
     assert!(source.pack_artifact(&other).unwrap().is_some());
 }
+
+#[tokio::test]
+async fn goal_summary_includes_unplanned_tasks_and_rejects_membership_staleness() {
+    let f = Fixture::new();
+    let packs = f.packs();
+    let scope = Scope {
+        project_id: f.project.id,
+        goal_id: Some(f.task.goal_id),
+        task_id: None,
+    };
+    let old = packs
+        .publish_goal(&scope, vec![], Default::default())
+        .await
+        .unwrap();
+    packs.validate_goal(&old).await.unwrap();
+    let mut added = Task::new(
+        f.project.id,
+        f.task.goal_id,
+        "Unplanned owned Task".into(),
+        "fake".into(),
+    );
+    f.store.lock().unwrap().put_task(&mut added).unwrap();
+    assert!(
+        !f.store
+            .lock()
+            .unwrap()
+            .goal(f.task.goal_id)
+            .unwrap()
+            .unwrap()
+            .dag
+            .nodes
+            .contains(&added.id)
+    );
+    assert!(packs.validate_goal(&old).await.is_err());
+    let current = packs
+        .publish_goal(&scope, vec![], Default::default())
+        .await
+        .unwrap();
+    let pack = packs.goal_pack(&current).unwrap();
+    assert_eq!(pack.tasks.len(), 2);
+    assert!(
+        pack.tasks
+            .iter()
+            .any(|t| t.id == added.id && t.context.is_none())
+    );
+    packs.validate_goal(&current).await.unwrap();
+}
+
+#[tokio::test]
+async fn actual_engine_tiny_discretionary_budget_preserves_facts_and_provider_restart() {
+    use rrx::{
+        adapter::AgentRegistry,
+        context_pack::workflow::{PhasePackArtifact, WorkflowPackSources},
+        workflow::{BudgetClass, ContextBudget, Phase, WorkflowEngine, WorkflowSources},
+    };
+    let f = Fixture::new();
+    let packs = f.packs();
+    let (native, _) = session(&f, SessionRole::Executor, SessionState::Exited);
+    let checkpoint = packs
+        .checkpoint(
+            &f.task.scope(),
+            native.id,
+            None,
+            vec![event(1, EventKind::Failure, "mandatory unresolved failure")],
+            HistoryPolicy {
+                recent_history_bytes: 0,
+            },
+        )
+        .await
+        .unwrap();
+    let sources = Arc::new(WorkflowPackSources::new(packs.clone()));
+    let mut inputs = input();
+    inputs.verification = vec!["durable verification fact".into()];
+    sources.set_inputs(&f.task.scope(), inputs).unwrap();
+    let mut config = phase_config();
+    config.context.repo_map_tokens = 1;
+    let engine = WorkflowEngine::new(
+        f.store.clone(),
+        Arc::new(AgentRegistry::default()),
+        config,
+        sources,
+        Arc::new(PackFixtureGates {
+            cleanup: Mutex::new(None),
+        }),
+    )
+    .unwrap();
+    let initialized = engine.initialize(f.task.id, None).await.unwrap();
+    let (p, t, c) = {
+        let store = f.store.lock().unwrap();
+        (
+            store.project(f.project.id).unwrap().unwrap(),
+            store.task(f.task.id).unwrap().unwrap(),
+            store
+                .context(&f.task.scope(), Some(initialized.context_version))
+                .unwrap()
+                .unwrap(),
+        )
+    };
+    let artifact: PhasePackArtifact = serde_json::from_value(c.data["task_pack"].clone()).unwrap();
+    assert_eq!(artifact.budget.discretionary_tokens, 1);
+    assert!(artifact.optional_bytes <= 1);
+    assert!(artifact.mandatory_bytes > 1);
+    assert_eq!(artifact.pack.checkpoint, Some(checkpoint));
+    let payload = c.data["payload"].as_str().unwrap();
+    for fact in [
+        "Never remove Project safety constraints",
+        "mandatory unresolved failure",
+        "durable verification fact",
+        "Use scoped authoritative references",
+    ] {
+        assert!(payload.contains(fact), "missing {fact}");
+    }
+    assert_eq!(
+        payload
+            .matches("MANDATORY: preserve Project boundaries.")
+            .count(),
+        1
+    );
+    assert_eq!(
+        c.data["rendered_estimate"]["mandatory_bytes"]
+            .as_u64()
+            .unwrap()
+            + c.data["rendered_estimate"]["optional_bytes"]
+                .as_u64()
+                .unwrap(),
+        payload.len() as u64
+    );
+    assert!(c.data["rendered_estimate"]["measured_tokens"].is_null());
+    let restarted = WorkflowPackSources::new(packs);
+    let source = restarted
+        .capture(
+            p,
+            t,
+            Phase::Implement,
+            ContextBudget {
+                class: BudgetClass::Normal,
+                discretionary_tokens: 1,
+            },
+        )
+        .await
+        .unwrap();
+    let recovered: PhasePackArtifact =
+        serde_json::from_value(restarted.pack_artifact(&source).unwrap().unwrap()).unwrap();
+    assert_eq!(recovered.pack.decisions, artifact.pack.decisions);
+    assert_eq!(recovered.pack.verification, artifact.pack.verification);
+    assert_eq!(recovered.pack.artifacts, artifact.pack.artifacts);
+    assert_eq!(recovered.source_versions, artifact.source_versions);
+}
+
+#[tokio::test]
+async fn actual_engine_mandatory_rules_exceeding_absolute_cap_never_publish() {
+    use rrx::{
+        adapter::AgentRegistry, context_pack::workflow::WorkflowPackSources,
+        workflow::WorkflowEngine,
+    };
+    let f = Fixture::new();
+    let mut p = f
+        .store
+        .lock()
+        .unwrap()
+        .project(f.project.id)
+        .unwrap()
+        .unwrap();
+    for n in 0..5 {
+        let path = f.root.join(format!("mandatory-{n}.md"));
+        std::fs::write(&path, "X".repeat(220_000)).unwrap();
+        p.rule_refs.push(path);
+    }
+    f.store.lock().unwrap().put_project(&mut p).unwrap();
+    let engine = WorkflowEngine::new(
+        f.store.clone(),
+        Arc::new(AgentRegistry::default()),
+        phase_config(),
+        Arc::new(WorkflowPackSources::new(f.packs())),
+        Arc::new(PackFixtureGates {
+            cleanup: Mutex::new(None),
+        }),
+    )
+    .unwrap();
+    let error = engine.initialize(f.task.id, None).await.unwrap_err();
+    assert!(
+        format!("{error:#}").contains("absolute 1 MiB cap"),
+        "{error:#}"
+    );
+    let store = f.store.lock().unwrap();
+    assert_eq!(store.task(f.task.id).unwrap().unwrap().context_version, 0);
+    assert!(store.context(&f.task.scope(), None).unwrap().is_none());
+    assert!(
+        store
+            .records(&f.task.scope(), RecordKind::Workflow)
+            .unwrap()
+            .is_empty()
+    );
+}

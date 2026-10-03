@@ -539,7 +539,34 @@ fn pack_idle(tx: &Transaction<'_>, scope: &Scope) -> Result<()> {
     Ok(())
 }
 
+fn goal_pack_tasks(connection: &Connection, scope: &Scope) -> Result<Vec<Task>> {
+    ensure!(
+        scope.goal_id.is_some() && scope.task_id.is_none(),
+        "exact Goal scope required"
+    );
+    let mut query = connection.prepare(
+        "SELECT body FROM tasks WHERE project_id=?1 AND goal_id=?2 ORDER BY id LIMIT 129",
+    )?;
+    let tasks: Vec<Task> = query
+        .query_map(
+            params![scope.project_id.to_string(), str_id(scope.goal_id)],
+            |r| r.get::<_, String>(0),
+        )?
+        .map(|r| decode(r?))
+        .collect::<Result<_>>()?;
+    ensure!(tasks.len() <= 128, "Goal Task set exceeds pack limit");
+    ensure!(
+        tasks
+            .iter()
+            .all(|t| t.project_id == scope.project_id && Some(t.goal_id) == scope.goal_id),
+        "foreign Goal Task membership"
+    );
+    Ok(tasks)
+}
 impl Store {
+    pub(crate) fn goal_pack_tasks(&self, scope: &Scope) -> Result<Vec<Task>> {
+        goal_pack_tasks(&self.connection, scope)
+    }
     pub(crate) fn publish_goal_context_pack(
         &mut self,
         expected: [u64; 2],
@@ -566,6 +593,15 @@ impl Store {
             "Goal publication authority changed/inactive"
         );
         pack_idle(&tx, &context.scope)?;
+        let current = goal_pack_tasks(&tx, &context.scope)?;
+        ensure!(
+            current
+                .iter()
+                .map(|t| (t.id, t.version))
+                .collect::<Vec<_>>()
+                == task_versions,
+            "Goal Task membership/version changed during publication"
+        );
         for (id, version) in task_versions {
             let t: Task =
                 read_tx(&tx, "tasks", &id.to_string())?.context("missing referenced Task")?;
@@ -768,6 +804,37 @@ mod tests {
             .audit_pack_preparation(&scope, expected, Some(&current), json!({"current":true}))
             .unwrap();
         assert_eq!(f.store.events(&scope, 0, 100).unwrap().len(), before + 1);
+    }
+    #[test]
+    fn goal_publication_rechecks_new_task_membership_without_goal_version_change() {
+        let mut f = Fixture::new();
+        let scope = f.g.scope();
+        let context = f.context(scope.clone());
+        let expected = [f.p.version, f.g.version];
+        let captured = vec![(f.t.id, f.t.version)];
+        let mut other = Store::open(&f.db).unwrap();
+        let mut added = Task::new(f.p.id, f.g.id, "New unplanned Task".into(), "fake".into());
+        other.put_task(&mut added).unwrap();
+        assert_eq!(other.goal(f.g.id).unwrap().unwrap().version, f.g.version);
+        let before = f.store.events(&scope, 0, 100).unwrap().len();
+        assert!(
+            f.store
+                .publish_goal_context_pack(expected, &context, &captured)
+                .is_err()
+        );
+        assert!(f.store.context(&scope, None).unwrap().is_none());
+        assert_eq!(f.store.events(&scope, 0, 100).unwrap().len(), before);
+        let current = f
+            .store
+            .goal_pack_tasks(&scope)
+            .unwrap()
+            .iter()
+            .map(|t| (t.id, t.version))
+            .collect::<Vec<_>>();
+        f.store
+            .publish_goal_context_pack(expected, &context, &current)
+            .unwrap();
+        assert_eq!(f.store.goal(f.g.id).unwrap().unwrap().context_version, 1);
     }
     #[test]
     fn goal_pack_transaction_rechecks_summary_activity_and_goal_session() {

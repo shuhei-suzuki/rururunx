@@ -9,7 +9,7 @@ no supervisor model or transcript summarization model is introduced.
   file/symbol metadata, decisions, completed work, failures, verification/findings,
   blockers and next action. Source bodies remain authoritative outside summaries.
 - Goal packs preserve objective/criteria/constraints/source references, DAG and
-  Task status/context references, cross-Task decisions, blockers/next runnable work
+  all owned Task status/context references (including Tasks outside the DAG), cross-Task decisions, blockers/next runnable work
   and explicitly supplied aggregate metrics. They do not copy Task histories.
 - Relevant authority/source/state changes create consecutive versions. Pointer,
   ContextVersion and audit publication is atomic and version guarded. Equal inputs
@@ -33,8 +33,12 @@ no supervisor model or transcript summarization model is introduced.
   promotion is allowed.
 - Mandatory Project rules and Goal/Task constraints survive packing and promotion.
   The source Task criteria are preserved in checkpoints as well.
-  Byte/estimated-token budgets apply to fully rendered payloads; provider metrics
-  stay nullable. Insufficient budget has no launchable input.
+  Standalone byte/estimated-token budgets cap the fully rendered payload. Workflow
+  discretionary budgets cap optional repository slices; mandatory Task/Goal/
+  checkpoint metadata and Engine-owned rules are separate overhead, counted in
+  total UTF-8 estimates. A 1 MiB absolute rendered phase-input cap still rejects
+  oversized mandatory state. Provider metrics stay nullable; no fact is dropped
+  to fit a budget.
 - Native I/O stays outside SharedStore. Publication rechecks current versions and
   live/Lost Session/lock/workflow ownership inside the transaction. Workflow-owned
   publication uses the workflow phase port; standalone publication cannot rewrite
@@ -45,7 +49,7 @@ no supervisor model or transcript summarization model is introduced.
   pack. Record kinds remain unchanged.
 
 Goal-only packs use read-only exact primary-root identity/source validation and
-atomic Project/Goal/Task-summary CAS, including before Tasks and after worktree
+atomic Project/Goal/Task-membership-and-summary CAS, including before Tasks and after worktree
 cleanup. Finalized Task refs remain historical and non-launchable.
 
 Core checkpoints use a registered Goal and bound Task, including consultation

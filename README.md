@@ -248,10 +248,12 @@ The command examples above describe the MVP target. Currently implemented:
   Goal packs reference Task packs and can observe primary rules/artifacts before
   Tasks exist or after owned worktree cleanup. Active Task refs require separate
   source validation; terminal refs stay historical. Typed checkpoints are immutable
-  and promotion binds their current head.
-  Provider token measurements remain null unless supplied. Automatic native event
-  normalization, CLI/TUI transport and the Workflow phase publication port remain
-  pending; see [Issue 19 design](doc/design/issue-19-design.md).
+  and preparation binds the current own head; cross-Task consultation is an
+  explicit immutable snapshot.
+  The actual Workflow phase port publishes typed artifacts with mandatory/optional
+  byte estimates and preserves Cleanup provenance after disposal. Provider token
+  measurements remain null unless supplied. Automatic native event normalization
+  and CLI/TUI transport remain pending; see [Issue 19 design](doc/design/issue-19-design.md).
 - Library Git/worktree management with project ownership checks, protected branches,
   dirty-state checks, durable logical review locks and safe merged cleanup. CLI/workflow
   integration and interrupted-operation reconciliation are pending.

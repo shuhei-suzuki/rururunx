@@ -416,12 +416,30 @@ impl RepositoryContext {
                 (path, reasons, text)
             })
             .collect();
+        // Workflow callers budget optional map sections; their mandatory authority
+        // header remains explicit overhead. Public standalone selection keeps a
+        // complete-rendered hard cap.
+        let packing_budget = if include_rules {
+            budget
+        } else {
+            Budget {
+                bytes: budget
+                    .bytes
+                    .checked_add(mandatory.len())
+                    .context("context budget overflow")?,
+                estimated_tokens: budget
+                    .estimated_tokens
+                    .checked_add(mandatory.len())
+                    .context("context budget overflow")?,
+            }
+        };
+        packing_budget.validate()?;
         self.pack(
             map,
             mandatory,
             required,
             candidates,
-            budget,
+            packing_budget,
             "context.selection",
         )
         .await

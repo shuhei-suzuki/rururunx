@@ -12,13 +12,20 @@ FD/Git snapshot and content hashes; HEAD alone is insufficient. Rebuild outside
 SharedStore, compare authority, then use atomic publication/current-state guards.
 
 Packing places the full typed mandatory pack frame before a budgeted repository
-slice. The complete rendered bytes count toward the byte estimate. Rules and
-explicit evidence/expansions remain complete or return a budget failure. Stored
+slice. Standalone budgets cap the complete rendered payload. In the actual Workflow
+port, `ContextBudget.discretionary_tokens` bounds optional repository sections;
+mandatory Task/Goal/checkpoint metadata and Engine-owned rules are separate
+overhead. The durable artifact records mandatory/optional UTF-8 byte estimates,
+and the final native payload counts both plus rules exactly once. A 1 MiB absolute
+rendered phase-input cap rejects oversized mandatory state before publication.
+Provider measurements remain null. Rules and explicit evidence/expansions remain
+complete or return a budget failure. Stored
 packs keep compact metadata/references, not full source payloads. Native input
 preparation re-fetches current source through the selector and never trusts a
 serialized caller-provided repository map.
 
-Goal packs contain compact Task descriptors and exact pack version/digest refs,
+Goal packs contain all bounded owned Task descriptors, including Tasks not yet in
+the DAG; exact Task membership and versions are rechecked atomically. They contain and exact pack version/digest refs,
 DAG edges, cross-Task facts and aggregate metrics. They do not embed Task packs,
 source slices or Task chat. The exact registered primary root anchors read-only rule/config and explicit Goal
 artifact observation before Tasks exist and after their worktrees are disposed.
@@ -54,8 +61,13 @@ immutable record and does not sort/decode checkpoint history during runtime. It
 survives SQLite VACUUM, and index updates roll back with failed append/audit. Add
 narrow Store transactions beside existing
 helpers and coordinate their workflow fences with Issue 8. The PhaseContext port
-provides a draft payload/source authority while Engine owns ContextVersion/Task
-pointer publication and attempt lifecycle. Provider operations remain in adapters.
+uses `WorkflowPackSources` to capture a phase-stable source snapshot, then an
+additive `WorkflowSources::pack_artifact` hook binds typed metadata to the exact
+scope/HEAD/hash set/payload/phase/budget. Engine alone wraps and atomically publishes
+ContextVersion/Task pointers and attempt lifecycle. A restarted provider restores
+durable scoped facts/artifact references from the latest owned artifact; the own
+checkpoint is always resolved freshly. Cleanup preserves the exact reserved
+artifact and real disposal evidence after worktree removal, without recapture. Provider operations remain in adapters.
 
 Validation uses isolated native repositories, restart/version idempotence,
 same-length dirty/rule/config/artifact changes, two Projects with identical names,

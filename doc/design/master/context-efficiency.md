@@ -345,3 +345,16 @@ The bounded core supports 4096 retained events and 1 MiB per Task checkpoint,
 checkpoint reset; mandatory overflow requires decomposition into another Task.
 Native-source draft DTOs carry no Adapter launch version. Complete rendered pack
 estimates are audited independently of optional repository slice estimates.
+
+Issue 19's actual Workflow source port binds typed phase artifacts to exact
+Project/Goal/Task scope, owned HEAD/content hashes, payload digest and selected
+phase/budget. Engine alone publishes the phase ContextVersion and preserves the
+reserved artifact through actual Cleanup. Optional repository sections obey the
+discretionary budget; mandatory Task/Goal/checkpoint metadata and rules are counted
+separately, once, in total UTF-8 byte/token estimates. The complete typed native
+input remains hard-capped at 1 MiB; standalone explicit budgets cap their complete
+rendered input. Measurements remain nullable. Restart restores durable scoped
+facts/references, and Goal summaries atomically compare all owned Task membership
+and versions, including Tasks outside the DAG. Ordered v3→v4 checkpoint-head
+index migration fences older writers; native Starting/Running reservations compare
+the prepared own-head digest or explicit `none` before launch.

@@ -1220,13 +1220,19 @@ impl ContextPacks {
         );
         let mut task_versions = vec![];
         let mut descriptors = vec![];
-        for id in &g.dag.nodes {
+        let owned_tasks = self
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Store poisoned"))?
+            .goal_pack_tasks(scope)?;
+        for owned_task in owned_tasks {
+            let id = owned_task.id;
             let (task, context) = {
                 let store = self
                     .store
                     .lock()
                     .map_err(|_| anyhow::anyhow!("Store poisoned"))?;
-                let task = store.task(*id)?.context("missing DAG Task")?;
+                let task = store.task(id)?.context("missing owned Goal Task")?;
                 let context = if task.context_version > 0 {
                     Some(
                         store
@@ -1246,9 +1252,9 @@ impl ContextPacks {
             if let Some(r) = &context {
                 self.validate_task_reference(&task, r).await?;
             }
-            task_versions.push((*id, task.version));
+            task_versions.push((id, task.version));
             descriptors.push(TaskDescriptor {
-                id: *id,
+                id,
                 title: task.title,
                 state: task.state,
                 phase: task.phase,
@@ -1369,10 +1375,15 @@ impl ContextPacks {
                 && p.repository_identity == pack.repository_identity,
             "stale/foreign Goal pack"
         );
+        let owned_tasks = self
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Store poisoned"))?
+            .goal_pack_tasks(&g.scope())?;
         ensure!(
-            pack.tasks.len() == g.dag.nodes.len()
-                && pack.tasks.iter().map(|t| t.id).collect::<Vec<_>>() == g.dag.nodes,
-            "invalid Goal Task set/order"
+            pack.tasks.iter().map(|t| t.id).collect::<Vec<_>>()
+                == owned_tasks.iter().map(|t| t.id).collect::<Vec<_>>(),
+            "stale Goal Task membership/order"
         );
         let mut task_versions = vec![];
         for d in &pack.tasks {
@@ -1444,6 +1455,15 @@ impl ContextPacks {
             crate::project::registered_project(&store, p.id)?.version == p.version
                 && store.goal(g.id)?.context("Goal disappeared")?.version == g.version,
             "Goal authority changed after source observation"
+        );
+        ensure!(
+            store
+                .goal_pack_tasks(&g.scope())?
+                .iter()
+                .map(|t| (t.id, t.version))
+                .collect::<Vec<_>>()
+                == task_versions,
+            "Goal Task membership changed after source observation"
         );
         for (id, version) in task_versions {
             ensure!(

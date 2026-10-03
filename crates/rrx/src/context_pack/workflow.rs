@@ -20,6 +20,8 @@ pub struct PhasePackArtifact {
     pub payload_digest: String,
     pub estimated_bytes: usize,
     pub estimated_tokens: usize,
+    pub mandatory_bytes: usize,
+    pub optional_bytes: usize,
     pub estimate_method: String,
     pub measured_tokens: Option<u64>,
 }
@@ -79,7 +81,7 @@ impl WorkflowPackSources {
                     == instruction_versions(&project, &g, &task)?,
             "phase capture ownership/instructions changed"
         );
-        let inputs = self
+        let configured = self
             .inputs
             .lock()
             .map_err(|_| anyhow::anyhow!("pack inputs poisoned"))?
@@ -88,8 +90,11 @@ impl WorkflowPackSources {
                 ensure!(*scope == task.scope(), "foreign provider inputs");
                 Ok(inputs.clone())
             })
-            .transpose()?
-            .unwrap_or_default();
+            .transpose()?;
+        let inputs = match configured {
+            Some(inputs) => inputs,
+            None => self.restored_inputs(&current)?,
+        };
         let draft = self.packs.draft_task(&task.scope(), inputs).await?;
         let header = format!(
             "{}\n",
@@ -97,16 +102,11 @@ impl WorkflowPackSources {
                 &json!({"kind":"phase_context_pack","phase":phase,"budget":budget,"body":draft.pack})
             )?
         );
-        ensure!(
-            header.len() < budget.discretionary_tokens,
-            "phase pack NeedsBudget: mandatory header requires {} estimated bytes",
-            header.len()
-        );
         let request = SelectionRequest {
             task_text: format!("{} {}", task.title, task.acceptance_criteria.join(" ")),
             ..Default::default()
         };
-        let available = budget.discretionary_tokens - header.len();
+        let available = budget.discretionary_tokens;
         let outcome = self
             .packs
             .source()
@@ -130,11 +130,20 @@ impl WorkflowPackSources {
             );
         };
         let payload = format!("{header}{}", slice.payload());
+        let mandatory_bytes = header
+            .len()
+            .checked_add(slice.evidence().required_bytes)
+            .context("mandatory phase byte count overflow")?;
+        let optional_bytes = payload
+            .len()
+            .checked_sub(mandatory_bytes)
+            .context("invalid mandatory phase byte count")?;
         ensure!(
-            payload.len() <= budget.discretionary_tokens,
-            "phase source exceeds selected budget"
+            optional_bytes <= budget.discretionary_tokens,
+            "optional phase source exceeds selected budget"
         );
-        self.packs.audit_preparation(&draft.pack,&draft.map,None,json!({"ready":true,"phase":phase,"budget":budget,"estimated_bytes":payload.len(),"estimated_tokens":payload.len(),"estimate_method":"utf8_bytes_v1","measured_tokens":null,"rules_supplied_by_engine":true}))?;
+        ensure_phase_payload(&payload)?;
+        self.packs.audit_preparation(&draft.pack,&draft.map,None,json!({"ready":true,"phase":phase,"budget":budget,"estimated_bytes":payload.len(),"estimated_tokens":payload.len(),"mandatory_bytes":mandatory_bytes,"optional_bytes":optional_bytes,"estimate_method":"utf8_bytes_v1","measured_tokens":null,"rules_supplied_by_engine":true}))?;
         let source = SourceSnapshot {
             scope: task.scope(),
             revision: draft.pack.repository.revision.clone(),
@@ -153,6 +162,8 @@ impl WorkflowPackSources {
             payload_digest: payload_digest(&source.payload),
             estimated_bytes: source.payload.len(),
             estimated_tokens: source.payload.len(),
+            mandatory_bytes,
+            optional_bytes,
             estimate_method: "utf8_bytes_v1".into(),
             measured_tokens: None,
         };
@@ -170,6 +181,60 @@ impl WorkflowPackSources {
         }
         Ok(source)
     }
+    // A restart must recover durable scoped facts/references, rather than treating
+    // absence of an in-memory configuration as an instruction to discard them.
+    fn restored_inputs(&self, task: &Task) -> Result<TaskInputs> {
+        if task.context_version == 0 {
+            return Ok(TaskInputs::default());
+        }
+        let context = {
+            let store = self
+                .packs
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("Store poisoned"))?;
+            let context = store
+                .context(&task.scope(), None)?
+                .context("missing current Task context")?;
+            ensure!(
+                context.version == task.context_version,
+                "Task context pointer changed"
+            );
+            context
+        };
+        if context.data.get("task_pack").is_none() && context.data["format"] != FORMAT {
+            return Ok(TaskInputs::default());
+        }
+        let pack = self.packs.task_pack(&reference(&context)?)?;
+        Ok(TaskInputs {
+            artifacts: pack
+                .artifacts
+                .into_iter()
+                .map(|a| ArtifactRequest {
+                    kind: a.kind,
+                    path: a.path,
+                })
+                .collect(),
+            additional_paths: pack.repository.additional_paths,
+            promoted_consultation: pack.promoted_consultation,
+            decisions: pack.decisions,
+            completed_work: pack.completed_work,
+            failures: pack.failures,
+            verification: pack.verification,
+            unresolved_findings: pack.unresolved_findings,
+            impact_summary: pack.impact_summary,
+            // Always resolve the current own checkpoint at capture, including new
+            // facts appended since the immutable prior phase artifact.
+            checkpoint: None,
+        })
+    }
+}
+pub(crate) fn ensure_phase_payload(payload: &str) -> Result<()> {
+    ensure!(
+        payload.len() <= MAX_BYTES,
+        "rendered phase input exceeds absolute 1 MiB cap; mandatory facts retained, explicit blocked budget"
+    );
+    Ok(())
 }
 impl WorkflowSources for WorkflowPackSources {
     fn capture(
@@ -203,6 +268,12 @@ pub(crate) fn validate_capture(
 ) -> Result<()> {
     let a: PhasePackArtifact = serde_json::from_value(value.clone())?;
     bounded(&a)?;
+    ensure_phase_payload(&source.payload)?;
+    ensure!(
+        a.mandatory_bytes.checked_add(a.optional_bytes) == Some(source.payload.len())
+            && a.optional_bytes <= budget.discretionary_tokens,
+        "invalid mandatory/optional phase accounting"
+    );
     ensure!(
         a.format == PHASE_FORMAT
             && a.phase == phase
@@ -233,6 +304,7 @@ pub(crate) fn context_artifact(context: &ContextVersion) -> Result<PhasePackArti
     let payload = context.data["payload"]
         .as_str()
         .context("phase payload missing")?;
+    ensure_phase_payload(payload)?;
     let source_payload = payload
         .get(offset..)
         .context("invalid phase source boundary")?;
