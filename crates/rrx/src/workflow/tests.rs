@@ -4154,7 +4154,7 @@ async fn actor_ack_refresh_accepts_only_bookkeeping_and_preserves_changed_author
                 || matches!(
                     result,
                     Ok(StepResult::Started {
-                        phase: Phase::Requirements,
+                        session: Some(_),
                         ..
                     })
                 )
@@ -4173,8 +4173,8 @@ async fn actor_ack_refresh_accepts_only_bookkeeping_and_preserves_changed_author
             assert!(matches!(
                 outcome,
                 Ok(StepResult::Started {
-                    phase: Phase::Requirements,
-                    session: Some(_)
+                    phase: Phase::Implement,
+                    session: Some(_),
                 })
             ));
             assert!(attempt.session_id.is_some());
