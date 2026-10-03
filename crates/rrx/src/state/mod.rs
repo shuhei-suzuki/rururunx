@@ -216,13 +216,20 @@ impl Store {
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         if !goal_terminal(goal.state) {
             let previous = read_tx::<Goal>(&tx, "goals", &goal.id.to_string())?;
-            let safe_update = previous.as_ref().is_some_and(|old| {
-                old.state == goal.state
-                    || matches!(
-                        goal.state,
-                        GoalState::Blocked | GoalState::WaitingHuman | GoalState::Paused
-                    )
-            });
+            let safe_update = if let Some(old) = &previous {
+                let mut metadata = goal.clone();
+                metadata.state = old.state;
+                metadata.blockers = old.blockers.clone();
+                !goal_terminal(old.state)
+                    && (old.state == goal.state
+                        || matches!(
+                            goal.state,
+                            GoalState::Blocked | GoalState::WaitingHuman | GoalState::Paused
+                        ))
+                    && serde_json::to_value(metadata)? == serde_json::to_value(old)?
+            } else {
+                false
+            };
             ensure_activity_write(&tx, goal.project_id, safe_update)?;
         }
         if let Some(previous) = read_tx::<Goal>(&tx, "goals", &goal.id.to_string())? {
@@ -272,11 +279,17 @@ impl Store {
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         if !task_terminal(task.state) {
             let previous = read_tx::<Task>(&tx, "tasks", &task.id.to_string())?;
-            let safe_update = previous.as_ref().is_some_and(|old| {
-                (old.state == task.state || task.state == TaskState::WaitingHuman)
-                    && old.worktree == task.worktree
-                    && old.branch == task.branch
-            });
+            let safe_update = if let Some(old) = &previous {
+                let mut metadata = task.clone();
+                metadata.state = old.state;
+                metadata.blockers = old.blockers.clone();
+                metadata.next_action = old.next_action.clone();
+                !task_terminal(old.state)
+                    && (old.state == task.state || task.state == TaskState::WaitingHuman)
+                    && serde_json::to_value(metadata)? == serde_json::to_value(old)?
+            } else {
+                false
+            };
             ensure_activity_write(&tx, task.project_id, safe_update)?;
         }
         if let Some(previous) = read_tx::<Task>(&tx, "tasks", &task.id.to_string())? {
@@ -780,11 +793,19 @@ fn validate_worktree_exclusion(tx: &Transaction<'_>, record: &Record) -> Result<
     if record.kind == RecordKind::Session {
         let session: Session = serde_json::from_value(record.data.clone())?;
         if !session_terminal(session.state) {
-            let safe_update = read_tx::<Record>(tx, "records", &record.id.to_string())?.is_some()
-                && matches!(
-                    session.state,
-                    SessionState::Lost | SessionState::WaitingHuman | SessionState::WaitingApproval
-                );
+            let safe_update =
+                if let Some(previous) = read_tx::<Record>(tx, "records", &record.id.to_string())? {
+                    let old: Session = serde_json::from_value(previous.data)?;
+                    !session_terminal(old.state)
+                        && (session.state == SessionState::Lost
+                            || (old.state != SessionState::Lost
+                                && matches!(
+                                    session.state,
+                                    SessionState::WaitingHuman | SessionState::WaitingApproval
+                                )))
+                } else {
+                    false
+                };
             ensure_activity_write(tx, record.scope.project_id, safe_update)?;
         }
     }

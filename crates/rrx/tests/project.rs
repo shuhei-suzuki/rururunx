@@ -545,6 +545,9 @@ fn separate_git_directory_and_symlink_namespace_are_not_source_references() {
             f.a.join("metadata").to_str().unwrap(),
         ],
     );
+    // Make ancestry fallback succeed from metadata: only the canonical metadata
+    // exclusion distinguishes this path from legitimate source files.
+    git(&f.a, &["config", "core.worktree", f.a.to_str().unwrap()]);
     let p = f.add(&mut store, &f.a);
     assert!(scoped_file(&store, p.id, Path::new("metadata/config")).is_err());
     assert!(
@@ -836,4 +839,74 @@ fn invalid_xdg_state_directory_falls_back_to_absolute_home() {
         assert!(home.join(".local/state/rururunx/state.sqlite3").exists());
         assert!(!f.root.join("relative").exists());
     }
+}
+
+#[test]
+fn blocked_work_cannot_resurrect_terminal_rows_or_rewrite_goal_and_task_metadata() {
+    let f = Fixture::new();
+    let mut store = Store::open(&f.db).unwrap();
+    let mut p = f.add(&mut store, &f.a);
+    let mut g = goal(&mut store, &p);
+    let mut t = task(&mut store, &p, &g);
+    let wt = WorktreeManager::create(&mut store, t.id).unwrap();
+    t = store.task(t.id).unwrap().unwrap();
+    let mut session = Session {
+        id: SessionId::new(),
+        scope: t.scope(),
+        agent: "fake".into(),
+        provider: "fixture".into(),
+        role: SessionRole::Executor,
+        native_ref: None,
+        pid: None,
+        worktree: wt.worktree,
+        state: SessionState::Running,
+        model: None,
+        effort: None,
+        recovery: json!({}),
+        started_at: now_ms(),
+    };
+    let mut version = store.put_session(&session, 0).unwrap();
+    p.state = ProjectState::Blocked;
+    store.put_project(&mut p).unwrap();
+    let mut changed = g.clone();
+    changed.title = "rewritten".into();
+    assert!(store.put_goal(&mut changed).is_err());
+    let mut changed = t.clone();
+    changed.title = "rewritten".into();
+    assert!(store.put_task(&mut changed).is_err());
+    session.state = SessionState::Lost;
+    version = store.put_session(&session, version).unwrap();
+    session.state = SessionState::WaitingApproval;
+    assert!(store.put_session(&session, version).is_err());
+    session.state = SessionState::Exited;
+    version = store.put_session(&session, version).unwrap();
+    session.state = SessionState::Lost;
+    assert!(store.put_session(&session, version).is_err());
+    session.id = SessionId::new();
+    session.state = SessionState::Exited;
+    version = store.put_session(&session, 0).unwrap();
+    session.state = SessionState::WaitingHuman;
+    assert!(store.put_session(&session, version).is_err());
+    t.state = TaskState::Cancelled;
+    store.put_task(&mut t).unwrap();
+    t.state = TaskState::WaitingHuman;
+    assert!(store.put_task(&mut t).is_err());
+    g.state = GoalState::Completed;
+    store.put_goal(&mut g).unwrap();
+    g.state = GoalState::Blocked;
+    assert!(store.put_goal(&mut g).is_err());
+    let mut historical = Goal::new(
+        p.id,
+        "terminal insert".into(),
+        g.completion_criteria.clone(),
+    );
+    historical.state = GoalState::Completed;
+    store.put_goal(&mut historical).unwrap();
+    let mut task = Task::new(p.id, historical.id, "terminal insert".into(), "fake".into());
+    task.state = TaskState::Cancelled;
+    store.put_task(&mut task).unwrap();
+    historical.state = GoalState::Paused;
+    assert!(store.put_goal(&mut historical).is_err());
+    task.state = TaskState::WaitingHuman;
+    assert!(store.put_task(&mut task).is_err());
 }

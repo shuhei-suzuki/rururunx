@@ -69,3 +69,11 @@ Failed worktree creation and externally invalidated review locks may retain acti
 reservations. Issue 14 must provide an explicit audited reconciliation command;
 this CLI cannot force-release locks, and remove correctly stays blocked. The
 public typed Store record API preserves audited reconciliation history.
+
+Delta review verified terminal-row resurrection through conservative BLOCKED
+updates. Guards now require previously nonterminal work, allow Lost only to remain
+Lost, and restrict blocked Goal/Task writes to state/blockers/next_action. A
+regression covers terminal insertion then attempted reopening for all three
+entity classes. The separate-Git-directory fixture sets core.worktree explicitly
+so ancestry fallback succeeds and canonical metadata exclusion is independently
+necessary; detached mutation checks remove that exclusion.
