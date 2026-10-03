@@ -1,6 +1,6 @@
 # Issue 5: native Claude Code session design
 
-Status: requirements/design first, implementation pending. Installed baseline:
+Status: implementation and scoped fixture verification in progress; immutable source review pending. Installed baseline:
 Claude Code 2.1.283. Current web docs include flags newer than this installed
 version; local help and actual native wire evidence govern capability claims.
 
@@ -99,10 +99,64 @@ capability probes. Mutations must defeat relevant real assertions and restored
 source must pass; unsupported capabilities remain typed and honest.
 
 First-party wire authority is the
-[official Python SDK query transport](https://github.com/anthropics/claude-agent-sdk-python/blob/main/src/claude_agent_sdk/_internal/query.py).
+[official Python SDK query transport](https://github.com/anthropics/claude-agent-sdk-python/blob/68db221ebe29c1d82b0001ae80fa71e10d57d80a/src/claude_agent_sdk/_internal/query.py).
 The [CLI reference](https://code.claude.com/docs/en/cli-reference) documents native
 print/streaming, exact UUID resume and background-session attachment.
 [Permission semantics](https://code.claude.com/docs/en/agent-sdk/permissions)
 explain callback coverage after native policy evaluation. Prior installed-version
 metadata-only evidence and redacted readiness are retained in the private
 reconnaissance notes; they are prerequisites, not completed adapter acceptance.
+
+
+## Installed fixture evidence and remaining gates
+
+The native account stays usable only when scoped launch retains trusted macOS
+login/keychain context (`USER`, `LOGNAME`, `SECURITYSESSIONID`,
+`__CF_USER_TEXT_ENCODING`, `XPC_SERVICE_NAME`, `XPC_FLAGS`). A metadata-only
+comparison observed logged-in true under normal/identity-preserving launch and
+false when those names were omitted. Project references/values cannot override
+these identities; another Project's API-key references are still excluded.
+
+Rustix allocates real stdin/stdout/stderr PTY descriptors and launches the native
+CLI directly in `process_group(0)`. There is no helper process, controlling-tty
+claim, unsafe pre-exec, shared leader or global attach adoption. A bounded native
+probe reached Claude's actual trust/safety screen and verified owned cleanup.
+No trust selection or global configuration mutation was performed. This proves
+native UI/PTY feasibility; an actual consultation response is still gated by the
+native trust prerequisite, so Interactive/Attach capabilities remain unadvertised.
+Provider-specific input/resize APIs operate only on the existing scoped owned UI.
+PTY closure/exit never produces structured turn-completion or usage evidence.
+The initial interactive argv payload is limited to 64 KiB; larger packs fail.
+
+Actual native zero-tool source consultation and exact UUID resume succeeded
+through the Rust adapter. `result.usage` tokens/cache are invocation observations;
+cost/API-duration gauges may accumulate or reset on resume. Only monotonic gauges
+with this supervisor's previous private baseline yield deltas; reset/missing
+values remain unknown. A validated successful run closes stdin to let native
+history flush, observes its unreaped leader exit with a five-second bound, then
+terminates remaining owned group members before reaping. Stop/failure kill the
+owned group directly. Source review and atomic scope-version dispatch fencing
+remain required before acceptance.
+
+The pinned [first-party callback option helper](https://github.com/anthropics/claude-agent-sdk-python/blob/68db221ebe29c1d82b0001ae80fa71e10d57d80a/src/claude_agent_sdk/types.py)
+selects the native `--permission-prompt-tool stdio` route. CLI native policy may
+allow or deny before that partial host callback. In-memory `pending_operation`
+returns exact parameters to a trusted broker; audit/recovery contain only bounded
+identities, tool name and operation digest, never parameter values.
+
+
+The actual native Executor fixture read a random nonce that was absent from its
+prompt from its owned Task's `proof.txt`. A fresh Reviewer UUID then processed a
+factual bundle on the clean locked revision with zero tools/MCP. These are backend
+operation/role evidence, not a verdict on this adapter's source. Native default
+model and effort, ordinary auth/hooks/rules and trusted OS identity were retained.
+
+
+The trusted baseline also retains native cloud authentication/routing names and
+TLS/cache settings. The [Bedrock](https://code.claude.com/docs/en/amazon-bedrock),
+[Google](https://code.claude.com/docs/en/google-vertex-ai) and
+[Foundry](https://code.claude.com/docs/en/microsoft-foundry) docs identify these
+native credential chains. Registered other-Project reference exclusion happens
+before provider-prefix retention, and explicit current-Project values must be
+validated declarations. No cloud login/credential chain was replaced or exercised
+as evidence for an unconfigured account.

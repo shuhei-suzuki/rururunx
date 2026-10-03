@@ -18,7 +18,7 @@ rusqlite = { version = "0.37", features = ["bundled"] }
 uuid = { version = "1.18", features = ["v4", "serde"] }
 tempfile = "3.23"
 tokio = { version = "1.48", features = ["rt-multi-thread", "macros", "process", "io-util", "sync", "time", "signal"] }
-rustix = { version = "1.1", features = ["process", "fs"] }
+rustix = { version = "1.1", features = ["process", "fs", "pty", "termios", "stdio"] }
 sha2 = "0.10"
 
 [workspace.lints.rust]
