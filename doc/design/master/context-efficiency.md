@@ -72,6 +72,11 @@ evidence and requested expansions must fit; otherwise it returns `NeedsBudget`.
 `utf8_bytes_v1` is a labeled packing estimate, with nullable provider measurement.
 Source and Git scans run outside the shared Store mutex and recheck state versions
 before audit mutation. See [bounded retrieval design](../issue-18-design.md).
+Uncertain native Git cleanup remains fail-closed. Diagnostics preserve the failing
+call's native error chain and distinguish a concurrent cleanup latch that discards
+another call's result. Consumers should render the full error chain (`{:#}` or Debug).
+Cancellation may latch uncertainty without returning a diagnostic; verified cleanup
+and recovery remain Issue 14 responsibilities.
 Durable Context Pack publishing and workflow integration remain separate work.
 
 Maintain a compact repository index inspired by repository-map approaches:

@@ -3,7 +3,8 @@
 Issue: https://github.com/shuhei-suzuki/rururunx/issues/8
 PR: https://github.com/shuhei-suzuki/rururunx/pull/36
 Risk: STRICT, because this change owns durable workflow authority and native/side-effect reservations.
-Reviewed production head: `8f46135c2bc9e9c103bbdac29d610536236815ec`.
+Broad workflow production review baseline: `8f46135c2bc9e9c103bbdac29d610536236815ec`.
+The later context diagnostic-only follow-up has its own scoped review below.
 Integrated base: merged Issue 18 (`a43afd8`), including its guarded audit API and rustix filesystem support.
 
 ## Acceptance and boundaries
@@ -44,15 +45,17 @@ Git/process fixtures use temporary isolated repositories and owned process group
 | --- | --- |
 | `cargo fmt --all --check` | PASS |
 | `cargo clippy --workspace --all-targets --locked -- -D warnings` | PASS |
-| `cargo test --workspace --locked` | PASS: 149 checks |
+| `cargo test --workspace --locked` | PASS: 149 checks at workflow baseline; 150 at diagnostic follow-up `ac813f9` |
 | `cargo build --workspace --locked` | PASS |
 | `cargo build --workspace --locked --release` | PASS |
 
-The 149 checks include 49 private workflow regressions, 19 real adapter/subprocess
+The workflow baseline's 149 checks include 49 private workflow regressions, 19 real adapter/subprocess
 regressions, both public API doctests and the integrated config/context/Git/project/state
 suites. A subsequent test-only variant commit `d45abe7` covers both Waiting and Failed holds;
-its focused regression and clippy pass. Production bytes are unchanged from the reviewed
-head. The privacy check requires E0624 and has a positive accessible Store control.
+its focused regression and clippy pass. That test-only commit preserves the reviewed
+production bytes. The subsequent context diagnostic change adds one pure regression,
+with full 150 checks and clippy passing at `ac813f9`. The privacy check requires E0624
+and has a positive accessible Store control.
 Class checks cover all three preset launches, scoped source/owner/record/context CAS,
 formal dependency freshness, rule/config drift, unsupported review, actual commit HEAD,
 transport success separate from verdict, second-round claim concurrency/restart/cancel,
@@ -82,6 +85,7 @@ Review dogfood and does not claim three-provider review evidence.
 | 5, `b97007d` | Completed, 1 High/1 Medium/5 Low. Verified resumed-round race, fixed exact claim/one observation fences, ordinary Failed terminal release, durable holds, validation-failure blockers, frozen Cleanup policy, payload duplication and status diagnostics. |
 | 6, `b53377e` | Completed, 2 Low/1 Info, no Critical/High/Medium. Confirmed all Review 5 findings resolved; fixed hold blocker refresh and observer-only factual append; documented fail-closed unpublished snapshots. |
 | 7, `8f46135` | Scoped delta completed, no Critical/High/Medium/Low; both Low fixes resolved. Optional Failed-arm test gap covered with a test-only variant and assertion-killed narrowed-guard mutation. Redundant observation bound remains harmless. |
+| 8, `ac813f9` | Scoped diagnostic review completed, no Critical/High/Medium; 4 Low/1 Info. Distinguished own cleanup failure from a concurrent uncertainty latch, verified existing direct-`?` consumers preserve the cause to CI Debug output, corrected stale gate wording, and retained the documented caller-wiring/cancellation diagnostic limitations. |
 
 Successful rounds have `is_error=false` and no permission denials. Actual findings were
 verified against source, committed, tested and sent back for independent delta review.
@@ -128,6 +132,13 @@ discarded the underlying native error, so a narrow diagnostic follow-up preserve
 error chain while retaining the uncertainty latch and rejecting successful output when
 ownership remains uncertain. Its regression covers both failure and successful-output
 cases. No timeout or safety-boundary change is inferred from the initial failure.
+Diagnostic head `ac813f9` passed both Linux and macOS in
+[run 37111305746](https://github.com/shuhei-suzuki/rururunx/actions/runs/37111305746).
+This does not establish the original intermittent cleanup cause. Issue 14 retains
+that investigation and cancelled-call latch diagnostics. Full-chain formatting is
+required for future Display-only status consumers. Diagnostic helper mutation trials
+D801/D802 compiled and assertion-failed; call-site fault injection remains a separate
+limitation because normal successful scans do not exercise cleanup uncertainty.
 
 Issue 9 owns actual multi-review scheduling/verdict reconciliation; Issue 12 owns typed
 approval/blocker routing; Issue 13 owns actual unknown-outcome/crash reconciliation;
