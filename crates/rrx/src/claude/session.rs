@@ -9,7 +9,7 @@ use super::{
 use crate::{
     adapter::{
         AdapterFuture, AdapterResult, AgentAdapter, AgentInfo, Capability, ErrorKind, LaunchMode,
-        LaunchRequest, SessionRef, SessionStatus, SharedStore,
+        LaunchRequest, PreparedInput, SessionRef, SessionStatus, SharedStore,
     },
     domain::{Session, SessionId, SessionState, Usage, now_ms},
 };
@@ -28,6 +28,21 @@ use tokio::sync::{mpsc, oneshot, watch};
 
 const OUTPUT_LIMIT: usize = 64 * 1024;
 const RETAINED: usize = 32;
+fn input_sha256(input: &PreparedInput) -> String {
+    use sha2::{Digest, Sha256};
+    format!("{:x}", Sha256::digest(input.payload.as_bytes()))
+}
+fn restore_sha256(session: &Session) -> AdapterResult<String> {
+    use sha2::{Digest, Sha256};
+    serde_json::to_vec(session)
+        .map(|bytes| format!("{:x}", Sha256::digest(bytes)))
+        .map_err(|_| {
+            failure(
+                ErrorKind::StateFailure,
+                "native terminal restore serialization failed",
+            )
+        })
+}
 
 pub struct ClaudeAdapter {
     agent: String,
@@ -35,11 +50,14 @@ pub struct ClaudeAdapter {
     store: SharedStore,
     sessions: Mutex<HashMap<SessionId, Entry>>,
     runtime_broker: bool,
+    terminal_prototype: bool,
+    admission: Arc<tokio::sync::Semaphore>,
     turn_timeout: Duration,
     #[cfg(test)]
     before_input_fence: Option<(Arc<tokio::sync::Barrier>, Arc<tokio::sync::Barrier>)>,
 }
 struct Entry {
+    admission: Arc<tokio::sync::OwnedSemaphorePermit>,
     status: watch::Receiver<SessionStatus>,
     stop: mpsc::Sender<()>,
     replies: mpsc::Sender<Reply>,
@@ -58,6 +76,7 @@ struct Evidence {
     metrics: Option<Metrics>,
     pending: Option<Pending>,
     terminal_observed: bool,
+    aggregate_metrics_unattributed: bool,
 }
 type OwnedReference = (
     watch::Receiver<SessionStatus>,
@@ -100,6 +119,7 @@ struct Reservation {
     ownership: ProcessOwnership,
     armed: bool,
     input_may_have_been_sent: bool,
+    previous_terminal: Option<Session>,
 }
 impl Reservation {
     fn persist_current(&mut self, snapshot: &ScopeSnapshot) -> AdapterResult<()> {
@@ -158,6 +178,14 @@ impl Drop for Reservation {
     fn drop(&mut self) {
         if self.armed {
             let uncertain = self.ownership.uncertain();
+            if !uncertain
+                && !self.input_may_have_been_sent
+                && let Some(previous) = self.previous_terminal.take()
+            {
+                self.session = previous;
+                let _ = self.persist();
+                return;
+            }
             self.session.state = if uncertain || self.input_may_have_been_sent {
                 SessionState::Lost
             } else {
@@ -184,6 +212,8 @@ impl ClaudeAdapter {
             store,
             sessions: Mutex::new(HashMap::new()),
             runtime_broker: false,
+            terminal_prototype: false,
+            admission: Arc::new(tokio::sync::Semaphore::new(RETAINED)),
             turn_timeout: Duration::from_secs(600),
             #[cfg(test)]
             before_input_fence: None,
@@ -193,6 +223,12 @@ impl ClaudeAdapter {
     /// policy can decide before callbacks; this does not grant blanket authority.
     pub fn with_runtime_broker(mut self) -> Self {
         self.runtime_broker = true;
+        self
+    }
+    /// Explicit research-only opt-in. Native trust-screen/PTY evidence is not
+    /// interactive consultation completion or a production capability claim.
+    pub fn with_terminal_prototype(mut self) -> Self {
+        self.terminal_prototype = true;
         self
     }
     pub fn with_turn_timeout(mut self, timeout: Duration) -> AdapterResult<Self> {
@@ -316,22 +352,19 @@ impl ClaudeAdapter {
         native: String,
         args: Vec<String>,
         environment: Vec<(std::ffi::OsString, std::ffi::OsString)>,
+        admission: Arc<tokio::sync::OwnedSemaphorePermit>,
     ) -> AdapterResult<Session> {
-        if request.input.payload.len() > 64 * 1024 || request.input.payload.contains('\0') {
-            return Err(failure(
-                ErrorKind::InvalidInput,
-                "interactive prepared context must fit bounded native argv",
-            ));
-        }
-        let mut args = args.into_iter().skip(6).collect::<Vec<_>>();
-        args.push("--".into());
-        args.push(request.input.payload.clone());
+        // Never expose factual context or secrets in the process argument list.
+        // This prototype starts only the native UI; deliberate owned terminal
+        // input is separately fenced. Structured completion stays unsupported.
+        let args = args.into_iter().skip(6).collect::<Vec<_>>();
         snapshot
             .verify_binding(&request, &mut reservation.ownership, &binding)
             .await?;
         snapshot.recheck(&self.store, &request, &self.agent)?;
         let mut candidate = reservation.session.clone();
         candidate.state = SessionState::WaitingHuman;
+        candidate.recovery["prepared_input_submitted"] = json!(false);
         candidate.recovery["requested_native_uuid"] = json!(native);
         candidate.recovery["dispatch_intent"] = json!({"kind":"terminal_start","attempt":candidate.recovery["attempt"],"requested_native_uuid":native,"input_version":request.input.version,"input_revision":request.input.revision,"input_bytes":request.input.payload.len()});
         reservation.commit_current(candidate, &snapshot)?;
@@ -368,15 +401,10 @@ impl ClaudeAdapter {
         let evidence = Arc::new(Mutex::new(Evidence::default()));
         {
             let mut registry = self.registry()?;
-            if registry.len() >= RETAINED {
-                return Err(failure(
-                    ErrorKind::Locked,
-                    "native retained session limit reached",
-                ));
-            }
             registry.insert(
                 session.id,
                 Entry {
+                    admission,
                     status: receiver,
                     stop: stop_tx,
                     replies: replies_tx,
@@ -498,6 +526,12 @@ impl ClaudeAdapter {
         request: LaunchRequest,
         resume: Option<Session>,
     ) -> AdapterResult<Session> {
+        if request.mode == LaunchMode::Interactive && !self.terminal_prototype {
+            return Err(failure(
+                ErrorKind::UnsupportedCapability,
+                "native terminal consultation requires verified session isolation; prototype opt-in only",
+            ));
+        }
         if request.mode == LaunchMode::Interactive
             && request.role != crate::domain::SessionRole::Consultant
         {
@@ -506,8 +540,34 @@ impl ClaudeAdapter {
                 "interactive native mode currently requires Consultant role",
             ));
         }
+        policy::detached_supervisor()?;
+        // Capacity is reserved before durable state, native launch, or input.
+        // Completed evidence remains owned until explicit release; it is never
+        // evicted to make room for a new operation.
+        let admission = if let Some(old) = &resume {
+            self.registry()?
+                .get(&old.id)
+                .ok_or_else(|| failure(ErrorKind::SessionLost, "native admission owner missing"))?
+                .admission
+                .clone()
+        } else {
+            Arc::new(
+                self.admission.clone().try_acquire_owned().map_err(|_| {
+                    failure(ErrorKind::Locked, "native retained session limit reached")
+                })?,
+            )
+        };
         let snapshot = ScopeSnapshot::capture(&self.store, &request, &self.agent)?;
         let (previous, expected_version) = if let Some(old) = &resume {
+            if old.recovery["input_version"]
+                .as_u64()
+                .is_none_or(|version| request.input.version <= version)
+            {
+                return Err(failure(
+                    ErrorKind::StateConflict,
+                    "native resume requires a newly checkpointed higher-version input; cached input cannot be replayed",
+                ));
+            }
             if old.agent != self.agent
                 || old.provider != "claude"
                 || old.scope != request.scope
@@ -530,13 +590,19 @@ impl ClaudeAdapter {
                     "native UUID lacks completed private proof",
                 ));
             }
-            let (_, version) = self
+            let (persisted, version) = self
                 .store
                 .lock()
                 .map_err(|_| failure(ErrorKind::StateFailure, "state store poisoned"))?
                 .session(old.id)
                 .map_err(|_| failure(ErrorKind::StateFailure, "native resume record unavailable"))?
                 .ok_or_else(|| failure(ErrorKind::SessionLost, "native resume record missing"))?;
+            if serde_json::to_value(persisted).ok() != serde_json::to_value(old).ok() {
+                return Err(failure(
+                    ErrorKind::StateConflict,
+                    "native resume record changed before reservation",
+                ));
+            }
             (evidence.metrics.clone(), version)
         } else {
             (None, 0)
@@ -546,7 +612,7 @@ impl ClaudeAdapter {
             .and_then(|s| s.native_ref.clone())
             .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
         let attempt = uuid::Uuid::new_v4().to_string();
-        let session = Session {
+        let mut session = Session {
             id: resume.as_ref().map(|s| s.id).unwrap_or_default(),
             scope: request.scope.clone(),
             agent: self.agent.clone(),
@@ -558,9 +624,12 @@ impl ClaudeAdapter {
             state: SessionState::Starting,
             model: request.model.clone(),
             effort: request.effort.clone(),
-            recovery: json!({"attempt":attempt,"input_revision":request.input.revision,"input_version":request.input.version,"source_versions":request.input.source_versions,"input_bytes":request.input.payload.len(),"reconnect_supported":false}),
+            recovery: json!({"attempt":attempt,"input_revision":request.input.revision,"input_version":request.input.version,"source_versions":request.input.source_versions,"input_bytes":request.input.payload.len(),"input_sha256":input_sha256(&request.input),"reconnect_supported":false}),
             started_at: now_ms(),
         };
+        if let Some(old) = &resume {
+            session.recovery["pre_dispatch_restore_sha256"] = json!(restore_sha256(old)?);
+        }
         let mut reservation = Reservation {
             store: self.store.clone(),
             session,
@@ -568,6 +637,7 @@ impl ClaudeAdapter {
             ownership: ProcessOwnership::default(),
             armed: false,
             input_may_have_been_sent: false,
+            previous_terminal: resume.clone(),
         };
         reservation.persist_current(&snapshot)?;
         reservation.armed = true;
@@ -620,6 +690,7 @@ impl ClaudeAdapter {
                     native,
                     args,
                     environment,
+                    admission,
                 )
                 .await;
         }
@@ -686,27 +757,10 @@ impl ClaudeAdapter {
         }));
         {
             let mut registry = self.registry()?;
-            if registry.len() >= RETAINED && resume.is_none() {
-                if let Some(id) = registry
-                    .iter()
-                    .filter(|(_, e)| {
-                        e.status.borrow().terminal() && !e.transition.load(Ordering::SeqCst)
-                    })
-                    .min_by_key(|(_, e)| e.status.borrow().session.started_at)
-                    .map(|(id, _)| *id)
-                {
-                    registry.remove(&id);
-                }
-                if registry.len() >= RETAINED {
-                    return Err(failure(
-                        ErrorKind::Locked,
-                        "native retained session limit reached",
-                    ));
-                }
-            }
             registry.insert(
                 session.id,
                 Entry {
+                    admission,
                     status: receiver,
                     stop: stop_tx,
                     replies: replies_tx,
@@ -758,6 +812,7 @@ impl AgentAdapter for ClaudeAdapter {
             Capability::StructuredOutput,
             Capability::UsageTelemetry,
             Capability::PromptCacheTelemetry,
+            Capability::ContextCheckpoint,
         ]
         .into_iter()
         .collect()
@@ -858,6 +913,114 @@ impl AgentAdapter for ClaudeAdapter {
             result
         })
     }
+    fn checkpoint(&self, reference: SessionRef, input: PreparedInput) -> AdapterFuture<'_, ()> {
+        Box::pin(async move {
+            let (_claim, mut request) = {
+                let registry = self.registry()?;
+                let entry = registry.get(&reference.id).ok_or_else(|| {
+                    failure(ErrorKind::SessionLost, "native checkpoint owner missing")
+                })?;
+                if entry.status.borrow().session.scope != reference.scope
+                    || input.scope != reference.scope
+                {
+                    return Err(failure(
+                        ErrorKind::OwnershipMismatch,
+                        "foreign native checkpoint",
+                    ));
+                }
+                if input.version <= entry.request.input.version {
+                    return Err(failure(
+                        ErrorKind::StateConflict,
+                        "native checkpoint must advance prepared input version",
+                    ));
+                }
+                entry
+                    .transition
+                    .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+                    .map_err(|_| {
+                        failure(
+                            ErrorKind::StateConflict,
+                            "native transition already claimed",
+                        )
+                    })?;
+                (Transition(entry.transition.clone()), entry.request.clone())
+            };
+            let previous = self.current(&reference)?;
+            let (_, _, _, evidence) = self.reference(&reference)?;
+            if previous.session.state != SessionState::Exited
+                || !evidence
+                    .lock()
+                    .map_err(|_| failure(ErrorKind::StateFailure, "native evidence poisoned"))?
+                    .completed
+            {
+                return Err(failure(
+                    ErrorKind::StateConflict,
+                    "native checkpoint requires privately completed terminal",
+                ));
+            }
+            let project = self
+                .store
+                .lock()
+                .map_err(|_| failure(ErrorKind::StateFailure, "state store poisoned"))?
+                .project(request.project.id)
+                .map_err(|_| failure(ErrorKind::StateFailure, "checkpoint Project unavailable"))?
+                .ok_or_else(|| failure(ErrorKind::SessionLost, "checkpoint Project disappeared"))?;
+            if project.root != request.project.root
+                || project.repository_identity != request.project.repository_identity
+                || project.base_branch != request.project.base_branch
+                || project.worktree_root != request.project.worktree_root
+            {
+                return Err(failure(
+                    ErrorKind::OwnershipMismatch,
+                    "checkpoint cannot rebind owned Project repository",
+                ));
+            }
+            request.project = project;
+            request.input = input;
+            let snapshot = ScopeSnapshot::capture(&self.store, &request, &self.agent)?;
+            let (persisted, version) = self
+                .store
+                .lock()
+                .map_err(|_| failure(ErrorKind::StateFailure, "state store poisoned"))?
+                .session(reference.id)
+                .map_err(|_| failure(ErrorKind::StateFailure, "checkpoint Session unavailable"))?
+                .ok_or_else(|| failure(ErrorKind::SessionLost, "checkpoint Session disappeared"))?;
+            if serde_json::to_value(persisted).ok() != serde_json::to_value(&previous.session).ok()
+            {
+                return Err(failure(
+                    ErrorKind::StateConflict,
+                    "checkpoint Session changed before reservation",
+                ));
+            }
+            let mut candidate = previous.session.clone();
+            candidate.state = SessionState::Starting;
+            candidate.recovery = json!({"attempt":uuid::Uuid::new_v4().to_string(),"input_revision":request.input.revision,"input_version":request.input.version,"source_versions":request.input.source_versions,"input_bytes":request.input.payload.len(),"input_sha256":input_sha256(&request.input),"pre_dispatch_restore_sha256":restore_sha256(&previous.session)?,"checkpoint_preflight":true,"reconnect_supported":false});
+            let mut reservation = Reservation {
+                store: self.store.clone(),
+                session: candidate,
+                version,
+                ownership: ProcessOwnership::default(),
+                armed: false,
+                input_may_have_been_sent: false,
+                previous_terminal: Some(previous.session.clone()),
+            };
+            reservation.persist_current(&snapshot)?;
+            reservation.armed = true;
+            snapshot
+                .verify_git(&request, &mut reservation.ownership)
+                .await?;
+            snapshot.recheck(&self.store, &request, &self.agent)?;
+            reservation.session = previous.session;
+            reservation.persist()?;
+            reservation.armed = false;
+            self.current(&reference)?;
+            self.registry()?
+                .get_mut(&reference.id)
+                .ok_or_else(|| failure(ErrorKind::SessionLost, "checkpoint owner disappeared"))?
+                .request = request;
+            Ok(())
+        })
+    }
     fn release(&self, reference: SessionRef) -> AdapterResult<()> {
         let mut registry = self.registry()?;
         let entry = registry
@@ -920,18 +1083,32 @@ impl AgentAdapter for ClaudeAdapter {
                 agent: self.agent.clone(),
                 phase,
                 review_round,
-                input_tokens: metrics.and_then(|m| m.input),
-                cached_input_tokens: metrics.and_then(|m| m.cache_read),
-                output_tokens: metrics.and_then(|m| m.output),
-                estimated_cost: metrics.and_then(|m| m.cost),
-                context_pack_version: Some(entry.request.input.version),
-                context_pack_size: Some(entry.request.input.payload.len() as u64),
+                input_tokens: (!evidence.aggregate_metrics_unattributed)
+                    .then(|| metrics.and_then(|m| m.input))
+                    .flatten(),
+                cached_input_tokens: (!evidence.aggregate_metrics_unattributed)
+                    .then(|| metrics.and_then(|m| m.cache_read))
+                    .flatten(),
+                output_tokens: (!evidence.aggregate_metrics_unattributed)
+                    .then(|| metrics.and_then(|m| m.output))
+                    .flatten(),
+                estimated_cost: (!evidence.aggregate_metrics_unattributed)
+                    .then(|| metrics.and_then(|m| m.cost))
+                    .flatten(),
+                context_pack_version: (status.session.recovery["prepared_input_submitted"]
+                    != false)
+                    .then(|| status.session.recovery["input_version"].as_u64())
+                    .flatten(),
+                context_pack_size: (status.session.recovery["prepared_input_submitted"] != false)
+                    .then(|| status.session.recovery["input_bytes"].as_u64())
+                    .flatten(),
                 repo_map_size: None,
-                cache_metadata: json!({"provider":"claude","native_uuid":evidence.native,"cache_creation_input_tokens":metrics.and_then(|m|m.cache_write),"duration_api_ms":metrics.and_then(|m|m.api_ms),"token_counters":"per_invocation","cost_duration_gauges":"owned_resume_delta"}),
-                missing_reason: if metrics
-                    .is_none_or(|m| m.input.is_none() || m.output.is_none() || m.cost.is_none())
+                cache_metadata: json!({"provider":"claude","native_uuid":evidence.native,"aggregate_metrics_unattributed":evidence.aggregate_metrics_unattributed,"observed_human_input_tokens":metrics.and_then(|m|m.input),"observed_human_output_tokens":metrics.and_then(|m|m.output),"cache_creation_input_tokens":metrics.and_then(|m|m.cache_write),"duration_api_ms":metrics.and_then(|m|m.api_ms),"token_counters":"per_invocation","reported_cost_usd":metrics.and_then(|m|m.cumulative_cost),"reported_duration_api_ms":metrics.and_then(|m|m.cumulative_api_ms),"cost_duration_gauges":"fresh_invocation_only; resumed_raw_unattributed"}),
+                missing_reason: if !evidence.completed
+                    || metrics
+                        .is_none_or(|m| m.input.is_none() || m.output.is_none() || m.cost.is_none())
                 {
-                    Some("native metrics unavailable, incomplete or resumed gauge baseline/reset unknown".into())
+                    Some("native metrics unavailable, optional fields incomplete, aggregate unverified, or resumed gauge attribution unknown".into())
                 } else {
                     None
                 },
@@ -1111,19 +1288,25 @@ async fn run(
     let mut state = RunState::default();
     let mut request_ids = BTreeSet::new();
     let mut diag_open = true;
+    tail(
+        &mut status.stderr,
+        &mut status.stderr_truncated,
+        &transport.startup_diagnostics,
+    );
+    status.stderr_truncated |= transport.startup_diagnostics_truncated;
     loop {
         tokio::select! {
             biased;
             _=stop.recv()=>return Ok(false),
             _=tokio::time::sleep_until(deadline)=>return Err(failure(ErrorKind::Timeout,"native turn deadline exceeded")),
             reply=replies.recv()=>if let Some(reply)=reply {
-                let outcome=respond(transport,reservation,status,sender,evidence,request,snapshot,binding,native,broker,agent,&reply.decision).await;
+                let outcome=respond(transport,reservation,status,sender,evidence,request,snapshot,binding,native,broker,agent,&reply.decision,&reply.result).await;
                 let fatal=outcome.as_ref().err().is_some_and(|e|!matches!(e.kind,ErrorKind::InvalidInput|ErrorKind::OwnershipMismatch|ErrorKind::StateConflict));
                 let _=reply.result.send(outcome);
                 if fatal {return Err(failure(ErrorKind::ProcessFailure,"native permission response failed"));}
             },
             bytes=transport.diagnostics.recv(),if diag_open=>match bytes {Some(bytes)=>{tail(&mut status.stderr,&mut status.stderr_truncated,&bytes);sender.send_replace(status.clone());},None=>diag_open=false},
-            frame=transport.frames.recv()=>{
+            frame=async { if let Some(frame)=transport.pending.pop_front() {Some(frame)} else {transport.frames.recv().await} }=>{
                 let message=frame.ok_or_else(||failure(ErrorKind::ProcessFailure,"native output closed before verified terminal"))??;
                 if message["type"]=="control_request" {
                     if policy::decision(request.role) {return Err(failure(ErrorKind::UnsupportedCapability,"native decision permission request"));}
@@ -1166,16 +1349,20 @@ async fn run(
                     journal.metrics=Some(metrics);
                     if observed.is_err() {journal.terminal_observed=true;}
                 }
-                if !observed? {continue;}
-                if message["type"]=="assistant" && let Some(content)=message["message"]["content"].as_array() {
+                evidence.lock().map_err(|_|failure(ErrorKind::StateFailure,"native aggregate journal poisoned"))?.aggregate_metrics_unattributed |= state.had_background;
+                let accepted = observed?;
+                if accepted && message["type"]=="assistant" && let Some(content)=message["message"]["content"].as_array() {
                     for part in content {if part["type"]=="text" && let Some(text)=part["text"].as_str(){tail(&mut status.stdout,&mut status.stdout_truncated,text.as_bytes());}}
                 }
-                if let Some(text)=message.get("result").and_then(Value::as_str) {status.stdout.clear();tail(&mut status.stdout,&mut status.stdout_truncated,text.as_bytes());}
+                if accepted && let Some(text)=message.get("result").and_then(Value::as_str) {status.stdout.clear();tail(&mut status.stdout,&mut status.stdout_truncated,text.as_bytes());}
                 sender.send_replace(status.clone());
                 if state.complete() {
                     if evidence.lock().map_err(|_|failure(ErrorKind::StateFailure,"native journal poisoned"))?.pending.is_some(){return Err(failure(ErrorKind::ParseFailure,"native terminal with pending permission"));}
                     evidence.lock().map_err(|_|failure(ErrorKind::StateFailure,"native journal poisoned"))?.terminal_observed=true;
-                    snapshot.recheck_scope(&reservation.store,request,agent)?;
+                    if state.failed_tasks { return Err(failure(ErrorKind::ProcessFailure,"native background aggregate reported failure or interruption")); }
+                    // Native operation outcome is distinct from current grant
+                    // authority. Parent metadata edits cannot erase correlated
+                    // terminal proof; final Session CAS still fences publication.
                     return Ok(true);
                 }
             }
@@ -1196,7 +1383,14 @@ async fn respond(
     broker: bool,
     agent: &str,
     decision: &Decision,
+    reply: &oneshot::Sender<AdapterResult<()>>,
 ) -> AdapterResult<()> {
+    if reply.is_closed() {
+        return Err(failure(
+            ErrorKind::StateConflict,
+            "native permission caller cancelled before grant",
+        ));
+    }
     let pending = evidence
         .lock()
         .map_err(|_| failure(ErrorKind::StateFailure, "native pending journal poisoned"))?
@@ -1248,16 +1442,29 @@ async fn respond(
             .expect("recovery object")
             .remove("pending_permission");
         candidate.recovery["dispatch_intent"] = json!({"kind":"permission","operation":pending.public(native),"decision":decision.decision});
-        reservation.commit_current(candidate, snapshot)?;
+        if reply.is_closed() {
+            return Err(failure(
+                ErrorKind::StateConflict,
+                "native permission caller cancelled before dispatch fence",
+            ));
+        }
+        if allow {
+            reservation.commit_current(candidate, snapshot)?;
+        } else {
+            // Denial grants no operation authority. It still consumes only the
+            // exact owned pending Session, even if scoped lifecycle was revoked.
+            reservation.session = candidate;
+            reservation.persist()?;
+        }
     }
+    status.session = reservation.session.clone();
+    sender.send_replace(status.clone());
     // Remove one-shot authority before the write, including a cancelled caller.
     evidence
         .lock()
         .map_err(|_| failure(ErrorKind::StateFailure, "native pending journal poisoned"))?
         .pending = None;
     transport.write_encoded(&response).await?;
-    status.session = reservation.session.clone();
-    sender.send_replace(status.clone());
     Ok(())
 }
 #[allow(clippy::too_many_arguments)]
@@ -1292,7 +1499,22 @@ async fn supervise_terminal(
                     candidate.recovery["dispatch_intent"]=json!({"kind":"terminal_input","input_version":candidate.recovery["terminal_input_version"],"input_bytes":command.bytes.len()});
                     reservation.commit_current(candidate,&snapshot)?;
                     status.session=reservation.session.clone();sender.send_replace(status.clone());
-                    transport.terminal.write(&command.bytes).await
+                    let terminal = transport.terminal.clone();
+                    let writing = terminal.write(&command.bytes);
+                    tokio::pin!(writing);
+                    loop {
+                        tokio::select! {
+                            biased;
+                            _ = stop.recv() => return Err(failure(ErrorKind::SessionLost,"terminal stopped during input")),
+                            _ = tokio::time::sleep_until(deadline) => return Err(failure(ErrorKind::Timeout,"terminal deadline during input")),
+                            result = &mut writing => break result,
+                            output = transport.output.recv() => match output {
+                                Some(Ok(bytes)) => { tail(&mut status.stdout,&mut status.stdout_truncated,&bytes);sender.send_replace(status.clone()); }
+                                Some(Err(error)) => return Err(error),
+                                None => return Err(failure(ErrorKind::SessionLost,"terminal ended during input")),
+                            }
+                        }
+                    }
                 }.await;
                 let fatal=result.as_ref().err().is_some_and(|e|matches!(e.kind,ErrorKind::Timeout|ErrorKind::ProcessFailure|ErrorKind::SessionLost));
                 let _=command.result.send(result);
@@ -1354,8 +1576,15 @@ for line in sys.stdin:
  if m['type']=='control_request':
   answer={{'mcpServers':[]}} if m['request']['subtype']=='mcp_status' else {{}}
   if behavior=='mcp' and m['request']['subtype']=='mcp_status':answer={{'mcpServers':[{{'name':'unexpected'}}]}}
+  if behavior=='bootstrap-noise':
+   emit({{'type':'system','subtype':'session_state_changed','state':'idle'}})
+   sys.stderr.write('x'*131072);sys.stderr.flush()
   emit({{'type':'control_response','response':{{'subtype':'success','request_id':m['request_id'],'response':answer}}}})
  elif m['type']=='user':
+  if behavior=='replay':
+   countfile=__file__+'.count'
+   count=int(open(countfile).read()) if os.path.exists(countfile) else 0
+   open(countfile,'w').write(str(count+1))
   if behavior=='fence':open(os.path.join(os.path.dirname(__file__),'native-user-dispatched'),'w').write('dispatched')
   if behavior=='preinit':
    emit({{'type':'control_request','request_id':'early','request':{{'subtype':'can_use_tool','tool_name':'Read','tool_use_id':'early-op','input':{{'file_path':'proof.txt'}}}}}});continue
@@ -1364,8 +1593,14 @@ for line in sys.stdin:
    emit({{'type':'control_request','request_id':'permission-1','request':{{'subtype':'can_use_tool','tool_name':'Bash','tool_use_id':'operation-1','input':{{'command':'pwd'}}}}}})
    continue
   if behavior=='hang':continue
-  if behavior=='background':emit({{'type':'system','subtype':'task_started','task_type':'local_agent','task_id':'still-running'}})
+  if behavior.startswith('background'):emit({{'type':'system','subtype':'task_started','task_type':'local_agent','task_id':'still-running'}})
   emit({{'type':'result','uuid':'result-1','subtype':'success' if behavior!='native-error' else 'error_during_execution','is_error':behavior=='native-error','session_id':native,'result':'{{"fixture":true}}','usage':{{'input_tokens':2,'output_tokens':13,'cache_creation_input_tokens':5,'cache_read_input_tokens':7}},'total_cost_usd':0.2 if '--resume='+native in sys.argv else 0.1,'duration_api_ms':200 if '--resume='+native in sys.argv else 100}})
+  if behavior=='background-complete':
+   emit({{'type':'system','subtype':'session_state_changed','state':'idle'}})
+   emit({{'type':'system','subtype':'task_notification','task_id':'still-running','status':'completed'}})
+   emit({{'type':'assistant','parent_tool_use_id':None,'message':{{'content':[{{'type':'text','text':'injected-not-owned'}}]}}}})
+   emit({{'type':'result','subtype':'success','is_error':False,'session_id':native,'origin':{{'kind':'task-notification'}},'result':'injected-not-owned','usage':{{'input_tokens':999}},'total_cost_usd':99}})
+   emit({{'type':'system','subtype':'session_state_changed','state':'idle'}})
  elif m['type']=='control_response':
   assert m['response']['request_id']=='permission-1'
   assert 'updatedPermissions' not in m['response']['response']
@@ -1418,6 +1653,25 @@ for line in sys.stdin:
         let mut forged = status.clone();
         forged.session.recovery["attempt"] = "foreign".into();
         assert!(!adapter.transport_succeeded(&forged));
+        assert_eq!(
+            adapter.resume((&session).into()).await.unwrap_err().kind,
+            ErrorKind::StateConflict
+        );
+        let mut continuation = fixture.request.input.clone();
+        continuation.version = 2;
+        continuation.payload = "explicit new continuation".into();
+        adapter
+            .checkpoint((&session).into(), continuation)
+            .await
+            .unwrap();
+        assert_eq!(
+            adapter
+                .usage((&session).into(), "consult".into(), None)
+                .await
+                .unwrap()
+                .context_pack_version,
+            Some(1)
+        );
         let resumed = adapter.resume((&session).into()).await.unwrap();
         let status = terminal(&adapter, (&resumed).into()).await;
         assert!(adapter.transport_succeeded(&status));
@@ -1427,13 +1681,326 @@ for line in sys.stdin:
             .await
             .unwrap();
         assert_eq!(usage.input_tokens, Some(2));
-        assert_eq!(usage.estimated_cost, Some(0.1));
+        assert_eq!(usage.estimated_cost, None);
+        assert_eq!(usage.context_pack_version, Some(2));
         adapter.release((&session).into()).unwrap();
         assert!(!adapter.transport_succeeded(&status));
         assert_eq!(
             adapter.resume((&session).into()).await.unwrap_err().kind,
             ErrorKind::SessionLost
         );
+    }
+    #[tokio::test]
+    async fn cached_resume_never_replays_native_input_and_fresh_checkpoint_dispatches_once() {
+        let fixture = Fixture::new(false);
+        let temp = tempfile::tempdir().unwrap();
+        let path = executable(&temp, "replay");
+        let count = PathBuf::from(format!("{}.count", path.display()));
+        let adapter = ClaudeAdapter::new("claude".into(), path, fixture.store.clone()).unwrap();
+        let session = adapter.start(fixture.request.clone()).await.unwrap();
+        assert!(adapter.transport_succeeded(&terminal(&adapter, (&session).into()).await));
+        assert_eq!(std::fs::read_to_string(&count).unwrap(), "1");
+        assert_eq!(
+            adapter.resume((&session).into()).await.unwrap_err().kind,
+            ErrorKind::StateConflict
+        );
+        assert_eq!(std::fs::read_to_string(&count).unwrap(), "1");
+        let mut input = fixture.request.input.clone();
+        input.version = 2;
+        input.payload = "fresh explicit continuation".into();
+        adapter
+            .checkpoint((&session).into(), input.clone())
+            .await
+            .unwrap();
+        let resumed = adapter.resume((&session).into()).await.unwrap();
+        let status = terminal(&adapter, (&resumed).into()).await;
+        assert!(adapter.transport_succeeded(&status));
+        assert_eq!(std::fs::read_to_string(count).unwrap(), "2");
+        assert_eq!(
+            status.session.recovery["input_sha256"],
+            input_sha256(&input)
+        );
+    }
+    #[tokio::test]
+    async fn initialization_routes_metadata_and_drains_bounded_diagnostics_before_input() {
+        let fixture = Fixture::new(false);
+        let temp = tempfile::tempdir().unwrap();
+        let adapter = ClaudeAdapter::new(
+            "claude".into(),
+            executable(&temp, "bootstrap-noise"),
+            fixture.store.clone(),
+        )
+        .unwrap();
+        let session = adapter.start(fixture.request.clone()).await.unwrap();
+        let status = terminal(&adapter, (&session).into()).await;
+        assert!(adapter.transport_succeeded(&status), "{:?}", status.failure);
+        assert!(status.stderr_truncated);
+        assert!(status.stderr.len() <= OUTPUT_LIMIT);
+        assert_eq!(
+            serde_json::from_slice::<Value>(&status.stdout).unwrap(),
+            json!({"fixture":true})
+        );
+    }
+    #[tokio::test]
+    async fn completed_background_injection_keeps_owned_output_and_usage() {
+        let fixture = Fixture::new(false);
+        let temp = tempfile::tempdir().unwrap();
+        let adapter = ClaudeAdapter::new(
+            "claude".into(),
+            executable(&temp, "background-complete"),
+            fixture.store.clone(),
+        )
+        .unwrap();
+        let session = adapter.start(fixture.request.clone()).await.unwrap();
+        let status = terminal(&adapter, (&session).into()).await;
+        assert!(adapter.transport_succeeded(&status), "{:?}", status.failure);
+        assert_eq!(
+            serde_json::from_slice::<Value>(&status.stdout).unwrap(),
+            json!({"fixture":true})
+        );
+        assert_eq!(
+            adapter
+                .usage((&session).into(), "consult".into(), None)
+                .await
+                .unwrap()
+                .input_tokens,
+            None
+        );
+    }
+    #[tokio::test]
+    async fn cancelled_allow_never_grants_and_owner_edit_does_not_block_exact_denial() {
+        let fixture = Fixture::new(true);
+        let temp = tempfile::tempdir().unwrap();
+        let adapter = ClaudeAdapter::new(
+            "claude".into(),
+            executable(&temp, "pending"),
+            fixture.store.clone(),
+        )
+        .unwrap()
+        .with_runtime_broker();
+        let session = adapter.start(fixture.request.clone()).await.unwrap();
+        let mut receiver = adapter.subscribe((&session).into()).unwrap();
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while receiver.borrow().session.state != SessionState::WaitingApproval {
+                receiver.changed().await.unwrap();
+            }
+        })
+        .await
+        .unwrap();
+        let mut decision = adapter.pending_operation((&session).into()).unwrap();
+        decision.as_object_mut().unwrap().remove("tool_name");
+        decision.as_object_mut().unwrap().remove("input");
+        decision["decision"] = json!("ALLOW");
+        let (tx, rx) = oneshot::channel();
+        drop(rx);
+        let replies = {
+            adapter
+                .registry()
+                .unwrap()
+                .get(&session.id)
+                .unwrap()
+                .replies
+                .clone()
+        };
+        replies
+            .send(Reply {
+                decision: serde_json::from_value(decision.clone()).unwrap(),
+                result: tx,
+            })
+            .await
+            .unwrap();
+        decision["decision"] = json!("ESCALATE");
+        adapter
+            .submit_approval((&session).into(), decision.clone())
+            .await
+            .unwrap();
+        assert_eq!(
+            adapter
+                .status((&session).into())
+                .await
+                .unwrap()
+                .session
+                .state,
+            SessionState::WaitingApproval
+        );
+        assert!(adapter.pending_operation((&session).into()).is_ok());
+        {
+            let mut store = fixture.store.lock().unwrap();
+            let mut task = store
+                .task(fixture.request.scope.task_id.unwrap())
+                .unwrap()
+                .unwrap();
+            task.title = "parent metadata changed".into();
+            store.put_task(&mut task).unwrap();
+        }
+        decision["decision"] = json!("DENY");
+        adapter
+            .submit_approval((&session).into(), decision)
+            .await
+            .unwrap();
+        let status = terminal(&adapter, (&session).into()).await;
+        assert!(adapter.transport_succeeded(&status));
+        assert_eq!(
+            status.session.recovery["dispatch_intent"]["decision"],
+            "DENY"
+        );
+    }
+    #[tokio::test]
+    async fn admission_rejects_before_state_or_native_and_never_evicts_terminal_proof() {
+        let fixture = Fixture::new(false);
+        let temp = tempfile::tempdir().unwrap();
+        let mut adapter = ClaudeAdapter::new(
+            "claude".into(),
+            executable(&temp, "success"),
+            fixture.store.clone(),
+        )
+        .unwrap();
+        adapter.admission = Arc::new(tokio::sync::Semaphore::new(1));
+        let first = adapter.start(fixture.request.clone()).await.unwrap();
+        let completed = terminal(&adapter, (&first).into()).await;
+        let before = fixture
+            .store
+            .lock()
+            .unwrap()
+            .records(&fixture.request.scope, crate::domain::RecordKind::Session)
+            .unwrap();
+        // Missing executable would fail differently if launch got past admission.
+        adapter.executable = temp.path().join("does-not-exist");
+        assert_eq!(
+            adapter
+                .start(fixture.request.clone())
+                .await
+                .unwrap_err()
+                .kind,
+            ErrorKind::Locked
+        );
+        let after = fixture
+            .store
+            .lock()
+            .unwrap()
+            .records(&fixture.request.scope, crate::domain::RecordKind::Session)
+            .unwrap();
+        assert_eq!(
+            serde_json::to_value(before).unwrap(),
+            serde_json::to_value(after).unwrap()
+        );
+        assert!(adapter.transport_succeeded(&completed));
+        assert_eq!(
+            adapter.status((&first).into()).await.unwrap().session.id,
+            first.id
+        );
+        adapter.release((&first).into()).unwrap();
+        adapter.executable = executable(&temp, "success");
+        let next = adapter.start(fixture.request.clone()).await.unwrap();
+        assert!(adapter.transport_succeeded(&terminal(&adapter, (&next).into()).await));
+    }
+    #[tokio::test]
+    async fn project_and_goal_consult_ignore_active_and_historical_descendant_locks() {
+        for goal_scope in [false, true] {
+            for active in [false, true] {
+                let fixture = Fixture::new(true);
+                let task_id = fixture.request.scope.task_id.unwrap();
+                let lock = crate::git::WorktreeManager::lock_review(
+                    &mut fixture.store.lock().unwrap(),
+                    task_id,
+                    &fixture.request.input.revision,
+                    "descendant immutable worktree",
+                )
+                .unwrap();
+                if !active {
+                    crate::git::WorktreeManager::unlock_review(
+                        &mut fixture.store.lock().unwrap(),
+                        lock,
+                    )
+                    .unwrap();
+                }
+                let mut request = fixture.request.clone();
+                request.scope.task_id = None;
+                if !goal_scope {
+                    request.scope.goal_id = None;
+                }
+                request.worktree = request.project.root.clone();
+                request.input.scope = request.scope.clone();
+                request.role = crate::domain::SessionRole::Consultant;
+                let temp = tempfile::tempdir().unwrap();
+                let adapter = ClaudeAdapter::new(
+                    "claude".into(),
+                    executable(&temp, "success"),
+                    fixture.store.clone(),
+                )
+                .unwrap();
+                let first = adapter.start(request.clone()).await.unwrap();
+                assert!(adapter.transport_succeeded(&terminal(&adapter, (&first).into()).await));
+                let mut fresh = request.input.clone();
+                fresh.version = 2;
+                fresh.payload = "new consultation".into();
+                adapter.checkpoint((&first).into(), fresh).await.unwrap();
+                let continued = adapter.resume((&first).into()).await.unwrap();
+                assert!(
+                    adapter.transport_succeeded(&terminal(&adapter, (&continued).into()).await)
+                );
+            }
+        }
+    }
+    #[tokio::test]
+    async fn invalid_checkpoint_and_preinput_resume_failure_restore_exact_completed_session() {
+        let fixture = Fixture::new(false);
+        let temp = tempfile::tempdir().unwrap();
+        let path = executable(&temp, "success");
+        let adapter =
+            ClaudeAdapter::new("claude".into(), path.clone(), fixture.store.clone()).unwrap();
+        let session = adapter.start(fixture.request.clone()).await.unwrap();
+        let previous = terminal(&adapter, (&session).into()).await;
+        let mut invalid = fixture.request.input.clone();
+        invalid.version = 2;
+        invalid.revision = "b".repeat(40);
+        assert_eq!(
+            adapter
+                .checkpoint((&session).into(), invalid)
+                .await
+                .unwrap_err()
+                .kind,
+            ErrorKind::StateConflict
+        );
+        let after = adapter.status((&session).into()).await.unwrap();
+        assert_eq!(
+            serde_json::to_value(&previous.session).unwrap(),
+            serde_json::to_value(&after.session).unwrap()
+        );
+        assert!(adapter.transport_succeeded(&after));
+        assert_eq!(
+            adapter.resume((&session).into()).await.unwrap_err().kind,
+            ErrorKind::StateConflict
+        );
+        let mut continuation = fixture.request.input.clone();
+        continuation.version = 2;
+        continuation.payload = "explicit next input".into();
+        adapter
+            .checkpoint((&session).into(), continuation.clone())
+            .await
+            .unwrap();
+        assert_eq!(
+            adapter
+                .checkpoint((&session).into(), continuation)
+                .await
+                .unwrap_err()
+                .kind,
+            ErrorKind::StateConflict
+        );
+        executable(&temp, "mcp");
+        assert_eq!(
+            adapter.resume((&session).into()).await.unwrap_err().kind,
+            ErrorKind::UnsupportedCapability
+        );
+        let restored = adapter.status((&session).into()).await.unwrap();
+        assert_eq!(
+            serde_json::to_value(&previous.session).unwrap(),
+            serde_json::to_value(&restored.session).unwrap()
+        );
+        assert!(adapter.transport_succeeded(&restored));
+        executable(&temp, "success");
+        let resumed = adapter.resume((&session).into()).await.unwrap();
+        assert!(adapter.transport_succeeded(&terminal(&adapter, (&resumed).into()).await));
     }
     #[tokio::test]
     async fn decision_inventory_native_error_timeout_and_restart_do_not_succeed() {
@@ -1548,8 +2115,8 @@ for line in sys.stdin:
                             .usage((&session).into(), "execute".into(), None)
                             .await
                             .unwrap()
-                            .input_tokens
-                            .is_some()
+                            .cache_metadata["observed_human_input_tokens"]
+                            .is_number()
                         {
                             break;
                         }
@@ -1570,8 +2137,8 @@ for line in sys.stdin:
                         .usage((&session).into(), "execute".into(), None)
                         .await
                         .unwrap()
-                        .input_tokens,
-                    Some(2)
+                        .cache_metadata["observed_human_input_tokens"],
+                    json!(2)
                 );
             }
             assert_eq!(
@@ -1719,7 +2286,8 @@ for line in sys.stdin:
             executable(&temp, "success"),
             fixture.store.clone(),
         )
-        .unwrap();
+        .unwrap()
+        .with_terminal_prototype();
         let mut request = fixture.request.clone();
         request.mode = LaunchMode::Interactive;
         let session = adapter.start(request).await.unwrap();
@@ -1806,6 +2374,7 @@ for line in sys.stdin:
             Arc::new(Mutex::new(store)),
         )
         .unwrap()
+        .with_terminal_prototype()
         .with_turn_timeout(Duration::from_secs(60))
         .unwrap();
         let session = adapter.start(request).await.unwrap();
@@ -2047,7 +2616,10 @@ for line in sys.stdin:
         let adapter =
             ClaudeAdapter::new("claude".into(), executable, fixture.store.clone()).unwrap();
         let mut request = fixture.request.clone();
-        request.input.payload="Independent MANUAL READ-ONLY protocol fixture. This is the read-only-session exception: no implementation, tools, repository operations or delegation are requested. Retain ordinary native rules. Return only JSON {\"fixture\":true}.".into();
+        let nonce = uuid::Uuid::new_v4().to_string();
+        request.input.payload = format!(
+            "Independent MANUAL READ-ONLY protocol fixture. This is the read-only-session exception: no implementation, tools, repository operations or delegation are requested. Retain ordinary native rules. Remember this factual private fixture nonce for a subsequent read-only turn: {nonce}. Return only JSON {{\"fixture\":true}}."
+        );
         let session = adapter.start(request).await.unwrap();
         let mut receiver = adapter.subscribe((&session).into()).unwrap();
         tokio::time::timeout(Duration::from_secs(180), async {
@@ -2072,6 +2644,17 @@ for line in sys.stdin:
             "native fresh telemetry: {}",
             serde_json::to_string(&usage).unwrap()
         );
+        assert_eq!(
+            adapter.resume((&session).into()).await.unwrap_err().kind,
+            ErrorKind::StateConflict
+        );
+        let mut continuation = fixture.request.input.clone();
+        continuation.version = 2;
+        continuation.payload="Independent MANUAL READ-ONLY continuation fixture. This is the read-only-session exception: no implementation, tools, repository operations or delegation. Return only JSON {\"previous_nonce\":\"the factual private fixture nonce from the earlier turn\"}, replacing the value with that earlier nonce. No nonce value is supplied in this fresh input.".into();
+        adapter
+            .checkpoint((&session).into(), continuation)
+            .await
+            .unwrap();
         let resumed = adapter.resume((&session).into()).await.unwrap();
         assert_eq!(session.native_ref, resumed.native_ref);
         let mut receiver = adapter.subscribe((&resumed).into()).unwrap();
@@ -2084,6 +2667,11 @@ for line in sys.stdin:
         .unwrap();
         let status = adapter.status((&resumed).into()).await.unwrap();
         assert!(adapter.transport_succeeded(&status), "{:?}", status.failure);
+        assert_eq!(
+            serde_json::from_slice::<Value>(&status.stdout).unwrap()["previous_nonce"],
+            nonce
+        );
+        eprintln!("native fresh checkpoint continuation remembered exact prior owned nonce: true");
         eprintln!(
             "native resume telemetry: {}",
             serde_json::to_string(

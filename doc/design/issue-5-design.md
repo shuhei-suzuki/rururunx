@@ -17,7 +17,7 @@ Capture persisted Project/Goal/Task versions, registered environment-reference
 names and review locks. Validate canonical native Git common-directory, owning
 worktree branch/HEAD and input bindings outside Store locks; CAS-check snapshots
 again before spawn/dispatch. A source-only consultation uses its registered
-primary Git root. Review checks its clean immutable locked Task revision.
+primary Git root. Review and ApprovalReviewer check their own clean immutable locked Task revision. Approval consumers can use a separate same-Project DecisionTask and factual operation bundle; the broker must independently bind the original operation before granting. The provider never treats live mutable executor cwd as a safe approval-review source.
 Only a private direct child with `process_group(0)` is a cleanup authority; keep
 its leader unreaped until group termination. Maintain separate sticky uncertainty
 for each Git/native child. Lost reservations are not cleared by another completed
@@ -126,13 +126,11 @@ native UI/PTY feasibility; an actual consultation response is still gated by the
 native trust prerequisite, so Interactive/Attach capabilities remain unadvertised.
 Provider-specific input/resize APIs operate only on the existing scoped owned UI.
 PTY closure/exit never produces structured turn-completion or usage evidence.
-The initial interactive argv payload is limited to 64 KiB; larger packs fail.
+Interactive startup never puts prepared context in argv. The unadvertised UI prototype is an explicit opt-in and starts without submitting context; owned terminal input is separately bounded and fenced. A caller with a controlling host tty fails closed until the shared session-isolation helper is implemented and reviewed; this is an interim closed boundary, not the final interactive capability.
 
 Actual native zero-tool source consultation and exact UUID resume succeeded
 through the Rust adapter. `result.usage` tokens/cache are invocation observations;
-cost/API-duration gauges may accumulate or reset on resume. Only monotonic gauges
-with this supervisor's previous private baseline yield deltas; reset/missing
-values remain unknown. A validated successful run closes stdin to let native
+cost/API-duration gauges may accumulate or reset on resume. No resumed gauge is attributed to a phase without an explicit cumulative/reset marker: monotonicity alone proves neither. Resumed cost/API duration stay null; raw native reported gauges remain separate observations. Malformed optional telemetry is nullable and never erases a correlated operation outcome. A validated successful run closes stdin to let native
 history flush, observes its unreaped leader exit with a five-second bound, then
 terminates remaining owned group members before reaping. Stop/failure kill the
 owned group directly. Source review and atomic scope-version dispatch fencing
@@ -216,3 +214,16 @@ USD 0.2236624 and 3,180 ms API duration. Consultant resume reported 2 input /
 other missing/reset gauge cases remain null. Native trust selection and actual
 interactive assistant response were not performed. Backend fixture results are
 not immutable implementation review verdicts.
+
+
+## Reviewed continuation and resource boundaries
+
+An owned completed UUID is not permission to replay a previous mutation. Resume requires an explicit higher-version `checkpoint` PreparedInput; the adapter pins its revision, source versions, byte count and exact payload SHA-256 before the first Starting publication. Checkpoint verifies ownership/Git without inference and retains the prior consumed Session as the usage authority. Starting reservations include the SHA-256 of the exact prior terminal Session; failure before input consumption restores that Session byte-for-byte. After input may reach native, an unobserved outcome remains Lost even when every owned group is known dead. Protected typed Context/checkpoint publication remains the separate #19 shared Store integration.
+
+A private admission semaphore reserves registry capacity before Store/native side effects. Completed evidence is retained until explicit release and is never evicted to make room. Scope snapshots collect only exact-scope locks; Project/Goal consultation does not inherit descendant Task lock versions. A cancelled broker reply cannot consume ALLOW authority. Durable intent and the watch state are published before wire awaits; exact DENY uses Session-only CAS because it grants no operation authority, while ALLOW keeps full current Scope/Git/lock fences. Correlated native terminal outcome remains distinct from later parent metadata edits; final Session CAS protects publication.
+
+Initialization buffers bounded known non-control metadata while correlating the response ID and draining bounded stderr. Background-injected turns never replace the sole human-input result/output/usage. After an early human result, the last task termination must be followed by an observed final native idle state and finished injected turn. Failed/interrupted native tasks do not become successful aggregate proof; unavailable aggregate attribution stays nullable. Missing final idle/turn completion remains Lost.
+
+PTY master/slave allocation and duplicated descriptors use atomic CLOEXEC. Read/write supervision uses AsyncFd readiness; the owner continues draining output and observing stop while an input write is backpressured. Resize remains synchronized with unreaped process-group ownership. The shared hidden setsid helper proposal must separately verify session/controlling-tty identity with a bounded READY/GO handshake before this prototype can advertise Interactive/Attach. No permanent requirement for a detached user supervisor is intended.
+
+Installed native provider routing/TLS aliases and OS login identity are trusted baseline controls, never scoped application credential replacements. Another Project's reference to an identity/control name cannot disable the current native baseline. Current Project API-key references still receive normal exact Project scoping. Sources: [native environment variables](https://code.claude.com/docs/en/env-vars), [gateway routing](https://code.claude.com/docs/en/llm-gateway-connect), [network settings](https://code.claude.com/docs/en/network-config).

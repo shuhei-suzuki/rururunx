@@ -3,8 +3,8 @@ use super::protocol::failure;
 use crate::adapter::{AdapterResult, ErrorKind, ProcessGroup, cleanup_group};
 use rustix::{
     fs::{Mode, OFlags, open},
-    io::{FdFlags, dup, fcntl_setfd},
-    pty::{OpenptFlags, grantpt, openpt, ptsname, unlockpt},
+    io::fcntl_dupfd_cloexec,
+    pty::{grantpt, ptsname, unlockpt},
     termios::{Winsize, tcsetwinsize},
 };
 use std::{
@@ -124,8 +124,11 @@ impl PtyTransport {
         flag: Arc<AtomicBool>,
     ) -> AdapterResult<Self> {
         let setup = || -> rustix::io::Result<_> {
-            let master = openpt(OpenptFlags::RDWR | OpenptFlags::NOCTTY)?;
-            fcntl_setfd(&master, FdFlags::CLOEXEC)?;
+            let master = open(
+                "/dev/ptmx",
+                OFlags::RDWR | OFlags::NOCTTY | OFlags::CLOEXEC,
+                Mode::empty(),
+            )?;
             grantpt(&master)?;
             unlockpt(&master)?;
             let name = ptsname(&master, Vec::new())?;
@@ -151,9 +154,9 @@ impl PtyTransport {
         };
         let (master, slave) = setup()
             .map_err(|_| failure(ErrorKind::LaunchFailure, "private tty allocation failed"))?;
-        let stdout = dup(&slave)
+        let stdout = fcntl_dupfd_cloexec(&slave, 0)
             .map_err(|_| failure(ErrorKind::LaunchFailure, "tty descriptor duplicate failed"))?;
-        let stderr = dup(&slave)
+        let stderr = fcntl_dupfd_cloexec(&slave, 0)
             .map_err(|_| failure(ErrorKind::LaunchFailure, "tty descriptor duplicate failed"))?;
         let mut command = Command::new(executable);
         command
@@ -361,6 +364,11 @@ mod tests {
     async fn readiness_idle_input_resize_and_stop_have_bounded_owned_lifecycle() {
         let (_temp, mut transport, flag) = fixture(
             "import os,sys,signal;assert all(os.isatty(n) for n in (0,1,2));signal.signal(signal.SIGWINCH,lambda *_:print('RESIZED='+str(os.get_terminal_size(1)),flush=True));print('READY');line=sys.stdin.readline();print('ACK:'+line.strip());sys.stdin.readline()",
+        );
+        assert!(
+            rustix::io::fcntl_getfd(transport.terminal.fd.get_ref())
+                .unwrap()
+                .contains(rustix::io::FdFlags::CLOEXEC)
         );
         contains(&mut transport, "READY\r\n").await;
         // Let the initial readable edge drain; subsequent idle waiting must

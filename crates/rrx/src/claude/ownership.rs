@@ -214,7 +214,10 @@ impl ScopeSnapshot {
         }
         let locks = store
             .records(&request.scope, RecordKind::WorktreeLock)
-            .map_err(state_error)?;
+            .map_err(state_error)?
+            .into_iter()
+            .filter(|record| record.scope == request.scope)
+            .collect::<Vec<_>>();
         let active = locks
             .iter()
             .map(|record| {
@@ -228,7 +231,10 @@ impl ScopeSnapshot {
                 "native executor worktree is locked",
             ));
         }
-        if request.role == SessionRole::Reviewer {
+        if matches!(
+            request.role,
+            SessionRole::Reviewer | SessionRole::ApprovalReviewer
+        ) {
             let task = task.as_ref().expect("validated review Task");
             let matches = |lock: &WorktreeLock| {
                 lock.active
@@ -485,7 +491,10 @@ impl ScopeSnapshot {
             })
             .await?;
         }
-        if request.role == SessionRole::Reviewer {
+        if matches!(
+            request.role,
+            SessionRole::Reviewer | SessionRole::ApprovalReviewer
+        ) {
             let status = observe(
                 request.worktree.clone(),
                 args(&[
@@ -679,6 +688,40 @@ pub(super) mod tests {
             self.request.role = SessionRole::Reviewer;
             self.request.input.kind = InputKind::ReviewBundle;
         }
+    }
+    #[tokio::test]
+    async fn approval_reviewer_requires_own_clean_immutable_decision_task() {
+        let mut fixture = Fixture::new(true);
+        fixture.request.role = SessionRole::ApprovalReviewer;
+        fixture.request.input.kind = InputKind::ReviewBundle;
+        assert_eq!(
+            ScopeSnapshot::capture(&fixture.store, &fixture.request, "claude")
+                .err()
+                .unwrap()
+                .kind,
+            ErrorKind::Locked
+        );
+        fixture.review();
+        fixture.request.role = SessionRole::ApprovalReviewer;
+        let snapshot = ScopeSnapshot::capture(&fixture.store, &fixture.request, "claude").unwrap();
+        let mut ownership = ProcessOwnership::default();
+        snapshot
+            .verify_git(&fixture.request, &mut ownership)
+            .await
+            .unwrap();
+        std::fs::write(
+            fixture.request.worktree.join("untracked-native-control"),
+            "synthetic local config",
+        )
+        .unwrap();
+        assert_eq!(
+            snapshot
+                .verify_git(&fixture.request, &mut ownership)
+                .await
+                .unwrap_err()
+                .kind,
+            ErrorKind::Locked
+        );
     }
     #[tokio::test]
     async fn primary_consultation_needs_no_worktree_namespace_and_keeps_exact_git_identity() {

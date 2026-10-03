@@ -258,11 +258,12 @@ The command examples above describe the MVP target. Currently implemented:
   usage remains null. Provider adapters and execution/workflow CLI commands are
   still being implemented. See [adapter design](doc/design/issue-4-design.md).
 - The library `ClaudeAdapter` supports installed Claude Code 2.1.283 execution,
-  separate zero-operation-tool reviews, exact owned UUID resume, scoped one-shot
+  separate zero-operation-tool reviews, fresh-checkpoint owned UUID resume, scoped one-shot
   permission callbacks and nullable native usage. It preserves native auth/rules
   and default model/effort. Its owned PTY prototype preserves the real trust UI
-  and handles resize/cleanup; Interactive/Attach remain unadvertised until an
-  authorized native consultation response is verified. CLI/workflow consumers
+  and handles resize/cleanup; Interactive/Attach remain prototype-only until
+  session isolation and native consultation are verified. Resumed phase cost/API
+  gauges stay null without attribution proof. CLI/workflow consumers
   remain pending. See [Claude design](doc/design/issue-5-design.md).
 
 

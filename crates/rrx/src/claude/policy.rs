@@ -9,6 +9,21 @@ use std::{
     ffi::OsString,
 };
 
+/// Closed interim boundary until the same-binary setsid helper is reviewed.
+/// A process-group-only child otherwise retains a live host controlling tty.
+pub(super) fn detached_supervisor() -> AdapterResult<()> {
+    match rustix::fs::open(
+        "/dev/tty",
+        rustix::fs::OFlags::RDONLY | rustix::fs::OFlags::NOCTTY | rustix::fs::OFlags::CLOEXEC,
+        rustix::fs::Mode::empty(),
+    ) {
+        Err(rustix::io::Errno::NXIO | rustix::io::Errno::NODEV) => Ok(()),
+        _ => Err(failure(
+            ErrorKind::UnsupportedCapability,
+            "native session isolation helper required for a host controlling terminal or uncertain tty access",
+        )),
+    }
+}
 pub(super) fn decision(role: SessionRole) -> bool {
     role != SessionRole::Executor
 }
@@ -83,6 +98,15 @@ const OS_IDENTITY: &[&str] = &[
     "XPC_SERVICE_NAME",
     "XPC_FLAGS",
 ];
+// Installed native routing/TLS/identity controls are trusted baseline policy,
+// never Project-provided application credentials. API keys remain scoped refs.
+fn baseline_control(name: &str) -> bool {
+    OS_IDENTITY.contains(&name)
+        || (name.starts_with("ANTHROPIC_") && name.ends_with("_BASE_URL"))
+        || name == "ANTHROPIC_CUSTOM_HEADERS"
+        || name.starts_with("AWS_ENDPOINT_URL")
+        || matches!(name, "AWS_CA_BUNDLE" | "NODE_TLS_REJECT_UNAUTHORIZED")
+}
 pub(super) fn environment(
     baseline: impl IntoIterator<Item = (OsString, OsString)>,
     projects: &[Project],
@@ -95,14 +119,14 @@ pub(super) fn environment(
             "invalid Project environment references",
         )
     })?;
-    if projects.iter().chain(std::iter::once(current)).any(|p| {
-        p.environment_refs
-            .iter()
-            .any(|name| OS_IDENTITY.contains(&name.as_str()))
-    }) {
+    if current
+        .environment_refs
+        .iter()
+        .any(|name| baseline_control(name))
+    {
         return Err(failure(
             ErrorKind::OwnershipMismatch,
-            "Project reference cannot replace trusted native OS login identity",
+            "Project reference cannot replace trusted native identity/routing/TLS policy",
         ));
     }
     let own: BTreeSet<_> = current
@@ -129,7 +153,9 @@ pub(super) fn environment(
             let Some(name) = name.to_str() else {
                 return false;
             };
-            if name.starts_with("GIT_") || (scoped.contains(name) && !own.contains(name)) {
+            if name.starts_with("GIT_")
+                || (!baseline_control(name) && scoped.contains(name) && !own.contains(name))
+            {
                 return false;
             }
             OS_IDENTITY.contains(&name)
@@ -148,6 +174,7 @@ pub(super) fn environment(
                         | "SSL_CERT_FILE"
                         | "SSL_CERT_DIR"
                         | "NODE_EXTRA_CA_CERTS"
+                        | "NODE_TLS_REJECT_UNAUTHORIZED"
                         | "ANTHROPIC_API_KEY"
                         | "OPENAI_API_KEY"
                         | "SSH_AUTH_SOCK"
@@ -238,6 +265,55 @@ mod tests {
             Some(&OsString::from("own-value"))
         );
         assert!(environment(baseline(), &[a, b.clone()], &b, &provided).is_err());
+    }
+    #[test]
+    fn foreign_identity_ref_cannot_disable_native_login_and_own_routing_refs_are_rejected() {
+        let own = Project::new(
+            "own".into(),
+            "/own".into(),
+            "identity".into(),
+            "main".into(),
+        );
+        let mut foreign = own.clone();
+        foreign.id = crate::domain::ProjectId::new();
+        for name in [
+            "USER",
+            "ANTHROPIC_VERTEX_BASE_URL",
+            "ANTHROPIC_BEDROCK_BASE_URL",
+            "ANTHROPIC_FOUNDRY_BASE_URL",
+            "ANTHROPIC_AWS_BASE_URL",
+            "ANTHROPIC_CUSTOM_HEADERS",
+            "AWS_ENDPOINT_URL_BEDROCK_RUNTIME",
+            "AWS_CA_BUNDLE",
+            "NODE_TLS_REJECT_UNAUTHORIZED",
+        ] {
+            foreign.environment_refs = vec![name.into()];
+            let baseline = [(OsString::from(name), OsString::from("trusted-value"))];
+            let filtered: BTreeMap<_, _> = environment(
+                baseline.clone(),
+                &[own.clone(), foreign.clone()],
+                &own,
+                &BTreeMap::new(),
+            )
+            .unwrap()
+            .into_iter()
+            .collect();
+            assert_eq!(
+                filtered.get(&OsString::from(name)),
+                Some(&OsString::from("trusted-value"))
+            );
+            let mut scoped = own.clone();
+            scoped.environment_refs = vec![name.into()];
+            assert!(
+                environment(
+                    baseline,
+                    &[scoped.clone()],
+                    &scoped,
+                    &BTreeMap::from([(name.into(), "untrusted".into())])
+                )
+                .is_err()
+            );
+        }
     }
     #[test]
     fn project_cannot_override_trusted_os_login_context() {

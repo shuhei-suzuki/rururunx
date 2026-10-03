@@ -125,45 +125,26 @@ pub(super) struct Metrics {
 }
 impl Metrics {
     pub fn parse(result: &Value, previous: Option<&Self>, resumed: bool) -> AdapterResult<Self> {
+        // Optional telemetry is not terminal outcome authority. Invalid or
+        // omitted counters stay nullable, and cannot turn proven success into
+        // an unknown operation eligible for replay.
         let counter = |key: &str| -> AdapterResult<Option<u64>> {
-            match result.get("usage").and_then(|u| u.get(key)) {
-                None | Some(Value::Null) => Ok(None),
-                Some(v) => v.as_u64().map(Some).ok_or_else(|| {
-                    failure(ErrorKind::ParseFailure, "invalid native token counter")
-                }),
-            }
+            Ok(result
+                .get("usage")
+                .and_then(|u| u.get(key))
+                .and_then(Value::as_u64))
         };
-        let cost = match result.get("total_cost_usd") {
-            None | Some(Value::Null) => None,
-            Some(v) => Some(
-                v.as_f64()
-                    .filter(|n| n.is_finite() && *n >= 0.0)
-                    .ok_or_else(|| failure(ErrorKind::ParseFailure, "invalid native cost"))?,
-            ),
-        };
-        let api_ms =
-            match result.get("duration_api_ms") {
-                None | Some(Value::Null) => None,
-                Some(v) => Some(v.as_u64().ok_or_else(|| {
-                    failure(ErrorKind::ParseFailure, "invalid native API duration")
-                })?),
-            };
-        // Actual native result.usage is per invocation; native cost/duration
-        // gauges can span the resumed UUID or reset. Never subtract invocation
-        // token counts; a reset/missing owned gauge baseline stays unknown.
-        let delta_cost = if resumed {
-            cost.zip(previous.and_then(|p| p.cumulative_cost))
-                .and_then(|(a, b)| (a >= b).then_some(a - b))
-        } else {
-            cost
-        };
-        let delta_ms = if resumed {
-            api_ms
-                .zip(previous.and_then(|p| p.cumulative_api_ms))
-                .and_then(|(a, b)| a.checked_sub(b))
-        } else {
-            api_ms
-        };
+        let cost = result
+            .get("total_cost_usd")
+            .and_then(Value::as_f64)
+            .filter(|n| n.is_finite() && *n >= 0.0);
+        let api_ms = result.get("duration_api_ms").and_then(Value::as_u64);
+        // This wire version does not report whether resumed gauges are
+        // cumulative or reset. Monotonicity cannot establish attribution.
+        // Retain actual raw gauges, but never invent a resumed phase delta.
+        let _ = previous;
+        let delta_cost = (!resumed).then_some(cost).flatten();
+        let delta_ms = (!resumed).then_some(api_ms).flatten();
         Ok(Self {
             input: counter("input_tokens")?,
             output: counter("output_tokens")?,
@@ -183,6 +164,10 @@ pub(super) struct RunState {
     pub initialized: bool,
     pub result: Option<Value>,
     state: Option<String>,
+    injected_turn: bool,
+    await_final_idle: bool,
+    pub failed_tasks: bool,
+    pub had_background: bool,
 }
 impl RunState {
     pub fn observe(
@@ -244,6 +229,9 @@ impl RunState {
                             failure(ErrorKind::ParseFailure, "unknown native session state")
                         })?;
                     self.state = Some(state.into());
+                    if state == "idle" && self.tasks.is_empty() && !self.injected_turn {
+                        self.await_final_idle = false;
+                    }
                 }
                 Some("task_started")
                     if matches!(
@@ -251,6 +239,7 @@ impl RunState {
                         Some("local_agent" | "local_workflow")
                     ) =>
                 {
+                    self.had_background = true;
                     self.tasks.insert(bounded_id(&message["task_id"])?);
                     if self.tasks.len() > 64 {
                         return Err(failure(
@@ -259,16 +248,27 @@ impl RunState {
                         ));
                     }
                 }
-                Some("task_notification") => {
-                    self.tasks.remove(message["task_id"].as_str().unwrap_or(""));
+                Some("task_notification")
+                    if matches!(
+                        message["status"].as_str(),
+                        Some("completed" | "failed" | "stopped")
+                    ) =>
+                {
+                    self.finish_task(
+                        message["task_id"].as_str().unwrap_or(""),
+                        message["status"].as_str().unwrap_or(""),
+                    );
                 }
                 Some("task_updated")
                     if matches!(
                         message["patch"]["status"].as_str(),
-                        Some("completed" | "failed" | "stopped")
+                        Some("completed" | "failed" | "stopped" | "killed")
                     ) =>
                 {
-                    self.tasks.remove(message["task_id"].as_str().unwrap_or(""));
+                    self.finish_task(
+                        message["task_id"].as_str().unwrap_or(""),
+                        message["patch"]["status"].as_str().unwrap_or(""),
+                    );
                 }
                 _ => {}
             },
@@ -279,9 +279,6 @@ impl RunState {
                         "native assistant before init",
                     ));
                 }
-                if message["parent_tool_use_id"].is_null() {
-                    self.result = None;
-                }
                 if decision
                     && message["message"]["content"]
                         .as_array()
@@ -291,6 +288,13 @@ impl RunState {
                         ErrorKind::UnsupportedCapability,
                         "decision native tool attempt",
                     ));
+                }
+                if message["parent_tool_use_id"].is_null() && self.result.is_some() {
+                    self.injected_turn = true;
+                    return Ok(false);
+                }
+                if self.injected_turn {
+                    return Ok(false);
                 }
             }
             Some("result") => {
@@ -303,6 +307,7 @@ impl RunState {
                 // Native streaming can inject separate background/peer/channel
                 // turns. Their results are not proof for the input we sent.
                 if !message["origin"].is_null() && message["origin"]["kind"] != "human" {
+                    self.injected_turn = false;
                     return Ok(false);
                 }
                 let subtype = message["subtype"].as_str().filter(|s| !s.is_empty());
@@ -338,8 +343,13 @@ impl RunState {
                 }
                 self.result = Some(message.clone());
             }
+            Some("user") => {
+                if !message["origin"].is_null() && message["origin"]["kind"] != "human" {
+                    self.injected_turn = true;
+                }
+            }
             Some(
-                "user" | "stream_event" | "tool_progress" | "tool_use_summary" | "auth_status"
+                "stream_event" | "tool_progress" | "tool_use_summary" | "auth_status"
                 | "rate_limit_event",
             ) => {}
             _ => {
@@ -351,9 +361,17 @@ impl RunState {
         }
         Ok(true)
     }
+    fn finish_task(&mut self, id: &str, status: &str) {
+        if self.tasks.remove(id) {
+            self.await_final_idle |= self.result.is_some();
+            self.failed_tasks |= status != "completed";
+        }
+    }
     pub fn complete(&self) -> bool {
         self.result.is_some()
             && self.tasks.is_empty()
+            && !self.injected_turn
+            && !self.await_final_idle
             && self.state.as_deref().is_none_or(|s| s == "idle")
     }
 }
@@ -383,14 +401,57 @@ mod tests {
         assert!(state.complete());
     }
     #[test]
+    fn completed_background_injection_preserves_human_result_and_requires_final_idle() {
+        let path = std::path::Path::new("/owned");
+        let mut state = RunState::default();
+        state.observe(&json!({"type":"system","subtype":"init","session_id":"n","cwd":"/owned","tools":[],"mcp_servers":[]}), "n", path, false).unwrap();
+        state.observe(&json!({"type":"system","subtype":"task_started","task_id":"t","task_type":"local_agent"}), "n", path, false).unwrap();
+        state.observe(&json!({"type":"result","session_id":"n","subtype":"success","is_error":false,"result":"human"}), "n", path, false).unwrap();
+        state
+            .observe(
+                &json!({"type":"system","subtype":"session_state_changed","state":"idle"}),
+                "n",
+                path,
+                false,
+            )
+            .unwrap();
+        assert!(!state.complete());
+        state.observe(&json!({"type":"system","subtype":"task_notification","task_id":"t","status":"completed"}), "n", path, false).unwrap();
+        assert!(!state.complete());
+        assert!(!state.observe(&json!({"type":"assistant","parent_tool_use_id":null,"message":{"content":[{"type":"text","text":"injected"}]}}), "n", path, false).unwrap());
+        assert!(!state.observe(&json!({"type":"result","session_id":"n","subtype":"success","is_error":false,"origin":{"kind":"task-notification"},"result":"injected"}), "n", path, false).unwrap());
+        assert_eq!(state.result.as_ref().unwrap()["result"], "human");
+        state.observe(&json!({"type":"system","subtype":"task_notification","task_id":"foreign-peer","status":"failed"}), "n", path, false).unwrap();
+        assert!(!state.failed_tasks);
+        assert!(!state.complete());
+        state
+            .observe(
+                &json!({"type":"system","subtype":"session_state_changed","state":"idle"}),
+                "n",
+                path,
+                false,
+            )
+            .unwrap();
+        assert!(state.complete());
+    }
+    #[test]
     fn invocation_tokens_and_resumed_gauges_have_different_authority() {
         let a = Metrics::parse(&json!({"usage":{"input_tokens":2,"output_tokens":13,"cache_creation_input_tokens":11924,"cache_read_input_tokens":531},"total_cost_usd":0.0957662,"duration_api_ms":1585}),None,false).unwrap();
         let b = Metrics::parse(&json!({"usage":{"input_tokens":2,"output_tokens":12,"cache_creation_input_tokens":351,"cache_read_input_tokens":12228},"total_cost_usd":0.1012678,"duration_api_ms":3094}),Some(&a),true).unwrap();
         assert_eq!(
             (b.input, b.output, b.cache_write, b.api_ms),
-            (Some(2), Some(12), Some(351), Some(1509))
+            (Some(2), Some(12), Some(351), None)
         );
-        assert!((b.cost.unwrap() - 0.0055016).abs() < 1e-10);
+        assert_eq!(b.cost, None);
+        assert_eq!(b.cumulative_cost, Some(0.1012678));
+        assert_eq!(b.cumulative_api_ms, Some(3094));
+        let invalid = Metrics::parse(&json!({"usage":{"input_tokens":-1,"output_tokens":"13"},"total_cost_usd":-2,"duration_api_ms":"100"}), None, false).unwrap();
+        assert!(
+            invalid.input.is_none()
+                && invalid.output.is_none()
+                && invalid.cost.is_none()
+                && invalid.api_ms.is_none()
+        );
         let reset = Metrics::parse(
             &json!({"total_cost_usd":0,"duration_api_ms":1}),
             Some(&b),
@@ -439,7 +500,7 @@ mod tests {
         )
         .unwrap();
         s.observe(
-            &json!({"type":"system","subtype":"task_notification","task_id":"a"}),
+            &json!({"type":"system","subtype":"task_notification","task_id":"a","status":"completed"}),
             "n",
             path,
             false,

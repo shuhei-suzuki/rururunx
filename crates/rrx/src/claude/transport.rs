@@ -3,6 +3,7 @@ use super::protocol::{LINE_LIMIT, failure};
 use crate::adapter::{AdapterResult, ErrorKind, ProcessGroup, cleanup_group};
 use serde_json::Value;
 use std::{
+    collections::VecDeque,
     ffi::OsString,
     path::Path,
     process::Stdio,
@@ -21,6 +22,9 @@ pub(super) struct Transport {
     stdin: Option<ChildStdin>,
     pub frames: mpsc::Receiver<AdapterResult<Value>>,
     pub diagnostics: mpsc::Receiver<Vec<u8>>,
+    pub pending: VecDeque<AdapterResult<Value>>,
+    pub startup_diagnostics: Vec<u8>,
+    pub startup_diagnostics_truncated: bool,
     readers: Vec<JoinHandle<()>>,
 }
 impl Transport {
@@ -59,6 +63,9 @@ impl Transport {
             stdin: Some(stdin),
             frames,
             diagnostics,
+            pending: VecDeque::new(),
+            startup_diagnostics: Vec::new(),
+            startup_diagnostics_truncated: false,
             readers,
         })
     }
@@ -100,22 +107,33 @@ impl Transport {
     }
     pub async fn request(&mut self, subtype: &str, id: &str) -> AdapterResult<Value> {
         self.write(&super::protocol::control(subtype, id)).await?;
-        let frame = tokio::time::timeout(Duration::from_secs(60), self.frames.recv())
-            .await
-            .map_err(|_| {
-                failure(
-                    ErrorKind::Timeout,
-                    "native initialization deadline exceeded",
-                )
-            })?
-            .ok_or_else(|| {
-                failure(
-                    ErrorKind::ProcessFailure,
-                    "native closed before control response",
-                )
-            })??;
-        super::protocol::control_result(&frame, id)
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(60);
+        let mut diagnostics_open = true;
+        loop {
+            tokio::select! {
+                _ = tokio::time::sleep_until(deadline) => return Err(failure(ErrorKind::Timeout, "native initialization deadline exceeded")),
+                bytes = self.diagnostics.recv(), if diagnostics_open => match bytes {
+                    Some(bytes) => {
+                        self.startup_diagnostics.extend_from_slice(&bytes);
+                        if self.startup_diagnostics.len() > 64 * 1024 {
+                            self.startup_diagnostics.drain(..self.startup_diagnostics.len() - 64 * 1024);
+                            self.startup_diagnostics_truncated = true;
+                        }
+                    }
+                    None => diagnostics_open = false,
+                },
+                frame = self.frames.recv() => {
+                    let frame = frame.ok_or_else(|| failure(ErrorKind::ProcessFailure, "native closed before control response"))??;
+                    if frame["type"] == "control_response" { return super::protocol::control_result(&frame, id); }
+                    if !matches!(frame["type"].as_str(), Some("system" | "auth_status" | "rate_limit_event")) || self.pending.len() >= 32 {
+                        return Err(failure(ErrorKind::ParseFailure, "unexpected native initialization frame or buffer bound"));
+                    }
+                    self.pending.push_back(Ok(frame));
+                }
+            }
+        }
     }
+
     pub async fn finish(mut self) -> AdapterResult<std::process::ExitStatus> {
         // EOF permits native transcript/usage flushing. Observe exit without
         // reaping so the group identity remains owned during final cleanup.

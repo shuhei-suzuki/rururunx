@@ -26,7 +26,7 @@ runtime state make this a STRICT change.
   the adapter's verified owned terminal. Native `claude attach` manages background
   sessions and must not be used to adopt arbitrary/global native processes.
 - Resume only a confirmed exact native UUID with the same Project/workspace/role
-  and original validated runtime authority. New process groups remain private;
+  and original validated runtime authority. Every continuation requires an explicit new higher-version checkpoint input; never replay cached mutating payload. New process groups remain private;
   restored native history and provider defaults remain native-owned. Do not use
   most-recent/picker/name heuristics, replay stale approvals, or treat a PID or
   UUID alone as reconnection authority after runtime restart.
@@ -53,3 +53,5 @@ only inside the tool sandbox must be distinguished from real account readiness.
 Full relevant Rust/fmt/clippy/build/CI and independent native immutable-source
 reviews precede acceptance. Other providers and workflow/approval engines remain
 separate consumers, not prerequisites on unmerged provider implementations.
+
+Acceptance remains pending the reviewed shared session-isolation helper and actual native interactive consultation/attachment. The current explicitly opted-in PTY trust-screen prototype is not an advertised production capability. Independent source review must verify the fixed immutable head; prior request-changes rounds are not approvals.
