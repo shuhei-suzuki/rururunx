@@ -151,6 +151,14 @@ fn event(sequence: u64, kind: EventKind, text: &str) -> HistoryEvent {
     }
 }
 fn session(f: &Fixture, role: SessionRole, state: SessionState) -> (Session, u64) {
+    let head = f
+        .store
+        .lock()
+        .unwrap()
+        .context(&f.task.scope(), None)
+        .unwrap()
+        .and_then(|c| c.data["checkpoint"]["digest"].as_str().map(str::to_owned))
+        .unwrap_or_else(|| "none".into());
     let s = Session {
         id: SessionId::new(),
         scope: f.task.scope(),
@@ -163,7 +171,7 @@ fn session(f: &Fixture, role: SessionRole, state: SessionState) -> (Session, u64
         state,
         model: None,
         effort: None,
-        recovery: serde_json::json!({"source_versions":{"checkpoint:head":"none"}}),
+        recovery: serde_json::json!({"source_versions":{"checkpoint:head":head}}),
         started_at: now_ms(),
     };
     let version = f.store.lock().unwrap().put_session(&s, 0).unwrap();
