@@ -7,6 +7,8 @@
 
 Represent the current development process as an executable stateful workflow while allowing lighter paths for small changes.
 
+Task Workflow Engine operates below Goal Runtime. Goal Runtime selects dependency-ready Tasks; Workflow Engine executes the selected Task through QUICK/STANDARD/STRICT phases.
+
 ## 2. Built-in workflow presets
 
 ### QUICK
@@ -239,3 +241,31 @@ Supported examples:
 - require manual merge
 
 Human override should not silently disable mandatory project safety rules.
+
+
+## 16. Goal Runtime integration
+
+Goal Runtime does not replace Task workflows.
+
+```text
+Goal Runtime
+  ↓ selects dependency-ready Task
+Workflow Engine
+  ↓ executes QUICK / STANDARD / STRICT
+Task result / events
+  ↓
+Goal Runtime reevaluates DAG + completion criteria
+```
+
+Workflow Engine emits normalized events for:
+
+- Task started/completed/failed/blocked
+- workflow escalation
+- Human escalation
+- review/security gate status
+- generated follow-up Task proposal
+- final Task acceptance evidence
+
+Goal Runtime consumes these events to continue execution without requiring a new user prompt after every Task.
+
+A Goal may define minimum workflow constraints for all child Tasks, but project-level minimums remain authoritative.
