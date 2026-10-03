@@ -1866,17 +1866,16 @@ pub(crate) fn known_gate_observation(attempt: &PhaseAttempt) -> Option<&GateObse
     .filter(|entry| entry.outcome.is_some())
 }
 fn clear_hold(snapshot: &mut Snapshot) {
-    if let Some(reason) = snapshot.workflow.held_reason.take() {
-        if snapshot
+    if let Some(reason) = snapshot.workflow.held_reason.take()
+        && snapshot
             .task
             .blockers
             .iter()
             .filter(|b| *b == &reason)
             .count()
             == 1
-        {
-            snapshot.task.blockers.retain(|b| b != &reason);
-        }
+    {
+        snapshot.task.blockers.retain(|b| b != &reason);
     }
 }
 fn authority_only(source: &SourceSnapshot) -> SourceSnapshot {

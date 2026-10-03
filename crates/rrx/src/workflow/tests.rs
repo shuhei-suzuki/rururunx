@@ -3527,6 +3527,28 @@ async fn resumed_round_claim_never_replays_prior_outcome_during_poll_restart_or_
             );
         }
 
+        {
+            let mut store = fixture.store.lock().unwrap();
+            let mut record = store
+                .records(&fixture.task.scope(), RecordKind::Workflow)
+                .unwrap()
+                .remove(0);
+            let mut wrong_claim = snapshot.history[index].clone();
+            wrong_claim.claimed_observations = 0;
+            let observation = GateObservation {
+                sources: super::authority_only(&snapshot.sources),
+                outcome: Some(GateOutcome::Waiting("wrong claim".into())),
+                error: None,
+                at: now_ms(),
+            };
+            assert!(
+                store
+                    .observe_workflow_gate(&mut record, index, &wrong_claim, observation)
+                    .unwrap_err()
+                    .to_string()
+                    .contains("observation identity differs")
+            );
+        }
         let calls = fixture.gates.calls.lock().unwrap().len();
         assert!(
             matches!(fixture.engine.step(id, BTreeMap::new()).await.unwrap(), StepResult::Waiting { reason, .. } if reason.contains("explicit recovery"))
@@ -3593,6 +3615,31 @@ async fn resumed_round_claim_never_replays_prior_outcome_during_poll_restart_or_
                 .all(|o| o.sources.payload.is_empty())
         );
         if cancelled {
+            {
+                let mut store = fixture.store.lock().unwrap();
+                let mut record = store
+                    .records(&fixture.task.scope(), RecordKind::Workflow)
+                    .unwrap()
+                    .remove(0);
+                let observation = GateObservation {
+                    sources: super::authority_only(&snapshot.sources),
+                    outcome: Some(GateOutcome::Waiting("duplicate actual claim".into())),
+                    error: None,
+                    at: now_ms(),
+                };
+                assert!(
+                    store
+                        .observe_workflow_gate(
+                            &mut record,
+                            index,
+                            &snapshot.history[index],
+                            observation
+                        )
+                        .unwrap_err()
+                        .to_string()
+                        .contains("observation identity differs")
+                );
+            }
             fixture
                 .engine
                 .release_terminal_reservation(id, "known completed second round".into())
