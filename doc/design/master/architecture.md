@@ -389,7 +389,7 @@ Cloud execution, web dashboards, and long-term memory are outside MVP and should
 
 Rust 2024 / minimum Rust 1.91 is the core standard; development and CI pin 1.91.1.
 The Cargo workspace contains `crates/rrx` with a library and a CLI binary.
-The currently implemented library module is `config`; CLI help and config validation
+Implemented library modules are `config`, `domain`, and `state`; CLI help and config validation
 do not construct an async runtime or start native agents.
 
 Initial dependencies are clap, serde/serde_json, TOML and anyhow. Config loading
@@ -400,3 +400,34 @@ project workflow minimum can only escalate the runtime minimum. Project model/ef
 overrides apply only to runtime-defined agents; unknown agent names are rejected. Diagnostics
 retain the input file path. macOS/Linux source installation produces one release
 `rrx` binary with Cargo; no hosted service is required.
+
+## 13. Durable state implementation
+
+The Rust domain uses distinct UUID types for Project/Goal/Task/Session/Record. Issue
+numbers and PIDs are metadata, not global identity. Goal snapshots preserve explicit
+criteria/DAG data; task workflow and process state are separate from phase.
+
+SQLite (bundled via rusqlite) stores indexed ownership columns with JSON snapshots.
+`PRAGMA user_version = 1` is the schema version. New databases initialize in one
+transaction; unsupported future versions fail before migration. Each connection
+enables foreign keys and a bounded busy timeout; WAL supports concurrent readers.
+Composite foreign keys enforce Goal/Task ownership and scoped records/context/usage.
+Project roots/identity and Goal/Task ownership cannot silently change on updates.
+Snapshot revision checks reject stale writers.
+
+Snapshot mutations and their scoped audit events commit in the same immediate
+transaction. Audit sequences are monotonic and SQL triggers reject UPDATE/DELETE.
+Review/approval evidence and session-state metadata are journaled so decisions are
+not lost when snapshots change. This journal does not protect against an owner
+who alters the database file or drops triggers.
+
+Context versions are append-only and consecutive per Goal/Task; source revision and
+hashes persist. Usage records retain project/goal/task/session/phase/round/agent
+attribution; missing metrics remain null with explicit unavailability reasons.
+Native session references, PID hints and recovery metadata persist, but reopening
+state does not establish process liveness. Project Git registration, DAG readiness,
+workflow execution and process reconciliation are separate components.
+
+Future migrations must be ordered/transactional, preserve identity/audit/context
+and telemetry, and test real old-version fixtures. Persistence schema and snapshot
+format evolve together; unknown formats must not be best-effort accepted.
