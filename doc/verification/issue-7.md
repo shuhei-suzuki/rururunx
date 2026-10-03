@@ -283,4 +283,10 @@ It proves adapter participation, not Review Set scheduling/policy/aggregation (I
 ApprovalReviewer binding, native attach/PTY and configured provider factory are explicit
 later integration boundaries, not unimplemented GitHub Issue 7 acceptance criteria.
 The added Registry consumer test changes no production implementation; its committed
-targeted gates and final exact-head CI are recorded on PR 40.
+targeted gate at clean `26d1074` passes in 8.43 seconds. Locked all-target clippy and
+fmt pass. The initial test comparison failed to compile because Session intentionally
+does not implement PartialEq; it now compares the complete serialized snapshot. This
+was a test-only compile correction, not a mutation result or runtime failure.
+The earlier outcome-only `9d233b1` exact Linux/macOS CI run `37161109321` also succeeds.
+Final immutable Registry-consumer rereview and exact-head publication checks are
+recorded on PR 40; no native/runtime code changed since reviewed `29f0613`.
