@@ -19,6 +19,18 @@ Claude Code, Codex, Grok, Gemini, and open-source agents are represented through
 - permission interception is optional capability
 - reviewer execution is separate from executor execution
 
+The Issue 5 library implementation uses the installed Claude Code 2.1.283 native
+stream/control protocol; future wire versions fail explicitly until verified.
+Decision sessions remove built-in tools and inherited MCP operations while
+retaining trusted native hooks/rules/auth. Its callback covers only operations
+that native policy delegates to the host. Private correlated completion and
+verified owned-process cleanup back transport success, never process exit alone.
+Dispatch consumes bounded input or one-shot permission intent with atomic scoped
+owner/lock/Session CAS before the wire. Unobserved outcomes remain Lost even when
+owned group death is confirmed. Its native PTY trust/redraw proof leaves
+Interactive/Attach unadvertised pending a verified consultation response; runtime
+CLI/workflow integration is separate. See [Issue 5 design](../issue-5-design.md).
+
 ## 3. Capability model
 
 Suggested capability flags:

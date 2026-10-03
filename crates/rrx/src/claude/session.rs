@@ -36,6 +36,8 @@ pub struct ClaudeAdapter {
     sessions: Mutex<HashMap<SessionId, Entry>>,
     runtime_broker: bool,
     turn_timeout: Duration,
+    #[cfg(test)]
+    before_input_fence: Option<(Arc<tokio::sync::Barrier>, Arc<tokio::sync::Barrier>)>,
 }
 struct Entry {
     status: watch::Receiver<SessionStatus>,
@@ -46,6 +48,7 @@ struct Entry {
     transition: Arc<AtomicBool>,
     terminal: Option<(Terminal, ScopeSnapshot, Value)>,
     resize: Option<mpsc::Sender<Resize>>,
+    input: Option<mpsc::Sender<TerminalInput>>,
 }
 #[derive(Default)]
 struct Evidence {
@@ -82,6 +85,10 @@ struct Resize {
     columns: u16,
     result: oneshot::Sender<AdapterResult<()>>,
 }
+struct TerminalInput {
+    bytes: Vec<u8>,
+    result: oneshot::Sender<AdapterResult<()>>,
+}
 struct Reply {
     decision: Decision,
     result: oneshot::Sender<AdapterResult<()>>,
@@ -95,6 +102,33 @@ struct Reservation {
     input_may_have_been_sent: bool,
 }
 impl Reservation {
+    fn persist_current(&mut self, snapshot: &ScopeSnapshot) -> AdapterResult<()> {
+        self.commit_current(self.session.clone(), snapshot)
+    }
+    fn commit_current(
+        &mut self,
+        candidate: Session,
+        snapshot: &ScopeSnapshot,
+    ) -> AdapterResult<()> {
+        self.version = self
+            .store
+            .lock()
+            .map_err(|_| failure(ErrorKind::StateFailure, "state store poisoned"))?
+            .put_session_if_current(
+                &candidate,
+                self.version,
+                snapshot.versions(),
+                &snapshot.lock_versions(),
+            )
+            .map_err(|_| {
+                failure(
+                    ErrorKind::StateConflict,
+                    "native dispatch authority changed",
+                )
+            })?;
+        self.session = candidate;
+        Ok(())
+    }
     fn persist(&mut self) -> AdapterResult<()> {
         self.version = self
             .store
@@ -151,6 +185,8 @@ impl ClaudeAdapter {
             sessions: Mutex::new(HashMap::new()),
             runtime_broker: false,
             turn_timeout: Duration::from_secs(600),
+            #[cfg(test)]
+            before_input_fence: None,
         })
     }
     /// Enable exact one-shot replies from the trusted runtime broker. Native
@@ -204,7 +240,30 @@ impl ClaudeAdapter {
     /// Bytes go to the existing native UI, including its ordinary trust/permission
     /// dialogs. This is explicit user input, never an automatic grant source.
     pub async fn terminal_input(&self, reference: SessionRef, bytes: Vec<u8>) -> AdapterResult<()> {
-        self.owned_terminal(&reference).await?.write(&bytes).await
+        if bytes.is_empty() || bytes.len() > 4096 {
+            return Err(failure(
+                ErrorKind::InvalidInput,
+                "terminal input must contain 1..4096 bytes",
+            ));
+        }
+        self.owned_terminal(&reference).await?;
+        let input = self
+            .registry()?
+            .get(&reference.id)
+            .and_then(|entry| entry.input.clone())
+            .ok_or_else(|| failure(ErrorKind::SessionLost, "terminal input owner missing"))?;
+        let (tx, rx) = oneshot::channel();
+        tokio::time::timeout(
+            Duration::from_secs(2),
+            input.send(TerminalInput { bytes, result: tx }),
+        )
+        .await
+        .map_err(|_| failure(ErrorKind::Timeout, "terminal input queue deadline exceeded"))?
+        .map_err(|_| failure(ErrorKind::SessionLost, "terminal input owner ended"))?;
+        tokio::time::timeout(Duration::from_secs(5), rx)
+            .await
+            .map_err(|_| failure(ErrorKind::Timeout, "terminal input reply deadline exceeded"))?
+            .map_err(|_| failure(ErrorKind::SessionLost, "terminal input owner ended"))?
     }
     pub async fn terminal_resize(
         &self,
@@ -271,6 +330,11 @@ impl ClaudeAdapter {
             .verify_binding(&request, &mut reservation.ownership, &binding)
             .await?;
         snapshot.recheck(&self.store, &request, &self.agent)?;
+        let mut candidate = reservation.session.clone();
+        candidate.state = SessionState::WaitingHuman;
+        candidate.recovery["requested_native_uuid"] = json!(native);
+        candidate.recovery["dispatch_intent"] = json!({"kind":"terminal_start","attempt":candidate.recovery["attempt"],"requested_native_uuid":native,"input_version":request.input.version,"input_revision":request.input.revision,"input_bytes":request.input.payload.len()});
+        reservation.commit_current(candidate, &snapshot)?;
         let transport = PtyTransport::launch(
             &self.executable,
             &request.worktree,
@@ -278,6 +342,7 @@ impl ClaudeAdapter {
             environment,
             reservation.ownership.group(),
         )?;
+        reservation.input_may_have_been_sent = true;
         reservation.session.pid = Some(transport.pid());
         reservation.session.state = SessionState::WaitingHuman;
         // UI output is not authoritative structured UUID/turn confirmation.
@@ -297,6 +362,7 @@ impl ClaudeAdapter {
         let (sender, receiver) = watch::channel(status.clone());
         let (stop_tx, stop) = mpsc::channel(1);
         let (resize_tx, resize) = mpsc::channel(4);
+        let (input_tx, input) = mpsc::channel(4);
         let (replies_tx, replies) = mpsc::channel(1);
         drop(replies);
         let evidence = Arc::new(Mutex::new(Evidence::default()));
@@ -315,10 +381,15 @@ impl ClaudeAdapter {
                     stop: stop_tx,
                     replies: replies_tx,
                     evidence,
-                    request,
+                    request: request.clone(),
                     transition: Arc::new(AtomicBool::new(false)),
-                    terminal: Some((transport.terminal.clone(), snapshot, binding)),
+                    terminal: Some((
+                        transport.terminal.clone(),
+                        snapshot.clone(),
+                        binding.clone(),
+                    )),
                     resize: Some(resize_tx),
+                    input: Some(input_tx),
                 },
             );
         }
@@ -330,6 +401,11 @@ impl ClaudeAdapter {
             sender,
             stop,
             resize,
+            input,
+            self.agent.clone(),
+            request,
+            snapshot,
+            binding,
             timeout,
         ));
         Ok(session)
@@ -493,7 +569,7 @@ impl ClaudeAdapter {
             armed: false,
             input_may_have_been_sent: false,
         };
-        reservation.persist()?;
+        reservation.persist_current(&snapshot)?;
         reservation.armed = true;
         let binding = snapshot
             .verify_git(&request, &mut reservation.ownership)
@@ -567,8 +643,16 @@ impl ClaudeAdapter {
             snapshot.recheck(&self.store,&request,&self.agent)?;
             snapshot.verify_binding(&request,&mut reservation.ownership,&binding).await?;
             snapshot.recheck(&self.store,&request,&self.agent)?;
+            let input=Transport::encode(&json!({"type":"user","message":{"role":"user","content":request.input.payload},"origin":{"kind":"human"},"parent_tool_use_id":null,"session_id":native}))?;
+            #[cfg(test)]
+            if let Some((ready,release))=&self.before_input_fence {ready.wait().await;release.wait().await;}
+            let mut candidate=reservation.session.clone();
+            candidate.native_ref=Some(native.clone());
+            candidate.state=SessionState::Running;
+            candidate.recovery["dispatch_intent"]=json!({"kind":"input","attempt":attempt,"native_uuid":native,"input_version":request.input.version,"input_revision":request.input.revision,"input_bytes":request.input.payload.len()});
+            reservation.commit_current(candidate,&snapshot)?;
             reservation.input_may_have_been_sent=true;
-            transport.write(&json!({"type":"user","message":{"role":"user","content":request.input.payload},"parent_tool_use_id":null,"session_id":native})).await?;
+            transport.write_encoded(&input).await?;
             Ok::<_,crate::adapter::AdapterError>(())
         }.await;
         if let Err(primary) = initialize {
@@ -582,9 +666,6 @@ impl ClaudeAdapter {
                 Err(primary)
             };
         }
-        reservation.session.native_ref = Some(native.clone());
-        reservation.session.state = SessionState::Running;
-        reservation.persist()?;
         let session = reservation.session.clone();
         let status = SessionStatus {
             session: session.clone(),
@@ -634,6 +715,7 @@ impl ClaudeAdapter {
                     transition: Arc::new(AtomicBool::new(false)),
                     terminal: None,
                     resize: None,
+                    input: None,
                 },
             );
         }
@@ -958,23 +1040,18 @@ async fn supervise(
         transport.cleanup().await
     };
     let uncertain = cleanup.is_err() || reservation.ownership.uncertain();
-    reservation.session.state = if uncertain {
+    let observed = evidence
+        .lock()
+        .map(|e| e.terminal_observed)
+        .unwrap_or(false);
+    let unknown = reservation.input_may_have_been_sent && !observed;
+    reservation.session.state = if uncertain || (unknown && !matches!(result, Ok(true))) {
         SessionState::Lost
     } else {
         match &result {
             Ok(true) => SessionState::Exited,
             Ok(false) => SessionState::Stopped,
-            Err(_) => {
-                let observed = evidence
-                    .lock()
-                    .map(|e| e.terminal_observed)
-                    .unwrap_or(false);
-                if reservation.input_may_have_been_sent && !observed {
-                    SessionState::Lost
-                } else {
-                    SessionState::Failed
-                }
-            }
+            Err(_) => SessionState::Failed,
         }
     };
     if !uncertain {
@@ -1086,7 +1163,8 @@ async fn run(
                 if message["type"]=="result" && message["session_id"]==native && state.initialized && accepted_terminal {
                     let metrics=Metrics::parse(&message,previous,resumed)?;
                     let mut journal=evidence.lock().map_err(|_|failure(ErrorKind::StateFailure,"native metrics journal poisoned"))?;
-                    journal.metrics=Some(metrics);journal.terminal_observed=true;
+                    journal.metrics=Some(metrics);
+                    if observed.is_err() {journal.terminal_observed=true;}
                 }
                 if !observed? {continue;}
                 if message["type"]=="assistant" && let Some(content)=message["message"]["content"].as_array() {
@@ -1096,6 +1174,7 @@ async fn run(
                 sender.send_replace(status.clone());
                 if state.complete() {
                     if evidence.lock().map_err(|_|failure(ErrorKind::StateFailure,"native journal poisoned"))?.pending.is_some(){return Err(failure(ErrorKind::ParseFailure,"native terminal with pending permission"));}
+                    evidence.lock().map_err(|_|failure(ErrorKind::StateFailure,"native journal poisoned"))?.terminal_observed=true;
                     snapshot.recheck_scope(&reservation.store,request,agent)?;
                     return Ok(true);
                 }
@@ -1152,6 +1231,7 @@ async fn respond(
             ));
         }
     };
+    let response = Transport::encode(&pending.reply(allow))?;
     if allow {
         snapshot.recheck_scope(&reservation.store, request, agent)?;
         snapshot
@@ -1160,37 +1240,27 @@ async fn respond(
         snapshot.recheck_scope(&reservation.store, request, agent)?;
     }
     {
-        let mut store = reservation
-            .store
-            .lock()
-            .map_err(|_| failure(ErrorKind::StateFailure, "state store poisoned"))?;
-        store.audit(&request.scope,"claude.permission.intent",json!({"session_id":reservation.session.id,"operation":pending.public(native),"decision":decision.decision})).map_err(|_|failure(ErrorKind::StateFailure,"native permission audit failed"))?;
-        reservation.session.state = SessionState::Running;
-        reservation
-            .session
+        let mut candidate = reservation.session.clone();
+        candidate.state = SessionState::Running;
+        candidate
             .recovery
             .as_object_mut()
             .expect("recovery object")
             .remove("pending_permission");
-        reservation.version = store
-            .put_session(&reservation.session, reservation.version)
-            .map_err(|_| {
-                failure(
-                    ErrorKind::StateConflict,
-                    "native permission Session fence failed",
-                )
-            })?;
+        candidate.recovery["dispatch_intent"] = json!({"kind":"permission","operation":pending.public(native),"decision":decision.decision});
+        reservation.commit_current(candidate, snapshot)?;
     }
     // Remove one-shot authority before the write, including a cancelled caller.
     evidence
         .lock()
         .map_err(|_| failure(ErrorKind::StateFailure, "native pending journal poisoned"))?
         .pending = None;
-    transport.write(&pending.reply(allow)).await?;
+    transport.write_encoded(&response).await?;
     status.session = reservation.session.clone();
     sender.send_replace(status.clone());
     Ok(())
 }
+#[allow(clippy::too_many_arguments)]
 async fn supervise_terminal(
     mut transport: PtyTransport,
     mut reservation: Reservation,
@@ -1198,6 +1268,11 @@ async fn supervise_terminal(
     sender: watch::Sender<SessionStatus>,
     mut stop: mpsc::Receiver<()>,
     mut resize: mpsc::Receiver<Resize>,
+    mut input: mpsc::Receiver<TerminalInput>,
+    agent: String,
+    request: LaunchRequest,
+    snapshot: ScopeSnapshot,
+    binding: Value,
     timeout: Duration,
 ) {
     let deadline = tokio::time::Instant::now() + timeout;
@@ -1206,6 +1281,23 @@ async fn supervise_terminal(
             biased;
             _=stop.recv()=>break None,
             command=resize.recv()=>if let Some(command)=command {let _=command.result.send(transport.resize_owned(command.rows,command.columns));},
+            command=input.recv()=>if let Some(command)=command {
+                let result=async {
+                    if command.result.is_closed(){return Err(failure(ErrorKind::StateConflict,"terminal input caller cancelled before dispatch"));}
+                    snapshot.recheck_scope(&reservation.store,&request,&agent)?;
+                    snapshot.verify_path_binding(&request,&binding).await?;
+                    if command.result.is_closed(){return Err(failure(ErrorKind::StateConflict,"terminal input caller cancelled before dispatch"));}
+                    let mut candidate=reservation.session.clone();
+                    candidate.recovery["terminal_input_version"]=json!(candidate.recovery["terminal_input_version"].as_u64().unwrap_or(0).checked_add(1).ok_or_else(||failure(ErrorKind::StateFailure,"terminal input version exhausted"))?);
+                    candidate.recovery["dispatch_intent"]=json!({"kind":"terminal_input","input_version":candidate.recovery["terminal_input_version"],"input_bytes":command.bytes.len()});
+                    reservation.commit_current(candidate,&snapshot)?;
+                    status.session=reservation.session.clone();sender.send_replace(status.clone());
+                    transport.terminal.write(&command.bytes).await
+                }.await;
+                let fatal=result.as_ref().err().is_some_and(|e|matches!(e.kind,ErrorKind::Timeout|ErrorKind::ProcessFailure|ErrorKind::SessionLost));
+                let _=command.result.send(result);
+                if fatal {break Some("terminal input dispatch unverified".into());}
+            },
             _=tokio::time::sleep_until(deadline)=>break Some("native terminal deadline exceeded".to_owned()),
             output=transport.output.recv()=>match output {
                 Some(Ok(bytes))=>{tail(&mut status.stdout,&mut status.stdout_truncated,&bytes);sender.send_replace(status.clone());},
@@ -1264,6 +1356,7 @@ for line in sys.stdin:
   if behavior=='mcp' and m['request']['subtype']=='mcp_status':answer={{'mcpServers':[{{'name':'unexpected'}}]}}
   emit({{'type':'control_response','response':{{'subtype':'success','request_id':m['request_id'],'response':answer}}}})
  elif m['type']=='user':
+  if behavior=='fence':open(os.path.join(os.path.dirname(__file__),'native-user-dispatched'),'w').write('dispatched')
   if behavior=='preinit':
    emit({{'type':'control_request','request_id':'early','request':{{'subtype':'can_use_tool','tool_name':'Read','tool_use_id':'early-op','input':{{'file_path':'proof.txt'}}}}}});continue
   emit({{'type':'system','subtype':'init','session_id':native,'cwd':os.getcwd(),'tools':[],'mcp_servers':[]}})
@@ -1271,6 +1364,7 @@ for line in sys.stdin:
    emit({{'type':'control_request','request_id':'permission-1','request':{{'subtype':'can_use_tool','tool_name':'Bash','tool_use_id':'operation-1','input':{{'command':'pwd'}}}}}})
    continue
   if behavior=='hang':continue
+  if behavior=='background':emit({{'type':'system','subtype':'task_started','task_type':'local_agent','task_id':'still-running'}})
   emit({{'type':'result','uuid':'result-1','subtype':'success' if behavior!='native-error' else 'error_during_execution','is_error':behavior=='native-error','session_id':native,'result':'{{"fixture":true}}','usage':{{'input_tokens':2,'output_tokens':13,'cache_creation_input_tokens':5,'cache_read_input_tokens':7}},'total_cost_usd':0.2 if '--resume='+native in sys.argv else 0.1,'duration_api_ms':200 if '--resume='+native in sys.argv else 100}})
  elif m['type']=='control_response':
   assert m['response']['request_id']=='permission-1'
@@ -1380,6 +1474,113 @@ for line in sys.stdin:
             assert_eq!(
                 other.status((&session).into()).await.unwrap_err().kind,
                 ErrorKind::SessionLost
+            );
+        }
+    }
+    #[tokio::test]
+    async fn concurrent_owner_change_after_preflight_never_dispatches_or_consumes_input() {
+        let fixture = Fixture::new(true);
+        let temp = tempfile::tempdir().unwrap();
+        let ready = Arc::new(tokio::sync::Barrier::new(2));
+        let release = Arc::new(tokio::sync::Barrier::new(2));
+        let mut adapter = ClaudeAdapter::new(
+            "claude".into(),
+            executable(&temp, "fence"),
+            fixture.store.clone(),
+        )
+        .unwrap();
+        adapter.before_input_fence = Some((ready.clone(), release.clone()));
+        let adapter = Arc::new(adapter);
+        let request = fixture.request.clone();
+        let owner = adapter.clone();
+        let launch = tokio::spawn(async move { owner.start(request).await });
+        tokio::time::timeout(Duration::from_secs(10), ready.wait())
+            .await
+            .unwrap();
+        let mut other = crate::state::Store::open(
+            &fixture
+                .request
+                .project
+                .root
+                .parent()
+                .unwrap()
+                .join("state.sqlite3"),
+        )
+        .unwrap();
+        let mut task = other
+            .task(fixture.request.scope.task_id.unwrap())
+            .unwrap()
+            .unwrap();
+        task.title = "concurrent replacement after final preflight".into();
+        other.put_task(&mut task).unwrap();
+        release.wait().await;
+        assert_eq!(
+            launch.await.unwrap().unwrap_err().kind,
+            ErrorKind::StateConflict
+        );
+        assert!(!temp.path().join("native-user-dispatched").exists());
+        let store = fixture.store.lock().unwrap();
+        let sessions = store
+            .records(&fixture.request.scope, crate::domain::RecordKind::Session)
+            .unwrap();
+        assert_eq!(sessions.len(), 1);
+        let session: Session = serde_json::from_value(sessions[0].data.clone()).unwrap();
+        assert_eq!(session.state, SessionState::Failed);
+        assert!(session.pid.is_none());
+        assert!(session.recovery.get("dispatch_intent").is_none());
+    }
+    #[tokio::test]
+    async fn stopping_unfinished_native_input_or_background_aggregate_keeps_lost() {
+        for behavior in ["hang", "background"] {
+            let fixture = Fixture::new(true);
+            let temp = tempfile::tempdir().unwrap();
+            let adapter = ClaudeAdapter::new(
+                "claude".into(),
+                executable(&temp, behavior),
+                fixture.store.clone(),
+            )
+            .unwrap();
+            let session = adapter.start(fixture.request.clone()).await.unwrap();
+            if behavior == "background" {
+                tokio::time::timeout(Duration::from_secs(3), async {
+                    loop {
+                        if adapter
+                            .usage((&session).into(), "execute".into(), None)
+                            .await
+                            .unwrap()
+                            .input_tokens
+                            .is_some()
+                        {
+                            break;
+                        }
+                        tokio::task::yield_now().await;
+                    }
+                })
+                .await
+                .unwrap();
+            }
+            let status = adapter.stop((&session).into()).await.unwrap();
+            assert_eq!(status.session.state, SessionState::Lost);
+            assert!(status.session.pid.is_none());
+            assert!(crate::git::executor_reserved(&status.session));
+            assert!(!adapter.transport_succeeded(&status));
+            if behavior == "background" {
+                assert_eq!(
+                    adapter
+                        .usage((&session).into(), "execute".into(), None)
+                        .await
+                        .unwrap()
+                        .input_tokens,
+                    Some(2)
+                );
+            }
+            assert_eq!(
+                adapter
+                    .start(fixture.request.clone())
+                    .await
+                    .unwrap_err()
+                    .kind,
+                ErrorKind::StateConflict
             );
         }
     }
@@ -1501,7 +1702,12 @@ for line in sys.stdin:
                 .events(&fixture.request.scope, 0, 100)
                 .unwrap()
                 .iter()
-                .any(|e| e.kind == "claude.permission.intent")
+                .any(|e| e.kind == "session.saved"
+                    && e.data["evidence"]["dispatch_intent"]["kind"] == "permission"
+                    && e.data["evidence"]["dispatch_intent"]["decision"] == "ALLOW"
+                    && e.data["evidence"]["dispatch_intent"]["operation"]
+                        .get("input")
+                        .is_none())
         );
     }
     #[tokio::test]

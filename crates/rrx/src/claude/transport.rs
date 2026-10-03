@@ -71,6 +71,10 @@ impl Transport {
             .expect("unreaped leader")
     }
     pub async fn write(&mut self, value: &Value) -> AdapterResult<()> {
+        let bytes = Self::encode(value)?;
+        self.write_encoded(&bytes).await
+    }
+    pub fn encode(value: &Value) -> AdapterResult<Vec<u8>> {
         let mut bytes = serde_json::to_vec(value)
             .map_err(|_| failure(ErrorKind::InvalidInput, "native input serialization failed"))?;
         if bytes.len() > LINE_LIMIT {
@@ -80,12 +84,15 @@ impl Transport {
             ));
         }
         bytes.push(b'\n');
+        Ok(bytes)
+    }
+    pub async fn write_encoded(&mut self, bytes: &[u8]) -> AdapterResult<()> {
         tokio::time::timeout(
             Duration::from_secs(5),
             self.stdin
                 .as_mut()
                 .expect("open native stdin")
-                .write_all(&bytes),
+                .write_all(bytes),
         )
         .await
         .map_err(|_| failure(ErrorKind::Timeout, "native stdin deadline exceeded"))?

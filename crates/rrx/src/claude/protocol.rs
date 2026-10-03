@@ -149,7 +149,8 @@ impl Metrics {
                 })?),
             };
         // Actual native result.usage is per invocation; native cost/duration
-        // gauges span the resumed UUID. Never subtract invocation token counts.
+        // gauges can span the resumed UUID or reset. Never subtract invocation
+        // token counts; a reset/missing owned gauge baseline stays unknown.
         let delta_cost = if resumed {
             cost.zip(previous.and_then(|p| p.cumulative_cost))
                 .and_then(|(a, b)| (a >= b).then_some(a - b))

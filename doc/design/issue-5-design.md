@@ -174,9 +174,45 @@ controlling-tty support; Interactive/Attach remain unadvertised.
 
 Mark input uncertainty before attempting its wire write. If dispatch may have
 occurred but no correlated native terminal is observed, timeout/protocol failure
-and pre-supervisor cancellation retain Lost even after confirmed group death
+and pre-supervisor cancellation or explicit stop retain Lost even after confirmed group death
 (clear PID only after cleanup). A validated native negative terminal is Failed.
 Lost Executors retain their reservation and cannot silently start another attempt.
+An early human result with unfinished native background-agent tasks retains its
+actual metrics but is not aggregate terminal proof; stop/timeout keeps Lost.
 Malformed result markers and injected background/channel/peer turn results never
 complete the prepared input or contribute its usage; only native unassigned or
 human-attributed correlated terminals do so, matching the pinned SDK origin contract.
+
+## Atomic dispatch and final native fixture evidence
+
+The additive shared `Store::put_session_if_current` compares exact optional
+Project/Goal/Task versions and the complete scoped lock ID/version set in the
+same Immediate transaction as Session CAS and `session.saved` audit. Project-only
+consultation uses absent-owner version zero. It retains existing lifecycle,
+worktree-lock and live/Lost Executor guards; no schema change is needed.
+Fully encode/bound input and permission reply bytes before the transaction.
+Only a successful CAS replaces the private candidate Session; publish the scoped
+`dispatch_intent` metadata before wire I/O. Audit projects just this intent and
+existing Session identities, never full recovery, prompt, operation parameters
+or credentials. Actor-owned PTY input also uses a bounded queue, cancellation
+check, canonical workspace recheck and per-input scoped CAS; raw terminal bytes
+remain in memory. PTY raw UI input is not a universal policy interception claim.
+
+A causal input fixture pauses after final Git/scope preflight and frame encoding,
+then changes Task through a separate Store connection. The CAS rejects it without
+native dispatch or consumed intent. Replacing that consumer's scoped CAS with
+ordinary Session CAS is killed by the fixture assertion. Injected-result and
+post-dispatch Lost-reservation mutations are also killed and sources restored.
+
+After this boundary, actual native fixtures passed with ordinary existing auth
+and default model/effort: Executor read a random private Task nonce absent from
+the prompt; a different fresh immutable Reviewer UUID returned a zero-tool result;
+Project-only Consultant resumed the exact UUID; native trust UI resized/redrew
+40x100 and its private group terminated. For this measured run, Execute reported
+4 input / 138 output tokens, 47,792 cache-read / 26,416 cache-create tokens,
+USD 0.2236624 and 3,180 ms API duration. Consultant resume reported 2 input /
+10 output tokens, 12,611 cache-read / 153 cache-create, USD 0.0039542 delta and
+1,538 ms API delta. These are fixture observations, not estimates or promises;
+other missing/reset gauge cases remain null. Native trust selection and actual
+interactive assistant response were not performed. Backend fixture results are
+not immutable implementation review verdicts.
