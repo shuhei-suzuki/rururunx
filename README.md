@@ -1,6 +1,6 @@
 # rururunx
 
-**rururunx** is a local-first, CLI-first workflow runtime for coding agents.
+**rururunx** is a high-performance, local-first, CLI-first workflow runtime for coding agents. The MVP core runtime is written in **Rust**.
 
 It does not replace Claude Code, Codex, Grok, Gemini, or open-source coding agents. It keeps them running in parallel, coordinates reviews and approvals, isolates work with Git worktrees, and escalates to a human only when needed.
 
@@ -8,6 +8,13 @@ CLI command:
 
 ```bash
 rrx
+```
+
+Long-running objectives can be launched as persistent Goals:
+
+```bash
+rrx goal "Complete the project MVP"
+rrx goal status
 ```
 
 ## Why
@@ -34,6 +41,8 @@ rururunx automates that supervision layer while keeping native agent CLIs and ex
 6. **Respect existing safety controls.** Never bypass agent permissions, repository hooks, project rules, or Git safety policies.
 7. **CLI first, local first.** A desktop app, web dashboard, or cloud control plane is not required.
 8. **Spend context deliberately.** Reuse stable context, retrieve only relevant repository detail, condense long sessions, and measure token use.
+9. **Goal-oriented autonomy.** Persist objectives above Tasks and keep moving through the dependency graph until explicit completion criteria are satisfied.
+10. **Fast core runtime.** Use Rust to keep orchestration overhead and idle resource usage low.
 
 ## Intended workflow
 
@@ -137,6 +146,11 @@ Planned commands include:
 
 ```bash
 rrx
+rrx goal "Complete the project MVP"
+rrx goal --file goal.md
+rrx goal status
+rrx goal pause
+rrx goal resume
 rrx consult --agent claude
 rrx run "#201" --agent codex
 rrx status
@@ -155,6 +169,8 @@ rrx logs 201
 
 The MVP is complete when the development workflow currently performed across multiple terminal sessions can be managed from one `rrx` session, including:
 
+- first-class persistent Goals with explicit completion criteria and Task DAGs
+- `rrx goal` continuous execution across Tasks
 - 4+ parallel tasks in independent Git worktrees
 - Claude Code, Codex, and Grok adapters
 - consultation mode
@@ -178,7 +194,7 @@ The MVP is complete when the development workflow currently performed across mul
 - TUI and native session attach
 - context/token efficiency: repository maps, Context Packs, progressive loading, condensation, delta re-review, cache awareness, and token telemetry
 
-See [Product Requirements](doc/requirements/product-requirements.md), [Architecture](doc/design/master/architecture.md), and [Context Efficiency](doc/design/master/context-efficiency.md).
+See [Product Requirements](doc/requirements/product-requirements.md), [Architecture](doc/design/master/architecture.md), [Goal Runtime](doc/design/master/goal-runtime.md), and [Context Efficiency](doc/design/master/context-efficiency.md).
 
 ## Status
 
