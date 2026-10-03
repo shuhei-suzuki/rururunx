@@ -396,6 +396,7 @@ Initial dependencies are clap, serde/serde_json, TOML and anyhow. Config loading
 accepts explicit runtime and single-project inputs, validates typed limits and
 does not act as a native permission grant. A separate ProjectOverlay schema
 excludes runtime-wide session limits and agent executable/concurrency settings;
-project workflow minimum can only escalate the runtime minimum. Diagnostics
+project workflow minimum can only escalate the runtime minimum. Project model/effort
+overrides apply only to runtime-defined agents; unknown agent names are rejected. Diagnostics
 retain the input file path. macOS/Linux source installation produces one release
 `rrx` binary with Cargo; no hosted service is required.
