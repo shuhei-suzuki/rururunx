@@ -543,8 +543,11 @@ fn same_sources(a: &RepositoryMap, b: &RepositoryMap) -> bool {
 }
 async fn git_value(root: &Path, args: &[&str], deadline: tokio::time::Instant) -> Result<String> {
     static PROCESS_UNCERTAIN: OnceLock<Arc<AtomicBool>> = OnceLock::new();
-    let executable = crate::adapter::resolve_executable("git")
-        .map_err(|e| anyhow::anyhow!("native Git unavailable: {e:?}"))?;
+    let executable = bounded_fs(|| {
+        crate::adapter::resolve_executable("git")
+            .map_err(|e| anyhow::anyhow!("native Git unavailable: {e:?}"))
+    })
+    .await?;
     let latch = PROCESS_UNCERTAIN
         .get_or_init(|| Arc::new(AtomicBool::new(false)))
         .clone();
@@ -654,21 +657,23 @@ async fn ownership(snapshot: &Snapshot, deadline: tokio::time::Instant) -> Resul
         deadline,
     )
     .await?;
-    Ok(git::validate_worktree_ownership(
-        p,
-        &snapshot.task,
-        git::WorktreeOwnershipFacts {
-            source_top,
-            source_git_dir,
-            source_common,
-            source_roots,
-            task_top,
-            task_common,
-            branch,
-            revision,
-        },
-    )?
-    .revision)
+    let project = p.clone();
+    let task = snapshot.task.clone();
+    let facts = git::WorktreeOwnershipFacts {
+        source_top,
+        source_git_dir,
+        source_common,
+        source_roots,
+        task_top,
+        task_common,
+        branch,
+        revision,
+    };
+    Ok(
+        bounded_fs(move || git::validate_worktree_ownership(&project, &task, facts))
+            .await?
+            .revision,
+    )
 }
 async fn build(snapshot: Snapshot, mut additional_paths: Vec<String>) -> Result<RepositoryMap> {
     additional_paths.sort();
@@ -710,6 +715,7 @@ async fn build(snapshot: Snapshot, mut additional_paths: Vec<String>) -> Result<
             "--name-only",
             "--no-ext-diff",
             "--no-textconv",
+            "--no-renames",
             "-z",
             "HEAD",
             "--",
@@ -1067,12 +1073,12 @@ impl ScopedReader {
         };
         let stat = rustix::fs::fstat(&fd)?;
         ensure!(
-            stat.st_nlink == 1,
-            "hard-linked context sources are outside isolated file ownership"
-        );
-        ensure!(
             FileType::from_raw_mode(stat.st_mode) == FileType::RegularFile,
             "context source must be a regular file"
+        );
+        ensure!(
+            stat.st_nlink == 1,
+            "hard-linked context sources are outside isolated file ownership"
         );
         ensure!(
             stat.st_size >= 0 && stat.st_size as u64 <= MAX_FILE_BYTES as u64,

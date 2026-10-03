@@ -36,14 +36,21 @@ limited to 32 MiB. Git commands share a five-second deadline per collection;
 the existing process-group cleanup also bounds retained output. Raw NUL lists
 preserve whitespace paths; revision arguments are separated from paths, Git is
 resolved through absolute runtime PATH entries, and optional index writes are
-disabled. Filesystem jobs and scanner/graph work have five-second deadlines.
+disabled. Rename detection is disabled for the path inventory query so both
+preimage and postimage paths remain visible. Filesystem jobs (including native
+executable resolution and ownership canonicalization) and scanner/graph work have
+five-second deadlines. Synchronous registry/manager commands use the same absolute
+native Git resolver while preserving configuration, hooks and environment.
 An uncertain Git cleanup latches a process-wide context launch block, including
 when cancellation drops the native preflight future; no later context result can
 be published through another helper call. Automatic recovery of that uncertainty
-is not implemented by this retrieval library.
+is not implemented by this retrieval library. This context infrastructure block
+affects every Project in that process; ordinary live Git calls do not set the latch.
 Two process-wide filesystem slots are retained by workers until they exit,
 including after timeout: hung filesystem syscalls cannot be forcibly cancelled,
 but they cannot create unbounded detached scan workers or publish a result.
+A stalled Project can occupy both slots and make other Projects' context calls
+time out; source access and Store writes still remain scoped.
 Expansions are
 limited to 128 files and require a narrower request when fanout exceeds it.
 

@@ -584,6 +584,33 @@ async fn whitespace_head_paths_staged_deletions_and_path_aliases_are_explicit() 
     assert!(map.files().contains_key("HEAD"));
     std::fs::write(f.worktree.join(" "), "changed leading-whitespace source").unwrap();
     assert!(engine.validate(&map).await.is_err());
+    git(&f.worktree, &["config", "diff.renames", "true"]);
+    git(&f.worktree, &["mv", "src/lib.rs", "src/renamed.rs"]);
+    let renamed = f.map().await;
+    assert_eq!(
+        renamed.freshness().source_hashes["worktree:src/lib.rs"],
+        "missing"
+    );
+    assert!(renamed.files().contains_key("src/renamed.rs"));
+    let renamed_slice = ready(
+        engine
+            .select(
+                &renamed,
+                &SelectionRequest {
+                    changed_files: vec!["src/lib.rs".into()],
+                    ..Default::default()
+                },
+                budget(),
+            )
+            .await
+            .unwrap(),
+    );
+    assert!(
+        renamed_slice
+            .evidence()
+            .selected
+            .contains_key("worktree:src/lib.rs")
+    );
     git(&f.worktree, &["rm", "src/codec.rs"]);
     let map = f.map().await;
     assert_eq!(
@@ -602,7 +629,7 @@ async fn whitespace_head_paths_staged_deletions_and_path_aliases_are_explicit() 
             .selected
             .contains_key("worktree:src/codec.rs")
     );
-    for alias in ["src//lib.rs", "src/./lib.rs", "src/lib.rs/"] {
+    for alias in ["src//renamed.rs", "src/./renamed.rs", "src/renamed.rs/"] {
         assert!(
             engine
                 .index(&f.task.scope(), vec![alias.into()])

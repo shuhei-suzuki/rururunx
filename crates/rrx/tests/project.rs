@@ -502,6 +502,43 @@ fn git_routing_env_does_not_redirect_registry_to_other_project() {
         rrx::git::repository_identity(&f.a, "main").unwrap()
     );
 }
+
+#[test]
+fn relative_path_cannot_replace_native_git_and_global_git_config_remains_authoritative() {
+    use std::os::unix::fs::PermissionsExt;
+    let f = Fixture::new();
+    let fake = f.a.join("git");
+    std::fs::write(&fake, "#!/bin/sh\nprintf FAKE > fake-git-ran\nexit 125\n").unwrap();
+    std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let run = |global: Option<&Path>| {
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_rrx"));
+        cmd.current_dir(&f.a)
+            .env("PATH", ".:/usr/bin:/bin")
+            .arg("--state")
+            .arg(&f.db)
+            .args(["project", "add"])
+            .arg(&f.a);
+        if let Some(path) = global {
+            cmd.env("GIT_CONFIG_GLOBAL", path);
+        }
+        cmd.output().unwrap()
+    };
+    let normal = run(None);
+    assert!(
+        normal.status.success(),
+        "{}",
+        String::from_utf8_lossy(&normal.stderr)
+    );
+    assert!(!f.a.join("fake-git-ran").exists());
+    let config = f.root.join("native-global.gitconfig");
+    std::fs::write(&config, format!("[core]\nworktree = {}\n", f.b.display())).unwrap();
+    let guarded = run(Some(&config));
+    assert!(
+        !guarded.status.success(),
+        "native global routing must remain effective and reject a mismatched exact root"
+    );
+    assert!(!f.a.join("fake-git-ran").exists());
+}
 #[test]
 fn global_default_state_and_help_config_check_are_independent_of_cwd() {
     let f = Fixture::new();
