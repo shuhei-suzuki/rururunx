@@ -10,7 +10,7 @@ use tokio::sync::{mpsc, oneshot, watch};
 
 use super::{
     ownership::{ProcessOwnership, ScopeSnapshot, filesystem},
-    policy::{DecisionPolicy, native_environment},
+    policy::{DecisionPolicy, native_environment, provider_environment, verify_auth_readiness},
     protocol::{
         ApprovalLedger, Event, NativeRpc, OperationDecision, RpcId, TokenCounters, UsageTracker,
         failure,
@@ -299,8 +299,9 @@ impl CodexAdapter {
             Ok(executable)
         })
         .await?;
+        let baseline: Vec<_> = std::env::vars_os().collect();
         let environment = native_environment(
-            std::env::vars_os(),
+            baseline.iter().cloned(),
             &snapshot.projects,
             &snapshot.project,
             &request.environment,
@@ -323,15 +324,23 @@ impl CodexAdapter {
                     json!({"cwd":request.worktree,"includeLayers":false}),
                 )
                 .await?;
-            if request.role == SessionRole::Executor {
+            let policy = if request.role == SessionRole::Executor {
                 DecisionPolicy::for_executor(&config["config"])
             } else {
                 DecisionPolicy::from_native(&config["config"])
-            }
+            }?;
+            let environment = provider_environment(
+                &config["config"],
+                &baseline,
+                &snapshot.projects,
+                &snapshot.project,
+                &request.environment,
+            )?;
+            Ok::<_, crate::adapter::AdapterError>((policy, environment))
         }
         .await;
         discovery.shutdown().await?;
-        let policy = discovered?;
+        let (policy, environment) = discovered?;
         if self.runtime_broker
             && request.role == SessionRole::Executor
             && !policy.permits_runtime_broker()
@@ -360,6 +369,11 @@ impl CodexAdapter {
                 )
                 .await?;
             policy.verify_configuration(&config["config"])?;
+            let account = native
+                .rpc
+                .call("account/read", json!({"refreshToken":false}))
+                .await?;
+            verify_auth_readiness(&account)?;
             if request.role == SessionRole::Executor {
                 let environment = native
                     .rpc
@@ -1072,26 +1086,48 @@ fn session_event(
             }
         }
         "turn/completed" => {
-            if params["threadId"] != thread
-                || params["turn"]["id"] != turn
-                || params["turn"]["status"] != "completed"
-            {
+            if params["threadId"] != thread || params["turn"]["id"] != turn {
                 return Err(failure(
-                    ErrorKind::ProcessFailure,
-                    "native turn failed, interrupted or changed identity",
+                    ErrorKind::OwnershipMismatch,
+                    "native completion lacks exact thread/turn identity",
                 ));
+            }
+            if params["turn"]["status"] != "completed" {
+                return Err(native_turn_error(&params["turn"]["error"]));
             }
             return Ok(Some(true));
         }
         "error" => {
-            return Err(failure(
-                ErrorKind::ProcessFailure,
-                "native turn reported an error",
-            ));
+            return Err(native_turn_error(&params["error"]));
         }
         _ => {}
     }
     Ok(None)
+}
+
+fn native_turn_error(error: &Value) -> crate::adapter::AdapterError {
+    let info = &error["codexErrorInfo"];
+    let unauthorized = info == "unauthorized"
+        || [
+            "httpConnectionFailed",
+            "responseStreamConnectionFailed",
+            "responseStreamDisconnected",
+            "responseTooManyFailedAttempts",
+        ]
+        .iter()
+        .any(|kind| matches!(info[*kind]["httpStatusCode"].as_u64(), Some(401 | 403)));
+    failure(
+        if unauthorized {
+            ErrorKind::AuthenticationUnavailable
+        } else {
+            ErrorKind::ProcessFailure
+        },
+        if unauthorized {
+            "native Codex authentication rejected"
+        } else {
+            "native turn failed, interrupted or reported an error"
+        },
+    )
 }
 
 #[cfg(test)]
@@ -1507,6 +1543,41 @@ mod tests {
             .unwrap_err()
             .kind,
             ErrorKind::ProcessFailure
+        );
+    }
+    #[test]
+    fn authentication_failure_is_typed_without_exposing_native_error_payloads() {
+        for info in [
+            json!("unauthorized"),
+            json!({"httpConnectionFailed":{"httpStatusCode":401}}),
+            json!({"responseStreamConnectionFailed":{"httpStatusCode":403}}),
+            json!({"responseStreamDisconnected":{"httpStatusCode":401}}),
+            json!({"responseTooManyFailedAttempts":{"httpStatusCode":403}}),
+        ] {
+            let error = native_turn_error(
+                &json!({"message":"secret-native-payload","codexErrorInfo":info}),
+            );
+            assert_eq!(error.kind, ErrorKind::AuthenticationUnavailable);
+            assert!(!error.to_string().contains("secret-native-payload"));
+        }
+        assert_eq!(
+            native_turn_error(
+                &json!({"codexErrorInfo":{"httpConnectionFailed":{"httpStatusCode":500}}})
+            )
+            .kind,
+            ErrorKind::ProcessFailure
+        );
+        let mut status = status();
+        let mut tracker = UsageTracker::new("thread".into(), "turn".into());
+        let event = Event::Notification {
+            method: "turn/completed".into(),
+            params: json!({"threadId":"foreign","turn":{"id":"turn","status":"failed","error":{"codexErrorInfo":"unauthorized"}}}),
+        };
+        assert_eq!(
+            decision_event(event, "thread", "turn", &mut tracker, &mut status)
+                .unwrap_err()
+                .kind,
+            ErrorKind::OwnershipMismatch
         );
     }
     #[test]
