@@ -7,7 +7,7 @@
 
 Represent the current development process as an executable stateful workflow while allowing lighter paths for small changes.
 
-Task Workflow Engine operates below Goal Runtime. Goal Runtime selects dependency-ready Tasks; Workflow Engine executes the selected Task through QUICK/STANDARD/STRICT phases.
+Task Workflow Engine operates below Goal Runtime and always within a Project boundary. Goal Runtime selects dependency-ready Tasks; Workflow Engine executes the selected Task through QUICK/STANDARD/STRICT phases.
 
 ## 2. Built-in workflow presets
 
@@ -267,5 +267,7 @@ Workflow Engine emits normalized events for:
 - final Task acceptance evidence
 
 Goal Runtime consumes these events to continue execution without requiring a new user prompt after every Task.
+
+All emitted Task events include project_id and goal_id so global scheduling/status cannot confuse Tasks from different repositories.
 
 A Goal may define minimum workflow constraints for all child Tasks, but project-level minimums remain authoritative.
