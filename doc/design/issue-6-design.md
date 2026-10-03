@@ -102,7 +102,11 @@ when the installed policy already selects the native user/client reviewer route.
 It cannot substitute for automatic/managed review. That prerequisite is checked
 before a model turn, without overriding the native reviewer.
 
-Approval replies include the exact native turn and request ID. Queues/maps and
+Approval replies include the exact native turn, request ID and a digest of the
+reviewed method, arguments and planned operation contents. File-change callbacks
+without preceding bounded native patch facts cannot be granted. Scoped target
+paths are revalidated against canonical ancestors and hard-link ambiguity before
+a grant; native commandActions remain best-effort display data. Queues/maps and
 parameters are bounded; replay, unsupported arguments, additional permissions,
 persistent roots, remote environments and terminal-input approvals fail closed.
 Only one-operation accept/decline/cancel are representable. Validate native
@@ -133,3 +137,25 @@ Primary references: [App Server](https://learn.chatgpt.com/docs/app-server),
 [Permissions](https://learn.chatgpt.com/docs/permissions), installed generated
 schemas and actual isolated native probes. Production proof is recorded separately
 after implementation; reconnaissance alone does not satisfy the acceptance gates.
+
+
+## Compatibility and refreshed continuation
+
+The current experimental protocol is explicitly conformed against installed
+`codex-cli 0.160.0`. Unknown native versions fail before model inference and need
+fresh scope/protocol conformance. Validate initialize native-home/userAgent/local
+platform metadata without using userAgent as a version or ownership credential.
+Selected custom provider credential/header **references** can be forwarded from
+the owning environment; unselected or foreign Project references cannot. Native
+account readiness is queried with refresh disabled; credentials are never read
+from account payloads or persisted, and missing required login is a typed outcome.
+
+A terminal resume requires explicitly checkpointed continuation input with a
+higher version than the last attempt. Do not repeat a cached mutating prompt.
+Checkpoint may refresh mutable own Project metadata, preserving its canonical
+repository/base/worktree identity. Observation of usage/pending grants/completion
+binds one registry owner to the exact persisted turn, preventing resume races.
+Provider transport completion uses the private completed journal plus Exited,
+verified cleanup and matching persisted Session; OS exit zero and caller recovery
+JSON cannot fabricate native success. Retryable native errors retain the turn;
+resolved/completed callbacks retire pending grants with no runtime wire approval.
