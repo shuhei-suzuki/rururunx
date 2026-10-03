@@ -265,6 +265,14 @@ TBD.
 
 ## Development
 
+Native Grok adapter work is specified in [Issue 7 requirements](doc/requirements/issue-7-requirements.md)
+and [design](doc/design/issue-7-grok-adapter.md). Its native ACP file executor and
+decision-only review are implemented through an explicitly registered native provider.
+Installed Grok 1.0.46 acceptance covers owned file edits, fresh-input same-UUID resume
+and schema-validated zero-tool decisions. Shell/PTY, ApprovalReviewer and restart recovery
+remain unsupported. Independent review and final CI evidence are tracked in
+[Issue 7 verification](doc/verification/issue-7.md).
+
 Development of rururunx should dogfood QUICK / STANDARD / STRICT classification where project rules permit. Verification should be proportional to risk: safety-critical runtime/Git/state/process changes may require STRICT treatment, while small local/documentation changes should not inherit STRICT-only gates unless policy or discovered impact requires escalation.
 
 Install [Rust with rustup](https://www.rust-lang.org/tools/install) and Git.
