@@ -1877,7 +1877,10 @@ for line in sys.stdin:
             .unwrap()
             .unwrap()
             .0;
-        assert_eq!(durable, status.session);
+        assert_eq!(
+            serde_json::to_value(&durable).unwrap(),
+            serde_json::to_value(&status.session).unwrap()
+        );
         assert_eq!(!durable.recovery["pending_permission"].is_null(), pending);
         assert!(durable.recovery["dispatch_intent"]["decision"].is_null());
     }
