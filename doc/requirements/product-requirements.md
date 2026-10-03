@@ -1,6 +1,6 @@
 # rururunx Product Requirements
 
-**Version:** 0.5
+**Version:** 0.6
 **Status:** Draft
 **Project:** rururunx
 **CLI:** `rrx`
@@ -34,6 +34,8 @@ rururunx automates that supervision layer while preserving native agent behavior
 8. **CLI-first / local-first** — MVP requires no desktop app, web dashboard, or hosted control plane.
 9. **Context-efficient by design** — parallelism must not blindly multiply repository/history tokens. Stable context is reused; detailed context is retrieved progressively; long sessions are condensed; re-review prefers deltas.
 10. **Quality before savings** — token reduction must never remove mandatory safety rules, hide required evidence, or weaken independent review.
+11. **High-performance runtime** — the MVP core runtime is implemented in **Rust** and must minimize orchestration overhead, idle resource usage, and process-management latency.
+12. **Goal-oriented autonomy** — rururunx owns long-running Goals above Tasks so the runtime can continue selecting, scheduling, and verifying work until explicit completion criteria are satisfied.
 
 ## 4. MVP success definition
 
@@ -44,6 +46,27 @@ The user must not need to patrol terminals merely to notice that an agent is wai
 The MVP includes the current strict development practices, not only process multiplexing.
 
 ## 5. Core entities
+
+### Goal
+
+A long-running objective above individual Tasks and Issues.
+
+A Goal contains at least:
+
+- goal ID / title
+- objective
+- explicit completion criteria
+- constraints / non-goals
+- source-of-truth references
+- escalation policy
+- Task DAG and dependency state
+- current Goal state
+- generated/follow-up Tasks
+- Goal-level Context Pack
+- progress and metrics
+- audit events / timestamps
+
+Goal state is owned by rururunx and must survive agent replacement and runtime restart.
 
 ### Task
 
@@ -86,7 +109,166 @@ Required phases, gates, reviewer policy, and escalation behavior for a Task.
 
 A normalized request containing action type, command/operation, executor, task, worktree, branch, risk context, policy result, reviewer decisions, and final decision.
 
-## 6. Consultation mode
+## 6. Goal mode
+
+Goal mode is a core MVP capability.
+
+The user can create a persistent development objective:
+
+```bash
+rrx goal "Complete the project MVP"
+rrx goal --file goal.md
+```
+
+A Goal is different from a single `rrx run` Task:
+
+```text
+Goal
+  ↓
+Task DAG
+  ↓
+Tasks / Issues
+  ↓
+Workflow
+  ↓
+Agent Sessions
+```
+
+### 6.1 Goal completion
+
+A Goal must define explicit completion criteria.
+
+Completing one Task or one GitHub Issue never implicitly completes the Goal unless all Goal completion criteria are satisfied.
+
+After meaningful Task/phase transitions, rururunx reevaluates:
+
+- Goal completion criteria
+- completed / ready / blocked Tasks
+- dependency state
+- newly discovered required work
+- unresolved review/security blockers
+- Human escalation conditions
+
+If the Goal is incomplete and runnable work exists, execution continues without requiring the user to re-prompt the runtime.
+
+### 6.2 Goal Task DAG
+
+A Goal may contain:
+
+- existing GitHub Issues
+- rururunx Tasks not yet represented by Issues
+- follow-up Tasks created during execution
+
+Dependencies should be represented as a DAG when possible.
+
+The scheduler may run independent ready Tasks in parallel and must not start a Task whose declared hard dependencies are incomplete.
+
+### 6.3 Goal-driven follow-up work
+
+During implementation or review, rururunx may discover work required to satisfy Goal completion criteria.
+
+The runtime may propose or create follow-up Task/Issue entries when allowed by policy.
+
+New work must:
+
+- be linked to the Goal
+- state why it is necessary for Goal completion
+- preserve Goal constraints/non-goals
+- avoid silent unrelated scope expansion
+
+Material scope expansion requires Human escalation.
+
+### 6.4 Goal lifecycle
+
+Minimum Goal states:
+
+- CREATED
+- ANALYZING
+- RUNNING
+- WAITING_HUMAN
+- PAUSED
+- BLOCKED
+- COMPLETED
+- CANCELLED
+- FAILED
+
+### 6.5 Goal CLI
+
+MVP supports at least:
+
+```bash
+rrx goal "<objective>"
+rrx goal --file <path>
+rrx goal status [goal-id]
+rrx goal pause [goal-id]
+rrx goal resume [goal-id]
+rrx goal cancel [goal-id]
+rrx goal attach [goal-id]
+```
+
+A default/current Goal may be inferred when unambiguous.
+
+### 6.6 Goal progress
+
+Goal status must expose:
+
+- completion criteria status
+- Task DAG summary
+- active / ready / blocked / completed Tasks
+- active agents/reviewers
+- Human attention required
+- aggregate token/cost metrics when available
+- Goal elapsed time
+
+### 6.7 Goal context
+
+Goal context must be compact and durable.
+
+A Goal-level Context Pack should contain:
+
+- objective
+- completion criteria
+- constraints
+- source-of-truth references
+- current Task DAG summary
+- important cross-Task decisions
+- unresolved Goal blockers
+- current next actions
+
+Task-level details remain in Task Context Packs rather than being blindly duplicated into Goal context.
+
+### 6.8 Native agent goal support
+
+Goal correctness must not depend on any provider-specific goal feature.
+
+If an Agent Adapter exposes a native goal capability, rururunx may delegate or synchronize suitable Goal instructions to it as an optimization.
+
+For example, a Codex adapter may use native goal functionality where safely available.
+
+However:
+
+- rururunx remains the source of truth for Goal state
+- native agent goal state must not replace the rururunx Goal
+- another provider must be able to continue the Goal
+- runtime restart must recover without depending on one provider session
+
+### 6.9 Consultation to Goal promotion
+
+A consultation may be promoted directly into a Goal:
+
+```text
+Consultation
+    ↓
+Goal
+    ↓
+Task DAG
+    ↓
+Parallel development
+```
+
+The user must be able to review or edit Goal objective/completion criteria before execution when policy requires it.
+
+## 8. Consultation mode
 
 The user must be able to start repository-aware consultation with any configured interactive agent:
 
@@ -101,7 +283,7 @@ Consultation does not automatically require an Issue, worktree, PR, or full revi
 
 A consultation can be promoted into a development Task, reusing context to draft an Issue and requirements. Consultation output must not silently become final requirements when a formal requirements phase is required.
 
-## 7. Workflow classes
+## 8. Workflow classes
 
 ### QUICK
 
@@ -128,7 +310,7 @@ For authentication, authorization, DB schema, payment, secrets, infrastructure, 
 
 STRICT adds security review, broader regression coverage, adversarial review, and staging/browser verification where applicable.
 
-## 8. Risk classes
+## 9. Risk classes
 
 At minimum:
 
@@ -141,7 +323,7 @@ Default mapping is configurable.
 
 The runtime must support dynamic escalation such as QUICK → STANDARD or STANDARD → STRICT when new risk or broader impact is discovered. Automatic workflow downgrade is not allowed.
 
-## 9. GitHub Issue
+## 10. GitHub Issue
 
 When required by workflow, rururunx must support Issue creation containing:
 
@@ -151,7 +333,7 @@ When required by workflow, rururunx must support Issue creation containing:
 - acceptance criteria
 - non-scope
 
-## 10. Worktree and branch management
+## 11. Worktree and branch management
 
 Each development Task must use an isolated worktree unless an explicit project exception applies.
 
@@ -170,7 +352,7 @@ Requirements:
 - remove worktree and merged local branch after completion
 - respect project branch naming rules
 
-## 11. Requirements phase
+## 12. Requirements phase
 
 When required, create:
 
@@ -188,7 +370,7 @@ Minimum contents:
 
 The authoring agent is configurable.
 
-## 12. Design phase
+## 13. Design phase
 
 Issue-level design must support:
 
@@ -208,7 +390,7 @@ Support both:
 
 Changes to current architecture should update the relevant master design in the same PR.
 
-## 13. Impact analysis
+## 14. Impact analysis
 
 Impact analysis is part of the MVP.
 
@@ -227,7 +409,7 @@ The workflow must be able to inspect consumers of:
 
 It must consider both consumers of the defect/behavior and consumers of the mechanism used to fix it.
 
-## 14. Implementation and commit discipline
+## 15. Implementation and commit discipline
 
 The executor implements against the approved design.
 
@@ -240,7 +422,7 @@ The runtime must support project policies requiring:
 - staged-diff/stat verification before commit
 - no uncommitted edits carried into the next review round
 
-## 15. Testing
+## 16. Testing
 
 The MVP must orchestrate project-configured:
 
@@ -254,7 +436,7 @@ The MVP must orchestrate project-configured:
 
 Regression verification must include affected features discovered through impact analysis.
 
-## 16. Mutation verification
+## 17. Mutation verification
 
 The MVP must support mutation-style verification when required:
 
@@ -264,13 +446,13 @@ The MVP must support mutation-style verification when required:
 4. restore implementation
 5. verify clean state and passing test
 
-## 17. Browser verification
+## 18. Browser verification
 
 For UI/browser-facing changes, the workflow must support headed-browser verification and preservation of configured evidence such as screenshots.
 
 Passing automated tests alone is insufficient when project policy requires headed verification.
 
-## 18. Staging verification
+## 19. Staging verification
 
 The workflow must support staging verification for configured classes such as:
 
@@ -282,7 +464,7 @@ The workflow must support staging verification for configured classes such as:
 
 The workflow should be able to verify that staging corresponds to the expected commit/build.
 
-## 19. Review orchestration
+## 20. Review orchestration
 
 ### Reviewer count is configurable
 
@@ -334,7 +516,7 @@ The workflow must support review after:
 
 Reviewer model and reasoning-effort configuration must be explicit and configurable.
 
-## 20. Review integrity
+## 21. Review integrity
 
 Before launching review, rururunx must support checks for:
 
@@ -346,7 +528,7 @@ Before launching review, rururunx must support checks for:
 
 Existing project guards and hooks remain authoritative.
 
-## 21. Review finding verification
+## 22. Review finding verification
 
 AI review findings are not automatically facts.
 
@@ -362,7 +544,7 @@ For class-wide defects, the workflow should enumerate all matching locations and
 N locations inspected / M locations changed
 ```
 
-## 22. Multi-round review
+## 23. Multi-round review
 
 The runtime must support repeated:
 
@@ -370,13 +552,13 @@ The runtime must support repeated:
 Review → Verify → Fix → Commit → Re-review
 ```
 
-## 23. Review-time worktree lock
+## 24. Review-time worktree lock
 
 When a review requires immutable HEAD, the reviewed worktree must be write-locked against the executor.
 
 Parallel fixing requires a separate worktree.
 
-## 24. Security review
+## 25. Security review
 
 The runtime must support project-defined security review for areas including:
 
@@ -394,7 +576,7 @@ The runtime must support project-defined security review for areas including:
 
 Existing project security skills/rules must be usable by reviewers.
 
-## 25. Pull Request and merge
+## 26. Pull Request and merge
 
 The runtime must support PR creation with project-required content, including by default:
 
@@ -416,7 +598,7 @@ Human escalation must be supported for conditions such as:
 - production-impacting change
 - explicit human-merge policy
 
-## 26. Git and command safety
+## 27. Git and command safety
 
 The MVP must integrate with or enforce project policies such as:
 
@@ -429,7 +611,7 @@ The MVP must integrate with or enforce project policies such as:
 
 rururunx must never transform/wrap an operation solely to evade an existing permission boundary.
 
-## 27. Approval Broker
+## 28. Approval Broker
 
 Approval Broker is an MVP core component.
 
@@ -457,7 +639,7 @@ with reason, confidence, risk, and relevant evidence/context.
 
 A reviewer must not execute the requested action.
 
-## 28. Human escalation
+## 29. Human escalation
 
 Escalate when:
 
@@ -469,7 +651,7 @@ Escalate when:
 - agent enters unknown/failure state
 - decision cannot be safely classified
 
-## 29. Agent adapters
+## 30. Agent adapters
 
 ### MVP MUST
 
@@ -485,7 +667,7 @@ Escalate when:
 
 Adapter interfaces must be extensible by third parties.
 
-## 30. Parallel development
+## 31. Parallel development
 
 MVP must support at least 4 simultaneous Tasks in independent worktrees.
 
@@ -495,7 +677,7 @@ Tasks are not bound conceptually to terminal windows. The unit is:
 Task → Worktree → Agent Session → Adapter
 ```
 
-## 31. Scheduler and states
+## 32. Scheduler and states
 
 The scheduler manages running, idle, waiting, review, human-waiting, failure, resume, and concurrency.
 
@@ -518,12 +700,14 @@ Minimum Task states:
 - COMPLETED
 - CANCELLED
 
-## 32. CLI and TUI
+## 33. CLI and TUI
 
 Primary commands:
 
 ```bash
 rrx
+rrx goal
+rrx goal status
 rrx consult
 rrx run
 rrx status
@@ -542,12 +726,14 @@ The TUI must expose active tasks, agents, phases, waiting states, reviewer statu
 
 `rrx attach <task>` must attach to the native agent session rather than replacing it with a proprietary chat UI.
 
-## 33. Restart and recovery
+## 34. Restart and recovery
 
 Runtime restart must not lose Task state.
 
 Persist at least:
 
+- goal
+- Goal completion criteria / Task DAG / Goal state
 - task
 - agent/session reference
 - worktree
@@ -558,7 +744,7 @@ Persist at least:
 - pending approvals
 - audit trail needed for recovery
 
-## 34. Master design review
+## 35. Master design review
 
 The runtime must support periodic master-design review triggered by configurable thresholds such as:
 
@@ -567,7 +753,7 @@ The runtime must support periodic master-design review triggered by configurable
 - number of new master-design files
 - accumulated line-change threshold
 
-## 35. Audit and observability
+## 36. Audit and observability
 
 Record:
 
@@ -583,6 +769,8 @@ Record:
 
 Measure at least:
 
+- Goal completion time
+- Goal Task throughput / blocked time
 - task completion time
 - execution time
 - review time
@@ -602,13 +790,17 @@ Secondary KPI:
 
 > **Human Attention Time**
 
-## 36. Local-first
+## 37. Local-first
 
 MVP must operate without a hosted control plane.
 
+The MVP core runtime is implemented in **Rust**.
+
 Local state may use SQLite or another lightweight local store.
 
-## 37. MVP non-goals
+The Rust implementation should target low startup latency, low idle overhead, efficient async process supervision, reliable PTY/process handling, and single-binary distribution where practical.
+
+## 38. MVP non-goals
 
 Do not build in MVP:
 
@@ -622,7 +814,7 @@ Do not build in MVP:
 - long-term vector-memory platform
 - proprietary RAG stack
 
-## 38. Context and token efficiency
+## 39. Context and token efficiency
 
 Context/token efficiency is a **core MVP requirement**, not a post-MVP optimization.
 
@@ -772,7 +964,7 @@ Dogfooding must compare a representative workflow with Context Efficiency enable
 
 See `doc/design/master/context-efficiency.md`.
 
-## 39. MVP acceptance criteria
+## 40. MVP acceptance criteria
 
 The MVP is accepted when all of the following are demonstrable:
 
@@ -812,3 +1004,12 @@ The MVP is accepted when all of the following are demonstrable:
 34. Re-review can use revision deltas plus unresolved findings instead of replaying all transient history.
 35. Provider cache usage/token telemetry is recorded when exposed.
 36. Dogfooding reports token/cost/time differences with Context Efficiency enabled versus disabled.
+37. `rrx goal` can create and persist a Goal with explicit completion criteria.
+38. A Goal can manage a dependency-aware Task DAG and run ready independent Tasks in parallel.
+39. Goal execution continues to the next runnable Task without requiring a new user prompt after every Task.
+40. Goal may add clearly justified follow-up Tasks while preserving constraints and auditing scope changes.
+41. Goal state, DAG, progress, and completion criteria recover after runtime restart.
+42. Goal can be paused, resumed, cancelled, attached, and inspected from CLI/TUI.
+43. Goal context is represented compactly without duplicating all Task histories.
+44. Provider-native goal support is optional optimization; Goal execution remains provider-independent.
+45. The core `rrx` runtime is implemented in Rust and demonstrates acceptable orchestration overhead under 4+ concurrent Tasks.
