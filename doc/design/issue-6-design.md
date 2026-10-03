@@ -61,6 +61,12 @@ remains Lost. After a consumed input, missing authoritative exact native termina
 evidence also remains Lost even when every owned process is known dead; clear the
 dead PID but retain the operation reservation and never automatically replay.
 An interrupt acknowledgement alone does not establish the model/operation outcome.
+Stop and approval cancellation keep the same sole native reader active for a
+bounded five-second terminal drain. The interrupt response is correlated but is
+not terminal evidence. Exact callbacks received while draining are declined and
+audited without a grant; new caller grants are rejected. An exact interrupted
+turn becomes Stopped only after verified cleanup, while an absent/foreign
+terminal remains Lost. A completion racing stop retains its actual native outcome.
 A native UUID or audited PID/PGID is never proof of process ownership
 after a restart.
 

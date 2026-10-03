@@ -31,6 +31,7 @@ use crate::{
 
 const OUTPUT_LIMIT: usize = 64 * 1024;
 const RETAINED_TERMINALS: usize = 32;
+const INTERRUPT_DRAIN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
 fn pin_starting_input(
     session: &mut Session,
@@ -1468,6 +1469,8 @@ async fn supervise(
     } = identity;
     let mut status = sender.borrow().clone();
     let mut native_terminal_observed = false;
+    let mut interrupt = None;
+    let mut drain_deadline = None;
     let mut tracker = if previous_turn.is_some() {
         UsageTracker::resumed(thread.clone(), turn.clone(), previous_cumulative)
     } else {
@@ -1482,19 +1485,45 @@ async fn supervise(
     let result = loop {
         let event = tokio::select! {
             biased;
-            _ = stop.recv() => {
-                let _ = native.rpc.call("turn/interrupt", json!({"threadId":thread,"turnId":turn})).await;
-                break Ok(false);
+            _ = stop.recv(), if drain_deadline.is_none() => {
+                let deadline = tokio::time::Instant::now() + INTERRUPT_DRAIN_TIMEOUT;
+                drain_deadline = Some(deadline);
+                interrupt = tokio::time::timeout_at(deadline, native.rpc.interrupt_turn(&thread, &turn))
+                    .await.ok().and_then(Result::ok);
+                continue;
             },
             Some(reply) = replies.recv() => {
+                if drain_deadline.is_some() {
+                    let _ = reply.result.send(Err(failure(ErrorKind::StateConflict, "native turn is draining after stop")));
+                    continue;
+                }
                 match answer_approval(&mut native.rpc, &mut reservation, &evidence, &approval_authority, &sender, &mut status, reply).await {
-                    Ok(true) => break Ok(false),
+                    Ok(true) => {
+                        let deadline = tokio::time::Instant::now() + INTERRUPT_DRAIN_TIMEOUT;
+                        drain_deadline = Some(deadline);
+                        interrupt = tokio::time::timeout_at(deadline, native.rpc.interrupt_turn(&thread, &turn))
+                            .await.ok().and_then(Result::ok);
+                        continue;
+                    },
                     Ok(false) => continue,
                     Err(error) => break Err(error),
                 }
             },
-            event = native.receive() => event,
+            event = async {
+                if let Some(deadline) = drain_deadline {
+                    tokio::time::timeout_at(deadline, native.receive()).await
+                        .map_err(|_| failure(ErrorKind::Timeout, "native interrupt terminal observation timed out"))?
+                } else {
+                    native.receive().await
+                }
+            } => event,
         };
+        if let Ok(Event::Response { id, .. } | Event::Error { id, .. }) = &event
+            && interrupt.as_ref() == Some(id)
+        {
+            interrupt = None;
+            continue;
+        }
         if let Ok(Event::Request { id, method, params }) = &event {
             let pending = (|| {
                 if reservation.session.role != SessionRole::Executor {
@@ -1517,6 +1546,9 @@ async fn supervise(
                 reservation.store.lock().map_err(|_| failure(ErrorKind::StateFailure, "state store poisoned"))?
                     .audit(&reservation.session.scope, "codex.approval.requested", json!({"session_id":reservation.session.id,"native_uuid":reservation.session.native_ref,"native_turn":turn,"request":observed,"requires_human":!runtime_broker}))
                     .map_err(|error| failure(ErrorKind::StateFailure, error.to_string()))?;
+                if drain_deadline.is_some() {
+                    return Ok(());
+                }
                 reservation.session.state = if runtime_broker {
                     SessionState::WaitingApproval
                 } else {
@@ -1533,6 +1565,49 @@ async fn supervise(
                     let _=native.rpc.send(json!({"id":id,"error":{"code":-32601,"message":"Native request unsupported by this runtime route"}})).await;
                 }
                 break Err(error);
+            }
+            if let Some(deadline) = drain_deadline {
+                let declined = async {
+                    let response = evidence
+                        .lock()
+                        .map_err(|_| {
+                            failure(ErrorKind::StateFailure, "native approval state poisoned")
+                        })?
+                        .pending
+                        .as_ref()
+                        .ok_or_else(|| {
+                            failure(ErrorKind::SessionLost, "native approval ledger unavailable")
+                        })?
+                        .preview_reply(id, OperationDecision::Deny)?;
+                    reservation.store.lock()
+                        .map_err(|_| failure(ErrorKind::StateFailure, "state store poisoned"))?
+                        .audit(&reservation.session.scope, "codex.approval.interrupt_declined",
+                            json!({"session_id":reservation.session.id,"native_turn":turn,"request_id":id,"effect":"no_grant"}))
+                        .map_err(|error| failure(ErrorKind::StateFailure, error.to_string()))?;
+                    native.rpc.send(response).await?;
+                    evidence
+                        .lock()
+                        .map_err(|_| {
+                            failure(ErrorKind::StateFailure, "native approval state poisoned")
+                        })?
+                        .pending
+                        .as_mut()
+                        .ok_or_else(|| {
+                            failure(ErrorKind::SessionLost, "native approval ledger unavailable")
+                        })?
+                        .reply(id, OperationDecision::Deny)?;
+                    Ok::<_, crate::adapter::AdapterError>(())
+                };
+                match tokio::time::timeout_at(deadline, declined).await {
+                    Ok(Ok(())) => continue,
+                    Ok(Err(error)) => break Err(error),
+                    Err(_) => {
+                        break Err(failure(
+                            ErrorKind::Timeout,
+                            "native interrupt decline timed out",
+                        ));
+                    }
+                }
             }
             continue;
         }
@@ -1763,6 +1838,9 @@ fn session_event(
                 ));
             }
             *native_terminal_observed = true;
+            if params["turn"]["status"] == "interrupted" {
+                return Ok(Some(false));
+            }
             if params["turn"]["status"] != "completed" {
                 return Err(native_turn_error(&params["turn"]["error"]));
             }
@@ -2597,6 +2675,160 @@ mod tests {
             }
         });
         (NativeRpc::connect(client).await.unwrap(), receiver, peer)
+    }
+
+    #[tokio::test]
+    async fn actual_supervisor_drains_stop_cancel_and_declines_without_inventing_terminal_proof() {
+        for case in ["stop", "cancel", "decline", "ack_only", "foreign"] {
+            let mut fixture = ApprovalFixture::new(true).await;
+            fixture
+                .reservation
+                .admit_dispatch(&fixture.authority.snapshot, &fixture.authority.request)
+                .unwrap();
+            fixture.reservation.inference_started = true;
+            fixture.status.session = fixture.reservation.session.clone();
+            fixture.sender.send_replace(fixture.status.clone());
+            let (client, server) = tokio::net::UnixStream::pair().unwrap();
+            let cwd = fixture.authority.request.worktree.clone();
+            let declined = Arc::new(AtomicBool::new(false));
+            let observed_decline = declined.clone();
+            let peer = tokio::spawn(async move {
+                let mut socket = tokio_tungstenite::accept_async(server).await.unwrap();
+                while let Some(Ok(message)) = socket.next().await {
+                    let Ok(text) = message.to_text() else {
+                        continue;
+                    };
+                    let value: Value = serde_json::from_str(text).unwrap();
+                    if value["method"] != "turn/interrupt" {
+                        continue;
+                    }
+                    assert_eq!(
+                        value["params"],
+                        json!({"threadId":"thread","turnId":"turn"})
+                    );
+                    if case == "decline" {
+                        socket.send(tokio_tungstenite::tungstenite::Message::Text(json!({"id":2,"method":"item/commandExecution/requestApproval","params":{"threadId":"thread","turnId":"turn","itemId":"after-stop","command":"synthetic forbidden grant","cwd":cwd}}).to_string().into())).await.unwrap();
+                        let response = socket.next().await.unwrap().unwrap();
+                        let response: Value =
+                            serde_json::from_str(response.to_text().unwrap()).unwrap();
+                        assert_eq!(response, json!({"id":2,"result":{"decision":"decline"}}));
+                        observed_decline.store(true, Ordering::SeqCst);
+                    }
+                    if case != "ack_only" {
+                        let turn = if case == "foreign" {
+                            "other-turn"
+                        } else {
+                            "turn"
+                        };
+                        socket.send(tokio_tungstenite::tungstenite::Message::Text(json!({"method":"turn/completed","params":{"threadId":"thread","turn":{"id":turn,"status":"interrupted"}}}).to_string().into())).await.unwrap();
+                    }
+                    // Terminal precedes acknowledgement: the previous synchronous
+                    // call queued it and then broke before the supervisor read it.
+                    let _ = socket
+                        .send(tokio_tungstenite::tungstenite::Message::Text(
+                            json!({"id":value["id"],"result":{}}).to_string().into(),
+                        ))
+                        .await;
+                }
+            });
+            let rpc = NativeRpc::connect(client).await.unwrap();
+            let native =
+                NativeServer::supervisor_fixture(rpc, fixture.reservation.ownership.group())
+                    .unwrap();
+            fixture.reservation.session.pid = Some(native.pid());
+            fixture
+                .reservation
+                .publish(&fixture.sender, &mut fixture.status)
+                .unwrap();
+            let mut receiver = fixture.sender.subscribe();
+            let (stop_sender, stop) = mpsc::channel(1);
+            let (reply_sender, replies) = mpsc::channel(1);
+            let mut cancel_receipt = None;
+            if case == "cancel" {
+                let (mut cancel, receipt) = reply(OperationDecision::Cancel, "turn");
+                cancel_receipt = Some(receipt);
+                cancel.request.operation_hash = fixture
+                    .evidence
+                    .lock()
+                    .unwrap()
+                    .pending
+                    .as_ref()
+                    .unwrap()
+                    .request(&RpcId::Number(1))
+                    .unwrap()
+                    .operation_hash;
+                reply_sender.send(cancel).await.unwrap();
+            } else {
+                stop_sender.send(()).await.unwrap();
+            }
+            let store = fixture.reservation.store.clone();
+            let id = fixture.reservation.session.id;
+            let evidence = fixture.evidence.clone();
+            let authority = fixture.authority;
+            let task = tokio::spawn(supervise(
+                native,
+                fixture.reservation,
+                fixture.sender,
+                stop,
+                evidence.clone(),
+                replies,
+                NativeTurn {
+                    thread: "thread".into(),
+                    turn: "turn".into(),
+                    previous_turn: None,
+                    previous_cumulative: None,
+                    authority: authority.snapshot,
+                    request: authority.request,
+                    binding: authority.binding,
+                    runtime_broker: true,
+                },
+            ));
+            tokio::time::timeout(std::time::Duration::from_secs(15), async {
+                while !receiver.borrow().terminal() {
+                    receiver.changed().await.unwrap();
+                }
+                task.await.unwrap();
+            })
+            .await
+            .expect("bounded actual supervisor termination");
+            let status = receiver.borrow().clone();
+            let expected = if matches!(case, "ack_only" | "foreign") {
+                SessionState::Lost
+            } else {
+                SessionState::Stopped
+            };
+            assert_eq!(status.session.state, expected, "{case}");
+            assert_eq!(status.session.pid, None, "owned group verified dead {case}");
+            assert_eq!(status.exit_code, None);
+            assert!(!evidence.lock().unwrap().completed);
+            if let Some(receipt) = cancel_receipt {
+                receipt.await.unwrap().unwrap();
+            }
+            assert_eq!(
+                serde_json::to_value(&status.session).unwrap(),
+                serde_json::to_value(store.lock().unwrap().session(id).unwrap().unwrap().0)
+                    .unwrap()
+            );
+            if case == "decline" {
+                assert!(declined.load(Ordering::SeqCst));
+                assert!(
+                    store
+                        .lock()
+                        .unwrap()
+                        .events(&status.session.scope, 0, 1000)
+                        .unwrap()
+                        .iter()
+                        .any(|e| e.kind == "codex.approval.interrupt_declined"
+                            && e.data["effect"] == "no_grant")
+                );
+            }
+            if expected == SessionState::Lost {
+                assert_eq!(status.session.recovery["native_dispatch_unobserved"], true);
+            }
+            drop(stop_sender);
+            drop(reply_sender);
+            peer.await.unwrap();
+        }
     }
 
     #[tokio::test]
