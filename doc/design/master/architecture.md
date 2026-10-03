@@ -384,3 +384,19 @@ MVP extensibility points:
 - provider cache telemetry
 
 Cloud execution, web dashboards, and long-term memory are outside MVP and should not shape the core architecture.
+
+## 12. Implemented Rust foundation
+
+Rust 2024 / minimum Rust 1.91 is the core standard; development and CI pin 1.91.1.
+The Cargo workspace contains `crates/rrx` with a library and a CLI binary.
+The currently implemented library module is `config`; CLI help and config validation
+do not construct an async runtime or start native agents.
+
+Initial dependencies are clap, serde/serde_json, TOML and anyhow. Config loading
+accepts explicit runtime and single-project inputs, validates typed limits and
+does not act as a native permission grant. A separate ProjectOverlay schema
+excludes runtime-wide session limits and agent executable/concurrency settings;
+project workflow minimum can only escalate the runtime minimum. Project model/effort
+overrides apply only to runtime-defined agents; unknown agent names are rejected. Diagnostics
+retain the input file path. macOS/Linux source installation produces one release
+`rrx` binary with Cargo; no hosted service is required.
