@@ -652,6 +652,10 @@ impl ContextPacks {
         let pack = self.task_pack(reference)?;
         let (p, g, t) = self.snapshot(&reference.scope)?;
         ensure!(
+            !crate::state::task_terminal(t.state) && !crate::state::goal_terminal(g.state),
+            "terminal Task/Goal context is historical and never launchable"
+        );
+        ensure!(
             t.context_version == reference.version,
             "stale Task pack pointer"
         );
@@ -1265,7 +1269,7 @@ impl ContextPacks {
                     && t.next_action == d.next_action
                     && t.context_version == d.context.as_ref().map_or(0, |r| r.version)
                     && crate::state::task_terminal(t.state) == d.historical
-                    && d.source_validation_required == !d.historical,
+                    && d.source_validation_required != d.historical,
                 "stale Goal Task summary"
             );
             task_versions.push((t.id, t.version));

@@ -34,7 +34,9 @@ no supervisor model or transcript summarization model is introduced.
 - Native I/O stays outside SharedStore. Publication rechecks current versions and
   live/Lost Session/lock/workflow ownership inside the transaction. Workflow-owned
   publication uses the workflow phase port; standalone publication cannot rewrite
-  its phase/attempt context. No schema migration is needed for this Issue.
+  its phase/attempt context. After Workflow format 3 is merged, an ordered format 3→4 marker upgrade
+  makes older writers refuse the authoritative checkpoint write contract. SQL
+  tables and Record kinds remain unchanged.
 
 Goal-only packs use read-only exact primary-root identity/source validation and
 atomic Project/Goal/Task-summary CAS, including before Tasks and after worktree

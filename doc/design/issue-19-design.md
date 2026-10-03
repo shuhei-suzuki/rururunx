@@ -47,7 +47,9 @@ Consultant checkpoints promote only within the same Project/Goal after source
 reference validation, retaining historical source Session/Task/HEAD provenance.
 Target rules/constraints and source hashes are rebuilt; no full chat is copied.
 
-Use no new persistence format. Add narrow Store transactions beside existing
+Keep SQL tables and Record kinds unchanged. After the Workflow format 3 migration,
+an atomic ordered 3→4 marker upgrade fences older writers from modifying typed
+checkpoint authority; preserve earlier 1→2→3 migrations. Add narrow Store transactions beside existing
 helpers and coordinate their workflow fences with Issue 8. The PhaseContext port
 provides a draft payload/source authority while Engine owns ContextVersion/Task
 pointer publication and attempt lifecycle. Provider operations remain in adapters.

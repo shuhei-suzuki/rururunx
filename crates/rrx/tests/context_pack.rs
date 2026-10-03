@@ -1322,6 +1322,56 @@ async fn terminal_task_and_goal_never_prepare_draft_native_input() {
             .await
             .is_err()
     );
+
+    // Even an envelope matching current terminal metadata is historical.
+    // A caller must not gain launch preparation by rehashing terminal state.
+    let (p, g, t) = {
+        let store = f.store.lock().unwrap();
+        (
+            store.project(f.project.id).unwrap().unwrap(),
+            store.goal(f.task.goal_id).unwrap().unwrap(),
+            store.task(f.task.id).unwrap().unwrap(),
+        )
+    };
+    let project = |value: serde_json::Value| {
+        let mut value = value;
+        for k in ["version", "context_version", "created_at", "updated_at"] {
+            value.as_object_mut().unwrap().remove(k);
+        }
+        value
+    };
+    use sha2::{Digest, Sha256};
+    let mut envelope = draft.context_version(1).unwrap();
+    let p = project(serde_json::to_value(p).unwrap());
+    let g = project(serde_json::to_value(g).unwrap());
+    let t = project(serde_json::to_value(t).unwrap());
+    envelope.data["task"] = t.clone();
+    envelope.data["goal"] = g.clone();
+    envelope.data["authority_digest"] = serde_json::json!(format!(
+        "sha256:{:x}",
+        Sha256::digest(serde_json::to_vec(&(p, g, t)).unwrap())
+    ));
+    {
+        let mut store = f.store.lock().unwrap();
+        store.put_context(&envelope).unwrap();
+        let mut task = store.task(f.task.id).unwrap().unwrap();
+        task.context_version = 1;
+        store.put_task(&mut task).unwrap();
+    }
+    let reference = PackRef {
+        scope: envelope.scope.clone(),
+        version: 1,
+        digest: format!(
+            "sha256:{:x}",
+            Sha256::digest(serde_json::to_vec(&envelope).unwrap())
+        ),
+    };
+    assert!(
+        packs
+            .prepare_task(&reference, SelectionRequest::default(), budget())
+            .await
+            .is_err()
+    );
 }
 
 #[tokio::test]
