@@ -1,6 +1,6 @@
 # rururunx Product Requirements
 
-**Version:** 0.3
+**Version:** 0.4
 **Status:** Draft
 **Project:** rururunx
 **CLI:** `rrx`
@@ -620,7 +620,32 @@ Do not build in MVP:
 - long-term vector-memory platform
 - proprietary RAG stack
 
-## 38. MVP acceptance criteria
+## 38. Context and token efficiency
+
+Token efficiency is an MVP requirement because parallel tasks and multi-reviewer workflows multiply repeated context.
+
+The runtime must provide a Context Efficiency Layer with at least:
+
+- a compact repository map/context index rather than full-repository prompt injection
+- token/size-budgeted selection of relevant repository context
+- versioned per-Task Context Packs containing durable facts and current state
+- progressive disclosure of optional rules/skills/context
+- bounded conversation history through condensation/checkpointing
+- deterministic Review Bundles instead of forwarding executor chat history
+- delta-based context for later review rounds
+- provider-native prompt/context-cache awareness where supported
+- context expansion on demand when an agent needs more information
+- input/output/cached-token telemetry when exposed by the native agent/provider
+
+Token-saving behavior must not omit mandatory safety/project rules or reduce reviewer independence.
+
+All reviewers in the same independent review round should receive equivalent factual review inputs; one reviewer's conclusions should not be injected into another reviewer's context before independent review completes.
+
+Caching and context minimization are separate concerns: a provider cache may reduce cost/latency without reducing the logical context-window size, while Context Packs/maps/condensation reduce repeated context itself.
+
+See `doc/design/master/context-efficiency.md`.
+
+## 39. MVP acceptance criteria
 
 The MVP is accepted when all of the following are demonstrable:
 
@@ -653,3 +678,10 @@ The MVP is accepted when all of the following are demonstrable:
 27. Approval/review decisions are auditable.
 28. Human interruption metrics are available.
 29. The user can manage the current multi-terminal workflow from one `rrx` runtime.
+30. A compact repository map/context index can be produced and selected under a configurable token budget.
+31. A versioned Task Context Pack is reused across phases without substituting for authoritative source/design artifacts.
+32. Long-running sessions can be condensed/checkpointed while preserving required task state and safety constraints.
+33. Independent reviewers use deterministic Review Bundles rather than another agent's full chat history.
+34. Re-review can use revision deltas plus unresolved findings instead of replaying all transient history.
+35. Provider cache usage/token telemetry is recorded when exposed.
+36. Dogfooding reports token/cost/time differences with Context Efficiency enabled versus disabled.
