@@ -465,10 +465,29 @@ impl ContextPacks {
             .0;
         ensure!(
             native.scope == cp.scope
+                && native.worktree == cp.authority.worktree
                 && native.role == cp.role
                 && matches!(native.role, SessionRole::Executor | SessionRole::Consultant),
             "checkpoint Session provenance mismatch"
         );
+        let sessions: std::collections::BTreeSet<_> = cp
+            .retained
+            .iter()
+            .chain(&cp.recent)
+            .map(|e| e.session)
+            .collect();
+        for id in sessions {
+            let source = store
+                .session(id)?
+                .context("retained source Session missing")?
+                .0;
+            ensure!(
+                source.scope == cp.scope
+                    && source.worktree == cp.authority.worktree
+                    && matches!(source.role, SessionRole::Executor | SessionRole::Consultant),
+                "foreign retained Session provenance"
+            );
+        }
         ensure!(
             cp.recent_bytes
                 == cp
@@ -694,7 +713,9 @@ impl ContextPacks {
             .sum::<usize>();
         let mut omitted = old.as_ref().map_or(0, |c| c.omitted_transient);
         let mut drop_count = 0usize;
-        while recent_bytes > policy.recent_history_bytes && drop_count < recent.len() {
+        while (recent_bytes > policy.recent_history_bytes || recent.len() - drop_count > MAX_EVENTS)
+            && drop_count < recent.len()
+        {
             recent_bytes -= serde_json::to_vec(&recent[drop_count])?.len();
             drop_count += 1;
             omitted = omitted.checked_add(1).context("history count overflow")?;

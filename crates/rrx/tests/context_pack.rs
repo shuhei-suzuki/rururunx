@@ -945,3 +945,59 @@ async fn goal_primary_artifacts_reject_escaping_sources_and_replaced_repository(
     std::fs::rename(moved, &f.root).unwrap();
     packs.validate_goal(&valid).await.unwrap();
 }
+
+#[tokio::test]
+async fn checkpoint_transient_count_bound_and_retained_session_provenance_survive_reload() {
+    let f = Fixture::new();
+    let packs = f.packs();
+    let (native, _) = session(&f, SessionRole::Consultant, SessionState::Running);
+    let events = (1..=4096)
+        .map(|i| event(i, EventKind::Transient, "short"))
+        .collect();
+    let first = packs
+        .checkpoint(
+            &f.task.scope(),
+            native.id,
+            None,
+            events,
+            HistoryPolicy {
+                recent_history_bytes: 1024 * 1024,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(packs.load_checkpoint(&first).unwrap().recent.len(), 4096);
+    let second = packs
+        .checkpoint(
+            &f.task.scope(),
+            native.id,
+            Some(first),
+            vec![event(4097, EventKind::Transient, "latest")],
+            HistoryPolicy {
+                recent_history_bytes: 1024 * 1024,
+            },
+        )
+        .await
+        .unwrap();
+    let cp = packs.load_checkpoint(&second).unwrap();
+    assert_eq!(cp.recent.len(), 4096);
+    assert_eq!(cp.omitted_transient, 1);
+    assert_eq!(cp.recent[0].event.sequence, 2);
+    assert_eq!(cp.recent.last().unwrap().event.sequence, 4097);
+    // Generic Record persistence cannot turn a foreign/unknown actor into trusted
+    // historical context merely by supplying a fresh envelope digest.
+    let mut record = f.store.lock().unwrap().record(second.id).unwrap().unwrap();
+    record.data["recent"][0]["session"] = serde_json::to_value(SessionId::new()).unwrap();
+    f.store.lock().unwrap().put_record(&mut record).unwrap();
+    use sha2::{Digest, Sha256};
+    let forged = CheckpointRef {
+        scope: record.scope,
+        id: record.id,
+        version: record.version,
+        digest: format!(
+            "sha256:{:x}",
+            Sha256::digest(serde_json::to_vec(&record.data).unwrap())
+        ),
+    };
+    assert!(packs.load_checkpoint(&forged).is_err());
+}
