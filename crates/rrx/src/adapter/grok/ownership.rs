@@ -215,7 +215,10 @@ impl ScopeSnapshot {
         }
         let locks = store
             .records(&request.scope, RecordKind::WorktreeLock)
-            .map_err(state_error)?;
+            .map_err(state_error)?
+            .into_iter()
+            .filter(|record| record.scope == request.scope)
+            .collect::<Vec<_>>();
         let active = locks
             .iter()
             .map(|record| {

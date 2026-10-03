@@ -765,9 +765,14 @@ impl Actor {
                 return Err(failure(
                     ErrorKind::ParseFailure,
                     format!(
-                        "ACP response mismatch expected_id={id} actual_numeric_id={:?} actual_string_id={} has_result={} has_error={}",
+                        "ACP response mismatch expected_id={id} actual_numeric_id={:?} actual_string_id={} expected_decimal_string={} result_end_turn={} result_native_matches={} result_prompt_matches={} has_result={} has_error={}",
                         value["id"].as_u64(),
                         value["id"].is_string(),
+                        value["id"].as_str() == Some(id.to_string().as_str()),
+                        value["result"]["stopReason"] == "end_turn",
+                        value["result"]["_meta"]["sessionId"].as_str()
+                            == self.session.native_ref.as_deref(),
+                        value["result"]["_meta"]["promptId"] == self.prompt,
                         value.get("result").is_some(),
                         value.get("error").is_some()
                     ),
