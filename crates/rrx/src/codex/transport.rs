@@ -166,8 +166,10 @@ impl NativeServer {
         let (stream, socket_binding) = match connected {
             Ok(connection) => connection,
             Err(error) => {
-                terminate(process).await?;
-                return Err(error);
+                return Err(failure_after_cleanup(
+                    error,
+                    terminate(process).await.map(|_| ()),
+                ));
             }
         };
         let initialized = async {
@@ -179,9 +181,10 @@ impl NativeServer {
         let rpc = match initialized {
             Ok(rpc) => rpc,
             Err(error) => {
-                terminate(process).await?;
-                socket_binding.cleanup(&socket)?;
-                return Err(error);
+                let cleanup = terminate(process)
+                    .await
+                    .and_then(|_| socket_binding.cleanup(&socket));
+                return Err(failure_after_cleanup(error, cleanup));
             }
         };
         Ok(Self {
@@ -246,6 +249,18 @@ impl NativeServer {
         Ok(result)
     }
 }
+fn failure_after_cleanup(
+    primary: crate::adapter::AdapterError,
+    cleanup: AdapterResult<()>,
+) -> crate::adapter::AdapterError {
+    match cleanup {
+        Ok(()) => primary,
+        Err(cleanup) => failure(
+            ErrorKind::SessionLost,
+            format!("owned cleanup unverified: {cleanup}; original failure: {primary}"),
+        ),
+    }
+}
 async fn terminate(process: ProcessGroup) -> AdapterResult<ExitStatus> {
     let mut process = cleanup_group(process).await?;
     tokio::time::timeout(CLEANUP_TIMEOUT, process.reap())
@@ -297,6 +312,33 @@ struct SocketBinding {
     target_identity: (u64, u64),
 }
 impl SocketBinding {
+    fn ready(path: &Path) -> AdapterResult<Option<Self>> {
+        let metadata = std::fs::symlink_metadata(path).map_err(|_| {
+            failure(
+                ErrorKind::OwnershipMismatch,
+                "native alias metadata unavailable",
+            )
+        })?;
+        if metadata.uid() != rustix::process::geteuid().as_raw() {
+            return Err(failure(
+                ErrorKind::OwnershipMismatch,
+                "native alias owner mismatch",
+            ));
+        }
+        if metadata.file_type().is_symlink() {
+            match path.canonicalize() {
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+                Err(_) => {
+                    return Err(failure(
+                        ErrorKind::OwnershipMismatch,
+                        "native alias target metadata unavailable",
+                    ));
+                }
+                Ok(_) => {}
+            }
+        }
+        Self::capture(path).map(Some)
+    }
     fn capture(path: &Path) -> AdapterResult<Self> {
         let metadata = std::fs::symlink_metadata(path).map_err(|_| {
             failure(
@@ -447,7 +489,10 @@ async fn connect_socket(path: &Path, leader: u32) -> AdapterResult<(UnixStream, 
     loop {
         match std::fs::symlink_metadata(path) {
             Ok(_) => {
-                let binding = SocketBinding::capture(path)?;
+                let Some(binding) = SocketBinding::ready(path)? else {
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                    continue;
+                };
                 match UnixStream::connect(&binding.target).await {
                     Ok(stream) => {
                         verify_peer(&stream, leader)?;
@@ -479,6 +524,46 @@ async fn connect_socket(path: &Path, leader: u32) -> AdapterResult<(UnixStream, 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn dangling_owned_alias_waits_only_until_target_exists_and_keeps_privacy_checks() {
+        let directory = tempfile::Builder::new().tempdir_in("/tmp").unwrap();
+        std::fs::set_permissions(directory.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+        let target = directory.path().canonicalize().unwrap().join("target");
+        let alias = directory.path().join("alias");
+        std::os::unix::fs::symlink(&target, &alias).unwrap();
+        assert!(SocketBinding::ready(&alias).unwrap().is_none());
+        let listener = std::os::unix::net::UnixListener::bind(&target).unwrap();
+        std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o666)).unwrap();
+        assert_eq!(
+            SocketBinding::ready(&alias).unwrap_err().kind,
+            ErrorKind::OwnershipMismatch
+        );
+        std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o600)).unwrap();
+        let binding = SocketBinding::ready(&alias).unwrap().unwrap();
+        binding.verify(&alias).unwrap();
+        drop(listener);
+    }
+    #[test]
+    fn cleanup_uncertainty_retains_original_sanitized_failure_without_changing_confirmed_errors() {
+        let failed = failure_after_cleanup(
+            failure(ErrorKind::Timeout, "native startup timed out"),
+            Err(failure(
+                ErrorKind::SessionLost,
+                "native group death unverified",
+            )),
+        );
+        assert_eq!(failed.kind, ErrorKind::SessionLost);
+        assert!(
+            failed.message.contains("native startup timed out")
+                && failed.message.contains("native group death unverified")
+        );
+        let confirmed = failure_after_cleanup(
+            failure(ErrorKind::Timeout, "native startup timed out"),
+            Ok(()),
+        );
+        assert_eq!(confirmed.kind, ErrorKind::Timeout);
+        assert_eq!(confirmed.message, "native startup timed out");
+    }
     #[test]
     fn ipc_rejects_symlinks_non_sockets_and_permissive_objects() {
         let directory = tempfile::tempdir().unwrap();
