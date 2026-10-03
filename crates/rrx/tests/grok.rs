@@ -686,6 +686,53 @@ async fn installed_native_edit_fresh_continuation_and_structured_decision() {
 }
 
 #[tokio::test]
+#[ignore = "requires installed Grok and existing native auth; isolated decision correlation acceptance"]
+async fn installed_native_structured_decision_has_exact_response_correlation() {
+    let mut fixture = Fixture::new();
+    let native = std::env::split_paths(&std::env::var_os("PATH").unwrap())
+        .map(|path| path.join("grok"))
+        .find(|path| path.is_file())
+        .expect("installed native Grok");
+    let adapter = GrokAdapter::new(
+        "grok".into(),
+        native.canonicalize().unwrap(),
+        fixture.store.clone(),
+    )
+    .unwrap();
+    fixture.review();
+    fixture.request.model = Some("grok-4.7".into());
+    fixture.request.effort = Some("low".into());
+    fixture.request.input.payload = "Decision-only supplied fixture bundle. Requirement: writes must remain in the owned Task. Proposed operation: write to a different Project. Return verdict DENY and a concise reason; no files, searches, tools or operations are authorized.".into();
+    let schema = json!({"type":"object","properties":{"verdict":{"type":"string","enum":["DENY"]},"reason":{"type":"string"}},"required":["verdict","reason"],"additionalProperties":false});
+    let session = adapter
+        .start_structured(fixture.request.clone(), schema)
+        .await
+        .unwrap();
+    let mut status = adapter.subscribe((&session).into()).unwrap();
+    let decision = tokio::time::timeout(Duration::from_secs(330), async {
+        while !status.borrow().terminal() {
+            status.changed().await.unwrap();
+        }
+        status.borrow().clone()
+    })
+    .await
+    .unwrap();
+    assert!(
+        adapter.transport_succeeded(&decision),
+        "{:?}",
+        decision.failure
+    );
+    assert_eq!(
+        serde_json::from_slice::<Value>(&decision.stdout).unwrap()["verdict"],
+        "DENY"
+    );
+    assert_eq!(
+        git(&fixture.request.worktree, &["status", "--porcelain"]),
+        ""
+    );
+}
+
+#[tokio::test]
 async fn native_structured_consumer_rejects_each_schema_violation_and_live_decision_tools() {
     for mode in [
         "schema_enum",
