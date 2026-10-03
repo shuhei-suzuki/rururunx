@@ -342,9 +342,14 @@ fn future_schema_is_rejected_without_rewriting_database() {
     let dir = tempfile::tempdir().unwrap();
     let db = dir.path().join("future.db");
     let raw = rusqlite::Connection::open(&db).unwrap();
+    raw.pragma_update(None, "application_id", rrx::state::APPLICATION_ID)
+        .unwrap();
     raw.pragma_update(None, "user_version", 999).unwrap();
     drop(raw);
-    assert!(Store::open(&db).is_err());
+    let before = std::fs::read(&db).unwrap();
+    let error = Store::open(&db).err().unwrap();
+    assert!(error.to_string().contains("unsupported state schema 999"));
+    assert_eq!(std::fs::read(&db).unwrap(), before);
     let raw = rusqlite::Connection::open(db).unwrap();
     let version: i64 = raw
         .pragma_query_value(None, "user_version", |row| row.get(0))

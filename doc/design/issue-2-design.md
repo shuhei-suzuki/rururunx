@@ -27,7 +27,9 @@ schema version; v0 → v1 initializes tables/indexes/triggers. An unsupported fu
 version is rejected before migrations. Foreign keys and a bounded busy timeout
 are enabled on every connection; WAL permits readers while state is written.
 Future migrations are ordered, atomic, tested against real older fixtures and
-preserve IDs/ownership/history. JSON snapshot versioning follows database
+preserve IDs/ownership/history. This pre-merge schema is not a shipped format;
+unmarked databases from intermediate #2 commits are rejected and isolated test
+fixtures are recreated rather than silently adopted. JSON snapshot versioning follows database
 migration, not best-effort deserialization of unknown formats.
 
 Each mutation and its `AuditEvent` are written in one immediate transaction.
