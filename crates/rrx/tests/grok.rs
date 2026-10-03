@@ -241,7 +241,8 @@ for line in sys.stdin:
    if mode=='bypass':
     n=tool('search_replace','result.txt',2);done(n)
    else:
-    n=tool('search_replace','result.txt',2);fs('fs/read_text_file','result.txt');assert fs('fs/write_text_file','result.txt','owned edit\n').get('result')=={};done(n)
+    target='own.txt' if mode=='replace_existing' else 'result.txt'
+    n=tool('search_replace',target,2);fs('fs/read_text_file',target);assert fs('fs/write_text_file',target,'owned edit\n').get('result')=={};done(n)
    n=tool('search_replace',os.environ['RRX_FOREIGN'],3);assert fs('fs/write_text_file',os.environ['RRX_FOREIGN'],'forbidden').get('error');done(n,mode!='denied_completed')
   elif mode=='decision_tool':tool('read_file','own.txt',1)
   if mode in ['hook','hook_failure']:pathlib.Path('unexplained.txt').write_text('native hook effect')
@@ -285,6 +286,18 @@ async fn native_execute_edits_only_owned_files_and_preserves_actual_exit() {
     assert_eq!(usage.input_tokens, Some(101));
     assert_eq!(usage.cached_input_tokens, Some(0));
     assert_eq!(usage.estimated_cost, None);
+    fixture.mode("replace_existing");
+    let replacement = adapter.start(fixture.request.clone()).await.unwrap();
+    let replacement = finished(&adapter, &replacement).await;
+    assert!(
+        adapter.transport_succeeded(&replacement),
+        "{:?}",
+        replacement.failure
+    );
+    assert_eq!(
+        std::fs::read_to_string(fixture.request.worktree.join("own.txt")).unwrap(),
+        "owned edit\n"
+    );
     let mut forged = status.clone();
     forged.session.recovery["prompt_id"] = json!("forged");
     assert!(!adapter.transport_succeeded(&forged));
