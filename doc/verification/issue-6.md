@@ -220,3 +220,80 @@ temporary gateway is reconnaissance, not production authorization or a reviewed
 scope implementation. In particular, metadata allowlisting does not establish
 safe configuration projection, actual conversation, new-turn attribution or
 exclusive Human/broker authority. Production Interactive/Attach remain unavailable.
+
+## Exact-scope dispatch and second implementation-source review
+
+At `e67c38becb1059fa88a61225b280d6b682651b32`, 67 Codex regressions passed.
+Actual Unix WebSocket dispatch covers Project-only and Goal-only source Consult
+with both active and historical descendant Task review locks. Exact optional
+Scope filtering agrees with the Store's nullable-scope CAS; Task lock ABA remains
+fenced. M625 removing that filter and M626 omitting the actual checkpoint input
+pinning call compiled and failed assertions; byte-exact restoration passed all
+67 Codex regressions. fmt, all-targets clippy with warnings denied and release
+build passed. Full sequential workspace execution passed 218 Rust tests plus two
+doctests. The ordinary parallel workspace execution failed four existing Context
+tests with an observed `native process inspection timed out` cause. Preserve that
+failure; a serial pass does not prove default parallel acceptance.
+
+CI `37123017200` at this exact head failed Ubuntu's existing Workflow concurrent
+step test: expected one native launch, observed zero. macOS was **cancelled** by
+matrix fail-fast, not an independently observed macOS test failure. Source
+verification found `WorkflowEngine::poll` clearing a still-preparing undispatched
+reservation. [Issue 41](https://github.com/shuhei-suzuki/rururunx/issues/41)
+tracks the separate shared Workflow fix and deterministic interleaving proof.
+The earlier same-HEAD worktree CI failure remains unexplained; do not attribute
+that historical failure to this newly observed local inspection timeout.
+
+Two independent native Claude default-model/default-effort, zero-tool/strict-empty
+MCP source re-reviews received equivalent factual complete public files, verified
+against a clean immutable checkout at e67. Both included the full shared
+ProcessGroup inspection/cleanup/reap/Drop, Store CAS and domain authorities; no
+private config, credential, executor transcript or peer conclusions were passed.
+Both completed before their findings were shared and had verified owned cleanup.
+
+| Focus | Native Session | Verdict | Native API time / observed cost |
+| --- | --- | --- | --- |
+| Lifecycle | `769abc92-1c51-4788-9f30-465dceb1cc1e` | request changes | 559,802 ms / USD 2.775048 |
+| IPC/grants | `6082fbfb-4da4-4f38-a94c-58b1bf4dd643` | request changes | 551,034 ms / USD 2.803752 |
+
+Verified shared finding: a live main server's ownership flag made every rejected
+grant preflight fatal. At `c069828fc7948c3901db7fd755baf875c280a791`, preflight
+checks only newly created groups, retains all flags through cancellation, and
+keeps a cleanly rejected native request deniable. Actual wire regressions now
+include the live prior-server flag. All 68 Codex regressions passed sequentially;
+fmt and all-targets clippy with warnings denied passed. M627 restoring the live
+server fatal check and M628B ignoring new cleanup uncertainty compiled and failed
+assertions; all 68 original Codex tests passed after byte-exact restoration. The
+initial unmatched M628 source anchor received no execution or kill credit.
+Default parallel Codex execution failed 14 tests with inspection-timeout evidence;
+the targeted grant regressions passed in that run. No timeout, death guard or
+cleanup latch was relaxed.
+
+Other verified/open findings remain before merge: stop/cancel currently discards
+native terminal events instead of bounded draining; stop during resume setup can
+target the retired channel; ApprovalReviewer lacks the immutable decision-CWD
+boundary; provider environment references lack native config-layer provenance;
+and Blocked-owner conservative Lost publication needs the narrow shared Store
+guard being implemented by Issue 19. Issue 19 also supplies the missing verified
+restore/consumed-intent guard; current e67 alone does not enforce that checksum.
+Native descendant containment, startup hooks and complete zero-tool conformance
+need primary-source/runtime evidence before treating speculative effects as
+observed defects or accepting the boundary. The proposed session-isolation helper
+is design-only. Protected Project environment routing is already rejected by
+`project::validate_environment`, called by `native_environment`; the review's
+omitted-file concern is not evidence that the guard is absent. Include the full
+Project authority in the next source bundle. No source approval or merge is claimed.
+
+## Frontend sandbox conformance, still partial
+
+Installed native `codex sandbox -P ... --include-managed-config` was exercised
+against isolated non-secret fixtures with an own-source read-only profile, private
+frontend-home write access, disabled network and denied shared temporary roots.
+Own source read and frontend write succeeded; foreign source read/write, fake
+native-auth read and own-source write failed with no canary exposure or file
+creation. Explicit read access to the exact installed native executable allowed
+`codex-cli 0.160.0 --version`; granting only its Node launcher script was insufficient.
+Each owned group was verified dead before reaping. These checks do not prove
+network/Unix-socket confinement, actual native PTY conversation, trust projection,
+descendant cleanup or complete frontend bootstrap. Existing native authentication,
+trust and global configuration were not modified. Interactive/Attach remain pending.
