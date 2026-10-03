@@ -35,10 +35,12 @@ the scheduler responsibility and executor fallback must update Task assignment.
 
 Generic adapters require a shared Store. Starting is persisted before async Git
 preflight; confirmed cleanup after launch failure/cancellation records Failed.
-Unconfirmed cleanup retains a Lost/Starting reservation and appends scoped PID/PGID
-diagnostics to audit without modifying Blocked native ownership hints. Original
-launch error categories survive a diagnostic-state persistence failure. This includes cancellation
-while a blocking cleanup worker still owns the process group. The Store transaction
+Unconfirmed cleanup retains a Lost/Starting reservation. Post-spawn executor
+failures append scoped PID/PGID diagnostics to audit without modifying Blocked
+native ownership hints. Git-preflight/cancellation Lost records may lack PID/PGID
+evidence; explicit recovery/human reconciliation remains necessary (#13). Original
+launch error categories survive a diagnostic-state persistence failure. Cancellation
+while cleanup/reaping is unconfirmed also stays reserved. The Store transaction
 atomically excludes active WorktreeLock and reserved/live executor Session for the
 same Task, so a reviewer cannot start between preflight and spawn. Running and
 terminal snapshots are persisted through existing optimistic Store/audit APIs with the last written version; concurrent
@@ -95,5 +97,8 @@ for a zombie-only group. The adapter accepts that result only after /bin/ps conf
 no live member of the still-reserved PGID. Inspection requires an available trusted
 /bin/ps on macOS, runs on a blocking worker, drains at most 1 MiB concurrently, and
 kills/reaps the inspector after a 250 ms deadline. Denied, oversized or failed
-inspection fails closed into a reserved Lost Session. The Drop fallback stays synchronous. Actual permission/inspection failure
+inspection fails closed into a reserved Lost Session. Ordinary cleanup failures also drop their final retry on the blocking worker;
+cancellation/runtime-shutdown Drop fallback stays synchronous. The trusted short
+inspector uses bounded 5 ms try_wait intervals; long-lived agent supervision remains
+event-driven through SIGCHLD and channels. Actual permission/inspection failure
 remains Lost. See [Apple XNU killpg1](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_sig.c).

@@ -36,7 +36,7 @@ Native provider adapters and runtime CLI orchestration remain separate.
   `5ecfff7` passed Linux and macOS [CI](https://github.com/shuhei-suzuki/rururunx/actions/runs/37094557400).
   Final code/test `d37b8d0` passes 77 macOS tests: six adapter unit, 18 adapter native,
   18 Git, 15 Project registry, 12 state, five CLI, and three config tests. Two
-  inspector tests are macOS-specific (75 Linux total). Clippy all-targets
+  macOS-specific tests cover EPERM resolution and inspector timeout (75 Linux total). Clippy all-targets
   `-D warnings`, fmt, locked debug/release builds passed. Exact code/test head
   `d37b8d0` passes both [Linux/macOS CI](https://github.com/shuhei-suzuki/rururunx/actions/runs/37097725721).
   Final documentation-head CI and native delta review complete before merge; any
@@ -109,6 +109,22 @@ correct conservative result is Lost, and the updated regression asserts that it
 continues blocking another executor. Child death is confirmed only after reap; an
 unread-input case uses a separate isolated Task fixture. No production safety
 guard was weakened to make that assertion pass.
+
+The fourth immutable public delta review at `0c783d9` verified R1–R8 corrected,
+with **no unresolved Critical, High or Medium findings**. Its exact
+[Linux/macOS CI](https://github.com/shuhei-suzuki/rururunx/actions/runs/37097944282)
+is green. Remaining Low/Info were repository-verified:
+
+- L1: PID/PGID audit applies to post-spawn executor failures. Design now explicitly
+  discloses that preflight/cancelled Lost can lack native evidence; generic native
+  reconnection is unsupported and #13 must reconcile or escalate without guessing.
+- L2: cleanup error returned the guard to an async context before Drop's retry.
+  The error guard now drops inside the blocking closure. The native failure test
+  detects any ordinary cleanup retry on its Tokio worker; mutation must fail.
+- L3: bounded short trusted-inspector try_wait intervals are documented separately
+  from event-driven long-lived agent supervision. This is a performance detail,
+  not a safety defect; #18/context performance work can assess host overhead.
+- I1: wording now names the two macOS-specific EPERM/timeout tests precisely.
 
 ## Isolated mutation evidence
 

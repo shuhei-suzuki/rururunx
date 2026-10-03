@@ -303,6 +303,8 @@ struct ProcessGroup {
     group_owned: bool,
     #[cfg(test)]
     fail_cleanup: bool,
+    #[cfg(test)]
+    forbidden_cleanup_thread: Option<std::thread::ThreadId>,
     process_uncertain: Arc<AtomicBool>,
 }
 impl ProcessGroup {
@@ -320,6 +322,8 @@ impl ProcessGroup {
             group_owned: true,
             #[cfg(test)]
             fail_cleanup: false,
+            #[cfg(test)]
+            forbidden_cleanup_thread: None,
             process_uncertain,
         })
     }
@@ -343,6 +347,13 @@ impl ProcessGroup {
     fn kill_group(&mut self) -> std::io::Result<()> {
         #[cfg(test)]
         if self.fail_cleanup {
+            if let Some(thread) = self.forbidden_cleanup_thread {
+                assert_ne!(
+                    std::thread::current().id(),
+                    thread,
+                    "ordinary cleanup retry must remain on a blocking worker"
+                );
+            }
             return Err(std::io::Error::new(
                 std::io::ErrorKind::PermissionDenied,
                 "injected native cleanup failure",
@@ -1371,9 +1382,22 @@ async fn read_git_output(reader: impl AsyncRead + Unpin) -> AdapterResult<Vec<u8
     Ok(bytes)
 }
 async fn cleanup_group(mut child: ProcessGroup) -> AdapterResult<ProcessGroup> {
-    let (child, result) = tokio::task::spawn_blocking(move || {
-        let result = child.kill_group();
-        (child, result)
+    #[cfg(test)]
+    if child.fail_cleanup {
+        child.forbidden_cleanup_thread = Some(std::thread::current().id());
+    }
+    tokio::task::spawn_blocking(move || {
+        match child.kill_group() {
+            Ok(()) => Ok(child),
+            Err(e) => {
+                // Drop's final retry must stay on this blocking worker as well.
+                drop(child);
+                Err(error(
+                    ErrorKind::SessionLost,
+                    format!("native process group cleanup failed: {e}"),
+                ))
+            }
+        }
     })
     .await
     .map_err(|e| {
@@ -1381,14 +1405,7 @@ async fn cleanup_group(mut child: ProcessGroup) -> AdapterResult<ProcessGroup> {
             ErrorKind::SessionLost,
             format!("native cleanup worker failed: {e}"),
         )
-    })?;
-    result.map_err(|e| {
-        error(
-            ErrorKind::SessionLost,
-            format!("native process group cleanup failed: {e}"),
-        )
-    })?;
-    Ok(child)
+    })?
 }
 
 async fn drain<R: AsyncRead + Unpin>(
