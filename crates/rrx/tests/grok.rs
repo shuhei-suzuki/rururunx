@@ -373,3 +373,103 @@ async fn native_stop_permissions_foreign_refs_and_environment_guards_are_explici
             .contains(&Capability::PermissionInterception)
     );
 }
+
+#[tokio::test]
+#[ignore = "requires installed Grok and existing native auth; explicit isolated acceptance"]
+async fn installed_native_edit_fresh_continuation_and_structured_decision() {
+    let mut fixture = Fixture::new();
+    let native = std::env::split_paths(&std::env::var_os("PATH").unwrap())
+        .map(|path| path.join("grok"))
+        .find(|path| path.is_file())
+        .expect("installed native Grok");
+    let adapter = GrokAdapter::new(
+        "grok".into(),
+        native.canonicalize().unwrap(),
+        fixture.store.clone(),
+    )
+    .unwrap();
+    fixture.request.model = Some("grok-4.7".into());
+    fixture.request.effort = Some("low".into());
+    let foreign = fixture.directory.path().join("foreign.txt");
+    fixture.request.input.payload = format!(
+        "Authorized isolated native adapter acceptance. Use read_file to read own.txt. Use search_replace to create result.txt containing exactly NATIVE_EDIT_PROVED plus a newline. Then explicitly attempt search_replace on {} with content FOREIGN_MUST_BE_DENIED, and report the supervisor rejection. Use only those named tools and fixture paths. Finish when the own file is correct; do not use alternate methods.",
+        foreign.display()
+    );
+    async fn native_finished(adapter: &GrokAdapter, session: &Session) -> SessionStatus {
+        let mut status = adapter.subscribe(session.into()).unwrap();
+        tokio::time::timeout(Duration::from_secs(330), async {
+            while !status.borrow().terminal() {
+                status.changed().await.unwrap();
+            }
+            status.borrow().clone()
+        })
+        .await
+        .unwrap()
+    }
+    let session = adapter.start(fixture.request.clone()).await.unwrap();
+    let first = native_finished(&adapter, &session).await;
+    assert!(adapter.transport_succeeded(&first), "{:?}", first.failure);
+    assert_eq!(
+        std::fs::read_to_string(fixture.request.worktree.join("result.txt")).unwrap(),
+        "NATIVE_EDIT_PROVED\n"
+    );
+    assert!(!foreign.exists());
+    let mut input = fixture.request.input.clone();
+    input.version = 2;
+    input.payload="New explicit continuation input. Read result.txt and preserve it. Create continued.txt with exactly NATIVE_CONTINUATION_PROVED plus a newline using search_replace. Do not repeat or modify the prior file, and use no other paths/tools.".into();
+    adapter.checkpoint((&session).into(), input).await.unwrap();
+    let resumed = adapter.resume((&session).into()).await.unwrap();
+    let second = native_finished(&adapter, &resumed).await;
+    assert!(adapter.transport_succeeded(&second), "{:?}", second.failure);
+    assert_eq!(second.session.native_ref, first.session.native_ref);
+    assert_eq!(
+        std::fs::read_to_string(fixture.request.worktree.join("continued.txt")).unwrap(),
+        "NATIVE_CONTINUATION_PROVED\n"
+    );
+    git(
+        &fixture.request.worktree,
+        &["add", "result.txt", "continued.txt"],
+    );
+    git(
+        &fixture.request.worktree,
+        &[
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=fixture@example.invalid",
+            "commit",
+            "-m",
+            "verified native fixture",
+        ],
+    );
+    fixture.request.input.version = 3;
+    fixture.request.input.revision = git(&fixture.request.worktree, &["rev-parse", "HEAD"]);
+    fixture.request.input.payload="Decision-only supplied public fixture bundle. Requirement: writes must remain in the owned Task. Proposed operation: write to a different Project. Return verdict DENY and a concise reason; no files, searches, tools or operations are authorized.".into();
+    fixture.review();
+    let schema = json!({"type":"object","properties":{"verdict":{"type":"string","enum":["DENY"]},"reason":{"type":"string"}},"required":["verdict","reason"],"additionalProperties":false});
+    let review = adapter
+        .start_structured(fixture.request.clone(), schema)
+        .await
+        .unwrap();
+    let decision = native_finished(&adapter, &review).await;
+    assert!(
+        adapter.transport_succeeded(&decision),
+        "{:?}",
+        decision.failure
+    );
+    assert_eq!(
+        serde_json::from_slice::<Value>(&decision.stdout).unwrap()["verdict"],
+        "DENY"
+    );
+    assert_eq!(
+        git(&fixture.request.worktree, &["status", "--porcelain"]),
+        ""
+    );
+    let usage = adapter
+        .usage((&resumed).into(), "continuation".into(), None)
+        .await
+        .unwrap();
+    assert!(usage.input_tokens.is_some_and(|v| v > 0));
+    assert!(usage.output_tokens.is_some_and(|v| v > 0));
+    assert_eq!(usage.estimated_cost, None);
+}
