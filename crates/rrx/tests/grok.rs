@@ -134,6 +134,13 @@ impl Fixture {
         GrokAdapter::new("grok".into(), self.executable.clone(), self.store.clone()).unwrap()
     }
     fn mode(&mut self, mode: &str) {
+        if mode == "unowned_read" {
+            std::fs::write(
+                self.request.worktree.join("unseen.txt"),
+                "unseen scoped baseline\n",
+            )
+            .unwrap();
+        }
         self.request
             .environment
             .insert("RRX_MODE".into(), mode.into());
@@ -237,7 +244,8 @@ for line in sys.stdin:
    if mode!='unfinished':done(n)
    if mode=='ambiguous':done('99')
    if mode=='unowned_write':fs('fs/write_text_file','unowned.txt','unaccounted effect')
-   if mode=='unowned_read':fs('fs/read_text_file','own.txt')
+   if mode=='unowned_read':fs('fs/read_text_file','unseen.txt')
+   if mode=='supplemental_read':assert fs('fs/read_text_file','own.txt').get('result')
    if mode=='bypass':
     n=tool('search_replace','result.txt',2);done(n)
    else:
@@ -297,6 +305,14 @@ async fn native_execute_edits_only_owned_files_and_preserves_actual_exit() {
     assert_eq!(
         std::fs::read_to_string(fixture.request.worktree.join("own.txt")).unwrap(),
         "owned edit\n"
+    );
+    fixture.mode("supplemental_read");
+    let supplemental = adapter.start(fixture.request.clone()).await.unwrap();
+    let supplemental = finished(&adapter, &supplemental).await;
+    assert!(
+        adapter.transport_succeeded(&supplemental),
+        "{:?}",
+        supplemental.failure
     );
     let mut forged = status.clone();
     forged.session.recovery["prompt_id"] = json!("forged");

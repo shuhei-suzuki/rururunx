@@ -135,9 +135,11 @@ decision toolCallCount must remain zero, and any FS/terminal callback invalidate
 success. Any live tool_call/tool_call_update invalidates a decision; executor native tool
 metadata must name exactly read_file/search_replace and correlate each successful tool
 with successful requested-path ACP callbacks of the matching read/write method.
-Every successful callback also requires an unfinished owned tool at the requested path.
-A search_replace target read is an allowed dependency, but never counts as successful
-write evidence. Unaccounted successful reads/writes invalidate completion and retain
+Successful writes require an unfinished owned search_replace tool at the requested path.
+A search_replace target read is an allowed dependency. Native supplemental reads may
+also revisit a successfully correlated finished tool path from this same turn; they
+remain descriptor-scoped and give no new tool or write completion credit. Unseen successful
+reads or unaccounted writes invalidate completion and retain
 unknown outcomes as Lost. Concurrent same-kind/same-path pending tool correlation is explicitly unsupported; one
 callback never credits multiple tools. Post-turn tool count delta must equal observed
 live tool notifications. Denied callbacks never authorize a

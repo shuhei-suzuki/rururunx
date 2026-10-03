@@ -161,20 +161,25 @@ impl TurnEvidence {
         if let Some(tool) = target {
             tool.callbacks += 1;
         } else if !write {
-            // search_replace may read its target before its write callback.
-            // This dependency never counts as successful write evidence.
+            // search_replace may read its target before writing. Native ACP
+            // also issues supplemental reads at already successful tool paths.
+            // Neither kind of read grants new tool or write completion credit.
             let mut dependencies = self
                 .tools
                 .values()
                 .filter(|t| !t.finished && t.path == path && t.write);
-            if dependencies.next().is_none() || dependencies.next().is_some() {
+            let pending_write = dependencies.next().is_some();
+            let ambiguous = dependencies.next().is_some();
+            let prior_successful = self
+                .tools
+                .values()
+                .any(|t| t.path == path && t.finished && t.callbacks > 0);
+            if ambiguous || (!pending_write && !prior_successful) {
                 return Err(failure(
                     ErrorKind::OwnershipMismatch,
                     format!(
                         "unowned native file read callback; prior_successful_tool_path={}",
-                        self.tools
-                            .values()
-                            .any(|t| t.path == path && t.finished && t.callbacks > 0)
+                        prior_successful
                     ),
                 ));
             }
