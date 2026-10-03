@@ -47,11 +47,13 @@ struct Evidence {
     completed: bool,
     turn: Option<String>,
     counters: Option<TokenCounters>,
+    cumulative: Option<TokenCounters>,
 }
 struct NativeTurn {
     thread: String,
     turn: String,
     previous_turn: Option<String>,
+    previous_cumulative: Option<TokenCounters>,
 }
 struct Reservation {
     store: SharedStore,
@@ -167,6 +169,18 @@ impl CodexAdapter {
             ));
         }
         let snapshot = ScopeSnapshot::capture(&self.store, &request, &self.agent)?;
+        // The baseline comes only from the owned supervisor, never caller JSON
+        // or a native UUID hint. Missing history remains unknown on resume.
+        let previous_cumulative = if let Some(previous) = &resume {
+            let (_, _, evidence) = self.reference(&SessionRef::from(previous))?;
+            evidence
+                .lock()
+                .map_err(|_| failure(ErrorKind::StateFailure, "native telemetry poisoned"))?
+                .cumulative
+                .clone()
+        } else {
+            None
+        };
         let mut session = resume.clone().unwrap_or_else(|| Session {
             id: SessionId::new(), scope: request.scope.clone(), agent: self.agent.clone(), provider: "codex".into(), role: request.role,
             native_ref: None, pid: None, worktree: request.worktree.clone(), state: SessionState::Starting,
@@ -436,6 +450,7 @@ impl CodexAdapter {
                 previous_turn: resume.and_then(|session| {
                     session.recovery["native_turn"].as_str().map(str::to_owned)
                 }),
+                previous_cumulative,
             },
         ));
         Ok(session)
@@ -568,10 +583,10 @@ impl AgentAdapter for CodexAdapter {
                 context_pack_version: status.session.recovery["input_version"].as_u64(),
                 context_pack_size: status.session.recovery["input_bytes"].as_u64(),
                 repo_map_size: None,
-                cache_metadata: json!({"native_uuid":status.session.native_ref,"native_turn":evidence.turn,"cache_write_input_tokens":counters.cache_write_input,"reasoning_output_tokens":counters.reasoning_output,"total_tokens":counters.total}),
+                cache_metadata: json!({"native_uuid":status.session.native_ref,"native_turn":evidence.turn,"counter_scope":"current_turn","cache_write_input_tokens":counters.cache_write_input,"reasoning_output_tokens":counters.reasoning_output,"total_tokens":counters.total}),
                 missing_reason: Some(
                     if evidence.counters.is_some() {
-                        "native Codex does not expose monetary cost"
+                        "native Codex does not expose monetary cost; counters missing a resume baseline or reset remain unavailable"
                     } else {
                         "native token notification not observed; monetary cost unavailable"
                     }
@@ -623,9 +638,14 @@ async fn supervise(
         thread,
         turn,
         previous_turn,
+        previous_cumulative,
     } = identity;
     let mut status = sender.borrow().clone();
-    let mut tracker = UsageTracker::new(thread.clone(), turn.clone());
+    let mut tracker = if previous_turn.is_some() {
+        UsageTracker::resumed(thread.clone(), turn.clone(), previous_cumulative)
+    } else {
+        UsageTracker::new(thread.clone(), turn.clone())
+    };
     let result = loop {
         let event = tokio::select! {
             _ = stop.recv() => {
@@ -650,7 +670,8 @@ async fn supervise(
             Ok(Some(completed)) => break Ok(completed),
             Ok(None) => {
                 if let Ok(mut evidence) = evidence.lock() {
-                    evidence.counters = tracker.last.clone();
+                    evidence.counters = tracker.turn_counters();
+                    evidence.cumulative = tracker.total.clone();
                 }
                 sender.send_replace(status.clone());
             }
@@ -681,7 +702,8 @@ async fn supervise(
             status.session = reservation.session.clone();
             if let Ok(mut evidence) = evidence.lock() {
                 evidence.completed = completed;
-                evidence.counters = tracker.last;
+                evidence.counters = tracker.turn_counters();
+                evidence.cumulative = tracker.total;
             }
         }
         Err(error) => {
