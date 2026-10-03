@@ -1198,6 +1198,11 @@ fn ensure_project_idle(tx: &Transaction<'_>, id: ProjectId) -> Result<()> {
                         RecordKind::WorktreeLock => {
                             !serde_json::from_value::<crate::git::WorktreeLock>(record.data)?.active
                         }
+                        RecordKind::Workflow => serde_json::from_value::<
+                            crate::workflow::WorkflowSnapshot,
+                        >(record.data)?
+                        .active
+                        .is_none(),
                         _ => true,
                     }
                 }

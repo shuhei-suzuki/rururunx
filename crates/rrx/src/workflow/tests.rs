@@ -3395,3 +3395,50 @@ async fn native_gate_requires_persisted_owned_status_and_sessionless_completion_
             .contains("owned native Session")
     );
 }
+
+#[tokio::test]
+async fn cancelled_unknown_gate_keeps_project_reserved_after_goal_terminal() {
+    let fixture = Fixture::new(WorkflowClass::Quick);
+    fixture
+        .engine
+        .initialize(fixture.task.id, None)
+        .await
+        .unwrap();
+    fixture.gates.unknown.store(true, Ordering::SeqCst);
+    assert!(matches!(
+        fixture
+            .engine
+            .step(fixture.task.id, BTreeMap::new())
+            .await
+            .unwrap(),
+        StepResult::Waiting { .. }
+    ));
+    fixture
+        .engine
+        .cancel(fixture.task.id, "explicit stop requested".into())
+        .unwrap();
+    assert!(
+        fixture
+            .engine
+            .release_terminal_reservation(
+                fixture.task.id,
+                "unknown side effect cannot be cleared".into()
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("unknown external outcome")
+    );
+    let mut store = fixture.store.lock().unwrap();
+    let mut goal = store.goal(fixture.task.goal_id).unwrap().unwrap();
+    goal.state = GoalState::Cancelled;
+    store.put_goal(&mut goal).unwrap();
+    let mut project = store.project(fixture.project.id).unwrap().unwrap();
+    project.state = ProjectState::Removed;
+    assert!(
+        store
+            .put_project(&mut project)
+            .unwrap_err()
+            .to_string()
+            .contains("active records")
+    );
+}
