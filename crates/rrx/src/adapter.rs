@@ -1,4 +1,5 @@
 //! Thin native process contracts. Context selection and workflow decisions belong upstream.
+pub mod grok;
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     future::Future,
