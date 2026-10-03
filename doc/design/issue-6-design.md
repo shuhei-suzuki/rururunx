@@ -382,3 +382,10 @@ Provider transport completion uses the private completed journal plus Exited,
 verified cleanup and matching persisted Session; OS exit zero and caller recovery
 JSON cannot fabricate native success. Retryable native errors retain the turn;
 resolved/completed callbacks retire pending grants with no runtime wire approval.
+
+Lock snapshots use the exact optional Project/Goal/Task Scope that admission
+checks. `Store::records` is a descendant listing when Goal/Task IDs are absent;
+filter those records before constructing the CAS lock set. A source-only Project
+or Goal consultation must not inherit another Task's active or historical review
+lock. Task-scoped execution/review continues to fence its full exact lock set,
+including inactive versions so unlock/relock ABA remains detectable.

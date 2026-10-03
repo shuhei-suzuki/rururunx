@@ -2592,6 +2592,90 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn source_consultation_dispatch_ignores_descendant_task_review_locks() {
+        for goal_scoped in [false, true] {
+            let mut owned = Fixture::new(true);
+            let task_scope = owned.request.scope.clone();
+            let lock_id = crate::git::WorktreeManager::lock_review(
+                &mut owned.store.lock().unwrap(),
+                task_scope.task_id.unwrap(),
+                &owned.request.input.revision,
+                "separate descendant review",
+            )
+            .unwrap();
+            for active in [true, false] {
+                if !active {
+                    crate::git::WorktreeManager::unlock_review(
+                        &mut owned.store.lock().unwrap(),
+                        lock_id,
+                    )
+                    .unwrap();
+                }
+                owned.request.scope = Scope {
+                    project_id: task_scope.project_id,
+                    goal_id: if goal_scoped {
+                        task_scope.goal_id
+                    } else {
+                        None
+                    },
+                    task_id: None,
+                };
+                owned.request.input.scope = owned.request.scope.clone();
+                owned.request.worktree = owned.request.project.root.clone();
+                owned.request.role = SessionRole::Consultant;
+                let authority =
+                    ScopeSnapshot::capture(&owned.store, &owned.request, "codex").unwrap();
+                let mut session = status().session;
+                session.id = SessionId::new();
+                session.scope = owned.request.scope.clone();
+                session.worktree = owned.request.worktree.clone();
+                session.role = SessionRole::Consultant;
+                pin_starting_input(&mut session, &owned.request, None).unwrap();
+                let mut reservation = Reservation {
+                    store: owned.store.clone(),
+                    session,
+                    version: 0,
+                    ownership: ProcessOwnership::default(),
+                    armed: false,
+                    resume_publication: None,
+                    inference_started: false,
+                };
+                reservation.persist().unwrap();
+                let (mut rpc, mut wire, peer) = rpc_peer().await;
+                {
+                    let mut dispatch = Box::pin(reservation.dispatch(
+                        &mut rpc,
+                        &authority,
+                        &owned.request,
+                        "own-source-thread",
+                        None,
+                    ));
+                    let message = tokio::select! {
+                        outcome = &mut dispatch => panic!("source consultation rejected by descendant lock: {outcome:?}"),
+                        message = wire.recv() => message.unwrap(),
+                    };
+                    assert_eq!(message["method"], "turn/start");
+                    assert_eq!(message["params"]["threadId"], "own-source-thread");
+                    assert_eq!(
+                        message["params"]["input"][0]["text"],
+                        owned.request.input.payload
+                    );
+                }
+                let store = owned.store.lock().unwrap();
+                let persisted = store.session(reservation.session.id).unwrap().unwrap().0;
+                assert_eq!(persisted.scope, owned.request.scope);
+                assert_eq!(persisted.recovery["dispatch_intent"]["consumed"], true);
+                let descendant = store.record(lock_id).unwrap().unwrap();
+                assert_eq!(descendant.scope, task_scope);
+                assert_eq!(descendant.data["active"], active);
+                drop(store);
+                drop(rpc);
+                peer.abort();
+            }
+        }
+    }
+
+    #[tokio::test]
     async fn actual_turn_wire_is_fenced_after_preflight_and_consumption_precedes_delivery() {
         for stale_owner in [false, true] {
             let mut fixture = ApprovalFixture::new(true).await;

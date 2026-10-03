@@ -217,7 +217,12 @@ impl ScopeSnapshot {
         }
         let locks = store
             .records(&request.scope, RecordKind::WorktreeLock)
-            .map_err(state_error)?;
+            .map_err(state_error)?
+            .into_iter()
+            // records() lists descendants when optional Goal/Task IDs are absent.
+            // Admission fences the exact nullable Session scope instead.
+            .filter(|record| record.scope == request.scope)
+            .collect::<Vec<_>>();
         let active = locks
             .iter()
             .map(|record| {
