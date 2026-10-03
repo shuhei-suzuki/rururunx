@@ -390,3 +390,176 @@ impl Store {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    struct Fixture {
+        _temp: tempfile::TempDir,
+        store: Store,
+        db: std::path::PathBuf,
+        p: Project,
+        g: Goal,
+        t: Task,
+    }
+    impl Fixture {
+        fn new() -> Self {
+            let temp = tempfile::tempdir().unwrap();
+            let db = temp.path().join("state.db");
+            let mut store = Store::open(&db).unwrap();
+            let mut p = Project::new(
+                "one".into(),
+                temp.path().join("repo"),
+                "repo:one".into(),
+                "main".into(),
+            );
+            store.put_project(&mut p).unwrap();
+            let mut g = Goal::new(
+                p.id,
+                "Goal".into(),
+                vec![CompletionCriterion {
+                    id: "done".into(),
+                    description: "verified".into(),
+                    evidence: None,
+                    satisfied: false,
+                }],
+            );
+            store.put_goal(&mut g).unwrap();
+            let mut t = Task::new(p.id, g.id, "Task".into(), "fake".into());
+            store.put_task(&mut t).unwrap();
+            Self {
+                _temp: temp,
+                store,
+                db,
+                p,
+                g,
+                t,
+            }
+        }
+        fn context(&self, scope: Scope) -> ContextVersion {
+            ContextVersion {
+                scope,
+                version: 1,
+                revision: "exact-head".into(),
+                source_hashes: Default::default(),
+                data: json!({"format":"fixture"}),
+            }
+        }
+    }
+    #[test]
+    fn task_pack_atomic_cas_and_audit_failure_leave_no_partial_publication() {
+        let mut f = Fixture::new();
+        let scope = f.t.scope();
+        let c = f.context(scope.clone());
+        let expected = [f.p.version, f.g.version, f.t.version];
+        let mut other = Store::open(&f.db).unwrap();
+        f.t.next_action = Some("new instruction".into());
+        other.put_task(&mut f.t).unwrap();
+        let before = f.store.events(&scope, 0, 100).unwrap().len();
+        assert!(
+            f.store
+                .publish_context_pack(&scope, expected, &c, &[])
+                .is_err()
+        );
+        assert!(f.store.context(&scope, None).unwrap().is_none());
+        assert_eq!(f.store.task(f.t.id).unwrap().unwrap().context_version, 0);
+        assert_eq!(f.store.events(&scope, 0, 100).unwrap().len(), before);
+        let expected = [f.p.version, f.g.version, f.t.version];
+        f.store.connection.execute_batch("CREATE TRIGGER fail_context_audit BEFORE INSERT ON audit WHEN NEW.kind='context.created' BEGIN SELECT RAISE(ABORT,'injected context journal failure'); END;").unwrap();
+        assert!(
+            f.store
+                .publish_context_pack(&scope, expected, &c, &[])
+                .is_err()
+        );
+        assert!(f.store.context(&scope, None).unwrap().is_none());
+        assert_eq!(f.store.task(f.t.id).unwrap().unwrap().version, f.t.version);
+        assert_eq!(f.store.task(f.t.id).unwrap().unwrap().context_version, 0);
+        assert_eq!(f.store.events(&scope, 0, 100).unwrap().len(), before);
+        f.store
+            .connection
+            .execute_batch("DROP TRIGGER fail_context_audit;")
+            .unwrap();
+        f.store
+            .publish_context_pack(&scope, expected, &c, &[])
+            .unwrap();
+        let saved = f.store.task(f.t.id).unwrap().unwrap();
+        assert_eq!(saved.context_version, 1);
+        assert_eq!(saved.version, f.t.version + 1);
+        f.store
+            .publish_context_pack(&scope, [f.p.version, f.g.version, saved.version], &c, &[])
+            .unwrap();
+        assert_eq!(
+            f.store.task(f.t.id).unwrap().unwrap().version,
+            saved.version
+        );
+    }
+    #[test]
+    fn goal_pack_transaction_rechecks_summary_activity_and_goal_session() {
+        let mut f = Fixture::new();
+        let scope = f.g.scope();
+        let c = f.context(scope.clone());
+        let expected = [f.p.version, f.g.version];
+        let mut other = Store::open(&f.db).unwrap();
+        let old_task_version = f.t.version;
+        f.t.next_action = Some("new Task summary".into());
+        other.put_task(&mut f.t).unwrap();
+        assert!(
+            f.store
+                .publish_goal_context_pack(expected, &c, &[(f.t.id, old_task_version)])
+                .is_err()
+        );
+        assert!(f.store.context(&scope, None).unwrap().is_none());
+        assert_eq!(f.store.goal(f.g.id).unwrap().unwrap().context_version, 0);
+        let mut session = Session {
+            id: SessionId::new(),
+            scope: scope.clone(),
+            agent: "fixture".into(),
+            provider: "fixture".into(),
+            role: SessionRole::Consultant,
+            native_ref: None,
+            pid: None,
+            worktree: f.p.root.clone(),
+            state: SessionState::Lost,
+            model: None,
+            effort: None,
+            recovery: json!({}),
+            started_at: now_ms(),
+        };
+        let sv = other.put_session(&session, 0).unwrap();
+        assert!(
+            f.store
+                .publish_goal_context_pack(expected, &c, &[(f.t.id, f.t.version)])
+                .is_err()
+        );
+        session.state = SessionState::Stopped;
+        other.put_session(&session, sv).unwrap();
+        f.p.state = ProjectState::Blocked;
+        f.p.blocked_reason = Some("source missing".into());
+        other.put_project(&mut f.p).unwrap();
+        assert!(
+            f.store
+                .publish_goal_context_pack([f.p.version, f.g.version], &c, &[(f.t.id, f.t.version)])
+                .is_err()
+        );
+        assert!(f.store.context(&scope, None).unwrap().is_none());
+        f.p.state = ProjectState::Registered;
+        f.p.blocked_reason = None;
+        other.put_project(&mut f.p).unwrap();
+        f.store.connection.execute_batch("CREATE TRIGGER fail_goal_context_audit BEFORE INSERT ON audit WHEN NEW.kind='context.created' BEGIN SELECT RAISE(ABORT,'injected context journal failure'); END;").unwrap();
+        assert!(
+            f.store
+                .publish_goal_context_pack([f.p.version, f.g.version], &c, &[(f.t.id, f.t.version)])
+                .is_err()
+        );
+        assert!(f.store.context(&scope, None).unwrap().is_none());
+        assert_eq!(f.store.goal(f.g.id).unwrap().unwrap().context_version, 0);
+        f.store
+            .connection
+            .execute_batch("DROP TRIGGER fail_goal_context_audit;")
+            .unwrap();
+        f.store
+            .publish_goal_context_pack([f.p.version, f.g.version], &c, &[(f.t.id, f.t.version)])
+            .unwrap();
+        assert_eq!(f.store.goal(f.g.id).unwrap().unwrap().context_version, 1);
+    }
+}

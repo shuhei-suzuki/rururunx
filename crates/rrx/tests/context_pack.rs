@@ -753,7 +753,16 @@ async fn typed_reader_does_not_accept_metadata_that_disagrees_with_actual_task()
 async fn goal_before_tasks_uses_primary_sources_and_never_adopts_a_worktree() {
     let f = Fixture::new();
     let packs = f.packs();
-    let mut goal = Goal::new(f.project.id, "Plan before Tasks".into(), vec![]);
+    let mut goal = Goal::new(
+        f.project.id,
+        "Plan before Tasks".into(),
+        vec![CompletionCriterion {
+            id: "planned".into(),
+            description: "Plan persisted".into(),
+            satisfied: false,
+            evidence: None,
+        }],
+    );
     f.store.lock().unwrap().put_goal(&mut goal).unwrap();
     let inputs = || GoalInputs {
         artifacts: vec![ArtifactRequest {
