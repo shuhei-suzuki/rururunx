@@ -249,7 +249,7 @@ pub(super) fn guard_launch_checkpoint(tx: &Transaction<'_>, record: &Record) -> 
     }
     if previous
         .as_ref()
-        .is_some_and(|old| old.state != SessionState::Starting)
+        .is_some_and(|old| old.state != SessionState::Starting || dispatch_consumed(old))
         && !fresh
         && !new_dispatch
     {

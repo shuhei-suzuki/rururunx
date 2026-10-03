@@ -3289,6 +3289,23 @@ async fn native_input_pin_allows_verified_fresh_continuation_and_only_exact_pre_
             .put_session(&rebind, version)
             .is_err()
     );
+    let prior = packs.task_pack(&second_ref).unwrap().checkpoint.unwrap();
+    packs
+        .checkpoint(
+            &f.task.scope(),
+            native.id,
+            Some(prior),
+            vec![event(
+                2,
+                EventKind::Constraint,
+                "constraint after admitted wire before acknowledgement",
+            )],
+            HistoryPolicy {
+                recent_history_bytes: 0,
+            },
+        )
+        .await
+        .unwrap();
     native.state = SessionState::Running;
     version = f
         .store

@@ -115,3 +115,8 @@ input_sha256 and consumed intent must match that hash. Provider-specific RPC
 envelopes/fixed prefixes are a distinct transport digest, never this input hash.
 Older public schema 4 writers refuse schema 5. Existing schema4 standalone packs
 must be prepared again under the new private publication contract before launch.
+
+Once the same dispatch intent is consumed before wire delivery, its Starting
+status/Running acknowledgement is a historical admitted observation. Later
+checkpoint updates cannot rewrite or wedge that acknowledgement. A changed/new
+consumed intent remains a new admission and must compare live head/frame authority.
