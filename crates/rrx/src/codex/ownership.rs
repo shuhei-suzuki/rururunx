@@ -705,7 +705,12 @@ mod tests {
             ErrorKind::Locked
         );
         std::fs::remove_dir_all(fixture.request.worktree.join("worktree")).unwrap();
-        let id = snapshot.locks[0].id;
+        let id = snapshot
+            .locks
+            .iter()
+            .find(|record| record.data["active"] == true)
+            .unwrap()
+            .id;
         WorktreeManager::unlock_review(&mut fixture.store.lock().unwrap(), id).unwrap();
         fixture.review();
         assert_eq!(
