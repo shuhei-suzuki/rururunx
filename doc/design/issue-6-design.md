@@ -64,6 +64,12 @@ An interrupt acknowledgement alone does not establish the model/operation outcom
 A native UUID or audited PID/PGID is never proof of process ownership
 after a restart.
 
+A fresh continuation pins its input metadata while Starting. Retire the prior
+`native_turn` into `previous_native_turn` before that publication, so a pending
+new input cannot appear to belong to the old turn. The new acknowledged turn
+later supplies the current identity. Pre-dispatch rollback restores the exact
+historical Session, including its original turn and consumed-input marker.
+
 ## Decision-only sessions
 
 Use a named scoped permissions profile rather than treating the legacy read-only
