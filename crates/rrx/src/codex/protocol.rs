@@ -173,6 +173,11 @@ pub struct NativeRpc {
     queued: VecDeque<(Event, usize)>,
     queued_bytes: usize,
 }
+pub(super) struct PreparedCall {
+    id: RpcId,
+    method: String,
+    text: String,
+}
 impl NativeRpc {
     pub async fn connect(stream: UnixStream) -> AdapterResult<Self> {
         let config = WebSocketConfig::default()
@@ -195,6 +200,10 @@ impl NativeRpc {
         })
     }
     pub async fn send(&mut self, value: Value) -> AdapterResult<()> {
+        let text = Self::encode(value)?;
+        self.send_text(text).await
+    }
+    fn encode(value: Value) -> AdapterResult<String> {
         let text = serde_json::to_string(&value)
             .map_err(|_| failure(ErrorKind::InvalidInput, "invalid RPC payload"))?;
         if text.len() > MAX_OUTGOING {
@@ -203,6 +212,9 @@ impl NativeRpc {
                 "native RPC payload exceeds limit",
             ));
         }
+        Ok(text)
+    }
+    async fn send_text(&mut self, text: String) -> AdapterResult<()> {
         tokio::time::timeout(RPC_TIMEOUT, self.socket.send(Message::Text(text.into())))
             .await
             .map_err(|_| failure(ErrorKind::Timeout, "native RPC write timed out"))?
@@ -272,13 +284,30 @@ impl NativeRpc {
     /// For bootstrap/lifecycle RPCs. No target-operation approval is supplied here.
     /// Live callbacks are delivered by receive after the native turn is established.
     pub async fn call(&mut self, method: &str, params: Value) -> AdapterResult<Value> {
+        let prepared = self.prepare_call(method, params)?;
+        self.dispatch_call(prepared).await
+    }
+    /// Encode and bound the whole frame before publishing consumed input intent.
+    pub(super) fn prepare_call(
+        &mut self,
+        method: &str,
+        params: Value,
+    ) -> AdapterResult<PreparedCall> {
         let id = RpcId::Number(self.next_id);
+        let text = Self::encode(json!({"id":id,"method":method,"params":params}))?;
         self.next_id = self
             .next_id
             .checked_add(1)
             .ok_or_else(|| failure(ErrorKind::ProcessFailure, "native RPC ID space exhausted"))?;
-        self.send(json!({"id":id,"method":method,"params":params}))
-            .await?;
+        Ok(PreparedCall {
+            id,
+            method: method.into(),
+            text,
+        })
+    }
+    pub(super) async fn dispatch_call(&mut self, prepared: PreparedCall) -> AdapterResult<Value> {
+        let PreparedCall { id, method, text } = prepared;
+        self.send_text(text).await?;
         let deadline = tokio::time::Instant::now() + RPC_TIMEOUT;
         loop {
             let (event, bytes) = tokio::time::timeout_at(deadline, self.read())

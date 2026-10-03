@@ -119,6 +119,28 @@ struct Reservation {
     inference_started: bool,
 }
 impl Reservation {
+    async fn dispatch(
+        &mut self,
+        rpc: &mut NativeRpc,
+        authority: &ScopeSnapshot,
+        request: &LaunchRequest,
+        thread: &str,
+        schema: Option<&Value>,
+    ) -> AdapterResult<Value> {
+        let mut parameters =
+            json!({"threadId":thread,"input":[{"type":"text","text":request.input.payload}]});
+        if let Some(schema) = schema {
+            parameters["outputSchema"] = schema.clone();
+        }
+        if let Some(effort) = &request.effort {
+            parameters["effort"] = json!(effort);
+        }
+        let prepared = rpc.prepare_call("turn/start", parameters)?;
+        self.admit_dispatch(authority, request)?;
+        // Any cancelled/failed write can already have started native inference.
+        self.inference_started = true;
+        rpc.dispatch_call(prepared).await
+    }
     fn admit_dispatch(
         &mut self,
         authority: &ScopeSnapshot,
@@ -565,6 +587,17 @@ impl CodexAdapter {
         session.recovery["input_version"] = json!(request.input.version);
         session.recovery["input_bytes"] = json!(request.input.payload.len());
         session.recovery["source_versions"] = json!(request.input.source_versions);
+        if let Some(previous) = &resume {
+            // Durable proof for exact pre-dispatch rollback; never permission to
+            // change source metadata after the consumed intent was published.
+            session.recovery["pre_dispatch_restore_sha256"] = json!(format!(
+                "{:x}",
+                Sha256::digest(
+                    serde_json::to_vec(previous)
+                        .map_err(|error| { failure(ErrorKind::StateFailure, error.to_string()) })?
+                )
+            ));
+        }
         if let Some(recovery) = session.recovery.as_object_mut() {
             recovery.remove("dispatch_intent");
             recovery.remove("native_dispatch_unobserved");
@@ -763,18 +796,15 @@ impl CodexAdapter {
                 .verify_binding(&request, &mut reservation.ownership, &binding)
                 .await?;
             snapshot.recheck(&self.store, &request, &self.agent)?;
-            let mut parameters =
-                json!({"threadId":thread,"input":[{"type":"text","text":request.input.payload}]});
-            if let Some(schema) = &schema {
-                parameters["outputSchema"] = schema.clone();
-            }
-            if let Some(effort) = &request.effort {
-                parameters["effort"] = json!(effort);
-            }
-            reservation.admit_dispatch(&snapshot, &request)?;
-            // A cancelled/failed call can already have started inference.
-            reservation.inference_started = true;
-            let turn = native.rpc.call("turn/start", parameters).await?;
+            let turn = reservation
+                .dispatch(
+                    &mut native.rpc,
+                    &snapshot,
+                    &request,
+                    &thread,
+                    schema.as_ref(),
+                )
+                .await?;
             let turn = turn["turn"]["id"]
                 .as_str()
                 .filter(|id| !id.is_empty() && id.len() <= 256)
@@ -2468,6 +2498,110 @@ mod tests {
             }
         });
         (NativeRpc::connect(client).await.unwrap(), receiver, peer)
+    }
+
+    #[tokio::test]
+    async fn actual_turn_wire_is_fenced_after_preflight_and_consumption_precedes_delivery() {
+        for stale_owner in [false, true] {
+            let mut fixture = ApprovalFixture::new(true).await;
+            let request = fixture.authority.request.clone();
+            let store = fixture.reservation.store.clone();
+            let session_id = fixture.reservation.session.id;
+            if stale_owner {
+                let db = request.project.root.parent().unwrap().join("state.sqlite3");
+                let mut writer = crate::state::Store::open(&db).unwrap();
+                let mut task = writer
+                    .task(request.scope.task_id.unwrap())
+                    .unwrap()
+                    .unwrap();
+                task.title = "second writer after final preflight".into();
+                writer.put_task(&mut task).unwrap();
+            }
+            let (mut rpc, mut wire, peer) = rpc_peer().await;
+            {
+                let mut dispatch = Box::pin(fixture.reservation.dispatch(
+                    &mut rpc,
+                    &fixture.authority.snapshot,
+                    &request,
+                    "thread",
+                    None,
+                ));
+                if stale_owner {
+                    let outcome =
+                        tokio::time::timeout(std::time::Duration::from_millis(200), &mut dispatch)
+                            .await;
+                    assert!(
+                        matches!(outcome, Ok(Err(error)) if error.kind == ErrorKind::StateConflict)
+                    );
+                    assert!(wire.try_recv().is_err());
+                    assert!(
+                        store
+                            .lock()
+                            .unwrap()
+                            .session(session_id)
+                            .unwrap()
+                            .unwrap()
+                            .0
+                            .recovery["dispatch_intent"]
+                            .is_null()
+                    );
+                } else {
+                    let message = tokio::select! {
+                        outcome = &mut dispatch => panic!("dispatch finished before fixture response: {outcome:?}"),
+                        message = wire.recv() => message.unwrap(),
+                    };
+                    assert_eq!(message["method"], "turn/start");
+                    assert_eq!(message["params"]["input"][0]["text"], request.input.payload);
+                    let stored = store
+                        .lock()
+                        .unwrap()
+                        .session(session_id)
+                        .unwrap()
+                        .unwrap()
+                        .0;
+                    assert_eq!(stored.recovery["dispatch_intent"]["consumed"], true);
+                    assert_eq!(
+                        stored.recovery["dispatch_intent"]["input_bytes"],
+                        request.input.payload.len()
+                    );
+                }
+            }
+            assert_eq!(fixture.reservation.inference_started, !stale_owner);
+            drop(rpc);
+            peer.abort();
+        }
+    }
+
+    #[tokio::test]
+    async fn oversized_encoded_input_is_rejected_before_consumption_or_native_wire() {
+        let mut fixture = ApprovalFixture::new(true).await;
+        let mut request = fixture.authority.request.clone();
+        // The prepared text is under the plain-byte limit; JSON escaping makes
+        // the actual frame too large. Test the complete serialized wire bound.
+        request.input.payload = "\"".repeat(600_000);
+        let before = fixture.reservation.version;
+        let (mut rpc, mut wire, peer) = rpc_peer().await;
+        assert_eq!(
+            fixture
+                .reservation
+                .dispatch(
+                    &mut rpc,
+                    &fixture.authority.snapshot,
+                    &request,
+                    "thread",
+                    None
+                )
+                .await
+                .unwrap_err()
+                .kind,
+            ErrorKind::InvalidInput
+        );
+        assert_eq!(fixture.reservation.version, before);
+        assert!(!fixture.reservation.inference_started);
+        assert!(fixture.reservation.session.recovery["dispatch_intent"].is_null());
+        assert!(wire.try_recv().is_err());
+        drop(rpc);
+        peer.abort();
     }
 
     #[tokio::test]
