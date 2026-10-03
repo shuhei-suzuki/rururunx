@@ -77,9 +77,43 @@ a trust prompt proves transport and native gating, not completed interactive use
 Availability requires a real terminal and verified scoped native session.
 
 Native token notifications contain last and cumulative usage. Deduplicate by turn
-and avoid summing repeated cumulative values. Keep bounded assistant/stderr tails,
+and avoid summing repeated cumulative values. `last` describes one model call;
+use the cumulative gauge for a fresh thread and subtract the preceding owned
+supervisor's cumulative gauge on resume to include every tool/model cycle in the
+current turn. Missing baseline fields and counter resets remain unknown. Keep bounded assistant/stderr tails,
 nullable provider fields, and explicit unavailable cost. Preserve observed cache
 zeros as reported values rather than inventing zeros for missing fields.
+
+## Executor and approval routing
+
+Executor uses its exact Task worktree, a scoped writable permissions profile,
+disabled network, denied shared temporary roots and no profile inheritance.
+The installed built-in `local` environment must report ready and receive exactly
+the owning CWD/workspace roots. Empty native environments disable all execution;
+decision roles deliberately use that setting. Stable `code_mode_host`, shell and
+unified execution settings remain native-owned for Executor. Other external
+operation capabilities and inherited MCP servers are restricted and verified.
+
+Preserve the native approval reviewer. Native callbacks retain exact thread,
+turn, item, opaque request ID and original parameters. Default callbacks surface
+as WaitingHuman, with denial/cancellation available but runtime grants disabled.
+`with_runtime_broker` is an explicit trusted runtime integration; it works only
+when the installed policy already selects the native user/client reviewer route.
+It cannot substitute for automatic/managed review. That prerequisite is checked
+before a model turn, without overriding the native reviewer.
+
+Approval replies include the exact native turn and request ID. Queues/maps and
+parameters are bounded; replay, unsupported arguments, additional permissions,
+persistent roots, remote environments and terminal-input approvals fail closed.
+Only one-operation accept/decline/cancel are representable. Validate native
+workspace/lifecycle ownership again before a grant, journal intent before the
+native wire reply, and fence the Session CAS. An intent is not evidence that the
+operation completed. Audit failure prevents a grant. Store/watch status updates
+publish under the same Store mutex. Pending callbacks retain native processes and
+reservations until a reply, explicit stop or verified cleanup.
+
+Current interactive/attach implementation is still pending. The transport probe
+at a native trust prompt is not claimed as completed interactive operation.
 
 ## Impact and verification
 
