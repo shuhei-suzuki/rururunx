@@ -1,4 +1,4 @@
-use rrx::{
+use crate::{
     adapter::*,
     config::{Config, WorkflowClass},
     domain::*,
@@ -10,7 +10,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, AtomicU8, Ordering},
+        atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering},
     },
 };
 use tokio::sync::{Notify, watch};
@@ -193,6 +193,9 @@ impl AgentAdapter for FakeAgent {
 struct Sources {
     snapshot: Mutex<SourceSnapshot>,
     on_capture: Mutex<Option<Box<dyn FnOnce() + Send>>>,
+    captures: AtomicUsize,
+    on_numbered_capture: Mutex<Option<(usize, Box<dyn FnOnce() + Send>)>>,
+    capture_error: AtomicBool,
 }
 impl Sources {
     fn new(scope: Scope) -> Self {
@@ -204,6 +207,9 @@ impl Sources {
                 payload: "factual fixture context".into(),
             }),
             on_capture: Mutex::new(None),
+            captures: AtomicUsize::new(0),
+            on_numbered_capture: Mutex::new(None),
+            capture_error: AtomicBool::new(false),
         }
     }
 }
@@ -216,6 +222,21 @@ impl WorkflowSources for Sources {
         budget: ContextBudget,
     ) -> WorkflowFuture<'_, SourceSnapshot> {
         Box::pin(async move {
+            let number = self.captures.fetch_add(1, Ordering::SeqCst) + 1;
+            if self
+                .on_numbered_capture
+                .lock()
+                .unwrap()
+                .as_ref()
+                .is_some_and(|(target, _)| *target == number)
+            {
+                let (_, hook) = self.on_numbered_capture.lock().unwrap().take().unwrap();
+                hook();
+            }
+            anyhow::ensure!(
+                !self.capture_error.load(Ordering::SeqCst),
+                "fixture capture unavailable"
+            );
             if let Some(hook) = self.on_capture.lock().unwrap().take() {
                 hook();
             }
@@ -782,7 +803,7 @@ async fn source_scope_and_concurrent_task_changes_fail_closed_without_orphan_con
         .unwrap_err();
     assert!(
         error
-            .downcast_ref::<rrx::state::StateGuardError>()
+            .downcast_ref::<crate::state::StateGuardError>()
             .is_some()
     );
     let store = fixture.store.lock().unwrap();
@@ -959,6 +980,8 @@ async fn second_engine_cannot_dispatch_duplicate_phase_and_interrupt_does_not_au
             },
             state: AttemptState::Running,
             session_id: None,
+            dispatch_started: true,
+            observations: vec![],
             agent: None,
             started_at: now_ms(),
             completed_at: None,
@@ -1958,7 +1981,10 @@ async fn waiting_gate_reuses_native_session_and_unknown_outcome_stays_reserved()
     );
     assert!(
         workflow.history[workflow.active.unwrap()]
-            .detail
+            .observations
+            .last()
+            .unwrap()
+            .error
             .as_ref()
             .unwrap()
             .contains("outcome unknown")
@@ -2112,7 +2138,7 @@ async fn atomic_authority_rejects_invented_initial_history_completion_and_finish
         .context(&base.task.scope(), None)
         .unwrap()
         .unwrap();
-    for mutation in 0..4 {
+    for mutation in 0..5 {
         let fixture = Fixture::new(WorkflowClass::Quick);
         let mut snapshot = template.clone();
         snapshot.sources.scope = fixture.task.scope();
@@ -2129,12 +2155,14 @@ async fn atomic_authority_rejects_invented_initial_history_completion_and_finish
                 },
                 state: AttemptState::Succeeded,
                 session_id: None,
+                dispatch_started: false,
+                observations: vec![],
                 agent: None,
                 started_at: 0,
                 completed_at: Some(1),
                 detail: None,
             }),
-            _ => {
+            3 => {
                 snapshot.completed.insert(
                     Phase::Pr,
                     Evidence {
@@ -2150,6 +2178,7 @@ async fn atomic_authority_rejects_invented_initial_history_completion_and_finish
                     },
                 );
             }
+            _ => {}
         }
         let mut task = fixture.task.clone();
         task.context_version = 1;
@@ -2169,30 +2198,46 @@ async fn atomic_authority_rejects_invented_initial_history_completion_and_finish
             .unwrap()
             .unwrap()
             .version;
-        assert!(
-            fixture
-                .store
-                .lock()
-                .unwrap()
-                .put_workflow_transition(
-                    &mut task,
-                    &mut record,
-                    Some(&context),
-                    fixture.project.version,
-                    goal_version,
-                    WorkflowAccess::StateOnly
-                )
-                .is_err()
+        let result = fixture.store.lock().unwrap().put_workflow_transition(
+            &mut task,
+            &mut record,
+            Some(&context),
+            fixture.project.version,
+            goal_version,
+            WorkflowAccess::StateOnly,
         );
-        assert!(
-            fixture
-                .store
-                .lock()
-                .unwrap()
-                .records(&task.scope(), RecordKind::Workflow)
-                .unwrap()
-                .is_empty()
-        );
+        if mutation == 4 {
+            result.unwrap();
+            assert_eq!(
+                fixture
+                    .store
+                    .lock()
+                    .unwrap()
+                    .records(&task.scope(), RecordKind::Workflow)
+                    .unwrap()
+                    .len(),
+                1
+            );
+        } else {
+            let error = result.unwrap_err().to_string();
+            assert!(
+                error.contains(if mutation == 1 {
+                    "finished requires all configured gates"
+                } else {
+                    "initial workflow must contain no invented"
+                }),
+                "mutation {mutation}: {error}"
+            );
+            assert!(
+                fixture
+                    .store
+                    .lock()
+                    .unwrap()
+                    .records(&task.scope(), RecordKind::Workflow)
+                    .unwrap()
+                    .is_empty()
+            );
+        }
     }
     let fixture = Fixture::new(WorkflowClass::Quick);
     fixture
@@ -2339,4 +2384,464 @@ async fn native_git_commit_port_freezes_owning_worktree_head_for_review_and_pr()
         committed
     );
     assert_eq!(workflow.completed[&Phase::Pr].revision, committed);
+}
+
+#[tokio::test]
+async fn equal_class_escalation_cannot_rebind_unverified_head_or_raw_authority() {
+    let fixture = Fixture::new(WorkflowClass::Quick);
+    fixture
+        .engine
+        .initialize(fixture.task.id, None)
+        .await
+        .unwrap();
+    fixture.through(Phase::ImplementationReview).await;
+    let calls = fixture.gates.calls.lock().unwrap().len();
+    fixture.sources.snapshot.lock().unwrap().revision = "unverified-drift".into();
+    let snapshot = fixture
+        .engine
+        .escalate(
+            fixture.task.id,
+            RiskClass::R0,
+            None,
+            "same class".into(),
+            "explicit request".into(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(snapshot.generation, 2);
+    assert!(snapshot.completed.is_empty());
+    assert_eq!(fixture.gates.calls.lock().unwrap().len(), calls);
+    assert!(
+        snapshot
+            .invalidations
+            .last()
+            .unwrap()
+            .cause
+            .contains("source drift")
+    );
+    assert!(snapshot.escalations.is_empty());
+    // A matching context cannot make a raw same-generation source rebind valid.
+    let mut store = fixture.store.lock().unwrap();
+    let mut task = store.task(fixture.task.id).unwrap().unwrap();
+    let mut record = store
+        .records(&task.scope(), RecordKind::Workflow)
+        .unwrap()
+        .remove(0);
+    let mut workflow: WorkflowSnapshot = serde_json::from_value(record.data.clone()).unwrap();
+    workflow.sources.revision = "forged-raw-head".into();
+    let context = super::make_context(
+        &task,
+        &workflow.sources,
+        Phase::Worktree,
+        workflow.workflow,
+        workflow.generation,
+        ContextBudget {
+            class: BudgetClass::Small,
+            discretionary_tokens: 1,
+        },
+        task.context_version + 1,
+    );
+    task.revision = Some(context.revision.clone());
+    task.context_version = context.version;
+    workflow.context_version = context.version;
+    record.data = serde_json::to_value(workflow).unwrap();
+    let goal_version = store.goal(task.goal_id).unwrap().unwrap().version;
+    assert!(
+        store
+            .put_workflow_transition(
+                &mut task,
+                &mut record,
+                Some(&context),
+                fixture.project.version,
+                goal_version,
+                WorkflowAccess::StateOnly
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("authority change requires target-producing completion")
+    );
+}
+#[tokio::test]
+async fn concurrent_metadata_before_gate_claim_or_native_dispatch_preserves_progress() {
+    for native in [false, true] {
+        let fixture = Fixture::new(WorkflowClass::Quick);
+        fixture
+            .engine
+            .initialize(fixture.task.id, None)
+            .await
+            .unwrap();
+        fixture
+            .through(if native {
+                Phase::Worktree
+            } else {
+                Phase::Implement
+            })
+            .await;
+        let store = fixture.store.clone();
+        let id = fixture.task.id;
+        let target = fixture.sources.captures.load(Ordering::SeqCst) + 3;
+        *fixture.sources.on_numbered_capture.lock().unwrap() = Some((
+            target,
+            Box::new(move || {
+                let mut store = store.lock().unwrap();
+                let mut task = store.task(id).unwrap().unwrap();
+                task.next_action = Some("concurrent metadata".into());
+                store.put_task(&mut task).unwrap();
+                let mut goal = store.goal(task.goal_id).unwrap().unwrap();
+                goal.blockers.push("unrelated goal note".into());
+                store.put_goal(&mut goal).unwrap();
+            }),
+        ));
+        let result = fixture.engine.step(id, BTreeMap::new()).await.unwrap();
+        assert!(if native {
+            matches!(
+                result,
+                StepResult::Started {
+                    phase: Phase::Implement,
+                    ..
+                }
+            )
+        } else {
+            matches!(
+                result,
+                StepResult::Completed {
+                    phase: Phase::Commit
+                }
+            )
+        });
+        assert_eq!(
+            fixture
+                .store
+                .lock()
+                .unwrap()
+                .task(id)
+                .unwrap()
+                .unwrap()
+                .next_action
+                .as_deref(),
+            Some("concurrent metadata")
+        );
+    }
+}
+#[tokio::test]
+async fn observed_gate_outcome_survives_paused_blocked_or_missing_postgate_sources() {
+    for failure in 0..3 {
+        let fixture = Fixture::new(WorkflowClass::Quick);
+        fixture
+            .engine
+            .initialize(fixture.task.id, None)
+            .await
+            .unwrap();
+        fixture.through(Phase::Implement).await;
+        let store = fixture.store.clone();
+        let sources = fixture.sources.clone();
+        *fixture.gates.on_complete.lock().unwrap() = Some(Box::new(move |invocation| {
+            if failure == 2 {
+                sources.capture_error.store(true, Ordering::SeqCst);
+            } else {
+                let mut store = store.lock().unwrap();
+                if failure == 0 {
+                    let mut goal = store.goal(invocation.task.goal_id).unwrap().unwrap();
+                    goal.state = GoalState::Paused;
+                    store.put_goal(&mut goal).unwrap();
+                } else {
+                    let mut project = store.project(invocation.project.id).unwrap().unwrap();
+                    project.state = ProjectState::Blocked;
+                    project.blocked_reason = Some("source unavailable".into());
+                    store.put_project(&mut project).unwrap();
+                }
+            }
+            None
+        }));
+        assert!(
+            fixture
+                .engine
+                .step(fixture.task.id, BTreeMap::new())
+                .await
+                .is_err()
+        );
+        let workflow = fixture.engine.snapshot(fixture.task.id).unwrap();
+        let attempt = &workflow.history[workflow.active.unwrap()];
+        assert_eq!(attempt.state, AttemptState::Evaluating);
+        assert!(
+            matches!(&attempt.observations.last().unwrap().outcome, Some(GateOutcome::Passed(evidence)) if evidence.phase == Phase::Commit && evidence.artifacts == ["fixture://commit"])
+        );
+        let events = fixture
+            .store
+            .lock()
+            .unwrap()
+            .events(&fixture.task.scope(), 0, 10000)
+            .unwrap();
+        assert!(
+            events
+                .iter()
+                .any(|event| event.kind == "workflow.gate_observed"
+                    && event.data["observation"]["outcome"]["Passed"]["artifacts"][0]
+                        == "fixture://commit")
+        );
+        assert!(!workflow.completed.contains_key(&Phase::Commit));
+    }
+}
+#[tokio::test]
+async fn live_consultant_does_not_strand_readonly_review_but_mutating_gate_remains_fenced() {
+    let fixture = Fixture::new(WorkflowClass::Quick);
+    fixture
+        .engine
+        .initialize(fixture.task.id, None)
+        .await
+        .unwrap();
+    fixture.through(Phase::Tests).await;
+    let consultant = Session {
+        id: SessionId::new(),
+        scope: fixture.task.scope(),
+        agent: "consultant".into(),
+        provider: "fake".into(),
+        role: SessionRole::Consultant,
+        native_ref: None,
+        pid: None,
+        worktree: fixture.task.worktree.clone().unwrap(),
+        state: SessionState::Running,
+        model: None,
+        effort: None,
+        recovery: Value::Null,
+        started_at: now_ms(),
+    };
+    fixture
+        .store
+        .lock()
+        .unwrap()
+        .put_session(&consultant, 0)
+        .unwrap();
+    fixture.through(Phase::ImplementationReview).await;
+    let calls = fixture.gates.calls.lock().unwrap().len();
+    assert!(
+        fixture
+            .engine
+            .step(fixture.task.id, BTreeMap::new())
+            .await
+            .is_err()
+    );
+    assert_eq!(fixture.gates.calls.lock().unwrap().len(), calls);
+    assert_eq!(
+        fixture
+            .store
+            .lock()
+            .unwrap()
+            .session(consultant.id)
+            .unwrap()
+            .unwrap()
+            .0
+            .state,
+        SessionState::Running
+    );
+}
+#[tokio::test]
+async fn unknown_gate_generation_cannot_be_released_by_raw_transition() {
+    let fixture = Fixture::new(WorkflowClass::Quick);
+    fixture
+        .engine
+        .initialize(fixture.task.id, None)
+        .await
+        .unwrap();
+    fixture.through(Phase::Implement).await;
+    fixture.gates.unknown.store(true, Ordering::SeqCst);
+    fixture
+        .engine
+        .step(fixture.task.id, BTreeMap::new())
+        .await
+        .unwrap();
+    let mut store = fixture.store.lock().unwrap();
+    let mut task = store.task(fixture.task.id).unwrap().unwrap();
+    let mut record = store
+        .records(&task.scope(), RecordKind::Workflow)
+        .unwrap()
+        .remove(0);
+    let mut workflow: WorkflowSnapshot = serde_json::from_value(record.data.clone()).unwrap();
+    let index = workflow.active.unwrap();
+    workflow.history[index].state = AttemptState::Interrupted;
+    workflow.history[index].completed_at = Some(now_ms());
+    workflow.active = None;
+    let source = workflow.sources.clone();
+    super::invalidate(&mut workflow, &source, "forged recovery").unwrap();
+    let context = super::make_context(
+        &task,
+        &source,
+        Phase::Worktree,
+        workflow.workflow,
+        workflow.generation,
+        ContextBudget {
+            class: BudgetClass::Small,
+            discretionary_tokens: 1,
+        },
+        task.context_version + 1,
+    );
+    task.context_version = context.version;
+    workflow.context_version = context.version;
+    record.data = serde_json::to_value(workflow).unwrap();
+    let goal_version = store.goal(task.goal_id).unwrap().unwrap().version;
+    assert!(
+        store
+            .put_workflow_transition(
+                &mut task,
+                &mut record,
+                Some(&context),
+                fixture.project.version,
+                goal_version,
+                WorkflowAccess::StateOnly
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("unknown gate reservation requires explicit recovery")
+    );
+}
+#[tokio::test]
+async fn quick_requires_actual_merge_cleanup_before_terminal_and_cancel_never_implies_native_death()
+{
+    let fixture = Fixture::new(WorkflowClass::Quick);
+    fixture
+        .engine
+        .initialize(fixture.task.id, None)
+        .await
+        .unwrap();
+    fixture.finish().await;
+    assert_eq!(
+        fixture
+            .store
+            .lock()
+            .unwrap()
+            .task(fixture.task.id)
+            .unwrap()
+            .unwrap()
+            .state,
+        TaskState::PrCreated
+    );
+    let mut removed = fixture.project.clone();
+    removed.state = ProjectState::Removed;
+    assert!(
+        fixture
+            .store
+            .lock()
+            .unwrap()
+            .put_project(&mut removed)
+            .is_err()
+    );
+    fixture
+        .engine
+        .request_finalization(fixture.task.id, "actual merge/cleanup requested".into())
+        .await
+        .unwrap();
+    fixture.gates.waiting.store(true, Ordering::SeqCst);
+    assert!(matches!(
+        fixture
+            .engine
+            .step(fixture.task.id, BTreeMap::new())
+            .await
+            .unwrap(),
+        StepResult::Waiting {
+            phase: Phase::MergeGate,
+            ..
+        }
+    ));
+    assert_eq!(
+        fixture
+            .store
+            .lock()
+            .unwrap()
+            .task(fixture.task.id)
+            .unwrap()
+            .unwrap()
+            .state,
+        TaskState::WaitingHuman
+    );
+    fixture.gates.waiting.store(false, Ordering::SeqCst);
+    fixture.engine.resume_gate(fixture.task.id).await.unwrap();
+    fixture.finish().await;
+    let workflow = fixture.engine.snapshot(fixture.task.id).unwrap();
+    assert!(
+        workflow.completed.contains_key(&Phase::MergeGate)
+            && workflow.completed.contains_key(&Phase::Cleanup)
+    );
+    assert_eq!(
+        fixture
+            .store
+            .lock()
+            .unwrap()
+            .task(fixture.task.id)
+            .unwrap()
+            .unwrap()
+            .state,
+        TaskState::Completed
+    );
+    fixture
+        .store
+        .lock()
+        .unwrap()
+        .put_project(&mut removed)
+        .unwrap();
+    for lost in [false, true] {
+        let fixture = Fixture::new(WorkflowClass::Quick);
+        fixture
+            .engine
+            .initialize(fixture.task.id, None)
+            .await
+            .unwrap();
+        fixture.through(Phase::Worktree).await;
+        let StepResult::Started {
+            session: Some(id), ..
+        } = fixture
+            .engine
+            .step(fixture.task.id, BTreeMap::new())
+            .await
+            .unwrap()
+        else {
+            panic!("native not launched")
+        };
+        if lost {
+            let mut store = fixture.store.lock().unwrap();
+            let (mut session, version) = store.session(id).unwrap().unwrap();
+            session.state = SessionState::Lost;
+            store.put_session(&session, version).unwrap();
+        }
+        fixture
+            .engine
+            .cancel(fixture.task.id, "explicit cancellation".into())
+            .unwrap();
+        let mut store = fixture.store.lock().unwrap();
+        assert_eq!(
+            store.task(fixture.task.id).unwrap().unwrap().state,
+            TaskState::Cancelled
+        );
+        assert_eq!(
+            store.session(id).unwrap().unwrap().0.state,
+            if lost {
+                SessionState::Lost
+            } else {
+                SessionState::Running
+            }
+        );
+        let mut project = fixture.project.clone();
+        project.state = ProjectState::Removed;
+        assert!(store.put_project(&mut project).is_err());
+    }
+    let fixture = Fixture::new(WorkflowClass::Quick);
+    fixture
+        .engine
+        .initialize(fixture.task.id, None)
+        .await
+        .unwrap();
+    fixture
+        .engine
+        .fail_task(fixture.task.id, "explicit terminal failure".into())
+        .unwrap();
+    assert_eq!(
+        fixture
+            .store
+            .lock()
+            .unwrap()
+            .task(fixture.task.id)
+            .unwrap()
+            .unwrap()
+            .state,
+        TaskState::Failed
+    );
 }

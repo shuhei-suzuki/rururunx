@@ -95,9 +95,8 @@ impl Phase {
             | Self::Mutation
             | Self::Browser
             | Self::Staging => TaskState::Testing,
-            Self::RequirementsCommit | Self::DesignCommit | Self::Commit | Self::Pr => {
-                TaskState::ReadyForPr
-            }
+            Self::RequirementsCommit | Self::DesignCommit => TaskState::Planning,
+            Self::Commit | Self::Pr => TaskState::ReadyForPr,
             Self::MergeGate | Self::Cleanup => TaskState::PrCreated,
         }
     }
@@ -236,7 +235,7 @@ pub struct Evidence {
     pub session_id: Option<SessionId>,
     pub context_version: u64,
 }
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum GateOutcome {
     Passed(Evidence),
     Waiting(String),
@@ -294,10 +293,34 @@ pub struct PhaseAttempt {
     pub budget: ContextBudget,
     pub state: AttemptState,
     pub session_id: Option<SessionId>,
+    pub dispatch_started: bool,
+    pub observations: Vec<GateObservation>,
     pub agent: Option<String>,
     pub started_at: i64,
     pub completed_at: Option<i64>,
     pub detail: Option<String>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GateObservation {
+    pub outcome: Option<GateOutcome>,
+    pub error: Option<String>,
+    pub at: i64,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TerminalDecision {
+    pub scope: Scope,
+    pub generation: u64,
+    pub attempt: Option<usize>,
+    pub state: TaskState,
+    pub reason: String,
+    pub at: i64,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FinalizationRequest {
+    pub scope: Scope,
+    pub generation: u64,
+    pub reason: String,
+    pub at: i64,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Escalation {
@@ -336,6 +359,8 @@ pub struct WorkflowSnapshot {
     pub escalations: Vec<Escalation>,
     pub retries: Vec<RetryEvent>,
     pub invalidations: Vec<Invalidation>,
+    pub terminal_decision: Option<TerminalDecision>,
+    pub finalizations: Vec<FinalizationRequest>,
     pub sources: SourceSnapshot,
     pub configured_phases: Vec<Phase>,
     pub finished: bool,
@@ -566,6 +591,8 @@ impl WorkflowEngine {
             escalations: vec![],
             retries: vec![],
             invalidations: vec![],
+            terminal_decision: None,
+            finalizations: vec![],
             sources: SourceSnapshot {
                 payload: context.data["payload"]
                     .as_str()
@@ -622,6 +649,7 @@ impl WorkflowEngine {
             "escalation needs reason/evidence"
         );
         let mut snapshot = self.read(task_id)?;
+        let previous_generation = snapshot.workflow.generation;
         ensure!(
             !snapshot.workflow.finished,
             "finished workflow requires a new Task, not escalation"
@@ -664,6 +692,17 @@ impl WorkflowEngine {
                 "workflow policy or target changed",
             )?;
         }
+        if snapshot.workflow.generation == previous_generation
+            && !same_sources(&source, &snapshot.workflow.sources)
+        {
+            invalidate(
+                &mut snapshot.workflow,
+                &source,
+                "source drift during explicit escalation",
+            )?;
+        }
+        snapshot.workflow.configured_phases =
+            retain_phases(&snapshot.workflow.configured_phases, phases(class, &config));
         snapshot.workflow.risk = risk;
         snapshot.task.risk = risk;
         let phase = next_phase(&snapshot.workflow).unwrap_or(Phase::Pr);
@@ -801,6 +840,8 @@ impl WorkflowEngine {
             budget: selected_budget,
             state: AttemptState::Running,
             session_id: None,
+            dispatch_started: false,
+            observations: vec![],
             agent: match phase.actor() {
                 Actor::Executor => Some(snapshot.task.executor.clone()),
                 Actor::Reviewer => snapshot.task.reviewers.first().cloned(),
@@ -849,24 +890,19 @@ impl WorkflowEngine {
                 reason: "sources changed before native dispatch".into(),
             });
         }
-        {
-            let store = self
-                .store
-                .lock()
-                .map_err(|_| anyhow::anyhow!("state store poisoned"))?;
-            let (project, goal, task) = owners(&store, snapshot.task.id)?;
-            ensure!(
-                project.version == snapshot.project.version
-                    && goal.version == snapshot.goal.version
-                    && task.version == snapshot.task.version,
-                "owners changed before native dispatch"
-            );
-            ensure!(
-                store
-                    .record(snapshot.record.id)?
-                    .is_some_and(|r| r.version == snapshot.record.version),
-                "workflow changed before native dispatch"
-            );
+        self.refresh_owners(&mut snapshot)?;
+        let (_, observed, _) = self
+            .inputs(&snapshot.project, &snapshot.task, phase, class)
+            .await?;
+        if !same_sources(&observed, &snapshot.workflow.sources) {
+            return self
+                .invalidate_attempt(
+                    snapshot,
+                    index,
+                    observed,
+                    "authority changed before native dispatch",
+                )
+                .await;
         }
         let agent = if phase.actor() == Actor::Reviewer {
             match snapshot.task.reviewers.first() {
@@ -908,6 +944,8 @@ impl WorkflowEngine {
                 "agent phase requires bound worktree".into(),
             );
         };
+        snapshot.workflow.history[index].dispatch_started = true;
+        self.persist(&mut snapshot, None)?;
         let request = LaunchRequest {
             project: snapshot.project.clone(),
             scope: snapshot.task.scope(),
@@ -978,6 +1016,27 @@ impl WorkflowEngine {
             });
         }
         let Some(id) = attempt.session_id else {
+            if phase.actor() == Actor::EvidencePort {
+                return self.evaluate(snapshot, index, None).await;
+            }
+            if !attempt.dispatch_started {
+                let mut snapshot = snapshot;
+                self.refresh_owners(&mut snapshot)?;
+                snapshot.workflow.history[index].state = AttemptState::Failed;
+                snapshot.workflow.history[index].completed_at = Some(now_ms());
+                snapshot.workflow.history[index].detail =
+                    Some("native dispatch was not started; reservation safely reset".into());
+                snapshot.workflow.retries.push(RetryEvent {
+                    prior_attempt: index,
+                    reason: "verified undispatched native reservation".into(),
+                    at: now_ms(),
+                });
+                snapshot.workflow.active = None;
+                self.persist(&mut snapshot, None)?;
+                return Ok(StepResult::Invalidated {
+                    reason: "native dispatch was not started; next step can reserve afresh".into(),
+                });
+            }
             return Ok(StepResult::Waiting {
                 phase,
                 reason: "interrupted phase needs explicit recovery integration (#13)".into(),
@@ -998,11 +1057,12 @@ impl WorkflowEngine {
             Ok(status) => status,
             Err(error) => {
                 let mut snapshot = snapshot;
-                snapshot.workflow.history[index].detail = Some(format!(
-                    "native status unavailable; recovery required: {error}"
-                ));
-                self.refresh_owners(&mut snapshot)?;
-                self.persist(&mut snapshot, None)?;
+                let detail = format!("native status unavailable; recovery required: {error}");
+                if snapshot.workflow.history[index].detail.as_ref() != Some(&detail) {
+                    snapshot.workflow.history[index].detail = Some(detail);
+                    self.refresh_owners(&mut snapshot)?;
+                    self.persist(&mut snapshot, None)?;
+                }
                 return Ok(StepResult::Waiting {
                     phase,
                     reason: format!("native status unavailable; recovery required: {error}"),
@@ -1024,6 +1084,110 @@ impl WorkflowEngine {
             );
         }
         self.evaluate(snapshot, index, Some(status)).await
+    }
+    fn observe_gate(
+        &self,
+        snapshot: &mut Snapshot,
+        index: usize,
+        observation: GateObservation,
+    ) -> Result<()> {
+        self.store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("state store poisoned"))?
+            .observe_workflow_gate(
+                &mut snapshot.record,
+                index,
+                &snapshot.workflow.history[index],
+                observation,
+            )?;
+        snapshot.workflow = serde_json::from_value(snapshot.record.data.clone())?;
+        Ok(())
+    }
+    /// Audited caller decision. Native processes and unresolved gate reservations
+    /// remain owned until their separate verified recovery/cleanup succeeds.
+    pub fn cancel(&self, task_id: TaskId, reason: String) -> Result<()> {
+        self.terminate(task_id, TaskState::Cancelled, reason)
+    }
+    pub fn fail_task(&self, task_id: TaskId, reason: String) -> Result<()> {
+        self.terminate(task_id, TaskState::Failed, reason)
+    }
+    fn terminate(&self, task_id: TaskId, state: TaskState, reason: String) -> Result<()> {
+        ensure!(
+            !reason.trim().is_empty(),
+            "terminal decision requires reason"
+        );
+        let mut snapshot = self.read(task_id)?;
+        active(&snapshot.project, &snapshot.goal, &snapshot.task)?;
+        ensure!(
+            snapshot.workflow.terminal_decision.is_none(),
+            "terminal decision already recorded"
+        );
+        snapshot.workflow.terminal_decision = Some(TerminalDecision {
+            scope: snapshot.task.scope(),
+            generation: snapshot.workflow.generation,
+            attempt: snapshot.workflow.active,
+            state,
+            reason,
+            at: now_ms(),
+        });
+        snapshot.task.state = state;
+        self.persist(&mut snapshot, None)
+    }
+    /// QUICK ends at PR-created, which is nonterminal. Request the actual merge
+    /// and cleanup gates; only their scoped evidence can make the Task complete.
+    pub async fn request_finalization(
+        &self,
+        task_id: TaskId,
+        reason: String,
+    ) -> Result<WorkflowSnapshot> {
+        ensure!(!reason.trim().is_empty(), "finalization requires reason");
+        let mut snapshot = self.read(task_id)?;
+        active(&snapshot.project, &snapshot.goal, &snapshot.task)?;
+        ensure!(
+            snapshot.workflow.finished
+                && snapshot.workflow.workflow == WorkflowClass::Quick
+                && snapshot.workflow.active.is_none()
+                && snapshot.task.state == TaskState::PrCreated
+                && snapshot.workflow.completed.contains_key(&Phase::Pr),
+            "finalization requires finished QUICK PR evidence"
+        );
+        let (_, source, _) = self
+            .inputs(
+                &snapshot.project,
+                &snapshot.task,
+                Phase::MergeGate,
+                snapshot.workflow.workflow,
+            )
+            .await?;
+        ensure!(
+            same_sources(&source, &snapshot.workflow.sources),
+            "finalization target changed; new reviewed Task required"
+        );
+        snapshot.workflow.configured_phases = retain_phases(
+            &snapshot.workflow.configured_phases,
+            vec![Phase::MergeGate, Phase::Cleanup],
+        );
+        snapshot.workflow.finished = false;
+        snapshot.workflow.finalizations.push(FinalizationRequest {
+            scope: snapshot.task.scope(),
+            generation: snapshot.workflow.generation,
+            reason,
+            at: now_ms(),
+        });
+        let context = self
+            .prepare_pack(
+                &snapshot.project,
+                &snapshot.task,
+                &source,
+                Phase::MergeGate,
+                snapshot.workflow.workflow,
+                snapshot.workflow.generation,
+            )
+            .await?;
+        set_context(&mut snapshot, &context);
+        snapshot.task.phase = Some(Phase::MergeGate.key().into());
+        self.persist(&mut snapshot, Some(&context))?;
+        Ok(snapshot.workflow)
     }
     fn refresh_owners(&self, snapshot: &mut Snapshot) -> Result<()> {
         let store = self
@@ -1161,6 +1325,7 @@ impl WorkflowEngine {
         index: usize,
         status: Option<SessionStatus>,
     ) -> Result<StepResult> {
+        self.refresh_owners(&mut snapshot)?;
         let phase = snapshot.workflow.history[index].phase;
         let (config, source, selected_budget) = self
             .inputs(
@@ -1232,6 +1397,28 @@ impl WorkflowEngine {
         }
         // Agent implementation may intentionally change revision/artifacts. The
         // gate must attest that observed target, not the obsolete launch revision.
+        self.refresh_owners(&mut snapshot)?;
+        // Recapture after owner refresh before any external side effect.
+        let (_, refreshed_source, _) = self
+            .inputs(
+                &snapshot.project,
+                &snapshot.task,
+                phase,
+                snapshot.workflow.workflow,
+            )
+            .await?;
+        if !same_sources(&source, &refreshed_source) {
+            return self
+                .invalidate_attempt(
+                    snapshot,
+                    index,
+                    refreshed_source,
+                    "authority changed before gate claim",
+                )
+                .await;
+        }
+        snapshot.workflow.history[index].state = AttemptState::Evaluating;
+        self.persist(&mut snapshot, None)?;
         let invocation = PhaseInvocation {
             project: snapshot.project.clone(),
             task: snapshot.task.clone(),
@@ -1241,19 +1428,31 @@ impl WorkflowEngine {
             budget: selected_budget.clone(),
             prerequisites: snapshot.workflow.completed.values().cloned().collect(),
         };
-        // CAS claims evaluation before an external integration can create evidence
-        // or side effects. A concurrent poll cannot run the same gate twice.
-        snapshot.workflow.history[index].state = AttemptState::Evaluating;
-        self.persist(&mut snapshot, None)?;
         let outcome = match self.gates.complete(invocation, status).await {
-            Ok(outcome) => outcome,
+            Ok(outcome) => {
+                self.observe_gate(
+                    &mut snapshot,
+                    index,
+                    GateObservation {
+                        outcome: Some(outcome.clone()),
+                        error: None,
+                        at: now_ms(),
+                    },
+                )?;
+                outcome
+            }
             Err(error) => {
                 // External side effects are unknown: never infer process death or
                 // retry permission from an integration error.
-                snapshot.workflow.history[index].detail =
-                    Some(format!("gate outcome unknown: {error:#}"));
-                self.refresh_owners(&mut snapshot)?;
-                self.persist(&mut snapshot, None)?;
+                self.observe_gate(
+                    &mut snapshot,
+                    index,
+                    GateObservation {
+                        outcome: None,
+                        error: Some(format!("gate outcome unknown: {error:#}")),
+                        at: now_ms(),
+                    },
+                )?;
                 return Ok(StepResult::Waiting {
                     phase,
                     reason: format!("gate outcome unknown; explicit recovery required: {error:#}"),
@@ -1261,14 +1460,18 @@ impl WorkflowEngine {
             }
         };
         self.refresh_owners(&mut snapshot)?;
-        let (_, final_source, _) = self
-            .inputs(
+        let final_source = if phase == Phase::Cleanup {
+            source.clone()
+        } else {
+            self.inputs(
                 &snapshot.project,
                 &snapshot.task,
                 phase,
                 snapshot.workflow.workflow,
             )
-            .await?;
+            .await?
+            .1
+        };
         if !target_producing(phase) && !same_sources(&source, &final_source) {
             return self
                 .invalidate_attempt(
@@ -1290,6 +1493,7 @@ impl WorkflowEngine {
                 .await;
         }
         let source = final_source;
+        snapshot.workflow.context_fresh = same_sources(&source, &snapshot.workflow.sources);
         match outcome {
             GateOutcome::Waiting(reason) => {
                 snapshot.workflow.context_fresh = same_sources(&source, &snapshot.workflow.sources);
@@ -1338,8 +1542,18 @@ impl WorkflowEngine {
                 snapshot.workflow.active = None;
                 snapshot.workflow.sources = source.clone();
                 let next = next_phase(&snapshot.workflow);
-                let context = self
-                    .prepare_pack(
+                let context = if phase == Phase::Cleanup {
+                    make_context(
+                        &snapshot.task,
+                        &source,
+                        phase,
+                        snapshot.workflow.workflow,
+                        snapshot.workflow.generation,
+                        selected_budget,
+                        self.next_context(&snapshot.task.scope())?,
+                    )
+                } else {
+                    self.prepare_pack(
                         &snapshot.project,
                         &snapshot.task,
                         &source,
@@ -1347,7 +1561,8 @@ impl WorkflowEngine {
                         snapshot.workflow.workflow,
                         snapshot.workflow.generation,
                     )
-                    .await?;
+                    .await?
+                };
                 set_context(&mut snapshot, &context);
                 snapshot.task.phase = next.map(|p| p.key().into());
                 snapshot.workflow.finished = next.is_none();
@@ -1386,10 +1601,13 @@ impl WorkflowEngine {
         for record in store.records(&snapshot.task.scope(), RecordKind::Session)? {
             let session: Session = serde_json::from_value(record.data)?;
             ensure!(
-                matches!(
-                    session.state,
-                    SessionState::Exited | SessionState::Stopped | SessionState::Failed
-                ),
+                !crate::git::executor_reserved(&session)
+                    && session.state != SessionState::Lost
+                    && (snapshot.workflow.history[index].session_id != Some(session.id)
+                        || matches!(
+                            session.state,
+                            SessionState::Exited | SessionState::Stopped | SessionState::Failed
+                        )),
                 "reserved/Lost session requires verified recovery"
             );
         }
@@ -1423,6 +1641,12 @@ fn target_producing(phase: Phase) -> bool {
 }
 fn remove_attempt_blocker(task: &mut Task, attempt: &PhaseAttempt) {
     if let Some(detail) = &attempt.detail
+        && task
+            .blockers
+            .iter()
+            .filter(|blocker| *blocker == detail)
+            .count()
+            == 1
         && let Some(index) = task.blockers.iter().rposition(|blocker| blocker == detail)
     {
         task.blockers.remove(index);
@@ -1566,11 +1790,21 @@ pub(crate) fn validate_transition(
         "finished requires all configured gates"
     );
     if task_terminal(task.state) {
+        let cancelled = next.terminal_decision.as_ref().is_some_and(|decision| {
+            decision.scope == task.scope()
+                && decision.generation == next.generation
+                && decision.attempt == next.active
+                && decision.state == task.state
+                && matches!(task.state, TaskState::Cancelled | TaskState::Failed)
+                && !decision.reason.trim().is_empty()
+        });
         ensure!(
-            task.state == TaskState::Completed
-                && next.finished
-                && next.completed.contains_key(&Phase::Cleanup),
-            "terminal Task requires completed cleanup evidence"
+            cancelled
+                || (task.state == TaskState::Completed
+                    && next.finished
+                    && next.completed.contains_key(&Phase::MergeGate)
+                    && next.completed.contains_key(&Phase::Cleanup)),
+            "terminal Task requires audited cancellation/failure or scoped merge and cleanup evidence"
         );
     }
     if previous.is_none() {
@@ -1581,6 +1815,8 @@ pub(crate) fn validate_transition(
                 && next.escalations.is_empty()
                 && next.retries.is_empty()
                 && next.invalidations.is_empty()
+                && next.terminal_decision.is_none()
+                && next.finalizations.is_empty()
                 && next.active.is_none()
                 && !next.finished,
             "initial workflow must contain no invented history/evidence"
@@ -1637,6 +1873,30 @@ pub(crate) fn validate_transition(
                             && after.phase.actor() != Actor::EvidencePort),
                     "Session may only bind during native launch"
                 );
+                ensure!(
+                    !before.dispatch_started || after.dispatch_started,
+                    "native dispatch marker is immutable"
+                );
+                ensure!(
+                    before.dispatch_started == after.dispatch_started
+                        || (before.state == AttemptState::Running
+                            && after.state == AttemptState::Running
+                            && before.session_id.is_none()
+                            && before.phase.actor() != Actor::EvidencePort),
+                    "native dispatch marker may only precede launch"
+                );
+                ensure!(
+                    after.observations.len() >= before.observations.len()
+                        && serde_json::to_value(&after.observations)?
+                            .as_array()
+                            .expect("observations")
+                            .starts_with(
+                                serde_json::to_value(&before.observations)?
+                                    .as_array()
+                                    .expect("observations")
+                            ),
+                    "gate observations are append-only"
+                );
                 let valid = match before.state {
                     AttemptState::Running => matches!(
                         after.state,
@@ -1684,12 +1944,34 @@ pub(crate) fn validate_transition(
                     && attempt.context_version == next.context_version
                     && attempt.state == AttemptState::Running
                     && attempt.session_id.is_none()
+                    && !attempt.dispatch_started
+                    && attempt.observations.is_empty()
                     && attempt.completed_at.is_none()
                     && attempt.detail.is_none(),
                 "new attempt must reserve the next phase"
             );
         }
+        if let Some(before) = &old.terminal_decision {
+            ensure!(
+                serde_json::to_value(before)? == serde_json::to_value(&next.terminal_decision)?,
+                "terminal decision is immutable"
+            );
+        }
         if next.generation > old.generation {
+            if let Some(index) = old.active {
+                ensure!(
+                    next.history[index].state == AttemptState::Interrupted,
+                    "invalidation must interrupt the old active attempt"
+                );
+                ensure!(
+                    old.history[index].state != AttemptState::Evaluating
+                        || old.history[index]
+                            .observations
+                            .last()
+                            .is_some_and(|entry| entry.outcome.is_some()),
+                    "unknown gate reservation requires explicit recovery"
+                );
+            }
             ensure!(
                 next.completed.is_empty()
                     && next.active.is_none()
@@ -1719,6 +2001,15 @@ pub(crate) fn validate_transition(
                 additions.len() <= 1,
                 "one evaluation can complete only its own phase"
             );
+            if !same_sources(&old.sources, &next.sources) {
+                ensure!(
+                    additions.len() == 1
+                        && additions
+                            .first()
+                            .is_some_and(|(phase, _)| target_producing(**phase)),
+                    "same-generation authority change requires target-producing completion"
+                );
+            }
             if let Some((phase, evidence)) = additions.first() {
                 let index = old
                     .active
@@ -1776,6 +2067,10 @@ pub(crate) fn validate_transition(
             );
         }
         for (old, new) in [
+            (
+                serde_json::to_value(&old.finalizations)?,
+                serde_json::to_value(&next.finalizations)?,
+            ),
             (
                 serde_json::to_value(&old.escalations)?,
                 serde_json::to_value(&next.escalations)?,
@@ -1920,3 +2215,7 @@ fn load_rules(
     config.validate()?;
     Ok((config, rules, versions))
 }
+
+#[cfg(test)]
+#[path = "workflow/tests.rs"]
+mod tests;

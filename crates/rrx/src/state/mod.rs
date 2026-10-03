@@ -47,7 +47,7 @@ impl std::error::Error for StateGuardError {}
 /// Launch-time access check; native integrations must still use their owning
 /// Git/Session transactional guards at the actual side effect boundary.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum WorkflowAccess {
+pub(crate) enum WorkflowAccess {
     StateOnly,
     ReadOnly,
     Mutating,
@@ -351,7 +351,7 @@ impl Store {
     }
     /// Atomic Task workflow transition. Every ownership snapshot is checked under
     /// the same immediate transaction; failed context/history writes roll back Task.
-    pub fn put_workflow_transition(
+    pub(crate) fn put_workflow_transition(
         &mut self,
         task: &mut Task,
         workflow: &mut Record,
@@ -413,6 +413,7 @@ impl Store {
                 if record.kind == RecordKind::Session {
                     let session: Session = serde_json::from_value(record.data)?;
                     if crate::git::executor_reserved(&session)
+                        || session.state == SessionState::Lost
                         || (access == WorkflowAccess::Mutating && !session_terminal(session.state))
                     {
                         bail!(StateGuardError::ExecutorReserved);
@@ -453,13 +454,32 @@ impl Store {
                 )? {
                     let record: Record = decode(body?)?;
                     let session: Session = serde_json::from_value(record.data)?;
+                    let own = before
+                        .active
+                        .and_then(|index| before.history[index].session_id)
+                        == Some(session.id);
                     ensure!(
-                        matches!(
-                            session.state,
-                            SessionState::Exited | SessionState::Stopped | SessionState::Failed
-                        ),
+                        !crate::git::executor_reserved(&session)
+                            && session.state != SessionState::Lost
+                            && (!own
+                                || matches!(
+                                    session.state,
+                                    SessionState::Exited
+                                        | SessionState::Stopped
+                                        | SessionState::Failed
+                                )),
                         "closing workflow reservation requires verified native termination"
                     );
+                    if own
+                        && before.active.is_some_and(|index| {
+                            after.history[index].state == crate::workflow::AttemptState::Succeeded
+                        })
+                    {
+                        ensure!(
+                            session.state == SessionState::Exited,
+                            "native completion requires persisted Exited Session"
+                        );
+                    }
                 }
             }
         }
@@ -493,6 +513,62 @@ impl Store {
         Ok(())
     }
 
+    /// Conservative factual journal independent of owner activity. This never
+    /// changes Task, Session identity/state, context pointers or gate approval.
+    pub(crate) fn observe_workflow_gate(
+        &mut self,
+        record: &mut Record,
+        index: usize,
+        expected: &crate::workflow::PhaseAttempt,
+        observation: crate::workflow::GateObservation,
+    ) -> Result<()> {
+        ensure!(
+            observation.outcome.is_some() != observation.error.is_some(),
+            "observation needs exactly one actual outcome/error"
+        );
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let mut latest: Record = read_tx(&tx, "records", &record.id.to_string())?
+            .context("workflow missing for observation")?;
+        ensure!(
+            latest.kind == RecordKind::Workflow && latest.scope == record.scope,
+            "foreign workflow observation"
+        );
+        let mut workflow: crate::workflow::WorkflowSnapshot =
+            serde_json::from_value(latest.data.clone())?;
+        ensure!(
+            workflow.active == Some(index),
+            "observation attempt no longer active"
+        );
+        let attempt = workflow
+            .history
+            .get_mut(index)
+            .context("observation attempt missing")?;
+        ensure!(
+            attempt.state == crate::workflow::AttemptState::Evaluating
+                && attempt.phase == expected.phase
+                && attempt.generation == expected.generation
+                && attempt.context_version == expected.context_version
+                && attempt.session_id == expected.session_id
+                && attempt.agent == expected.agent
+                && attempt.started_at == expected.started_at,
+            "observation identity differs"
+        );
+        attempt.detail = Some(serde_json::to_string(&observation)?);
+        attempt.observations.push(observation.clone());
+        latest.data = serde_json::to_value(workflow)?;
+        let next = put_record_tx(&tx, &latest)?;
+        append_event(
+            &tx,
+            &next.scope,
+            "workflow.gate_observed",
+            json!({"workflow":next.id,"attempt":index,"observation":observation}),
+        )?;
+        tx.commit()?;
+        *record = next;
+        Ok(())
+    }
     pub fn put_session(&mut self, session: &Session, expected_version: u64) -> Result<u64> {
         let mut record = Record::new(
             session.scope.clone(),
@@ -613,7 +689,10 @@ impl Store {
         validate_scope(scope)?;
         ensure!(!kind.trim().is_empty(), "audit kind must be nonempty");
         ensure!(
-            !kind.ends_with(".saved") && kind != "context.created" && kind != "usage.recorded",
+            !kind.ends_with(".saved")
+                && kind != "context.created"
+                && kind != "usage.recorded"
+                && kind != "workflow.gate_observed",
             "audit kind is reserved for Store mutations"
         );
         let tx = self
