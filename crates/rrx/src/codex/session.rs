@@ -4,7 +4,10 @@ use serde_json::{Value, json};
 use std::{
     collections::{BTreeSet, HashMap},
     path::PathBuf,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 use tokio::sync::{mpsc, oneshot, watch};
 
@@ -37,11 +40,24 @@ pub struct CodexAdapter {
 }
 struct Entry {
     status: watch::Receiver<SessionStatus>,
+    publisher: watch::Sender<SessionStatus>,
+    transition: Arc<AtomicBool>,
     stop: mpsc::Sender<()>,
     reply: mpsc::Sender<Reply>,
     evidence: Arc<Mutex<Evidence>>,
     request: LaunchRequest,
     schema: Option<Value>,
+}
+struct TransitionClaim(Arc<AtomicBool>);
+impl Drop for TransitionClaim {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::SeqCst);
+    }
+}
+struct ResumePublication {
+    previous: SessionStatus,
+    sender: watch::Sender<SessionStatus>,
+    evidence: Arc<Mutex<Evidence>>,
 }
 type OwnedReference = (
     watch::Receiver<SessionStatus>,
@@ -84,6 +100,8 @@ struct Reservation {
     version: u64,
     ownership: ProcessOwnership,
     armed: bool,
+    resume_publication: Option<ResumePublication>,
+    inference_started: bool,
 }
 impl Reservation {
     fn persist(&mut self) -> AdapterResult<()> {
@@ -94,6 +112,11 @@ impl Reservation {
         self.version = store
             .put_session(&self.session, self.version)
             .map_err(|e| failure(ErrorKind::StateConflict, e.to_string()))?;
+        if let Some(publication) = &self.resume_publication {
+            let mut status = publication.sender.borrow().clone();
+            status.session = self.session.clone();
+            publication.sender.send_replace(status);
+        }
         Ok(())
     }
     fn publish(
@@ -164,12 +187,39 @@ impl Reservation {
 impl Drop for Reservation {
     fn drop(&mut self) {
         if self.armed {
-            self.session.state = if self.ownership.uncertain() {
-                SessionState::Lost
+            let uncertain = self.ownership.uncertain();
+            if !uncertain
+                && !self.inference_started
+                && let Some(publication) = &self.resume_publication
+            {
+                self.session = publication.previous.session.clone();
             } else {
-                SessionState::Failed
-            };
-            let _ = self.persist();
+                self.session.state = if uncertain {
+                    SessionState::Lost
+                } else {
+                    SessionState::Failed
+                };
+                if !uncertain {
+                    self.session.pid = None;
+                }
+            }
+            if let Some(publication) = &self.resume_publication {
+                let mut status = publication.previous.clone();
+                if uncertain || self.inference_started {
+                    if let Ok(mut evidence) = publication.evidence.lock() {
+                        *evidence = Evidence::default();
+                    }
+                    status.stdout.clear();
+                    status.stderr.clear();
+                    status.exit_code = None;
+                    status.failure =
+                        Some("native resume did not establish an owned running supervisor".into());
+                }
+                let sender = publication.sender.clone();
+                let _ = self.publish(&sender, &mut status);
+            } else {
+                let _ = self.persist();
+            }
         }
     }
 }
@@ -221,6 +271,38 @@ impl CodexAdapter {
             entry.stop.clone(),
             entry.evidence.clone(),
             entry.reply.clone(),
+        ))
+    }
+    fn claim(
+        &self,
+        reference: &SessionRef,
+    ) -> AdapterResult<(TransitionClaim, LaunchRequest, Option<Value>)> {
+        let sessions = self.registry()?;
+        let entry = sessions.get(&reference.id).ok_or_else(|| {
+            failure(
+                ErrorKind::SessionLost,
+                "native transition owner disappeared",
+            )
+        })?;
+        if entry.status.borrow().session.scope != reference.scope {
+            return Err(failure(
+                ErrorKind::OwnershipMismatch,
+                "foreign native transition scope",
+            ));
+        }
+        entry
+            .transition
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .map_err(|_| {
+                failure(
+                    ErrorKind::StateConflict,
+                    "native Session transition already claimed",
+                )
+            })?;
+        Ok((
+            TransitionClaim(entry.transition.clone()),
+            entry.request.clone(),
+            entry.schema.clone(),
         ))
     }
     fn current(&self, reference: &SessionRef) -> AdapterResult<SessionStatus> {
@@ -316,12 +398,27 @@ impl CodexAdapter {
         };
         session.state = SessionState::Starting;
         session.pid = None;
+        let resume_publication = if let Some(previous) = &resume {
+            let sessions = self.registry()?;
+            let entry = sessions.get(&previous.id).ok_or_else(|| {
+                failure(ErrorKind::SessionLost, "native resume owner disappeared")
+            })?;
+            Some(ResumePublication {
+                previous: entry.status.borrow().clone(),
+                sender: entry.publisher.clone(),
+                evidence: entry.evidence.clone(),
+            })
+        } else {
+            None
+        };
         let mut reservation = Reservation {
             store: self.store.clone(),
             session,
             version: expected_version,
             ownership: ProcessOwnership::default(),
             armed: false,
+            resume_publication,
+            inference_started: false,
         };
         reservation.persist()?;
         reservation.armed = true;
@@ -493,6 +590,8 @@ impl CodexAdapter {
             if let Some(effort) = &request.effort {
                 parameters["effort"] = json!(effort);
             }
+            // A cancelled/failed call can already have started inference.
+            reservation.inference_started = true;
             let turn = native.rpc.call("turn/start", parameters).await?;
             let turn = turn["turn"]["id"]
                 .as_str()
@@ -529,7 +628,14 @@ impl CodexAdapter {
             stderr_truncated: false,
             failure: None,
         };
-        let (sender, receiver) = watch::channel(status);
+        let (sender, receiver) = if let Some(publication) = &reservation.resume_publication {
+            let sender = publication.sender.clone();
+            sender.send_replace(status);
+            let receiver = sender.subscribe();
+            (sender, receiver)
+        } else {
+            watch::channel(status)
+        };
         let (stop, stopped) = mpsc::channel(1);
         let (reply, replies) = mpsc::channel(16);
         let evidence = Arc::new(Mutex::new(Evidence {
@@ -542,7 +648,9 @@ impl CodexAdapter {
             if sessions.len() >= RETAINED_TERMINALS
                 && let Some(id) = sessions
                     .iter()
-                    .filter(|(_, entry)| entry.status.borrow().terminal())
+                    .filter(|(_, entry)| {
+                        entry.status.borrow().terminal() && !entry.transition.load(Ordering::SeqCst)
+                    })
                     .min_by_key(|(_, entry)| entry.status.borrow().session.started_at)
                     .map(|(id, _)| *id)
             {
@@ -552,6 +660,8 @@ impl CodexAdapter {
                 session.id,
                 Entry {
                     status: receiver,
+                    publisher: sender.clone(),
+                    transition: Arc::new(AtomicBool::new(false)),
                     stop,
                     reply,
                     evidence: evidence.clone(),
@@ -629,12 +739,15 @@ impl AgentAdapter for CodexAdapter {
         Box::pin(async move {
             let (mut receiver, stop, _, _) = self.reference(&session)?;
             if !receiver.borrow().terminal() {
-                stop.try_send(()).map_err(|_| {
-                    failure(
-                        ErrorKind::StateConflict,
-                        "native stop already requested or supervisor unavailable",
-                    )
-                })?;
+                match stop.try_send(()) {
+                    Ok(()) | Err(mpsc::error::TrySendError::Full(())) => {}
+                    Err(mpsc::error::TrySendError::Closed(())) => {
+                        return Err(failure(
+                            ErrorKind::SessionLost,
+                            "native stop supervisor unavailable",
+                        ));
+                    }
+                }
                 while !receiver.borrow().terminal() {
                     receiver.changed().await.map_err(|_| {
                         failure(
@@ -657,18 +770,13 @@ impl AgentAdapter for CodexAdapter {
     }
     fn resume(&self, session: SessionRef) -> AdapterFuture<'_, Session> {
         Box::pin(async move {
+            let (_claim, request, schema) = self.claim(&session)?;
             let previous = self.current(&session)?.session;
-            let (request, schema) = {
-                let sessions = self.registry()?;
-                let entry = sessions
-                    .get(&session.id)
-                    .expect("owned reference validated");
-                (entry.request.clone(), entry.schema.clone())
-            };
             self.launch(request, schema, Some(previous)).await
         })
     }
     fn release(&self, session: SessionRef) -> AdapterResult<()> {
+        let (_claim, _, _) = self.claim(&session)?;
         let status = self.current(&session)?;
         if !status.terminal() {
             return Err(failure(
@@ -787,6 +895,7 @@ impl AgentAdapter for CodexAdapter {
     }
     fn checkpoint(&self, session: SessionRef, input: PreparedInput) -> AdapterFuture<'_, ()> {
         Box::pin(async move {
+            let (_claim, mut request, _) = self.claim(&session)?;
             let status = self.current(&session)?;
             if input.scope != status.session.scope {
                 return Err(failure(
@@ -800,6 +909,67 @@ impl AgentAdapter for CodexAdapter {
                     "native checkpoint requires a confirmed terminal Session",
                 ));
             }
+            if input.version <= request.input.version {
+                return Err(failure(
+                    ErrorKind::StateConflict,
+                    "native checkpoint must advance its prepared input version",
+                ));
+            }
+            request.input = input;
+            let snapshot = ScopeSnapshot::capture(&self.store, &request, &self.agent)?;
+            let (persisted, version) = self
+                .store
+                .lock()
+                .map_err(|_| failure(ErrorKind::StateFailure, "state store poisoned"))?
+                .session(session.id)
+                .map_err(|error| failure(ErrorKind::StateFailure, error.to_string()))?
+                .ok_or_else(|| {
+                    failure(
+                        ErrorKind::SessionLost,
+                        "native checkpoint record disappeared",
+                    )
+                })?;
+            if serde_json::to_value(persisted).ok() != serde_json::to_value(&status.session).ok() {
+                return Err(failure(
+                    ErrorKind::StateConflict,
+                    "native checkpoint owner changed before reservation",
+                ));
+            }
+            let publication = {
+                let sessions = self.registry()?;
+                let entry = sessions.get(&session.id).ok_or_else(|| {
+                    failure(
+                        ErrorKind::SessionLost,
+                        "native checkpoint owner disappeared",
+                    )
+                })?;
+                ResumePublication {
+                    previous: status.clone(),
+                    sender: entry.publisher.clone(),
+                    evidence: entry.evidence.clone(),
+                }
+            };
+            let mut reservation = Reservation {
+                store: self.store.clone(),
+                session: status.session.clone(),
+                version,
+                ownership: ProcessOwnership::default(),
+                armed: false,
+                resume_publication: Some(publication),
+                inference_started: false,
+            };
+            reservation.session.state = SessionState::Starting;
+            reservation.persist()?;
+            reservation.armed = true;
+            // Checkpoints are validated before replacing resumable prepared input.
+            snapshot
+                .verify_git(&request, &mut reservation.ownership)
+                .await?;
+            snapshot.recheck(&self.store, &request, &self.agent)?;
+            reservation.session = status.session.clone();
+            reservation.persist()?;
+            reservation.armed = false;
+            self.current(&session)?;
             let mut sessions = self.registry()?;
             let entry = sessions.get_mut(&session.id).ok_or_else(|| {
                 failure(
@@ -807,9 +977,6 @@ impl AgentAdapter for CodexAdapter {
                     "native checkpoint owner disappeared",
                 )
             })?;
-            let mut request = entry.request.clone();
-            request.input = input;
-            ScopeSnapshot::capture(&self.store, &request, &self.agent)?;
             entry.request = request;
             Ok(())
         })
@@ -1294,6 +1461,8 @@ mod tests {
                 version: 0,
                 ownership: ProcessOwnership::default(),
                 armed: false,
+                resume_publication: None,
+                inference_started: false,
             };
             reservation.persist().unwrap();
             reservation.session.state = if runtime_broker {
@@ -1348,6 +1517,191 @@ mod tests {
                 .into_iter()
                 .filter(|event| event.kind == "codex.approval.reply_intent")
                 .count()
+        }
+        fn terminal_adapter(&mut self) -> (Arc<CodexAdapter>, SessionRef) {
+            self.reservation.session.state = SessionState::Exited;
+            self.reservation.session.pid = None;
+            self.reservation
+                .publish(&self.sender, &mut self.status)
+                .unwrap();
+            self.evidence.lock().unwrap().completed = true;
+            let adapter = Arc::new(
+                CodexAdapter::new(
+                    "codex".into(),
+                    "/definitely-missing-codex".into(),
+                    self.reservation.store.clone(),
+                )
+                .unwrap(),
+            );
+            let (stop, _) = mpsc::channel(1);
+            let (reply, _) = mpsc::channel(16);
+            adapter.registry().unwrap().insert(
+                self.status.session.id,
+                Entry {
+                    status: self.sender.subscribe(),
+                    publisher: self.sender.clone(),
+                    transition: Arc::new(AtomicBool::new(false)),
+                    stop,
+                    reply,
+                    evidence: self.evidence.clone(),
+                    request: self.authority.request.clone(),
+                    schema: None,
+                },
+            );
+            (adapter, SessionRef::from(&self.status.session))
+        }
+    }
+    #[tokio::test]
+    async fn claimed_transition_excludes_release_resume_and_eviction_without_poisoning_registry() {
+        let mut fixture = ApprovalFixture::new(true).await;
+        let (adapter, reference) = fixture.terminal_adapter();
+        let (claim, _, _) = adapter.claim(&reference).unwrap();
+        let release_adapter = adapter.clone();
+        let release_ref = reference.clone();
+        let release = tokio::spawn(async move { release_adapter.release(release_ref) });
+        assert_eq!(
+            release.await.unwrap().unwrap_err().kind,
+            ErrorKind::StateConflict
+        );
+        assert_eq!(
+            adapter.resume(reference.clone()).await.unwrap_err().kind,
+            ErrorKind::StateConflict
+        );
+        assert_eq!(
+            adapter.current(&reference).unwrap().session.state,
+            SessionState::Exited
+        );
+        assert!(
+            adapter
+                .registry()
+                .unwrap()
+                .get(&reference.id)
+                .unwrap()
+                .transition
+                .load(Ordering::SeqCst)
+        );
+        drop(claim);
+        adapter.release(reference.clone()).unwrap();
+        assert_eq!(
+            adapter.resume(reference).await.unwrap_err().kind,
+            ErrorKind::SessionLost
+        );
+        assert!(adapter.registry().unwrap().is_empty());
+    }
+    #[tokio::test]
+    async fn failed_pre_inference_resume_restores_the_owned_terminal_record_and_watch() {
+        let mut fixture = ApprovalFixture::new(true).await;
+        let (adapter, reference) = fixture.terminal_adapter();
+        let original = adapter.current(&reference).unwrap();
+        for _ in 0..2 {
+            assert_eq!(
+                adapter.resume(reference.clone()).await.unwrap_err().kind,
+                ErrorKind::ExecutableMissing
+            );
+            let restored = adapter.current(&reference).unwrap();
+            assert_eq!(
+                serde_json::to_value(restored.session).unwrap(),
+                serde_json::to_value(&original.session).unwrap()
+            );
+            assert!(fixture.evidence.lock().unwrap().completed);
+        }
+        adapter.release(reference).unwrap();
+    }
+    #[tokio::test]
+    async fn checkpoint_rejects_stale_or_regressed_input_without_destroying_resume_state() {
+        let mut fixture = ApprovalFixture::new(true).await;
+        let (adapter, reference) = fixture.terminal_adapter();
+        let original = adapter.current(&reference).unwrap();
+        let mut input = fixture.authority.request.input.clone();
+        assert_eq!(
+            adapter
+                .checkpoint(reference.clone(), input.clone())
+                .await
+                .unwrap_err()
+                .kind,
+            ErrorKind::StateConflict
+        );
+        input.version += 1;
+        input.revision = "0".repeat(40);
+        assert_eq!(
+            adapter
+                .checkpoint(reference.clone(), input)
+                .await
+                .unwrap_err()
+                .kind,
+            ErrorKind::StateConflict
+        );
+        assert_eq!(
+            serde_json::to_value(adapter.current(&reference).unwrap().session).unwrap(),
+            serde_json::to_value(&original.session).unwrap()
+        );
+        let mut input = fixture.authority.request.input.clone();
+        input.version += 1;
+        adapter
+            .checkpoint(reference.clone(), input.clone())
+            .await
+            .unwrap();
+        assert_eq!(
+            adapter
+                .registry()
+                .unwrap()
+                .get(&reference.id)
+                .unwrap()
+                .request
+                .input
+                .version,
+            input.version
+        );
+        assert_eq!(
+            adapter.resume(reference.clone()).await.unwrap_err().kind,
+            ErrorKind::ExecutableMissing
+        );
+        assert_eq!(
+            adapter.current(&reference).unwrap().session.state,
+            SessionState::Exited
+        );
+        adapter.release(reference).unwrap();
+    }
+    #[tokio::test]
+    async fn abandoned_resume_after_inference_or_uncertain_cleanup_publishes_its_real_outcome() {
+        for uncertain in [false, true] {
+            let mut fixture = ApprovalFixture::new(true).await;
+            let (adapter, reference) = fixture.terminal_adapter();
+            let previous = adapter.current(&reference).unwrap();
+            let version = fixture.reservation.version;
+            let mut reservation = Reservation {
+                store: fixture.reservation.store.clone(),
+                session: previous.session.clone(),
+                version,
+                ownership: ProcessOwnership::default(),
+                armed: false,
+                resume_publication: Some(ResumePublication {
+                    previous: previous.clone(),
+                    sender: fixture.sender.clone(),
+                    evidence: fixture.evidence.clone(),
+                }),
+                inference_started: !uncertain,
+            };
+            reservation.session.state = SessionState::Starting;
+            reservation.session.pid = Some(42);
+            reservation.persist().unwrap();
+            reservation.armed = true;
+            if uncertain {
+                reservation.ownership.group().store(true, Ordering::SeqCst);
+            }
+            drop(reservation);
+            let current = adapter.current(&reference).unwrap();
+            assert_eq!(
+                current.session.state,
+                if uncertain {
+                    SessionState::Lost
+                } else {
+                    SessionState::Failed
+                }
+            );
+            assert_eq!(current.session.pid, if uncertain { Some(42) } else { None });
+            assert!(!fixture.evidence.lock().unwrap().completed);
+            adapter.release(reference).unwrap();
         }
     }
     fn reply(
