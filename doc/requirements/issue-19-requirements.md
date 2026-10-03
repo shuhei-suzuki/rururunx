@@ -156,7 +156,8 @@ strict Project/Goal version equality.
 ## First acknowledgement and role scope
 
 A protected input remains pending until a current-head/frame-validated Running
-publication or an exact consumed native dispatch. WaitingApproval, WaitingHuman
+publication or an exact actually consumed native dispatch. An unobserved diagnostic flag
+alone grants no acknowledgement authority. WaitingApproval, WaitingHuman
 and Lost do not imply acknowledgement. The first Running publication after those
 states must recheck live input authority. A conservative Lost update must remain
 possible without claiming delivery. An already admitted same input may later

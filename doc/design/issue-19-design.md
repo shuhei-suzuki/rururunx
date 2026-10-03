@@ -243,7 +243,8 @@ wire delivery. Actual providers preserve their separate private request-to-wire
 correspondence and consumed dispatch protocol.
 
 `guard_launch_checkpoint` treats an input as admitted only when the previous
-Session has the exact consumed dispatch authority or the private row matches its
+Session has an actual consumed dispatch_intent (not only an unobserved
+diagnostic flag), or the private row matches its
 current metadata digest. Otherwise its next Starting/Running publication validates
 current typed frame and live checkpoint head, even after intermediate waiting or
 Lost states. Non-Running waiting/Lost observations do not publish an ack. Unknown
