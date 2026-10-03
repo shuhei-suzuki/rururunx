@@ -241,7 +241,7 @@ for line in sys.stdin:
    n=tool('search_replace' if mode=='wrong_method' else 'read_file','own.txt',1)
    if mode=='ambiguous':tool('read_file','own.txt',99)
    assert fs('fs/read_text_file','own.txt').get('result')
-   if mode!='unfinished':done(n,mode!='failed_called_read')
+   if mode!='unfinished':done(n,mode=='failed_called_read')
    if mode=='ambiguous':done('99')
    if mode=='unowned_write':fs('fs/write_text_file','unowned.txt','unaccounted effect')
    if mode=='unowned_read':fs('fs/read_text_file','unseen.txt')

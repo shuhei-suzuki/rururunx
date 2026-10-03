@@ -364,7 +364,7 @@ mod tests {
         files.fail_sync = true;
         let mut evidence = TurnEvidence::default();
         let update = |status: &str| json!({"sessionId":"native","_meta":{"promptId":"prompt"},"update":{"sessionUpdate":"tool_call_update","toolCallId":"write","status":status}});
-        evidence.update(&root, &json!({"sessionId":"native","_meta":{"promptId":"prompt"},"update":{"sessionUpdate":"tool_call","toolCallId":"write","title":"search_replace","status":"pending","rawInput":{"file_path":"effect.txt"}}}), "native", "prompt", false).unwrap();
+        evidence.update(&root, &json!({"sessionId":"native","_meta":{"promptId":"prompt"},"update":{"sessionUpdate":"tool_call","toolCallId":"write","_meta":{"x.ai/tool":{"name":"search_replace"}},"status":"pending","rawInput":{"file_path":"effect.txt"}}}), "native", "prompt", false).unwrap();
         assert!(evidence.authorize_write(&root, "unowned.txt").is_err());
         assert!(!root.join("unowned.txt").exists());
         evidence.authorize_write(&root, "effect.txt").unwrap();
