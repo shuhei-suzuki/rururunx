@@ -33,6 +33,7 @@ rururunx automates that supervision layer while keeping native agent CLIs and ex
 5. **Human on escalation.** Humans handle important or unresolved decisions, not routine prompts.
 6. **Respect existing safety controls.** Never bypass agent permissions, repository hooks, project rules, or Git safety policies.
 7. **CLI first, local first.** A desktop app, web dashboard, or cloud control plane is not required.
+8. **Spend context deliberately.** Reuse stable context, retrieve only relevant repository detail, condense long sessions, and measure token use.
 
 ## Intended workflow
 
@@ -175,8 +176,9 @@ The MVP is complete when the development workflow currently performed across mul
 - restart / resume
 - audit log and human-interruption metrics
 - TUI and native session attach
+- context/token efficiency: repository maps, Context Packs, progressive loading, condensation, delta re-review, cache awareness, and token telemetry
 
-See [Product Requirements](doc/requirements/product-requirements.md) and [Architecture](doc/design/master/architecture.md).
+See [Product Requirements](doc/requirements/product-requirements.md), [Architecture](doc/design/master/architecture.md), and [Context Efficiency](doc/design/master/context-efficiency.md).
 
 ## Status
 
