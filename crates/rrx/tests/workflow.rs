@@ -1568,3 +1568,74 @@ async fn generic_completion_default_requires_real_zero_exit_and_no_failure() {
     status.session.state = SessionState::Lost;
     assert!(!generic.transport_succeeded(&status));
 }
+
+#[tokio::test]
+async fn completed_attempt_rewrite_and_atomic_owner_version_or_activity_changes_are_rejected() {
+    let fixture = Fixture::new(WorkflowClass::Quick);
+    fixture
+        .engine
+        .initialize(fixture.task.id, None)
+        .await
+        .unwrap();
+    fixture.through(Phase::Implement).await;
+    let mut store = fixture.store.lock().unwrap();
+    let task = store.task(fixture.task.id).unwrap().unwrap();
+    let record = store
+        .records(&task.scope(), RecordKind::Workflow)
+        .unwrap()
+        .remove(0);
+    let mut changed_task = task.clone();
+    let mut changed_record = record.clone();
+    changed_record.data["history"][0]["detail"] = json!("rewritten prior result");
+    assert!(
+        store
+            .put_workflow_transition(
+                &mut changed_task,
+                &mut changed_record,
+                None,
+                fixture.project.version,
+                1,
+                WorkflowAccess::StateOnly
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("completed phase history")
+    );
+    for (project_version, goal_version) in [
+        (fixture.project.version + 1, 1),
+        (fixture.project.version, 2),
+    ] {
+        let mut changed_task = task.clone();
+        let mut changed_record = record.clone();
+        assert!(
+            store
+                .put_workflow_transition(
+                    &mut changed_task,
+                    &mut changed_record,
+                    None,
+                    project_version,
+                    goal_version,
+                    WorkflowAccess::StateOnly
+                )
+                .is_err()
+        );
+    }
+    let mut project = fixture.project.clone();
+    project.state = ProjectState::Blocked;
+    project.blocked_reason = Some("fixture inactive".into());
+    store.put_project(&mut project).unwrap();
+    let mut changed_task = task;
+    let mut changed_record = record;
+    assert!(
+        store
+            .put_workflow_transition(
+                &mut changed_task,
+                &mut changed_record,
+                None,
+                project.version,
+                1,
+                WorkflowAccess::StateOnly
+            )
+            .is_err()
+    );
+}
