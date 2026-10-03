@@ -89,7 +89,7 @@ For trivial or local changes such as typos, copy changes, small CSS fixes, obvio
 Typical path:
 
 ```text
-Worktree → Implement → Relevant Test → Review → Commit → PR
+Worktree → Implement → Commit → Relevant Test → Review → PR
 ```
 
 ### STANDARD
@@ -97,8 +97,9 @@ Worktree → Implement → Relevant Test → Review → Commit → PR
 For ordinary features, bug fixes, refactoring, and multi-file changes.
 
 ```text
-Issue → Worktree → Requirements → Design → Implement
-→ Impact Analysis → Tests → Review → PR
+Issue → Worktree → Requirements → Commit Requirements → Review Requirements
+→ Design → Commit Design → Review Design → Implement
+→ Impact Analysis → Commit → Tests → Review → PR
 ```
 
 ### STRICT
@@ -169,6 +170,30 @@ rrx logs 201
 
 `rrx consult` launches a native agent for repository-aware discussion without forcing the full development workflow. A consultation can later be promoted into an Issue / Requirements / Task.
 
+## MVP scope and priority
+
+The release-blocking path is the supervision runtime itself:
+
+```text
+Claude / Codex / Grok adapters
+  ↓
+Workflow
+  ↓
+Review
+  ↓
+Cross-agent Approval
+  ↓
+Goal / Scheduler / Recovery
+  ↓
+Full dogfood
+```
+
+Context Efficiency, multi-project isolation, verification gates, PR/merge/cleanup, CLI/TUI and audit are part of MVP Core.
+
+Adaptive Stagehand/Jev browser automation is **MVP Optional / Stretch**. MVP browser verification is backend-neutral and must have a deterministic headed path that does not require an LLM.
+
+The iOS/iPadOS companion PWA, `rrx serve`, and Tailscale remote status experience are **Post-MVP** and must not block the core runtime.
+
 ## MVP definition
 
 The MVP is complete when the development workflow currently performed across multiple terminal sessions can be managed from one `rrx` session, including:
@@ -185,7 +210,7 @@ The MVP is complete when the development workflow currently performed across mul
 - impact analysis
 - unit / integration / E2E / regression checks
 - mutation verification where required
-- headed browser verification for UI/browser-facing changes
+- provider-neutral headed browser verification for UI/browser-facing changes through at least one deterministic backend
 - staging verification for relevant API/auth/DB/infra changes
 - configurable parallel review with 1, 2, 3, or more reviewers (including 2-reviewer mode and Claude / Codex / Grok Triple Review)
 - multi-round verify → fix → commit → re-review
@@ -251,7 +276,23 @@ TBD.
 
 ## Development
 
+Development of rururunx should dogfood QUICK / STANDARD / STRICT classification where project rules permit. Verification should be proportional to risk: safety-critical runtime/Git/state/process changes may require STRICT treatment, while small local/documentation changes should not inherit STRICT-only gates unless policy or discovered impact requires escalation.
+
 Install [Rust with rustup](https://www.rust-lang.org/tools/install) and Git.
+The Rust workflow library now drives QUICK/STANDARD/STRICT phases through adapters
+and explicit evidence ports, commits each milestone before tests/review, persists
+phase/context history atomically, and raises
+workflow requirements when risk or scoped policy changes. Missing test/review/PR/
+merge integrations wait for evidence; review exit zero alone cannot pass a gate.
+Definitive rejection permits explicit remediation; waiting evidence can be reevaluated
+without relaunching its Session. Actual gate results are journaled before postgate
+checks; unknown outcomes keep recovery reservations. QUICK PR-created stays nonterminal
+until requested merge/cleanup gates supply evidence. Cancellation preserves native
+reservations until verified termination.
+The generic CLI cannot review. Workflow CLI/TUI, independent review sets (#9),
+approval routing (#12), recovery (#13), and production Context Pack publication (#19)
+remain pending. Issue #18 repository-context selection is available independently. See [Workflow Engine](doc/design/master/workflow-engine.md).
+
 The repository pins Rust 1.91.1 (minimum supported Rust 1.91) with rustfmt/clippy.
 
 ```bash

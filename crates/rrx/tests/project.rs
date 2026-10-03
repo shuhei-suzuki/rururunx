@@ -853,7 +853,10 @@ fn schema_one_project_migrates_without_changing_identity_or_history() {
     old.pragma_update(None, "user_version", 1).unwrap();
     drop(old);
     let reopened = Store::open(&f.db).unwrap();
-    assert_eq!(reopened.schema_version().unwrap(), 2);
+    assert_eq!(
+        reopened.schema_version().unwrap(),
+        rrx::state::SCHEMA_VERSION
+    );
     let recovered = reopened.project(p.id).unwrap().unwrap();
     assert_eq!(recovered.root, p.root);
     assert_eq!(recovered.repository_identity, p.repository_identity);

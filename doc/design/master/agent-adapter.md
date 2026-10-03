@@ -281,3 +281,12 @@ post-spawn executor cleanup diagnostics use scoped audit events and preserve
 Blocked Project native ownership metadata. Preflight/cancelled Lost may lack
 native PID evidence; generic reconnection is unsupported and explicit recovery
 remains necessary.
+
+### Provider transport completion (Issue #8 integration)
+
+`AgentAdapter::transport_succeeded(&SessionStatus)` defaults to Exited, no failure,
+and actual OS exit zero. Persistent native server providers can override using their
+private owned turn-completion journal after verified cleanup/terminal persistence,
+without fabricating exit codes or trusting caller recovery JSON. Workflow verifies
+saved SessionId/Scope/actor/role/worktree before consulting this provider method;
+transport completion never replaces review/test/acceptance gate evidence.

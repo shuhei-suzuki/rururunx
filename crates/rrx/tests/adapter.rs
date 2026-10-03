@@ -883,3 +883,30 @@ async fn agent_git_configuration_does_not_override_runtime_ownership_preflight()
         SessionState::Exited
     );
 }
+
+#[tokio::test]
+async fn generic_terminal_status_matches_persisted_owned_session_before_return() {
+    let fixture = Fixture::new();
+    let adapter = fixture.adapter("cat >/dev/null");
+    let session = adapter.start(fixture.request.clone()).await.unwrap();
+    let final_event = finished(&adapter, &session).await;
+    let status = adapter.status((&session).into()).await.unwrap();
+    let saved = fixture
+        .store
+        .lock()
+        .unwrap()
+        .session(session.id)
+        .unwrap()
+        .unwrap()
+        .0;
+    assert_eq!(status.session.state, SessionState::Exited);
+    assert_eq!(status.exit_code, Some(0));
+    assert_eq!(
+        serde_json::to_value(&status.session).unwrap(),
+        serde_json::to_value(saved).unwrap()
+    );
+    assert_eq!(
+        serde_json::to_value(status.session).unwrap(),
+        serde_json::to_value(final_event.session).unwrap()
+    );
+}

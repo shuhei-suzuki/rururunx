@@ -199,6 +199,15 @@ pub trait AgentAdapter: Send + Sync {
     fn capabilities(&self) -> BTreeSet<Capability>;
     fn probe(&self) -> AdapterResult<AgentInfo>;
     fn start(&self, request: LaunchRequest) -> AdapterFuture<'_, Session>;
+    /// Transport completion is distinct from evidence that a Task/gate passed.
+    /// Providers with persistent native servers may override using their private
+    /// owned completion journal after verified shutdown/terminal persistence.
+    /// Never fabricate exit zero or trust caller-supplied recovery metadata.
+    fn transport_succeeded(&self, status: &SessionStatus) -> bool {
+        status.session.state == SessionState::Exited
+            && status.failure.is_none()
+            && status.exit_code == Some(0)
+    }
     fn status(&self, session: SessionRef) -> AdapterFuture<'_, SessionStatus>;
     fn stop(&self, session: SessionRef) -> AdapterFuture<'_, SessionStatus>;
     fn attach(&self, session: SessionRef) -> AdapterFuture<'_, ()>;

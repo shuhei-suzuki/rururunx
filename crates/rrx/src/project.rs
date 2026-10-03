@@ -465,7 +465,7 @@ fn validate_environment(project: &Project) -> Result<Vec<String>> {
     Ok(project.environment_refs.clone())
 }
 /// Resolve only a file inside this source root; validate symlinks before every read.
-fn resolve_file(project: &Project, reference: &Path) -> Result<PathBuf> {
+pub(crate) fn resolve_file(project: &Project, reference: &Path) -> Result<PathBuf> {
     let path = if reference.is_absolute() {
         reference.to_path_buf()
     } else {

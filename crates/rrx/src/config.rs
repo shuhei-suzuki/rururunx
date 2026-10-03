@@ -58,12 +58,47 @@ pub struct AgentConfig {
     pub max_concurrent: Option<usize>,
 }
 
+/// Phase policy is data. External evidence providers perform these gates.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct WorkflowConfig {
+    /// Reserved Task-creation fallback (#11); phase engine uses stored class.
+    pub default: WorkflowClass,
+    pub risk_mapping: [WorkflowClass; 4],
+    pub browser_verification: bool,
+    pub staging_verification: bool,
+}
+impl Default for WorkflowConfig {
+    fn default() -> Self {
+        Self {
+            default: WorkflowClass::Standard,
+            risk_mapping: [
+                WorkflowClass::Quick,
+                WorkflowClass::Standard,
+                WorkflowClass::Standard,
+                WorkflowClass::Strict,
+            ],
+            browser_verification: false,
+            staging_verification: false,
+        }
+    }
+}
+#[derive(Debug, Default, Clone, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct WorkflowOverlay {
+    pub default: Option<WorkflowClass>,
+    pub risk_mapping: Option<[WorkflowClass; 4]>,
+    pub browser_verification: Option<bool>,
+    pub staging_verification: Option<bool>,
+}
+
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
     pub scheduler: SchedulerConfig,
     pub context: ContextConfig,
     pub minimum_workflow: WorkflowClass,
+    pub workflow: WorkflowConfig,
     pub agents: BTreeMap<String, AgentConfig>,
 }
 
@@ -72,6 +107,7 @@ pub struct Config {
 #[serde(default, deny_unknown_fields)]
 pub struct ProjectOverlay {
     pub minimum_workflow: Option<WorkflowClass>,
+    pub workflow: WorkflowOverlay,
     pub scheduler: ProjectSchedulerOverlay,
     pub context: ContextOverlay,
     pub agents: BTreeMap<String, ProjectAgentOverlay>,
@@ -131,8 +167,13 @@ impl Config {
     }
 
     pub fn with_project_file(&self, path: &Path) -> Result<Self> {
+        let text = fs::read_to_string(path)?;
+        self.with_project_text(&text)
+    }
+
+    pub(crate) fn with_project_text(&self, text: &str) -> Result<Self> {
         let mut result = self.clone();
-        result.apply_project(parse_file(path)?)?;
+        result.apply_project(toml::from_str(text)?)?;
         result.validate()?;
         Ok(result)
     }
@@ -140,6 +181,20 @@ impl Config {
     fn apply_project(&mut self, project: ProjectOverlay) -> Result<()> {
         if let Some(minimum) = project.minimum_workflow {
             self.minimum_workflow = self.minimum_workflow.max(minimum);
+        }
+        if let Some(default) = project.workflow.default {
+            self.workflow.default = default;
+        }
+        if let Some(mapping) = project.workflow.risk_mapping {
+            for (baseline, configured) in self.workflow.risk_mapping.iter_mut().zip(mapping) {
+                *baseline = (*baseline).max(configured);
+            }
+        }
+        if let Some(browser) = project.workflow.browser_verification {
+            self.workflow.browser_verification = browser;
+        }
+        if let Some(staging) = project.workflow.staging_verification {
+            self.workflow.staging_verification = staging;
         }
         if let Some(limit) = project.scheduler.max_tasks_per_project {
             self.scheduler.max_tasks_per_project = limit;
@@ -191,6 +246,14 @@ impl Config {
         .contains(&0)
         {
             bail!("context budgets must be positive");
+        }
+        if self
+            .workflow
+            .risk_mapping
+            .windows(2)
+            .any(|pair| pair[0] > pair[1])
+        {
+            bail!("risk workflow mapping must be monotonic");
         }
         for (name, agent) in &self.agents {
             if name.trim().is_empty() || agent.max_concurrent == Some(0) {

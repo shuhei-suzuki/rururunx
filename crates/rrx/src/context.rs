@@ -574,17 +574,37 @@ async fn git_value(root: &Path, args: &[&str], deadline: tokio::time::Instant) -
     )
     .await
     .map_err(|e| anyhow::anyhow!("bounded context Git: {e:?}"));
-    ensure!(
-        !uncertain.load(Ordering::SeqCst) && !latch.load(Ordering::SeqCst),
-        "native Git process-group cleanup uncertain; context operation blocked"
-    );
-    let value = String::from_utf8(observed?).context("Git source metadata is not UTF-8")?;
+    let observed = confirm_git_cleanup(
+        observed,
+        uncertain.load(Ordering::SeqCst),
+        latch.load(Ordering::SeqCst),
+    )?;
+    let value = String::from_utf8(observed).context("Git source metadata is not UTF-8")?;
     // NUL-separated lists must preserve leading whitespace filename bytes.
     Ok(if args.contains(&"-z") {
         value
     } else {
         value.trim_end_matches('\n').to_string()
     })
+}
+fn confirm_git_cleanup(
+    observed: Result<Vec<u8>>,
+    uncertain: bool,
+    concurrent_uncertainty: bool,
+) -> Result<Vec<u8>> {
+    if uncertain {
+        // Preserve the actual native failure before the process-wide latch blocks
+        // subsequent operations. Successful output cannot clear uncertain ownership.
+        observed
+            .context("native Git process-group cleanup uncertain; context operation blocked")?;
+        bail!("native Git process-group cleanup uncertain; context operation blocked");
+    }
+    if concurrent_uncertainty {
+        observed
+            .context("concurrent context Git cleanup uncertain; this call's result discarded")?;
+        bail!("concurrent context Git cleanup uncertain; this call's result discarded");
+    }
+    observed
 }
 struct GitObservation {
     pending: Arc<AtomicBool>,
@@ -1353,6 +1373,30 @@ fn expansion_paths(map: &RepositoryMap, expansion: &Expansion) -> Result<BTreeSe
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn uncertain_git_cleanup_retains_native_failure_and_rejects_successful_output() {
+        let failure = anyhow::anyhow!("native process inspection timed out");
+        let error = confirm_git_cleanup(Err(failure), true, false).unwrap_err();
+        let diagnostic = format!("{error:#}");
+        assert!(diagnostic.contains("cleanup uncertain; context operation blocked"));
+        assert!(diagnostic.contains("native process inspection timed out"));
+        assert!(confirm_git_cleanup(Ok(b"metadata".to_vec()), true, false).is_err());
+        let error =
+            confirm_git_cleanup(Err(anyhow::anyhow!("Git exit failed")), false, true).unwrap_err();
+        let diagnostic = format!("{error:#}");
+        assert!(diagnostic.contains("concurrent context Git cleanup uncertain"));
+        assert!(diagnostic.contains("this call's result discarded"));
+        assert!(diagnostic.contains("Git exit failed"));
+        assert!(!diagnostic.contains("native Git process-group cleanup uncertain"));
+        assert!(confirm_git_cleanup(Ok(b"metadata".to_vec()), false, true).is_err());
+        assert_eq!(
+            confirm_git_cleanup(Ok(b"metadata".to_vec()), false, false).unwrap(),
+            b"metadata"
+        );
+        let error =
+            confirm_git_cleanup(Err(anyhow::anyhow!("Git exit failed")), false, false).unwrap_err();
+        assert_eq!(error.to_string(), "Git exit failed");
+    }
     #[test]
     fn dense_graph_has_global_visit_bound_and_imports_survive_reference_limits() {
         let mut files: BTreeMap<_, _> = (0..4096)

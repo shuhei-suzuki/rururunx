@@ -72,6 +72,13 @@ evidence and requested expansions must fit; otherwise it returns `NeedsBudget`.
 `utf8_bytes_v1` is a labeled packing estimate, with nullable provider measurement.
 Source and Git scans run outside the shared Store mutex and recheck state versions
 before audit mutation. See [bounded retrieval design](../issue-18-design.md).
+Uncertain native Git cleanup remains fail-closed. Diagnostics preserve the failing
+call's native error chain and distinguish an uncertainty latch set by a concurrent
+call, which discards the current call's result without attributing the failure to it.
+Consumers should render the full error chain (`{:#}` or Debug).
+Cancellation may latch uncertainty without returning a diagnostic; verified cleanup
+and recovery remain Issue 14 responsibilities.
+
 Issue 19's `ContextPacks` service publishes typed Task and Goal artifacts atomically
 with their durable pointers and audit events. It captures primary Project sources
 read-only for Goal packs and retains terminal Task context refs as non-launchable
@@ -80,7 +87,7 @@ work; immutable finalized refs remain historical. Task preparation selects curre
 sources under the complete
 rendered budget; dirty files, rules/config and state changes invalidate stale packs.
 Database/pointer versions are CAS guards, separate from phase-stable physical and
-instruction hashes. The Workflow Engine integration is pending Issue 8's merge;
+instruction hashes. The Workflow Engine publication port is pending Issue 19 integration;
 standalone publishers reject workflow ownership and live/Lost launch contexts.
 See [durable pack design](../issue-19-design.md).
 
