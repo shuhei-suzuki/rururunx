@@ -595,9 +595,11 @@ impl AgentAdapter for GenericCliAdapter {
                 child,
                 controls,
                 events,
-                writer,
-                stdout,
-                stderr,
+                ProcessIo {
+                    writer,
+                    stdout,
+                    stderr,
+                },
                 self.store.clone(),
                 version,
             ));
@@ -1040,16 +1042,25 @@ async fn drain<R: AsyncRead + Unpin>(
     }
 }
 
+struct ProcessIo {
+    writer: JoinHandle<std::io::Result<()>>,
+    stdout: JoinHandle<()>,
+    stderr: JoinHandle<()>,
+}
+
 async fn supervise(
     mut child: ProcessGroup,
     mut controls: mpsc::Receiver<()>,
     events: watch::Sender<SessionStatus>,
-    writer: JoinHandle<std::io::Result<()>>,
-    mut stdout: JoinHandle<()>,
-    mut stderr: JoinHandle<()>,
+    io: ProcessIo,
     store: SharedStore,
     version: u64,
 ) {
+    let ProcessIo {
+        writer,
+        mut stdout,
+        mut stderr,
+    } = io;
     let mut stopped = false;
     let mut stop_failure = None;
     let exited = tokio::select! {
