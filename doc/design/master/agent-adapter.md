@@ -35,6 +35,9 @@ attach
 resume
 permission_interception
 structured_output
+usage_telemetry
+prompt_cache_telemetry
+context_checkpoint
 ```
 
 ## 4. Logical interface
@@ -60,6 +63,9 @@ Optional:
 subscribeEvents(sessionRef)
 parsePermissionRequest(event)
 parseStructuredReview(result)
+usage(sessionRef) -> UsageSnapshot
+cacheUsage(sessionRef) -> CacheUsageSnapshot
+checkpoint(sessionRef, contextCheckpoint)
 ```
 
 ## 5. AgentInfo
@@ -73,6 +79,9 @@ Contains:
 - effort/reasoning configuration support
 - capabilities
 - current authentication/readiness status where detectable
+- usage/token telemetry support
+- provider/native prompt-cache telemetry support
+- native context/checkpoint support where available
 
 ## 6. Session model
 
@@ -164,7 +173,24 @@ Desired:
 - generic CLI adapter
 - local/OpenAI-compatible review adapter
 
-## 12. Failure behavior
+## 12. Context-efficiency integration
+
+Adapters do not decide what repository context is relevant. That belongs to the Context Efficiency Layer.
+
+Adapters are responsible for:
+
+- accepting a prepared Context Pack / Review Bundle reference or payload
+- exposing native context limits where detectable
+- reporting input/output/cached-token usage where available
+- reporting provider-native cache hit/use metadata where available
+- supporting native session checkpoint/summary primitives where available
+- preserving stable prompt ordering when rururunx controls prompt construction and provider caching benefits from stable prefixes
+
+If a native CLI owns its own context retrieval/caching internally, the adapter should expose what is observable without duplicating the provider implementation.
+
+Absence of telemetry must not make the adapter unusable; it is an explicit capability limitation.
+
+## 13. Failure behavior
 
 Adapters must return explicit failure categories such as:
 
