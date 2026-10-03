@@ -160,7 +160,12 @@ impl WorktreeManager {
         // Store checks sessions/locks under the same SQLite write transaction as reservation.
         store.put_record(&mut record)?;
         if let Err(error) = Self::verify_review(store, record.id) {
-            release(store, &mut record)?;
+            release(store, &mut record).with_context(|| {
+                format!(
+                    "failed to release provisional lock {} after verification failed: {error}",
+                    record.id
+                )
+            })?;
             store.audit(
                 &task.scope(),
                 "worktree.lock_acquisition_failed",
@@ -243,19 +248,6 @@ impl WorktreeManager {
         let delete_target = if upstream.status.success() {
             String::from_utf8(upstream.stdout)?.trim().to_owned()
         } else {
-            let remote = command(
-                &root,
-                &[
-                    "config",
-                    "--get",
-                    &format!("branch.{}.remote", status.branch),
-                ],
-            )
-            .output()?;
-            ensure!(
-                !remote.status.success(),
-                "configured task upstream is unavailable"
-            );
             git_text(&root, &["rev-parse", "HEAD"])?
         };
         ensure!(
@@ -446,6 +438,7 @@ fn owned_status(project: &Project, task: &Task) -> Result<WorktreeStatus> {
     let dirty = !git(
         path,
         &[
+            "--no-optional-locks",
             "status",
             "--porcelain=v1",
             "-z",

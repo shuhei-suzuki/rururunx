@@ -143,6 +143,15 @@ impl Store {
                 "project identity/root cannot silently change"
             );
         }
+        if let Some(previous) = read_tx::<Project>(&tx, "projects", &project.id.to_string())? {
+            if previous.worktree_root != project.worktree_root {
+                let bindings: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM tasks WHERE project_id=?1 AND json_extract(body,'$.worktree') IS NOT NULL)", [project.id.to_string()], |row| row.get(0))?;
+                ensure!(
+                    !bindings,
+                    "cannot change Project namespace after task worktree binding"
+                );
+            }
+        }
         {
             let mut statement = tx.prepare("SELECT body FROM projects WHERE id<>?1")?;
             for body in

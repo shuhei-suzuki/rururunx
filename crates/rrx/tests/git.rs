@@ -315,10 +315,16 @@ fn protected_base_and_git_metadata_namespace_are_rejected() {
     assert!(Manager::ensure_mutation_allowed(&f.store, t.id).is_err());
     f.project.base_branch = "main".into();
     f.project.worktree_root = f.root.join(".git/nested");
-    f.store.put_project(&mut f.project).unwrap();
-    let new = f.task(2);
-    assert!(Manager::create(&mut f.store, new.id).is_err());
-    assert!(!f.root.join(".git/nested").exists());
+    assert!(f.store.put_project(&mut f.project).is_err());
+    let mut task = f.store.task(t.id).unwrap().unwrap();
+    task.state = TaskState::Completed;
+    f.store.put_task(&mut task).unwrap();
+    let mut fresh = Fixture::new();
+    fresh.project.worktree_root = fresh.root.join(".git/nested");
+    fresh.store.put_project(&mut fresh.project).unwrap();
+    let new = fresh.task(2);
+    assert!(Manager::create(&mut fresh.store, new.id).is_err());
+    assert!(!fresh.root.join(".git/nested").exists());
 }
 #[test]
 fn duplicate_executors_and_malformed_locks_fail_closed() {
