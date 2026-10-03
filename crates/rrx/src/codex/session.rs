@@ -1,7 +1,7 @@
 //! Scoped native session supervision. Workflow verdicts remain caller-owned.
 use serde_json::{Value, json};
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap},
+    collections::{BTreeSet, HashMap},
     path::PathBuf,
     sync::{Arc, Mutex},
 };
@@ -37,6 +37,11 @@ struct Entry {
     request: LaunchRequest,
     schema: Option<Value>,
 }
+type OwnedReference = (
+    watch::Receiver<SessionStatus>,
+    mpsc::Sender<()>,
+    Arc<Mutex<Evidence>>,
+);
 #[derive(Default)]
 struct Evidence {
     completed: bool,
@@ -95,14 +100,7 @@ impl CodexAdapter {
             .lock()
             .map_err(|_| failure(ErrorKind::StateFailure, "native Session registry poisoned"))
     }
-    fn reference(
-        &self,
-        reference: &SessionRef,
-    ) -> AdapterResult<(
-        watch::Receiver<SessionStatus>,
-        mpsc::Sender<()>,
-        Arc<Mutex<Evidence>>,
-    )> {
+    fn reference(&self, reference: &SessionRef) -> AdapterResult<OwnedReference> {
         let sessions = self.registry()?;
         let entry = sessions.get(&reference.id).ok_or_else(|| {
             failure(
@@ -186,13 +184,20 @@ impl CodexAdapter {
                     "native resume requires an exact owned completed/stopped Session",
                 ));
             }
-            self.store
+            let (persisted, version) = self
+                .store
                 .lock()
                 .map_err(|_| failure(ErrorKind::StateFailure, "state store poisoned"))?
                 .session(previous.id)
                 .map_err(|e| failure(ErrorKind::StateFailure, e.to_string()))?
-                .ok_or_else(|| failure(ErrorKind::SessionLost, "native resume record missing"))?
-                .1
+                .ok_or_else(|| failure(ErrorKind::SessionLost, "native resume record missing"))?;
+            if serde_json::to_value(persisted).ok() != serde_json::to_value(previous).ok() {
+                return Err(failure(
+                    ErrorKind::StateConflict,
+                    "native resume owner changed before reservation",
+                ));
+            }
+            version
         } else {
             0
         };
@@ -384,15 +389,14 @@ impl CodexAdapter {
         }));
         {
             let mut sessions = self.registry()?;
-            if sessions.len() >= RETAINED_TERMINALS {
-                if let Some(id) = sessions
+            if sessions.len() >= RETAINED_TERMINALS
+                && let Some(id) = sessions
                     .iter()
                     .filter(|(_, entry)| entry.status.borrow().terminal())
                     .min_by_key(|(_, entry)| entry.status.borrow().session.started_at)
                     .map(|(id, _)| *id)
-                {
-                    sessions.remove(&id);
-                }
+            {
+                sessions.remove(&id);
             }
             sessions.insert(
                 session.id,
@@ -723,4 +727,125 @@ fn decision_event(
         _ => {}
     }
     Ok(None)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::{ProjectId, Scope};
+    fn status() -> SessionStatus {
+        SessionStatus {
+            session: Session {
+                id: SessionId::new(),
+                scope: Scope::project(ProjectId::new()),
+                agent: "codex".into(),
+                provider: "codex".into(),
+                role: SessionRole::Consultant,
+                native_ref: None,
+                pid: None,
+                worktree: PathBuf::from("/fixture"),
+                state: SessionState::Running,
+                model: None,
+                effort: None,
+                recovery: json!({}),
+                started_at: now_ms(),
+            },
+            exit_code: None,
+            stdout: vec![],
+            stderr: vec![],
+            stdout_truncated: false,
+            stderr_truncated: false,
+            failure: None,
+        }
+    }
+    #[test]
+    fn native_completion_is_not_process_exit_and_foreign_or_operation_events_fail_closed() {
+        let mut status = status();
+        let mut tracker = UsageTracker::new("thread".into(), "turn".into());
+        let event = |thread: &str, turn: &str, kind: &str| Event::Notification {
+            method: "item/completed".into(),
+            params: json!({"threadId":thread,"turnId":turn,"item":{"type":kind,"text":"exact final answer"}}),
+        };
+        assert_eq!(
+            decision_event(
+                event("foreign", "turn", "agentMessage"),
+                "thread",
+                "turn",
+                &mut tracker,
+                &mut status
+            )
+            .unwrap_err()
+            .kind,
+            ErrorKind::OwnershipMismatch
+        );
+        assert_eq!(
+            decision_event(
+                event("thread", "foreign", "agentMessage"),
+                "thread",
+                "turn",
+                &mut tracker,
+                &mut status
+            )
+            .unwrap_err()
+            .kind,
+            ErrorKind::OwnershipMismatch
+        );
+        assert_eq!(
+            decision_event(
+                event("thread", "turn", "commandExecution"),
+                "thread",
+                "turn",
+                &mut tracker,
+                &mut status
+            )
+            .unwrap_err()
+            .kind,
+            ErrorKind::ProcessFailure
+        );
+        assert_eq!(
+            decision_event(
+                event("thread", "turn", "agentMessage"),
+                "thread",
+                "turn",
+                &mut tracker,
+                &mut status
+            )
+            .unwrap(),
+            None
+        );
+        assert_eq!(status.stdout, b"exact final answer");
+        let completed = Event::Notification {
+            method: "turn/completed".into(),
+            params: json!({"threadId":"thread","turn":{"id":"turn","status":"completed"}}),
+        };
+        assert_eq!(
+            decision_event(completed, "thread", "turn", &mut tracker, &mut status).unwrap(),
+            Some(true)
+        );
+        assert_eq!(status.session.state, SessionState::Running);
+        assert_eq!(status.exit_code, None);
+    }
+    #[test]
+    fn assistant_retention_is_bounded_and_failed_native_turns_are_explicit() {
+        let mut status = status();
+        let mut tracker = UsageTracker::new("thread".into(), "turn".into());
+        decision_event(Event::Notification { method:"item/completed".into(),params:json!({"threadId":"thread","turnId":"turn","item":{"type":"agentMessage","text":"x".repeat(OUTPUT_LIMIT+10)}}) },"thread","turn",&mut tracker,&mut status).unwrap();
+        assert_eq!(status.stdout.len(), OUTPUT_LIMIT);
+        assert!(status.stdout_truncated);
+        assert_eq!(
+            decision_event(
+                Event::Notification {
+                    method: "turn/completed".into(),
+                    params: json!({"threadId":"thread","turn":{"id":"turn","status":"failed"}})
+                },
+                "thread",
+                "turn",
+                &mut tracker,
+                &mut status
+            )
+            .unwrap_err()
+            .kind,
+            ErrorKind::ProcessFailure
+        );
+    }
 }

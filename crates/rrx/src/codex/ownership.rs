@@ -496,3 +496,274 @@ fn canonical_binding(root: &Path, workspace: &Path) -> AdapterResult<Value> {
     };
     Ok(serde_json::json!([identity(root)?, identity(workspace)?]))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        adapter::{LaunchMode, PreparedInput},
+        domain::{CompletionCriterion, Scope},
+        git::WorktreeManager,
+        state::Store,
+    };
+    use std::{collections::BTreeMap, process::Command, sync::Mutex};
+
+    struct Fixture {
+        _temp: tempfile::TempDir,
+        store: SharedStore,
+        request: LaunchRequest,
+    }
+    fn git(root: &Path, args: &[&str]) -> String {
+        let output = Command::new("/usr/bin/git")
+            .current_dir(root)
+            .args(args)
+            .envs(crate::git::native_environment())
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8(output.stdout).unwrap().trim().to_owned()
+    }
+    impl Fixture {
+        fn new(task_scoped: bool) -> Self {
+            let temp = tempfile::tempdir().unwrap();
+            let root = temp.path().canonicalize().unwrap().join("project");
+            std::fs::create_dir(&root).unwrap();
+            git(&root, &["init", "-b", "main"]);
+            std::fs::write(root.join(".gitignore"), "worktree/\n").unwrap();
+            git(&root, &["add", ".gitignore"]);
+            git(
+                &root,
+                &[
+                    "-c",
+                    "user.name=Fixture",
+                    "-c",
+                    "user.email=fixture@example.invalid",
+                    "commit",
+                    "-m",
+                    "fixture",
+                ],
+            );
+            let mut project = Project::new(
+                "fixture".into(),
+                root.clone(),
+                crate::git::repository_identity(&root, "main").unwrap(),
+                "main".into(),
+            );
+            let mut store = Store::open(&temp.path().join("state.sqlite3")).unwrap();
+            store.put_project(&mut project).unwrap();
+            let (scope, worktree, role) = if task_scoped {
+                let mut goal = Goal::new(
+                    project.id,
+                    "fixture".into(),
+                    vec![CompletionCriterion {
+                        id: "fixture".into(),
+                        description: "native scope proof".into(),
+                        evidence: None,
+                        satisfied: false,
+                    }],
+                );
+                store.put_goal(&mut goal).unwrap();
+                let mut task = Task::new(project.id, goal.id, "fixture".into(), "codex".into());
+                task.issue = Some(42);
+                store.put_task(&mut task).unwrap();
+                let worktree = WorktreeManager::create(&mut store, task.id)
+                    .unwrap()
+                    .worktree;
+                (task.scope(), worktree, SessionRole::Executor)
+            } else {
+                (Scope::project(project.id), root, SessionRole::Consultant)
+            };
+            let revision = git(&worktree, &["rev-parse", "HEAD"]);
+            let request = LaunchRequest {
+                project,
+                scope: scope.clone(),
+                worktree,
+                role,
+                mode: LaunchMode::NonInteractive,
+                input: PreparedInput {
+                    scope,
+                    kind: InputKind::ContextPack,
+                    revision,
+                    version: 1,
+                    source_versions: BTreeMap::from([("rules".into(), "v1".into())]),
+                    payload: "only prepared context".into(),
+                },
+                environment: BTreeMap::new(),
+                model: None,
+                effort: None,
+            };
+            Self {
+                _temp: temp,
+                store: Arc::new(Mutex::new(store)),
+                request,
+            }
+        }
+        fn review(&mut self) {
+            WorktreeManager::lock_review(
+                &mut self.store.lock().unwrap(),
+                self.request.scope.task_id.unwrap(),
+                &self.request.input.revision,
+                "immutable test",
+            )
+            .unwrap();
+            self.request.role = SessionRole::Reviewer;
+            self.request.input.kind = InputKind::ReviewBundle;
+        }
+    }
+    #[tokio::test]
+    async fn primary_consultation_needs_no_worktree_namespace_and_keeps_exact_git_identity() {
+        let mut fixture = Fixture::new(false);
+        assert!(!fixture.request.project.worktree_root.exists());
+        let snapshot = ScopeSnapshot::capture(&fixture.store, &fixture.request, "codex").unwrap();
+        snapshot
+            .verify_git(&fixture.request, &mut ProcessOwnership::default())
+            .await
+            .unwrap();
+        fixture.request.worktree = fixture.request.project.root.join("subdirectory");
+        std::fs::create_dir(&fixture.request.worktree).unwrap();
+        assert!(
+            matches!(ScopeSnapshot::capture(&fixture.store,&fixture.request,"codex"),Err(error) if error.kind==ErrorKind::OwnershipMismatch)
+        );
+    }
+    #[tokio::test]
+    async fn task_branch_common_directory_and_exact_prepared_head_are_required() {
+        let mut fixture = Fixture::new(true);
+        let snapshot = ScopeSnapshot::capture(&fixture.store, &fixture.request, "codex").unwrap();
+        let mut ownership = ProcessOwnership::default();
+        snapshot
+            .verify_git(&fixture.request, &mut ownership)
+            .await
+            .unwrap();
+        assert!(!ownership.uncertain());
+        fixture.request.input.revision = "0".repeat(40);
+        assert_eq!(
+            snapshot
+                .verify_git(&fixture.request, &mut ownership)
+                .await
+                .unwrap_err()
+                .kind,
+            ErrorKind::StateConflict
+        );
+        fixture.request.input.revision = git(&fixture.request.worktree, &["rev-parse", "HEAD"]);
+        git(
+            &fixture.request.worktree,
+            &["switch", "-c", "feature/foreign-binding"],
+        );
+        assert_eq!(
+            snapshot
+                .verify_git(&fixture.request, &mut ownership)
+                .await
+                .unwrap_err()
+                .kind,
+            ErrorKind::OwnershipMismatch
+        );
+    }
+    #[tokio::test]
+    async fn immutable_review_rejects_untracked_and_ignored_changes_and_unlock_relock_aba() {
+        let mut fixture = Fixture::new(true);
+        fixture.request.role = SessionRole::Reviewer;
+        fixture.request.input.kind = InputKind::ReviewBundle;
+        assert!(
+            matches!(ScopeSnapshot::capture(&fixture.store,&fixture.request,"codex"),Err(error) if error.kind==ErrorKind::Locked)
+        );
+        fixture.review();
+        let snapshot = ScopeSnapshot::capture(&fixture.store, &fixture.request, "codex").unwrap();
+        snapshot
+            .verify_git(&fixture.request, &mut ProcessOwnership::default())
+            .await
+            .unwrap();
+        std::fs::write(
+            fixture.request.worktree.join("untracked"),
+            "changed after lock",
+        )
+        .unwrap();
+        assert_eq!(
+            snapshot
+                .verify_git(&fixture.request, &mut ProcessOwnership::default())
+                .await
+                .unwrap_err()
+                .kind,
+            ErrorKind::Locked
+        );
+        std::fs::remove_file(fixture.request.worktree.join("untracked")).unwrap();
+        std::fs::create_dir(fixture.request.worktree.join("worktree")).unwrap();
+        std::fs::write(
+            fixture.request.worktree.join("worktree/ignored"),
+            "ignored change",
+        )
+        .unwrap();
+        assert_eq!(
+            snapshot
+                .verify_git(&fixture.request, &mut ProcessOwnership::default())
+                .await
+                .unwrap_err()
+                .kind,
+            ErrorKind::Locked
+        );
+        std::fs::remove_dir_all(fixture.request.worktree.join("worktree")).unwrap();
+        let id = snapshot.locks[0].id;
+        WorktreeManager::unlock_review(&mut fixture.store.lock().unwrap(), id).unwrap();
+        fixture.review();
+        assert_eq!(
+            snapshot
+                .recheck(&fixture.store, &fixture.request, "codex")
+                .unwrap_err()
+                .kind,
+            ErrorKind::StateConflict
+        );
+    }
+    #[test]
+    fn persisted_authority_and_native_inputs_cannot_be_forged_or_silently_reused() {
+        let mut fixture = Fixture::new(true);
+        let snapshot = ScopeSnapshot::capture(&fixture.store, &fixture.request, "codex").unwrap();
+        fixture
+            .request
+            .project
+            .environment_refs
+            .push("FOREIGN_SECRET".into());
+        assert!(
+            matches!(ScopeSnapshot::capture(&fixture.store,&fixture.request,"codex"),Err(error) if error.kind==ErrorKind::StateConflict)
+        );
+        fixture.request.project = snapshot.project.clone();
+        fixture.request.input.scope = Scope::project(fixture.request.project.id);
+        assert!(
+            matches!(ScopeSnapshot::capture(&fixture.store,&fixture.request,"codex"),Err(error) if error.kind==ErrorKind::OwnershipMismatch)
+        );
+        fixture.request.input.scope = fixture.request.scope.clone();
+        let mut store = fixture.store.lock().unwrap();
+        let mut task = store
+            .task(fixture.request.scope.task_id.unwrap())
+            .unwrap()
+            .unwrap();
+        task.title.push_str(" changed");
+        store.put_task(&mut task).unwrap();
+        drop(store);
+        assert_eq!(
+            snapshot
+                .recheck(&fixture.store, &fixture.request, "codex")
+                .unwrap_err()
+                .kind,
+            ErrorKind::StateConflict
+        );
+        fixture.request.input.revision = "main".into();
+        assert!(
+            matches!(ScopeSnapshot::capture(&fixture.store,&fixture.request,"codex"),Err(error) if error.kind==ErrorKind::InvalidInput)
+        );
+    }
+    #[test]
+    fn independently_reaped_git_child_cannot_clear_live_native_server_uncertainty() {
+        let mut ownership = ProcessOwnership::default();
+        let native = ownership.group();
+        native.store(true, Ordering::SeqCst);
+        let git = ownership.group();
+        git.store(true, Ordering::SeqCst);
+        git.store(false, Ordering::SeqCst);
+        assert!(ownership.uncertain());
+        native.store(false, Ordering::SeqCst);
+        assert!(!ownership.uncertain());
+    }
+}
