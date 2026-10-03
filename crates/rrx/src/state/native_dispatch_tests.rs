@@ -128,7 +128,7 @@ fn native_dispatch_fences_lock_version_aba_and_session_cas() {
         saved.data["evidence"]["dispatch_intent"],
         session.recovery["dispatch_intent"]
     );
-    assert!(saved.data.to_string().find("must-not-journal").is_none());
+    assert!(!saved.data.to_string().contains("must-not-journal"));
     assert!(
         store
             .put_session_if_current(&session, version, expected, &current)
