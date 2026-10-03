@@ -68,5 +68,19 @@ current captured rules before committing a new head. The checkpoint's 1 MiB
 envelope limit is an upper bound, not a promise that all such envelopes fit a
 rendered input: combined mandatory-state capacity can reject earlier. Existing
 scoped facts/references are included when available. Rejection leaves the old
-head/audit unchanged; it does not accept an unrenderable new mandatory history.
+head/checkpoint-publication audit unchanged (source observation may be audited); it does not accept an unrenderable new mandatory history.
 Later explicit input or rule changes can still require decomposition/extra budget.
+
+New Cleanup evaluation claims atomically compare the live checkpoint head before
+an external gate is invoked. A preclaim change preserves the worktree and requires
+explicit recovery; a checkpoint arriving after the admitted claim is historical
+evidence and does not prevent terminal persistence after actual disposal.
+
+An admitted input's revision/version/byte count/source versions remain pinned
+through all Session observations. An owned terminal→Starting continuation may
+install a strictly higher input version after latest typed context/head validation.
+It first binds `pre_dispatch_restore_sha256` to SHA256 of the exact serialized
+prior terminal Session. Exact terminal restoration is allowed only before any
+consumed dispatch intent/unobserved boundary; after dispatch, input rebinding or
+rollback fails. Native adapters preserve this protocol without rewriting active
+attempts. The checksum helper is pure and performs no Git/filesystem work.

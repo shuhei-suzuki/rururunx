@@ -1956,6 +1956,31 @@ async fn own_checkpoint_is_mandatory_even_when_the_caller_omits_its_reference() 
             .validate_checkpoint_source(&f.task.scope(), &sources)
             .is_err()
     );
+    launching.recovery["dispatch_intent"] =
+        serde_json::json!({"id":"new-dispatch","consumed":true});
+    assert!(
+        f.store
+            .lock()
+            .unwrap()
+            .put_session(&launching, version)
+            .is_err()
+    );
+    assert_eq!(
+        f.store
+            .lock()
+            .unwrap()
+            .session(launching.id)
+            .unwrap()
+            .unwrap()
+            .0
+            .state,
+        SessionState::Starting
+    );
+    launching
+        .recovery
+        .as_object_mut()
+        .unwrap()
+        .remove("dispatch_intent");
     launching.state = SessionState::Running;
     assert!(
         f.store
@@ -2182,6 +2207,7 @@ fn pack_fixture_error(error: anyhow::Error) -> rrx::adapter::AdapterError {
 struct PackFixtureGates {
     cleanup: Mutex<Option<serde_json::Value>>,
     cleanup_wait_once: Mutex<bool>,
+    checkpoint_after_claim: Mutex<Option<(ContextPacks, SessionId)>>,
 }
 impl rrx::workflow::PhaseGates for PackFixtureGates {
     fn complete(
@@ -2191,14 +2217,31 @@ impl rrx::workflow::PhaseGates for PackFixtureGates {
     ) -> rrx::workflow::WorkflowFuture<'_, rrx::workflow::GateOutcome> {
         Box::pin(async move {
             if i.phase == rrx::workflow::Phase::Cleanup {
-                let mut wait = self.cleanup_wait_once.lock().unwrap();
-                if *wait {
-                    *wait = false;
+                let wait = std::mem::take(&mut *self.cleanup_wait_once.lock().unwrap());
+                if wait {
                     return Ok(rrx::workflow::GateOutcome::Waiting(
                         "fixture checkpoint during Cleanup wait".into(),
                     ));
                 }
-                drop(wait);
+                let checkpoint_after_claim = self.checkpoint_after_claim.lock().unwrap().take();
+                if let Some((packs, session)) = checkpoint_after_claim {
+                    let late = packs
+                        .checkpoint(
+                            &i.task.scope(),
+                            session,
+                            None,
+                            vec![event(
+                                1,
+                                EventKind::Failure,
+                                "late admitted Cleanup checkpoint remains durable",
+                            )],
+                            HistoryPolicy {
+                                recent_history_bytes: 0,
+                            },
+                        )
+                        .await?;
+                    assert_eq!(packs.load_checkpoint(&late)?.chain_version, 1);
+                }
                 *self.cleanup.lock().unwrap() = Some(i.context.data["task_pack"].clone());
                 git(
                     &i.project.root,
@@ -2277,6 +2320,7 @@ async fn actual_workflow_publishes_typed_phase_packs_and_freezes_cleanup_provena
     let gates = Arc::new(PackFixtureGates {
         cleanup: Mutex::new(None),
         cleanup_wait_once: Mutex::new(true),
+        checkpoint_after_claim: Mutex::new(None),
     });
     let engine = WorkflowEngine::new(
         f.store.clone(),
@@ -2341,30 +2385,7 @@ async fn actual_workflow_publishes_typed_phase_packs_and_freezes_cleanup_provena
                     .find(|s| s.role == SessionRole::Executor && s.state == SessionState::Exited)
                     .unwrap()
             };
-            let late = packs
-                .checkpoint(
-                    &task.scope(),
-                    native.id,
-                    None,
-                    vec![event(
-                        1,
-                        EventKind::Failure,
-                        "late Cleanup checkpoint remains durable",
-                    )],
-                    HistoryPolicy {
-                        recent_history_bytes: 0,
-                    },
-                )
-                .await
-                .unwrap();
-            assert!(
-                packs
-                    .load_checkpoint(&late)
-                    .unwrap()
-                    .retained
-                    .iter()
-                    .any(|e| e.event.text == "late Cleanup checkpoint remains durable")
-            );
+            *gates.checkpoint_after_claim.lock().unwrap() = Some((packs.clone(), native.id));
             engine.resume_gate(task.id).await.unwrap();
         } else {
             assert!(
@@ -2554,6 +2575,7 @@ async fn actual_engine_tiny_discretionary_budget_preserves_facts_and_provider_re
         Arc::new(PackFixtureGates {
             cleanup: Mutex::new(None),
             cleanup_wait_once: Mutex::new(false),
+            checkpoint_after_claim: Mutex::new(None),
         }),
     )
     .unwrap();
@@ -2648,6 +2670,7 @@ async fn actual_engine_mandatory_rules_exceeding_absolute_cap_never_publish() {
         Arc::new(PackFixtureGates {
             cleanup: Mutex::new(None),
             cleanup_wait_once: Mutex::new(false),
+            checkpoint_after_claim: Mutex::new(None),
         }),
     )
     .unwrap();
@@ -2680,8 +2703,12 @@ async fn admitted_session_reentry_preserves_launch_head_after_incremental_checkp
     else {
         panic!("budget")
     };
-    let (mut native, mut version) = session(&f, SessionRole::Executor, SessionState::Starting);
-    native.recovery = serde_json::json!({"source_versions":prepared.source_versions});
+    let (exited, _) = session(&f, SessionRole::Executor, SessionState::Exited);
+    let mut native = exited;
+    native.id = SessionId::new();
+    native.state = SessionState::Starting;
+    native.recovery = serde_json::json!({"source_versions":prepared.source_versions,"input_version":prepared.version,"input_revision":prepared.revision,"input_bytes":prepared.payload.len()});
+    let mut version = f.store.lock().unwrap().put_session(&native, 0).unwrap();
     native.state = SessionState::Running;
     version = f
         .store
@@ -2755,7 +2782,6 @@ async fn goal_pointer_publication_preserves_admitted_task_authority_and_rejects_
         panic!("budget")
     };
     let (mut native, mut version) = session(&f, SessionRole::Executor, SessionState::Running);
-    native.recovery = serde_json::json!({"source_versions":prepared.source_versions});
     let before = f
         .store
         .lock()
@@ -2879,7 +2905,9 @@ async fn checkpoint_admission_preserves_renderable_mandatory_headroom() {
         .unwrap()
         .events(&f.task.scope(), 0, 10000)
         .unwrap()
-        .len();
+        .into_iter()
+        .filter(|e| e.kind == "checkpoint.saved")
+        .count();
     let error = packs
         .checkpoint(
             &f.task.scope(),
@@ -2910,7 +2938,9 @@ async fn checkpoint_admission_preserves_renderable_mandatory_headroom() {
             .unwrap()
             .events(&f.task.scope(), 0, 10000)
             .unwrap()
-            .len(),
+            .into_iter()
+            .filter(|e| e.kind == "checkpoint.saved")
+            .count(),
         before
     );
     let current = packs
@@ -3067,6 +3097,7 @@ async fn engine_rejects_typed_metadata_that_disagrees_with_actual_mandatory_inpu
         Arc::new(PackFixtureGates {
             cleanup: Mutex::new(None),
             cleanup_wait_once: Mutex::new(false),
+            checkpoint_after_claim: Mutex::new(None),
         }),
     )
     .unwrap();
@@ -3083,4 +3114,144 @@ async fn engine_rejects_typed_metadata_that_disagrees_with_actual_mandatory_inpu
             .unwrap()
             .is_none()
     );
+}
+
+#[tokio::test]
+async fn native_input_pin_allows_verified_fresh_continuation_and_only_exact_pre_dispatch_restore() {
+    let f = Fixture::new();
+    let packs = f.packs();
+    let reference = packs
+        .publish_task(&packs.draft_task(&f.task.scope(), input()).await.unwrap())
+        .await
+        .unwrap();
+    let PreparedPack::Ready(first) = packs
+        .prepare_task(&reference, SelectionRequest::default(), budget())
+        .await
+        .unwrap()
+    else {
+        panic!("budget")
+    };
+    let (mut native, _) = session(&f, SessionRole::Executor, SessionState::Exited);
+    native.id = SessionId::new();
+    native.recovery = serde_json::json!({"source_versions":first.source_versions,"input_version":first.version,"input_revision":first.revision,"input_bytes":first.payload.len()});
+    let mut version = f.store.lock().unwrap().put_session(&native, 0).unwrap();
+    packs
+        .checkpoint(
+            &f.task.scope(),
+            native.id,
+            None,
+            vec![event(
+                1,
+                EventKind::Constraint,
+                "fresh context mandatory constraint",
+            )],
+            HistoryPolicy {
+                recent_history_bytes: 0,
+            },
+        )
+        .await
+        .unwrap();
+    let second_ref = packs
+        .publish_task(&packs.draft_task(&f.task.scope(), input()).await.unwrap())
+        .await
+        .unwrap();
+    let PreparedPack::Ready(second) = packs
+        .prepare_task(&second_ref, SelectionRequest::default(), budget())
+        .await
+        .unwrap()
+    else {
+        panic!("budget")
+    };
+    let terminal = native.clone();
+    let proof = Store::session_restore_sha256(&terminal).unwrap();
+    native.state = SessionState::Starting;
+    native.recovery = serde_json::json!({"source_versions":second.source_versions,"input_version":second.version,"input_revision":second.revision,"input_bytes":second.payload.len(),"pre_dispatch_restore_sha256":proof});
+    let mut forged = native.clone();
+    forged.recovery["pre_dispatch_restore_sha256"] = serde_json::json!("bad");
+    assert!(
+        f.store
+            .lock()
+            .unwrap()
+            .put_session(&forged, version)
+            .is_err()
+    );
+    version = f
+        .store
+        .lock()
+        .unwrap()
+        .put_session(&native, version)
+        .unwrap();
+    let mut wrong = terminal.clone();
+    wrong.recovery["input_bytes"] = serde_json::json!(0);
+    assert!(
+        f.store
+            .lock()
+            .unwrap()
+            .put_session(&wrong, version)
+            .is_err()
+    );
+    version = f
+        .store
+        .lock()
+        .unwrap()
+        .put_session(&terminal, version)
+        .unwrap();
+    version = f
+        .store
+        .lock()
+        .unwrap()
+        .put_session(&native, version)
+        .unwrap();
+    native.recovery["dispatch_intent"] = serde_json::json!({"consumed":true});
+    version = f
+        .store
+        .lock()
+        .unwrap()
+        .put_session(&native, version)
+        .unwrap();
+    assert!(
+        f.store
+            .lock()
+            .unwrap()
+            .put_session(&terminal, version)
+            .is_err()
+    );
+    let mut rebind = native.clone();
+    rebind.recovery["source_versions"]["checkpoint:head"] = serde_json::json!("none");
+    assert!(
+        f.store
+            .lock()
+            .unwrap()
+            .put_session(&rebind, version)
+            .is_err()
+    );
+    native.state = SessionState::Running;
+    version = f
+        .store
+        .lock()
+        .unwrap()
+        .put_session(&native, version)
+        .unwrap();
+    native.state = SessionState::WaitingApproval;
+    version = f
+        .store
+        .lock()
+        .unwrap()
+        .put_session(&native, version)
+        .unwrap();
+    rebind = native.clone();
+    rebind.recovery["input_version"] = serde_json::json!(999);
+    assert!(
+        f.store
+            .lock()
+            .unwrap()
+            .put_session(&rebind, version)
+            .is_err()
+    );
+    native.state = SessionState::Running;
+    f.store
+        .lock()
+        .unwrap()
+        .put_session(&native, version)
+        .unwrap();
 }

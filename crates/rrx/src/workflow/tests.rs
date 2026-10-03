@@ -3916,3 +3916,81 @@ async fn waiting_irreversible_hold_then_resume_does_not_orphan_owned_blocker() {
         assert!(task.blockers.is_empty());
     }
 }
+
+#[tokio::test]
+async fn cleanup_checkpoint_drift_before_claim_never_invokes_external_gate() {
+    let fixture = Fixture::new(WorkflowClass::Quick);
+    fixture
+        .sources
+        .snapshot
+        .lock()
+        .unwrap()
+        .source_versions
+        .insert("checkpoint:head".into(), "none".into());
+    fixture
+        .engine
+        .initialize(fixture.task.id, None)
+        .await
+        .unwrap();
+    fixture.finish().await;
+    fixture
+        .engine
+        .request_finalization(fixture.task.id, "fixture finalization".into())
+        .await
+        .unwrap();
+    fixture
+        .engine
+        .step(fixture.task.id, BTreeMap::new())
+        .await
+        .unwrap();
+    fixture.gates.waiting.store(true, Ordering::SeqCst);
+    assert!(matches!(
+        fixture
+            .engine
+            .step(fixture.task.id, BTreeMap::new())
+            .await
+            .unwrap(),
+        StepResult::Waiting {
+            phase: Phase::Cleanup,
+            ..
+        }
+    ));
+    let calls = fixture.gates.calls.lock().unwrap().len();
+    // Raw scoped row isolates freshness authority without asserting native event
+    // capability/provenance. Production append and real disposal are exercised in
+    // the context_pack native lifecycle fixture.
+    let mut record = Record::new(
+        fixture.task.scope(),
+        RecordKind::Checkpoint,
+        json!({"format":"rrx.checkpoint.v1","fixture":"new head before admission"}),
+    );
+    record.version = 1;
+    let raw = rusqlite::Connection::open(fixture.dir.path().join("state.db")).unwrap();
+    raw.execute("INSERT INTO records(id,kind,project_id,goal_id,task_id,version,body) VALUES(?1,'checkpoint',?2,?3,?4,1,?5)",rusqlite::params![record.id.to_string(),record.scope.project_id.to_string(),record.scope.goal_id.unwrap().to_string(),record.scope.task_id.unwrap().to_string(),serde_json::to_string(&record).unwrap()]).unwrap();
+    raw.execute(
+        "INSERT INTO checkpoint_heads(project_id,goal_id,task_id,record_id) VALUES(?1,?2,?3,?4)",
+        rusqlite::params![
+            record.scope.project_id.to_string(),
+            record.scope.goal_id.unwrap().to_string(),
+            record.scope.task_id.unwrap().to_string(),
+            record.id.to_string()
+        ],
+    )
+    .unwrap();
+    fixture.gates.waiting.store(false, Ordering::SeqCst);
+    let error = fixture
+        .engine
+        .resume_gate(fixture.task.id)
+        .await
+        .unwrap_err();
+    assert!(
+        error.to_string().contains("checkpoint source changed"),
+        "{error:#}"
+    );
+    assert_eq!(fixture.gates.calls.lock().unwrap().len(), calls);
+    let snapshot = fixture.engine.snapshot(fixture.task.id).unwrap();
+    assert_eq!(
+        snapshot.history[snapshot.active.unwrap()].state,
+        AttemptState::Waiting
+    );
+}

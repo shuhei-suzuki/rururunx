@@ -103,27 +103,136 @@ pub(super) fn guard_context_checkpoint(
             .map(String::as_str),
     )
 }
+/// A new irreversible Cleanup claim uses live checkpoint authority. Once the
+/// operation is admitted, its observation and terminal frozen pack are historical.
+pub(super) fn guard_cleanup_checkpoint(tx: &Transaction<'_>, record: &Record) -> Result<()> {
+    let Some(index) = record.data["active"]
+        .as_u64()
+        .and_then(|i| usize::try_from(i).ok())
+    else {
+        return Ok(());
+    };
+    let next = &record.data["history"][index];
+    if next["phase"] != "Cleanup" || next["state"] != "Evaluating" {
+        return Ok(());
+    }
+    let previous = read_tx::<Record>(tx, "records", &record.id.to_string())?
+        .context("Cleanup claim requires existing workflow")?;
+    if previous.data["active"].as_u64() == Some(index as u64)
+        && previous.data["history"][index]["state"] == "Evaluating"
+    {
+        return Ok(());
+    }
+    validate_checkpoint_source(
+        tx,
+        &record.scope,
+        record.data["sources"]["source_versions"]["checkpoint:head"].as_str(),
+    )
+}
+fn session_restore_sha256(session: &Session) -> Result<String> {
+    Ok(format!(
+        "{:x}",
+        Sha256::digest(serde_json::to_vec(session)?)
+    ))
+}
+fn input_metadata_equal(old: &Session, new: &Session) -> bool {
+    [
+        "input_version",
+        "input_revision",
+        "input_bytes",
+        "source_versions",
+    ]
+    .iter()
+    .all(|key| old.recovery[*key] == new.recovery[*key])
+}
+fn dispatch_consumed(session: &Session) -> bool {
+    session.recovery["dispatch_intent"]["consumed"] == true
+        || session.recovery["native_dispatch_unobserved"] == true
+}
 pub(super) fn guard_launch_checkpoint(tx: &Transaction<'_>, record: &Record) -> Result<()> {
     if record.kind != RecordKind::Session {
         return Ok(());
     }
     let session: Session = serde_json::from_value(record.data.clone())?;
-    if session.scope.task_id.is_none()
-        || !matches!(
-            session.state,
-            SessionState::Starting | SessionState::Running
-        )
-    {
+    if session.scope.task_id.is_none() {
         return Ok(());
     }
     let previous = read_tx::<Record>(tx, "records", &record.id.to_string())?
         .map(|r| serde_json::from_value::<Session>(r.data))
         .transpose()?;
-    if previous.is_some_and(|s| s.state != SessionState::Starting) {
+    let latest = latest_context(tx, &session.scope)?;
+    let typed = latest.as_ref().is_some_and(|c| typed_pack(&c.data));
+    let protected = typed
+        || session.recovery["source_versions"]["checkpoint:head"].is_string()
+        || previous
+            .as_ref()
+            .is_some_and(|old| old.recovery["source_versions"]["checkpoint:head"].is_string());
+    let mut fresh = false;
+    if let Some(old) = &previous {
+        fresh = session_terminal(old.state) && session.state == SessionState::Starting;
+        if protected && fresh {
+            let input_version = session.recovery["input_version"]
+                .as_u64()
+                .context("fresh continuation requires input version")?;
+            ensure!(
+                input_version > old.recovery["input_version"].as_u64().unwrap_or(0),
+                "fresh continuation requires higher input version"
+            );
+            ensure!(
+                session.recovery["pre_dispatch_restore_sha256"].as_str()
+                    == Some(session_restore_sha256(old)?.as_str())
+                    && !dispatch_consumed(&session),
+                "fresh continuation requires exact terminal restore proof before dispatch"
+            );
+            if let Some(context) = &latest
+                && typed
+            {
+                let task: Task = read_tx(tx, "tasks", &session.scope.task_id.unwrap().to_string())?
+                    .context("unknown native Task")?;
+                ensure!(
+                    context.version == input_version
+                        && task.context_version == input_version
+                        && context.source_hashes.iter().all(|(key, value)| {
+                            session.recovery["source_versions"][key].as_str()
+                                == Some(value.as_str())
+                        }),
+                    "fresh continuation differs from latest typed Task input authority"
+                );
+            }
+        } else if protected && !input_metadata_equal(old, &session) {
+            let restore = old.state == SessionState::Starting
+                && session_terminal(session.state)
+                && !dispatch_consumed(old)
+                && old.recovery["pre_dispatch_restore_sha256"].as_str()
+                    == Some(session_restore_sha256(&session)?.as_str());
+            ensure!(restore, "admitted native input metadata is immutable");
+        }
+    }
+    // The dispatch CAS precedes the native wire and Running acknowledgement.
+    // A newly consumed intent must use live authority even if the Session state
+    // remains Starting or a caller publishes it from a later observation.
+    let new_dispatch = dispatch_consumed(&session)
+        && previous.as_ref().is_none_or(|old| {
+            !dispatch_consumed(old)
+                || old.recovery["dispatch_intent"] != session.recovery["dispatch_intent"]
+        });
+    if !matches!(
+        session.state,
+        SessionState::Starting | SessionState::Running
+    ) && !new_dispatch
+    {
+        return Ok(());
+    }
+    if previous
+        .as_ref()
+        .is_some_and(|old| old.state != SessionState::Starting)
+        && !fresh
+        && !new_dispatch
+    {
         return Ok(());
     }
     let key = session.recovery["source_versions"]["checkpoint:head"].as_str();
-    if latest_context(tx, &session.scope)?.is_some_and(|c| typed_pack(&c.data)) {
+    if typed {
         ensure!(
             key.is_some(),
             "typed native pack missing checkpoint source authority"
@@ -204,6 +313,11 @@ pub(super) fn guard_pack_pointer(
     Ok(())
 }
 impl Store {
+    /// Stable lowerhex SHA256 of the exact prior terminal Session, used only for
+    /// bounded pre-dispatch restoration of a fresh continuation.
+    pub fn session_restore_sha256(session: &Session) -> Result<String> {
+        session_restore_sha256(session)
+    }
     /// Pure scoped check; callers hold SharedStore only for this bounded SQL lookup.
     /// Legacy inputs without Issue 19's key retain their original contract.
     pub fn validate_checkpoint_source(
