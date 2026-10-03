@@ -22,7 +22,11 @@ The Context Efficiency Layer optimizes **what context is sent**, **when it is re
 
 ## 3. Context Pack
 
-Each Task may maintain a versioned Context Pack containing concise durable context:
+Each Task maintains a versioned Context Pack containing concise durable context.
+
+A separate Goal Context Pack contains only cross-Task state and must not duplicate every Task history.
+
+Task Context Pack contents include:
 
 - task purpose and acceptance criteria
 - workflow/risk class
@@ -38,7 +42,23 @@ Each Task may maintain a versioned Context Pack containing concise durable conte
 
 The Context Pack is not a replacement for source code. Agents may retrieve source files as needed.
 
-Context Packs are versioned by Task state/revision so stale information can be detected.
+Task Context Packs are versioned by Task state/revision so stale information can be detected.
+
+### Goal Context Pack
+
+Goal-level context includes:
+
+- objective / completion criteria
+- constraints / non-goals
+- source-of-truth refs
+- Task DAG summary
+- cross-Task decisions
+- Goal blockers
+- next runnable work
+- aggregate review/security state
+- aggregate metrics where useful
+
+Goal context references Task Context Packs rather than copying them wholesale.
 
 ## 4. Repository Map / Context Index
 
