@@ -474,6 +474,36 @@ impl WorkflowEngine {
         source.payload = format!("{rules}\n{}", source.payload);
         Ok((config, source, selected_budget))
     }
+    async fn prepare_pack(
+        &self,
+        project: &Project,
+        task: &Task,
+        expected: &SourceSnapshot,
+        phase: Phase,
+        class: WorkflowClass,
+        generation: u64,
+    ) -> Result<ContextVersion> {
+        let (config, source, selected_budget) = self.inputs(project, task, phase, class).await?;
+        ensure!(
+            same_sources(expected, &source),
+            "authority changed while preparing phase Context Pack"
+        );
+        ensure!(
+            class >= config.minimum_workflow
+                && class >= config.workflow.default
+                && class >= risk_workflow(&config, task.risk),
+            "workflow policy changed while preparing Context Pack"
+        );
+        Ok(make_context(
+            task,
+            &source,
+            phase,
+            class,
+            generation,
+            selected_budget,
+            self.next_context(&task.scope())?,
+        ))
+    }
     pub async fn initialize(
         &self,
         task_id: TaskId,
@@ -498,16 +528,9 @@ impl WorkflowEngine {
             .max(risk_workflow(&config, task.risk));
         let configured_phases = phases(workflow, &config);
         let phase = configured_phases[0];
-        let selected_budget = budget(workflow, phase, &config);
-        let context = make_context(
-            &task,
-            &source,
-            phase,
-            workflow,
-            1,
-            selected_budget,
-            self.next_context(&task.scope())?,
-        );
+        let context = self
+            .prepare_pack(&project, &task, &source, phase, workflow, 1)
+            .await?;
         task.workflow = workflow;
         task.context_version = context.version;
         task.revision = Some(source.revision.clone());
@@ -522,7 +545,13 @@ impl WorkflowEngine {
             history: vec![],
             escalations: vec![],
             retries: vec![],
-            sources: source,
+            sources: SourceSnapshot {
+                payload: context.data["payload"]
+                    .as_str()
+                    .context("prepared payload missing")?
+                    .into(),
+                ..source
+            },
             configured_phases,
             finished: false,
         };
@@ -610,15 +639,16 @@ impl WorkflowEngine {
         snapshot.workflow.risk = risk;
         snapshot.task.risk = risk;
         let phase = next_phase(&snapshot.workflow).unwrap_or(Phase::Pr);
-        let context = make_context(
-            &snapshot.task,
-            &source,
-            phase,
-            class,
-            snapshot.workflow.generation,
-            budget(class, phase, &config),
-            self.next_context(&snapshot.task.scope())?,
-        );
+        let context = self
+            .prepare_pack(
+                &snapshot.project,
+                &snapshot.task,
+                &source,
+                phase,
+                class,
+                snapshot.workflow.generation,
+            )
+            .await?;
         snapshot.workflow.sources = source;
         set_context(&mut snapshot, &context);
         self.persist(&mut snapshot, Some(&context))?;
@@ -675,15 +705,16 @@ impl WorkflowEngine {
             });
             invalidate(&mut snapshot.workflow)?;
             let first = next_phase(&snapshot.workflow).expect("presets nonempty");
-            let context = make_context(
-                &snapshot.task,
-                &source,
-                first,
-                class,
-                snapshot.workflow.generation,
-                budget(class, first, &config),
-                self.next_context(&snapshot.task.scope())?,
-            );
+            let context = self
+                .prepare_pack(
+                    &snapshot.project,
+                    &snapshot.task,
+                    &source,
+                    first,
+                    class,
+                    snapshot.workflow.generation,
+                )
+                .await?;
             snapshot.workflow.sources = source;
             set_context(&mut snapshot, &context);
             self.persist(&mut snapshot, Some(&context))?;
@@ -695,30 +726,32 @@ impl WorkflowEngine {
             invalidate(&mut snapshot.workflow)?;
             snapshot.workflow.sources = source.clone();
             let first = next_phase(&snapshot.workflow).expect("presets nonempty");
-            let context = make_context(
-                &snapshot.task,
-                &source,
-                first,
-                class,
-                snapshot.workflow.generation,
-                budget(class, first, &config),
-                self.next_context(&snapshot.task.scope())?,
-            );
+            let context = self
+                .prepare_pack(
+                    &snapshot.project,
+                    &snapshot.task,
+                    &source,
+                    first,
+                    class,
+                    snapshot.workflow.generation,
+                )
+                .await?;
             set_context(&mut snapshot, &context);
             self.persist(&mut snapshot, Some(&context))?;
             return Ok(StepResult::Invalidated {
                 reason: "revision/source/rules changed; stale evidence invalidated".into(),
             });
         }
-        let context = make_context(
-            &snapshot.task,
-            &source,
-            phase,
-            class,
-            snapshot.workflow.generation,
-            selected_budget.clone(),
-            self.next_context(&snapshot.task.scope())?,
-        );
+        let context = self
+            .prepare_pack(
+                &snapshot.project,
+                &snapshot.task,
+                &source,
+                phase,
+                class,
+                snapshot.workflow.generation,
+            )
+            .await?;
         set_context(&mut snapshot, &context);
         snapshot.workflow.sources = source;
         snapshot.task.phase = Some(phase.key().into());
@@ -759,15 +792,16 @@ impl WorkflowEngine {
             invalidate(&mut snapshot.workflow)?;
             snapshot.workflow.sources = fresh_source.clone();
             let first = next_phase(&snapshot.workflow).expect("presets nonempty");
-            let context = make_context(
-                &snapshot.task,
-                &fresh_source,
-                first,
-                class,
-                snapshot.workflow.generation,
-                budget(class, first, &fresh_config),
-                self.next_context(&snapshot.task.scope())?,
-            );
+            let context = self
+                .prepare_pack(
+                    &snapshot.project,
+                    &snapshot.task,
+                    &fresh_source,
+                    first,
+                    class,
+                    snapshot.workflow.generation,
+                )
+                .await?;
             set_context(&mut snapshot, &context);
             self.persist(&mut snapshot, Some(&context))?;
             return Ok(StepResult::Invalidated {
@@ -935,7 +969,7 @@ impl WorkflowEngine {
         if !status.terminal() {
             return Ok(StepResult::Running { phase, session: id });
         }
-        if status.session.state != SessionState::Exited || status.exit_code != Some(0) {
+        if !adapter.transport_succeeded(&status) {
             return self.fail(
                 snapshot,
                 index,
@@ -1002,15 +1036,16 @@ impl WorkflowEngine {
             invalidate(&mut snapshot.workflow)?;
             snapshot.workflow.sources = source.clone();
             let first = next_phase(&snapshot.workflow).expect("presets nonempty");
-            let context = make_context(
-                &snapshot.task,
-                &source,
-                first,
-                class,
-                snapshot.workflow.generation,
-                budget(class, first, &config),
-                self.next_context(&snapshot.task.scope())?,
-            );
+            let context = self
+                .prepare_pack(
+                    &snapshot.project,
+                    &snapshot.task,
+                    &source,
+                    first,
+                    class,
+                    snapshot.workflow.generation,
+                )
+                .await?;
             set_context(&mut snapshot, &context);
             self.persist(&mut snapshot, Some(&context))?;
             return Ok(StepResult::Invalidated {
@@ -1099,15 +1134,16 @@ impl WorkflowEngine {
                     invalidate(&mut snapshot.workflow)?;
                     snapshot.workflow.sources = source.clone();
                     let first = next_phase(&snapshot.workflow).expect("presets nonempty");
-                    let context = make_context(
-                        &snapshot.task,
-                        &source,
-                        first,
-                        snapshot.workflow.workflow,
-                        snapshot.workflow.generation,
-                        budget(snapshot.workflow.workflow, first, &config),
-                        self.next_context(&snapshot.task.scope())?,
-                    );
+                    let context = self
+                        .prepare_pack(
+                            &snapshot.project,
+                            &snapshot.task,
+                            &source,
+                            first,
+                            snapshot.workflow.workflow,
+                            snapshot.workflow.generation,
+                        )
+                        .await?;
                     set_context(&mut snapshot, &context);
                     self.persist(&mut snapshot, Some(&context))?;
                     return Ok(StepResult::Invalidated {
@@ -1125,17 +1161,16 @@ impl WorkflowEngine {
                 snapshot.workflow.active = None;
                 snapshot.workflow.sources = source.clone();
                 let next = next_phase(&snapshot.workflow);
-                let next_budget =
-                    budget(snapshot.workflow.workflow, next.unwrap_or(phase), &config);
-                let context = make_context(
-                    &snapshot.task,
-                    &source,
-                    next.unwrap_or(phase),
-                    snapshot.workflow.workflow,
-                    snapshot.workflow.generation,
-                    next_budget,
-                    self.next_context(&snapshot.task.scope())?,
-                );
+                let context = self
+                    .prepare_pack(
+                        &snapshot.project,
+                        &snapshot.task,
+                        &source,
+                        next.unwrap_or(phase),
+                        snapshot.workflow.workflow,
+                        snapshot.workflow.generation,
+                    )
+                    .await?;
                 set_context(&mut snapshot, &context);
                 snapshot.task.phase = next.map(|p| p.key().into());
                 snapshot.workflow.finished = next.is_none();
@@ -1386,6 +1421,7 @@ fn set_context(snapshot: &mut Snapshot, context: &ContextVersion) {
     snapshot.task.revision = Some(context.revision.clone());
     snapshot.workflow.context_version = context.version;
     snapshot.workflow.context_fresh = true;
+    snapshot.workflow.sources.payload = context.data["payload"].as_str().unwrap_or_default().into();
 }
 fn make_context(
     task: &Task,

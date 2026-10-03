@@ -5,8 +5,11 @@
 The stepwise engine owns one workflow record per exact Task scope. A phase is
 reserved durably before dispatch. Agent phases launch via AgentAdapter and retain
 Session identity; subsequent steps inspect the same Session. External phases run
-an explicit evidence port. Completion requires typed evidence with exact phase,
-scope, revision and source versions. Review phases additionally require a review
+an explicit evidence port. Every published pack calls the source selector with its actual target phase and
+budget, then checks unchanged authority; stored metadata cannot relabel a payload
+selected for another phase.
+Completion requires typed evidence with exact phase,
+scope, revision, source versions, launch ContextVersion and saved native actor. Review phases additionally require a review
 verdict supplied by the review integration; native exit zero is insufficient.
 
 Missing evidence becomes a durable waiting attempt. Failed/Lost sessions do not
@@ -59,3 +62,10 @@ phase/session reservations; #18 supplies repository context selection. Evidence
 ports are authoritative trusted caller integrations, not sandbox attestations.
 This issue implements orchestration, not these integrations or arbitrary command
 verification. Environment values stay in memory and do not enter workflow history.
+
+Native transport completion uses additive `AgentAdapter::transport_succeeded`.
+The generic default requires Exited, no failure, and actual exit zero. A persistent
+server provider may override using its private owned completion journal after
+verified group cleanup and terminal persistence, preserving actual OS exit code.
+Caller-supplied recovery JSON is insufficient. Successful transport still requires
+separate scoped review/test/acceptance evidence.

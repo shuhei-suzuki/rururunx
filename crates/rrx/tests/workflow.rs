@@ -26,6 +26,8 @@ struct FakeAgent {
     store: SharedStore,
     review: bool,
     fail: AtomicBool,
+    native_mode: AtomicBool,
+    native_completions: Mutex<BTreeSet<SessionId>>,
     launches: Mutex<Vec<LaunchRequest>>,
     statuses: Mutex<BTreeMap<SessionId, SessionStatus>>,
 }
@@ -36,6 +38,8 @@ impl FakeAgent {
             store,
             review,
             fail: AtomicBool::new(false),
+            native_mode: AtomicBool::new(false),
+            native_completions: Mutex::new(BTreeSet::new()),
             launches: Mutex::new(vec![]),
             statuses: Mutex::new(BTreeMap::new()),
         }
@@ -102,6 +106,29 @@ impl AgentAdapter for FakeAgent {
             Ok(session)
         })
     }
+    fn transport_succeeded(&self, status: &SessionStatus) -> bool {
+        if status.session.state != SessionState::Exited || status.failure.is_some() {
+            return false;
+        }
+        if status.exit_code == Some(0) {
+            return true;
+        }
+        self.native_completions
+            .lock()
+            .unwrap()
+            .contains(&status.session.id)
+            && self
+                .statuses
+                .lock()
+                .unwrap()
+                .get(&status.session.id)
+                .is_some_and(|saved| {
+                    serde_json::to_value(&saved.session).unwrap()
+                        == serde_json::to_value(&status.session).unwrap()
+                        && saved.exit_code == status.exit_code
+                        && saved.failure == status.failure
+                })
+    }
     fn status(&self, reference: SessionRef) -> AdapterFuture<'_, SessionStatus> {
         Box::pin(async move {
             let mut statuses = self.statuses.lock().unwrap();
@@ -116,7 +143,9 @@ impl AgentAdapter for FakeAgent {
                 } else {
                     SessionState::Exited
                 };
-                status.exit_code = if status.session.state == SessionState::Exited {
+                status.exit_code = if status.session.state == SessionState::Exited
+                    && !self.native_mode.load(Ordering::SeqCst)
+                {
                     Some(0)
                 } else {
                     None
@@ -125,6 +154,11 @@ impl AgentAdapter for FakeAgent {
                 let version = store.session(reference.id).unwrap().unwrap().1;
                 store.put_session(&status.session, version).unwrap();
                 statuses.insert(reference.id, status.clone());
+                if self.native_mode.load(Ordering::SeqCst)
+                    && status.session.state == SessionState::Exited
+                {
+                    self.native_completions.lock().unwrap().insert(reference.id);
+                }
             }
             Ok(status)
         })
@@ -178,14 +212,21 @@ impl WorkflowSources for Sources {
         &self,
         _: Project,
         _: Task,
-        _: Phase,
-        _: ContextBudget,
+        phase: Phase,
+        budget: ContextBudget,
     ) -> WorkflowFuture<'_, SourceSnapshot> {
         Box::pin(async move {
             if let Some(hook) = self.on_capture.lock().unwrap().take() {
                 hook();
             }
-            Ok(self.snapshot.lock().unwrap().clone())
+            let mut snapshot = self.snapshot.lock().unwrap().clone();
+            snapshot.payload.push_str(&format!(
+                " selected-phase={} selected-class={:?} selected-tokens={}",
+                phase.key(),
+                budget.class,
+                budget.discretionary_tokens
+            ));
+            Ok(snapshot)
         })
     }
 }
@@ -437,6 +478,28 @@ async fn all_presets_drive_real_adapter_calls_and_persist_phase_context_history(
                     WorkflowClass::Standard => BudgetClass::Normal,
                     WorkflowClass::Strict => BudgetClass::Broad,
                 })
+            );
+        }
+        for version in 1..=workflow.context_version {
+            let context = fixture
+                .store
+                .lock()
+                .unwrap()
+                .context(&fixture.task.scope(), Some(version))
+                .unwrap()
+                .unwrap();
+            let phase: Phase = serde_json::from_value(context.data["phase"].clone()).unwrap();
+            let budget: ContextBudget =
+                serde_json::from_value(context.data["budget"].clone()).unwrap();
+            let payload = context.data["payload"].as_str().unwrap();
+            assert!(
+                payload.contains(&format!(
+                    "selected-phase={} selected-class={:?} selected-tokens={}",
+                    phase.key(),
+                    budget.class,
+                    budget.discretionary_tokens
+                )),
+                "pack selection disagrees with phase/budget: {context:?}"
             );
         }
         let restored = Store::open(&fixture.dir.path().join("state.db")).unwrap();
@@ -1409,4 +1472,99 @@ async fn foreign_stale_unbound_or_empty_gate_evidence_never_advances_review() {
             AttemptState::Evaluating
         );
     }
+}
+
+#[tokio::test]
+async fn native_turn_completion_preserves_real_exit_and_still_requires_gate_evidence() {
+    let fixture = Fixture::new(WorkflowClass::Quick);
+    fixture
+        .engine
+        .initialize(fixture.task.id, None)
+        .await
+        .unwrap();
+    fixture.through(Phase::Worktree).await;
+    fixture.executor.native_mode.store(true, Ordering::SeqCst);
+    fixture.gates.waiting.store(true, Ordering::SeqCst);
+    let StepResult::Started {
+        session: Some(id), ..
+    } = fixture
+        .engine
+        .step(fixture.task.id, BTreeMap::new())
+        .await
+        .unwrap()
+    else {
+        panic!("agent not started");
+    };
+    assert!(matches!(
+        fixture
+            .engine
+            .step(fixture.task.id, BTreeMap::new())
+            .await
+            .unwrap(),
+        StepResult::Waiting {
+            phase: Phase::Implement,
+            ..
+        }
+    ));
+    let status = fixture
+        .executor
+        .statuses
+        .lock()
+        .unwrap()
+        .get(&id)
+        .unwrap()
+        .clone();
+    assert_eq!(status.exit_code, None);
+    assert_eq!(status.session.state, SessionState::Exited);
+    assert!(fixture.executor.transport_succeeded(&status));
+    let mut unowned = status.clone();
+    unowned.session.scope.project_id = ProjectId::new();
+    assert!(!fixture.executor.transport_succeeded(&unowned));
+    let mut metadata_claim = status.clone();
+    metadata_claim.session.recovery = json!({"native_turn":{"status":"completed"}});
+    fixture.executor.native_completions.lock().unwrap().clear();
+    assert!(!fixture.executor.transport_succeeded(&metadata_claim));
+    assert!(
+        !fixture
+            .engine
+            .snapshot(fixture.task.id)
+            .unwrap()
+            .completed
+            .contains_key(&Phase::Implement)
+    );
+}
+
+#[tokio::test]
+async fn generic_completion_default_requires_real_zero_exit_and_no_failure() {
+    let fixture = Fixture::new(WorkflowClass::Quick);
+    fixture
+        .engine
+        .initialize(fixture.task.id, None)
+        .await
+        .unwrap();
+    fixture.through(Phase::Implement).await;
+    let mut status = fixture
+        .executor
+        .statuses
+        .lock()
+        .unwrap()
+        .values()
+        .next()
+        .unwrap()
+        .clone();
+    let generic =
+        GenericCliAdapter::new("generic".into(), vec!["true".into()], fixture.store.clone())
+            .unwrap();
+    assert!(generic.transport_succeeded(&status));
+    status.failure = Some("I/O failure".into());
+    assert!(!generic.transport_succeeded(&status));
+    status.failure = None;
+    status.exit_code = None;
+    status.session.recovery = json!({"native_turn":{"status":"completed"}});
+    assert!(!generic.transport_succeeded(&status));
+    status.exit_code = Some(1);
+    assert!(!generic.transport_succeeded(&status));
+    status.exit_code = Some(0);
+    status.session.state = SessionState::Lost;
+    assert!(!generic.transport_succeeded(&status));
 }
