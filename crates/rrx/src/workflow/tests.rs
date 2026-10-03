@@ -3270,3 +3270,128 @@ async fn all_public_audit_entrypoints_reject_reserved_gate_journal_kinds() {
         )
         .unwrap();
 }
+
+#[tokio::test]
+async fn native_gate_requires_persisted_owned_status_and_sessionless_completion_is_rejected() {
+    let fixture = Fixture::new(WorkflowClass::Quick);
+    fixture
+        .engine
+        .initialize(fixture.task.id, None)
+        .await
+        .unwrap();
+    fixture.through(Phase::Worktree).await;
+    let StepResult::Started {
+        session: Some(id), ..
+    } = fixture
+        .engine
+        .step(fixture.task.id, BTreeMap::new())
+        .await
+        .unwrap()
+    else {
+        panic!("native required")
+    };
+    fixture
+        .executor
+        .status(SessionRef {
+            id,
+            scope: fixture.task.scope(),
+        })
+        .await
+        .unwrap();
+    let connection = rusqlite::Connection::open(fixture.dir.path().join("state.db")).unwrap();
+    connection
+        .execute("DELETE FROM records WHERE id=?1", [id.to_string()])
+        .unwrap();
+    let calls = fixture.gates.calls.lock().unwrap().len();
+    assert!(
+        fixture
+            .engine
+            .step(fixture.task.id, BTreeMap::new())
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("persisted owned Session")
+    );
+    assert_eq!(fixture.gates.calls.lock().unwrap().len(), calls);
+
+    let fixture = Fixture::new(WorkflowClass::Quick);
+    fixture
+        .engine
+        .initialize(fixture.task.id, None)
+        .await
+        .unwrap();
+    fixture.through(Phase::Worktree).await;
+    let store = fixture.store.clone();
+    let task_id = fixture.task.id;
+    let target = fixture.sources.captures.load(Ordering::SeqCst) + 4;
+    *fixture.sources.on_numbered_capture.lock().unwrap() = Some((
+        target,
+        Box::new(move || {
+            let mut store = store.lock().unwrap();
+            let mut task = store.task(task_id).unwrap().unwrap();
+            task.next_action = Some("reserve without launch".into());
+            store.put_task(&mut task).unwrap();
+        }),
+    ));
+    assert!(
+        fixture
+            .engine
+            .step(fixture.task.id, BTreeMap::new())
+            .await
+            .is_err()
+    );
+    let mut store = fixture.store.lock().unwrap();
+    let mut task = store.task(fixture.task.id).unwrap().unwrap();
+    let mut record = store
+        .records(&task.scope(), RecordKind::Workflow)
+        .unwrap()
+        .remove(0);
+    let mut snapshot: WorkflowSnapshot = serde_json::from_value(record.data.clone()).unwrap();
+    let index = snapshot.active.unwrap();
+    assert!(snapshot.history[index].session_id.is_none());
+    snapshot.history[index].state = AttemptState::Evaluating;
+    record.data = serde_json::to_value(&snapshot).unwrap();
+    let goal_version = store.goal(task.goal_id).unwrap().unwrap().version;
+    store
+        .put_workflow_transition(
+            &mut task,
+            &mut record,
+            None,
+            fixture.project.version,
+            goal_version,
+            WorkflowAccess::StateOnly,
+        )
+        .unwrap(); // valid control
+    snapshot.history[index].state = AttemptState::Succeeded;
+    snapshot.history[index].completed_at = Some(now_ms());
+    snapshot.active = None;
+    snapshot.completed.insert(
+        Phase::Implement,
+        Evidence {
+            scope: task.scope(),
+            phase: Phase::Implement,
+            revision: snapshot.sources.revision.clone(),
+            source_versions: snapshot.sources.source_versions.clone(),
+            artifacts: vec!["forged-sessionless-output".into()],
+            dependencies: snapshot.sources.source_versions.clone(),
+            review_approved: None,
+            session_id: None,
+            context_version: snapshot.context_version,
+        },
+    );
+    record.data = serde_json::to_value(snapshot).unwrap();
+    assert!(
+        store
+            .put_workflow_transition(
+                &mut task,
+                &mut record,
+                None,
+                fixture.project.version,
+                goal_version,
+                WorkflowAccess::StateOnly
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("owned native Session")
+    );
+}

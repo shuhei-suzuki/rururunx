@@ -1108,6 +1108,7 @@ impl WorkflowEngine {
             }
         };
         validate_status(&status, &snapshot.task, attempt)?;
+        self.validate_persisted_status(&status)?;
         if !status.terminal() {
             return Ok(StepResult::Running { phase, session: id });
         }
@@ -1122,6 +1123,20 @@ impl WorkflowEngine {
             );
         }
         self.evaluate(snapshot, index, Some(status)).await
+    }
+    fn validate_persisted_status(&self, status: &SessionStatus) -> Result<()> {
+        let store = self
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("state store poisoned"))?;
+        let (saved, _) = store
+            .session(status.session.id)?
+            .context("native status requires persisted owned Session")?;
+        ensure!(
+            serde_json::to_value(saved)? == serde_json::to_value(&status.session)?,
+            "native status differs from persisted owned Session"
+        );
+        Ok(())
     }
     fn observe_gate(
         &self,
@@ -1397,6 +1412,7 @@ impl WorkflowEngine {
                 })
                 .await?;
             validate_status(&status, &snapshot.task, &attempt)?;
+            self.validate_persisted_status(&status)?;
             ensure!(
                 agent.transport_succeeded(&status),
                 "native completion unavailable; recovery required"
@@ -1449,6 +1465,16 @@ impl WorkflowEngine {
             .workflow
             .max(config.minimum_workflow)
             .max(risk_workflow(&config, snapshot.workflow.risk));
+        if phase != Phase::Cleanup
+            && (has_external_effect(&snapshot.workflow)
+                || (irreversible(phase)
+                    && !snapshot.workflow.history[index].observations.is_empty()))
+            && (class > snapshot.workflow.workflow
+                || !same_sources(&source, &snapshot.workflow.sources))
+        {
+            return Ok(StepResult::Waiting { phase,
+                reason: "external side effect held after policy/target drift; reconcile explicitly (#13)".into() });
+        }
         if class > snapshot.workflow.workflow
             || retain_phases(&snapshot.workflow.configured_phases, phases(class, &config))
                 != snapshot.workflow.configured_phases
