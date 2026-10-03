@@ -427,6 +427,7 @@ impl Store {
                 context.scope == task.scope() && context.version == task.context_version,
                 "context pointer/scope differs from workflow Task"
             );
+            crate::workflow::validate_context(task, workflow, context)?;
             put_context_tx(&tx, context)?;
         } else {
             let owner = context_owner(&task.scope())?;
@@ -436,6 +437,12 @@ impl Store {
                 latest == task.context_version,
                 "workflow context pointer is stale"
             );
+            let body: String = tx.query_row(
+                "SELECT body FROM context_versions WHERE project_id=?1 AND owner=?2 AND version=?3",
+                params![task.project_id.to_string(), owner, latest],
+                |row| row.get(0),
+            )?;
+            crate::workflow::validate_context(task, workflow, &decode(body)?)?;
         }
         let next_task = put_task_tx(&tx, task)?;
         let next_workflow = put_record_tx(&tx, workflow)?;

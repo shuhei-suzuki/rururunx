@@ -1036,6 +1036,7 @@ impl WorkflowEngine {
         );
         match outcome {
             GateOutcome::Waiting(reason) => {
+                snapshot.workflow.context_fresh = same_sources(&source, &snapshot.workflow.sources);
                 let attempt = &mut snapshot.workflow.history[index];
                 attempt.state = AttemptState::Waiting;
                 attempt.detail = Some(reason.clone());
@@ -1091,7 +1092,7 @@ impl WorkflowEngine {
                         first,
                         snapshot.workflow.workflow,
                         snapshot.workflow.generation,
-                        selected_budget,
+                        budget(snapshot.workflow.workflow, first, &config),
                         self.next_context(&snapshot.task.scope())?,
                     );
                     set_context(&mut snapshot, &context);
@@ -1175,6 +1176,45 @@ impl WorkflowEngine {
         snapshot.task.blockers.clear();
         self.persist(&mut snapshot, None)
     }
+}
+pub(crate) fn validate_context(
+    task: &Task,
+    record: &Record,
+    context: &ContextVersion,
+) -> Result<()> {
+    let workflow: WorkflowSnapshot = serde_json::from_value(record.data.clone())?;
+    ensure!(
+        context.scope == task.scope()
+            && context.version == task.context_version
+            && task.revision.as_ref() == Some(&context.revision),
+        "Workflow ContextVersion ownership/revision mismatch"
+    );
+    let authority = context
+        .source_hashes
+        .iter()
+        .filter(|(k, _)| !k.starts_with("workflow:"))
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect::<BTreeMap<_, _>>();
+    ensure!(
+        authority == workflow.sources.source_versions
+            && context.source_hashes.get("workflow:generation")
+                == Some(&workflow.generation.to_string()),
+        "Workflow ContextVersion source/generation mismatch"
+    );
+    let phase = workflow
+        .active
+        .map(|i| workflow.history[i].phase)
+        .or_else(|| next_phase(&workflow))
+        .or_else(|| workflow.configured_phases.last().copied())
+        .context("workflow has no phases")?;
+    ensure!(
+        context
+            .source_hashes
+            .get("workflow:phase")
+            .is_some_and(|p| p == phase.key()),
+        "Workflow ContextVersion phase mismatch"
+    );
+    Ok(())
 }
 pub(crate) fn validate_transition(
     task: &Task,

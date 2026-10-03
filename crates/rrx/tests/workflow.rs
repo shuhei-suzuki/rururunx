@@ -1209,3 +1209,60 @@ async fn explicit_stricter_selection_and_unsupported_review_capability_are_hones
     assert!(fixture.reviewer.launches.lock().unwrap().is_empty());
     assert_eq!(fixture.executor.launches.lock().unwrap().len(), 1);
 }
+
+#[tokio::test]
+async fn atomic_context_pointer_rejects_wrong_revision_phase_or_source_versions() {
+    let fixture = Fixture::new(WorkflowClass::Quick);
+    fixture
+        .engine
+        .initialize(fixture.task.id, None)
+        .await
+        .unwrap();
+    let mut store = fixture.store.lock().unwrap();
+    let original_task = store.task(fixture.task.id).unwrap().unwrap();
+    let original_record = store
+        .records(&fixture.task.scope(), RecordKind::Workflow)
+        .unwrap()
+        .remove(0);
+    for mutation in 0..3 {
+        let mut task = original_task.clone();
+        let mut record = original_record.clone();
+        let mut context = store.context(&task.scope(), None).unwrap().unwrap();
+        context.version += 1;
+        task.context_version = context.version;
+        record.data["context_version"] = json!(context.version);
+        match mutation {
+            0 => context.revision = "foreign revision".into(),
+            1 => {
+                context
+                    .source_hashes
+                    .insert("workflow:phase".into(), "pr".into());
+            }
+            _ => {
+                context
+                    .source_hashes
+                    .insert("requirements".into(), "stale hash".into());
+            }
+        }
+        assert!(
+            store
+                .put_workflow_transition(
+                    &mut task,
+                    &mut record,
+                    Some(&context),
+                    fixture.project.version,
+                    1,
+                    WorkflowAccess::StateOnly
+                )
+                .is_err()
+        );
+        assert_eq!(
+            store.context(&task.scope(), None).unwrap().unwrap().version,
+            1
+        );
+        assert_eq!(
+            store.task(task.id).unwrap().unwrap().version,
+            original_task.version
+        );
+    }
+}
