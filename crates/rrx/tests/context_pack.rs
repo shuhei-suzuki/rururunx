@@ -2135,6 +2135,7 @@ struct PackFixtureAgent {
     store: SharedStore,
     sessions: Mutex<std::collections::BTreeMap<SessionId, Session>>,
     name: String,
+    progress_before_start: bool,
 }
 impl rrx::adapter::AgentAdapter for PackFixtureAgent {
     fn capabilities(&self) -> std::collections::BTreeSet<rrx::adapter::Capability> {
@@ -2174,6 +2175,19 @@ impl rrx::adapter::AgentAdapter for PackFixtureAgent {
                 started_at: now_ms(),
             };
             let mut store = self.store.lock().unwrap();
+            if self.progress_before_start {
+                let mut goal = store.goal(request.scope.goal_id.unwrap()).unwrap().unwrap();
+                goal.completion_criteria[0].satisfied = true;
+                let mut sibling = Task::new(
+                    request.scope.project_id,
+                    goal.id,
+                    "concurrent sibling progress".into(),
+                    "fake".into(),
+                );
+                store.put_task(&mut sibling).map_err(pack_fixture_error)?;
+                goal.dag.nodes.push(sibling.id);
+                store.put_goal(&mut goal).map_err(pack_fixture_error)?;
+            }
             store
                 .validate_context_input(&request.scope, &request.input)
                 .map_err(pack_fixture_error)?;
@@ -2370,6 +2384,7 @@ async fn actual_workflow_publishes_typed_phase_packs_and_freezes_cleanup_provena
                     store: f.store.clone(),
                     sessions: Mutex::new(Default::default()),
                     name: name.into(),
+                    progress_before_start: false,
                 }),
             )
             .unwrap();
@@ -3662,6 +3677,7 @@ async fn phase_frame_requires_live_owned_attempt_and_stable_semantic_instruction
                 store: f.store.clone(),
                 sessions: Mutex::new(Default::default()),
                 name: "fake".into(),
+                progress_before_start: true,
             }),
         )
         .unwrap();
@@ -3899,7 +3915,6 @@ async fn reserved_phase_envelopes_cannot_poison_legacy_context_readers() {
         revision,
         source_hashes: Default::default(),
         data: serde_json::json!({"task_pack":1,"legacy":"opaque"}),
-        created_at: now_ms(),
     };
     assert!(f.store.lock().unwrap().put_context(&context).is_err());
     context.data = serde_json::json!({"frozen_task_pack":false,"legacy":"opaque"});
