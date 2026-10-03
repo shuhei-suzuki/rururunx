@@ -180,6 +180,7 @@ impl NativeServer {
             Ok(rpc) => rpc,
             Err(error) => {
                 terminate(process).await?;
+                socket_binding.cleanup(&socket)?;
                 return Err(error);
             }
         };
@@ -218,16 +219,25 @@ impl NativeServer {
             rpc,
             process,
             directory,
+            socket,
+            socket_binding,
             stdout,
             stderr,
             ..
         } = self;
         drop(rpc);
         let result = terminate(process).await;
+        let cleanup = if result.is_ok() {
+            socket_binding.cleanup(&socket)
+        } else {
+            Ok(())
+        };
         drop(stdout);
         drop(stderr);
         drop(directory);
-        result
+        let result = result?;
+        cleanup?;
+        Ok(result)
     }
 }
 async fn terminate(process: ProcessGroup) -> AdapterResult<ExitStatus> {
@@ -363,6 +373,37 @@ impl SocketBinding {
             ));
         }
         verify_directory(self.target.parent().expect("validated target parent"))
+    }
+    fn cleanup(&self, path: &Path) -> AdapterResult<()> {
+        // Only a binding whose peer was authenticated to the owned group reaches
+        // this method, and only after confirmed group termination. Leave the
+        // shared native parent and every unrelated socket untouched.
+        if self.target != path {
+            match std::fs::symlink_metadata(&self.target) {
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+                Err(_) => {
+                    return Err(failure(
+                        ErrorKind::ProcessFailure,
+                        "owned native IPC cleanup metadata unavailable",
+                    ));
+                }
+                Ok(_) => {}
+            }
+            verify_directory(self.target.parent().expect("validated target parent"))?;
+            if verify_socket(&self.target)? != self.target_identity {
+                return Err(failure(
+                    ErrorKind::OwnershipMismatch,
+                    "native socket target changed before cleanup",
+                ));
+            }
+            std::fs::remove_file(&self.target).map_err(|_| {
+                failure(
+                    ErrorKind::ProcessFailure,
+                    "verified owned native socket cleanup failed",
+                )
+            })?;
+        }
+        Ok(())
     }
 }
 fn verify_peer(stream: &UnixStream, leader: u32) -> AdapterResult<()> {
@@ -501,5 +542,41 @@ mod tests {
         std::os::unix::fs::symlink(directory_path.join("foreign"), &alias).unwrap();
         assert!(binding.verify(&alias).is_err());
         drop(peer);
+    }
+    #[test]
+    fn cleanup_preserves_other_native_sockets_and_rejects_replaced_targets() {
+        for replace in [false, true] {
+            let directory = tempfile::Builder::new()
+                .prefix("rrx-ipc-cleanup-")
+                .tempdir_in("/tmp")
+                .unwrap();
+            std::fs::set_permissions(directory.path(), std::fs::Permissions::from_mode(0o700))
+                .unwrap();
+            let parent = directory.path().canonicalize().unwrap();
+            let target = parent.join("owned");
+            let foreign = parent.join("foreign");
+            let alias = parent.join("alias");
+            let owned_listener = std::os::unix::net::UnixListener::bind(&target).unwrap();
+            let foreign_listener = std::os::unix::net::UnixListener::bind(&foreign).unwrap();
+            for path in [&target, &foreign] {
+                std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).unwrap();
+            }
+            std::os::unix::fs::symlink(&target, &alias).unwrap();
+            let binding = SocketBinding::capture(&alias).unwrap();
+            if replace {
+                std::fs::remove_file(&target).unwrap();
+                std::fs::rename(&foreign, &target).unwrap();
+                assert_eq!(
+                    binding.cleanup(&alias).unwrap_err().kind,
+                    ErrorKind::OwnershipMismatch
+                );
+                assert!(target.exists());
+            } else {
+                binding.cleanup(&alias).unwrap();
+                assert!(!target.exists() && foreign.exists() && parent.is_dir());
+            }
+            drop(owned_listener);
+            drop(foreign_listener);
+        }
     }
 }
