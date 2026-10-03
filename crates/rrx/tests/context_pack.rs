@@ -708,3 +708,43 @@ async fn stale_drafts_lost_sessions_and_immutable_locks_cannot_publish_context()
         .await
         .unwrap();
 }
+#[tokio::test]
+async fn typed_reader_does_not_accept_metadata_that_disagrees_with_actual_task() {
+    use sha2::{Digest, Sha256};
+    let f = Fixture::new();
+    let packs = f.packs();
+    let original = packs
+        .publish_task(&packs.draft_task(&f.task.scope(), input()).await.unwrap())
+        .await
+        .unwrap();
+    let mut context = f
+        .store
+        .lock()
+        .unwrap()
+        .context(&f.task.scope(), Some(original.version))
+        .unwrap()
+        .unwrap();
+    context.version += 1;
+    context.data["task"]["title"] = serde_json::json!("FORGED TASK PURPOSE");
+    {
+        let mut store = f.store.lock().unwrap();
+        store.put_context(&context).unwrap();
+        let mut task = store.task(f.task.id).unwrap().unwrap();
+        task.context_version = context.version;
+        store.put_task(&mut task).unwrap();
+    }
+    let forged = PackRef {
+        scope: f.task.scope(),
+        version: context.version,
+        digest: format!(
+            "sha256:{:x}",
+            Sha256::digest(serde_json::to_vec(&context).unwrap())
+        ),
+    };
+    assert!(
+        packs
+            .prepare_task(&forged, SelectionRequest::default(), budget())
+            .await
+            .is_err()
+    );
+}

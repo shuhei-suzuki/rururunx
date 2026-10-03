@@ -402,6 +402,54 @@ impl ContextPacks {
             "invalid checkpoint envelope"
         );
         bounded(&cp)?;
+        ensure!(
+            cp.chain_version > 0
+                && cp.first_sequence > 0
+                && cp.last_sequence >= cp.first_sequence
+                && cp.retained.len() <= MAX_EVENTS
+                && cp.recent.len() <= MAX_EVENTS,
+            "invalid bounded checkpoint history"
+        );
+        ensure!(
+            cp.retained
+                .iter()
+                .all(|e| e.event.kind != EventKind::Transient)
+                && cp
+                    .recent
+                    .iter()
+                    .all(|e| e.event.kind == EventKind::Transient)
+                && cp
+                    .retained
+                    .iter()
+                    .chain(&cp.recent)
+                    .all(|e| e.event.sequence > 0
+                        && e.event.sequence <= cp.last_sequence
+                        && !e.event.text.trim().is_empty()
+                        && e.event.text.len() <= MAX_TEXT),
+            "checkpoint history classification/provenance invalid"
+        );
+        let native = store
+            .session(cp.session)?
+            .context("checkpoint Session missing")?
+            .0;
+        ensure!(
+            native.scope == cp.scope
+                && native.role == cp.role
+                && matches!(native.role, SessionRole::Executor | SessionRole::Consultant),
+            "checkpoint Session provenance mismatch"
+        );
+        ensure!(
+            cp.recent_bytes
+                == cp
+                    .recent
+                    .iter()
+                    .map(serde_json::to_vec)
+                    .collect::<serde_json::Result<Vec<_>>>()?
+                    .iter()
+                    .map(Vec::len)
+                    .sum::<usize>(),
+            "checkpoint recent byte accounting mismatch"
+        );
         Ok(cp)
     }
     async fn validate_task_map(&self, reference: &PackRef) -> Result<(TaskPack, RepositoryMap)> {
@@ -412,7 +460,10 @@ impl ContextPacks {
             "stale Task pack pointer"
         );
         ensure!(
-            authority(&p, &g, &t)? == pack.authority_digest,
+            authority(&p, &g, &t)? == pack.authority_digest
+                && projection(&t)? == pack.task
+                && projection(&g)? == pack.goal
+                && pack.repository_identity == p.repository_identity,
             "stale Task pack state"
         );
         let map = self
@@ -425,6 +476,22 @@ impl ContextPacks {
                 && c.source_hashes == map.freshness().source_hashes,
             "stale Task pack sources"
         );
+        ensure!(
+            pack.project_rules == rules(&map),
+            "Task pack rule metadata mismatch"
+        );
+        for a in &pack.artifacts {
+            ensure!(
+                a.scope == pack.scope
+                    && map.files().contains_key(&a.path)
+                    && map
+                        .freshness()
+                        .source_hashes
+                        .get(&format!("worktree:{}", a.path))
+                        == Some(&a.digest),
+                "Task pack authoritative artifact mismatch"
+            );
+        }
         if let Some(r) = &pack.checkpoint {
             self.load_checkpoint(r)?;
         }
@@ -933,6 +1000,11 @@ fn validate_inputs(inputs: &TaskInputs) -> Result<()> {
     ensure!(
         inputs.artifacts.len() <= MAX_REFS && inputs.additional_paths.len() <= MAX_REFS,
         "too many pack references"
+    );
+    ensure!(
+        inputs.additional_paths.iter().all(|p| p.len() <= 4096)
+            && inputs.artifacts.iter().all(|a| a.path.len() <= 4096),
+        "pack path exceeds bounded metadata"
     );
     for list in [
         &inputs.decisions,
