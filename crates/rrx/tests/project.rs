@@ -876,6 +876,15 @@ fn blocked_work_cannot_resurrect_terminal_rows_or_rewrite_goal_and_task_metadata
     assert!(store.put_task(&mut changed).is_err());
     session.state = SessionState::Lost;
     version = store.put_session(&session, version).unwrap();
+    let mut changed = session.clone();
+    changed.native_ref = Some("foreign-native-session".into());
+    assert!(store.put_session(&changed, version).is_err());
+    let mut changed = session.clone();
+    changed.pid = Some(123456);
+    assert!(store.put_session(&changed, version).is_err());
+    let mut changed = session.clone();
+    changed.recovery = json!({"resume": "foreign"});
+    assert!(store.put_session(&changed, version).is_err());
     session.state = SessionState::WaitingApproval;
     assert!(store.put_session(&session, version).is_err());
     session.state = SessionState::Exited;

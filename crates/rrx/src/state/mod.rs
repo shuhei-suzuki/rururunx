@@ -796,6 +796,11 @@ fn validate_worktree_exclusion(tx: &Transaction<'_>, record: &Record) -> Result<
             let safe_update =
                 if let Some(previous) = read_tx::<Record>(tx, "records", &record.id.to_string())? {
                     let old: Session = serde_json::from_value(previous.data)?;
+                    let mut metadata = session.clone();
+                    metadata.state = old.state;
+                    if session.pid.is_none() {
+                        metadata.pid = old.pid;
+                    }
                     !session_terminal(old.state)
                         && (session.state == SessionState::Lost
                             || (old.state != SessionState::Lost
@@ -803,6 +808,7 @@ fn validate_worktree_exclusion(tx: &Transaction<'_>, record: &Record) -> Result<
                                     session.state,
                                     SessionState::WaitingHuman | SessionState::WaitingApproval
                                 )))
+                        && serde_json::to_value(metadata)? == serde_json::to_value(&old)?
                 } else {
                     false
                 };

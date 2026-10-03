@@ -77,3 +77,8 @@ regression covers terminal insertion then attempted reopening for all three
 entity classes. The separate-Git-directory fixture sets core.worktree explicitly
 so ancestry fallback succeeds and canonical metadata exclusion is independently
 necessary; detached mutation checks remove that exclusion.
+
+Blocked-session reconciliation likewise preserves native_ref, recovery, actor,
+model/effort and start metadata; only state changes and clearing pid are allowed.
+Lost/wait updates cannot rebind to another process/session or replace recovery
+hints. Separate audited diagnostics may describe failures without altering hints.
