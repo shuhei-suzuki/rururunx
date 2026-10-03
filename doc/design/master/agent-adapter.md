@@ -231,3 +231,34 @@ Adapters must return explicit failure categories such as:
 - permission interception unavailable
 
 Workflow Engine decides whether to retry, choose a fallback agent, or escalate.
+
+## 15. Implemented Rust baseline (Issue #4)
+
+`adapter::AgentAdapter` supplies an object-safe async contract and extensible
+`AgentRegistry`. Generic registrations load runtime argv unchanged; model/effort
+settings require a native implementation and fail explicitly in the generic
+baseline. PreparedInput carries exact Scope, kind, revision/version, source
+versions and selected payload. ReviewBundle and ContextPack are distinct inputs.
+
+Generic CLI advertises only `execute` and `non_interactive`. It cannot promise
+read-only consultation/review/approval, interactive PTY/attach, resume, native
+Goals, checkpointing or token/cache telemetry. These operations fail explicitly;
+Usage uses nullable fields with an unavailable reason. Provider authentication is
+unknown rather than guessed from executable presence. Native #5/#6/#7 adapters
+must enforce provider-specific safety modes before advertising capabilities.
+
+Generic launch requires persisted Project/Goal/Task ownership, exact canonical
+Task worktree/branch and owning Git common directory. Base/main/master/detached
+execution and Git environment overrides are rejected. Starting reserves the Task
+before async preflight, while Store's task-level lock/session exclusion prevents
+review/executor races. Native processes receive only explicit environment; callers
+must include intentional native baseline HOME/PATH/config/auth so safety settings
+remain authoritative. The adapter never supplies bypass flags or an empty native
+configuration home.
+
+Tokio supervises private process groups without busy polling. Concurrent output
+drains retain bounded 64 KiB byte tails and report truncation/I/O failures. Stop
+kills the owned group and reaps its child; terminal stop is idempotent. Persisted
+Session IDs remain independent from PID and native references. Restart without a
+live supervisor yields SessionLost, not a fabricated reconnect. See
+[issue design](../issue-4-design.md) for lifecycle and current boundaries.
