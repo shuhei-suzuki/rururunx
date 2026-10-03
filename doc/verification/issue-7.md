@@ -204,4 +204,21 @@ evidence and are audited before post-operation checks. A sticky failed-effect ma
 denies completion even if native reports end_turn and inventory matches intended bytes.
 A test-only sync_data fault applies bytes, reports failure, proves reconciliation alone
 would accept them, and requires the same callback-evidence consumer to reject completion.
-These refinements await committed gates, scoped compiled mutants and immutable rereview.
+Clean `758bdf2`: ten private Grok tests pass; all-target locked clippy with warnings
+denied, fmt and debug/release builds pass. Unsupported filesystem methods are rejected
+before any worker or `grok.fs_observed` event, pinned by a real fake ACP subprocess.
+The restored full fake suite passes all nine tests in 36.17 seconds, with both installed
+tests explicitly ignored. Installed combined acceptance passes in 47.74 seconds:
+owned edit, absent foreign write, explicit fresh-input same-UUID continuation and locked
+zero-tool locally validated structured DENY with actual aggregate usage. This is an
+isolated scoped diagnostic acceptance, not a default-concurrency throughput claim.
+
+Three R4 compiled mutants are assertion-killed: removing failed-write-effect taint
+incorrectly accepts completion despite the sync failure; removing possible-effect
+observation violates the actual applied-write fixture; removing Actor's pre-write
+authority creates an unowned file, caught independently of its eventual Lost state.
+Totals: 34 executions, 33 distinct boundaries, 33 assertion kills and the original
+survivor subsequently killed. Restored baseline has no crate diff; its full fake suite
+passes and the owned detached mutation worktree was removed normally. Immutable
+scoped Round 5 rereview and the latest exact default-concurrency Linux/macOS CI remain
+pending.
