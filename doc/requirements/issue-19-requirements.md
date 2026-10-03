@@ -153,40 +153,38 @@ constraints, scoped references, Task/attempt authority or paused owners remain
 fenced; acknowledgement is not another model dispatch. Legacy sources retain
 strict Project/Goal version equality.
 
-## First acknowledgement and role scope
+## First admission and compatibility requirements
 
-A protected input remains pending until a current-head/frame-validated Running
-publication or an exact actually consumed native dispatch. An unobserved diagnostic flag
-alone grants no acknowledgement authority. WaitingApproval, WaitingHuman
-and Lost do not imply acknowledgement. The first Running publication after those
-states must recheck live input authority. A conservative Lost update must remain
-possible without claiming delivery. An already admitted same input may later
-reenter Running without replacing its historical frame after a checkpoint.
+Protected Task input stays pending until an exact consumed dispatch or a private,
+current-frame/head-validated Running publication. WaitingApproval/WaitingHuman/Lost
+and native_dispatch_unobserved do not grant admission. Pending reentry revalidates
+live authority. Already admitted input retains its historical pins. New consumed
+intent always revalidates, and admitted nonterminal input cannot visit Starting to
+roll back to an older terminal frame. Exact prewire restoration requires no
+admission, consumption or uncertainty. Higher-input continuation starts only from
+an owned terminal Session and installs fresh authority before native dispatch.
 
-Acknowledgement authority must be privately published in the same Session
-transaction, bound to exact Scope, Session ID and pinned input metadata. Caller
-JSON, generic Records and public audit writes cannot assert it. Fresh higher-input
-continuation must not inherit an earlier input's acknowledgement. Exact permitted
-prewire terminal restoration preserves the earlier input's authority. Storage is
-bounded to one current acknowledgement row per Session, with an indexed lookup.
-Atomic audit failure must roll back both the Session and acknowledgement.
+Admission facts are privately indexed, scoped to Task/Session/input/actor, bounded
+to one row per Session and atomic with Session plus audit. JSON or generic APIs
+cannot manufacture them. Unprotected legacy and Project/Goal-only Sessions retain
+their existing contract. Standalone Executor frames cannot be adopted by another
+agent, role or worktree. Workflow frames preserve their active attempt authority.
 
-The persistence contract advances to schema 6 through ordered 5→6 migration.
-Older schema 5 writers must refuse it without changing database bytes. Migration
-creates no delivery or acknowledgement claims for old Sessions. Pending old
-inputs lacking current instruction hashes fail closed until explicitly prepared
-again; consumed historical observations retain their existing input pins.
+Standalone prepared payloads render stable scoped instruction and Task policy
+hashes and publish exact private byte/hash authority. Sibling progress, blockers,
+next-action and pointer-only bookkeeping cannot strand pending semantic input;
+constraints, refs, identity, policy and lifecycle changes remain fenced. Physical
+HEAD/source hashes remain authoritative. Explicit idle consecutive republish must
+allow safe old-frame migration and higher-version terminal continuation; default
+publication remains idempotent and active launches immutable.
 
-Standalone launch inputs privately publish stable Project/Goal/Task instruction
-hashes with their exact prepared frame. Admission compares these hashes, while
-pack preparation and publication retain complete snapshot freshness. Goal
-satisfaction/DAG progress and Task blockers/next-action updates alone must not
-strand a pending input. Actual constraint, scoped-reference, identity or lifecycle
-changes remain fenced.
+Schema6 migration is ordered, atomic and makes no historical admission claims.
+Unsupported old5 opens AND old5 connections held open before migration must reject
+all subsequent application writes, including private metadata/audit, without
+changing state. Existing domain/immutability triggers remain effective. Native
+compiled old-writer evidence must cover a live connection, not only fresh opens.
 
-Checkpoint condensation accepts existing scoped Executor/Consultant history;
-this core does not create live role-specific consultation inputs on a typed
-workflow-owned Task. Such a port must publish its own exact scoped frame/source
-pins before live admission. ApprovalReviewer runs on a separate operation-free
-decision Task through the Approval Broker, not by adopting an Executor-writable
-Task's native rules/config/hooks. Arbitrary role changes never bypass frame guards.
+Consultant checkpoint history is supported; live role-specific consultation needs
+its own exact prepared-frame port. ApprovalReviewer uses a separate operation-free
+decision Task through the Approval Broker, never an Executor-writable Task's native
+rules/config/hooks. Arbitrary role changes cannot bypass frame authority.

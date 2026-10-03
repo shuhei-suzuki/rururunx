@@ -339,18 +339,30 @@ constraints, scoped references, Task/attempt authority or paused owners remain
 fenced; acknowledgement is not another model dispatch. Legacy sources retain
 strict Project/Goal version equality.
 
-### Private native input acknowledgement
+### Private native input admission
 
-First Running publication of an unconsumed prepared input rechecks its live frame
-and checkpoint head even after intermediate waiting or Lost observations. A
-private, indexed, single-row-per-Session acknowledgement stores only exact scoped
-input-metadata digest, atomically with validated Session persistence and audit.
-JSON assertions cannot grant this authority. A new input digest requires fresh
-validation; an already admitted same input retains historical source pins. The
-acknowledgement is a Store publication fact, not provider wire-delivery proof.
+Schema6 adds one private Task-scoped admission digest per Session, atomically with
+validated Running persistence/audit. Pending waiting/Lost input revalidates live
+frame/head; uncertainty is not consumption. New consumed intent always revalidates.
+Nonterminal admitted input cannot visit Starting to restore an older terminal
+frame. Exact prewire restore is denied after admission/consumption/uncertainty;
+owned higher-version terminal continuation binds fresh authority first. These are
+Store input-admission facts, separate from Workflow actor Session binding and
+provider wire-delivery evidence. Caller JSON/generic writes cannot assert them.
 
-Standalone admission uses stable instruction hashes for semantic authority while
-new pack preparation/publication uses complete snapshot CAS. Consultation history
-can be condensed from existing scoped Sessions; live role-specific consultation
-needs its own exact prepared-frame port. Approval review uses a separate
-operation-free decision Task, preserving executor/decision context independence.
+Semantic instruction projection defaults to including new fields, excluding only
+explicit lifecycle/progress/pointer bookkeeping. Physical HEAD is source authority;
+Engine effective workflow/risk/budget belongs to immutable phase authority.
+Standalone frames additionally render and bind their Task policy digest and admit
+only the exact Executor agent/role/worktree. Explicit idle consecutive republish
+provides migration/terminal-continuation versions without changing active input.
+Consultant history remains supported; live consultation needs a separate scoped
+frame port. Approval review uses an operation-free decision Task.
+
+Ordered5-to-6 migration installs a private registered SQLite writer function and
+additive INSERT/UPDATE/DELETE fences on every application table, retaining existing
+domain triggers. Thus old5 connections already open before migration also refuse
+writes, including metadata/audit. Actual compiled live-connection and fresh-open
+old-writer fixtures must prove refusal without state change. No historical input
+admission rows are synthesized. See Issue19 design for field inventory, exact
+transition predicates, canonical hashing and native proof requirements.

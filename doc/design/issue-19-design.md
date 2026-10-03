@@ -226,56 +226,137 @@ constraints, scoped references, Task/attempt authority or paused owners remain
 fenced; acknowledgement is not another model dispatch. Legacy sources retain
 strict Project/Goal version equality.
 
-## Private Session input acknowledgement design
+## Private input admission and schema 6
 
-Use a private `session_input_acks` table with one row per Session. Columns are
-`session_id`, `project_id`, `goal_id`, `task_id`, `metadata_sha256`; Session and
-owned Task foreign keys anchor scope. The primary key is Session ID. The table
-is reached only by private Store transaction helpers; it has no generic writer
-API and no public Record/audit representation that can create authority.
+This section specifies the new contract before its implementation. A private input
+admission record is distinct from Engine actor acknowledgement, which binds a
+returned native Session to its immutable Workflow attempt. Neither record proves
+provider wire delivery; provider adapters retain their private payload-to-wire and
+consumed-dispatch protocol.
 
-`metadata_sha256` is lowerhex SHA256 of a deterministic serialized tuple of
-Scope, agent, provider, role, worktree, then the five pinned recovery values:
-input_version, input_revision, input_bytes, input_sha256, source_versions. PID,
-state, native response/ref fields and dispatch diagnostic fields are excluded.
-The digest proves a prior validated publication of those exact inputs, not native
-wire delivery. Actual providers preserve their separate private request-to-wire
-correspondence and consumed dispatch protocol.
+A private `session_input_acks` table holds one indexed row per protected, Task-scoped
+Session: Session ID, Project/Goal/Task IDs and lowerhex metadata SHA256. It references
+the Session Record and owned Task; its helper derives all IDs from the validated
+Session, never from caller-supplied ack metadata. Scope equality is checked against
+the actual persisted Session and Task. Project/Goal-only Sessions and unprotected
+legacy inputs receive no admission row. Generic Records, audit events and caller
+JSON cannot create or update it.
 
-`guard_launch_checkpoint` treats an input as admitted only when the previous
-Session has an actual consumed dispatch_intent (not only an unobserved
-diagnostic flag), or the private row matches its
-current metadata digest. Otherwise its next Starting/Running publication validates
-current typed frame and live checkpoint head, even after intermediate waiting or
-Lost states. Non-Running waiting/Lost observations do not publish an ack. Unknown
-native dispatch alone permits conservative Lost bookkeeping, never a fresh model
-admission. Metadata/restore/intent pins continue to apply on every observation.
+Hash a domain-tagged typed tuple: exact Scope, agent, provider, role, worktree, and
+input_version, input_revision, input_bytes, input_sha256 and source_versions. Parse
+those input fields into their bounded types; source_versions is a sorted BTreeMap.
+PID, Session state, response IDs and diagnostic fields are excluded. Do not hash
+arbitrary JSON serialization order. Only the previous persisted Session's digest
+can establish prior admission; a caller cannot install an ack by selecting fields
+that match an unrelated row.
 
-After a Running Session write succeeds inside `put_record_tx`, privately upsert
-its exact acknowledgement digest before the transaction's audit/commit. This
-covers both newly validated Running and a known consumed acknowledgement after
-late checkpoint changes. A higher-input fresh Starting has a different digest,
-so the prior row cannot acknowledge it. An exact allowed prewire restore still
-matches the prior digest. The next successfully admitted Running atomically
-replaces the one row; no unbounded variant history or prompt copy is required.
+The launch guard returns a typed outcome: `Validated`, `ConsumedHistorical`,
+`Acked`, or `NotAdmission`. A changed/new actually consumed dispatch_intent ALWAYS
+validates the latest frame/head first, even if the same input has an ack. For other
+admissions, actual consumed intent or a matching private row permits historical
+observation of the same pinned input. Otherwise Starting/Running validates current
+frame/head regardless of the previous waiting/Lost state. Waiting/Lost never writes
+an ack. A new or changed Running input writes its row only after `Validated` or
+`ConsumedHistorical`; `Acked` preserves the existing row. Row, Session and audit
+commit atomically, including rollback on a failing audit.
 
-Ordered migration 5→6 creates only the empty table and installs the version marker
-in one transaction, preserving earlier migration order. Existing Running records
-are not retrospectively marked acknowledged. Already-consumed observations use
-their immutable existing intent; older unconsumed sessions must validate current
-input on first reentry. Old schema 5 writers reject format 6 before any write.
+Keep two distinct predicates: actual consumed intent authorizes historical
+observation; actual consumed intent OR native_dispatch_unobserved forbids input
+rebinding/restoration. Uncertainty alone is never admission. Preserve the monotonic
+uncertainty flag during same-attempt observations. An owned terminal fresh
+continuation may clear historical diagnostics only while installing a strictly
+higher input version, exact prior terminal checksum and freshly validated frame.
 
-Standalone preparation adds `instruction_versions` to PreparedInput.source_versions
-before private exact-frame publication. Store standalone admission compares these
-hashes to current scoped Project/Goal/Task instructions. The privately published
-row must still equal the complete frame metadata/hash, and checkpoint binding is
-unchanged. Preparation/republish remains full-projection strict so newly rendered
-facts have an exact fresh snapshot; existing admitted model input is separate.
+A nonterminal Running/Waiting/Lost Session cannot return to Starting. Same pending
+Starting observations retain all pins; only owned terminal-to-Starting is fresh.
+Exact prewire terminal restoration requires the stored previous-terminal checksum,
+no consumed intent, no uncertainty, AND no private admission row matching the
+pending input. An input once admitted as Running cannot be restored to an older
+terminal input by visiting Starting. Previous historical ack rows can remain while
+a higher pending input is prepared; their digest does not admit that new input.
 
-Tests must demonstrate pending Starting→each waiting/Lost→Running head rejection,
-caller JSON ack forgery rejection, valid first Running then historical reentry,
-fresh input and exact restore behavior, ack/Session atomic rollback, reopening,
-and actual native old5 refusal with equal before/after database hashes. Semantic
-admission tests distinguish sibling progress from changed constraints and refs.
-Consultant/ApprovalReviewer tests preserve safe refusal of live typed actor-frame
-reuse while accepting existing scoped Consultant checkpoint history.
+Standalone prepared frames are Executor inputs only. Session admission requires
+exact Task.executor, Executor role and Task.worktree as well as scoped frame bytes,
+revision, version, hashes, owner lifecycle and existing lock/worktree gates. This
+applies to initial Starting and Running. Workflow frames retain their exact active
+attempt agent/role/Session fences. No arbitrary Consultant/ApprovalReviewer role
+can adopt an Executor frame. Existing scoped Consultant history may be condensed;
+live consultation needs a separate prepared-frame port. ApprovalReviewer requires
+an operation-free decision Task through the Approval Broker.
+
+### Semantic input inventory
+
+Use a default-fenced projection with explicit bookkeeping exclusions. Project
+instructions include every field except version/timestamps/state/blocked_reason;
+registration/lifecycle is separately checked. Goal instructions exclude only
+version/timestamps/context_version/state/DAG/blockers and criterion satisfaction/
+evidence, retaining criterion ID/description and all other fields, including title
+and followups. Task instructions exclude version/timestamps/context_version/state/
+phase/revision/workflow/risk/blockers/next_action; all remaining fields are included,
+including issue, worktree/branch, executor/reviewers and artifact reference names.
+New domain fields therefore become instructions unless explicitly reviewed as
+bookkeeping. Nonterminal/active lifecycle gates remain independent of hashes.
+
+Task.revision is synchronized from captured physical Git HEAD and is checked by
+frame/source revision authority, not a self-invalidating DB hash. Workflow/risk
+may change during Engine preparation/escalation; its effective class/risk/budget
+belongs to the immutable phase wrapper and exact current Workflow attempt, not the
+phase-stable source digest. Standalone frames add a separate Task policy digest
+for workflow/risk; standalone Session admission compares it. Source physical hashes,
+repository identity, current checkpoint head and complete frame digest remain
+mandatory in both paths. Sibling criterion satisfaction/DAG progress, blockers and
+next-action changes alone cannot invalidate an already prepared semantic frame.
+Pack construction still uses complete snapshot CAS and renders current facts.
+
+Standalone preparation renders the canonical instruction and policy digest map in
+its complete mandatory payload and privately publishes the same map with frame
+SHA256. The digest is therefore part of the immutable prepared bytes, preventing
+same-payload old-schema collisions. Old pending inputs without these hashes fail
+closed. Add an explicit forced consecutive Task pack publication option (default
+idempotent reuse unchanged). It uses the existing idle/owner/source/head CAS and
+audit, never changes an active launch, and provides a strictly higher context
+version for terminal continuation or migration recovery. Private variants remain
+bounded per context. Test recovery from an actual schema5 prepared frame through
+terminal state, forced higher publication, preparation and fresh admission.
+
+### Migration and already-open writers
+
+Ordered 5-to-6 migration creates the empty admission table and write fences in one
+transaction, preserving earlier migrations. Fresh databases install the identical
+final schema. Migration never claims old Running inputs were admitted: actually
+consumed historical inputs retain their pinned observations; old unconsumed inputs
+must validate new semantic authority or reach a safe terminal state and explicitly
+republish. Opening an unsupported version rejects before mutation.
+
+Every v6 Store connection registers a private zero-argument SQLite function
+`rrx_writer_v6()` returning 6 before migration or application writes. Add distinct
+BEFORE INSERT/UPDATE/DELETE fence triggers to EVERY application table: projects,
+goals, tasks, records, context_versions, usage, audit, checkpoint_heads,
+prepared_pack_inputs and session_input_acks. Each requires this function to return
+6. Preserve all existing immutable/append-only/domain triggers; fences only add
+writer compatibility checks. Include private runtime metadata and audit writes,
+not just Session updates. An already-open old5 connection cannot resolve the
+function and its SQL write fails atomically after schema6 migration. Public Store
+has no caller function registration or trigger-bypass API. Privileged arbitrary
+SQLite schema editing is outside the Store contract. Future migrations must retain
+required earlier functions and install their own exact-version write fence.
+
+Prove both native old5 open refusal and a real compiled old5 Store held open BEFORE
+migration, then released to attempt public writes AFTER migration. Test Session,
+owner metadata and audit paths, including a previously prepared statement. All
+must fail without changing logical rows/head/audit. Close all connections and
+checkpoint/truncate WAL before comparing complete DB bytes, or compare the DB and
+WAL pair; never claim equality from the main file while WAL remains live. New v6
+writes and all existing domain triggers must still work. Independently opened v6
+connections must pass registration and reopening tests.
+
+### Boundary validation
+
+Tests cover pending Starting-to-each-waiting/Lost-to-Running head rejection, unknown
+flag forgery, caller JSON ack forgery, successful first Running then historical
+reentry, forbidden Running-to-Starting-to-old-terminal rollback, exact prewire
+restore, higher-version continuation, Session/ack/audit rollback and reopening.
+Wrong standalone role/agent/worktree must fail on initial Starting AND Running.
+Changed instructions/policy/ref hashes fail; sibling progress remains usable.
+Typed Workflow-owned contexts cannot silently downgrade to opaque legacy payloads.
+Important guards receive caller-level mutation proof and immutable source review.
