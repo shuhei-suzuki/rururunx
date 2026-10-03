@@ -312,6 +312,9 @@ and reason history and rejects live/Lost executor reservations.
 
 Store format v3 persists Workflow record authority. Task state, workflow history
 and ContextVersion pointer commit atomically with Project/Goal/Task/record CAS;
+gate evaluation is separately reserved to prevent concurrent duplicate port calls,
+and completed attempt/decision history is immutable. Workflow authority uses only
+the atomic transition API.
 rollback leaves no orphan context or overwritten concurrent metadata. Blocked,
 Removed, paused/terminal owners cannot progress. Mutation dispatch rejects active
 review locks and all agent dispatch rejects reserved executors. This is a phase

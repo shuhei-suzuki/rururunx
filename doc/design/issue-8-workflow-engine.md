@@ -10,7 +10,9 @@ scope, revision and source versions. Review phases additionally require a review
 verdict supplied by the review integration; native exit zero is insufficient.
 
 Missing evidence becomes a durable waiting attempt. Failed/Lost sessions do not
-advance. An interrupted Running attempt stays reserved for explicit recovery (#13)
+advance. Gate evaluation receives its own durable CAS reservation before an external port
+is called, preventing duplicate side effects from simultaneous native polls.
+An interrupted Running/Evaluating attempt stays reserved for explicit recovery (#13)
 rather than silently launching another process. Phase retries are explicit and
 must not bypass native executor reservations.
 
@@ -39,7 +41,9 @@ committing Task, workflow history and optional new ContextVersion together.
 
 Project config/rules and context source capture run outside SharedStore. Rules are
 resolved only within the owning source and preserve mandatory content. Snapshot
-versions are rechecked in the transition transaction. A context source port returns
+versions are rechecked in the transition transaction. Workflow authority is writable
+only through this atomic API; old attempts and decision history cannot be truncated
+or rewritten, and launch sources are checked again before native dispatch. A context source port returns
 exact scope, revision, source versions and factual payload. The engine adds phase,
 workflow generation, rule versions and context budget class. A new phase or source
 change creates a new pack; dependent completion evidence is invalidated. Freshness

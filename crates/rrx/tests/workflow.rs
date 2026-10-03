@@ -13,7 +13,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
     },
 };
-use tokio::sync::watch;
+use tokio::sync::{Notify, watch};
 
 fn adapter_error(message: &str) -> AdapterError {
     AdapterError {
@@ -193,6 +193,8 @@ struct Gates {
     approved: AtomicBool,
     waiting: AtomicBool,
     calls: Mutex<Vec<PhaseInvocation>>,
+    hold: Mutex<Option<Arc<Notify>>>,
+    entered: Notify,
 }
 impl Gates {
     fn new() -> Self {
@@ -200,6 +202,8 @@ impl Gates {
             approved: AtomicBool::new(true),
             waiting: AtomicBool::new(false),
             calls: Mutex::new(vec![]),
+            hold: Mutex::new(None),
+            entered: Notify::new(),
         }
     }
 }
@@ -211,6 +215,11 @@ impl PhaseGates for Gates {
     ) -> WorkflowFuture<'_, GateOutcome> {
         Box::pin(async move {
             self.calls.lock().unwrap().push(invocation.clone());
+            let hold = self.hold.lock().unwrap().clone();
+            if let Some(hold) = hold {
+                self.entered.notify_one();
+                hold.notified().await;
+            }
             if self.waiting.load(Ordering::SeqCst) {
                 return Ok(GateOutcome::Waiting(
                     "test evidence deliberately withheld".into(),
@@ -237,7 +246,7 @@ struct Fixture {
     store: SharedStore,
     project: Project,
     task: Task,
-    engine: WorkflowEngine,
+    engine: Arc<WorkflowEngine>,
     executor: Arc<FakeAgent>,
     reviewer: Arc<FakeAgent>,
     sources: Arc<Sources>,
@@ -296,14 +305,16 @@ impl Fixture {
         config.workflow.default = WorkflowClass::Quick;
         let sources = Arc::new(Sources::new(task.scope()));
         let gates = Arc::new(Gates::new());
-        let engine = WorkflowEngine::new(
-            store.clone(),
-            Arc::new(registry),
-            config.clone(),
-            sources.clone(),
-            gates.clone(),
-        )
-        .unwrap();
+        let engine = Arc::new(
+            WorkflowEngine::new(
+                store.clone(),
+                Arc::new(registry),
+                config.clone(),
+                sources.clone(),
+                gates.clone(),
+            )
+            .unwrap(),
+        );
         Self {
             dir,
             store,
@@ -441,7 +452,7 @@ async fn all_presets_drive_real_adapter_calls_and_persist_phase_context_history(
         let events = restored.events(&fixture.task.scope(), 0, 1000).unwrap();
         assert_eq!(
             events.iter().filter(|e| e.kind == "workflow.saved").count(),
-            saved.history.len() * 2
+            saved.history.len() * 3
                 + fixture.executor.launches.lock().unwrap().len()
                 + fixture.reviewer.launches.lock().unwrap().len()
                 + 1
@@ -996,4 +1007,205 @@ fn ordered_format_migration_preserves_v2_state_and_unknown_future_is_rejected() 
     connection.pragma_update(None, "user_version", 4).unwrap();
     drop(connection);
     assert!(Store::open(&db).is_err());
+}
+
+#[tokio::test]
+async fn concurrent_native_polls_claim_evidence_evaluation_before_calling_external_gate() {
+    let fixture = Fixture::new(WorkflowClass::Quick);
+    fixture
+        .engine
+        .initialize(fixture.task.id, None)
+        .await
+        .unwrap();
+    fixture.through(Phase::Worktree).await;
+    fixture
+        .engine
+        .step(fixture.task.id, BTreeMap::new())
+        .await
+        .unwrap();
+    let hold = Arc::new(Notify::new());
+    *fixture.gates.hold.lock().unwrap() = Some(hold.clone());
+    let engine = fixture.engine.clone();
+    let id = fixture.task.id;
+    let poll = tokio::spawn(async move { engine.step(id, BTreeMap::new()).await });
+    tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        fixture.gates.entered.notified(),
+    )
+    .await
+    .unwrap();
+    let calls = fixture.gates.calls.lock().unwrap().len();
+    assert!(matches!(
+        fixture.engine.step(id, BTreeMap::new()).await.unwrap(),
+        StepResult::Waiting {
+            phase: Phase::Implement,
+            ..
+        }
+    ));
+    assert_eq!(fixture.gates.calls.lock().unwrap().len(), calls);
+    hold.notify_one();
+    assert!(matches!(
+        poll.await.unwrap().unwrap(),
+        StepResult::Completed {
+            phase: Phase::Implement
+        }
+    ));
+}
+#[tokio::test]
+async fn revision_changes_during_review_gate_preserve_reservation_and_never_accept_stale_verdict() {
+    let fixture = Fixture::new(WorkflowClass::Quick);
+    fixture
+        .engine
+        .initialize(fixture.task.id, None)
+        .await
+        .unwrap();
+    fixture.through(Phase::Tests).await;
+    fixture
+        .engine
+        .step(fixture.task.id, BTreeMap::new())
+        .await
+        .unwrap();
+    let hold = Arc::new(Notify::new());
+    *fixture.gates.hold.lock().unwrap() = Some(hold.clone());
+    let engine = fixture.engine.clone();
+    let id = fixture.task.id;
+    let poll = tokio::spawn(async move { engine.step(id, BTreeMap::new()).await });
+    tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        fixture.gates.entered.notified(),
+    )
+    .await
+    .unwrap();
+    fixture.sources.snapshot.lock().unwrap().revision = "new-review-target".into();
+    hold.notify_one();
+    assert!(
+        poll.await
+            .unwrap()
+            .unwrap_err()
+            .to_string()
+            .contains("sources changed")
+    );
+    let wf = fixture.engine.snapshot(id).unwrap();
+    assert!(!wf.completed.contains_key(&Phase::ImplementationReview));
+    assert_eq!(
+        wf.history[wf.active.unwrap()].state,
+        AttemptState::Evaluating
+    );
+    assert!(fixture.engine.retry(id, "unverified retry".into()).is_err());
+}
+#[tokio::test]
+async fn record_cas_failure_rolls_back_context_task_and_all_transition_audit() {
+    let fixture = Fixture::new(WorkflowClass::Quick);
+    fixture
+        .engine
+        .initialize(fixture.task.id, None)
+        .await
+        .unwrap();
+    let mut store = fixture.store.lock().unwrap();
+    let mut task = store.task(fixture.task.id).unwrap().unwrap();
+    let original_version = task.version;
+    let mut record = store
+        .records(&task.scope(), RecordKind::Workflow)
+        .unwrap()
+        .remove(0);
+    record.version += 1;
+    let mut context = store.context(&task.scope(), None).unwrap().unwrap();
+    context.version += 1;
+    task.context_version = context.version;
+    let mut wf: WorkflowSnapshot = serde_json::from_value(record.data.clone()).unwrap();
+    wf.context_version = context.version;
+    record.data = serde_json::to_value(wf).unwrap();
+    let events = store.events(&task.scope(), 0, 1000).unwrap().len();
+    assert!(
+        store
+            .put_workflow_transition(
+                &mut task,
+                &mut record,
+                Some(&context),
+                fixture.project.version,
+                1,
+                WorkflowAccess::StateOnly
+            )
+            .is_err()
+    );
+    assert_eq!(task.version, original_version);
+    assert_eq!(store.task(task.id).unwrap().unwrap().context_version, 1);
+    assert_eq!(
+        store.context(&task.scope(), None).unwrap().unwrap().version,
+        1
+    );
+    assert_eq!(store.events(&task.scope(), 0, 1000).unwrap().len(), events);
+}
+#[tokio::test]
+async fn workflow_authority_and_decision_history_require_atomic_monotonic_updates() {
+    let fixture = Fixture::new(WorkflowClass::Quick);
+    fixture
+        .engine
+        .initialize(fixture.task.id, None)
+        .await
+        .unwrap();
+    fixture.through(Phase::Implement).await;
+    let mut store = fixture.store.lock().unwrap();
+    let mut task = store.task(fixture.task.id).unwrap().unwrap();
+    let mut record = store
+        .records(&task.scope(), RecordKind::Workflow)
+        .unwrap()
+        .remove(0);
+    assert!(store.put_record(&mut record).is_err());
+    let mut wf: WorkflowSnapshot = serde_json::from_value(record.data.clone()).unwrap();
+    wf.history.clear();
+    record.data = serde_json::to_value(wf).unwrap();
+    assert!(
+        store
+            .put_workflow_transition(
+                &mut task,
+                &mut record,
+                None,
+                fixture.project.version,
+                1,
+                WorkflowAccess::StateOnly
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("history truncation")
+    );
+}
+#[tokio::test]
+async fn explicit_stricter_selection_and_unsupported_review_capability_are_honest() {
+    let fixture = Fixture::new(WorkflowClass::Quick);
+    assert_eq!(
+        fixture
+            .engine
+            .initialize(fixture.task.id, Some(WorkflowClass::Strict))
+            .await
+            .unwrap()
+            .workflow,
+        WorkflowClass::Strict
+    );
+    let fixture = Fixture::new(WorkflowClass::Quick);
+    fixture
+        .engine
+        .initialize(fixture.task.id, None)
+        .await
+        .unwrap();
+    fixture.through(Phase::Tests).await;
+    {
+        let mut store = fixture.store.lock().unwrap();
+        let mut task = store.task(fixture.task.id).unwrap().unwrap();
+        task.reviewers = vec!["executor".into()];
+        store.put_task(&mut task).unwrap();
+    }
+    assert!(matches!(
+        fixture
+            .engine
+            .step(fixture.task.id, BTreeMap::new())
+            .await
+            .unwrap(),
+        StepResult::Failed {
+            phase: Phase::ImplementationReview,
+            ..
+        }
+    ));
+    assert!(fixture.reviewer.launches.lock().unwrap().is_empty());
+    assert_eq!(fixture.executor.launches.lock().unwrap().len(), 1);
 }

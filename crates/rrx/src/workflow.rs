@@ -267,6 +267,7 @@ impl PhaseGates for PendingGates {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AttemptState {
     Running,
+    Evaluating,
     Waiting,
     Failed,
     Succeeded,
@@ -737,6 +738,54 @@ impl WorkflowEngine {
         if phase.actor() == Actor::EvidencePort {
             return self.evaluate(snapshot, index, None).await;
         }
+        let (fresh_config, fresh_source, _) = self
+            .inputs(&snapshot.project, &snapshot.task, phase, class)
+            .await?;
+        if !same_sources(&fresh_source, &snapshot.workflow.sources)
+            || phases(class, &fresh_config)
+                .iter()
+                .any(|p| !snapshot.workflow.configured_phases.contains(p))
+        {
+            snapshot.workflow.history[index].state = AttemptState::Interrupted;
+            snapshot.workflow.history[index].completed_at = Some(now_ms());
+            snapshot.workflow.active = None;
+            invalidate(&mut snapshot.workflow)?;
+            snapshot.workflow.sources = fresh_source.clone();
+            let first = next_phase(&snapshot.workflow).expect("presets nonempty");
+            let context = make_context(
+                &snapshot.task,
+                &fresh_source,
+                first,
+                class,
+                snapshot.workflow.generation,
+                budget(class, first, &fresh_config),
+                self.next_context(&snapshot.task.scope())?,
+            );
+            set_context(&mut snapshot, &context);
+            self.persist(&mut snapshot, Some(&context))?;
+            return Ok(StepResult::Invalidated {
+                reason: "sources changed before native dispatch".into(),
+            });
+        }
+        {
+            let store = self
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state store poisoned"))?;
+            let (project, goal, task) = owners(&store, snapshot.task.id)?;
+            ensure!(
+                project.version == snapshot.project.version
+                    && goal.version == snapshot.goal.version
+                    && task.version == snapshot.task.version,
+                "owners changed before native dispatch"
+            );
+            ensure!(
+                store
+                    .record(snapshot.record.id)?
+                    .is_some_and(|r| r.version == snapshot.record.version),
+                "workflow changed before native dispatch"
+            );
+        }
         let agent = if phase.actor() == Actor::Reviewer {
             match snapshot.task.reviewers.first() {
                 Some(agent) => agent.clone(),
@@ -829,6 +878,15 @@ impl WorkflowEngine {
             return Ok(StepResult::Waiting {
                 phase,
                 reason: attempt.detail.clone().unwrap_or_default(),
+            });
+        }
+        if matches!(
+            attempt.state,
+            AttemptState::Evaluating | AttemptState::Interrupted
+        ) {
+            return Ok(StepResult::Waiting {
+                phase,
+                reason: "interrupted evidence evaluation needs explicit recovery (#13)".into(),
             });
         }
         if attempt.state != AttemptState::Running {
@@ -959,6 +1017,10 @@ impl WorkflowEngine {
             budget: selected_budget.clone(),
             prerequisites: snapshot.workflow.completed.values().cloned().collect(),
         };
+        // CAS claims evaluation before an external integration can create evidence
+        // or side effects. A concurrent poll cannot run the same gate twice.
+        snapshot.workflow.history[index].state = AttemptState::Evaluating;
+        self.persist(&mut snapshot, None)?;
         let outcome = self.gates.complete(invocation, status).await?;
         let (_, final_source, _) = self
             .inputs(
@@ -1113,6 +1175,101 @@ impl WorkflowEngine {
         snapshot.task.blockers.clear();
         self.persist(&mut snapshot, None)
     }
+}
+pub(crate) fn validate_transition(
+    task: &Task,
+    record: &Record,
+    previous: Option<&Record>,
+) -> Result<()> {
+    let next: WorkflowSnapshot =
+        serde_json::from_value(record.data.clone()).context("invalid Workflow authority")?;
+    ensure!(
+        next.workflow == task.workflow
+            && next.risk == task.risk
+            && next.context_version == task.context_version
+            && next.sources.scope == task.scope()
+            && task.revision.as_ref() == Some(&next.sources.revision),
+        "Workflow authority differs from Task/context ownership"
+    );
+    ensure!(
+        next.active.is_none_or(|i| i < next.history.len()),
+        "invalid workflow active index"
+    );
+    if let Some(previous) = previous {
+        let old: WorkflowSnapshot = serde_json::from_value(previous.data.clone())?;
+        ensure!(
+            next.workflow >= old.workflow
+                && next.generation >= old.generation
+                && next.generation <= old.generation.saturating_add(1),
+            "workflow downgrade/generation rewrite forbidden"
+        );
+        ensure!(
+            risk_max(next.risk, old.risk) == next.risk,
+            "risk downgrade forbidden"
+        );
+        ensure!(
+            old.configured_phases
+                .iter()
+                .all(|p| next.configured_phases.contains(p)),
+            "mandatory gate removal forbidden"
+        );
+        ensure!(
+            next.history.len() >= old.history.len(),
+            "phase history truncation forbidden"
+        );
+        for (index, before) in old.history.iter().enumerate() {
+            let after = &next.history[index];
+            if old.active == Some(index) {
+                ensure!(
+                    before.phase == after.phase
+                        && before.generation == after.generation
+                        && before.context_version == after.context_version
+                        && before.budget == after.budget
+                        && before.started_at == after.started_at
+                        && before
+                            .session_id
+                            .is_none_or(|id| after.session_id == Some(id)),
+                    "active attempt identity is immutable"
+                );
+                let valid = match before.state {
+                    AttemptState::Running => true,
+                    AttemptState::Evaluating => matches!(
+                        after.state,
+                        AttemptState::Evaluating
+                            | AttemptState::Waiting
+                            | AttemptState::Failed
+                            | AttemptState::Succeeded
+                            | AttemptState::Interrupted
+                    ),
+                    _ => before.state == after.state,
+                };
+                ensure!(valid, "attempt state regression forbidden");
+            } else {
+                ensure!(
+                    serde_json::to_value(before)? == serde_json::to_value(after)?,
+                    "completed phase history is immutable"
+                );
+            }
+        }
+        for (old, new) in [
+            (
+                serde_json::to_value(&old.escalations)?,
+                serde_json::to_value(&next.escalations)?,
+            ),
+            (
+                serde_json::to_value(&old.retries)?,
+                serde_json::to_value(&next.retries)?,
+            ),
+        ] {
+            ensure!(
+                new.as_array()
+                    .expect("array")
+                    .starts_with(old.as_array().expect("array")),
+                "workflow decision history is append-only"
+            );
+        }
+    }
+    Ok(())
 }
 fn owners(store: &Store, id: TaskId) -> Result<(Project, Goal, Task)> {
     let task = store.task(id)?.context("unknown Task")?;

@@ -323,6 +323,10 @@ impl Store {
         Ok(())
     }
     pub fn put_record(&mut self, record: &mut Record) -> Result<()> {
+        ensure!(
+            record.kind != RecordKind::Workflow,
+            "Workflow authority requires atomic Task/context transition"
+        );
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -416,6 +420,8 @@ impl Store {
         let count: i64 = tx.query_row("SELECT COUNT(*) FROM records WHERE project_id=?1 AND goal_id=?2 AND task_id=?3 AND kind='workflow' AND id<>?4",
             params![task.project_id.to_string(),task.goal_id.to_string(),task.id.to_string(),workflow.id.to_string()], |r| r.get(0))?;
         ensure!(count == 0, "Task already owns a workflow");
+        let previous_workflow: Option<Record> = read_tx(&tx, "records", &workflow.id.to_string())?;
+        crate::workflow::validate_transition(task, workflow, previous_workflow.as_ref())?;
         if let Some(context) = context {
             ensure!(
                 context.scope == task.scope() && context.version == task.context_version,
@@ -880,6 +886,7 @@ fn put_record_tx(tx: &Transaction<'_>, record: &Record) -> Result<Record> {
         &format!("{}.saved", next.kind.key()),
         json!({"id":next.id,"version":next.version,"evidence": match next.kind {
             RecordKind::Review | RecordKind::Approval | RecordKind::WorktreeLock => next.data.clone(),
+            RecordKind::Workflow => json!({"generation":next.data["generation"],"context_version":next.data["context_version"],"active":next.data["active"],"finished":next.data["finished"],"attempt":next.data["history"].as_array().and_then(|a|a.last()),"escalation":next.data["escalations"].as_array().and_then(|a|a.last()),"retry":next.data["retries"].as_array().and_then(|a|a.last())}),
             RecordKind::Session => json!({"state":next.data["state"],"agent":next.data["agent"],"provider":next.data["provider"],"role":next.data["role"],"native_ref":next.data["native_ref"]}),
             _ => Value::Null,
         }}),
