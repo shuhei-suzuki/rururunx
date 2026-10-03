@@ -378,3 +378,74 @@ fn changing_decisions_preserves_previous_round_evidence_in_journal() {
     assert_eq!(decisions[1].data["evidence"]["decision"], "DENY");
     assert_eq!(store.record(approval.id).unwrap().unwrap().version, 2);
 }
+
+#[test]
+fn audit_replacement_upsert_and_backdated_sequence_are_rejected() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = dir.path().join("state.db");
+    let mut store = Store::open(&db).unwrap();
+    let project = project(&mut store, "one", dir.path());
+    let raw = rusqlite::Connection::open(&db).unwrap();
+    for sql in [
+        "REPLACE INTO audit(sequence,project_id,kind,at,data) VALUES(1,?1,'forged',0,'{}')",
+        "INSERT OR REPLACE INTO audit(sequence,project_id,kind,at,data) VALUES(1,?1,'forged',0,'{}')",
+        "INSERT INTO audit(sequence,project_id,kind,at,data) VALUES(1,?1,'forged',0,'{}') ON CONFLICT(sequence) DO UPDATE SET kind='forged'",
+    ] {
+        assert!(
+            raw.execute(sql, [project.id.to_string()]).is_err(),
+            "accepted {sql}"
+        );
+    }
+    raw.execute(
+        "INSERT INTO audit(sequence,project_id,kind,at,data) VALUES(50,?1,'future',0,'{}')",
+        [project.id.to_string()],
+    )
+    .unwrap();
+    assert!(
+        raw.execute(
+            "INSERT INTO audit(sequence,project_id,kind,at,data) VALUES(2,?1,'backdated',0,'{}')",
+            [project.id.to_string()]
+        )
+        .is_err()
+    );
+    assert_eq!(
+        store.events(&Scope::project(project.id), 0, 100).unwrap()[0].kind,
+        "project.saved"
+    );
+}
+
+#[test]
+fn dag_and_followup_references_cannot_cross_project_or_goal_boundaries() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut store = Store::memory().unwrap();
+    let one = project(&mut store, "one", &dir.path().join("one"));
+    let two = project(&mut store, "two", &dir.path().join("two"));
+    let mut goal_one = goal(&mut store, &one);
+    let goal_two = goal(&mut store, &two);
+    let foreign_task = task(&mut store, &two, &goal_two);
+    goal_one.dag.nodes.push(foreign_task.id);
+    assert!(store.put_goal(&mut goal_one).is_err());
+    goal_one.dag.nodes.clear();
+    goal_one.followups.push(FollowupProposal {
+        title: "follow-up".into(),
+        scope: "same goal".into(),
+        rationale: "needed".into(),
+        acceptance_criteria: vec!["done".into()],
+        dependencies: vec![foreign_task.id],
+        risk: RiskClass::R1,
+        material_scope_expansion: false,
+        disposition: "proposed".into(),
+    });
+    assert!(store.put_goal(&mut goal_one).is_err());
+    goal_one.followups.clear();
+    let local_task = task(&mut store, &one, &goal_one);
+    goal_one.dag.edges.push(Dependency {
+        prerequisite: local_task.id,
+        dependent: foreign_task.id,
+        hard: true,
+    });
+    assert!(store.put_goal(&mut goal_one).is_err());
+    goal_one.dag.edges.clear();
+    goal_one.dag.nodes.push(local_task.id);
+    store.put_goal(&mut goal_one).unwrap();
+}
