@@ -67,7 +67,11 @@ Typed checkpoint records are immutable through generic Store writes; only the
 owned append transaction creates them. Promotion rederives exact compact content
 from an exact immutable checkpoint. Same-Task preparation and publication require
 the current chain head, including a final atomic preparation audit; source versions
-include its digest. Cross-Task consultation promotion remains a fixed snapshot when
+always include its digest or the explicit `none` sentinel. The caller cannot omit
+an existing own chain: drafts resolve its head automatically, and readers, final
+audits and publication compare the complete optional head. Own history and the
+separate `promoted_consultation` snapshot can coexist. Prepared native inputs carry
+the head key for launch freshness. Cross-Task consultation promotion remains a fixed snapshot when
 the source Task appends later checkpoints. Mixed
 Executor/Consultant chains retain all source facts, while cross-Task promotion
 selects only actual Consultant events. Omitted transient history records count,

@@ -273,8 +273,15 @@ impl Store {
                 "goal project binding is immutable"
             );
         }
-        let old =
-            read_tx::<Goal>(&tx, "goals", &goal.id.to_string())?.map_or(0, |g| g.context_version);
+        let previous = read_tx::<Goal>(&tx, "goals", &goal.id.to_string())?;
+        if previous.as_ref().map_or(0, |p| p.version) != goal.version {
+            bail!(StateGuardError::SnapshotChanged {
+                table: "goals".into(),
+                id: goal.id.to_string(),
+                expected: goal.version
+            });
+        }
+        let old = previous.map_or(0, |p| p.context_version);
         context_pack::guard_pack_pointer(&tx, &goal.scope(), old, goal.context_version)?;
         validate_goal_references(&tx, goal)?;
         let mut next = goal.clone();
@@ -351,8 +358,15 @@ impl Store {
                 "workflow downgrade is forbidden"
             );
         }
-        let old =
-            read_tx::<Task>(&tx, "tasks", &task.id.to_string())?.map_or(0, |t| t.context_version);
+        let previous = read_tx::<Task>(&tx, "tasks", &task.id.to_string())?;
+        if previous.as_ref().map_or(0, |p| p.version) != task.version {
+            bail!(StateGuardError::SnapshotChanged {
+                table: "tasks".into(),
+                id: task.id.to_string(),
+                expected: task.version
+            });
+        }
+        let old = previous.map_or(0, |p| p.context_version);
         context_pack::guard_pack_pointer(&tx, &task.scope(), old, task.context_version)?;
         ensure!(
             task.worktree.is_some() == task.branch.is_some(),

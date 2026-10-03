@@ -136,7 +136,9 @@ Goals, decisions, completed work, failures, findings, next actions, constraints,
 critical references and verification remain intact across checkpoints. Only
 explicitly transient events leave the configurable serialized-byte tail, with
 count/sequence-range/rolling-digest evidence. Typed checkpoint records are immutable
-and same-Task preparation/publication binds the current chain head. Cross-Task
+and same-Task preparation/publication binds the current chain head or explicit
+absence. Own history is automatically included and cannot be omitted by a caller;
+it is separate from adopted consultation snapshots. Cross-Task
 consultation promotion is an explicit immutable snapshot, independent of later
 source checkpoint appends. Generic Context updates cannot move a typed pack pointer
 backward or replace its authority. Mandatory

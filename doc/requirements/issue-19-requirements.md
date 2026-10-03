@@ -27,8 +27,9 @@ no supervisor model or transcript summarization model is introduced.
   ContextVersion. Consultation promotion is explicit, scoped and compact; it copies
   preserved facts with historical provenance, never the full transcript or target
   source authority. Cross-Task promotion is an explicit immutable snapshot; later
-  source checkpoints do not silently replace it. Same-Task preparation/publication
-  requires the latest checkpoint head. No cross-Project or cross-Goal implicit
+  source checkpoints do not silently replace it. Own checkpoint history is automatically included even when its reference is
+  omitted. Same-Task preparation/publication requires the latest checkpoint head,
+  including the absence of a chain. Own history and consulted snapshots coexist. No cross-Project or cross-Goal implicit
   promotion is allowed.
 - Mandatory Project rules and Goal/Task constraints survive packing and promotion.
   The source Task criteria are preserved in checkpoints as well.

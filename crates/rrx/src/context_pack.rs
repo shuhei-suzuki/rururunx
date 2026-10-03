@@ -147,6 +147,7 @@ pub struct TaskInputs {
     pub artifacts: Vec<ArtifactRequest>,
     pub additional_paths: Vec<String>,
     pub checkpoint: Option<CheckpointRef>,
+    pub promoted_consultation: Option<CheckpointRef>,
     pub decisions: Vec<String>,
     pub completed_work: Vec<String>,
     pub failures: Vec<String>,
@@ -223,8 +224,10 @@ pub struct TaskPack {
     pub unresolved_findings: Vec<String>,
     pub impact_summary: Option<String>,
     pub checkpoint: Option<CheckpointRef>,
+    pub promoted_consultation: Option<CheckpointRef>,
     /// Historical facts preserve original Session/Task/revision provenance.
     pub historical_checkpoint: Option<Value>,
+    pub historical_consultation: Option<Value>,
 }
 #[derive(Debug, Clone)]
 pub struct TaskDraft {
@@ -245,11 +248,10 @@ impl TaskDraft {
             "repository:inventory".into(),
             self.pack.repository.inventory_hash.clone(),
         );
-        if let Some(cp) = &self.pack.checkpoint
-            && cp.scope == self.pack.scope
-        {
-            versions.insert("checkpoint:head".into(), cp.digest.clone());
-        }
+        versions.insert(
+            "checkpoint:head".into(),
+            head_digest(self.pack.checkpoint.as_ref()),
+        );
         versions
     }
     /// Engine owns the version/pointer transaction, never the source provider.
@@ -383,7 +385,7 @@ impl ContextPacks {
         );
         Ok((p, g, t))
     }
-    pub async fn draft_task(&self, scope: &Scope, inputs: TaskInputs) -> Result<TaskDraft> {
+    pub async fn draft_task(&self, scope: &Scope, mut inputs: TaskInputs) -> Result<TaskDraft> {
         validate_inputs(&inputs)?;
         let (p, g, t) = self.snapshot(scope)?;
         ensure!(
@@ -405,6 +407,43 @@ impl ContextPacks {
             .iter()
             .map(|a| artifact(scope, a, &map))
             .collect::<Result<Vec<_>>>()?;
+        // Own semantic history is mandatory even when the caller omits its ref.
+        // Cross-Task consultation is an independently fixed historical snapshot.
+        if inputs
+            .checkpoint
+            .as_ref()
+            .is_some_and(|r| r.scope != *scope)
+        {
+            ensure!(
+                inputs.promoted_consultation.is_none(),
+                "duplicate consultation snapshot"
+            );
+            inputs.promoted_consultation = inputs.checkpoint.take();
+        }
+        let own = self
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Store poisoned"))?
+            .pack_checkpoint_head(scope)?;
+        if let Some(requested) = &inputs.checkpoint {
+            ensure!(
+                Some(requested) == own.as_ref(),
+                "stale checkpoint head reference"
+            );
+        }
+        inputs.checkpoint = own;
+        ensure!(
+            inputs
+                .promoted_consultation
+                .as_ref()
+                .is_none_or(|r| r.scope != *scope),
+            "consultation snapshot requires another Task"
+        );
+        let historical_consultation = inputs
+            .promoted_consultation
+            .as_ref()
+            .map(|r| self.promotion(scope, r))
+            .transpose()?;
         let historical_checkpoint = inputs
             .checkpoint
             .as_ref()
@@ -428,11 +467,13 @@ impl ContextPacks {
             unresolved_findings: inputs.unresolved_findings,
             impact_summary: inputs.impact_summary,
             checkpoint: inputs.checkpoint,
+            promoted_consultation: inputs.promoted_consultation,
             historical_checkpoint,
+            historical_consultation,
         };
         bounded(&pack)?;
         let mut instructions = instruction_versions(&p, &g, &t)?;
-        instructions.insert("instruction:pack_facts".into(), digest(&json!({"artifacts":pack.artifacts,"decisions":pack.decisions,"completed_work":pack.completed_work,"failures":pack.failures,"verification":pack.verification,"findings":pack.unresolved_findings,"impact":pack.impact_summary,"checkpoint":pack.checkpoint}))?);
+        instructions.insert("instruction:pack_facts".into(), digest(&json!({"artifacts":pack.artifacts,"decisions":pack.decisions,"completed_work":pack.completed_work,"failures":pack.failures,"verification":pack.verification,"findings":pack.unresolved_findings,"impact":pack.impact_summary,"checkpoint":pack.checkpoint,"promoted_consultation":pack.promoted_consultation}))?);
         Ok(TaskDraft {
             pack,
             map,
@@ -528,6 +569,22 @@ impl ContextPacks {
             "retained":retained,"mandatory_goal_at_checkpoint":cp.mandatory_goal,"mandatory_rules_at_checkpoint":cp.mandatory_rules,
             "mandatory_task_at_checkpoint":if cross {json!({"id":cp.mandatory_task["id"],"title":cp.mandatory_task["title"],"acceptance_criteria":cp.mandatory_task["acceptance_criteria"]})} else {cp.mandatory_task},"recent":if cross {vec![]} else {cp.recent}}),
         )
+    }
+    fn ensure_own_head(&self, scope: &Scope, reference: Option<&CheckpointRef>) -> Result<()> {
+        ensure!(
+            reference.is_none_or(|r| r.scope == *scope),
+            "foreign own checkpoint head"
+        );
+        ensure!(
+            self.store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("Store poisoned"))?
+                .pack_checkpoint_head(scope)?
+                .as_ref()
+                == reference,
+            "stale checkpoint head reference"
+        );
+        Ok(())
     }
     fn ensure_checkpoint_head(&self, reference: &CheckpointRef) -> Result<()> {
         let store = self
@@ -701,6 +758,16 @@ impl ContextPacks {
             source_metadata(&map, &pack.repository.additional_paths)? == pack.referenced_sources,
             "Task pack referenced source metadata mismatch"
         );
+        self.ensure_own_head(&pack.scope, pack.checkpoint.as_ref())?;
+        let consulted = pack
+            .promoted_consultation
+            .as_ref()
+            .map(|r| self.promotion(&pack.scope, r))
+            .transpose()?;
+        ensure!(
+            consulted == pack.historical_consultation,
+            "Task consultation snapshot mismatch"
+        );
         let historical = pack
             .checkpoint
             .as_ref()
@@ -737,6 +804,17 @@ impl ContextPacks {
         budget: Budget,
     ) -> Result<DraftPreparation> {
         self.source().validate(&draft.map).await?;
+        self.ensure_own_head(&draft.pack.scope, draft.pack.checkpoint.as_ref())?;
+        let consulted = draft
+            .pack
+            .promoted_consultation
+            .as_ref()
+            .map(|r| self.promotion(&draft.pack.scope, r))
+            .transpose()?;
+        ensure!(
+            consulted == draft.pack.historical_consultation,
+            "draft consultation snapshot mismatch"
+        );
         let historical = draft
             .pack
             .checkpoint
@@ -823,6 +901,10 @@ impl ContextPacks {
                     .prepared_input(&self.source(), InputKind::ContextPack, version.unwrap_or(1))
                     .await?;
                 input.payload = format!("{header}{}", input.payload);
+                input.source_versions.insert(
+                    "checkpoint:head".into(),
+                    head_digest(pack.checkpoint.as_ref()),
+                );
                 ensure!(
                     input.payload.len() <= available,
                     "rendered pack exceeds budget"
@@ -1043,7 +1125,14 @@ impl ContextPacks {
     }
     async fn validate_task_reference(&self, task: &Task, reference: &PackRef) -> Result<()> {
         ensure!(
-            reference.scope == task.scope() && reference.version == task.context_version,
+            reference.scope == task.scope()
+                && reference.version == task.context_version
+                && self
+                    .store
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("Store poisoned"))?
+                    .context(&task.scope(), None)?
+                    .is_some_and(|c| c.version == reference.version),
             "foreign/stale Task reference"
         );
         let pack = self.task_pack(reference)?;
@@ -1491,4 +1580,8 @@ fn instruction_versions(p: &Project, g: &Goal, t: &Task) -> Result<BTreeMap<Stri
             digest(&json!({"id":t.id,"title":t.title,"criteria":t.acceptance_criteria}))?,
         ),
     ]))
+}
+
+pub(crate) fn head_digest(reference: Option<&CheckpointRef>) -> String {
+    reference.map_or_else(|| "none".into(), |r| r.digest.clone())
 }

@@ -21,14 +21,27 @@ fn checkpoint_head_record(connection: &Connection, scope: &Scope) -> Result<Opti
     let body:Option<String>=connection.query_row("SELECT body FROM records WHERE kind='checkpoint' AND project_id=?1 AND goal_id=?2 AND task_id=?3 AND json_extract(body,'$.data.format')='rrx.checkpoint.v1' ORDER BY rowid DESC LIMIT 1",params![scope.project_id.to_string(),str_id(scope.goal_id),str_id(scope.task_id)],|r|r.get(0)).optional()?;
     body.map(decode).transpose()
 }
-fn current_checkpoint_tx(tx: &Transaction<'_>, reference: &CheckpointRef) -> Result<()> {
-    let latest =
-        checkpoint_head_record(tx, &reference.scope)?.context("checkpoint head missing")?;
+fn own_checkpoint_tx(
+    tx: &Transaction<'_>,
+    scope: &Scope,
+    reference: Option<&CheckpointRef>,
+) -> Result<()> {
     ensure!(
-        latest.id == reference.id
-            && latest.version == 1
-            && reference.version == 1
-            && checkpoint_digest(&latest.data)? == reference.digest,
+        reference.is_none_or(|r| r.scope == *scope),
+        "foreign own checkpoint reference"
+    );
+    let current = checkpoint_head_record(tx, scope)?
+        .map(|r| {
+            Ok::<_, anyhow::Error>(CheckpointRef {
+                scope: r.scope,
+                id: r.id,
+                version: r.version,
+                digest: checkpoint_digest(&r.data)?,
+            })
+        })
+        .transpose()?;
+    ensure!(
+        current.as_ref() == reference,
         "checkpoint reference no longer current"
     );
     Ok(())
@@ -88,11 +101,7 @@ impl Store {
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         pack_guard(&tx, scope, expected)?;
-        if let Some(reference) = checkpoint
-            && reference.scope == *scope
-        {
-            current_checkpoint_tx(&tx, reference)?;
-        }
+        own_checkpoint_tx(&tx, scope, checkpoint)?;
         append_event(&tx, scope, "context.pack.prepared", data)?;
         tx.commit()?;
         Ok(())
@@ -122,12 +131,14 @@ impl Store {
             !goal_terminal(goal.state),
             "terminal Goal cannot publish new pack"
         );
-        if let Some(value) = context.data.get("checkpoint").filter(|v| !v.is_null()) {
-            let reference: CheckpointRef = serde_json::from_value(value.clone())?;
-            if reference.scope == *binding {
-                current_checkpoint_tx(&tx, &reference)?;
-            }
-        }
+        let checkpoint = context
+            .data
+            .get("checkpoint")
+            .filter(|v| !v.is_null())
+            .cloned()
+            .map(serde_json::from_value::<CheckpointRef>)
+            .transpose()?;
+        own_checkpoint_tx(&tx, binding, checkpoint.as_ref())?;
         pack_idle(&tx, &context.scope)?;
         for (id, version) in task_versions {
             let t: Task =

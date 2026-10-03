@@ -1273,7 +1273,7 @@ async fn mixed_role_chain_promotes_only_consultant_facts_and_current_goal_can_re
         .unwrap();
     let historical = promoted
         .pack()
-        .historical_checkpoint
+        .historical_consultation
         .as_ref()
         .unwrap()
         .to_string();
@@ -1525,6 +1525,7 @@ async fn typed_pack_generic_writers_cannot_move_pointers_or_hide_unresolved_fact
         .publish_task(&packs.draft_task(&f.task.scope(), input()).await.unwrap())
         .await
         .unwrap();
+    let stale_task = f.store.lock().unwrap().task(f.task.id).unwrap().unwrap();
     let second = packs
         .publish_task(
             &packs
@@ -1540,6 +1541,15 @@ async fn typed_pack_generic_writers_cannot_move_pointers_or_hide_unresolved_fact
         )
         .await
         .unwrap();
+    {
+        let mut stale = stale_task;
+        stale.next_action = Some("concurrent metadata".into());
+        let error = f.store.lock().unwrap().put_task(&mut stale).unwrap_err();
+        assert!(matches!(
+            error.downcast_ref::<rrx::state::StateGuardError>(),
+            Some(rrx::state::StateGuardError::SnapshotChanged { .. })
+        ));
+    }
     assert_eq!(second.version, 2);
     packs.validate_task(&second).await.unwrap();
     {
@@ -1579,6 +1589,16 @@ async fn typed_pack_generic_writers_cannot_move_pointers_or_hide_unresolved_fact
     )
     .unwrap();
     assert!(packs.validate_task(&first).await.is_err());
+    assert!(
+        packs
+            .publish_goal(
+                &Scope::goal(f.project.id, f.task.goal_id),
+                vec![],
+                Default::default()
+            )
+            .await
+            .is_err()
+    );
     raw.execute(
         "UPDATE tasks SET body=?1 WHERE id=?2",
         rusqlite::params![
@@ -1607,6 +1627,67 @@ async fn typed_pack_generic_writers_cannot_move_pointers_or_hide_unresolved_fact
         assert!(store.put_goal(&mut g).is_err());
     }
     packs.validate_goal(&goal).await.unwrap();
+    let stale_goal = f
+        .store
+        .lock()
+        .unwrap()
+        .goal(f.task.goal_id)
+        .unwrap()
+        .unwrap();
+    let newer = packs
+        .publish_goal(
+            &Scope::goal(f.project.id, f.task.goal_id),
+            vec!["new decision".into()],
+            Default::default(),
+        )
+        .await
+        .unwrap();
+    {
+        let mut stale = stale_goal.clone();
+        stale.blockers.push("concurrent metadata".into());
+        let error = f.store.lock().unwrap().put_goal(&mut stale).unwrap_err();
+        assert!(matches!(
+            error.downcast_ref::<rrx::state::StateGuardError>(),
+            Some(rrx::state::StateGuardError::SnapshotChanged { .. })
+        ));
+        let mut append = f
+            .store
+            .lock()
+            .unwrap()
+            .context(&goal.scope, None)
+            .unwrap()
+            .unwrap();
+        append.version += 1;
+        append.data = serde_json::json!({"opaque":"cannot replace Goal authority"});
+        assert!(f.store.lock().unwrap().put_context(&append).is_err());
+    }
+    let original = f
+        .store
+        .lock()
+        .unwrap()
+        .goal(f.task.goal_id)
+        .unwrap()
+        .unwrap();
+    let mut rollback = original.clone();
+    rollback.context_version = goal.version;
+    raw.execute(
+        "UPDATE goals SET body=?1 WHERE id=?2",
+        rusqlite::params![
+            serde_json::to_string(&rollback).unwrap(),
+            rollback.id.to_string()
+        ],
+    )
+    .unwrap();
+    assert!(packs.validate_goal(&goal).await.is_err());
+    raw.execute(
+        "UPDATE goals SET body=?1 WHERE id=?2",
+        rusqlite::params![
+            serde_json::to_string(&original).unwrap(),
+            original.id.to_string()
+        ],
+    )
+    .unwrap();
+    packs.validate_goal(&newer).await.unwrap();
 }
 
 #[tokio::test]
@@ -1657,7 +1738,7 @@ async fn cross_task_consultation_is_an_explicit_immutable_snapshot_not_a_live_he
         .await
         .unwrap();
     let source_versions = draft.source_versions();
-    assert!(!source_versions.contains_key("checkpoint:head"));
+    assert_eq!(source_versions.get("checkpoint:head").unwrap(), "none");
     packs
         .checkpoint(
             &f.task.scope(),
@@ -1696,7 +1777,7 @@ async fn cross_task_consultation_is_an_explicit_immutable_snapshot_not_a_live_he
                     .draft_task(
                         &target.scope(),
                         TaskInputs {
-                            checkpoint: Some(cp),
+                            checkpoint: Some(cp.clone()),
                             ..input()
                         }
                     )
@@ -1710,7 +1791,7 @@ async fn cross_task_consultation_is_an_explicit_immutable_snapshot_not_a_live_he
     let historical = packs
         .task_pack(&reference)
         .unwrap()
-        .historical_checkpoint
+        .historical_consultation
         .unwrap();
     assert!(
         historical["mandatory_task_at_checkpoint"]
@@ -1722,4 +1803,122 @@ async fn cross_task_consultation_is_an_explicit_immutable_snapshot_not_a_live_he
             .get("executor")
             .is_none()
     );
+    let native = Session {
+        id: SessionId::new(),
+        scope: target.scope(),
+        agent: "fake".into(),
+        provider: "fixture".into(),
+        role: SessionRole::Executor,
+        native_ref: None,
+        pid: None,
+        worktree: target.worktree.clone().unwrap(),
+        state: SessionState::Exited,
+        model: None,
+        effort: None,
+        recovery: Default::default(),
+        started_at: 0,
+    };
+    f.store.lock().unwrap().put_session(&native, 0).unwrap();
+    let own = packs
+        .checkpoint(
+            &target.scope(),
+            native.id,
+            None,
+            vec![event(1, EventKind::Failure, "target unresolved failure")],
+            HistoryPolicy {
+                recent_history_bytes: 0,
+            },
+        )
+        .await
+        .unwrap();
+    let both = packs
+        .draft_task(
+            &target.scope(),
+            TaskInputs {
+                promoted_consultation: Some(cp),
+                ..input()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(both.pack().checkpoint.as_ref(), Some(&own));
+    assert!(
+        both.pack()
+            .historical_checkpoint
+            .as_ref()
+            .unwrap()
+            .to_string()
+            .contains("target unresolved failure")
+    );
+    assert!(
+        both.pack()
+            .historical_consultation
+            .as_ref()
+            .unwrap()
+            .to_string()
+            .contains("promoted snapshot")
+    );
+}
+
+#[tokio::test]
+async fn own_checkpoint_is_mandatory_even_when_the_caller_omits_its_reference() {
+    let f = Fixture::new();
+    let packs = f.packs();
+    let draft = packs.draft_task(&f.task.scope(), input()).await.unwrap();
+    assert_eq!(draft.source_versions()["checkpoint:head"], "none");
+    let reference = packs.publish_task(&draft).await.unwrap();
+    let DraftPreparation::Ready(before) = packs
+        .prepare_draft(
+            &packs.draft_task(&f.task.scope(), input()).await.unwrap(),
+            SelectionRequest::default(),
+            budget(),
+        )
+        .await
+        .unwrap()
+    else {
+        panic!("budget")
+    };
+    let (native, _) = session(&f, SessionRole::Executor, SessionState::Exited);
+    let cp = packs
+        .checkpoint(
+            &f.task.scope(),
+            native.id,
+            None,
+            vec![
+                event(1, EventKind::Constraint, "never remove safety constraints"),
+                event(2, EventKind::Failure, "failure is unresolved"),
+            ],
+            HistoryPolicy {
+                recent_history_bytes: 0,
+            },
+        )
+        .await
+        .unwrap();
+    assert!(packs.validate_task(&reference).await.is_err());
+    assert!(
+        packs
+            .prepare_task(&reference, SelectionRequest::default(), budget())
+            .await
+            .is_err()
+    );
+    assert!(packs.publish_task(&draft).await.is_err());
+    let fresh = packs.draft_task(&f.task.scope(), input()).await.unwrap();
+    assert_eq!(fresh.pack().checkpoint.as_ref(), Some(&cp));
+    assert_eq!(fresh.source_versions()["checkpoint:head"], cp.digest);
+    assert_ne!(
+        before.source_versions["checkpoint:head"],
+        fresh.source_versions()["checkpoint:head"]
+    );
+    let latest = packs.publish_task(&fresh).await.unwrap();
+    assert!(latest.version > reference.version);
+    let PreparedPack::Ready(prepared) = packs
+        .prepare_task(&latest, SelectionRequest::default(), budget())
+        .await
+        .unwrap()
+    else {
+        panic!("budget")
+    };
+    assert!(prepared.payload.contains("never remove safety constraints"));
+    assert!(prepared.payload.contains("failure is unresolved"));
+    assert_eq!(prepared.source_versions["checkpoint:head"], cp.digest);
 }
