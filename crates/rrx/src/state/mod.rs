@@ -838,11 +838,21 @@ impl Store {
         kind: &str,
         data: Value,
     ) -> Result<()> {
-        validate_scope(scope)?;
         ensure!(
             !kind.trim().is_empty() && !reserved_audit_kind(kind),
             "invalid/reserved audit kind"
         );
+        self.audit_observation_if_current(scope, expected, kind, data)
+    }
+
+    pub(crate) fn audit_observation_if_current(
+        &mut self,
+        scope: &Scope,
+        expected: [u64; 3],
+        kind: &str,
+        data: Value,
+    ) -> Result<()> {
+        validate_scope(scope)?;
         let goal_id = scope.goal_id.context("current audit requires Goal scope")?;
         let task_id = scope.task_id.context("current audit requires Task scope")?;
         let tx = self
@@ -1312,6 +1322,22 @@ fn validate_worktree_exclusion(tx: &Transaction<'_>, record: &Record) -> Result<
                     if session.pid.is_none() {
                         metadata.pid = old.pid;
                     }
+                    // An unknown native dispatch is conservative evidence, never
+                    // a new actor/input authority. Preserve every other field.
+                    if session.state == SessionState::Lost
+                        && session.recovery["native_dispatch_unobserved"] == true
+                        && old.recovery["native_dispatch_unobserved"] != true
+                        && let Some(recovery) = metadata.recovery.as_object_mut()
+                    {
+                        match old.recovery.get("native_dispatch_unobserved") {
+                            Some(value) => {
+                                recovery.insert("native_dispatch_unobserved".into(), value.clone());
+                            }
+                            None => {
+                                recovery.remove("native_dispatch_unobserved");
+                            }
+                        }
+                    }
                     !session_terminal(old.state)
                         && (session.state == SessionState::Lost
                             || (old.state != SessionState::Lost
@@ -1503,6 +1529,13 @@ fn reserved_audit_kind(kind: &str) -> bool {
     kind.ends_with(".saved")
         || matches!(
             kind,
-            "context.created" | "usage.recorded" | "workflow.gate_observed"
+            "context.created"
+                | "usage.recorded"
+                | "workflow.gate_observed"
+                | "context.pack.prepared"
+                | "goal.context_updated"
+                | "context.index.generated"
+                | "context.selection"
+                | "context.expansion"
         )
 }

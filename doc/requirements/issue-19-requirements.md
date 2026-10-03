@@ -120,3 +120,26 @@ Once the same dispatch intent is consumed before wire delivery, its Starting
 status/Running acknowledgement is a historical admitted observation. Later
 checkpoint updates cannot rewrite or wedge that acknowledgement. A changed/new
 consumed intent remains a new admission and must compare live head/frame authority.
+
+New native admissions of typed Workflow frames require the current active Running,
+dispatch-started attempt with the exact context, phase and generation. Session
+publication also binds its owned Session ID. Inactive owners, terminal Tasks,
+frozen final packs and EvidencePort phases are non-launchable. Already-consumed
+observations retain their historical input instead of re-admitting it. Stable
+Project scoped references and Goal/Task instruction hashes are source authority;
+Goal criterion satisfaction, DAG progress and raw row counters are bookkeeping.
+
+Optional source sections use the smaller of the selected discretionary budget and
+the remaining absolute 1 MiB capacity after mandatory pack metadata and Engine
+rule bytes. Zero remaining optional bytes is valid; mandatory overflow still fails
+closed. The selected phase budget remains unchanged and reported. New generic
+Context writes reject reserved task_pack/frozen_task_pack envelopes. Readers
+classify historical legacy envelopes by the explicit typed format. Pointer-only
+Goal contention is a typed SnapshotChanged on goals.context_version. Reserved
+preparation/index/selection audit events require their private producer paths.
+
+Blocked-owner Lost updates may add only native_dispatch_unobserved=true and clear
+PID while preserving exact actor, scope, input, restore proof and consumed intent.
+This flag is conservative uncertainty, not a new dispatch admission. New
+checkpoints record their configured transient window; historical checkpoints with
+no recorded policy retain an explicit unknown value.

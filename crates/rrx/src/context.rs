@@ -290,7 +290,7 @@ impl RepositoryContext {
             .lock()
             .map_err(|_| anyhow::anyhow!("Store poisoned"))?;
         map.snapshot.recheck(&store)?;
-        store.audit_if_current(scope,map.snapshot.versions(), "context.index.generated", json!({"revision":map.freshness.revision,"inventory_hash":map.freshness.inventory_hash,"source_manifest_hash":manifest_hash(&map),"additional_paths":map.additional_paths,"files":map.files.len(),"skipped":map.skipped.len(),"text_source_bytes":map.files.values().map(|f|f.bytes).sum::<usize>(),"algorithm":"lexical-v1"}))?;
+        store.audit_observation_if_current(scope,map.snapshot.versions(), "context.index.generated", json!({"revision":map.freshness.revision,"inventory_hash":map.freshness.inventory_hash,"source_manifest_hash":manifest_hash(&map),"additional_paths":map.additional_paths,"files":map.files.len(),"skipped":map.skipped.len(),"text_source_bytes":map.files.values().map(|f|f.bytes).sum::<usize>(),"algorithm":"lexical-v1"}))?;
         Ok(map)
     }
     pub async fn validate(&self, map: &RepositoryMap) -> Result<()> {
@@ -337,7 +337,14 @@ impl RepositoryContext {
         budget: Budget,
         include_rules: bool,
     ) -> Result<SelectionOutcome> {
-        budget.validate()?;
+        if include_rules {
+            budget.validate()?;
+        } else {
+            ensure!(
+                budget.bytes <= MAX_TOTAL_BYTES && budget.estimated_tokens <= MAX_TOTAL_BYTES,
+                "optional context budget exceeds 16 MiB"
+            );
+        }
         validate_request(request)?;
         for path in &request.changed_files {
             ensure!(
@@ -589,7 +596,7 @@ impl RepositoryContext {
             .lock()
             .map_err(|_| anyhow::anyhow!("Store poisoned"))?;
         map.snapshot.recheck(&store)?;
-        store.audit_if_current(&map.freshness.scope,map.snapshot.versions(),event,json!({"revision":map.freshness.revision,"inventory_hash":map.freshness.inventory_hash,"source_manifest_hash":manifest_hash(map),"ready":matches!(outcome,SelectionOutcome::Ready{..}),"evidence":evidence}))?;
+        store.audit_observation_if_current(&map.freshness.scope,map.snapshot.versions(),event,json!({"revision":map.freshness.revision,"inventory_hash":map.freshness.inventory_hash,"source_manifest_hash":manifest_hash(map),"ready":matches!(outcome,SelectionOutcome::Ready{..}),"evidence":evidence}))?;
         Ok(outcome)
     }
 }

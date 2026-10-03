@@ -214,10 +214,10 @@ struct PackAttachment {
     source_payload_offset: usize,
 }
 fn frozen_attachment(context: &ContextVersion) -> Result<Option<PackAttachment>> {
-    if let Some(value) = context.data.get("task_pack") {
+    if crate::context_pack::workflow::is_phase_context(&context.data) {
         crate::context_pack::workflow::context_artifact(context)?;
         Ok(Some(PackAttachment {
-            artifact: value.clone(),
+            artifact: context.data["task_pack"].clone(),
             source_payload_offset: context.data["source_payload_offset"]
                 .as_u64()
                 .context("phase source offset missing")?
@@ -1025,7 +1025,7 @@ impl WorkflowEngine {
             revision: context.revision.clone(),
             version: context.version,
             source_versions: context.source_hashes.clone(),
-            payload: if context.data.get("task_pack").is_some() {
+            payload: if crate::context_pack::workflow::is_phase_context(&context.data) {
                 // Durable typed metadata stays in the envelope. The native input
                 // is the exactly estimated rendered pack, without duplicate JSON.
                 context.data["payload"]
@@ -1853,7 +1853,7 @@ impl WorkflowEngine {
                         ),
                         frozen_attachment(&self.context(&snapshot)?)?,
                     );
-                    if context.data.get("task_pack").is_some() {
+                    if crate::context_pack::workflow::is_phase_context(&context.data) {
                         context.data["frozen_task_pack"] = json!(true);
                     }
                     context
@@ -2067,7 +2067,7 @@ pub(crate) fn validate_context(
     context: &ContextVersion,
 ) -> Result<()> {
     let workflow: WorkflowSnapshot = serde_json::from_value(record.data.clone())?;
-    if context.data.get("task_pack").is_some() {
+    if crate::context_pack::workflow::is_phase_context(&context.data) {
         crate::context_pack::workflow::context_artifact(context)?;
     }
     ensure!(

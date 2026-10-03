@@ -66,7 +66,7 @@ fn current_scope_audit_rechecks_versions_and_activity_across_connections() {
     second.put_task(&mut t).unwrap();
     let before = first.events(&scope, 0, 100).unwrap().len();
     let error = first
-        .audit_if_current(&scope, old, "context.selection", json!({"ready":true}))
+        .audit_if_current(&scope, old, "test.observation", json!({"ready":true}))
         .unwrap_err();
     assert!(matches!(
         error.downcast_ref::<rrx::state::StateGuardError>(),
@@ -77,7 +77,7 @@ fn current_scope_audit_rechecks_versions_and_activity_across_connections() {
         .audit_if_current(
             &scope,
             [p.version, g.version, t.version],
-            "context.selection",
+            "test.observation",
             json!({"ready":true}),
         )
         .unwrap();
@@ -89,7 +89,7 @@ fn current_scope_audit_rechecks_versions_and_activity_across_connections() {
             .audit_if_current(
                 &scope,
                 [p.version, g.version, t.version],
-                "context.selection",
+                "test.observation",
                 json!({"ready":true})
             )
             .is_err()

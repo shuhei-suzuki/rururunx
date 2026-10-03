@@ -5,6 +5,10 @@ use std::{collections::VecDeque, sync::Mutex};
 const PHASE_FORMAT: &str = "rrx.phase-pack.v1";
 const CAPTURE_CACHE: usize = 16;
 
+pub(crate) fn is_phase_context(data: &Value) -> bool {
+    data["task_pack"]["format"] == PHASE_FORMAT
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PhasePackArtifact {
@@ -142,7 +146,18 @@ impl WorkflowPackSources {
             task_text: format!("{} {}", task.title, task.acceptance_criteria.join(" ")),
             ..Default::default()
         };
-        let available = budget.discretionary_tokens;
+        // Rules are prepended by Engine exactly once. Reserve their actual bytes
+        // before selecting optional sections so a valid mandatory pack remains usable.
+        let rule_bytes = draft.map.phase_rule_bytes()?;
+        let mandatory_complete = header
+            .len()
+            .checked_add(draft.map.phase_mandatory_payload()?.len())
+            .and_then(|n| n.checked_add(rule_bytes))
+            .context("mandatory phase byte count overflow")?;
+        let remaining = MAX_BYTES
+            .checked_sub(mandatory_complete)
+            .context("mandatory phase input exceeds absolute 1 MiB cap")?;
+        let available = budget.discretionary_tokens.min(remaining);
         let outcome = self
             .packs
             .source()
@@ -175,7 +190,7 @@ impl WorkflowPackSources {
             .checked_sub(mandatory_bytes)
             .context("invalid mandatory phase byte count")?;
         ensure!(
-            optional_bytes <= budget.discretionary_tokens,
+            optional_bytes <= available,
             "optional phase source exceeds selected budget"
         );
         ensure_phase_payload(&payload)?;
@@ -238,7 +253,7 @@ impl WorkflowPackSources {
             );
             context
         };
-        if context.data.get("task_pack").is_none() && context.data["format"] != FORMAT {
+        if !is_phase_context(&context.data) && context.data["format"] != FORMAT {
             return Ok(TaskInputs::default());
         }
         let pack = self.packs.task_pack(&reference(&context)?)?;
@@ -372,7 +387,7 @@ pub(crate) fn context_artifact(context: &ContextVersion) -> Result<PhasePackArti
     Ok(a)
 }
 pub(crate) fn physical_manifest(context: &ContextVersion) -> Result<String> {
-    if context.data.get("task_pack").is_some() {
+    if is_phase_context(&context.data) {
         let a = context_artifact(context)?;
         let physical = a
             .source_versions

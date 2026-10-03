@@ -110,6 +110,7 @@ fn validate(
     scope: &Scope,
     context: &ContextVersion,
     frame: &Frame,
+    session: Option<&Session>,
 ) -> Result<()> {
     let body: String = connection.query_row(
         "SELECT body FROM tasks WHERE id=?1",
@@ -133,6 +134,16 @@ fn validate(
     )?;
     let project: Project = decode(project_body)?;
     ensure!(
+        project.state == ProjectState::Registered
+            && matches!(
+                goal.state,
+                GoalState::Created | GoalState::Analyzing | GoalState::Running
+            )
+            && !task_terminal(task.state)
+            && context.data["frozen_task_pack"] != true,
+        "typed input owner is inactive or historical"
+    );
+    ensure!(
         context.scope == *scope
             && task.scope() == *scope
             && frame.version == context.version
@@ -140,13 +151,47 @@ fn validate(
             && frame.revision == context.revision,
         "native input differs from latest typed Task authority"
     );
-    if context.data.get("task_pack").is_some() {
+    if crate::context_pack::workflow::is_phase_context(&context.data) {
         let artifact = crate::context_pack::workflow::context_artifact(context)?;
         ensure!(
-            artifact.authority_versions[..2] == [project.version, goal.version]
-                && crate::context_pack::instruction_versions(&project, &goal, &task)?
-                    .iter()
-                    .all(|(key, value)| frame.sources.get(key) == Some(value)),
+            artifact.phase.actor() != crate::workflow::Actor::EvidencePort,
+            "evidence phase cannot launch a native actor"
+        );
+        let body: Option<String> = connection.query_row(
+            "SELECT body FROM records WHERE project_id=?1 AND goal_id=?2 AND task_id=?3 AND kind='workflow' LIMIT 1",
+            params![scope.project_id.to_string(),str_id(scope.goal_id),str_id(scope.task_id)],
+            |r| r.get(0),
+        ).optional()?;
+        let record: Record = decode(body.context("typed phase has no owned Workflow")?)?;
+        let workflow: crate::workflow::WorkflowSnapshot = serde_json::from_value(record.data)?;
+        let attempt = workflow
+            .active
+            .and_then(|index| workflow.history.get(index))
+            .context("typed phase has no active native attempt")?;
+        ensure!(
+            !workflow.finished
+                && workflow.context_version == context.version
+                && attempt.context_version == context.version
+                && attempt.generation == workflow.generation
+                && attempt.phase == artifact.phase
+                && attempt.state == crate::workflow::AttemptState::Running
+                && attempt.dispatch_started
+                && session.is_none_or(|native| {
+                    attempt.session_id.is_none_or(|owned| owned == native.id)
+                        && attempt.agent.as_deref() == Some(native.agent.as_str())
+                        && native.role
+                            == match artifact.phase.actor() {
+                                crate::workflow::Actor::Executor => SessionRole::Executor,
+                                crate::workflow::Actor::Reviewer => SessionRole::Reviewer,
+                                crate::workflow::Actor::EvidencePort => unreachable!(),
+                            }
+                }),
+            "typed input differs from active native attempt"
+        );
+        ensure!(
+            crate::context_pack::instruction_versions(&project, &goal, &task)?
+                .iter()
+                .all(|(key, value)| frame.sources.get(key) == Some(value)),
             "native phase input semantic authority changed"
         );
         let payload = context.data["payload"]
@@ -188,7 +233,7 @@ pub(super) fn validate_session(
     context: &ContextVersion,
 ) -> Result<()> {
     let frame = Frame::session(session)?;
-    validate(connection, &session.scope, context, &frame)?;
+    validate(connection, &session.scope, context, &frame, Some(session))?;
     if session.recovery["dispatch_intent"]["consumed"] == true {
         ensure!(
             session.recovery["dispatch_intent"]["input_sha256"].as_str()
@@ -206,7 +251,7 @@ impl Store {
         if let Some(context) = latest_context(&self.connection, scope)?
             && typed_pack(&context.data)
         {
-            let expected = if context.data.get("task_pack").is_some() {
+            let expected = if crate::context_pack::workflow::is_phase_context(&context.data) {
                 let phase: crate::workflow::Phase =
                     serde_json::from_value(context.data["phase"].clone())?;
                 if phase.actor() == crate::workflow::Actor::Reviewer {
@@ -221,7 +266,13 @@ impl Store {
                 input.kind == expected,
                 "typed input kind differs from owned phase"
             );
-            validate(&self.connection, scope, &context, &Frame::input(input))
+            validate(
+                &self.connection,
+                scope,
+                &context,
+                &Frame::input(input),
+                None,
+            )
         } else {
             super::context_pack::validate_checkpoint_source(
                 &self.connection,

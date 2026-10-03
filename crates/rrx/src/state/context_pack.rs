@@ -247,9 +247,9 @@ pub(super) fn guard_launch_checkpoint(tx: &Transaction<'_>, record: &Record) -> 
     // A newly consumed intent must use live authority even if the Session state
     // remains Starting or a caller publishes it from a later observation.
     let new_dispatch = !restoring
-        && dispatch_consumed(&session)
+        && session.recovery["dispatch_intent"]["consumed"] == true
         && previous.as_ref().is_none_or(|old| {
-            !dispatch_consumed(old)
+            old.recovery["dispatch_intent"]["consumed"] != true
                 || old.recovery["dispatch_intent"] != session.recovery["dispatch_intent"]
         });
     if !matches!(
@@ -268,6 +268,10 @@ pub(super) fn guard_launch_checkpoint(tx: &Transaction<'_>, record: &Record) -> 
         return Ok(());
     }
     let key = session.recovery["source_versions"]["checkpoint:head"].as_str();
+    ensure!(
+        !protected || key.is_some(),
+        "protected native input requires explicit checkpoint head"
+    );
     if typed {
         super::prepared_input::validate_session(
             tx,
@@ -322,7 +326,7 @@ pub(super) fn typed_pack(data: &Value) -> bool {
     matches!(
         data["format"].as_str(),
         Some("rrx.task-pack.v1" | "rrx.goal-pack.v1")
-    ) || data["task_pack"]["format"] == "rrx.phase-pack.v1"
+    ) || crate::context_pack::workflow::is_phase_context(data)
 }
 pub(super) fn latest_context(
     connection: &Connection,
@@ -335,6 +339,8 @@ pub(super) fn latest_context(
 pub(super) fn guard_context_write(tx: &Transaction<'_>, context: &ContextVersion) -> Result<()> {
     ensure!(
         !typed_pack(&context.data)
+            && context.data.get("task_pack").is_none()
+            && context.data.get("frozen_task_pack").is_none()
             && !latest_context(tx, &context.scope)?.is_some_and(|c| typed_pack(&c.data)),
         "typed pack context requires the owned publication transaction"
     );
@@ -346,10 +352,22 @@ pub(super) fn guard_pack_pointer(
     old: u64,
     next: u64,
 ) -> Result<()> {
-    ensure!(
-        old == next || !latest_context(tx, scope)?.is_some_and(|c| typed_pack(&c.data)),
-        "typed pack pointer requires the owned publication transaction"
-    );
+    if old != next && latest_context(tx, scope)?.is_some_and(|c| typed_pack(&c.data)) {
+        bail!(StateGuardError::SnapshotChanged {
+            table: if scope.task_id.is_some() {
+                "tasks.context_version"
+            } else {
+                "goals.context_version"
+            }
+            .into(),
+            id: scope
+                .task_id
+                .map(|id| id.to_string())
+                .or_else(|| scope.goal_id.map(|id| id.to_string()))
+                .context("pack pointer owner missing")?,
+            expected: next,
+        });
+    }
     Ok(())
 }
 impl Store {

@@ -117,6 +117,9 @@ pub struct Checkpoint {
     pub omitted_last_sequence: Option<u64>,
     pub omitted_digest: Option<String>,
     pub recent_bytes: usize,
+    /// Explicit configured condensation window; absent for older checkpoints.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recent_history_limit_bytes: Option<usize>,
     pub measured_tokens: Option<u64>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -510,7 +513,7 @@ impl ContextPacks {
     }
     pub fn task_pack(&self, reference: &PackRef) -> Result<TaskPack> {
         let c = self.load_context(reference)?;
-        let pack: TaskPack = if c.data.get("task_pack").is_some() {
+        let pack: TaskPack = if workflow::is_phase_context(&c.data) {
             workflow::context_artifact(&c)?.pack
         } else {
             serde_json::from_value(c.data.clone())?
@@ -715,10 +718,7 @@ impl ContextPacks {
     }
     async fn validate_task_map(&self, reference: &PackRef) -> Result<(TaskPack, RepositoryMap)> {
         ensure!(
-            self.load_context(reference)?
-                .data
-                .get("task_pack")
-                .is_none(),
+            !workflow::is_phase_context(&self.load_context(reference)?.data),
             "workflow phase pack is prepared only by its Engine"
         );
         let pack = self.task_pack(reference)?;
@@ -1073,6 +1073,7 @@ impl ContextPacks {
         );
         let cp = Checkpoint {
             format: CHECKPOINT.into(),
+            recent_history_limit_bytes: Some(policy.recent_history_bytes),
             scope: scope.clone(),
             session,
             role: native.role,
@@ -1106,7 +1107,7 @@ impl ContextPacks {
             .context(scope, None)?;
         let previous_pack = previous_context
             .as_ref()
-            .filter(|c| c.data.get("task_pack").is_some() || c.data["format"] == FORMAT)
+            .filter(|c| workflow::is_phase_context(&c.data) || c.data["format"] == FORMAT)
             .map(|c| self.task_pack(&reference(c)?))
             .transpose()?;
         workflow::validate_checkpoint_capacity(
@@ -1174,7 +1175,7 @@ impl ContextPacks {
             "foreign/stale Task reference"
         );
         let context = self.load_context(reference)?;
-        if context.data.get("task_pack").is_none() && context.data["format"] != FORMAT {
+        if !workflow::is_phase_context(&context.data) && context.data["format"] != FORMAT {
             ensure!(
                 context.scope == task.scope() && !context.revision.is_empty(),
                 "invalid opaque Task context provenance"
@@ -1283,7 +1284,7 @@ impl ContextPacks {
             );
             let typed_context = context
                 .as_ref()
-                .is_some_and(|c| c.data.get("task_pack").is_some() || c.data["format"] == FORMAT);
+                .is_some_and(|c| workflow::is_phase_context(&c.data) || c.data["format"] == FORMAT);
             let context = context.map(|c| reference(&c)).transpose()?;
             if let Some(r) = &context {
                 self.validate_task_reference(&task, r).await?;
@@ -1448,7 +1449,7 @@ impl ContextPacks {
             task_versions.push((t.id, t.version));
             let typed_context = if let Some(r) = &d.context {
                 let context = self.load_context(r)?;
-                context.data.get("task_pack").is_some() || context.data["format"] == FORMAT
+                workflow::is_phase_context(&context.data) || context.data["format"] == FORMAT
             } else {
                 false
             };
@@ -1653,6 +1654,14 @@ pub(crate) fn instruction_versions(
     t: &Task,
 ) -> Result<BTreeMap<String, String>> {
     Ok(BTreeMap::from([
+        (
+            "instruction:project".into(),
+            digest(
+                &json!({"id":p.id,"root":p.root,"identity":p.repository_identity,
+                "base_branch":p.base_branch,"worktree_root":p.worktree_root,
+                "config_ref":p.config_ref,"rule_refs":p.rule_refs,"environment_refs":p.environment_refs}),
+            )?,
+        ),
         (
             "repository:identity".into(),
             digest(&p.repository_identity)?,

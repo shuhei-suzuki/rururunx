@@ -1701,7 +1701,10 @@ async fn typed_pack_generic_writers_cannot_move_pointers_or_hide_unresolved_fact
         let mut stale = stale_goal.clone();
         stale.blockers.push("concurrent metadata".into());
         let error = f.store.lock().unwrap().put_goal(&mut stale).unwrap_err();
-        assert!(error.to_string().contains("typed pack pointer"));
+        assert!(matches!(
+            error.downcast_ref::<rrx::state::StateGuardError>(),
+            Some(rrx::state::StateGuardError::SnapshotChanged { .. })
+        ));
         let mut append = f
             .store
             .lock()
@@ -2462,6 +2465,17 @@ async fn actual_workflow_publishes_typed_phase_packs_and_freezes_cleanup_provena
         .unwrap()
         .unwrap();
     assert_eq!(c.data["frozen_task_pack"], true);
+    let historical_input = phase_input(&c);
+    let error = f
+        .store
+        .lock()
+        .unwrap()
+        .validate_context_input(&task.scope(), &historical_input)
+        .unwrap_err();
+    assert!(
+        error.to_string().contains("inactive or historical"),
+        "{error:#}"
+    );
     assert_eq!(
         c.data["task_pack"],
         gates.cleanup.lock().unwrap().clone().unwrap()
@@ -3503,7 +3517,7 @@ async fn private_rendered_frame_authority_is_atomic_and_rejects_forged_payload_m
     );
     let mut forged = prepared.clone();
     forged.payload.push('x');
-    f.store.lock().unwrap().audit(&f.task.scope(),"context.pack.prepared",serde_json::json!({"ready":true,"context_version":forged.version,"input_sha256":format!("{:x}",Sha256::digest(forged.payload.as_bytes()))})).unwrap();
+    assert!(f.store.lock().unwrap().audit(&f.task.scope(),"context.pack.prepared",serde_json::json!({"ready":true,"context_version":forged.version,"input_sha256":format!("{:x}",Sha256::digest(forged.payload.as_bytes()))})).is_err());
     assert!(
         f.store
             .lock()
@@ -3613,4 +3627,418 @@ async fn exact_prepared_frame_cannot_outlive_new_semantic_task_or_goal_constrain
                 .is_err()
         );
     }
+}
+
+fn phase_input(context: &ContextVersion) -> rrx::adapter::PreparedInput {
+    let phase: rrx::workflow::Phase =
+        serde_json::from_value(context.data["phase"].clone()).unwrap();
+    rrx::adapter::PreparedInput {
+        scope: context.scope.clone(),
+        kind: if phase.actor() == rrx::workflow::Actor::Reviewer {
+            rrx::adapter::InputKind::ReviewBundle
+        } else {
+            rrx::adapter::InputKind::ContextPack
+        },
+        version: context.version,
+        revision: context.revision.clone(),
+        source_versions: context.source_hashes.clone(),
+        payload: context.data["payload"].as_str().unwrap().into(),
+    }
+}
+
+#[tokio::test]
+async fn phase_frame_requires_live_owned_attempt_and_stable_semantic_instructions() {
+    use rrx::{
+        adapter::AgentRegistry,
+        context_pack::workflow::WorkflowPackSources,
+        workflow::{Phase, StepResult, WorkflowEngine},
+    };
+    let f = Fixture::new();
+    let mut registry = AgentRegistry::default();
+    registry
+        .register(
+            "fake".into(),
+            Arc::new(PackFixtureAgent {
+                store: f.store.clone(),
+                sessions: Mutex::new(Default::default()),
+                name: "fake".into(),
+            }),
+        )
+        .unwrap();
+    let engine = WorkflowEngine::new(
+        f.store.clone(),
+        Arc::new(registry),
+        phase_config(),
+        Arc::new(WorkflowPackSources::new(f.packs())),
+        Arc::new(PackFixtureGates {
+            cleanup: Mutex::new(None),
+            cleanup_wait_once: Mutex::new(false),
+            checkpoint_after_claim: Mutex::new(None),
+        }),
+    )
+    .unwrap();
+    engine.initialize(f.task.id, None).await.unwrap();
+    let initial = f
+        .store
+        .lock()
+        .unwrap()
+        .context(&f.task.scope(), None)
+        .unwrap()
+        .unwrap();
+    assert!(
+        f.store
+            .lock()
+            .unwrap()
+            .validate_context_input(&f.task.scope(), &phase_input(&initial))
+            .is_err()
+    );
+    let mut native_id = None;
+    for _ in 0..8 {
+        let result = engine.step(f.task.id, Default::default()).await.unwrap();
+        if let StepResult::Started {
+            phase: Phase::Requirements,
+            session,
+        } = result
+        {
+            native_id = session;
+            break;
+        }
+    }
+    let native_id = native_id.expect("actual owned actor started");
+    let context = f
+        .store
+        .lock()
+        .unwrap()
+        .context(&f.task.scope(), None)
+        .unwrap()
+        .unwrap();
+    let input = phase_input(&context);
+    f.store
+        .lock()
+        .unwrap()
+        .validate_context_input(&f.task.scope(), &input)
+        .unwrap();
+    let mut forged = input.clone();
+    forged.payload.replace_range(..1, "!");
+    assert!(
+        f.store
+            .lock()
+            .unwrap()
+            .validate_context_input(&f.task.scope(), &forged)
+            .is_err()
+    );
+    // Progress is bookkeeping, while Goal constraints and selected Project refs
+    // remain instructions. Raw row version changes must not strand siblings.
+    {
+        let mut store = f.store.lock().unwrap();
+        let mut goal = store.goal(f.task.goal_id).unwrap().unwrap();
+        goal.completion_criteria[0].satisfied = true;
+        let mut sibling = Task::new(
+            f.project.id,
+            goal.id,
+            "sibling progress".into(),
+            "fake".into(),
+        );
+        store.put_task(&mut sibling).unwrap();
+        goal.dag.nodes.push(sibling.id);
+        store.put_goal(&mut goal).unwrap();
+        store
+            .validate_context_input(&f.task.scope(), &input)
+            .unwrap();
+        goal.constraints.push("new mandatory constraint".into());
+        store.put_goal(&mut goal).unwrap();
+        assert!(
+            store
+                .validate_context_input(&f.task.scope(), &input)
+                .is_err()
+        );
+        goal.constraints.pop();
+        store.put_goal(&mut goal).unwrap();
+        store
+            .validate_context_input(&f.task.scope(), &input)
+            .unwrap();
+        let mut project = store.project(f.project.id).unwrap().unwrap();
+        project.rule_refs.push(f.root.join("new-rules.md"));
+        store.put_project(&mut project).unwrap();
+        assert!(
+            store
+                .validate_context_input(&f.task.scope(), &input)
+                .is_err()
+        );
+        project.rule_refs.pop();
+        store.put_project(&mut project).unwrap();
+    }
+    // Raw fixture changes only the durable active claim, leaving the immutable
+    // complete frame valid. Both request and Session admission must bind it.
+    let raw = rusqlite::Connection::open(f._temp.path().join("state.db")).unwrap();
+    let record = f
+        .store
+        .lock()
+        .unwrap()
+        .records(&f.task.scope(), RecordKind::Workflow)
+        .unwrap()
+        .pop()
+        .unwrap();
+    let mut missing = record.clone();
+    missing.data["active"] = serde_json::Value::Null;
+    raw.execute(
+        "UPDATE records SET body=?1 WHERE id=?2",
+        rusqlite::params![
+            serde_json::to_string(&missing).unwrap(),
+            record.id.to_string()
+        ],
+    )
+    .unwrap();
+    assert!(
+        f.store
+            .lock()
+            .unwrap()
+            .validate_context_input(&f.task.scope(), &input)
+            .is_err()
+    );
+    raw.execute(
+        "UPDATE records SET body=?1 WHERE id=?2",
+        rusqlite::params![
+            serde_json::to_string(&record).unwrap(),
+            record.id.to_string()
+        ],
+    )
+    .unwrap();
+    let (native, version) = f.store.lock().unwrap().session(native_id).unwrap().unwrap();
+    let mut foreign = native.clone();
+    foreign.id = SessionId::new();
+    foreign.role = SessionRole::Reviewer;
+    assert!(f.store.lock().unwrap().put_session(&foreign, 0).is_err());
+    f.store
+        .lock()
+        .unwrap()
+        .validate_context_input(&f.task.scope(), &input)
+        .unwrap();
+    assert!(version > 0);
+    engine
+        .cancel(f.task.id, "explicit fixture cancellation".into())
+        .unwrap();
+    let error = f
+        .store
+        .lock()
+        .unwrap()
+        .validate_context_input(&f.task.scope(), &input)
+        .unwrap_err();
+    assert!(
+        error.to_string().contains("inactive or historical"),
+        "{error:#}"
+    );
+}
+
+#[tokio::test]
+async fn near_cap_mandatory_rules_leave_bounded_optional_headroom() {
+    use rrx::{
+        adapter::AgentRegistry, context_pack::workflow::WorkflowPackSources,
+        workflow::WorkflowEngine,
+    };
+    let f = Fixture::new();
+    let source = (0..256)
+        .map(|n| format!("pub fn codec_function_{n}() {{}}\n"))
+        .collect::<String>();
+    std::fs::write(f.worktree.join("src/lib.rs"), source).unwrap();
+    let mut p = f
+        .store
+        .lock()
+        .unwrap()
+        .project(f.project.id)
+        .unwrap()
+        .unwrap();
+    for n in 0..5 {
+        let path = f.root.join(format!("headroom-{n}.md"));
+        std::fs::write(&path, "x".repeat(206_000)).unwrap();
+        p.rule_refs.push(path);
+    }
+    f.store.lock().unwrap().put_project(&mut p).unwrap();
+    let engine = WorkflowEngine::new(
+        f.store.clone(),
+        Arc::new(AgentRegistry::default()),
+        phase_config(),
+        Arc::new(WorkflowPackSources::new(f.packs())),
+        Arc::new(PackFixtureGates {
+            cleanup: Mutex::new(None),
+            cleanup_wait_once: Mutex::new(false),
+            checkpoint_after_claim: Mutex::new(None),
+        }),
+    )
+    .unwrap();
+    engine.initialize(f.task.id, None).await.unwrap();
+    let context = f
+        .store
+        .lock()
+        .unwrap()
+        .context(&f.task.scope(), None)
+        .unwrap()
+        .unwrap();
+    let payload = context.data["payload"].as_str().unwrap();
+    let mandatory = context.data["rendered_estimate"]["mandatory_bytes"]
+        .as_u64()
+        .unwrap() as usize;
+    let optional = context.data["rendered_estimate"]["optional_bytes"]
+        .as_u64()
+        .unwrap() as usize;
+    assert!(mandatory > 1_030_000);
+    assert!(mandatory < 1024 * 1024);
+    assert!(optional <= 1024 * 1024 - mandatory);
+    assert_eq!(payload.len(), mandatory + optional);
+    assert!(payload.len() <= 1024 * 1024);
+    assert_eq!(context.data["budget"]["discretionary_tokens"], 64_000);
+}
+
+#[tokio::test]
+async fn reserved_phase_envelopes_cannot_poison_legacy_context_readers() {
+    let f = Fixture::new();
+    let revision = git(&f.worktree, &["rev-parse", "HEAD"]);
+    let mut context = ContextVersion {
+        scope: f.task.scope(),
+        version: 1,
+        revision,
+        source_hashes: Default::default(),
+        data: serde_json::json!({"task_pack":1,"legacy":"opaque"}),
+        created_at: now_ms(),
+    };
+    assert!(f.store.lock().unwrap().put_context(&context).is_err());
+    context.data = serde_json::json!({"frozen_task_pack":false,"legacy":"opaque"});
+    assert!(f.store.lock().unwrap().put_context(&context).is_err());
+    // Authentic historical envelopes are read as opaque unless the format says
+    // otherwise, even when they happen to use a now-reserved key.
+    context.data = serde_json::json!({"task_pack":1,"legacy":"opaque"});
+    corrupt_context(&f, &context);
+    let packs = f.packs();
+    let goal = packs
+        .publish_goal(
+            &Scope::goal(f.project.id, f.task.goal_id),
+            vec![],
+            Default::default(),
+        )
+        .await
+        .unwrap();
+    assert!(!packs.goal_pack(&goal).unwrap().tasks[0].typed_context);
+    let (native, _) = session(&f, SessionRole::Executor, SessionState::Exited).await;
+    let cp = packs
+        .checkpoint(
+            &f.task.scope(),
+            native.id,
+            None,
+            vec![event(1, EventKind::Failure, "legacy fact retained")],
+            HistoryPolicy {
+                recent_history_bytes: 0,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        packs
+            .load_checkpoint(&cp)
+            .unwrap()
+            .recent_history_limit_bytes,
+        Some(0)
+    );
+}
+
+#[tokio::test]
+async fn blocked_project_can_persist_only_monotonic_unobserved_lost_diagnostics() {
+    let f = Fixture::new();
+    let packs = f.packs();
+    let reference = packs
+        .publish_task(&packs.draft_task(&f.task.scope(), input()).await.unwrap())
+        .await
+        .unwrap();
+    let PreparedPack::Ready(input) = packs
+        .prepare_task(&reference, SelectionRequest::default(), budget())
+        .await
+        .unwrap()
+    else {
+        panic!("budget")
+    };
+    let (mut native, _) = session(&f, SessionRole::Executor, SessionState::Exited).await;
+    native.id = SessionId::new();
+    native.state = SessionState::Starting;
+    native.pid = Some(999_999);
+    native.recovery = serde_json::json!({"source_versions":input.source_versions,"input_version":input.version,"input_revision":input.revision,"input_bytes":input.payload.len(),"input_sha256":format!("{:x}",Sha256::digest(input.payload.as_bytes()))});
+    let mut version = f.store.lock().unwrap().put_session(&native, 0).unwrap();
+    native.recovery["dispatch_intent"] = serde_json::json!({"id":"owned-dispatch","consumed":true,"input_sha256":native.recovery["input_sha256"]});
+    version = f
+        .store
+        .lock()
+        .unwrap()
+        .put_session(&native, version)
+        .unwrap();
+    native.state = SessionState::Running;
+    version = f
+        .store
+        .lock()
+        .unwrap()
+        .put_session(&native, version)
+        .unwrap();
+    let mut p = f
+        .store
+        .lock()
+        .unwrap()
+        .project(f.project.id)
+        .unwrap()
+        .unwrap();
+    p.state = ProjectState::Blocked;
+    p.blocked_reason = Some("fixture source unavailable".into());
+    f.store.lock().unwrap().put_project(&mut p).unwrap();
+    let admitted = native.clone();
+    native.state = SessionState::Lost;
+    native.pid = None;
+    native.recovery["native_dispatch_unobserved"] = serde_json::json!(true);
+    version = f
+        .store
+        .lock()
+        .unwrap()
+        .put_session(&native, version)
+        .unwrap();
+    assert_eq!(
+        f.store
+            .lock()
+            .unwrap()
+            .session(native.id)
+            .unwrap()
+            .unwrap()
+            .0
+            .state,
+        SessionState::Lost
+    );
+    assert_eq!(
+        native.recovery["dispatch_intent"],
+        admitted.recovery["dispatch_intent"]
+    );
+    let mut rebound = native.clone();
+    rebound.recovery["input_sha256"] = serde_json::json!("forged");
+    assert!(
+        f.store
+            .lock()
+            .unwrap()
+            .put_session(&rebound, version)
+            .is_err()
+    );
+    rebound = native.clone();
+    rebound.recovery["native_dispatch_unobserved"] = serde_json::json!(false);
+    assert!(
+        f.store
+            .lock()
+            .unwrap()
+            .put_session(&rebound, version)
+            .is_err()
+    );
+    rebound = native.clone();
+    rebound
+        .recovery
+        .as_object_mut()
+        .unwrap()
+        .remove("dispatch_intent");
+    assert!(
+        f.store
+            .lock()
+            .unwrap()
+            .put_session(&rebound, version)
+            .is_err()
+    );
 }
