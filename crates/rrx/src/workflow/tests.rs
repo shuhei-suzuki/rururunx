@@ -3849,55 +3849,65 @@ fn project_risk_recommendation_can_strengthen_but_cannot_weaken_runtime_mapping(
 
 #[tokio::test]
 async fn waiting_irreversible_hold_then_resume_does_not_orphan_owned_blocker() {
-    let fixture = Fixture::new(WorkflowClass::Standard);
-    fixture
-        .engine
-        .initialize(fixture.task.id, None)
-        .await
-        .unwrap();
-    fixture.through(Phase::Pr).await;
-    fixture.gates.waiting.store(true, Ordering::SeqCst);
-    assert!(matches!(
+    for failed in [false, true] {
+        let fixture = Fixture::new(WorkflowClass::Standard);
         fixture
             .engine
-            .step(fixture.task.id, BTreeMap::new())
+            .initialize(fixture.task.id, None)
             .await
-            .unwrap(),
-        StepResult::Waiting {
-            phase: Phase::MergeGate,
-            ..
-        }
-    ));
-    fixture.sources.snapshot.lock().unwrap().revision = "drift-during-wait".into();
-    assert!(matches!(
-        fixture.engine.resume_gate(fixture.task.id).await.unwrap(),
-        StepResult::Waiting { .. }
-    ));
-    let snapshot = fixture.engine.snapshot(fixture.task.id).unwrap();
-    let task = fixture
-        .store
-        .lock()
-        .unwrap()
-        .task(fixture.task.id)
-        .unwrap()
-        .unwrap();
-    assert_eq!(task.blockers, [snapshot.held_reason.clone().unwrap()]);
-    fixture.sources.snapshot.lock().unwrap().revision = "head-1".into();
-    fixture.gates.waiting.store(false, Ordering::SeqCst);
-    assert!(matches!(
-        fixture.engine.resume_gate(fixture.task.id).await.unwrap(),
-        StepResult::Completed {
-            phase: Phase::MergeGate
-        }
-    ));
-    fixture.finish().await;
-    let task = fixture
-        .store
-        .lock()
-        .unwrap()
-        .task(fixture.task.id)
-        .unwrap()
-        .unwrap();
-    assert_eq!(task.state, TaskState::Completed);
-    assert!(task.blockers.is_empty());
+            .unwrap();
+        fixture.through(Phase::Pr).await;
+        fixture.gates.waiting.store(!failed, Ordering::SeqCst);
+        fixture
+            .gates
+            .corrupt
+            .store(u8::from(failed), Ordering::SeqCst);
+        assert!(matches!(
+            fixture
+                .engine
+                .step(fixture.task.id, BTreeMap::new())
+                .await
+                .unwrap(),
+            StepResult::Waiting {
+                phase: Phase::MergeGate,
+                ..
+            } | StepResult::Failed {
+                phase: Phase::MergeGate,
+                ..
+            }
+        ));
+        fixture.sources.snapshot.lock().unwrap().revision = "drift-during-wait".into();
+        assert!(matches!(
+            fixture.engine.resume_gate(fixture.task.id).await.unwrap(),
+            StepResult::Waiting { .. }
+        ));
+        let snapshot = fixture.engine.snapshot(fixture.task.id).unwrap();
+        let task = fixture
+            .store
+            .lock()
+            .unwrap()
+            .task(fixture.task.id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(task.blockers, [snapshot.held_reason.clone().unwrap()]);
+        fixture.sources.snapshot.lock().unwrap().revision = "head-1".into();
+        fixture.gates.waiting.store(false, Ordering::SeqCst);
+        fixture.gates.corrupt.store(0, Ordering::SeqCst);
+        assert!(matches!(
+            fixture.engine.resume_gate(fixture.task.id).await.unwrap(),
+            StepResult::Completed {
+                phase: Phase::MergeGate
+            }
+        ));
+        fixture.finish().await;
+        let task = fixture
+            .store
+            .lock()
+            .unwrap()
+            .task(fixture.task.id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(task.state, TaskState::Completed);
+        assert!(task.blockers.is_empty());
+    }
 }
