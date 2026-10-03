@@ -61,6 +61,7 @@ pub struct AgentConfig {
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
+    pub browser_verification: crate::browser::BrowserConfig,
     pub scheduler: SchedulerConfig,
     pub context: ContextConfig,
     pub minimum_workflow: WorkflowClass,
@@ -71,6 +72,7 @@ pub struct Config {
 #[derive(Debug, Default, Clone, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct ProjectOverlay {
+    pub browser_verification: crate::browser::BrowserOverlay,
     pub minimum_workflow: Option<WorkflowClass>,
     pub scheduler: ProjectSchedulerOverlay,
     pub context: ContextOverlay,
@@ -138,6 +140,8 @@ impl Config {
     }
 
     fn apply_project(&mut self, project: ProjectOverlay) -> Result<()> {
+        self.browser_verification
+            .apply_project(project.browser_verification);
         if let Some(minimum) = project.minimum_workflow {
             self.minimum_workflow = self.minimum_workflow.max(minimum);
         }
@@ -180,6 +184,7 @@ impl Config {
     }
 
     pub fn validate(&self) -> Result<()> {
+        self.browser_verification.validate()?;
         if self.scheduler.global_max_sessions == 0 || self.scheduler.max_tasks_per_project == 0 {
             bail!("scheduler limits must be positive");
         }

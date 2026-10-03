@@ -1,3 +1,4 @@
 /target/
 /worktree/
 /.rrx/
+/scripts/browser/node_modules/
