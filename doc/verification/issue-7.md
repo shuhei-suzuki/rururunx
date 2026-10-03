@@ -238,5 +238,16 @@ callback path (at most 4096 bytes), and inventory reconciliation reports the une
 entry name (bounded by depth/filename limits). Both retain factual scope/effect evidence,
 are data rather than authority and may include foreign paths. Boolean-only unmatched
 identity/kind diagnostics remain separate. No general claim that all diagnostics exclude
-native-controlled text is made. Caller-level compiled mutants, committed targeted gates
-and immutable scoped rereview remain pending.
+native-controlled text is made.
+
+Clean `a9a468e`: the actual Actor fault regression and all-target locked clippy pass.
+Two caller-wiring mutants are causally assertion-killed: passing false to TurnEvidence
+incorrectly allows completion, and recording false in the scoped FS audit loses the
+actual possible-effects fact. Both exercise the unchanged production Actor callback;
+the owned echo process is reaped before either failing assertion. Totals: 36 executions,
+35 distinct boundaries, 35 assertion kills and the original survivor subsequently killed.
+Restored baseline passes all eleven private Grok tests, has no crate diff, and the
+owned detached mutation worktree was removed normally. This final delta changes tests
+and documentation only; installed acceptance at `758bdf2` verifies the identical
+production implementation. Immutable scoped rereview and final exact-head CI remain
+pending.
