@@ -151,14 +151,21 @@ fn event(sequence: u64, kind: EventKind, text: &str) -> HistoryEvent {
     }
 }
 fn session(f: &Fixture, role: SessionRole, state: SessionState) -> (Session, u64) {
-    let head = f
+    let context = f
         .store
         .lock()
         .unwrap()
         .context(&f.task.scope(), None)
-        .unwrap()
+        .unwrap();
+    let head = context
+        .as_ref()
         .and_then(|c| c.data["checkpoint"]["digest"].as_str().map(str::to_owned))
         .unwrap_or_else(|| "none".into());
+    let mut sources = context
+        .as_ref()
+        .map(|c| c.source_hashes.clone())
+        .unwrap_or_default();
+    sources.insert("checkpoint:head".into(), head);
     let s = Session {
         id: SessionId::new(),
         scope: f.task.scope(),
@@ -171,10 +178,22 @@ fn session(f: &Fixture, role: SessionRole, state: SessionState) -> (Session, u64
         state,
         model: None,
         effort: None,
-        recovery: serde_json::json!({"source_versions":{"checkpoint:head":head}}),
+        recovery: serde_json::json!({"source_versions":sources,"input_version":context.as_ref().map_or(0,|c|c.version),"input_revision":context.as_ref().map_or("",|c|c.revision.as_str()),"input_bytes":0}),
         started_at: now_ms(),
     };
-    let version = f.store.lock().unwrap().put_session(&s, 0).unwrap();
+    let mut s = s;
+    let intended = s.state;
+    if matches!(
+        intended,
+        SessionState::Lost | SessionState::WaitingHuman | SessionState::WaitingApproval
+    ) {
+        s.state = SessionState::Starting;
+    }
+    let mut version = f.store.lock().unwrap().put_session(&s, 0).unwrap();
+    if s.state != intended {
+        s.state = intended;
+        version = f.store.lock().unwrap().put_session(&s, version).unwrap();
+    }
     (s, version)
 }
 #[tokio::test]
@@ -1935,7 +1954,7 @@ async fn own_checkpoint_is_mandatory_even_when_the_caller_omits_its_reference() 
     let mut launching = native.clone();
     launching.id = SessionId::new();
     launching.state = SessionState::Starting;
-    launching.recovery = serde_json::json!({"source_versions":prepared.source_versions});
+    launching.recovery = serde_json::json!({"source_versions":prepared.source_versions,"input_version":prepared.version,"input_revision":prepared.revision,"input_bytes":prepared.payload.len()});
     let version = f.store.lock().unwrap().put_session(&launching, 0).unwrap();
     packs
         .checkpoint(
@@ -3133,7 +3152,7 @@ async fn native_input_pin_allows_verified_fresh_continuation_and_only_exact_pre_
     };
     let (mut native, _) = session(&f, SessionRole::Executor, SessionState::Exited);
     native.id = SessionId::new();
-    native.recovery = serde_json::json!({"source_versions":first.source_versions,"input_version":first.version,"input_revision":first.revision,"input_bytes":first.payload.len()});
+    native.recovery = serde_json::json!({"source_versions":first.source_versions,"input_version":first.version,"input_revision":first.revision,"input_bytes":first.payload.len(),"dispatch_intent":{"id":"prior-admitted","consumed":true}});
     let mut version = f.store.lock().unwrap().put_session(&native, 0).unwrap();
     packs
         .checkpoint(
@@ -3181,6 +3200,15 @@ async fn native_input_pin_allows_verified_fresh_continuation_and_only_exact_pre_
         .unwrap()
         .put_session(&native, version)
         .unwrap();
+    let mut proof_rebind = native.clone();
+    proof_rebind.recovery["pre_dispatch_restore_sha256"] = serde_json::json!("forged-proof");
+    assert!(
+        f.store
+            .lock()
+            .unwrap()
+            .put_session(&proof_rebind, version)
+            .is_err()
+    );
     let mut wrong = terminal.clone();
     wrong.recovery["input_bytes"] = serde_json::json!(0);
     assert!(
@@ -3254,4 +3282,93 @@ async fn native_input_pin_allows_verified_fresh_continuation_and_only_exact_pre_
         .unwrap()
         .put_session(&native, version)
         .unwrap();
+}
+
+#[tokio::test]
+async fn typed_admission_rejects_terminal_bypasses_and_self_declared_head_rebinding() {
+    let f = Fixture::new();
+    let packs = f.packs();
+    let reference = packs
+        .publish_task(&packs.draft_task(&f.task.scope(), input()).await.unwrap())
+        .await
+        .unwrap();
+    let PreparedPack::Ready(prepared) = packs
+        .prepare_task(&reference, SelectionRequest::default(), budget())
+        .await
+        .unwrap()
+    else {
+        panic!("budget")
+    };
+    let (terminal, version) = session(&f, SessionRole::Executor, SessionState::Exited);
+    for state in [
+        SessionState::Running,
+        SessionState::WaitingHuman,
+        SessionState::WaitingApproval,
+        SessionState::Lost,
+    ] {
+        let mut bypass = terminal.clone();
+        bypass.state = state;
+        assert!(
+            f.store
+                .lock()
+                .unwrap()
+                .put_session(&bypass, version)
+                .is_err(),
+            "terminal bypass {state:?}"
+        );
+    }
+    for state in [
+        SessionState::WaitingHuman,
+        SessionState::WaitingApproval,
+        SessionState::Lost,
+    ] {
+        let mut bypass = terminal.clone();
+        bypass.id = SessionId::new();
+        bypass.state = state;
+        assert!(
+            f.store.lock().unwrap().put_session(&bypass, 0).is_err(),
+            "new bypass {state:?}"
+        );
+    }
+    let mut forged = terminal.clone();
+    forged.id = SessionId::new();
+    forged.state = SessionState::Starting;
+    forged.recovery = serde_json::json!({"source_versions":prepared.source_versions,"input_version":prepared.version,"input_revision":prepared.revision,"input_bytes":prepared.payload.len(),"pre_dispatch_restore_sha256":Store::session_restore_sha256(&terminal).unwrap()});
+    assert!(f.store.lock().unwrap().put_session(&forged, 0).is_err());
+    forged
+        .recovery
+        .as_object_mut()
+        .unwrap()
+        .remove("pre_dispatch_restore_sha256");
+    forged.recovery["input_version"] = serde_json::json!(999);
+    assert!(f.store.lock().unwrap().put_session(&forged, 0).is_err());
+    let cp = packs
+        .checkpoint(
+            &f.task.scope(),
+            terminal.id,
+            None,
+            vec![event(1, EventKind::Constraint, "new mandatory authority")],
+            HistoryPolicy {
+                recent_history_bytes: 0,
+            },
+        )
+        .await
+        .unwrap();
+    forged.recovery["input_version"] = serde_json::json!(prepared.version);
+    forged.recovery["source_versions"]["checkpoint:head"] = serde_json::json!(cp.digest);
+    assert!(
+        f.store.lock().unwrap().put_session(&forged, 0).is_err(),
+        "declared new head cannot rebind old input"
+    );
+    assert_eq!(
+        f.store
+            .lock()
+            .unwrap()
+            .session(terminal.id)
+            .unwrap()
+            .unwrap()
+            .0
+            .state,
+        SessionState::Exited
+    );
 }

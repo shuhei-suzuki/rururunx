@@ -157,3 +157,21 @@ prior terminal Session. Exact terminal restoration is allowed only before any
 consumed dispatch intent/unobserved boundary; after dispatch, input rebinding or
 rollback fails. Native adapters preserve this protocol without rewriting active
 attempts. The checksum helper is pure and performs no Git/filesystem work.
+
+Protected Sessions cannot bypass fresh continuation through terminal→Running/
+Waiting/Lost or by creating an initial Waiting/Lost record. Every new admission
+binds its declared input version and checkpoint head to the exact latest typed
+ContextVersion and Task pointer. Historical restore proofs are installed only
+from a persisted terminal Session and remain immutable until the next verified
+fresh continuation; exact prewire restoration of a historical consumed intent
+is restoration, not a new model dispatch. Pr/MergeGate/Cleanup all compare the
+live checkpoint head atomically at each new irreversible evaluation claim.
+
+Workflow checkpoint acceptance has a concrete liveness dependency: before external
+effects, any new checkpoint source authority can restart the entire generation;
+after PR/merge effects, an append may hold the Task until explicit Issue 13/23
+reconciliation is available. This core demonstrates auditable condensation and
+constraint preservation, but does not claim automatic post-PR recovery. A bound
+owned worktree supplied by Issue 9 remains necessary before Engine initialization.
+Cross-Task promotion copies Consultant-origin facts only; it preserves the target
+Goal/Project/rule constraints and does not implicitly copy source Executor facts.

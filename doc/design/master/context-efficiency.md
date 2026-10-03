@@ -361,3 +361,12 @@ facts/references, and Goal summaries atomically compare all owned Task membershi
 and versions, including Tasks outside the DAG. Ordered v3→v4 checkpoint-head
 index migration fences older writers; native Starting/Running reservations compare
 the prepared own-head digest or explicit `none` before launch.
+
+Irreversible PR/merge/Cleanup evaluation claims and first/new consumed native
+dispatch intents recheck the scoped indexed checkpoint head atomically. Same
+admitted input remains pinned through approval/human/Lost observations; terminal
+continuation requires a higher version and an immutable exact historical restore
+proof before wire delivery. Current checkpoint source invalidation is conservative:
+it can restart a pre-effect generation or hold post-PR work for Issue 13/23
+reconciliation. These core proofs do not claim automatic post-PR recovery or
+actual double/triple native runtime dogfood.

@@ -3994,3 +3994,100 @@ async fn cleanup_checkpoint_drift_before_claim_never_invokes_external_gate() {
         AttemptState::Waiting
     );
 }
+
+#[tokio::test]
+async fn checkpoint_drift_before_pr_or_merge_claim_never_invokes_external_gate() {
+    for phase in [Phase::Pr, Phase::MergeGate] {
+        let fixture = Fixture::new(WorkflowClass::Quick);
+        fixture
+            .sources
+            .snapshot
+            .lock()
+            .unwrap()
+            .source_versions
+            .insert("checkpoint:head".into(), "none".into());
+        fixture
+            .engine
+            .initialize(fixture.task.id, None)
+            .await
+            .unwrap();
+        if phase == Phase::MergeGate {
+            fixture.finish().await;
+            fixture
+                .engine
+                .request_finalization(fixture.task.id, "fixture finalization".into())
+                .await
+                .unwrap();
+            fixture.gates.waiting.store(true, Ordering::SeqCst);
+            assert!(matches!(
+                fixture
+                    .engine
+                    .step(fixture.task.id, BTreeMap::new())
+                    .await
+                    .unwrap(),
+                StepResult::Waiting {
+                    phase: Phase::MergeGate,
+                    ..
+                }
+            ));
+        } else {
+            for _ in 0..100 {
+                let snapshot = fixture.engine.snapshot(fixture.task.id).unwrap();
+                if snapshot.active.is_none()
+                    && snapshot
+                        .configured_phases
+                        .iter()
+                        .find(|p| !snapshot.completed.contains_key(p))
+                        == Some(&phase)
+                {
+                    fixture.gates.waiting.store(true, Ordering::SeqCst);
+                }
+                if matches!(
+                    fixture
+                        .engine
+                        .step(fixture.task.id, BTreeMap::new())
+                        .await
+                        .unwrap(),
+                    StepResult::Waiting {
+                        phase: Phase::Pr,
+                        ..
+                    }
+                ) {
+                    break;
+                }
+            }
+            let snapshot = fixture.engine.snapshot(fixture.task.id).unwrap();
+            assert_eq!(snapshot.history[snapshot.active.unwrap()].phase, phase);
+            assert_eq!(
+                snapshot.history[snapshot.active.unwrap()].state,
+                AttemptState::Waiting
+            );
+        }
+        let calls = fixture.gates.calls.lock().unwrap().len();
+        let mut record = Record::new(
+            fixture.task.scope(),
+            RecordKind::Checkpoint,
+            json!({"format":"rrx.checkpoint.v1","fixture":"new irreversible authority"}),
+        );
+        record.version = 1;
+        let raw = rusqlite::Connection::open(fixture.dir.path().join("state.db")).unwrap();
+        raw.execute("INSERT INTO records(id,kind,project_id,goal_id,task_id,version,body) VALUES(?1,'checkpoint',?2,?3,?4,1,?5)",rusqlite::params![record.id.to_string(),record.scope.project_id.to_string(),record.scope.goal_id.unwrap().to_string(),record.scope.task_id.unwrap().to_string(),serde_json::to_string(&record).unwrap()]).unwrap();
+        raw.execute("INSERT INTO checkpoint_heads(project_id,goal_id,task_id,record_id) VALUES(?1,?2,?3,?4)",rusqlite::params![record.scope.project_id.to_string(),record.scope.goal_id.unwrap().to_string(),record.scope.task_id.unwrap().to_string(),record.id.to_string()]).unwrap();
+        fixture.gates.waiting.store(false, Ordering::SeqCst);
+        let error = fixture
+            .engine
+            .resume_gate(fixture.task.id)
+            .await
+            .unwrap_err();
+        assert!(
+            error.to_string().contains("checkpoint source changed"),
+            "{phase:?}: {error:#}"
+        );
+        assert_eq!(fixture.gates.calls.lock().unwrap().len(), calls);
+        let snapshot = fixture.engine.snapshot(fixture.task.id).unwrap();
+        assert_eq!(
+            snapshot.history[snapshot.active.unwrap()].state,
+            AttemptState::Waiting
+        );
+    }
+}

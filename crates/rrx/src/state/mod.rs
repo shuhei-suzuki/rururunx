@@ -593,7 +593,7 @@ impl Store {
                 );
             }
         }
-        context_pack::guard_cleanup_checkpoint(&tx, workflow)?;
+        context_pack::guard_irreversible_checkpoint(&tx, workflow)?;
         if let Some(context) = context {
             ensure!(
                 context.scope == task.scope() && context.version == task.context_version,

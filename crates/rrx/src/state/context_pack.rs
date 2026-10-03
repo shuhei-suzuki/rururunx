@@ -105,7 +105,7 @@ pub(super) fn guard_context_checkpoint(
 }
 /// A new irreversible Cleanup claim uses live checkpoint authority. Once the
 /// operation is admitted, its observation and terminal frozen pack are historical.
-pub(super) fn guard_cleanup_checkpoint(tx: &Transaction<'_>, record: &Record) -> Result<()> {
+pub(super) fn guard_irreversible_checkpoint(tx: &Transaction<'_>, record: &Record) -> Result<()> {
     let Some(index) = record.data["active"]
         .as_u64()
         .and_then(|i| usize::try_from(i).ok())
@@ -114,13 +114,18 @@ pub(super) fn guard_cleanup_checkpoint(tx: &Transaction<'_>, record: &Record) ->
     };
     let next = &record.data["history"][index];
     let evaluating = serde_json::to_value(crate::workflow::AttemptState::Evaluating)?;
-    if next["phase"] != serde_json::to_value(crate::workflow::Phase::Cleanup)?
-        || next["state"] != evaluating
+    let phase: crate::workflow::Phase = serde_json::from_value(next["phase"].clone())?;
+    if !matches!(
+        phase,
+        crate::workflow::Phase::Pr
+            | crate::workflow::Phase::MergeGate
+            | crate::workflow::Phase::Cleanup
+    ) || next["state"] != evaluating
     {
         return Ok(());
     }
     let previous = read_tx::<Record>(tx, "records", &record.id.to_string())?
-        .context("Cleanup claim requires existing workflow")?;
+        .context("irreversible claim requires existing workflow")?;
     if previous.data["active"].as_u64() == Some(index as u64)
         && previous.data["history"][index]["state"] == evaluating
     {
@@ -171,50 +176,65 @@ pub(super) fn guard_launch_checkpoint(tx: &Transaction<'_>, record: &Record) -> 
             .as_ref()
             .is_some_and(|old| old.recovery["source_versions"]["checkpoint:head"].is_string());
     let mut fresh = false;
+    let mut restoring = false;
     if let Some(old) = &previous {
         fresh = session_terminal(old.state) && session.state == SessionState::Starting;
-        if protected && fresh {
-            let input_version = session.recovery["input_version"]
-                .as_u64()
-                .context("fresh continuation requires input version")?;
+        if protected {
             ensure!(
-                input_version > old.recovery["input_version"].as_u64().unwrap_or(0),
-                "fresh continuation requires higher input version"
+                !session_terminal(old.state) || session_terminal(session.state) || fresh,
+                "terminal native Session requires explicit fresh Starting continuation"
             );
-            ensure!(
-                session.recovery["pre_dispatch_restore_sha256"].as_str()
-                    == Some(session_restore_sha256(old)?.as_str())
-                    && !dispatch_consumed(&session),
-                "fresh continuation requires exact terminal restore proof before dispatch"
-            );
-            if let Some(context) = &latest
-                && typed
-            {
-                let task: Task = read_tx(tx, "tasks", &session.scope.task_id.unwrap().to_string())?
-                    .context("unknown native Task")?;
+            if fresh {
+                let input_version = session.recovery["input_version"]
+                    .as_u64()
+                    .context("fresh continuation requires input version")?;
                 ensure!(
-                    context.version == input_version
-                        && task.context_version == input_version
-                        && context.source_hashes.iter().all(|(key, value)| {
-                            session.recovery["source_versions"][key].as_str()
-                                == Some(value.as_str())
-                        }),
-                    "fresh continuation differs from latest typed Task input authority"
+                    input_version > old.recovery["input_version"].as_u64().unwrap_or(0),
+                    "fresh continuation requires higher input version"
+                );
+                ensure!(
+                    session.recovery["pre_dispatch_restore_sha256"].as_str()
+                        == Some(session_restore_sha256(old)?.as_str())
+                        && !dispatch_consumed(&session),
+                    "fresh continuation requires exact terminal restore proof before dispatch"
+                );
+            } else {
+                restoring = old.state == SessionState::Starting
+                    && session_terminal(session.state)
+                    && !dispatch_consumed(old)
+                    && old.recovery["pre_dispatch_restore_sha256"].as_str()
+                        == Some(session_restore_sha256(&session)?.as_str());
+                ensure!(
+                    input_metadata_equal(old, &session) || restoring,
+                    "admitted native input metadata is immutable"
+                );
+                ensure!(
+                    old.recovery["pre_dispatch_restore_sha256"]
+                        == session.recovery["pre_dispatch_restore_sha256"]
+                        || restoring,
+                    "native terminal restore proof is immutable outside fresh continuation"
                 );
             }
-        } else if protected && !input_metadata_equal(old, &session) {
-            let restore = old.state == SessionState::Starting
-                && session_terminal(session.state)
-                && !dispatch_consumed(old)
-                && old.recovery["pre_dispatch_restore_sha256"].as_str()
-                    == Some(session_restore_sha256(&session)?.as_str());
-            ensure!(restore, "admitted native input metadata is immutable");
         }
+    } else if protected {
+        ensure!(
+            session_terminal(session.state)
+                || matches!(
+                    session.state,
+                    SessionState::Starting | SessionState::Running
+                ),
+            "new native Session requires initial Starting or Running admission"
+        );
+        ensure!(
+            session.recovery["pre_dispatch_restore_sha256"].is_null(),
+            "terminal restore proof requires persisted prior terminal Session"
+        );
     }
     // The dispatch CAS precedes the native wire and Running acknowledgement.
     // A newly consumed intent must use live authority even if the Session state
     // remains Starting or a caller publishes it from a later observation.
-    let new_dispatch = dispatch_consumed(&session)
+    let new_dispatch = !restoring
+        && dispatch_consumed(&session)
         && previous.as_ref().is_none_or(|old| {
             !dispatch_consumed(old)
                 || old.recovery["dispatch_intent"] != session.recovery["dispatch_intent"]
@@ -236,9 +256,27 @@ pub(super) fn guard_launch_checkpoint(tx: &Transaction<'_>, record: &Record) -> 
     }
     let key = session.recovery["source_versions"]["checkpoint:head"].as_str();
     if typed {
+        let context = latest.as_ref().expect("typed context exists");
+        let task: Task = read_tx(tx, "tasks", &session.scope.task_id.unwrap().to_string())?
+            .context("unknown native Task")?;
+        let expected_head = if context.data.get("task_pack").is_some() {
+            context
+                .source_hashes
+                .get("checkpoint:head")
+                .cloned()
+                .context("typed phase input missing checkpoint head")?
+        } else {
+            let pack: crate::context_pack::TaskPack = serde_json::from_value(context.data.clone())?;
+            crate::context_pack::head_digest(pack.checkpoint.as_ref())
+        };
         ensure!(
-            key.is_some(),
-            "typed native pack missing checkpoint source authority"
+            session.recovery["input_version"].as_u64() == Some(context.version)
+                && task.context_version == context.version
+                && key == Some(expected_head.as_str())
+                && context.source_hashes.iter().all(|(key, value)| {
+                    session.recovery["source_versions"][key].as_str() == Some(value.as_str())
+                }),
+            "native input differs from latest typed Task input authority"
         );
     }
     validate_checkpoint_source(tx, &session.scope, key)
