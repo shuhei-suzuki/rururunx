@@ -311,7 +311,11 @@ fn usage_missing_is_explicit_and_session_ownership_is_enforced() {
     let project = project(&mut store, "one", dir.path());
     let goal = goal(&mut store, &project);
     let task = task(&mut store, &project, &goal);
-    let session = session(&task, dir.path().to_path_buf());
+    let mut task = task;
+    task.worktree = Some(dir.path().join("worktree/issue-42"));
+    task.branch = Some("feature/issue-42".into());
+    store.put_task(&mut task).unwrap();
+    let session = session(&task, task.worktree.clone().unwrap());
     store.put_session(&session, 0).unwrap();
     let mut usage = Usage {
         scope: task.scope(),

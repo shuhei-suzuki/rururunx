@@ -437,3 +437,41 @@ Future migrations must be ordered/transactional, preserve identity/audit/context
 and telemetry, and test real old-version fixtures. Persistence schema and snapshot
 format evolve together; typed snapshots reject unknown fields instead of dropping
 them during read/write. Free-form extension payloads retain their fields.
+
+## 14. Scoped Git/worktree implementation
+
+`git::WorktreeManager` creates independent task worktrees and attached branches,
+checks exact canonical Project root/worktree top-level and common-dir, rejects
+main/master/configured base, detached HEAD, mismatched bindings and symlink paths.
+Supported namespaces are descendants of the Project root. Status includes ignored
+files so cleanup cannot silently discard them. Existing hooks/config remain active;
+Git arguments never request force/no-verify. Inherited repository-routing environment
+variables are removed to enforce scoped CWD.
+
+Task binding and create/cleanup intents persist before native side effects. Typed
+WorktreeLock records reserve maintenance/review operations; SQLite immediate
+transactions serialize active locks against Starting/Running/WaitingApproval/
+WaitingHuman/Lost Executor reservations across connections. Assigned task path/branch
+are immutable. Logical locks block runtime mutation; external changes are detected
+by exact HEAD/clean verification. Cleanup requires owned clean merged worktrees,
+uses ordinary Git removal/local branch deletion, and retains durable provenance.
+Failures preserve intent/lock for explicit recovery; dependent runtime recovery
+integration is not yet implemented. Git calls are synchronous local operations and
+must run on a blocking worker when integrated with async scheduling.
+
+Git boundary hardening additionally reserves unique Project-scoped task paths/branches
+in the Store transaction, requires task-scoped executors at the exact bound path,
+and rejects overlapping Project roots/namespaces. `git::repository_identity` supplies
+canonical primary common-dir plus base root commits; Git operations reject linked
+source roots or changed/replaced identity. Registry integration must use this helper.
+Failed review acquisition releases its provisional lock and audits the failure.
+Cleanup prechecks native branch deletion's upstream/root-HEAD predicate and currently
+supports ancestry-preserving merges. External writers remain outside advisory lock
+control; ignored files present at the safety check block cleanup.
+
+Cleanup follows native HEAD fallback when a tracking ref has been pruned. Project
+namespace changes are rejected after a Task has bound its worktree. Status avoids
+optional Git index locks, and provisional release errors retain diagnostic lock IDs.
+Cleanup retains Task bindings for audit provenance; naming reuse, source-history
+validation cost, explicit existing-worktree adoption and independent state databases
+must be addressed by the dependent Project registry/recovery policy where applicable.
