@@ -34,11 +34,12 @@ Native provider adapters and runtime CLI orchestration remain separate.
   adapter unit regressions (one macOS-specific), and 37 existing tests. Clippy
   `-D warnings`, fmt-check, locked debug/release builds also pass. Earlier integrated
   `5ecfff7` passed Linux and macOS [CI](https://github.com/shuhei-suzuki/rururunx/actions/runs/37094557400).
-  Final code/test `d37b8d0` passes 77 macOS tests: six adapter unit, 18 adapter native,
+  Final code/test `2205d03` passes 77 macOS tests: six adapter unit, 18 adapter native,
   18 Git, 15 Project registry, 12 state, five CLI, and three config tests. Two
   macOS-specific tests cover EPERM resolution and inspector timeout (75 Linux total). Clippy all-targets
   `-D warnings`, fmt, locked debug/release builds passed. Exact code/test head
-  `d37b8d0` passes both [Linux/macOS CI](https://github.com/shuhei-suzuki/rururunx/actions/runs/37097725721).
+  `2205d03` passes both [Linux/macOS CI](https://github.com/shuhei-suzuki/rururunx/actions/runs/37098362774).
+  Its affected 27 unit/native tests and lint/build gates also pass locally.
   Final documentation-head CI and native delta review complete before merge; any
   later evidence-only commits preserve this exact Rust/test source. On this macOS host real signal/ps tests require native
   OS access; sandbox ps was denied and Tokio subprocess waits timed out. Authorized
@@ -186,6 +187,15 @@ Child rather than assuming its shim executes before the timeout on a loaded host
 | Shared pure common-dir ownership | foreign_git_repository_inside_namespace_detached_and_protected_branches_are_rejected |
 | Post-Git Goal version check | ownership_change_during_native_preflight_prevents_executor_launch |
 | EPERM live group rejection | signal_permission_failure_requires_verified_dead_group |
+
+At final code/test `2205d03`, the additional ordinary-cleanup mutation returns
+the failed guard to the Tokio worker before Drop. Its native regression fails
+because the injected failure detects that retry on the async thread. Original
+source was restored; all 77 workspace tests passed and the disposable tree was
+clean. This brings recorded mutation cases to 30 (including repeated integrated
+protections). Final scoped delta review covers only this helper/test boundary and
+precise recovery/inspection/evidence documentation; Rust/test files are otherwise
+unchanged from the previously reviewed integrated source.
 
 ## Limits
 
