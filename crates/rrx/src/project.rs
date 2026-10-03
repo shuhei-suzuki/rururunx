@@ -454,8 +454,7 @@ fn validate_environment(project: &Project) -> Result<Vec<String>> {
             "unsafe environment routing reference {name}"
         );
         ensure!(
-            !name.to_ascii_uppercase().ends_with("_PROXY")
-                && name.to_ascii_uppercase() != "ALL_PROXY",
+            !name.to_ascii_uppercase().ends_with("_PROXY"),
             "unsafe proxy routing reference {name}"
         );
         ensure!(
