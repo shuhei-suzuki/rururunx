@@ -80,7 +80,7 @@ pub struct NativeServer {
     process: ProcessGroup,
     directory: tempfile::TempDir,
     socket: PathBuf,
-    socket_identity: (u64, u64),
+    socket_binding: SocketBinding,
     stdout: Reader,
     stderr: Reader,
     pid: u32,
@@ -154,7 +154,7 @@ impl NativeServer {
         let stdout = Reader::spawn(process.child.stdout.take().expect("piped stdout"));
         let stderr = Reader::spawn(process.child.stderr.take().expect("piped stderr"));
         let connected = tokio::select! {
-            result = tokio::time::timeout(START_TIMEOUT, connect_socket(&socket)) => match result {
+            result = tokio::time::timeout(START_TIMEOUT, connect_socket(&socket, pid)) => match result {
                 Ok(result) => result,
                 Err(_) => Err(failure(ErrorKind::Timeout, "private native listener startup timed out")),
             },
@@ -163,7 +163,7 @@ impl NativeServer {
                 Err(failure(ErrorKind::LaunchFailure, "native Codex exited before private IPC initialization"))
             },
         };
-        let (stream, socket_identity) = match connected {
+        let (stream, socket_binding) = match connected {
             Ok(connection) => connection,
             Err(error) => {
                 terminate(process).await?;
@@ -188,7 +188,7 @@ impl NativeServer {
             process,
             directory,
             socket,
-            socket_identity,
+            socket_binding,
             stdout,
             stderr,
             pid,
@@ -199,12 +199,7 @@ impl NativeServer {
     }
     pub fn socket(&self) -> AdapterResult<&Path> {
         verify_directory(self.directory.path())?;
-        if verify_socket(&self.socket)? != self.socket_identity {
-            return Err(failure(
-                ErrorKind::OwnershipMismatch,
-                "owned native socket was replaced",
-            ));
-        }
+        self.socket_binding.verify(&self.socket)?;
         Ok(&self.socket)
     }
     pub fn stdout(&self) -> OutputTail {
@@ -279,34 +274,138 @@ fn verify_socket(path: &Path) -> AdapterResult<(u64, u64)> {
     }
     Ok((metadata.dev(), metadata.ino()))
 }
-async fn connect_socket(path: &Path) -> AdapterResult<(UnixStream, (u64, u64))> {
+#[derive(Debug)]
+struct SocketBinding {
+    alias_identity: (u64, u64),
+    target: PathBuf,
+    target_identity: (u64, u64),
+}
+impl SocketBinding {
+    fn capture(path: &Path) -> AdapterResult<Self> {
+        let metadata = std::fs::symlink_metadata(path).map_err(|_| {
+            failure(
+                ErrorKind::OwnershipMismatch,
+                "native socket alias disappeared",
+            )
+        })?;
+        if metadata.uid() != rustix::process::geteuid().as_raw() {
+            return Err(failure(
+                ErrorKind::OwnershipMismatch,
+                "native socket alias owner changed",
+            ));
+        }
+        let target = if metadata.file_type().is_symlink() {
+            // Codex 0.160 creates a private alias to its short hashed native socket
+            // in an owner-only codex-daemon directory. Do not chmod that target or
+            // assume its ownership from its name; authenticate the connected peer.
+            let target = path.canonicalize().map_err(|_| {
+                failure(
+                    ErrorKind::OwnershipMismatch,
+                    "native socket alias target is unavailable",
+                )
+            })?;
+            let temporary = Path::new("/tmp").canonicalize().map_err(|_| {
+                failure(
+                    ErrorKind::OwnershipMismatch,
+                    "OS temporary namespace unavailable",
+                )
+            })?;
+            if !target.starts_with(temporary) {
+                return Err(failure(
+                    ErrorKind::OwnershipMismatch,
+                    "native socket alias target is outside OS temporary namespace",
+                ));
+            }
+            verify_directory(target.parent().ok_or_else(|| {
+                failure(
+                    ErrorKind::OwnershipMismatch,
+                    "native socket target has no private parent",
+                )
+            })?)?;
+            target
+        } else if metadata.file_type().is_socket() {
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).map_err(
+                |_| {
+                    failure(
+                        ErrorKind::OwnershipMismatch,
+                        "cannot protect owned direct native socket",
+                    )
+                },
+            )?;
+            path.to_path_buf()
+        } else {
+            return Err(failure(
+                ErrorKind::OwnershipMismatch,
+                "unexpected object at owned native socket",
+            ));
+        };
+        let target_identity = verify_socket(&target)?;
+        Ok(Self {
+            alias_identity: (metadata.dev(), metadata.ino()),
+            target,
+            target_identity,
+        })
+    }
+    fn verify(&self, path: &Path) -> AdapterResult<()> {
+        let metadata = std::fs::symlink_metadata(path).map_err(|_| {
+            failure(
+                ErrorKind::OwnershipMismatch,
+                "owned native socket alias disappeared",
+            )
+        })?;
+        if (metadata.dev(), metadata.ino()) != self.alias_identity
+            || path.canonicalize().ok().as_ref() != Some(&self.target)
+            || verify_socket(&self.target)? != self.target_identity
+        {
+            return Err(failure(
+                ErrorKind::OwnershipMismatch,
+                "owned native socket alias or target was replaced",
+            ));
+        }
+        verify_directory(self.target.parent().expect("validated target parent"))
+    }
+}
+fn verify_peer(stream: &UnixStream, leader: u32) -> AdapterResult<()> {
+    let peer = stream.peer_cred().map_err(|_| {
+        failure(
+            ErrorKind::UnsupportedCapability,
+            "native Unix peer credentials unavailable",
+        )
+    })?;
+    let pid = peer
+        .pid()
+        .and_then(rustix::process::Pid::from_raw)
+        .ok_or_else(|| {
+            failure(
+                ErrorKind::UnsupportedCapability,
+                "native Unix peer PID unavailable",
+            )
+        })?;
+    let group = rustix::process::getpgid(Some(pid)).map_err(|_| {
+        failure(
+            ErrorKind::OwnershipMismatch,
+            "native peer process group unavailable",
+        )
+    })?;
+    if peer.uid() != rustix::process::geteuid().as_raw() || group.as_raw() != leader as i32 {
+        return Err(failure(
+            ErrorKind::OwnershipMismatch,
+            "native Unix peer does not belong to the unreaped owned process group",
+        ));
+    }
+    Ok(())
+}
+async fn connect_socket(path: &Path, leader: u32) -> AdapterResult<(UnixStream, SocketBinding)> {
     verify_directory(path.parent().expect("owned socket parent"))?;
     loop {
         match std::fs::symlink_metadata(path) {
-            Ok(metadata) => {
-                if !metadata.file_type().is_socket()
-                    || metadata.uid() != rustix::process::geteuid().as_raw()
-                {
-                    return Err(failure(
-                        ErrorKind::OwnershipMismatch,
-                        "unexpected object at owned native socket",
-                    ));
-                }
-                // The already owner-only parent prevents other users racing this
-                // chmod. The socket itself must also become owner-only before use.
-                std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).map_err(
-                    |_| failure(ErrorKind::OwnershipMismatch, "cannot protect native socket"),
-                )?;
-                let identity = verify_socket(path)?;
-                match UnixStream::connect(path).await {
+            Ok(_) => {
+                let binding = SocketBinding::capture(path)?;
+                match UnixStream::connect(&binding.target).await {
                     Ok(stream) => {
-                        if verify_socket(path)? != identity {
-                            return Err(failure(
-                                ErrorKind::OwnershipMismatch,
-                                "native socket changed during connection",
-                            ));
-                        }
-                        return Ok((stream, identity));
+                        verify_peer(&stream, leader)?;
+                        binding.verify(path)?;
+                        return Ok((stream, binding));
                     }
                     Err(error) if error.kind() == std::io::ErrorKind::ConnectionRefused => {}
                     Err(_) => {
@@ -372,5 +471,35 @@ mod tests {
         let tail = stream.snapshot();
         assert_eq!(tail.bytes.len(), TAIL_LIMIT);
         assert!(tail.truncated && tail.bytes.ends_with(b"END"));
+    }
+    #[tokio::test]
+    async fn private_alias_does_not_authorize_a_foreign_daemon_peer() {
+        let directory = tempfile::Builder::new()
+            .prefix("rrx-peer-test-")
+            .tempdir_in("/tmp")
+            .unwrap();
+        std::fs::set_permissions(directory.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+        let directory_path = directory.path().canonicalize().unwrap();
+        let target = directory_path.join("actual");
+        let listener = tokio::net::UnixListener::bind(&target).unwrap();
+        std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o600)).unwrap();
+        let alias = directory_path.join("alias");
+        std::os::unix::fs::symlink(&target, &alias).unwrap();
+        let binding = SocketBinding::capture(&alias).unwrap();
+        binding.verify(&alias).unwrap();
+        let client = UnixStream::connect(&target).await.unwrap();
+        let (peer, _) = listener.accept().await.unwrap();
+        let own_group = rustix::process::getpgid(None).unwrap().as_raw() as u32;
+        verify_peer(&client, own_group).unwrap();
+        assert_eq!(
+            verify_peer(&client, own_group.wrapping_add(10000))
+                .unwrap_err()
+                .kind,
+            ErrorKind::OwnershipMismatch
+        );
+        std::fs::remove_file(&alias).unwrap();
+        std::os::unix::fs::symlink(directory_path.join("foreign"), &alias).unwrap();
+        assert!(binding.verify(&alias).is_err());
+        drop(peer);
     }
 }

@@ -6,8 +6,13 @@ can describe fields absent from that version.
 
 ## Native transport and ownership
 
-One privately launched native `codex app-server` belongs to each rrx Session. It
-listens on a short Unix socket inside a freshly created owner-only directory.
+One privately launched native `codex app-server` belongs to each rrx Session. The
+runtime supplies a custom Unix URI in a freshly created owner-only directory.
+Installed Codex may make that path an alias to its short hashed native socket in
+an owner-only temporary directory. Verify alias/target inode identities and native
+socket permissions, then authenticate the Unix peer UID/PID and its membership in
+the still-owned unreaped process group. An alias name or shared native directory
+alone never authorizes a connection; never chmod/adopt an external shared target.
 Unix transport uses WebSocket HTTP Upgrade; maintained Rust WebSocket framing
 handles fragmentation/control frames and bounds incoming/outgoing messages. The
 runtime never connects to the shared native daemon/default control socket.
