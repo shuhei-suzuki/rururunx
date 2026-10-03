@@ -264,6 +264,27 @@ impl ScopeSnapshot {
         request: &LaunchRequest,
         agent: &str,
     ) -> AdapterResult<()> {
+        self.recheck_authority(store, request, agent, true)
+    }
+
+    /// Credentials are already scoped in a running child. An approval must
+    /// validate its own authority without depending on another Project's roster.
+    pub fn recheck_scope(
+        &self,
+        store: &SharedStore,
+        request: &LaunchRequest,
+        agent: &str,
+    ) -> AdapterResult<()> {
+        self.recheck_authority(store, request, agent, false)
+    }
+
+    fn recheck_authority(
+        &self,
+        store: &SharedStore,
+        request: &LaunchRequest,
+        agent: &str,
+        environment_roster: bool,
+    ) -> AdapterResult<()> {
         let next = Self::capture(store, request, agent)?;
         if self.goal.as_ref().map(|g| g.version) != next.goal.as_ref().map(|g| g.version)
             || self.task.as_ref().map(|t| t.version) != next.task.as_ref().map(|t| t.version)
@@ -277,10 +298,12 @@ impl ScopeSnapshot {
                     .iter()
                     .map(|r| (r.id, r.version))
                     .collect::<Vec<_>>()
-            || serde_json::to_value(&self.projects)
-                .map_err(|_| failure(ErrorKind::StateFailure, "Project serialization failed"))?
-                != serde_json::to_value(&next.projects)
-                    .map_err(|_| failure(ErrorKind::StateFailure, "Project serialization failed"))?
+            || (environment_roster
+                && serde_json::to_value(&self.projects).map_err(|_| {
+                    failure(ErrorKind::StateFailure, "Project serialization failed")
+                })? != serde_json::to_value(&next.projects).map_err(|_| {
+                    failure(ErrorKind::StateFailure, "Project serialization failed")
+                })?)
         {
             return Err(failure(
                 ErrorKind::StateConflict,

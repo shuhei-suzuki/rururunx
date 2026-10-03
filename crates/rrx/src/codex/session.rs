@@ -31,6 +31,19 @@ use crate::{
 const OUTPUT_LIMIT: usize = 64 * 1024;
 const RETAINED_TERMINALS: usize = 32;
 
+fn evict_one_terminal(sessions: &mut HashMap<SessionId, Entry>) {
+    if let Some(id) = sessions
+        .iter()
+        .filter(|(_, entry)| {
+            entry.status.borrow().terminal() && !entry.transition.load(Ordering::SeqCst)
+        })
+        .min_by_key(|(_, entry)| entry.status.borrow().session.started_at)
+        .map(|(id, _)| *id)
+    {
+        sessions.remove(&id);
+    }
+}
+
 pub struct CodexAdapter {
     agent: String,
     executable: PathBuf,
@@ -351,11 +364,14 @@ impl CodexAdapter {
         // or a native UUID hint. Missing history remains unknown on resume.
         let previous_cumulative = if let Some(previous) = &resume {
             let (_, _, evidence, _) = self.reference(&SessionRef::from(previous))?;
-            evidence
+            let evidence = evidence
                 .lock()
-                .map_err(|_| failure(ErrorKind::StateFailure, "native telemetry poisoned"))?
-                .cumulative
-                .clone()
+                .map_err(|_| failure(ErrorKind::StateFailure, "native telemetry poisoned"))?;
+            if previous.state == SessionState::Exited && evidence.completed {
+                evidence.cumulative.clone()
+            } else {
+                None
+            }
         } else {
             None
         };
@@ -645,16 +661,8 @@ impl CodexAdapter {
         }));
         {
             let mut sessions = self.registry()?;
-            if sessions.len() >= RETAINED_TERMINALS
-                && let Some(id) = sessions
-                    .iter()
-                    .filter(|(_, entry)| {
-                        entry.status.borrow().terminal() && !entry.transition.load(Ordering::SeqCst)
-                    })
-                    .min_by_key(|(_, entry)| entry.status.borrow().session.started_at)
-                    .map(|(id, _)| *id)
-            {
-                sessions.remove(&id);
+            if sessions.len() >= RETAINED_TERMINALS {
+                evict_one_terminal(&mut sessions);
             }
             sessions.insert(
                 session.id,
@@ -1032,11 +1040,39 @@ async fn answer_approval(
             return Ok(false);
         }
     };
-    let validated = async {
-        if matches!(reply.request.decision, OperationDecision::Approve) {
-            authority.snapshot.verify_binding(&authority.request, &mut reservation.ownership, &authority.binding).await?;
-            authority.snapshot.recheck(&reservation.store, &authority.request, &reservation.session.agent)?;
+    if matches!(reply.request.decision, OperationDecision::Approve) {
+        let preflight = async {
+            authority
+                .snapshot
+                .verify_binding(
+                    &authority.request,
+                    &mut reservation.ownership,
+                    &authority.binding,
+                )
+                .await?;
+            authority.snapshot.recheck_scope(
+                &reservation.store,
+                &authority.request,
+                &reservation.session.agent,
+            )
         }
+        .await;
+        if let Err(error) = preflight {
+            let fatal = reservation.ownership.uncertain();
+            let kind = error.kind;
+            let message = error.to_string();
+            let _ = reply.result.send(Err(error));
+            // No effect intent or native reply exists yet. Leave the request
+            // pending so a transient/stale grant can be denied, cancelled or
+            // reviewed again; unverified child cleanup still stops as Lost.
+            return if fatal {
+                Err(failure(kind, message))
+            } else {
+                Ok(false)
+            };
+        }
+    }
+    let validated = async {
         if reply.result.is_closed() { return Ok(false); }
         {
             let mut store = reservation.store.lock().map_err(|_| failure(ErrorKind::StateFailure, "state store poisoned"))?;
@@ -1164,7 +1200,7 @@ async fn supervise(
             continue;
         }
         match event.and_then(|event| {
-            if resumed_usage(&event, &thread, previous_turn.as_deref())? {
+            if resumed_usage(&event, &thread, previous_turn.as_deref(), &mut tracker)? {
                 return Ok(None);
             }
             session_event(
@@ -1214,8 +1250,13 @@ async fn supervise(
 }
 
 /// Native resume can report the already completed, owned prior turn's counters.
-/// Validate and discard that gauge; it is neither current input nor new usage.
-fn resumed_usage(event: &Event, thread: &str, previous_turn: Option<&str>) -> AdapterResult<bool> {
+/// Validate the baseline and discard that gauge; it is not new turn usage.
+fn resumed_usage(
+    event: &Event,
+    thread: &str,
+    previous_turn: Option<&str>,
+    tracker: &mut UsageTracker,
+) -> AdapterResult<bool> {
     let Event::Notification { method, params } = event else {
         return Ok(false);
     };
@@ -1231,8 +1272,9 @@ fn resumed_usage(event: &Event, thread: &str, previous_turn: Option<&str>) -> Ad
             "foreign historical native usage thread",
         ));
     }
-    TokenCounters::from_native(&params["tokenUsage"]["total"])?;
+    let total = TokenCounters::from_native(&params["tokenUsage"]["total"])?;
     TokenCounters::from_native(&params["tokenUsage"]["last"])?;
+    tracker.verify_previous_total(&total);
     Ok(true)
 }
 
@@ -1571,6 +1613,7 @@ mod tests {
             adapter.current(&reference).unwrap().session.state,
             SessionState::Exited
         );
+        evict_one_terminal(&mut adapter.registry().unwrap());
         assert!(
             adapter
                 .registry()
@@ -1884,7 +1927,12 @@ mod tests {
             }
             let (mut rpc, mut wire, peer) = rpc_peer().await;
             let (answer, result) = reply(OperationDecision::Approve, "turn");
-            assert!(fixture.answer(&mut rpc, answer).await.is_err());
+            let outcome = fixture.answer(&mut rpc, answer).await;
+            if paused {
+                assert!(!outcome.unwrap());
+            } else {
+                assert!(outcome.is_err());
+            }
             assert!(result.await.unwrap().is_err());
             assert_eq!(fixture.intents(), 0);
             assert!(
@@ -1901,6 +1949,66 @@ mod tests {
             drop(rpc);
             peer.abort();
         }
+    }
+    #[tokio::test]
+    async fn unrelated_project_registration_does_not_invalidate_an_owned_native_approval() {
+        let mut fixture = ApprovalFixture::new(true).await;
+        let foreign = Fixture::new(false);
+        let mut project = foreign.request.project.clone();
+        project.version = 0;
+        fixture
+            .reservation
+            .store
+            .lock()
+            .unwrap()
+            .put_project(&mut project)
+            .unwrap();
+        let (mut rpc, mut wire, peer) = rpc_peer().await;
+        let (answer, result) = reply(OperationDecision::Approve, "turn");
+        assert!(!fixture.answer(&mut rpc, answer).await.unwrap());
+        result.await.unwrap().unwrap();
+        assert_eq!(
+            wire.recv().await.unwrap(),
+            json!({"id":1,"result":{"decision":"accept"}})
+        );
+        assert_eq!(fixture.intents(), 1);
+        drop(rpc);
+        peer.abort();
+    }
+    #[tokio::test]
+    async fn failed_grant_preflight_keeps_the_native_request_pending_and_deniable() {
+        let mut fixture = ApprovalFixture::new(true).await;
+        fixture.authority.request.input.revision = "0".repeat(40);
+        let (mut rpc, mut wire, peer) = rpc_peer().await;
+        let (answer, result) = reply(OperationDecision::Approve, "turn");
+        assert!(!fixture.answer(&mut rpc, answer).await.unwrap());
+        assert_eq!(
+            result.await.unwrap().unwrap_err().kind,
+            ErrorKind::StateConflict
+        );
+        assert_eq!(fixture.intents(), 0);
+        assert!(wire.try_recv().is_err());
+        assert_eq!(fixture.status.session.state, SessionState::WaitingApproval);
+        assert!(
+            !fixture
+                .evidence
+                .lock()
+                .unwrap()
+                .pending
+                .as_ref()
+                .unwrap()
+                .is_empty()
+        );
+        let (denial, result) = reply(OperationDecision::Deny, "turn");
+        assert!(!fixture.answer(&mut rpc, denial).await.unwrap());
+        result.await.unwrap().unwrap();
+        assert_eq!(
+            wire.recv().await.unwrap(),
+            json!({"id":1,"result":{"decision":"decline"}})
+        );
+        assert_eq!(fixture.intents(), 1);
+        drop(rpc);
+        peer.abort();
     }
     fn status() -> SessionStatus {
         SessionStatus {
@@ -2054,17 +2162,39 @@ mod tests {
     }
     #[test]
     fn resume_accepts_only_validated_owned_previous_usage_without_recounting_it() {
+        let mut tracker = UsageTracker::resumed("own".into(), "current".into(), None);
         let event = |thread: &str, turn: &str| Event::Notification {
             method: "thread/tokenUsage/updated".into(),
             params: json!({"threadId":thread,"turnId":turn,"tokenUsage":{"total":{"inputTokens":10},"last":{"inputTokens":10}}}),
         };
-        assert!(resumed_usage(&event("own", "previous"), "own", Some("previous")).unwrap());
-        assert!(!resumed_usage(&event("own", "current"), "own", Some("previous")).unwrap());
-        assert!(!resumed_usage(&event("own", "previous"), "own", None).unwrap());
+        assert!(
+            resumed_usage(
+                &event("own", "previous"),
+                "own",
+                Some("previous"),
+                &mut tracker
+            )
+            .unwrap()
+        );
+        assert!(
+            !resumed_usage(
+                &event("own", "current"),
+                "own",
+                Some("previous"),
+                &mut tracker
+            )
+            .unwrap()
+        );
+        assert!(!resumed_usage(&event("own", "previous"), "own", None, &mut tracker).unwrap());
         assert_eq!(
-            resumed_usage(&event("foreign", "previous"), "own", Some("previous"))
-                .unwrap_err()
-                .kind,
+            resumed_usage(
+                &event("foreign", "previous"),
+                "own",
+                Some("previous"),
+                &mut tracker
+            )
+            .unwrap_err()
+            .kind,
             ErrorKind::OwnershipMismatch
         );
         let mut forged = event("own", "previous");
@@ -2072,10 +2202,25 @@ mod tests {
             params["tokenUsage"]["last"]["inputTokens"] = json!(-1);
         }
         assert_eq!(
-            resumed_usage(&forged, "own", Some("previous"))
+            resumed_usage(&forged, "own", Some("previous"), &mut tracker)
                 .unwrap_err()
                 .kind,
             ErrorKind::ParseFailure
         );
+    }
+    #[test]
+    fn historical_replay_that_exceeds_shutdown_gauge_cannot_inflate_resumed_usage() {
+        let baseline = TokenCounters::from_native(&json!({"inputTokens":10})).unwrap();
+        let mut tracker = UsageTracker::resumed("own".into(), "current".into(), Some(baseline));
+        tracker.update(&json!({"threadId":"own","turnId":"current","tokenUsage":{"total":{"inputTokens":30},"last":{"inputTokens":5}}})).unwrap();
+        assert_eq!(tracker.turn_counters().unwrap().input, Some(20));
+        let prior = Event::Notification {
+            method: "thread/tokenUsage/updated".into(),
+            params: json!({"threadId":"own","turnId":"previous","tokenUsage":{"total":{"inputTokens":15},"last":{"inputTokens":5}}}),
+        };
+        assert!(resumed_usage(&prior, "own", Some("previous"), &mut tracker).unwrap());
+        assert_eq!(tracker.turn_counters().unwrap().input, None);
+        tracker.update(&json!({"threadId":"own","turnId":"current","tokenUsage":{"total":{"inputTokens":35},"last":{"inputTokens":5}}})).unwrap();
+        assert_eq!(tracker.turn_counters().unwrap().input, None);
     }
 }
