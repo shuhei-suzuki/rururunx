@@ -811,16 +811,6 @@ fn validate_request(request: &LaunchRequest) -> AdapterResult<PathBuf> {
     Ok(worktree)
 }
 
-fn with_store<T>(
-    store: &SharedStore,
-    f: impl FnOnce(&mut Store) -> anyhow::Result<T>,
-) -> AdapterResult<T> {
-    let mut store = store
-        .lock()
-        .map_err(|_| error(ErrorKind::ProcessFailure, "state store poisoned"))?;
-    f(&mut store).map_err(|e| error(ErrorKind::StateFailure, e.to_string()))
-}
-
 fn save_session(
     store: &SharedStore,
     session: &Session,
@@ -933,81 +923,31 @@ fn ensure_unlocked(store: &SharedStore, scope: &Scope) -> AdapterResult<()> {
     Ok(())
 }
 
-async fn git_value(
-    cwd: &Path,
-    args: &[&str],
-    environment: &BTreeMap<String, String>,
-) -> AdapterResult<String> {
-    let git = resolve_executable("git")?;
-    let mut command = Command::new(git);
-    command
-        .args(args)
-        .current_dir(cwd)
-        .env_clear()
-        .envs(environment)
-        .kill_on_drop(true);
-    let output = tokio::time::timeout(Duration::from_secs(5), command.output())
-        .await
-        .map_err(|_| error(ErrorKind::Timeout, "Git ownership preflight timed out"))?
-        .map_err(|e| {
-            error(
-                ErrorKind::InvalidInput,
-                format!("Git ownership preflight failed: {e}"),
-            )
-        })?;
-    if !output.status.success() {
-        return Err(error(
-            ErrorKind::OwnershipMismatch,
-            "Git ownership preflight failed",
-        ));
-    }
-    String::from_utf8(output.stdout)
-        .map(|s| s.trim().to_string())
-        .map_err(|_| error(ErrorKind::InvalidInput, "invalid Git path/branch encoding"))
-}
-
 async fn validate_git(
     store: &SharedStore,
     request: &LaunchRequest,
     worktree: &Path,
 ) -> AdapterResult<()> {
-    let args = ["rev-parse", "--path-format=absolute", "--git-common-dir"];
-    let root_git = git_value(&request.project.root, &args, &request.environment).await?;
-    let task_git = git_value(worktree, &args, &request.environment).await?;
-    let top = git_value(
-        worktree,
-        &["rev-parse", "--show-toplevel"],
-        &request.environment,
-    )
-    .await?;
-    let branch = git_value(
-        worktree,
-        &["symbolic-ref", "--quiet", "--short", "HEAD"],
-        &request.environment,
-    )
-    .await?;
-    let expected_branch = with_store(store, |store| {
-        Ok(store
-            .task(request.scope.task_id.expect("validated Task"))?
-            .and_then(|task| task.branch))
-    })?;
-    let canonical = |path: &str| {
-        Path::new(path).canonicalize().map_err(|e| {
-            error(
-                ErrorKind::OwnershipMismatch,
-                format!("Git ownership path missing: {e}"),
-            )
-        })
-    };
-    if expected_branch.as_deref() != Some(branch.as_str())
-        || canonical(&root_git)? != canonical(&task_git)?
-        || canonical(&top)? != worktree
-        || matches!(branch.as_str(), "main" | "master")
-        || branch == request.project.base_branch
-    {
+    let store = store.clone();
+    let task_id = request.scope.task_id.expect("validated Task");
+    let status = tokio::task::spawn_blocking(move || {
+        let store = store
+            .lock()
+            .map_err(|_| error(ErrorKind::StateFailure, "state store poisoned"))?;
+        crate::git::WorktreeManager::ensure_mutation_allowed(&store, task_id)
+            .map_err(|e| error(ErrorKind::OwnershipMismatch, e.to_string()))
+    })
+    .await
+    .map_err(|e| {
+        error(
+            ErrorKind::ProcessFailure,
+            format!("Git preflight worker failed: {e}"),
+        )
+    })??;
+    if status.worktree != worktree {
         return Err(error(
             ErrorKind::OwnershipMismatch,
-            "executor requires an owned worktree on a non-base branch",
+            "Git preflight CWD mismatch",
         ));
     }
     Ok(())

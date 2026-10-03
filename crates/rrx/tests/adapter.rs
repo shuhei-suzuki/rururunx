@@ -30,6 +30,9 @@ fn git(cwd: &Path, args: &[&str]) {
 }
 impl Fixture {
     fn new() -> Self {
+        Self::configured("feature/task", false)
+    }
+    fn configured(branch: &str, foreign: bool) -> Self {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path().join("project");
         std::fs::create_dir(&root).unwrap();
@@ -48,20 +51,32 @@ impl Fixture {
             ],
         );
         let worktree = root.join("worktree/task");
-        git(
-            &root,
-            &[
-                "worktree",
-                "add",
-                "-b",
-                "feature/task",
-                worktree.to_str().unwrap(),
-            ],
-        );
+        if foreign {
+            std::fs::create_dir_all(&worktree).unwrap();
+            git(&worktree, &["init", "-b", branch]);
+            git(
+                &worktree,
+                &[
+                    "-c",
+                    "user.name=Fixture",
+                    "-c",
+                    "user.email=fixture@example.invalid",
+                    "commit",
+                    "--allow-empty",
+                    "-m",
+                    "foreign",
+                ],
+            );
+        } else {
+            git(
+                &root,
+                &["worktree", "add", "-b", branch, worktree.to_str().unwrap()],
+            );
+        }
         let mut project = Project::new(
             "fixture".into(),
             root.canonicalize().unwrap(),
-            "fixture".into(),
+            rrx::git::repository_identity(&root.canonicalize().unwrap(), "main").unwrap(),
             "main".into(),
         );
         let mut goal = Goal::new(
@@ -76,7 +91,7 @@ impl Fixture {
         );
         let mut task = Task::new(project.id, goal.id, "test".into(), "fake".into());
         task.worktree = Some(worktree.canonicalize().unwrap());
-        task.branch = Some("feature/task".into());
+        task.branch = Some(branch.into());
         let scope = task.scope();
         let mut store = Store::open(&temp.path().join("state.sqlite3")).unwrap();
         store.put_project(&mut project).unwrap();
@@ -85,7 +100,7 @@ impl Fixture {
         let request = LaunchRequest {
             project,
             scope: scope.clone(),
-            worktree,
+            worktree: worktree.canonicalize().unwrap(),
             role: SessionRole::Executor,
             mode: LaunchMode::NonInteractive,
             input: PreparedInput {
@@ -475,54 +490,24 @@ async fn foreign_git_repository_inside_namespace_detached_and_protected_branches
         ErrorKind::OwnershipMismatch
     );
     git(&fixture.request.worktree, &["checkout", "feature/task"]);
-    git(&fixture.request.worktree, &["branch", "-m", "master"]);
-    {
-        let mut store = fixture.store.lock().unwrap();
-        let mut task = store
-            .task(fixture.request.scope.task_id.unwrap())
-            .unwrap()
-            .unwrap();
-        task.branch = Some("master".into());
-        store.put_task(&mut task).unwrap();
-    }
+    let protected = Fixture::configured("master", false);
     assert_eq!(
-        adapter
-            .start(fixture.request.clone())
+        protected
+            .adapter("/bin/cat")
+            .start(protected.request.clone())
             .await
             .unwrap_err()
             .kind,
         ErrorKind::OwnershipMismatch
     );
-    let foreign = fixture.request.project.worktree_root.join("foreign");
-    std::fs::create_dir(&foreign).unwrap();
-    git(&foreign, &["init", "-b", "feature/task"]);
-    git(
-        &foreign,
-        &[
-            "-c",
-            "user.name=Fixture",
-            "-c",
-            "user.email=fixture@example.invalid",
-            "commit",
-            "--allow-empty",
-            "-m",
-            "foreign",
-        ],
-    );
-    {
-        let mut store = fixture.store.lock().unwrap();
-        let mut task = store
-            .task(fixture.request.scope.task_id.unwrap())
-            .unwrap()
-            .unwrap();
-        task.branch = Some("feature/task".into());
-        task.worktree = Some(foreign.canonicalize().unwrap());
-        store.put_task(&mut task).unwrap();
-    }
-    let mut request = fixture.request.clone();
-    request.worktree = foreign;
+    let foreign = Fixture::configured("feature/task", true);
     assert_eq!(
-        adapter.start(request).await.unwrap_err().kind,
+        foreign
+            .adapter("/bin/cat")
+            .start(foreign.request.clone())
+            .await
+            .unwrap_err()
+            .kind,
         ErrorKind::OwnershipMismatch
     );
 }
@@ -775,4 +760,54 @@ fn runtime_shutdown_terminates_native_group_and_preserves_uncertain_reservation(
             .state,
         SessionState::Running
     );
+}
+
+#[tokio::test]
+async fn atomic_starting_reservation_excludes_duplicate_executor_and_review_acquisition() {
+    let fixture = Fixture::new();
+    let adapter = fixture.adapter("/bin/cat; sleep 60");
+    let (left, right) = tokio::join!(
+        adapter.start(fixture.request.clone()),
+        adapter.start(fixture.request.clone())
+    );
+    assert_eq!(usize::from(left.is_ok()) + usize::from(right.is_ok()), 1);
+    let session = left.ok().or_else(|| right.ok()).unwrap();
+    let mut lock = Record::new(
+        fixture.request.scope.clone(),
+        RecordKind::WorktreeLock,
+        json!({"active":true,"revision":"fixture","worktree":fixture.request.worktree.canonicalize().unwrap(),"branch":"feature/task","reason":"review race"}),
+    );
+    assert!(fixture.store.lock().unwrap().put_record(&mut lock).is_err());
+    adapter.stop((&session).into()).await.unwrap();
+    fixture.store.lock().unwrap().put_record(&mut lock).unwrap();
+    assert_eq!(
+        adapter
+            .start(fixture.request.clone())
+            .await
+            .unwrap_err()
+            .kind,
+        ErrorKind::Locked
+    );
+}
+
+#[tokio::test]
+async fn lost_executor_keeps_worktree_reserved_until_explicit_verified_dead_resolution() {
+    let fixture = Fixture::new();
+    let adapter = fixture.adapter("/bin/cat; sleep 60");
+    let session = adapter.start(fixture.request.clone()).await.unwrap();
+    adapter.stop((&session).into()).await.unwrap();
+    let mut store = fixture.store.lock().unwrap();
+    let (mut snapshot, version) = store.session(session.id).unwrap().unwrap();
+    snapshot.state = SessionState::Lost;
+    let version = store.put_session(&snapshot, version).unwrap();
+    let mut lock = Record::new(
+        fixture.request.scope.clone(),
+        RecordKind::WorktreeLock,
+        json!({"active":true,"revision":"fixture","worktree":fixture.request.worktree.canonicalize().unwrap(),"branch":"feature/task","reason":"uncertain process"}),
+    );
+    assert!(store.put_record(&mut lock).is_err());
+    snapshot.state = SessionState::Stopped;
+    snapshot.recovery["verified_dead"] = json!(true);
+    store.put_session(&snapshot, version).unwrap();
+    store.put_record(&mut lock).unwrap();
 }

@@ -1,8 +1,8 @@
 # Issue #4 — Adapter contract requirements
 
 Workflow: STRICT, because native process ownership, environment/context isolation
-and review locks are security boundaries. Depends on merged #1/#2; #3's atomic
-worktree-lock/session exclusion is an integration gate before this PR merges.
+and review locks are security boundaries. Builds on merged #1/#2/#3, including atomic
+worktree-lock/session exclusion and unique Task worktree/branch ownership.
 
 The runtime must expose a provider-neutral, extensible capability-oriented Rust
 adapter contract and registry, with stable domain Session IDs independent of PIDs.
