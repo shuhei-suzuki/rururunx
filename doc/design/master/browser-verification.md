@@ -32,7 +32,9 @@ or native permission guard is disabled.
 `Auto` selects Playwright for known steps and Stagehand for observe/act/extract.
 Even a Stagehand preference keeps a deterministic flow on Playwright and opens no
 model client. Explicit Playwright rejects adaptive requests. Jev is not installed
-or required; its capability is false.
+or required; its capability is false. An unavailable/incompatible Stagehand SDK
+reports `adaptive=false` and typed `Unsupported` before effects; Playwright
+discovery and the configured safe deterministic fallback remain usable.
 
 The request declares a short exact-origin allowlist. Native URL parsing rejects
 credentials, non-HTTP(S) protocols and noncanonical origins. Navigation and redirects
@@ -136,7 +138,7 @@ Deterministic runs report measured `llm_calls=0` without inventing token/cost ze
 ```sh
 cd scripts/browser
 npm ci --ignore-scripts --no-audit --no-fund
-node --test native-claude.test.mjs policy.test.mjs
+node --test *.test.mjs
 node smoke.mjs
 node smoke.mjs --headed
 # Explicit real inference through existing native Claude auth:
@@ -183,8 +185,9 @@ fixture run, not estimates or a performance guarantee. Synthetic fallback/contra
 tests do not stand in for these real SDK operations.
 The reversible mutation harness checks routing, uncertain replay, exact Scope,
 artifact symlinks, cross-Project provider credentials, output/time bounds,
-native child group inheritance, strict empty MCP and exact CDP extension origin.
-All ten faults were detected and restored-source Rust/Node suites passed.
+native child group inheritance, strict empty MCP, exact CDP extension origin and
+independent deterministic availability when the adaptive SDK is missing.
+All eleven faults were detected and restored-source Rust/Node suites passed.
 Rust checks and the no-model Node contract checks run on both Linux and macOS CI;
 the explicit real Chrome/native-model fixtures require host setup and authorization.
 

@@ -21,6 +21,7 @@ mutations = [
     ('native_group', ROOT / 'scripts/browser/io.mjs', 'detached: ownGroup', 'detached: true', ['node', '--test', 'scripts/browser/native-claude.test.mjs'], 'not ok'),
     ('strict_mcp', ROOT / 'scripts/browser/native-claude.mjs', '{"mcpServers":{}}', '{"mcpServers":{"unexpected":{}}}', ['node', '--test', 'scripts/browser/native-claude.test.mjs'], 'not ok'),
     ('cdp_origin', ROOT / 'scripts/browser/policy.mjs', '`--remote-allow-origins=${extensionOrigin}`', '`--remote-allow-origins=*`', ['node', '--test', 'scripts/browser/policy.test.mjs'], 'not ok'),
+    ('adaptive_sdk_optional', ROOT / 'scripts/browser/bridge.mjs', 'catch { return null; }', "catch { throw new Error('unavailable'); }", ['node', '--test', 'scripts/browser/availability.test.mjs'], 'not ok'),
 ]
 
 subprocess.run(['git', 'diff', '--exit-code', '--', *sorted({str(m[1].relative_to(ROOT)) for m in mutations})], cwd=ROOT, check=True, capture_output=True)
@@ -39,6 +40,6 @@ for name, file, original, changed, command, expected in mutations:
         file.write_text(content)
 
 subprocess.run(['cargo', 'test', '--offline', '--locked', '--test', 'browser'], cwd=ROOT, check=True, capture_output=True)
-subprocess.run(['node', '--test', 'scripts/browser/native-claude.test.mjs', 'scripts/browser/policy.test.mjs'], cwd=ROOT, check=True, capture_output=True)
+subprocess.run(['node', '--test', *sorted(str(p.relative_to(ROOT)) for p in (ROOT / 'scripts/browser').glob('*.test.mjs'))], cwd=ROOT, check=True, capture_output=True)
 subprocess.run(['git', 'diff', '--exit-code', '--', *sorted({str(m[1].relative_to(ROOT)) for m in mutations})], cwd=ROOT, check=True, capture_output=True)
 print(json.dumps({'mutations': results, 'restored_tests': 'passed'}))

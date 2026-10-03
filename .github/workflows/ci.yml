@@ -20,7 +20,7 @@ jobs:
           node-version: '22.19.0'
       - run: npm ci --ignore-scripts --no-audit --no-fund
         working-directory: scripts/browser
-      - run: node --test scripts/browser/native-claude.test.mjs scripts/browser/policy.test.mjs
+      - run: node --test scripts/browser/*.test.mjs
   check:
     strategy:
       matrix:

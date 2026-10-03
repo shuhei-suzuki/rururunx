@@ -12,7 +12,8 @@ import { chromeArguments, checkChromeArguments } from './policy.mjs';
 const require = createRequire(import.meta.url);
 const version = name => JSON.parse(require('node:fs').readFileSync(path.join(path.dirname(fileURLToPath(import.meta.resolve(name))), '..', 'package.json'))).version;
 const playwrightVersion = require('playwright-core/package.json').version;
-const stagehandVersion = version('@browserbasehq/stagehand');
+// An absent/incompatible adaptive SDK must not disable the deterministic backend.
+const stagehandVersion = (() => { try { return version('@browserbasehq/stagehand'); } catch { return null; } })();
 const [nodeMajor, nodeMinor] = process.versions.node.split('.').map(Number);
 const adaptiveCompatible = stagehandVersion === '4.1.0' && (nodeMajor > 22 || nodeMajor === 22 && nodeMinor >= 18);
 if (process.argv.includes('--capabilities')) {
