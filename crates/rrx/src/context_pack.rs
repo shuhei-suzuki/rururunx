@@ -1479,6 +1479,7 @@ fn goal_candidates(g: &Goal, tasks: &[TaskDescriptor]) -> Vec<TaskId> {
         .iter()
         .filter(|t| {
             g.state == GoalState::Running
+                && g.dag.nodes.contains(&t.id)
                 && t.state == TaskState::Created
                 && t.blockers.is_empty()
                 && g.dag

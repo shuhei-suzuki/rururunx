@@ -2233,7 +2233,7 @@ async fn actual_workflow_publishes_typed_phase_packs_and_freezes_cleanup_provena
     use rrx::{
         adapter::AgentRegistry,
         context_pack::workflow::{PhasePackArtifact, WorkflowPackSources},
-        workflow::{Phase, StepResult, WorkflowEngine},
+        workflow::{StepResult, WorkflowEngine},
     };
     let f = Fixture::new();
     let mut task = Task::new(
