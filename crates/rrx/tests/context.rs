@@ -734,21 +734,22 @@ async fn in_flight_index_releases_store_and_rejects_concurrent_state_mutation() 
     let engine = f.engine();
     let scope = f.task.scope();
     let mut operation = Box::pin(engine.index(&scope, vec![]));
-    // Poll actual native indexing through its first asynchronous Git wait. The
-    // current-thread runtime has not run its piped-output reader tasks yet.
+    // Poll actual indexing through its first asynchronous filesystem wait. Its
+    // authority snapshot is captured before any native/source observation.
     std::future::poll_fn(|cx| {
         assert!(matches!(operation.as_mut().poll(cx), Poll::Pending));
         Poll::Ready(())
     })
     .await;
-    let mut store = f
-        .store
-        .try_lock()
-        .expect("Git/source work must release SharedStore");
-    let mut task = store.task(f.task.id).unwrap().unwrap();
-    task.title = "concurrent authorized update".into();
-    store.put_task(&mut task).unwrap();
-    drop(store);
+    {
+        let mut store = f
+            .store
+            .try_lock()
+            .expect("Git/source work must release SharedStore");
+        let mut task = store.task(f.task.id).unwrap().unwrap();
+        task.title = "concurrent authorized update".into();
+        store.put_task(&mut task).unwrap();
+    }
     assert!(
         operation.await.is_err(),
         "obsolete snapshot must not publish index evidence"
