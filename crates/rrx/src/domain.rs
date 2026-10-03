@@ -115,6 +115,7 @@ states!(SessionRole {
 states!(RiskClass { R0, R1, R2, R3 });
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Scope {
     pub project_id: ProjectId,
     pub goal_id: Option<GoalId>,
@@ -145,6 +146,7 @@ impl Scope {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Project {
     pub id: ProjectId,
     pub name: String,
@@ -189,6 +191,7 @@ impl Project {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct CompletionCriterion {
     pub id: String,
     pub description: String,
@@ -198,17 +201,20 @@ pub struct CompletionCriterion {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Dependency {
     pub prerequisite: TaskId,
     pub dependent: TaskId,
     pub hard: bool,
 }
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct TaskDag {
     pub nodes: Vec<TaskId>,
     pub edges: Vec<Dependency>,
 }
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct FollowupProposal {
     pub title: String,
     pub scope: String,
@@ -221,6 +227,7 @@ pub struct FollowupProposal {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Goal {
     pub id: GoalId,
     pub project_id: ProjectId,
@@ -270,6 +277,7 @@ impl Goal {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Task {
     pub id: TaskId,
     pub project_id: ProjectId,
@@ -327,6 +335,7 @@ impl Task {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Session {
     pub id: SessionId,
     pub scope: Scope,
@@ -370,6 +379,7 @@ impl RecordKind {
 
 /// Typed extensions serialize in this envelope; ownership is indexed, never inferred from JSON.
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Record {
     pub id: RecordId,
     pub scope: Scope,
@@ -394,6 +404,7 @@ impl Record {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct ContextVersion {
     pub scope: Scope,
     pub version: u64,
@@ -403,6 +414,7 @@ pub struct ContextVersion {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Usage {
     pub scope: Scope,
     pub session_id: SessionId,
@@ -421,6 +433,7 @@ pub struct Usage {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct AuditEvent {
     pub sequence: i64,
     pub scope: Scope,

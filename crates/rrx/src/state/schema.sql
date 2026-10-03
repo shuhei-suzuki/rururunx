@@ -80,3 +80,22 @@ END;
 CREATE TRIGGER audit_no_delete BEFORE DELETE ON audit BEGIN
     SELECT RAISE(ABORT, 'audit is append-only');
 END;
+CREATE TRIGGER audit_no_replace BEFORE INSERT ON audit
+WHEN EXISTS (SELECT 1 FROM audit WHERE sequence=NEW.sequence) BEGIN
+    SELECT RAISE(ABORT, 'audit is append-only');
+END;
+CREATE TRIGGER audit_monotonic AFTER INSERT ON audit
+WHEN NEW.sequence < (SELECT MAX(sequence) FROM audit) BEGIN
+    SELECT RAISE(ABORT, 'audit sequence must be monotonic');
+END;
+CREATE TRIGGER context_no_update BEFORE UPDATE ON context_versions BEGIN
+    SELECT RAISE(ABORT, 'context versions are immutable');
+END;
+CREATE TRIGGER context_no_delete BEFORE DELETE ON context_versions BEGIN
+    SELECT RAISE(ABORT, 'context versions are immutable');
+END;
+CREATE TRIGGER context_consecutive BEFORE INSERT ON context_versions
+WHEN NEW.version != (SELECT COALESCE(MAX(version),0)+1 FROM context_versions
+    WHERE project_id=NEW.project_id AND owner=NEW.owner) BEGIN
+    SELECT RAISE(ABORT, 'context versions must be consecutive');
+END;

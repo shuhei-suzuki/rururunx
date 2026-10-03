@@ -408,20 +408,25 @@ numbers and PIDs are metadata, not global identity. Goal snapshots preserve expl
 criteria/DAG data; task workflow and process state are separate from phase.
 
 SQLite (bundled via rusqlite) stores indexed ownership columns with JSON snapshots.
-`PRAGMA user_version = 1` is the schema version. New databases initialize in one
+`PRAGMA user_version = 1` is the schema version and `application_id = 0x52525831`
+identifies rrx databases. Foreign/unmarked v1 and nonempty v0 databases are rejected. New databases initialize in one
 transaction; unsupported future versions fail before migration. Each connection
 enables foreign keys and a bounded busy timeout; WAL supports concurrent readers.
 Composite foreign keys enforce Goal/Task ownership and scoped records/context/usage.
 Project roots/identity and Goal/Task ownership cannot silently change on updates.
+Goal DAG/edge/follow-up references are checked for exact Project/Goal Task ownership
+before saving; edges require declared endpoints. Cycle/readiness evaluation is separate.
 Snapshot revision checks reject stale writers.
 
 Snapshot mutations and their scoped audit events commit in the same immediate
-transaction. Audit sequences are monotonic and SQL triggers reject UPDATE/DELETE.
+transaction. Audit sequences are monotonic and SQL triggers reject UPDATE/DELETE/REPLACE and
+backdated sequence insertion. Public audit callers cannot emit Store-reserved kinds.
 Review/approval evidence and session-state metadata are journaled so decisions are
 not lost when snapshots change. This journal does not protect against an owner
 who alters the database file or drops triggers.
 
-Context versions are append-only and consecutive per Goal/Task; source revision and
+Context versions are append-only and consecutive per Goal/Task under both Store
+API and SQL triggers; source revision and
 hashes persist. Usage records retain project/goal/task/session/phase/round/agent
 attribution; missing metrics remain null with explicit unavailability reasons.
 Native session references, PID hints and recovery metadata persist, but reopening
@@ -430,4 +435,5 @@ workflow execution and process reconciliation are separate components.
 
 Future migrations must be ordered/transactional, preserve identity/audit/context
 and telemetry, and test real old-version fixtures. Persistence schema and snapshot
-format evolve together; unknown formats must not be best-effort accepted.
+format evolve together; typed snapshots reject unknown fields instead of dropping
+them during read/write. Free-form extension payloads retain their fields.

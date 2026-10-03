@@ -9,6 +9,7 @@ use serde_json::{Value, json};
 use crate::domain::*;
 
 pub const SCHEMA_VERSION: i64 = 1;
+pub const APPLICATION_ID: i64 = 0x52525831; // ASCII RRX1.
 
 pub struct Store {
     connection: Connection,
@@ -32,6 +33,12 @@ impl Store {
             (0..=SCHEMA_VERSION).contains(&version),
             "unsupported state schema {version}, supported {SCHEMA_VERSION}"
         );
+        let application: i64 =
+            connection.pragma_query_value(None, "application_id", |row| row.get(0))?;
+        ensure!(
+            application == APPLICATION_ID || (version == 0 && application == 0),
+            "not an rrx state database (application_id={application})"
+        );
         connection.pragma_update(None, "foreign_keys", true)?;
         if version == 0 {
             let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -39,13 +46,28 @@ impl Store {
             let locked_version: i64 =
                 tx.pragma_query_value(None, "user_version", |row| row.get(0))?;
             if locked_version == 0 {
+                let application: i64 =
+                    tx.pragma_query_value(None, "application_id", |row| row.get(0))?;
+                let objects: i64 = tx.query_row(
+                    "SELECT COUNT(*) FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%'",
+                    [],
+                    |row| row.get(0),
+                )?;
+                ensure!(
+                    application == 0 && objects == 0,
+                    "refusing to initialize a nonempty or foreign database"
+                );
                 tx.execute_batch(include_str!("schema.sql"))?;
+                tx.pragma_update(None, "application_id", APPLICATION_ID)?;
                 tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
             } else {
                 ensure!(
                     locked_version == SCHEMA_VERSION,
                     "unsupported state schema {locked_version}"
                 );
+                let application: i64 =
+                    tx.pragma_query_value(None, "application_id", |row| row.get(0))?;
+                ensure!(application == APPLICATION_ID, "not an rrx state database");
             }
             tx.commit()?;
         }
@@ -155,6 +177,7 @@ impl Store {
                 "goal project binding is immutable"
             );
         }
+        validate_goal_references(&tx, goal)?;
         let mut next = goal.clone();
         bump(&mut next.version)?;
         next.updated_at = now_ms();
@@ -436,6 +459,10 @@ impl Store {
     pub fn audit(&mut self, scope: &Scope, kind: &str, data: Value) -> Result<()> {
         validate_scope(scope)?;
         ensure!(!kind.trim().is_empty(), "audit kind must be nonempty");
+        ensure!(
+            !kind.ends_with(".saved") && kind != "context.created" && kind != "usage.recorded",
+            "audit kind is reserved for Store mutations"
+        );
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -525,6 +552,39 @@ impl Store {
 
 fn str_id<T: std::fmt::Display>(id: Option<T>) -> Option<String> {
     id.map(|id| id.to_string())
+}
+fn validate_goal_references(tx: &Transaction<'_>, goal: &Goal) -> Result<()> {
+    use std::collections::BTreeSet;
+    let nodes: BTreeSet<_> = goal.dag.nodes.iter().copied().collect();
+    ensure!(
+        nodes.len() == goal.dag.nodes.len(),
+        "duplicate goal DAG nodes"
+    );
+    let mut references = nodes.clone();
+    for edge in &goal.dag.edges {
+        ensure!(
+            nodes.contains(&edge.prerequisite) && nodes.contains(&edge.dependent),
+            "DAG edge endpoints must be declared nodes"
+        );
+        references.insert(edge.prerequisite);
+        references.insert(edge.dependent);
+    }
+    for proposal in &goal.followups {
+        references.extend(proposal.dependencies.iter().copied());
+    }
+    for id in references {
+        let owned: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM tasks WHERE id=?1 AND project_id=?2 AND goal_id=?3)",
+            params![
+                id.to_string(),
+                goal.project_id.to_string(),
+                goal.id.to_string()
+            ],
+            |row| row.get(0),
+        )?;
+        ensure!(owned, "goal references missing/foreign task {id}");
+    }
+    Ok(())
 }
 fn decode<T: DeserializeOwned>(body: String) -> Result<T> {
     serde_json::from_str(&body).context("invalid persisted snapshot")

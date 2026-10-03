@@ -13,12 +13,16 @@ scoped Record envelope; Session payload identity is checked against the envelope
 Review and approval decision payloads are preserved in journal events on updates.
 Versioned context has a dedicated immutable table.
 Local scope is Runtime → Project → Goal → Task. Composite foreign keys enforce
-ownership for Goals, Tasks and child orchestration records. A Goal's Project and
+ownership for Goals, Tasks and child orchestration records. Before saving a Goal,
+all DAG node/edge/follow-up Task references are verified against its Project/Goal;
+cycle/readiness evaluation remains in #23. A Goal's Project and
 a Task's Project/Goal cannot be silently rebound by an update.
 
 ## Schema / migration
 
-Use rusqlite with bundled SQLite. `PRAGMA user_version` is the transactional
+Use rusqlite with bundled SQLite. `application_id = 0x52525831` identifies rrx
+databases. Foreign/unmarked v1 databases and nonempty v0 databases are rejected.
+`PRAGMA user_version` is the transactional
 schema version; v0 → v1 initializes tables/indexes/triggers. An unsupported future
 version is rejected before migrations. Foreign keys and a bounded busy timeout
 are enabled on every connection; WAL permits readers while state is written.
@@ -29,7 +33,9 @@ migration, not best-effort deserialization of unknown formats.
 Each mutation and its `AuditEvent` are written in one immediate transaction.
 Optimistic snapshot revisions reject stale writers. Audit rows have a monotonic
 sequence, scoped identity, kind, timestamp and JSON evidence. SQLite triggers
-reject audit UPDATE/DELETE. This is an application journal, not a tamper-proof
+reject audit UPDATE/DELETE/REPLACE and backdated sequence insertion. Public audit
+callers cannot emit Store-reserved save/context/usage event kinds. Context SQL
+triggers reject mutation/replacement and enforce consecutive owner versions. This is an application journal, not a tamper-proof
 security log against a user who controls the database file.
 
 ## Context / telemetry / recovery

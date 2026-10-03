@@ -449,3 +449,78 @@ fn dag_and_followup_references_cannot_cross_project_or_goal_boundaries() {
     goal_one.dag.nodes.push(local_task.id);
     store.put_goal(&mut goal_one).unwrap();
 }
+
+#[test]
+fn foreign_databases_and_unknown_snapshots_are_rejected_without_data_loss() {
+    let dir = tempfile::tempdir().unwrap();
+    for version in [0, 1] {
+        let db = dir.path().join(format!("foreign-{version}.db"));
+        let raw = rusqlite::Connection::open(&db).unwrap();
+        raw.execute_batch(
+            "CREATE TABLE other_app(value TEXT); INSERT INTO other_app VALUES('keep');",
+        )
+        .unwrap();
+        raw.pragma_update(None, "user_version", version).unwrap();
+        drop(raw);
+        let before = std::fs::read(&db).unwrap();
+        assert!(Store::open(&db).is_err());
+        assert_eq!(std::fs::read(&db).unwrap(), before);
+    }
+    let db = dir.path().join("state.db");
+    let mut store = Store::open(&db).unwrap();
+    let project = project(&mut store, "one", dir.path());
+    let raw = rusqlite::Connection::open(&db).unwrap();
+    raw.execute(
+        "UPDATE projects SET body=json_set(body,'$.future_secret_field','preserve') WHERE id=?1",
+        [project.id.to_string()],
+    )
+    .unwrap();
+    assert!(store.project(project.id).is_err());
+    assert!(
+        store
+            .audit(
+                &Scope::project(project.id),
+                "approval.saved",
+                json!({"decision":"ALLOW"})
+            )
+            .is_err()
+    );
+}
+
+#[test]
+fn context_versions_reject_sql_update_delete_and_replace() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = dir.path().join("state.db");
+    let mut store = Store::open(&db).unwrap();
+    let project = project(&mut store, "one", dir.path());
+    let goal = goal(&mut store, &project);
+    let context = ContextVersion {
+        scope: goal.scope(),
+        version: 1,
+        revision: "a".into(),
+        source_hashes: BTreeMap::new(),
+        data: json!({}),
+    };
+    store.put_context(&context).unwrap();
+    let raw = rusqlite::Connection::open(&db).unwrap();
+    assert!(
+        raw.execute("UPDATE context_versions SET body='{}'", [])
+            .is_err()
+    );
+    assert!(raw.execute("DELETE FROM context_versions", []).is_err());
+    assert!(
+        raw.execute(
+            "INSERT OR REPLACE INTO context_versions SELECT * FROM context_versions",
+            []
+        )
+        .is_err()
+    );
+    assert_eq!(
+        store
+            .context(&goal.scope(), Some(1))
+            .unwrap()
+            .unwrap()
+            .revision,
+        "a"
+    );
+}
