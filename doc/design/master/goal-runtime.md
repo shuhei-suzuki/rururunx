@@ -261,6 +261,12 @@ On restart:
 4. re-evaluate completion criteria
 5. resume or move to BLOCKED/WAITING_HUMAN as appropriate
 
+Workflow dispatch checks Project/Goal row versions in its marker CAS. Per-Task
+progress should use Task-scoped records rather than bumping the shared Goal row
+on every step; otherwise concurrent sibling preparation claims can remain
+reserved and require Issue #14 recovery. This is a current ownership constraint,
+not a new semantic Goal-version policy.
+
 ## 15. Performance
 
 Goal orchestration must be lightweight.

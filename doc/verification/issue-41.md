@@ -28,7 +28,26 @@ overlapping held-start binding rejection and the precise Project/Goal writer and
 13/14 recovery-reference audits. Project status/list may reconcile a newly invalid
 Project to Blocked; only their underlying Store snapshot queries are pure reads.
 No code behavior is inferred from a review verdict. The narrow immutable native
-requirements delta gate must approve this alignment before implementation.
+requirements Round 5 at public `a480610` approved this alignment with no blockers
+in 547.524 seconds of reported native API duration; owned process cleanup was
+verified. Raw resumed-session token/cost attribution is unverified. The first
+runner preflight aborted before launch because its interpreter lacked waitid;
+the successful runner used `/opt/homebrew/bin/python3.14` with waitid/WNOWAIT.
+
+Its three optional Low refinements were checked against actual source: coordinated
+StateOnly writes Task before Record, but factual gate observations can write only
+the Record and require Evaluating. The Running preparation test uses the former;
+it proves the token-version fence, not an unreachable records-table marker error.
+Other Task IDs are unreachable in this marker; direct classifier coverage carries
+only defense-in-depth credit. Requirements, README and master now carry the same
+retained #14 classes, naming Project/Goal metadata ABA, Record token mismatch and
+unknown reversible evaluation. Workflow and Goal masters warn future progress
+writers about shared Goal-version noise. A narrow immutable delta re-review must
+verify these refinements before implementation.
+
+Normal merge `8a31f81` restored original public `c516014` ancestry after the rebase;
+its committed tree was byte-identical to reviewed `a480610`. No further force
+push is used.
 
 ## Required implementation evidence
 

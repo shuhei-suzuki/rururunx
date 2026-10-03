@@ -292,11 +292,14 @@ remain pending. Issue #18 repository-context selection is available independentl
 
 Issue #41's reviewed requirements specify passive observation of agent preparation
 reservations and release only by their committing owner; implementation is pending.
-Inactive-owner errors, dropped/crashed owners and CAS losses while publishing a
-definitive decision or binding a dispatched Session, untyped/unknown marker
-publication errors, and release CAS/executor-Lost fence failures remain recovery
-dependencies of #14, including marker Project/Goal-version conflicts even when
-owners have resumed. A marker without a Session does not prove launch began.
+Issue #14 must reconcile orphaned undispatched attempts, dropped futures/crashes,
+inactive-owner preparation errors, definitive-decision publication conflicts,
+marker Project/Goal-version conflicts (including Project/Goal metadata edits and
+lifecycle ABA), release-token Record-version mismatches, untyped/unknown marker
+errors, release CAS/executor-Lost fence failures, post-dispatch Session-binding
+conflicts and unknown reversible Evaluating claims.
+
+A marker without a Session does not prove launch began.
 Retaining a failed decision publication prevents turning an intended
 definitive failure/invalidation into automatic retry. Existing explicit terminal
 reservation recovery stays available under its terminal-Task/dispatch fences.

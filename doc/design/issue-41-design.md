@@ -42,8 +42,7 @@ fail, invalidate, hold and marker. The private invalidation helper must expose
 this call-site boundary to owned agent preparation, while its other callers keep
 existing behavior. A failed definitive publication must not become a retry.
 Only a typed `StateGuardError::SnapshotChanged` with table `tasks` AND the owning
-Task ID for the marker transaction's Task snapshot
-snapshot from the marker transaction restores eligibility after pre-commit
+Task ID from the marker transaction restores eligibility after pre-commit
 rollback. Project/Goal/Record version conflicts retain the reservation for #14,
 even if the latest owners are active. Definitive fail/invalidate/hold publication
 errors never restore eligibility, typed or untyped; neither do arbitrary marker
@@ -142,6 +141,12 @@ changes or automatic native replay are introduced.
 - Re-persist the exact Workflow body through StateOnly while an owner is held;
   its attempt stays byte-identical but Record version increases. The owner fails
   preparation and must retain it. Removing only the version check must fail.
+  This coordinated writer updates Task before Record, so the marker sees an
+  owning Task-row conflict; the release-token Record version rejects release.
+  Record-only factual gate observation requires Evaluating and cannot change this
+  Running claim. Do not claim a records-table marker consumer. Other Task IDs are
+  unreachable in this marker; direct classifier tests are defense in depth,
+  without consumer mutation credit for those alternatives.
 - For both owners' identical attempted data, a reserve-loser token minted from
   the pre-commit snapshot is masked by the Record-version guard: record it as a
   defense-in-depth equivalent, with no mutation credit. A combined mutant that

@@ -80,13 +80,15 @@ existing concurrent-step regression; macOS was cancelled through matrix failfast
     metadata conflicts or change the existing Session acknowledgement policy.
 11. This PR must align README status, master Workflow design and code recovery
     references with the #13 external/irreversible versus #14 owner/restart split.
-    Record #14's retained classes explicitly: orphaned undispatched attempts,
-    dropped futures/crashes, inactive-owner preparation errors, definitive-decision
-    publication conflicts, marker Project/Goal/Record-version conflicts (including
-    active-owner metadata edits and lifecycle ABA), untyped/unknown marker errors,
-    release CAS/executor-Lost fence failures and post-dispatch Session-binding
-    conflicts. This issue persists no owner-absence evidence; #14 must establish
-    its own trusted proof.
+    Record the retained classes below consistently. This issue persists no
+    owner-absence evidence; #14 must establish its own trusted proof.
+
+Issue #14 must reconcile orphaned undispatched attempts, dropped futures/crashes,
+inactive-owner preparation errors, definitive-decision publication conflicts,
+marker Project/Goal-version conflicts (including Project/Goal metadata edits and
+lifecycle ABA), release-token Record-version mismatches, untyped/unknown marker
+errors, release CAS/executor-Lost fence failures, post-dispatch Session-binding
+conflicts and unknown reversible Evaluating claims.
 
 ## Verification and completion
 
@@ -98,7 +100,14 @@ undispatched attempt. Eligible owner capture errors and only a typed owning-Task
 marker CAS loss release the proven undispatched owned attempt and let the next step
 progress. Marker Project/Goal/Record-version conflicts and untyped marker errors retain
 the same reservation, including when owners are active; a release conflict/fence also
-retains it. Verify both the tasks-table and owning Task-ID classification.
+retains it. A coordinated StateOnly re-persist writes Task before Workflow Record:
+its marker conflict surfaces as an owning Task-row error, but the changed Record
+version prevents release. Verify this actual release-token consumer. The marker
+writes only its owning Task, so other Task IDs are unreachable there; verify exact
+table/owning-ID classification directly as defense in depth, without claiming
+consumer mutation credit for unreachable alternatives. Factual gate observation
+can write only the Record, but requires an Evaluating attempt and cannot rewrite
+this Running preparation claim.
 EvidencePort CAS-loss behavior stays unchanged.
 For its claim-CAS loss, assert the active index, history length, retries and
 ContextVersion pointer unchanged, then verify the next step evaluates that same

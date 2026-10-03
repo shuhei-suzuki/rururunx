@@ -394,14 +394,17 @@ Observation/audit metadata retain authority digests without copied Context Pack 
 Cleanup freezes the reserved class/phases, independent of later runtime policy capture.
 Project risk-mapping recommendations can strengthen but cannot weaken runtime mappings.
 
-Issue #14 must supply trusted recovery proof for orphaned undispatched attempts,
-dropped futures/crashes, inactive-owner preparation errors, definitive-decision
-publication conflicts, untyped/unknown marker publication outcomes, release
-CAS/executor-Lost fence failures, marker Project/Goal-version conflicts and
-post-dispatch Session-binding conflicts;
-#41 adds no
-durable owner-absence proof. Unknown reversible Evaluating claims also belong to
-owner/restart recovery14. Ordinary observation must allow evaluation still being
+Issue #14 must reconcile orphaned undispatched attempts, dropped futures/crashes,
+inactive-owner preparation errors, definitive-decision publication conflicts,
+marker Project/Goal-version conflicts (including Project/Goal metadata edits and
+lifecycle ABA), release-token Record-version mismatches, untyped/unknown marker
+errors, release CAS/executor-Lost fence failures, post-dispatch Session-binding
+conflicts and unknown reversible Evaluating claims.
+
+#41 adds no durable owner-absence proof. Project/Goal row versions participate in
+the marker CAS. Future per-Task progress writers must use Task-scoped records
+instead of bumping the shared Goal row on every step, or account for resulting
+#14 recovery frequency among concurrent sibling Tasks. Ordinary observation must allow evaluation still being
 in flight. A marker without a Session may precede any native launch and does not
 prove launch occurred. #13 remains responsible for irreversible
 Pr/MergeGate/Cleanup outcomes.
