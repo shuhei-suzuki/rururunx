@@ -209,6 +209,14 @@ pub trait AgentAdapter: Send + Sync {
             && status.failure.is_none()
             && status.exit_code == Some(0)
     }
+    /// Provider-native per-turn schema; callers own its review/approval semantics.
+    fn start_structured(
+        &self,
+        _request: LaunchRequest,
+        _schema: Value,
+    ) -> AdapterFuture<'_, Session> {
+        Box::pin(async { Err(unsupported(Capability::StructuredOutput)) })
+    }
     fn status(&self, session: SessionRef) -> AdapterFuture<'_, SessionStatus>;
     fn stop(&self, session: SessionRef) -> AdapterFuture<'_, SessionStatus>;
     fn attach(&self, session: SessionRef) -> AdapterFuture<'_, ()>;
@@ -223,6 +231,9 @@ pub trait AgentAdapter: Send + Sync {
         review_round: Option<u32>,
     ) -> AdapterFuture<'_, Usage>;
     fn submit_approval(&self, _session: SessionRef, _decision: Value) -> AdapterFuture<'_, ()> {
+        Box::pin(async { Err(unsupported(Capability::PermissionInterception)) })
+    }
+    fn pending_approvals(&self, _session: SessionRef) -> AdapterFuture<'_, Value> {
         Box::pin(async { Err(unsupported(Capability::PermissionInterception)) })
     }
     fn checkpoint(&self, _session: SessionRef, _input: PreparedInput) -> AdapterFuture<'_, ()> {
