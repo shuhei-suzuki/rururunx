@@ -1,6 +1,6 @@
 # Issue 7: Grok ACP adapter design
 
-Status: corrected formal design; runtime implementation and acceptance gates pending.
+Status: implemented; installed-native acceptance passed; independent code review and final CI pending.
 
 `adapter::grok::GrokAdapter::new(agent, absolute_executable, SharedStore)` is an explicit
 provider constructor compatible with Registry.register. It implements AgentAdapter and
@@ -183,7 +183,9 @@ read/write arrived through ACP FS and the foreign read was denied. Native end_tu
 aggregate four-call usage were observed under a curated strict profile; the actual server stopped with OS status 143.
 Separate pre-prompt zero-tool validation yielded a schema-constrained DENY, post-turn
 toolDefinitionsCount/toolCallCount zero and no callbacks. This is actual invocation proof,
-not an inference from empty inventory metadata. Adapter implementation must reproduce it. A second curated decision profile explicitly
+not an inference from empty inventory metadata. The implemented adapter additionally
+passed the installed-native owned edit, fresh-input same-UUID continuation and constrained
+DENY acceptance test. A second curated decision profile explicitly
 removed its two declared tools and hosted/MCP entrypoints; it yielded zero bridge tool
 calls and native DENY. ACP model/effort setters returned the exact requested current values.
 A new private server loaded the exact prior native UUID and CWD, then acted only on a fresh
