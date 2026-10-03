@@ -542,9 +542,16 @@ fn same_sources(a: &RepositoryMap, b: &RepositoryMap) -> bool {
         && a.freshness.source_hashes == b.freshness.source_hashes
 }
 async fn git_value(root: &Path, args: &[&str], deadline: tokio::time::Instant) -> Result<String> {
+    static PROCESS_UNCERTAIN: OnceLock<Arc<AtomicBool>> = OnceLock::new();
     let executable = crate::adapter::resolve_executable("git")
         .map_err(|e| anyhow::anyhow!("native Git unavailable: {e:?}"))?;
-    let uncertain = Arc::new(AtomicBool::new(false));
+    let uncertain = PROCESS_UNCERTAIN
+        .get_or_init(|| Arc::new(AtomicBool::new(false)))
+        .clone();
+    ensure!(
+        !uncertain.load(Ordering::SeqCst),
+        "earlier context Git cleanup uncertain; further context Git launches blocked"
+    );
     let observed = crate::adapter::bounded_git_raw(
         &executable,
         root,

@@ -37,6 +37,10 @@ the existing process-group cleanup also bounds retained output. Raw NUL lists
 preserve whitespace paths; revision arguments are separated from paths, Git is
 resolved through absolute runtime PATH entries, and optional index writes are
 disabled. Filesystem jobs and scanner/graph work have five-second deadlines.
+An uncertain Git cleanup latches a process-wide context launch block, including
+when cancellation drops the native preflight future; no later context result can
+be published through another helper call. Automatic recovery of that uncertainty
+is not implemented by this retrieval library.
 Two process-wide filesystem slots are retained by workers until they exit,
 including after timeout: hung filesystem syscalls cannot be forcibly cancelled,
 but they cannot create unbounded detached scan workers or publish a result.
