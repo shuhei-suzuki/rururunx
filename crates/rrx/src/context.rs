@@ -1410,3 +1410,172 @@ mod tests {
         );
     }
 }
+
+/// Bounded read-only primary-source authority for a Goal, including before Tasks
+/// exist or after their worktrees have been safely disposed. Never a launch map.
+#[derive(Debug, Clone, Serialize)]
+pub struct GoalSourceSnapshot {
+    pub scope: Scope,
+    pub project_version: u64,
+    pub goal_version: u64,
+    pub root: PathBuf,
+    pub root_file_id: String,
+    pub revision: String,
+    pub repository_identity: String,
+    pub source_hashes: BTreeMap<String, String>,
+}
+impl RepositoryContext {
+    pub async fn goal_sources(&self, scope: &Scope) -> Result<GoalSourceSnapshot> {
+        ensure!(
+            scope.goal_id.is_some() && scope.task_id.is_none(),
+            "primary Goal observation requires exact Goal scope"
+        );
+        let (project, goal) = {
+            let store = self
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("Store poisoned"))?;
+            let project = crate::project::registered_project(&store, scope.project_id)?;
+            let goal = store
+                .goal(scope.goal_id.unwrap())?
+                .context("unknown Goal")?;
+            ensure!(
+                goal.scope() == *scope,
+                "foreign Goal primary-source observation"
+            );
+            (project, goal)
+        };
+        ensure!(
+            project.rule_refs.len() <= MAX_REFS,
+            "too many Goal rule references"
+        );
+        let first = observe_primary(&project).await?;
+        let second = observe_primary(&project).await?;
+        ensure!(
+            first.root_file_id == second.root_file_id
+                && first.revision == second.revision
+                && first.source_hashes == second.source_hashes,
+            "primary Project changed during Goal observation"
+        );
+        let store = self
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Store poisoned"))?;
+        let current = crate::project::registered_project(&store, project.id)?;
+        let current_goal = store.goal(goal.id)?.context("Goal disappeared")?;
+        ensure!(
+            current.version == project.version
+                && current_goal.version == goal.version
+                && current_goal.scope() == *scope,
+            "Project/Goal changed during primary observation"
+        );
+        Ok(GoalSourceSnapshot {
+            scope: scope.clone(),
+            project_version: project.version,
+            goal_version: goal.version,
+            ..first
+        })
+    }
+}
+async fn primary_revision(project: &Project, deadline: tokio::time::Instant) -> Result<String> {
+    let facts = git::ProjectOwnershipFacts {
+        top: git_value(&project.root, &["rev-parse", "--show-toplevel"], deadline)
+            .await?
+            .into(),
+        git_dir: git_value(
+            &project.root,
+            &["rev-parse", "--path-format=absolute", "--git-dir"],
+            deadline,
+        )
+        .await?
+        .into(),
+        common: git_value(
+            &project.root,
+            &["rev-parse", "--path-format=absolute", "--git-common-dir"],
+            deadline,
+        )
+        .await?
+        .into(),
+        roots: git_value(
+            &project.root,
+            &[
+                "rev-list",
+                "--max-parents=0",
+                &format!("refs/heads/{}", project.base_branch),
+                "--",
+            ],
+            deadline,
+        )
+        .await?
+        .lines()
+        .map(str::to_owned)
+        .collect(),
+    };
+    let owned = project.clone();
+    bounded_fs(move || git::validate_project_ownership(&owned, facts)).await?;
+    git_value(
+        &project.root,
+        &["rev-parse", "--verify", "HEAD^{commit}"],
+        deadline,
+    )
+    .await
+}
+async fn observe_primary(project: &Project) -> Result<GoalSourceSnapshot> {
+    let opening = project.clone();
+    let reader = Arc::new(bounded_fs(move || ScopedReader::new(&opening.root, &opening)).await?);
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    let revision = primary_revision(project, deadline).await?;
+    let scanning = project.clone();
+    let source = reader.clone();
+    let source_hashes = bounded_fs(move || {
+        let mut result = BTreeMap::new();
+        let mut total = 0usize;
+        for reference in scanning.rule_refs.iter().chain(scanning.config_ref.iter()) {
+            let relative = reference
+                .strip_prefix(&scanning.root)
+                .context("foreign Goal rule/config")?
+                .to_str()
+                .context("non-UTF8 Goal rule/config")?;
+            let (bytes, _) = source.read(relative)?.context("Goal rule/config missing")?;
+            total = total
+                .checked_add(bytes.len())
+                .context("Goal source size overflow")?;
+            ensure!(
+                total <= MAX_TOTAL_BYTES,
+                "Goal rule/config sources exceed limit"
+            );
+            let text = std::str::from_utf8(&bytes).context("Goal rule/config must be UTF8")?;
+            ensure!(!text.contains('\0'), "Goal rule/config cannot be binary");
+            result.insert(
+                format!(
+                    "{}:{relative}",
+                    if scanning.rule_refs.contains(reference) {
+                        "rule"
+                    } else {
+                        "config"
+                    }
+                ),
+                hash(&bytes),
+            );
+        }
+        source.unchanged()?;
+        Ok(result)
+    })
+    .await?;
+    ensure!(
+        revision == primary_revision(project, deadline).await?,
+        "primary HEAD changed during Goal observation"
+    );
+    let final_reader = reader.clone();
+    bounded_fs(move || final_reader.unchanged()).await?;
+    Ok(GoalSourceSnapshot {
+        scope: Scope::project(project.id),
+        project_version: project.version,
+        goal_version: 0,
+        root: project.root.clone(),
+        root_file_id: reader.file_id.clone(),
+        revision,
+        repository_identity: project.repository_identity.clone(),
+        source_hashes,
+    })
+}

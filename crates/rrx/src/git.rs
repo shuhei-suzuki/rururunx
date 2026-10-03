@@ -39,28 +39,51 @@ pub struct WorktreeOwnershipFacts {
     pub revision: String,
 }
 
-pub fn validate_worktree_ownership(
+/// Read-only primary Project ownership facts; this does not authorize execution.
+pub struct ProjectOwnershipFacts {
+    pub top: PathBuf,
+    pub git_dir: PathBuf,
+    pub common: PathBuf,
+    pub roots: Vec<String>,
+}
+pub fn validate_project_ownership(
     project: &Project,
-    task: &Task,
-    facts: WorktreeOwnershipFacts,
-) -> Result<WorktreeStatus> {
+    facts: ProjectOwnershipFacts,
+) -> Result<(PathBuf, PathBuf)> {
     let root = project.root.canonicalize()?;
     ensure!(
-        root == project.root && facts.source_top.canonicalize()? == root,
+        root == project.root && facts.top.canonicalize()? == root,
         "Project root must be exact canonical Git top-level"
     );
-    let common = facts.source_common.canonicalize()?;
+    let common = facts.common.canonicalize()?;
     ensure!(
-        facts.source_git_dir.canonicalize()? == common,
+        facts.git_dir.canonicalize()? == common,
         "Project source root cannot be a linked worktree"
     );
-    let mut roots = facts.source_roots;
+    let mut roots = facts.roots;
     roots.sort();
     ensure!(
         !roots.is_empty()
             && serde_json::to_string(&(common.clone(), roots))? == project.repository_identity,
         "Project repository identity changed"
     );
+    Ok((root, common))
+}
+
+pub fn validate_worktree_ownership(
+    project: &Project,
+    task: &Task,
+    facts: WorktreeOwnershipFacts,
+) -> Result<WorktreeStatus> {
+    let (root, common) = validate_project_ownership(
+        project,
+        ProjectOwnershipFacts {
+            top: facts.source_top,
+            git_dir: facts.source_git_dir,
+            common: facts.source_common,
+            roots: facts.source_roots,
+        },
+    )?;
     ensure!(task.project_id == project.id, "foreign Task Project");
     let ns = namespace(project, &root)?;
     let path = task.worktree.as_ref().context("task has no worktree")?;
