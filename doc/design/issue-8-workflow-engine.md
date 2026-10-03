@@ -207,3 +207,10 @@ pre-disposal source. Project risk mappings combine elementwise maxima with runti
 recommendations; they may strengthen safety classification, never weaken it.
 Native status divergence persists a bounded recovery diagnostic and returns Waiting
 without another gate invocation, rebinding or inferred native death.
+
+Raw transition writes cannot append or alter observations: only the private audited
+observer may do so. Holds remove the attempt's known prior Waiting/Failed blocker from
+refreshed owners before replacing its diagnostic, preserving unrelated/ambiguous text.
+Earlier unpublished Issue 8 v3 snapshots without evaluation claims intentionally fail
+to deserialize; disposable development fixtures must use fresh state. No implicit zero
+claim default is safe. Production v1/v2 migration remains supported and lossless.

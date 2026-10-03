@@ -3550,6 +3550,32 @@ async fn resumed_round_claim_never_replays_prior_outcome_during_poll_restart_or_
                 .records(&fixture.task.scope(), RecordKind::Workflow)
                 .unwrap()
                 .remove(0);
+            let mut task = store.task(id).unwrap().unwrap();
+            let mut raw = snapshot.clone();
+            raw.history[index].observations.push(GateObservation {
+                sources: super::authority_only(&snapshot.sources),
+                outcome: Some(GateOutcome::Waiting("raw factual append".into())),
+                error: None,
+                at: now_ms(),
+            });
+            record.data = serde_json::to_value(raw).unwrap();
+            let project_version = store.project(task.project_id).unwrap().unwrap().version;
+            let goal_version = store.goal(task.goal_id).unwrap().unwrap().version;
+            assert!(
+                store
+                    .put_workflow_transition(
+                        &mut task,
+                        &mut record,
+                        None,
+                        project_version,
+                        goal_version,
+                        WorkflowAccess::StateOnly
+                    )
+                    .unwrap_err()
+                    .to_string()
+                    .contains("audited observer")
+            );
+            record = store.record(record.id).unwrap().unwrap();
             let mut wrong_claim = snapshot.history[index].clone();
             wrong_claim.claimed_observations = 0;
             let observation = GateObservation {
@@ -3819,4 +3845,59 @@ fn project_risk_recommendation_can_strengthen_but_cannot_weaken_runtime_mapping(
         strengthened.workflow.risk_mapping,
         [WorkflowClass::Strict; 4]
     );
+}
+
+#[tokio::test]
+async fn waiting_irreversible_hold_then_resume_does_not_orphan_owned_blocker() {
+    let fixture = Fixture::new(WorkflowClass::Standard);
+    fixture
+        .engine
+        .initialize(fixture.task.id, None)
+        .await
+        .unwrap();
+    fixture.through(Phase::Pr).await;
+    fixture.gates.waiting.store(true, Ordering::SeqCst);
+    assert!(matches!(
+        fixture
+            .engine
+            .step(fixture.task.id, BTreeMap::new())
+            .await
+            .unwrap(),
+        StepResult::Waiting {
+            phase: Phase::MergeGate,
+            ..
+        }
+    ));
+    fixture.sources.snapshot.lock().unwrap().revision = "drift-during-wait".into();
+    assert!(matches!(
+        fixture.engine.resume_gate(fixture.task.id).await.unwrap(),
+        StepResult::Waiting { .. }
+    ));
+    let snapshot = fixture.engine.snapshot(fixture.task.id).unwrap();
+    let task = fixture
+        .store
+        .lock()
+        .unwrap()
+        .task(fixture.task.id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(task.blockers, [snapshot.held_reason.clone().unwrap()]);
+    fixture.sources.snapshot.lock().unwrap().revision = "head-1".into();
+    fixture.gates.waiting.store(false, Ordering::SeqCst);
+    assert!(matches!(
+        fixture.engine.resume_gate(fixture.task.id).await.unwrap(),
+        StepResult::Completed {
+            phase: Phase::MergeGate
+        }
+    ));
+    fixture.finish().await;
+    let task = fixture
+        .store
+        .lock()
+        .unwrap()
+        .task(fixture.task.id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(task.state, TaskState::Completed);
+    assert!(task.blockers.is_empty());
 }

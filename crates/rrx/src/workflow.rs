@@ -1447,6 +1447,14 @@ impl WorkflowEngine {
     ) -> Result<StepResult> {
         if snapshot.workflow.held_reason.as_deref() != Some(reason) {
             self.refresh_owners(&mut snapshot)?;
+            if let Some(index) = index
+                && matches!(
+                    snapshot.workflow.history[index].state,
+                    AttemptState::Waiting | AttemptState::Failed
+                )
+            {
+                remove_attempt_blocker(&mut snapshot.task, &snapshot.workflow.history[index]);
+            }
             clear_hold(&mut snapshot);
             snapshot.workflow.held_reason = Some(reason.into());
             snapshot.task.state = TaskState::WaitingHuman;
@@ -2158,16 +2166,9 @@ pub(crate) fn validate_transition(
                     "native dispatch marker may only precede launch"
                 );
                 ensure!(
-                    after.observations.len() >= before.observations.len()
-                        && serde_json::to_value(&after.observations)?
-                            .as_array()
-                            .expect("observations")
-                            .starts_with(
-                                serde_json::to_value(&before.observations)?
-                                    .as_array()
-                                    .expect("observations")
-                            ),
-                    "gate observations are append-only"
+                    serde_json::to_value(&after.observations)?
+                        == serde_json::to_value(&before.observations)?,
+                    "gate observations require audited observer"
                 );
                 ensure!(
                     after.claimed_observations
