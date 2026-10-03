@@ -545,13 +545,20 @@ async fn git_value(root: &Path, args: &[&str], deadline: tokio::time::Instant) -
     static PROCESS_UNCERTAIN: OnceLock<Arc<AtomicBool>> = OnceLock::new();
     let executable = crate::adapter::resolve_executable("git")
         .map_err(|e| anyhow::anyhow!("native Git unavailable: {e:?}"))?;
-    let uncertain = PROCESS_UNCERTAIN
+    let latch = PROCESS_UNCERTAIN
         .get_or_init(|| Arc::new(AtomicBool::new(false)))
         .clone();
     ensure!(
-        !uncertain.load(Ordering::SeqCst),
+        !latch.load(Ordering::SeqCst),
         "earlier context Git cleanup uncertain; further context Git launches blocked"
     );
+    // ProcessGroup marks its own flag true while alive. Share only a separate
+    // uncertainty latch; live calls must not block each other's normal work.
+    let uncertain = Arc::new(AtomicBool::new(false));
+    let _observation = GitObservation {
+        pending: uncertain.clone(),
+        latch: latch.clone(),
+    };
     let observed = crate::adapter::bounded_git_raw(
         &executable,
         root,
@@ -565,7 +572,7 @@ async fn git_value(root: &Path, args: &[&str], deadline: tokio::time::Instant) -
     .await
     .map_err(|e| anyhow::anyhow!("bounded context Git: {e:?}"));
     ensure!(
-        !uncertain.load(Ordering::SeqCst),
+        !uncertain.load(Ordering::SeqCst) && !latch.load(Ordering::SeqCst),
         "native Git process-group cleanup uncertain; context operation blocked"
     );
     let value = String::from_utf8(observed?).context("Git source metadata is not UTF-8")?;
@@ -575,6 +582,17 @@ async fn git_value(root: &Path, args: &[&str], deadline: tokio::time::Instant) -
     } else {
         value.trim_end_matches('\n').to_string()
     })
+}
+struct GitObservation {
+    pending: Arc<AtomicBool>,
+    latch: Arc<AtomicBool>,
+}
+impl Drop for GitObservation {
+    fn drop(&mut self) {
+        if self.pending.load(Ordering::SeqCst) {
+            self.latch.store(true, Ordering::SeqCst);
+        }
+    }
 }
 async fn ownership(snapshot: &Snapshot, deadline: tokio::time::Instant) -> Result<String> {
     let p = &snapshot.project;

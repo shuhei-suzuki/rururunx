@@ -124,6 +124,37 @@ fn ready(outcome: SelectionOutcome) -> ContextSlice {
 }
 
 #[tokio::test]
+async fn concurrent_native_context_scans_do_not_share_live_cleanup_flags() {
+    let a = Fixture::new();
+    let b = Fixture::new();
+    let ea = a.engine();
+    let eb = b.engine();
+    let sa = a.task.scope();
+    let sb = b.task.scope();
+    std::fs::write(a.worktree.join("own.txt"), "PRIVATE_A").unwrap();
+    std::fs::write(b.worktree.join("own.txt"), "PRIVATE_B").unwrap();
+    let (ma, mb) = tokio::join!(ea.index(&sa, vec![]), eb.index(&sb, vec![]));
+    let ma = ma.unwrap();
+    let mb = mb.unwrap();
+    assert_eq!(ma.freshness().scope, sa);
+    assert_eq!(mb.freshness().scope, sb);
+    let request = SelectionRequest::default();
+    let expansion = Expansion::File {
+        path: "own.txt".into(),
+    };
+    let (a, b) = tokio::join!(
+        ea.expand(&ma, &request, &expansion, budget()),
+        eb.expand(&mb, &request, &expansion, budget())
+    );
+    let a = ready(a.unwrap());
+    let b = ready(b.unwrap());
+    assert!(a.payload().contains("PRIVATE_A"));
+    assert!(!a.payload().contains("PRIVATE_B"));
+    assert!(b.payload().contains("PRIVATE_B"));
+    assert!(!b.payload().contains("PRIVATE_A"));
+}
+
+#[tokio::test]
 async fn local_map_selection_graph_and_observable_estimates() {
     let f = Fixture::new();
     let engine = f.engine();
