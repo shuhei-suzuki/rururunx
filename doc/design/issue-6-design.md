@@ -76,6 +76,67 @@ new input cannot appear to belong to the old turn. The new acknowledged turn
 later supplies the current identity. Pre-dispatch rollback restores the exact
 historical Session, including its original turn and consumed-input marker.
 
+## Preparing continuation cancellation (design pending independent review)
+
+Resume and checkpoint need a new private per-attempt stop control. Atomically
+install it under the registry lock when that operation claims the transition,
+before any await or Starting publication. A terminal watch alone cannot establish
+that no preparation is in flight. Stop reads the current control alongside the
+owned scope: during preparation it cancels that attempt even if the watch still
+shows the previous terminal Session. It never sends to the retired stop channel.
+The control is an invocation-owned Arc with a small synchronous mutex; lock order
+is registry then control, and admission takes control then Store. No reverse
+Store-to-control acquisition and no mutex held over await are permitted.
+
+The preparation state is Preparing, CancelledBeforeAdmission, or Consumed. A
+stop winning before admission atomically changes Preparing to cancelled. Final
+admission holds this same control mutex through the exact consumed-input Store
+CAS, rejects a cancelled attempt with no turn/start write, and sets Consumed only
+on successful CAS. A failed CAS remains Preparing/cancellable. Preparation
+completion carries publication failure explicitly; a completion notification alone
+never bypasses persisted/watch equality or establishes successful cleanup. Pre-encode the
+whole bounded wire frame before this boundary. Cancellation after successful CAS
+queues an interrupt in the new attempt's channel, which is transferred unchanged
+to the sole supervisor; it cannot retract consumption or replay the input. Native
+startup/RPC waits remain bounded and owned cleanup runs before rollback. Once a
+turn acknowledgement arrives, the queued cancellation uses the existing bounded
+terminal drain; missing acknowledgement/outcome remains conservative Lost.
+
+Stop during preparation waits for that exact control's completion notification,
+not a transient Starting-to-Running watch update or a terminal watch from the old
+attempt. Completed preparation means either supervisor ownership transferred
+with that same stop channel, or owned cleanup and exact pre-dispatch restore have
+finished. Then it reads matching persisted/watch status and uses the current
+supervisor path if the attempt was consumed. Return old terminal status only after
+a cancelled unconsumed attempt has finished exact restore; this is no new native
+completion claim. A held cleanup or uncertainty remains observable and cannot be
+reported as successfully stopped.
+
+Keep the new control installed until cleanup/publication is complete. A private
+transition guard restores the old terminal control only if its Arc identity still
+matches the installed attempt. On successful resume the registry and supervisor
+keep the same new control. Checkpoint never consumes model input: check cancellation
+under the control before committing its validated request replacement, restore the
+original Session, and publish completion only afterward. Its final request
+replacement takes registry then control then Store, without await, to serialize
+against stop and preserve the declared lock order. If cancellation wins,
+retain the old checkpoint request. Drop/abort also follows the existing owned
+cleanup/restore or Lost guard before completing this private attempt. Dropping an
+awaiting caller must not detach native startup or falsely mark preparation complete.
+No schema, persisted caller token, native auth/hook/trust changes are introduced.
+
+Tests hold real adapter resume at pre-Starting installation, persisted Starting,
+final admission, and post-consumption/pre-ack windows using bounded synthetic
+native RPC plus real owned groups. Assert no old-channel SessionLost, exact
+cancelled pre-consumption restore, zero turn/start writes and consumption, both
+linearized admission/stop orderings, queued interrupt after ack, unknown ack Lost,
+watch/Store consistency and confirmed cleanup. Checkpoint tests assert cancellation
+cannot replace input, and owner-future drop cannot leave live startup. Compiled
+consumer mutants omit current-control lookup, cancel check, admission lock/ordering,
+channel transfer or completion-after-cleanup; restore source and repeat controls.
+This design needs independent approval before implementation, and the installed
+native bootstrap/descendant containment findings remain separate merge blockers.
+
 ## Decision-only sessions
 
 Use a named scoped permissions profile rather than treating the legacy read-only
