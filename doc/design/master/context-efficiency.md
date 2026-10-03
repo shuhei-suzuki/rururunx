@@ -64,6 +64,16 @@ Goal context references Task Context Packs rather than copying them wholesale.
 
 ## 4. Repository Map / Context Index
 
+Issue 18 implements the local Task-scoped `RepositoryContext` library and
+`repository-context` inspection example. It indexes exact bound worktrees with
+SHA256 content/ignored-evidence/rule/config freshness, deterministic lexical
+ranking and expansion, and scoped selection evidence. Entire mandatory rules,
+evidence and requested expansions must fit; otherwise it returns `NeedsBudget`.
+`utf8_bytes_v1` is a labeled packing estimate, with nullable provider measurement.
+Source and Git scans run outside the shared Store mutex and recheck state versions
+before audit mutation. See [bounded retrieval design](../issue-18-design.md).
+Durable Context Pack publishing and workflow integration remain separate work.
+
 Maintain a compact repository index inspired by repository-map approaches:
 
 - file paths

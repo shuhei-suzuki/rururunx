@@ -1270,7 +1270,7 @@ async fn validate_git(
     Ok(())
 }
 
-async fn bounded_git(
+pub(crate) async fn bounded_git(
     executable: &Path,
     cwd: &Path,
     args: &[String],

@@ -968,6 +968,13 @@ Parallel Tasks and 1/2/3+ reviewer workflows can otherwise multiply identical re
 
 ### 38.1 Repository Map / Context Index
 
+Issue 18's initial implementation is a Task-scoped local Rust library with a CLI
+inspection example, lexical graphs, deterministic budgeted selection/expansion,
+mandatory-context budget failures and content-based freshness. Its byte-derived
+token estimates are explicitly separate from measured provider usage. Full
+workflow/Context Pack integration remains pending; implementation requirements
+and bounds are in [Issue 18 requirements](issue-18-requirements.md).
+
 The runtime must maintain a compact local representation of the repository sufficient to select relevant context without injecting the full repository into every agent call.
 
 The index should support, where practical:

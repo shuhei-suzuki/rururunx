@@ -206,6 +206,16 @@ See [Product Requirements](doc/requirements/product-requirements.md), [Architect
 
 Rust executable foundation; workflow components are being implemented incrementally.
 The command examples above describe the MVP target. Currently implemented:
+- Issue 18 adds the Task-scoped `RepositoryContext` Rust API for lexical repository
+  maps, relevance ranking, budgeted selection, file/symbol/reference expansion,
+  content-hash freshness and scoped audit evidence. Mandatory rules/evidence and
+  requested expansions require sufficient budget; token values are estimates.
+  Inspect existing Task bindings locally with:
+  `cargo run --example repository-context -- --state STATE.db --task TASK_UUID map`
+  (or `select "task text"`, `expand file src/lib.rs`; `--include` admits a specific
+  ignored source, `--evidence` makes its full content mandatory). Workflow and
+  durable Context Pack integration remain pending. See
+  [Issue 18 design](doc/design/issue-18-design.md) for limits and lexical accuracy.
 - Library Git/worktree management with project ownership checks, protected branches,
   dirty-state checks, durable logical review locks and safe merged cleanup. CLI/workflow
   integration and interrupted-operation reconciliation are pending.
