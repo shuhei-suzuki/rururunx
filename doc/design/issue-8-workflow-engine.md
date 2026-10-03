@@ -79,7 +79,8 @@ process exit cannot invent a commit artifact. The captured revision is the actua
 owning HEAD. Target-producing Issue/Worktree/requirements/design/implementation/impact
 and commit phases attest their final captured authority, which the engine publishes
 atomically. PR and merge gates are target-preserving: known drift prevents invocation,
-and drift during evaluation invalidates the result and earlier prerequisites.
+and drift after an actual external operation retains its factual result in a durable
+human/recovery hold; it never restarts the generation into a duplicate PR or merge.
 
 Review Evidence includes exact source dependency digests selected by the trusted review
 integration, including all mandatory rule digests and at least one reviewed artifact.
@@ -101,7 +102,8 @@ recovery diagnostics; #13 must verify native termination before any release.
 After a definitive gate result, owners are reread, activity and source authority are
 checked again, and only workflow fields merge into the latest Task. Issue/worktree
 bindings, Goal metadata and unrelated Task blockers/actions survive under refreshed
-Project/Goal/Task/record CAS. Concurrent policy/source changes invalidate authority;
+Project/Goal/Task/record CAS. Policy/source changes invalidate authority before external
+effects; existing PR/merge/cleanup outcomes instead remain held for reconciliation;
 a later CAS conflict still preserves the evaluation reservation for recovery.
 
 The Store rejects general Task/context writes that change workflow-owned fields.
@@ -182,3 +184,26 @@ conservative interruption, while the next accepted workflow transition owns its 
 state; finished QUICK finalization therefore uses workflow PR evidence rather than the
 interruption state. Blocker removal uses refreshed owner data and retains ambiguous
 identical foreign text until typed #12 ownership is available.
+
+## Exact evaluation claims
+
+Each Evaluating transition records `claimed_observations`, the exact observation count
+for that attempt's current round. The private observer requires exact scope, phase,
+generation, Session, ContextVersion and claim identity and appends exactly one outcome.
+Only the observation at that claim index can resolve it; prior rounds stay immutable.
+Concurrent polling or restart during a resumed round cannot replay an old Waiting or
+Failed outcome. Cancellation retains that in-flight reservation, and terminal release
+refuses it until its exact current outcome is known. A completed phase must carry that
+claim's actual Passed evidence. A cancelled ordinary Failed phase can close as Interrupted
+only for its immutable terminal decision, after the same native termination fences.
+
+Observations retain authority identity/digests with an empty payload; the immutable
+ContextVersion owns source text. Human/recovery holds persist `held_reason`, WaitingHuman
+and a scoped blocker, and repeated identical polls do not rewrite it. The external
+outcome reconciliation integration is an explicit prerequisite in
+[Issue #13](https://github.com/shuhei-suzuki/rururunx/issues/13); #8 never fabricates its
+authority. Cleanup reuses its reserved workflow class/configured phases as well as its
+pre-disposal source. Project risk mappings combine elementwise maxima with runtime
+recommendations; they may strengthen safety classification, never weaken it.
+Native status divergence persists a bounded recovery diagnostic and returns Waiting
+without another gate invocation, rebinding or inferred native death.

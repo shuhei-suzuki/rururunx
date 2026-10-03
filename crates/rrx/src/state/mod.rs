@@ -480,10 +480,7 @@ impl Store {
                 let attempt = &before.history[index];
                 ensure!(
                     attempt.state != crate::workflow::AttemptState::Evaluating
-                        || attempt
-                            .observations
-                            .last()
-                            .is_some_and(|o| o.outcome.is_some()),
+                        || crate::workflow::known_gate_observation(attempt).is_some(),
                     "unknown external outcome requires explicit recovery"
                 );
                 ensure!(
@@ -640,10 +637,20 @@ impl Store {
                 && attempt.context_version == expected.context_version
                 && attempt.session_id == expected.session_id
                 && attempt.agent == expected.agent
-                && attempt.started_at == expected.started_at,
+                && attempt.started_at == expected.started_at
+                && attempt.claimed_observations == expected.claimed_observations
+                && attempt.observations.len() == attempt.claimed_observations,
             "observation identity differs"
         );
-        attempt.detail = Some(serde_json::to_string(&observation)?);
+        ensure!(
+            observation.sources.payload.is_empty(),
+            "observation cannot duplicate Context Pack payload"
+        );
+        attempt.detail = Some(if let Some(error) = &observation.error {
+            error.clone()
+        } else {
+            "gate outcome observed".into()
+        });
         attempt.observations.push(observation.clone());
         latest.data = serde_json::to_value(workflow)?;
         let next = put_record_tx(&tx, &latest)?;

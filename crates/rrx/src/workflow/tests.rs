@@ -998,6 +998,7 @@ async fn second_engine_cannot_dispatch_duplicate_phase_and_interrupt_does_not_au
             session_id: None,
             dispatch_started: false,
             observations: vec![],
+            claimed_observations: 0,
             agent: None,
             started_at: now_ms(),
             completed_at: None,
@@ -2186,6 +2187,7 @@ async fn atomic_authority_rejects_invented_initial_history_completion_and_finish
                 session_id: None,
                 dispatch_started: false,
                 observations: vec![],
+                claimed_observations: 0,
                 agent: None,
                 started_at: 0,
                 completed_at: Some(1),
@@ -2974,6 +2976,21 @@ async fn known_irreversible_drift_holds_single_operation_and_cleanup_reuses_froz
         assert_eq!(fixture.gates.calls.lock().unwrap().len(), calls);
         let snapshot = fixture.engine.snapshot(fixture.task.id).unwrap();
         assert_eq!(snapshot.generation, generation);
+        assert!(snapshot.held_reason.is_some());
+        let stored = fixture
+            .store
+            .lock()
+            .unwrap()
+            .task(fixture.task.id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(stored.state, TaskState::WaitingHuman);
+        assert!(
+            stored
+                .blockers
+                .iter()
+                .any(|b| Some(b) == snapshot.held_reason.as_ref())
+        );
         assert!(
             snapshot.history[snapshot.active.unwrap()]
                 .observations
@@ -3043,6 +3060,17 @@ async fn known_irreversible_drift_holds_single_operation_and_cleanup_reuses_froz
                 .prior_observations
                 .len(),
             1
+        );
+        assert!(
+            fixture
+                .store
+                .lock()
+                .unwrap()
+                .task(fixture.task.id)
+                .unwrap()
+                .unwrap()
+                .blockers
+                .is_empty()
         );
         assert_eq!(
             fixture
@@ -3304,13 +3332,7 @@ async fn native_gate_requires_persisted_owned_status_and_sessionless_completion_
         .unwrap();
     let calls = fixture.gates.calls.lock().unwrap().len();
     assert!(
-        fixture
-            .engine
-            .step(fixture.task.id, BTreeMap::new())
-            .await
-            .unwrap_err()
-            .to_string()
-            .contains("persisted owned Session")
+        matches!(fixture.engine.step(fixture.task.id, BTreeMap::new()).await.unwrap(), StepResult::Waiting { reason, .. } if reason.contains("persisted owned Session"))
     );
     assert_eq!(fixture.gates.calls.lock().unwrap().len(), calls);
 
@@ -3440,5 +3462,269 @@ async fn cancelled_unknown_gate_keeps_project_reserved_after_goal_terminal() {
             .unwrap_err()
             .to_string()
             .contains("active records")
+    );
+}
+
+#[tokio::test]
+async fn resumed_round_claim_never_replays_prior_outcome_during_poll_restart_or_cancel() {
+    for cancelled in [false, true] {
+        let fixture = Fixture::new(WorkflowClass::Standard);
+        fixture
+            .engine
+            .initialize(fixture.task.id, None)
+            .await
+            .unwrap();
+        fixture.through(Phase::Pr).await;
+        fixture.gates.waiting.store(true, Ordering::SeqCst);
+        assert!(matches!(
+            fixture
+                .engine
+                .step(fixture.task.id, BTreeMap::new())
+                .await
+                .unwrap(),
+            StepResult::Waiting {
+                phase: Phase::MergeGate,
+                ..
+            }
+        ));
+        fixture.gates.waiting.store(false, Ordering::SeqCst);
+        let hold = Arc::new(Notify::new());
+        *fixture.gates.hold.lock().unwrap() = Some(hold.clone());
+        let engine = fixture.engine.clone();
+        let id = fixture.task.id;
+        let pending = tokio::spawn(async move { engine.resume_gate(id).await });
+        fixture.gates.entered.notified().await;
+        let snapshot = fixture.engine.snapshot(id).unwrap();
+        let index = snapshot.active.unwrap();
+        assert_eq!(snapshot.history[index].claimed_observations, 1);
+        assert_eq!(snapshot.history[index].observations.len(), 1);
+        assert!(super::known_gate_observation(&snapshot.history[index]).is_none());
+        let calls = fixture.gates.calls.lock().unwrap().len();
+        assert!(
+            matches!(fixture.engine.step(id, BTreeMap::new()).await.unwrap(), StepResult::Waiting { reason, .. } if reason.contains("explicit recovery"))
+        );
+        let restarted = WorkflowEngine::new(
+            fixture.store.clone(),
+            fixture.engine.registry.clone(),
+            fixture.config.clone(),
+            fixture.sources.clone(),
+            fixture.gates.clone(),
+        )
+        .unwrap();
+        assert!(
+            matches!(restarted.step(id, BTreeMap::new()).await.unwrap(), StepResult::Waiting { reason, .. } if reason.contains("explicit recovery"))
+        );
+        if cancelled {
+            fixture
+                .engine
+                .cancel(id, "cancel in-flight resumed round".into())
+                .unwrap();
+            assert!(
+                fixture
+                    .engine
+                    .release_terminal_reservation(
+                        id,
+                        "old Waiting must not prove current outcome".into()
+                    )
+                    .unwrap_err()
+                    .to_string()
+                    .contains("unknown external outcome")
+            );
+        }
+        hold.notify_one();
+        let result = pending.await.unwrap();
+        if cancelled {
+            assert!(result.unwrap_err().to_string().contains("Task terminal"));
+        } else {
+            assert!(matches!(
+                result.unwrap(),
+                StepResult::Completed {
+                    phase: Phase::MergeGate
+                }
+            ));
+        }
+        assert_eq!(fixture.gates.calls.lock().unwrap().len(), calls);
+        let snapshot = fixture.engine.snapshot(id).unwrap();
+        assert_eq!(snapshot.history[index].observations.len(), 2);
+        assert!(matches!(
+            snapshot.history[index].observations[1].outcome,
+            Some(GateOutcome::Passed(_))
+        ));
+        let events = fixture
+            .store
+            .lock()
+            .unwrap()
+            .events(&fixture.task.scope(), 0, 10000)
+            .unwrap();
+        assert!(events.iter().any(|e| e.kind == "workflow.gate_observed"
+            && e.data["observation"]["outcome"]["Passed"]["phase"] == "merge_gate"));
+        assert!(
+            snapshot.history[index]
+                .observations
+                .iter()
+                .all(|o| o.sources.payload.is_empty())
+        );
+        if cancelled {
+            fixture
+                .engine
+                .release_terminal_reservation(id, "known completed second round".into())
+                .unwrap();
+        }
+    }
+}
+
+#[tokio::test]
+async fn rejected_review_cancel_releases_only_verified_terminal_attempt_and_project() {
+    let fixture = Fixture::new(WorkflowClass::Quick);
+    fixture
+        .engine
+        .initialize(fixture.task.id, None)
+        .await
+        .unwrap();
+    fixture.through(Phase::Tests).await;
+    fixture.gates.approved.store(false, Ordering::SeqCst);
+    assert!(matches!(
+        fixture
+            .engine
+            .step(fixture.task.id, BTreeMap::new())
+            .await
+            .unwrap(),
+        StepResult::Started { .. }
+    ));
+    assert!(matches!(
+        fixture
+            .engine
+            .step(fixture.task.id, BTreeMap::new())
+            .await
+            .unwrap(),
+        StepResult::Failed {
+            phase: Phase::ImplementationReview,
+            ..
+        }
+    ));
+    fixture
+        .engine
+        .cancel(
+            fixture.task.id,
+            "rejected review explicitly abandoned".into(),
+        )
+        .unwrap();
+    fixture
+        .engine
+        .release_terminal_reservation(fixture.task.id, "review native already Exited".into())
+        .unwrap();
+    let snapshot = fixture.engine.snapshot(fixture.task.id).unwrap();
+    assert!(snapshot.active.is_none());
+    assert_eq!(
+        snapshot.history.last().unwrap().state,
+        AttemptState::Interrupted
+    );
+    let mut store = fixture.store.lock().unwrap();
+    let mut goal = store.goal(fixture.task.goal_id).unwrap().unwrap();
+    goal.state = GoalState::Cancelled;
+    store.put_goal(&mut goal).unwrap();
+    let mut project = store.project(fixture.project.id).unwrap().unwrap();
+    project.state = ProjectState::Removed;
+    store.put_project(&mut project).unwrap();
+}
+
+#[tokio::test]
+async fn persisted_status_mismatch_is_durable_waiting_without_gate_or_rebinding() {
+    let fixture = Fixture::new(WorkflowClass::Quick);
+    fixture
+        .engine
+        .initialize(fixture.task.id, None)
+        .await
+        .unwrap();
+    fixture.through(Phase::Worktree).await;
+    let StepResult::Started {
+        session: Some(id), ..
+    } = fixture
+        .engine
+        .step(fixture.task.id, BTreeMap::new())
+        .await
+        .unwrap()
+    else {
+        panic!("native required")
+    };
+    fixture
+        .executor
+        .status(SessionRef {
+            id,
+            scope: fixture.task.scope(),
+        })
+        .await
+        .unwrap();
+    {
+        let mut store = fixture.store.lock().unwrap();
+        let (mut saved, version) = store.session(id).unwrap().unwrap();
+        saved.state = SessionState::Lost;
+        store.put_session(&saved, version).unwrap();
+    }
+    let calls = fixture.gates.calls.lock().unwrap().len();
+    assert!(
+        matches!(fixture.engine.step(fixture.task.id, BTreeMap::new()).await.unwrap(), StepResult::Waiting { reason, .. } if reason.contains("status differs"))
+    );
+    let snapshot = fixture.engine.snapshot(fixture.task.id).unwrap();
+    assert!(
+        snapshot.history[snapshot.active.unwrap()]
+            .detail
+            .as_ref()
+            .unwrap()
+            .contains("recovery required")
+    );
+    let version = fixture
+        .store
+        .lock()
+        .unwrap()
+        .records(&fixture.task.scope(), RecordKind::Workflow)
+        .unwrap()[0]
+        .version;
+    fixture
+        .engine
+        .step(fixture.task.id, BTreeMap::new())
+        .await
+        .unwrap();
+    assert_eq!(
+        fixture
+            .store
+            .lock()
+            .unwrap()
+            .records(&fixture.task.scope(), RecordKind::Workflow)
+            .unwrap()[0]
+            .version,
+        version
+    );
+    assert_eq!(fixture.gates.calls.lock().unwrap().len(), calls);
+    assert_eq!(
+        fixture
+            .store
+            .lock()
+            .unwrap()
+            .session(id)
+            .unwrap()
+            .unwrap()
+            .0
+            .state,
+        SessionState::Lost
+    );
+}
+
+#[test]
+fn project_risk_recommendation_can_strengthen_but_cannot_weaken_runtime_mapping() {
+    let runtime = Config::default();
+    let selected = runtime
+        .with_project_text("[workflow]\nrisk_mapping = ['QUICK','QUICK','QUICK','QUICK']")
+        .unwrap();
+    assert_eq!(
+        selected.workflow.risk_mapping,
+        runtime.workflow.risk_mapping
+    );
+    let strengthened = runtime
+        .with_project_text("[workflow]\nrisk_mapping = ['STRICT','STRICT','STRICT','STRICT']")
+        .unwrap();
+    assert_eq!(
+        strengthened.workflow.risk_mapping,
+        [WorkflowClass::Strict; 4]
     );
 }

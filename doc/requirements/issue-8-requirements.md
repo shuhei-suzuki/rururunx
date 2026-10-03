@@ -50,3 +50,10 @@ into duplicate operations; drift holds them for explicit reconciliation. Cleanup
 uses frozen pre-disposal authority. Cancellation under inactive owners must remain
 possible, and only verified termination can close its retained reservation. Both public
 audit APIs reserve engine-owned factual journal kinds.
+
+Each resumed evaluation round must own a distinct exact observation claim. Concurrent
+polling, restart or cancellation cannot resolve it using a prior round's outcome; the
+actual current result is journaled once and required for completion. Terminal rejected
+reviews must support verified reservation release. Irreversible holds must be durable,
+with explicit Issue #13 reconciliation remaining pending. Observation audit metadata
+must retain authority digests rather than duplicate Context Pack source payloads.

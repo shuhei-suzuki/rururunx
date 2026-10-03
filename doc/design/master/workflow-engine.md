@@ -359,3 +359,15 @@ Cancel/fail decisions are conservative under inactive Goals or Blocked Projects;
 terminal reservation release keeps Task/decision/context/evidence immutable and requires
 owned persisted termination plus all executor/Lost fences. Unknown outcomes or unbound
 dispatch stay reserved. General workflow progression cannot resurrect terminal Tasks.
+
+An evaluation claim binds the exact prior observation count. The private observer
+appends exactly one scope/phase/generation/Session/ContextVersion-bound outcome at that
+index; poll/restart/release/invalidation use only the current claim's result, never a
+prior resumed round. Completion requires that actual Passed evidence. Unknown in-flight
+resumed claims stay reserved, including after cancellation. Terminal ordinary Failed
+attempts can close as Interrupted only for the immutable decision with native fences.
+Durable irreversible holds publish held_reason/WaitingHuman/blocker and await actual
+[Issue #13](https://github.com/shuhei-suzuki/rururunx/issues/13) outcome reconciliation.
+Observation/audit metadata retain authority digests without copied Context Pack text.
+Cleanup freezes the reserved class/phases, independent of later runtime policy capture.
+Project risk-mapping recommendations can strengthen but cannot weaken runtime mappings.

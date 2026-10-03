@@ -186,7 +186,9 @@ impl Config {
             self.workflow.default = default;
         }
         if let Some(mapping) = project.workflow.risk_mapping {
-            self.workflow.risk_mapping = mapping;
+            for (baseline, configured) in self.workflow.risk_mapping.iter_mut().zip(mapping) {
+                *baseline = (*baseline).max(configured);
+            }
         }
         if let Some(browser) = project.workflow.browser_verification {
             self.workflow.browser_verification = browser;
