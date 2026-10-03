@@ -16,7 +16,7 @@ use super::{
     policy::{DecisionPolicy, native_environment, provider_environment, verify_auth_readiness},
     protocol::{
         ApprovalLedger, Event, NativeRpc, OperationDecision, RpcId, TokenCounters, UsageTracker,
-        failure,
+        failure, operation_paths,
     },
     transport::NativeServer,
 };
@@ -84,6 +84,7 @@ struct DecisionRequest {
     native_turn: String,
     request_id: RpcId,
     decision: OperationDecision,
+    operation_hash: String,
 }
 struct Reply {
     request: DecisionRequest,
@@ -656,7 +657,10 @@ impl CodexAdapter {
         let (reply, replies) = mpsc::channel(16);
         let evidence = Arc::new(Mutex::new(Evidence {
             turn: Some(turn.clone()),
-            pending: Some(ApprovalLedger::new(thread.clone(), turn.clone())),
+            pending: Some(
+                ApprovalLedger::new(thread.clone(), turn.clone())
+                    .for_workspace(request.worktree.clone()),
+            ),
             ..Evidence::default()
         }));
         {
@@ -862,7 +866,7 @@ impl AgentAdapter for CodexAdapter {
             let request: DecisionRequest = serde_json::from_value(decision).map_err(|_| {
                 failure(
                     ErrorKind::InvalidInput,
-                    "native approval reply needs exact turn/request ID and one operation decision",
+                    "native approval reply needs exact turn/request ID, reviewed operation digest and one operation decision",
                 )
             })?;
             if self.current(&session)?.terminal() {
@@ -1031,9 +1035,19 @@ async fn answer_approval(
             .pending
             .as_ref()
             .ok_or_else(|| failure(ErrorKind::SessionLost, "native approval ledger unavailable"))?;
-        pending.preview_reply(&reply.request.request_id, reply.request.decision)
+        let request = pending.request(&reply.request.request_id)?;
+        if request.operation_hash != reply.request.operation_hash {
+            return Err(failure(
+                ErrorKind::OwnershipMismatch,
+                "native reply does not match the reviewed operation digest",
+            ));
+        }
+        Ok((
+            pending.preview_reply(&reply.request.request_id, reply.request.decision)?,
+            request,
+        ))
     })();
-    let preview = match preview {
+    let (preview, operation) = match preview {
         Ok(preview) => preview,
         Err(error) => {
             let _ = reply.result.send(Err(error));
@@ -1042,6 +1056,64 @@ async fn answer_approval(
     };
     if matches!(reply.request.decision, OperationDecision::Approve) {
         let preflight = async {
+            let paths = operation_paths(&operation, &authority.request.worktree)?;
+            let workspace = authority.request.worktree.clone();
+            filesystem(move || {
+                use std::os::unix::fs::MetadataExt;
+                let canonical = workspace.canonicalize().map_err(|_| {
+                    failure(
+                        ErrorKind::OwnershipMismatch,
+                        "native operation workspace unavailable",
+                    )
+                })?;
+                for path in paths {
+                    let mut ancestor = path.as_path();
+                    loop {
+                        match std::fs::symlink_metadata(ancestor) {
+                            Ok(metadata) => {
+                                if metadata.is_file() && metadata.nlink() > 1 {
+                                    return Err(failure(
+                                        ErrorKind::OwnershipMismatch,
+                                        "native operation target has unscoped hard-link aliases",
+                                    ));
+                                }
+                                if !ancestor
+                                    .canonicalize()
+                                    .map_err(|_| {
+                                        failure(
+                                            ErrorKind::OwnershipMismatch,
+                                            "native operation target resolution unavailable",
+                                        )
+                                    })?
+                                    .starts_with(&canonical)
+                                {
+                                    return Err(failure(
+                                        ErrorKind::OwnershipMismatch,
+                                        "native operation target resolves outside its workspace",
+                                    ));
+                                }
+                                break;
+                            }
+                            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                                ancestor = ancestor.parent().ok_or_else(|| {
+                                    failure(
+                                        ErrorKind::OwnershipMismatch,
+                                        "native operation target has no scoped ancestor",
+                                    )
+                                })?;
+                            }
+                            Err(_) => {
+                                return Err(failure(
+                                    ErrorKind::OwnershipMismatch,
+                                    "native operation target metadata unavailable",
+                                ));
+                            }
+                        }
+                    }
+                }
+                Ok(())
+            })
+            .await?;
             authority
                 .snapshot
                 .verify_binding(
@@ -1081,7 +1153,7 @@ async fn answer_approval(
             if version != reservation.version || serde_json::to_value(persisted).ok() != serde_json::to_value(&reservation.session).ok() {
                 return Err(failure(ErrorKind::StateConflict, "native approval owner changed before reply"));
             }
-            let data = json!({"session_id":reservation.session.id,"native_uuid":reservation.session.native_ref,"native_turn":reply.request.native_turn,"request_id":reply.request.request_id,"reply":preview,"effect":"intent_only"});
+            let data = json!({"session_id":reservation.session.id,"native_uuid":reservation.session.native_ref,"native_turn":reply.request.native_turn,"request_id":reply.request.request_id,"operation_hash":operation.operation_hash,"reply":preview,"effect":"intent_only"});
             if matches!(reply.request.decision, OperationDecision::Approve) {
                 store.audit_if_current(&reservation.session.scope, [authority.snapshot.project.version, authority.snapshot.goal.as_ref().expect("Executor Goal validated").version, authority.snapshot.task.as_ref().expect("Executor Task validated").version], "codex.approval.reply_intent", data)
             } else {
@@ -1195,6 +1267,13 @@ async fn supervise(
                 reservation.publish(&sender, &mut status)
             })();
             if let Err(error) = pending {
+                // Explicit unsupported native requests receive a bounded decline,
+                // rather than waiting indefinitely for a human-input API we lack.
+                if error.kind == ErrorKind::UnsupportedCapability {
+                    let _=reservation.store.lock().map_err(|_|failure(ErrorKind::StateFailure,"state store poisoned"))
+                        .and_then(|mut store|store.audit(&reservation.session.scope,"codex.request.unsupported",json!({"session_id":reservation.session.id,"native_uuid":reservation.session.native_ref,"native_turn":turn,"request_id":id,"native_method":method,"params":params,"effect":"no_grant"})).map_err(|audit|failure(ErrorKind::StateFailure,audit.to_string())));
+                    let _=native.rpc.send(json!({"id":id,"error":{"code":-32601,"message":"Native request unsupported by this runtime route"}})).await;
+                }
                 break Err(error);
             }
             continue;
@@ -1203,14 +1282,22 @@ async fn supervise(
             if resumed_usage(&event, &thread, previous_turn.as_deref(), &mut tracker)? {
                 return Ok(None);
             }
-            session_event(
-                event,
+            let outcome = session_event(
+                event.clone(),
                 &thread,
                 &turn,
                 &mut tracker,
                 &mut status,
                 reservation.session.role == SessionRole::Executor,
-            )
+            )?;
+            observe_approval_notification(
+                &event,
+                &evidence,
+                &mut reservation,
+                &sender,
+                &mut status,
+            )?;
+            Ok(outcome)
         }) {
             Ok(Some(completed)) => break Ok(completed),
             Ok(None) => {
@@ -1247,6 +1334,74 @@ async fn supervise(
         }
     }
     sender.send_replace(status);
+}
+
+fn observe_approval_notification(
+    event: &Event,
+    evidence: &Arc<Mutex<Evidence>>,
+    reservation: &mut Reservation,
+    sender: &watch::Sender<SessionStatus>,
+    status: &mut SessionStatus,
+) -> AdapterResult<()> {
+    let Event::Notification { method, params } = event else {
+        return Ok(());
+    };
+    let (retired, empty) = {
+        let mut evidence = evidence
+            .lock()
+            .map_err(|_| failure(ErrorKind::StateFailure, "native approval state poisoned"))?;
+        let Some(ledger) = evidence.pending.as_mut() else {
+            return Ok(());
+        };
+        let retired = match method.as_str() {
+            "item/started" => {
+                ledger.observe_item(&params["item"])?;
+                vec![]
+            }
+            "item/completed" => {
+                ledger.retire_item(params["item"]["id"].as_str().ok_or_else(|| {
+                    failure(
+                        ErrorKind::ParseFailure,
+                        "completed native item identity unavailable",
+                    )
+                })?)
+            }
+            "serverRequest/resolved" => {
+                if params["threadId"] != reservation.session.native_ref.as_deref().unwrap_or("") {
+                    return Err(failure(
+                        ErrorKind::OwnershipMismatch,
+                        "foreign native request resolution",
+                    ));
+                }
+                let id: RpcId =
+                    serde_json::from_value(params["requestId"].clone()).map_err(|_| {
+                        failure(
+                            ErrorKind::ParseFailure,
+                            "native resolution request identity unavailable",
+                        )
+                    })?;
+                ledger.retire(&id).into_iter().collect()
+            }
+            "turn/completed" => ledger.retire_turn(),
+            _ => vec![],
+        };
+        (retired, ledger.is_empty())
+    };
+    if !retired.is_empty() {
+        reservation.store.lock().map_err(|_|failure(ErrorKind::StateFailure,"state store poisoned"))?
+            .audit(&reservation.session.scope,"codex.approval.retired",json!({"session_id":reservation.session.id,"native_uuid":reservation.session.native_ref,"native_method":method,"requests":retired.iter().map(|request|json!({"request_id":request.id,"operation_hash":request.operation_hash})).collect::<Vec<_>>(),"effect":"no_runtime_reply"}))
+            .map_err(|error|failure(ErrorKind::StateFailure,error.to_string()))?;
+        if empty
+            && matches!(
+                reservation.session.state,
+                SessionState::WaitingHuman | SessionState::WaitingApproval
+            )
+        {
+            reservation.session.state = SessionState::Running;
+            reservation.publish(sender, status)?;
+        }
+    }
+    Ok(())
 }
 
 /// Native resume can report the already completed, owned prior turn's counters.
@@ -1312,7 +1467,9 @@ fn session_event(
                 ));
             }
             match params["item"]["type"].as_str() {
-                Some("agentMessage" | "userMessage" | "reasoning" | "plan") => {}
+                Some(
+                    "agentMessage" | "userMessage" | "reasoning" | "plan" | "contextCompaction",
+                ) => {}
                 Some("commandExecution" | "fileChange") if execute => {}
                 _ => {
                     return Err(failure(
@@ -1342,7 +1499,34 @@ fn session_event(
             return Ok(Some(true));
         }
         "error" => {
+            if params["threadId"] != thread || params["turnId"] != turn {
+                return Err(failure(
+                    ErrorKind::OwnershipMismatch,
+                    "native error lacks exact thread/turn identity",
+                ));
+            }
+            if params["willRetry"] == true {
+                return Ok(None);
+            }
             return Err(native_turn_error(&params["error"]));
+        }
+        "thread/started" => {
+            if params["thread"]["id"] != thread
+                || params["thread"]["cwd"].as_str() != status.session.worktree.to_str()
+            {
+                return Err(failure(
+                    ErrorKind::OwnershipMismatch,
+                    "native thread announcement is not its owning workspace",
+                ));
+            }
+        }
+        "turn/started" => {
+            if params["threadId"] != thread || params["turn"]["id"] != turn {
+                return Err(failure(
+                    ErrorKind::OwnershipMismatch,
+                    "native turn announcement has foreign identity",
+                ));
+            }
         }
         _ => {}
     }
@@ -1515,8 +1699,9 @@ mod tests {
             reservation.persist().unwrap();
             status.session = reservation.session.clone();
             let (sender, _) = watch::channel(status.clone());
-            let mut pending = ApprovalLedger::new("thread".into(), "turn".into());
-            pending.insert(RpcId::Number(1), "item/commandExecution/requestApproval".into(), json!({"threadId":"thread","turnId":"turn","itemId":"item","command":"exact native operation"})).unwrap();
+            let mut pending = ApprovalLedger::new("thread".into(), "turn".into())
+                .for_workspace(owned.request.worktree.clone());
+            pending.insert(RpcId::Number(1), "item/commandExecution/requestApproval".into(), json!({"threadId":"thread","turnId":"turn","itemId":"item","command":"exact native operation","cwd":owned.request.worktree})).unwrap();
             let evidence = Arc::new(Mutex::new(Evidence {
                 turn: Some("turn".into()),
                 pending: Some(pending),
@@ -1537,7 +1722,19 @@ mod tests {
                 status,
             }
         }
-        async fn answer(&mut self, rpc: &mut NativeRpc, reply: Reply) -> AdapterResult<bool> {
+        async fn answer(&mut self, rpc: &mut NativeRpc, mut reply: Reply) -> AdapterResult<bool> {
+            if reply.request.operation_hash == "fixture-current-operation"
+                && let Ok(request) = self
+                    .evidence
+                    .lock()
+                    .unwrap()
+                    .pending
+                    .as_ref()
+                    .unwrap()
+                    .request(&reply.request.request_id)
+            {
+                reply.request.operation_hash = request.operation_hash;
+            }
             answer_approval(
                 rpc,
                 &mut self.reservation,
@@ -1758,6 +1955,7 @@ mod tests {
                     native_turn: turn.into(),
                     request_id: RpcId::Number(1),
                     decision,
+                    operation_hash: "fixture-current-operation".into(),
                 },
                 result,
             },
@@ -2010,6 +2208,126 @@ mod tests {
         drop(rpc);
         peer.abort();
     }
+    #[tokio::test]
+    async fn native_resolution_retires_the_pending_operation_without_sending_a_runtime_reply() {
+        let mut fixture = ApprovalFixture::new(true).await;
+        let resolved = Event::Notification {
+            method: "serverRequest/resolved".into(),
+            params: json!({"threadId":"thread","requestId":1}),
+        };
+        observe_approval_notification(
+            &resolved,
+            &fixture.evidence,
+            &mut fixture.reservation,
+            &fixture.sender,
+            &mut fixture.status,
+        )
+        .unwrap();
+        assert_eq!(fixture.status.session.state, SessionState::Running);
+        let audits = fixture
+            .reservation
+            .store
+            .lock()
+            .unwrap()
+            .events(&fixture.status.session.scope, 0, 1000)
+            .unwrap();
+        assert!(
+            audits
+                .iter()
+                .any(|audit| audit.kind == "codex.approval.retired"
+                    && audit.data["effect"] == "no_runtime_reply")
+        );
+        let (mut rpc, mut wire, peer) = rpc_peer().await;
+        let (answer, result) = reply(OperationDecision::Approve, "turn");
+        assert!(!fixture.answer(&mut rpc, answer).await.unwrap());
+        assert_eq!(
+            result.await.unwrap().unwrap_err().kind,
+            ErrorKind::OwnershipMismatch
+        );
+        assert_eq!(fixture.intents(), 0);
+        assert!(wire.try_recv().is_err());
+        drop(rpc);
+        peer.abort();
+    }
+    #[tokio::test]
+    async fn wrong_operation_digest_cannot_claim_the_native_request() {
+        let mut fixture = ApprovalFixture::new(true).await;
+        let (mut rpc, mut wire, peer) = rpc_peer().await;
+        let (mut answer, result) = reply(OperationDecision::Approve, "turn");
+        answer.request.operation_hash = "another-operation-digest".into();
+        assert!(!fixture.answer(&mut rpc, answer).await.unwrap());
+        assert_eq!(
+            result.await.unwrap().unwrap_err().kind,
+            ErrorKind::OwnershipMismatch
+        );
+        assert_eq!(fixture.intents(), 0);
+        assert!(wire.try_recv().is_err());
+        assert!(
+            !fixture
+                .evidence
+                .lock()
+                .unwrap()
+                .pending
+                .as_ref()
+                .unwrap()
+                .is_empty()
+        );
+        drop(rpc);
+        peer.abort();
+    }
+    #[tokio::test]
+    async fn native_patch_grant_rejects_symlink_and_hard_link_targets_outside_the_task() {
+        use std::os::unix::fs::symlink;
+        for hard_link in [false, true] {
+            let mut fixture = ApprovalFixture::new(true).await;
+            let outside = fixture
+                .authority
+                .snapshot
+                .project
+                .root
+                .join("outside-task-file");
+            std::fs::write(&outside, "isolated fixture sentinel").unwrap();
+            let alias = fixture.authority.request.worktree.join("alias");
+            if hard_link {
+                std::fs::hard_link(&outside, &alias).unwrap();
+            } else {
+                symlink(&outside, &alias).unwrap();
+            }
+            let mut ledger = ApprovalLedger::new("thread".into(), "turn".into())
+                .for_workspace(fixture.authority.request.worktree.clone());
+            ledger.observe_item(&json!({"id":"item","type":"fileChange","changes":[{"path":"alias","diff":"proposed patch","kind":{"type":"update","move_path":null}}]})).unwrap();
+            ledger
+                .insert(
+                    RpcId::Number(1),
+                    "item/fileChange/requestApproval".into(),
+                    json!({"threadId":"thread","turnId":"turn","itemId":"item"}),
+                )
+                .unwrap();
+            fixture.evidence.lock().unwrap().pending = Some(ledger);
+            let (mut rpc, mut wire, peer) = rpc_peer().await;
+            let (answer, result) = reply(OperationDecision::Approve, "turn");
+            assert!(!fixture.answer(&mut rpc, answer).await.unwrap());
+            assert_eq!(
+                result.await.unwrap().unwrap_err().kind,
+                ErrorKind::OwnershipMismatch
+            );
+            assert_eq!(fixture.intents(), 0);
+            assert!(wire.try_recv().is_err());
+            assert_eq!(
+                std::fs::read_to_string(&outside).unwrap(),
+                "isolated fixture sentinel"
+            );
+            let (denial, result) = reply(OperationDecision::Deny, "turn");
+            assert!(!fixture.answer(&mut rpc, denial).await.unwrap());
+            result.await.unwrap().unwrap();
+            assert_eq!(
+                wire.recv().await.unwrap(),
+                json!({"id":1,"result":{"decision":"decline"}})
+            );
+            drop(rpc);
+            peer.abort();
+        }
+    }
     fn status() -> SessionStatus {
         SessionStatus {
             session: Session {
@@ -2159,6 +2477,40 @@ mod tests {
                 .kind,
             ErrorKind::OwnershipMismatch
         );
+    }
+    #[test]
+    fn retrying_native_errors_do_not_end_the_turn_and_embedded_start_ids_are_checked() {
+        let mut status = status();
+        let mut tracker = UsageTracker::new("thread".into(), "turn".into());
+        let event = Event::Notification {
+            method: "error".into(),
+            params: json!({"threadId":"thread","turnId":"turn","willRetry":true,"error":{"codexErrorInfo":"serverOverloaded"}}),
+        };
+        assert_eq!(
+            decision_event(event, "thread", "turn", &mut tracker, &mut status).unwrap(),
+            None
+        );
+        for event in [
+            Event::Notification {
+                method: "thread/started".into(),
+                params: json!({"thread":{"id":"foreign","cwd":status.session.worktree}}),
+            },
+            Event::Notification {
+                method: "turn/started".into(),
+                params: json!({"threadId":"thread","turn":{"id":"foreign"}}),
+            },
+            Event::Notification {
+                method: "error".into(),
+                params: json!({"willRetry":false,"error":{"codexErrorInfo":"unauthorized"}}),
+            },
+        ] {
+            assert_eq!(
+                decision_event(event, "thread", "turn", &mut tracker, &mut status)
+                    .unwrap_err()
+                    .kind,
+                ErrorKind::OwnershipMismatch
+            );
+        }
     }
     #[test]
     fn resume_accepts_only_validated_owned_previous_usage_without_recounting_it() {
