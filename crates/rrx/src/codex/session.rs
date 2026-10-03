@@ -524,6 +524,16 @@ impl CodexAdapter {
             &snapshot.project,
             &request.environment,
         )?;
+        let version = crate::adapter::bounded_git(
+            &executable,
+            &request.worktree,
+            &["--version".into()],
+            environment.clone(),
+            tokio::time::Instant::now() + std::time::Duration::from_secs(5),
+            reservation.ownership.group(),
+        )
+        .await?;
+        super::protocol::verify_native_version(&version)?;
         let mut discovery = NativeServer::launch(
             &executable,
             &request.worktree,

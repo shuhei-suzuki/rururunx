@@ -21,6 +21,51 @@ const MAX_QUEUED: usize = 128;
 const MAX_QUEUED_BYTES: usize = 8 * 1024 * 1024;
 const RPC_TIMEOUT: Duration = Duration::from_secs(30);
 
+pub(super) fn verify_native_version(version: &str) -> AdapterResult<()> {
+    // Experimental native permission/IPC semantics are conformed against this
+    // installed version. Unknown binaries need fresh conformance, not inference.
+    if version != "codex-cli 0.160.0" {
+        return Err(failure(
+            ErrorKind::UnsupportedCapability,
+            "native Codex version has no verified scoped protocol conformance",
+        ));
+    }
+    Ok(())
+}
+
+fn verify_initialize(response: &Value) -> AdapterResult<()> {
+    let text = |key: &str, bound: usize| {
+        response[key]
+            .as_str()
+            .filter(|value| !value.is_empty() && value.len() <= bound && !value.contains('\0'))
+            .ok_or_else(|| {
+                failure(
+                    ErrorKind::ParseFailure,
+                    "native initialize metadata is missing or malformed",
+                )
+            })
+    };
+    let home = Path::new(text("codexHome", 4096)?);
+    if !home.is_absolute()
+        || home
+            .components()
+            .any(|part| matches!(part, Component::ParentDir | Component::CurDir))
+    {
+        return Err(failure(
+            ErrorKind::ParseFailure,
+            "native initialize home is not an absolute normalized path",
+        ));
+    }
+    text("userAgent", 4096)?;
+    if text("platformFamily", 32)? != "unix" || text("platformOs", 32)? != std::env::consts::OS {
+        return Err(failure(
+            ErrorKind::UnsupportedCapability,
+            "native initialize platform is incompatible with this local supervisor",
+        ));
+    }
+    Ok(())
+}
+
 pub(super) fn failure(kind: ErrorKind, message: impl Into<String>) -> AdapterError {
     AdapterError {
         kind,
@@ -265,7 +310,10 @@ impl NativeRpc {
         }
     }
     pub async fn initialize(&mut self) -> AdapterResult<()> {
-        self.call("initialize", json!({"clientInfo":{"name":"rururunx","title":"rururunx scoped native session","version":env!("CARGO_PKG_VERSION")},"capabilities":{"experimentalApi":true}})).await?;
+        let response = self.call("initialize", json!({"clientInfo":{"name":"rururunx","title":"rururunx scoped native session","version":env!("CARGO_PKG_VERSION")},"capabilities":{"experimentalApi":true}})).await?;
+        // userAgent is not assumed to report a binary version or authenticate a
+        // peer. The separate owned --version process and IPC peer check do that.
+        verify_initialize(&response)?;
         self.send(json!({"method":"initialized","params":{}})).await
     }
 }
@@ -858,6 +906,40 @@ impl UsageTracker {
 mod tests {
     use super::*;
     use tokio_tungstenite::accept_async;
+
+    #[test]
+    fn unverified_versions_and_invalid_initialize_contracts_never_reach_native_turns() {
+        verify_native_version("codex-cli 0.160.0").unwrap();
+        for version in [
+            "codex-cli 0.159.0",
+            "codex-cli 0.160.1",
+            "",
+            "codex-cli 0.160.0 trailing",
+        ] {
+            assert_eq!(
+                verify_native_version(version).unwrap_err().kind,
+                ErrorKind::UnsupportedCapability
+            );
+        }
+        let valid = json!({"codexHome":"/native/home","platformFamily":"unix","platformOs":std::env::consts::OS,"userAgent":"rururunx/0.1.0"});
+        verify_initialize(&valid).unwrap();
+        for key in ["codexHome", "platformFamily", "platformOs", "userAgent"] {
+            let mut missing = valid.clone();
+            missing.as_object_mut().unwrap().remove(key);
+            assert!(verify_initialize(&missing).is_err());
+        }
+        for home in ["relative", "/home/../other", "", "/home\0other"] {
+            let mut invalid = valid.clone();
+            invalid["codexHome"] = json!(home);
+            assert!(verify_initialize(&invalid).is_err());
+        }
+        let mut invalid = valid;
+        invalid["platformOs"] = json!("foreign-os");
+        assert_eq!(
+            verify_initialize(&invalid).unwrap_err().kind,
+            ErrorKind::UnsupportedCapability
+        );
+    }
 
     fn request() -> Value {
         json!({"threadId":"own-thread","turnId":"own-turn","itemId":"item-1","command":"supplied exact operation","cwd":"/own"})
