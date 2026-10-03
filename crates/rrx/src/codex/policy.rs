@@ -117,10 +117,10 @@ impl DecisionPolicy {
         let mut filesystem = effective["permissions"][PROFILE]["filesystem"].clone();
         // Installed config/read normalizes the optional scan-depth metadata to
         // null. It is not an extra path grant; every actual path rule still matches.
-        if let Some(object) = filesystem.as_object_mut() {
-            if object.get("glob_scan_max_depth") == Some(&Value::Null) {
-                object.remove("glob_scan_max_depth");
-            }
+        if let Some(object) = filesystem.as_object_mut()
+            && object.get("glob_scan_max_depth") == Some(&Value::Null)
+        {
+            object.remove("glob_scan_max_depth");
         }
         if filesystem
             != json!({":root":"deny",":minimal":"read",":slash_tmp":"deny",":tmpdir":"deny",":workspace_roots":{".":"read"}})
