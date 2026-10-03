@@ -28,6 +28,8 @@ A separate Goal Context Pack contains only cross-Task state and must not duplica
 
 Task Context Pack contents include:
 
+- project ID / repository identity
+- goal ID
 - task purpose and acceptance criteria
 - workflow/risk class
 - relevant project rules
@@ -115,6 +117,8 @@ For each review phase, construct a deterministic Review Bundle rather than forwa
 
 Typical contents:
 
+- project ID / repository identity
+- goal ID / task ID
 - immutable commit/revision
 - requirement/design artifacts required for phase
 - relevant project rules
@@ -232,6 +236,8 @@ Invalidation examples:
 - project rule file changed → relevant rule snapshot must refresh
 
 A stale artifact must not be silently reused for a gate whose correctness depends on freshness.
+
+Context artifacts from one Project must never be reused in another Project merely because file paths, Issue numbers, or symbols look similar.
 
 ## 14. Context selection pipeline
 
