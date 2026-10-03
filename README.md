@@ -285,8 +285,9 @@ remain pending. Issue #18 repository-context selection is available independentl
 Issue #41's reviewed requirements specify passive observation of agent preparation
 reservations and release only by their committing owner; implementation is pending.
 Inactive-owner errors, dropped/crashed owners and CAS losses while publishing a
-definitive decision or binding a dispatched Session remain recovery dependencies
-of #14. Retaining a failed decision publication prevents turning an intended
+definitive decision or binding a dispatched Session, untyped/unknown marker
+publication errors, and release CAS/executor-Lost fence failures remain recovery
+dependencies of #14. A marker without a Session does not prove launch began. Retaining a failed decision publication prevents turning an intended
 definitive failure/invalidation into automatic retry. Existing explicit terminal
 reservation recovery stays available under its terminal-Task/dispatch fences.
 External GitHub/irreversible gate outcomes are reconciled by #13.

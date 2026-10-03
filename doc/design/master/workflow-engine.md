@@ -349,7 +349,12 @@ no Task/Workflow/context/audit state. Only the invocation whose reserve committe
 may release its own proven pre-dispatch preparation error, using its exact
 committed Workflow Record identity/version and original attempt. Reservation CAS
 losers never release. Fresh-read CAS preserves concurrent Task metadata and all
-executor/Lost fences. Inactive owners, definitive-decision publication conflicts
+executor/Lost fences. Preparation pins the reserved actor and Task binding; an
+actor override requires release and a new reservation before any dispatch.
+Eligibility ends immediately before fail/invalidate/hold/marker publication,
+including within invalidation helpers. Only a typed pre-commit SnapshotChanged
+marker error can restore it. Inactive owners, definitive-decision publication
+conflicts, untyped/unknown marker errors, release CAS/termination fence failures
 and unknown/dispatched outcomes stay reserved for #14; no native replay occurs.
 EvidencePort claim evaluation remains separate and does not use agent release.
 Explicit cancel/fail decisions retain native/phase reservations until verified recovery.
@@ -388,8 +393,12 @@ Project risk-mapping recommendations can strengthen but cannot weaken runtime ma
 
 Issue #14 must supply trusted recovery proof for orphaned undispatched attempts,
 dropped futures/crashes, inactive-owner preparation errors, definitive-decision
-publication conflicts and post-dispatch Session-binding conflicts; #41 adds no
+publication conflicts, untyped/unknown marker publication outcomes, release
+CAS/executor-Lost fence failures and post-dispatch Session-binding conflicts;
+#41 adds no
 durable owner-absence proof. Unknown reversible Evaluating claims also belong to
 owner/restart recovery14. Ordinary observation must allow evaluation still being
-in flight; #13 remains responsible for irreversible Pr/MergeGate/Cleanup outcomes.
+in flight. A marker without a Session may precede any native launch and does not
+prove launch occurred. #13 remains responsible for irreversible
+Pr/MergeGate/Cleanup outcomes.
 See [Issue #41 design](../issue-41-design.md).
