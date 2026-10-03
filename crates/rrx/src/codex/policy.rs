@@ -155,9 +155,9 @@ impl DecisionPolicy {
         Ok(policy)
     }
     fn restricted_features(&self) -> impl Iterator<Item = &&'static str> {
-        DISABLED_FEATURES
-            .iter()
-            .filter(|feature| !self.execute || !matches!(**feature, "shell_tool" | "unified_exec"))
+        DISABLED_FEATURES.iter().filter(|feature| {
+            !self.execute || !matches!(**feature, "shell_tool" | "unified_exec" | "code_mode_host")
+        })
     }
     fn filesystem(&self) -> Value {
         json!({":root":"deny",":minimal":"read",":slash_tmp":"deny",":tmpdir":"deny",":workspace_roots":{".":if self.execute {"write"} else {"read"}}})
@@ -439,7 +439,7 @@ mod tests {
             !policy
                 .arguments()
                 .iter()
-                .any(|arg| arg == "shell_tool" || arg == "unified_exec")
+                .any(|arg| arg == "shell_tool" || arg == "unified_exec" || arg == "code_mode_host")
         );
         assert_eq!(
             policy.thread_parameters(Path::new("/own"))["approvalPolicy"]["granular"]["sandbox_approval"],
