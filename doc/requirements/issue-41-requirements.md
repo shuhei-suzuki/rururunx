@@ -29,9 +29,10 @@ existing concurrent-step regression; macOS was cancelled through matrix failfast
    plus executor/Lost fences prove safe closure without owner-absence inference.
 5. Dispatched or unknown native outcomes remain reserved. No automatic replay,
    fabricated process death, timeout relaxation or permission change.
-6. Existing final-claim CAS losses retain changed user metadata. A failed owner
-   is distinguishable only through trusted recovery evidence, not a polling
-   snapshot alone.
+6. A typed, pre-commit marker CAS loss for the owning Task row may release only
+   its proven undispatched claim while preserving changed user metadata.
+   Project/Goal/Record version conflicts do not qualify. A failed owner is
+   distinguishable only through trusted recovery evidence, not a polling snapshot.
 7. For Executor/Reviewer attempts only, owner-local release is available only
    after this invocation's own reservation
    commit has returned success, and only for preparation errors without a
@@ -53,6 +54,13 @@ existing concurrent-step regression; macOS was cancelled through matrix failfast
    Process crash and dropped futures remain explicit-recovery cases. A CAS loss
    while publishing a definitive decision retains the reservation for recovery;
    it does not convert the decision into an automatic retry.
+   Disable release eligibility before fail/invalidate/hold and dispatch-marker
+   publication. Only the marker transaction's typed StateGuardError::SnapshotChanged
+   with table `tasks` AND id equal to the owning Task ID proves the rollback that
+   restores eligibility. Marker Project/Goal/Record conflicts, other Task IDs,
+   untyped or unknown marker/commit errors, and every definitive-publication error
+   remain reserved. Release CAS conflicts and executor/Lost fences never retry
+   their release.
 8. Running EvidencePort attempts retain the existing claim-CAS evaluation path;
    its state mutation/port invocation is not covered by requirements 1–4. Unknown
    evaluating claims and irreversible outcomes retain their existing fences.
@@ -74,8 +82,11 @@ existing concurrent-step regression; macOS was cancelled through matrix failfast
     references with the #13 external/irreversible versus #14 owner/restart split.
     Record #14's retained classes explicitly: orphaned undispatched attempts,
     dropped futures/crashes, inactive-owner preparation errors, definitive-decision
-    publication conflicts and post-dispatch Session-binding conflicts. This issue
-    persists no owner-absence evidence; #14 must establish its own trusted proof.
+    publication conflicts, marker Project/Goal/Record-version conflicts (including
+    active-owner metadata edits and lifecycle ABA), untyped/unknown marker errors,
+    release CAS/executor-Lost fence failures and post-dispatch Session-binding
+    conflicts. This issue persists no owner-absence evidence; #14 must establish
+    its own trusted proof.
 
 ## Verification and completion
 
@@ -83,9 +94,12 @@ Pause both actual source-capture awaits after reservation and the adapter-start
 await, observe from the same and a second Engine, verify Task/Workflow versions,
 ContextVersion pointer and audit unchanged, then release and verify exactly one
 adapter launch/Session. A fresh Engine must conservatively retain an orphaned
-undispatched attempt. Owner capture errors and final-claim CAS loss release only
-the proven undispatched owned attempt and let the next step progress; an injected
-release conflict retains Waiting. EvidencePort CAS-loss behavior stays unchanged.
+undispatched attempt. Eligible owner capture errors and only a typed owning-Task-row
+marker CAS loss release the proven undispatched owned attempt and let the next step
+progress. Marker Project/Goal/Record-version conflicts and untyped marker errors retain
+the same reservation, including when owners are active; a release conflict/fence also
+retains it. Verify both the tasks-table and owning Task-ID classification.
+EvidencePort CAS-loss behavior stays unchanged.
 For its claim-CAS loss, assert the active index, history length, retries and
 ContextVersion pointer unchanged, then verify the next step evaluates that same
 attempt. A compiled mutant applying agent release to EvidencePort must fail.

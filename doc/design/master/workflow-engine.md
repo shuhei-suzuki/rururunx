@@ -353,7 +353,8 @@ executor/Lost fences. Preparation pins the reserved actor and Task binding; an
 actor override requires release and a new reservation before any dispatch.
 Eligibility ends immediately before fail/invalidate/hold/marker publication,
 including within invalidation helpers. Only a typed pre-commit owning Task-row
-SnapshotChanged from the marker transaction can restore it. Project/Goal/Record
+SnapshotChanged matching table `tasks` and the owning Task ID from the marker
+transaction can restore it. Project/Goal/Record
 version errors and all definitive-publication errors remain reserved.
 Inactive owners, definitive-decision publication
 conflicts, untyped/unknown marker errors, release CAS/termination fence failures

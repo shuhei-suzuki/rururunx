@@ -41,7 +41,8 @@ decision. Disable eligibility immediately before each non-release persist call:
 fail, invalidate, hold and marker. The private invalidation helper must expose
 this call-site boundary to owned agent preparation, while its other callers keep
 existing behavior. A failed definitive publication must not become a retry.
-Only a typed `StateGuardError::SnapshotChanged` for the owning tasks-table
+Only a typed `StateGuardError::SnapshotChanged` with table `tasks` AND the owning
+Task ID for the marker transaction's Task snapshot
 snapshot from the marker transaction restores eligibility after pre-commit
 rollback. Project/Goal/Record version conflicts retain the reservation for #14,
 even if the latest owners are active. Definitive fail/invalidate/hold publication
@@ -101,7 +102,9 @@ changes or automatic native replay are introduced.
 - Pause and cancel at each held preparation capture. After owner resumes, there
   is no native launch and no release write. Resume after this observed inactivity
   remains held. Also pause, resume, then continue an owner at each main capture:
-  before refresh, active refreshed owners may launch the same claim once; after
+  before refresh, active refreshed owners deterministically return Started with
+  one adapter.start, one bound Session, the same attempt and no Failed/RetryEvent;
+  after
   refresh, marker Goal-version CAS fails and stays held. Neither ordering releases
   or re-reserves a claim merely because of lifecycle ABA. A mutant widening
   eligible marker errors to Project/Goal versions must fail. Record the
@@ -110,10 +113,14 @@ changes or automatic native replay are introduced.
   owner input/write occurs and Interrupted history/decision stay unchanged.
 - Hold adapter.start, cancel, then assert TerminalRecovery refuses the dispatched
   unbound reservation and leaves Task/Record versions unchanged. Hold before the
-  adapter persists any Session and assert its absence. Single removals of the
-  Engine and Store dispatch fences are masked equivalents, without kill credit;
-  removing both must fail this consumer. Resume start: exactly one start
-  call, terminal-Task fence rejects Session binding, no owner release or replay.
+  adapter persists any Session and assert its absence. Engine-only dispatch-fence
+  removal is masked by the Store fence, without kill credit; removing both must
+  fail this consumer. Also call the crate-private Store TerminalRecovery directly:
+  a dispatched unbound attempt is rejected with unchanged Task/Record versions,
+  independently killing Store-only fence removal. Resume start: exactly one start
+  call, Session binding is rejected by overlapping terminal-Task and stale-version
+  fences; do not attribute that rejection uniquely to either fence. No owner release
+  or replay occurs.
 - Hold both source-invalidation branches’ internal capture/pack awaits. Capture
   errors remain eligible until publication; active owners release with no dispatch.
   A second source edit inside invalidation also releases. Pause/cancel there
@@ -151,8 +158,8 @@ changes or automatic native replay are introduced.
   an unknown COMMIT outcome, which remains conservative and explicitly untested.
 - Compiled mutants: premature observer reset/observer writes, owner release
   omission, exact-version check omission, incorrect EvidencePort release,
-  marker-after-start, combined missing Engine/Store TerminalRecovery dispatch
-  fences, retry after
+  marker-after-start, direct missing Store TerminalRecovery dispatch fence,
+  combined missing Engine/Store TerminalRecovery dispatch fences, retry after
   release CAS loss, removed definitive-publication disable, and unknown marker
   error eligibility. Restore exact source and run controls. Document equivalent
   single mutants separately from causal combined mutants; no false killing credit.
@@ -185,6 +192,37 @@ The first three keep their assertions; final-claim changes only its agent path t
 immediate owner release then next Started, preserving the EvidencePort path.
 Existing Issue8 verification remains historical; README/master describe current
 behavior rather than rewriting old evidence. New tests cover entrypoint refusals.
+
+Recovery reference audit in workflow.rs: the post-start acknowledgement comment
+(1018) and unbound dispatch guard (1244) are native/owner recovery #14. Evaluating
+wait (1054), terminal-recovery unknown-outcome guard (1240), and resume_gate comment
+(1408) distinguish reversible owner claims (#14) from PrGate/MergeGate/Cleanup
+irreversible outcomes (#13), using durable phase/state. Native no-Session waits
+(1073–1087) use #14 without asserting interruption. Actual observed external-effect
+drift paths (793/1351/1532/1704/1759) remain #13. No tests parse the unbound-dispatch
+or interrupted-evaluation messages; tests 3463/3624 match only the preserved
+`unknown external outcome` fragment. The existing final-claim test at3186 has an
+agent observer-Invalidated expectation at3217, already explicitly replaced above;
+the other Invalidated expectations refer to policy/source/approval drift and retain
+their behavior.
+
+Project/Goal writer audit: ProjectRegistry::add writes initial registration,
+explicit validated recovery and changed name/config/rules/environment/namespace/
+capacity metadata (project.rs144); reconcile writes Registered-to-Blocked for
+invalid inputs (160); remove soft-removes when Store permits it (265).
+ProjectRegistry::list and resolve/status invoke reconcile, so they can persist
+Blocked transitions and are not unconditional read-only paths. Store::project,
+projects, goal, goals and WorkflowEngine::read snapshot access are pure reads.
+The new agent observer branches are write-free; EvidencePort poll keeps its
+existing Workflow/Task mutation path.
+All current Goal writes use public Store::put_goal: creation and caller-authorized
+metadata/lifecycle updates, including pause/resume; no production Goal CLI/runtime
+writer yet calls it. Workflow Context/Task publication does not write Goal rows.
+Per-Task progress writers in future #23/#24/#27 must avoid routine Goal-version
+bumps or account for the resulting #14 recovery frequency. Any Project/Goal
+metadata or lifecycle version change after refresh can retain a live preparation
+claim even with active owners; #41 preserves this conservative boundary rather
+than introducing a new semantic-version policy.
 
 `WorkflowEngine::step/poll`, shared Workflow reservation consumers, Task metadata
 CAS and StateOnly Store transition validation. Review (#9), Goal/Scheduler
