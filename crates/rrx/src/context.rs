@@ -91,7 +91,12 @@ impl RepositoryMap {
             let path = crate::project::resolve_file(&self.snapshot.project, reference)?;
             let text = self
                 .mandatory
-                .get(&format!("rule:{}", path.display()))
+                .get(&format!(
+                    "rule:{}",
+                    path.strip_prefix(&self.snapshot.project.root)?
+                        .to_str()
+                        .context("rule path is not UTF-8")?
+                ))
                 .context("captured Project rule unavailable")?;
             bytes = bytes
                 .checked_add(

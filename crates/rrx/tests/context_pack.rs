@@ -2928,3 +2928,159 @@ async fn checkpoint_admission_preserves_renderable_mandatory_headroom() {
     assert_eq!(packs.load_checkpoint(&current).unwrap().chain_version, 1);
     packs.draft_task(&f.task.scope(), input()).await.unwrap();
 }
+
+#[tokio::test]
+async fn provider_scoped_configuration_releases_capacity_and_adopts_new_own_heads() {
+    use rrx::{
+        context_pack::workflow::{PhasePackArtifact, WorkflowPackSources},
+        workflow::{BudgetClass, ContextBudget, Phase, WorkflowSources},
+    };
+    let f = Fixture::new();
+    let packs = f.packs();
+    let sources = WorkflowPackSources::new(packs.clone());
+    let (native, _) = session(&f, SessionRole::Executor, SessionState::Exited);
+    let first = packs
+        .checkpoint(
+            &f.task.scope(),
+            native.id,
+            None,
+            vec![event(1, EventKind::Decision, "initial decision")],
+            HistoryPolicy {
+                recent_history_bytes: 0,
+            },
+        )
+        .await
+        .unwrap();
+    sources
+        .set_inputs(
+            &f.task.scope(),
+            TaskInputs {
+                checkpoint: Some(first.clone()),
+                ..input()
+            },
+        )
+        .unwrap();
+    let second = packs
+        .checkpoint(
+            &f.task.scope(),
+            native.id,
+            Some(first),
+            vec![event(2, EventKind::Failure, "new own fact")],
+            HistoryPolicy {
+                recent_history_bytes: 0,
+            },
+        )
+        .await
+        .unwrap();
+    let (p, t) = {
+        let store = f.store.lock().unwrap();
+        (
+            store.project(f.project.id).unwrap().unwrap(),
+            store.task(f.task.id).unwrap().unwrap(),
+        )
+    };
+    let captured = sources
+        .capture(
+            p,
+            t,
+            Phase::Implement,
+            ContextBudget {
+                class: BudgetClass::Normal,
+                discretionary_tokens: 1,
+            },
+        )
+        .await
+        .unwrap();
+    let artifact: PhasePackArtifact =
+        serde_json::from_value(sources.pack_artifact(&captured).unwrap().unwrap()).unwrap();
+    assert_eq!(artifact.pack.checkpoint, Some(second));
+    assert!(captured.payload.contains("new own fact"));
+    for n in 0..127 {
+        let mut task = Task::new(
+            f.project.id,
+            f.task.goal_id,
+            format!("configured {n}"),
+            "fake".into(),
+        );
+        f.store.lock().unwrap().put_task(&mut task).unwrap();
+        sources
+            .set_inputs(&task.scope(), TaskInputs::default())
+            .unwrap();
+    }
+    let mut extra = Task::new(
+        f.project.id,
+        f.task.goal_id,
+        "next configured Task".into(),
+        "fake".into(),
+    );
+    f.store.lock().unwrap().put_task(&mut extra).unwrap();
+    assert!(
+        sources
+            .set_inputs(&extra.scope(), TaskInputs::default())
+            .is_err()
+    );
+    let mut foreign = f.task.scope();
+    foreign.goal_id = Some(GoalId::new());
+    assert!(sources.clear_inputs(&foreign).is_err());
+    sources.clear_inputs(&f.task.scope()).unwrap();
+    sources
+        .set_inputs(&extra.scope(), TaskInputs::default())
+        .unwrap();
+}
+
+struct CorruptPackMetadata {
+    source: rrx::context_pack::workflow::WorkflowPackSources,
+}
+impl rrx::workflow::WorkflowSources for CorruptPackMetadata {
+    fn capture(
+        &self,
+        p: Project,
+        t: Task,
+        phase: rrx::workflow::Phase,
+        budget: rrx::workflow::ContextBudget,
+    ) -> rrx::workflow::WorkflowFuture<'_, rrx::workflow::SourceSnapshot> {
+        self.source.capture(p, t, phase, budget)
+    }
+    fn pack_artifact(
+        &self,
+        source: &rrx::workflow::SourceSnapshot,
+    ) -> anyhow::Result<Option<serde_json::Value>> {
+        let mut artifact = self.source.pack_artifact(source)?.unwrap();
+        artifact["pack"]["goal"]["constraints"] = serde_json::json!([]);
+        Ok(Some(artifact))
+    }
+}
+#[tokio::test]
+async fn engine_rejects_typed_metadata_that_disagrees_with_actual_mandatory_input() {
+    use rrx::{
+        adapter::AgentRegistry, context_pack::workflow::WorkflowPackSources,
+        workflow::WorkflowEngine,
+    };
+    let f = Fixture::new();
+    let engine = WorkflowEngine::new(
+        f.store.clone(),
+        Arc::new(AgentRegistry::default()),
+        phase_config(),
+        Arc::new(CorruptPackMetadata {
+            source: WorkflowPackSources::new(f.packs()),
+        }),
+        Arc::new(PackFixtureGates {
+            cleanup: Mutex::new(None),
+            cleanup_wait_once: Mutex::new(false),
+        }),
+    )
+    .unwrap();
+    let error = engine.initialize(f.task.id, None).await.unwrap_err();
+    assert!(
+        error.to_string().contains("typed phase metadata differs"),
+        "{error:#}"
+    );
+    assert!(
+        f.store
+            .lock()
+            .unwrap()
+            .context(&f.task.scope(), None)
+            .unwrap()
+            .is_none()
+    );
+}
