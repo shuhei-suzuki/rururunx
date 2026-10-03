@@ -290,3 +290,32 @@ private owned turn-completion journal after verified cleanup/terminal persistenc
 without fabricating exit codes or trusting caller recovery JSON. Workflow verifies
 saved SessionId/Scope/actor/role/worktree before consulting this provider method;
 transport completion never replaces review/test/acceptance gate evidence.
+
+## 16. Native Codex implementation in progress (Issue #6)
+
+The explicit `codex::CodexAdapter` uses an owned private Unix WebSocket app-server
+and native thread UUID. Noninteractive execute, consultation, structured review,
+owned resume, checkpoint and nullable token/cache usage are implemented. Exact
+Project/Goal/Task, canonical Git ownership, prepared HEAD, native CWD/profile and
+directory inode binding are rechecked before inference. Immutable review requires
+a clean locked worktree; source consultation requires the registered primary root.
+
+Native authentication/configuration/hooks/trust and unspecified model/effort
+remain authoritative. Executor selects the verified built-in local environment
+and its own writable worktree profile; decision roles have no execution
+environment or target operations. Native turn completion is separate from
+confirmed process-group cleanup and durable terminal state. Resume adopts only
+the current in-memory supervisor's exact owned UUID, never a persisted hint.
+
+Pending native approval callbacks expose their exact identities/arguments. The
+default Human route cannot be auto-granted. An explicit trusted runtime-broker
+integration requires the existing native client reviewer route and revalidates
+ownership before one-time audited replies; automatic/managed review is never
+replaced. Unknown/persistent/expanded grants are unsupported. Caller preparation,
+review quorum, cross-agent policy and command completion remain upstream concerns.
+
+Per-turn usage includes every native model/tool cycle, subtracting the previous
+owned cumulative gauge on resume without adding repeated notifications. Missing
+or reset counters and monetary cost stay null. Interactive/attach and final native
+source review/mutation/CI evidence are pending; this section does not claim Issue
+#6 completion. See [issue design](../issue-6-design.md).
