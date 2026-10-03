@@ -58,7 +58,8 @@ STANDARD plus configured:
 
 Selection takes the monotonic maximum of stored Task workflow, runtime/Project policy
 minimum, explicit stricter user choice and risk classifier recommendation. The configured
-default is a Task-creation fallback, not a floor for an explicitly classified Task.
+default is reserved for Task creation integration (#11), not a phase-engine floor;
+Task::new currently uses STANDARD until its caller supplies a classified stored workflow.
 
 A user may make a workflow stricter.
 
@@ -335,3 +336,16 @@ attempts. Native restart diagnostics never imply verified process death. Invalid
 history records old/new revision/source digests and cause independently of escalation.
 Default class is creation fallback; class-specific breadth is interpreted by #18 within
 configured phase token caps, with mandatory rules retained outside those caps.
+
+The Store Workflow mutation API is crate-private. Actual external gate observations
+are recorded before postgate activity/freshness checks, including artifact refs when
+a Goal becomes paused or a Project Blocked; observation does not authorize completion.
+A same-generation source rebind requires target-producing completion, and unknown
+Evaluating reservations cannot be released by changing generation. An immutable native
+dispatch marker distinguishes undispatched reservations from possible launch interruption.
+Explicit cancel/fail decisions retain native/phase reservations until verified recovery.
+QUICK PR-created is nonterminal; request_finalization adds actual MergeGate/Cleanup ports
+before Completed. Native termination state is a trusted provider/recovery attestation,
+never an inference from arbitrary JSON or caller cancellation. A live unrelated consultant
+may coexist with read-only review; owned and Lost/executor termination fences remain.
+Cleanup freezes its pre-disposal source pack because the owning worktree is removed.

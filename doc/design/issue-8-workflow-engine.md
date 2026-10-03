@@ -112,9 +112,48 @@ phase/generation/Session/ContextVersion evidence. Unresolved reservations, finis
 flags and terminal Task states cannot be forged by skipping those transitions.
 Native live/Lost records remain authoritative even for state-only reservation release.
 
-Default workflow is a Task-creation fallback, not a minimum for an explicitly classified
+Default workflow is reserved for Task creation integration (#11); Task::new currently
+uses STANDARD, and the phase engine consumes the stored class. It is not a minimum for an explicitly classified
 Task. BudgetClass guides #18 breadth/selection; configured phase token caps apply to
 all classes until measured per-class settings exist. Mandatory rules are never trimmed.
 Finished workflows require a new Task for further escalation. Every generation
 invalidation records cause and old/new revision/source digests separately from actual
 class escalation.
+
+## Conservative operation observations and terminal decisions
+
+The raw Workflow mutation API is crate-private. Its private unit regressions include
+positive valid controls; a compile-fail consumer check prevents external raw authority
+writes. Within one generation, source authority changes only with a target-producing
+completion. Equal-class escalation on changed authority records invalidation. A new
+generation interrupts an active attempt; an Evaluating unknown observation cannot be
+released by a generation edit. Native dispatch has an immutable durable marker before
+start, distinguishing known undispatched reservations from uncertain launch interruption.
+Reserved external phases with no evaluation claim can safely reenter evaluation. Owner
+refresh and source recheck precede both the gate claim and native dispatch.
+
+Each gate return (including integration error) is journaled immediately in its exact
+active attempt and a scoped workflow.gate_observed event, before postgate ownership,
+activity, filesystem or CAS checks. The observation preserves its actual artifact
+references and error even if a Goal is paused or a Project becomes Blocked. It does
+not approve the evidence, change Task/native state or release a reservation. Repeated
+or interrupted Evaluating operations await #13 reconciliation, never another side effect.
+The closing fence checks the attempt's own native Session plus executor/Lost reservations;
+an unrelated live consultant may coexist with read-only review, while mutation admission
+still fences all live agents. Native completion requires the owned persisted Exited state
+and the provider's transport contract. Raw Session terminal writes remain a trusted
+provider/recovery boundary: only verified native supervision may attest termination;
+caller recovery JSON, cancellation or failure decisions cannot prove process death.
+
+`cancel`/`fail_task` append explicit exact-scope terminal decisions while retaining any
+active phase and native reservation. They do not signal or imply process termination.
+QUICK ends at PR-created, which remains nonterminal. `request_finalization` privately
+extends that completed preset with real MergeGate and Cleanup ports, preserving the
+reviewed HEAD; only their accepted scoped evidence permits Completed. Goal completion
+and Project removal still require their own independent evidence/terminal conditions.
+Cleanup disposes the worktree, so its final pack freezes the pre-disposal reviewed
+source and actual scoped cleanup evidence; the engine does not recapture a deleted
+worktree or claim post-disposal freshness for subsequent execution.
+
+If identical foreign blocker text makes ownership ambiguous, retry retains it rather
+than removing another component's blocker. Typed blocker routing remains #12 integration.

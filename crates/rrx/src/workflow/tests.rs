@@ -190,11 +190,12 @@ impl AgentAdapter for FakeAgent {
         Box::pin(async { Err(adapter_error("usage")) })
     }
 }
+type CaptureHook = Box<dyn FnOnce() + Send>;
 struct Sources {
     snapshot: Mutex<SourceSnapshot>,
     on_capture: Mutex<Option<Box<dyn FnOnce() + Send>>>,
     captures: AtomicUsize,
-    on_numbered_capture: Mutex<Option<(usize, Box<dyn FnOnce() + Send>)>>,
+    on_numbered_capture: Mutex<Option<(usize, CaptureHook)>>,
     capture_error: AtomicBool,
 }
 impl Sources {

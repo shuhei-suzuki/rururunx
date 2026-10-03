@@ -62,6 +62,7 @@ pub struct AgentConfig {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct WorkflowConfig {
+    /// Reserved Task-creation fallback (#11); phase engine uses stored class.
     pub default: WorkflowClass,
     pub risk_mapping: [WorkflowClass; 4],
     pub browser_verification: bool,

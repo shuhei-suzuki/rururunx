@@ -274,7 +274,10 @@ phase/context history atomically, and raises
 workflow requirements when risk or scoped policy changes. Missing test/review/PR/
 merge integrations wait for evidence; review exit zero alone cannot pass a gate.
 Definitive rejection permits explicit remediation; waiting evidence can be reevaluated
-without relaunching its Session. Unknown outcomes keep recovery reservations.
+without relaunching its Session. Actual gate results are journaled before postgate
+checks; unknown outcomes keep recovery reservations. QUICK PR-created stays nonterminal
+until requested merge/cleanup gates supply evidence. Cancellation preserves native
+reservations until verified termination.
 The generic CLI cannot review. Workflow CLI/TUI, independent review sets (#9),
 approval routing (#12), recovery (#13), and repository-context selection (#18)
 remain pending. See [Workflow Engine](doc/design/master/workflow-engine.md).
