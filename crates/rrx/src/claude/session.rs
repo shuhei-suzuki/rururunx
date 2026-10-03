@@ -1105,6 +1105,7 @@ impl AgentAdapter for ClaudeAdapter {
                 repo_map_size: None,
                 cache_metadata: json!({"provider":"claude","native_uuid":evidence.native,"aggregate_metrics_unattributed":evidence.aggregate_metrics_unattributed,"observed_human_input_tokens":metrics.and_then(|m|m.input),"observed_human_output_tokens":metrics.and_then(|m|m.output),"cache_creation_input_tokens":metrics.and_then(|m|m.cache_write),"duration_api_ms":metrics.and_then(|m|m.api_ms),"token_counters":"per_invocation","reported_cost_usd":metrics.and_then(|m|m.cumulative_cost),"reported_duration_api_ms":metrics.and_then(|m|m.cumulative_api_ms),"cost_duration_gauges":"fresh_invocation_only; resumed_raw_unattributed"}),
                 missing_reason: if !evidence.completed
+                    || evidence.aggregate_metrics_unattributed
                     || metrics
                         .is_none_or(|m| m.input.is_none() || m.output.is_none() || m.cost.is_none())
                 {
@@ -1758,14 +1759,16 @@ for line in sys.stdin:
             serde_json::from_slice::<Value>(&status.stdout).unwrap(),
             json!({"fixture":true})
         );
-        assert_eq!(
-            adapter
-                .usage((&session).into(), "consult".into(), None)
-                .await
-                .unwrap()
-                .input_tokens,
-            None
-        );
+        let usage = adapter
+            .usage((&session).into(), "consult".into(), None)
+            .await
+            .unwrap();
+        assert_eq!(usage.input_tokens, None);
+        assert_eq!(usage.output_tokens, None);
+        assert_eq!(usage.cached_input_tokens, None);
+        assert_eq!(usage.estimated_cost, None);
+        assert!(usage.missing_reason.is_some());
+        assert_eq!(usage.cache_metadata["observed_human_input_tokens"], 2);
     }
     #[tokio::test]
     async fn cancelled_allow_never_grants_and_owner_edit_does_not_block_exact_denial() {
