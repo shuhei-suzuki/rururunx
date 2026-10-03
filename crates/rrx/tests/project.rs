@@ -517,3 +517,78 @@ fn global_default_state_and_help_config_check_are_independent_of_cwd() {
         assert!(!untouched.parent().unwrap().exists());
     }
 }
+
+#[test]
+fn separate_git_directory_and_symlink_namespace_are_not_source_references() {
+    let f = Fixture::new();
+    let mut store = Store::open(&f.db).unwrap();
+    // Move primary Git metadata into a nonstandard source-local directory.
+    git(
+        &f.a,
+        &[
+            "init",
+            "--separate-git-dir",
+            f.a.join("metadata").to_str().unwrap(),
+        ],
+    );
+    let p = f.add(&mut store, &f.a);
+    assert!(scoped_file(&p, Path::new("metadata/config")).is_err());
+    assert!(
+        Registry::new(&mut store)
+            .add(
+                &f.a,
+                AddProject {
+                    rule_refs: vec!["metadata/config".into()],
+                    ..Default::default()
+                },
+                &Config::default()
+            )
+            .is_err()
+    );
+    assert!(
+        Registry::new(&mut store)
+            .add(
+                &f.a,
+                AddProject {
+                    worktree_root: Some("metadata/worktrees".into()),
+                    ..Default::default()
+                },
+                &Config::default()
+            )
+            .is_err()
+    );
+    std::os::unix::fs::symlink(&f.b, f.a.join("escaped")).unwrap();
+    assert!(
+        Registry::new(&mut store)
+            .add(
+                &f.a,
+                AddProject {
+                    worktree_root: Some("escaped/tasks".into()),
+                    ..Default::default()
+                },
+                &Config::default()
+            )
+            .is_err()
+    );
+    let nested = f.a.join("nested");
+    std::fs::create_dir(&nested).unwrap();
+    git(&nested, &["init", "-b", "main"]);
+    std::fs::write(nested.join("rules.md"), "foreign").unwrap();
+    assert!(scoped_file(&p, &nested.join("rules.md")).is_err());
+    assert!(
+        Registry::new(&mut store)
+            .add(
+                &f.a,
+                AddProject {
+                    worktree_root: Some("nested/tasks".into()),
+                    ..Default::default()
+                },
+                &Config::default()
+            )
+            .is_err()
+    );
+    assert_eq!(
+        store.project(p.id).unwrap().unwrap().worktree_root,
+        p.worktree_root
+    );
+}

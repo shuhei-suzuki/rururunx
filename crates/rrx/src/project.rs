@@ -103,7 +103,7 @@ impl<'a> ProjectRegistry<'a> {
             Some(path) => runtime.with_project_file(&resolve_file(&project, path)?)?,
             None => runtime.clone(),
         };
-        project.max_tasks = options.max_tasks.unwrap_or_else(|| {
+        project.max_tasks = options.max_tasks.unwrap_or({
             if project.version == 0 {
                 effective.scheduler.max_tasks_per_project
             } else {
@@ -403,6 +403,7 @@ fn resolve_file(project: &Project, reference: &Path) -> Result<PathBuf> {
     ensure!(
         canonical.starts_with(&project.root)
             && !canonical.starts_with(project.root.join(".git"))
+            && !canonical.starts_with(git_metadata(&project.root)?)
             && !canonical.starts_with(&project.worktree_root)
             && canonical.is_file(),
         "project reference must be a source file within owning root"
@@ -419,6 +420,14 @@ fn resolve_file(project: &Project, reference: &Path) -> Result<PathBuf> {
     );
     Ok(canonical)
 }
+fn git_metadata(root: &Path) -> Result<PathBuf> {
+    Ok(PathBuf::from(git_text(
+        root,
+        &["rev-parse", "--path-format=absolute", "--git-common-dir"],
+    )?)
+    .canonicalize()?)
+}
+
 fn validate_namespace(project: &Project) -> Result<()> {
     let path = &project.worktree_root;
     ensure!(
@@ -426,6 +435,7 @@ fn validate_namespace(project: &Project) -> Result<()> {
             && path.starts_with(&project.root)
             && path != &project.root
             && !path.starts_with(project.root.join(".git"))
+            && !path.starts_with(git_metadata(&project.root)?)
             && !path
                 .components()
                 .any(|c| matches!(c, Component::ParentDir | Component::CurDir)),
