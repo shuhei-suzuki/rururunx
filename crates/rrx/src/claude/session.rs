@@ -45,6 +45,7 @@ struct Entry {
     request: LaunchRequest,
     transition: Arc<AtomicBool>,
     terminal: Option<(Terminal, ScopeSnapshot, Value)>,
+    resize: Option<mpsc::Sender<Resize>>,
 }
 #[derive(Default)]
 struct Evidence {
@@ -53,6 +54,7 @@ struct Evidence {
     attempt: Option<String>,
     metrics: Option<Metrics>,
     pending: Option<Pending>,
+    terminal_observed: bool,
 }
 type OwnedReference = (
     watch::Receiver<SessionStatus>,
@@ -75,6 +77,11 @@ struct Decision {
     operation_hash: String,
     decision: String,
 }
+struct Resize {
+    rows: u16,
+    columns: u16,
+    result: oneshot::Sender<AdapterResult<()>>,
+}
 struct Reply {
     decision: Decision,
     result: oneshot::Sender<AdapterResult<()>>,
@@ -85,6 +92,7 @@ struct Reservation {
     version: u64,
     ownership: ProcessOwnership,
     armed: bool,
+    input_may_have_been_sent: bool,
 }
 impl Reservation {
     fn persist(&mut self) -> AdapterResult<()> {
@@ -116,7 +124,7 @@ impl Drop for Reservation {
     fn drop(&mut self) {
         if self.armed {
             let uncertain = self.ownership.uncertain();
-            self.session.state = if uncertain {
+            self.session.state = if uncertain || self.input_may_have_been_sent {
                 SessionState::Lost
             } else {
                 SessionState::Failed
@@ -204,7 +212,40 @@ impl ClaudeAdapter {
         rows: u16,
         columns: u16,
     ) -> AdapterResult<()> {
-        self.owned_terminal(&reference).await?.resize(rows, columns)
+        self.owned_terminal(&reference).await?;
+        let resize = {
+            let registry = self.registry()?;
+            registry
+                .get(&reference.id)
+                .and_then(|entry| entry.resize.clone())
+                .ok_or_else(|| {
+                    failure(
+                        ErrorKind::SessionLost,
+                        "owned terminal resize channel missing",
+                    )
+                })?
+        };
+        let (tx, rx) = oneshot::channel();
+        tokio::time::timeout(
+            Duration::from_secs(2),
+            resize.send(Resize {
+                rows,
+                columns,
+                result: tx,
+            }),
+        )
+        .await
+        .map_err(|_| {
+            failure(
+                ErrorKind::Timeout,
+                "terminal resize queue deadline exceeded",
+            )
+        })?
+        .map_err(|_| failure(ErrorKind::SessionLost, "terminal resize owner ended"))?;
+        tokio::time::timeout(Duration::from_secs(2), rx)
+            .await
+            .map_err(|_| failure(ErrorKind::Timeout, "terminal resize deadline exceeded"))?
+            .map_err(|_| failure(ErrorKind::SessionLost, "terminal resize owner ended"))?
     }
     #[allow(clippy::too_many_arguments)]
     async fn launch_terminal(
@@ -255,6 +296,7 @@ impl ClaudeAdapter {
         };
         let (sender, receiver) = watch::channel(status.clone());
         let (stop_tx, stop) = mpsc::channel(1);
+        let (resize_tx, resize) = mpsc::channel(4);
         let (replies_tx, replies) = mpsc::channel(1);
         drop(replies);
         let evidence = Arc::new(Mutex::new(Evidence::default()));
@@ -276,6 +318,7 @@ impl ClaudeAdapter {
                     request,
                     transition: Arc::new(AtomicBool::new(false)),
                     terminal: Some((transport.terminal.clone(), snapshot, binding)),
+                    resize: Some(resize_tx),
                 },
             );
         }
@@ -286,6 +329,7 @@ impl ClaudeAdapter {
             status,
             sender,
             stop,
+            resize,
             timeout,
         ));
         Ok(session)
@@ -447,6 +491,7 @@ impl ClaudeAdapter {
             version: expected_version,
             ownership: ProcessOwnership::default(),
             armed: false,
+            input_may_have_been_sent: false,
         };
         reservation.persist()?;
         reservation.armed = true;
@@ -522,6 +567,7 @@ impl ClaudeAdapter {
             snapshot.recheck(&self.store,&request,&self.agent)?;
             snapshot.verify_binding(&request,&mut reservation.ownership,&binding).await?;
             snapshot.recheck(&self.store,&request,&self.agent)?;
+            reservation.input_may_have_been_sent=true;
             transport.write(&json!({"type":"user","message":{"role":"user","content":request.input.payload},"parent_tool_use_id":null,"session_id":native})).await?;
             Ok::<_,crate::adapter::AdapterError>(())
         }.await;
@@ -587,6 +633,7 @@ impl ClaudeAdapter {
                     request: request.clone(),
                     transition: Arc::new(AtomicBool::new(false)),
                     terminal: None,
+                    resize: None,
                 },
             );
         }
@@ -917,7 +964,17 @@ async fn supervise(
         match &result {
             Ok(true) => SessionState::Exited,
             Ok(false) => SessionState::Stopped,
-            Err(_) => SessionState::Failed,
+            Err(_) => {
+                let observed = evidence
+                    .lock()
+                    .map(|e| e.terminal_observed)
+                    .unwrap_or(false);
+                if reservation.input_may_have_been_sent && !observed {
+                    SessionState::Lost
+                } else {
+                    SessionState::Failed
+                }
+            }
         }
     };
     if !uncertain {
@@ -1028,7 +1085,8 @@ async fn run(
                 let accepted_terminal=matches!(observed,Ok(true)) || observed.as_ref().err().is_some_and(|e|matches!(e.kind,ErrorKind::ProcessFailure|ErrorKind::AuthenticationUnavailable));
                 if message["type"]=="result" && message["session_id"]==native && state.initialized && accepted_terminal {
                     let metrics=Metrics::parse(&message,previous,resumed)?;
-                    evidence.lock().map_err(|_|failure(ErrorKind::StateFailure,"native metrics journal poisoned"))?.metrics=Some(metrics);
+                    let mut journal=evidence.lock().map_err(|_|failure(ErrorKind::StateFailure,"native metrics journal poisoned"))?;
+                    journal.metrics=Some(metrics);journal.terminal_observed=true;
                 }
                 if !observed? {continue;}
                 if message["type"]=="assistant" && let Some(content)=message["message"]["content"].as_array() {
@@ -1139,6 +1197,7 @@ async fn supervise_terminal(
     mut status: SessionStatus,
     sender: watch::Sender<SessionStatus>,
     mut stop: mpsc::Receiver<()>,
+    mut resize: mpsc::Receiver<Resize>,
     timeout: Duration,
 ) {
     let deadline = tokio::time::Instant::now() + timeout;
@@ -1146,6 +1205,7 @@ async fn supervise_terminal(
         tokio::select! {
             biased;
             _=stop.recv()=>break None,
+            command=resize.recv()=>if let Some(command)=command {let _=command.result.send(transport.resize_owned(command.rows,command.columns));},
             _=tokio::time::sleep_until(deadline)=>break Some("native terminal deadline exceeded".to_owned()),
             output=transport.output.recv()=>match output {
                 Some(Ok(bytes))=>{tail(&mut status.stdout,&mut status.stdout_truncated,&bytes);sender.send_replace(status.clone());},
@@ -1301,7 +1361,14 @@ for line in sys.stdin:
             }
             let session = result.unwrap();
             let status = terminal(&adapter, (&session).into()).await;
-            assert_eq!(status.session.state, SessionState::Failed);
+            assert_eq!(
+                status.session.state,
+                if behavior == "hang" {
+                    SessionState::Lost
+                } else {
+                    SessionState::Failed
+                }
+            );
             assert!(!adapter.transport_succeeded(&status));
             assert!(status.failure.is_some());
             let other = ClaudeAdapter::new(
@@ -1317,6 +1384,33 @@ for line in sys.stdin:
         }
     }
     #[tokio::test]
+    async fn consumed_executor_input_without_terminal_keeps_lost_reservation_after_group_death() {
+        let fixture = Fixture::new(true);
+        let temp = tempfile::tempdir().unwrap();
+        let adapter = ClaudeAdapter::new(
+            "claude".into(),
+            executable(&temp, "hang"),
+            fixture.store.clone(),
+        )
+        .unwrap()
+        .with_turn_timeout(Duration::from_millis(200))
+        .unwrap();
+        let session = adapter.start(fixture.request.clone()).await.unwrap();
+        let status = terminal(&adapter, (&session).into()).await;
+        assert_eq!(status.session.state, SessionState::Lost);
+        assert!(status.session.pid.is_none());
+        assert!(crate::git::executor_reserved(&status.session));
+        assert!(!adapter.transport_succeeded(&status));
+        assert_eq!(
+            adapter
+                .start(fixture.request.clone())
+                .await
+                .unwrap_err()
+                .kind,
+            ErrorKind::StateConflict
+        );
+    }
+    #[tokio::test]
     async fn permission_before_native_init_never_establishes_grant_authority() {
         let fixture = Fixture::new(true);
         let temp = tempfile::tempdir().unwrap();
@@ -1329,7 +1423,7 @@ for line in sys.stdin:
         .with_runtime_broker();
         let session = adapter.start(fixture.request.clone()).await.unwrap();
         let status = terminal(&adapter, (&session).into()).await;
-        assert_eq!(status.session.state, SessionState::Failed);
+        assert_eq!(status.session.state, SessionState::Lost);
         assert!(!adapter.transport_succeeded(&status));
         assert!(status.session.recovery.get("pending_permission").is_none());
         assert!(adapter.pending_operation((&session).into()).is_err());
@@ -1546,6 +1640,22 @@ for line in sys.stdin:
                 break (response, trust, setup);
             }
         };
+        let before_resize = receiver.borrow().stdout.len();
+        adapter
+            .terminal_resize((&session).into(), 40, 100)
+            .await
+            .unwrap();
+        let resize_redrawn = tokio::time::timeout(Duration::from_secs(3), async {
+            while receiver.borrow().stdout.len() <= before_resize {
+                receiver.changed().await.unwrap();
+            }
+        })
+        .await
+        .is_ok();
+        eprintln!(
+            "actual native terminal resize: requested_rows=40, columns=100, native_redraw_observed={}",
+            resize_redrawn
+        );
         let status = adapter.stop((&session).into()).await.unwrap();
         let text = String::from_utf8_lossy(&status.stdout).to_ascii_lowercase();
         let labels = [

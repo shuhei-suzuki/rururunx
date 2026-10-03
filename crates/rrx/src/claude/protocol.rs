@@ -299,6 +299,22 @@ impl RunState {
                         "native terminal identity missing",
                     ));
                 }
+                // Native streaming can inject separate background/peer/channel
+                // turns. Their results are not proof for the input we sent.
+                if !message["origin"].is_null() && message["origin"]["kind"] != "human" {
+                    return Ok(false);
+                }
+                let subtype = message["subtype"].as_str().filter(|s| !s.is_empty());
+                let is_error = message["is_error"].as_bool();
+                if subtype.is_none()
+                    || is_error.is_none()
+                    || (subtype != Some("success") && is_error != Some(true))
+                {
+                    return Err(failure(
+                        ErrorKind::ParseFailure,
+                        "malformed native terminal",
+                    ));
+                }
                 if message["subtype"] != "success" || message["is_error"] != false {
                     let authentication =
                         message
@@ -343,6 +359,28 @@ impl RunState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn injected_or_malformed_results_cannot_complete_the_owned_input() {
+        let path = std::path::Path::new("/owned");
+        let mut state = RunState::default();
+        state.observe(&json!({"type":"system","subtype":"init","session_id":"n","cwd":"/owned","tools":[],"mcp_servers":[]}),"n",path,true).unwrap();
+        for origin in ["task-notification", "mcp-channel", "peer"] {
+            assert!(!state.observe(&json!({"type":"result","session_id":"n","subtype":"success","is_error":false,"origin":{"kind":origin}}),"n",path,true).unwrap());
+            assert!(!state.complete());
+        }
+        for result in [
+            json!({"type":"result","session_id":"n"}),
+            json!({"type":"result","session_id":"n","subtype":"error_during_execution","is_error":false}),
+        ] {
+            assert_eq!(
+                state.observe(&result, "n", path, true).unwrap_err().kind,
+                ErrorKind::ParseFailure
+            );
+            assert!(!state.complete());
+        }
+        assert!(state.observe(&json!({"type":"result","session_id":"n","subtype":"success","is_error":false,"origin":{"kind":"human"}}),"n",path,true).unwrap());
+        assert!(state.complete());
+    }
     #[test]
     fn invocation_tokens_and_resumed_gauges_have_different_authority() {
         let a = Metrics::parse(&json!({"usage":{"input_tokens":2,"output_tokens":13,"cache_creation_input_tokens":11924,"cache_read_input_tokens":531},"total_cost_usd":0.0957662,"duration_api_ms":1585}),None,false).unwrap();

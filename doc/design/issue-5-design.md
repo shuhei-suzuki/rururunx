@@ -160,3 +160,23 @@ native credential chains. Registered other-Project reference exclusion happens
 before provider-prefix retention, and explicit current-Project values must be
 validated declarations. No cloud login/credential chain was replaced or exercised
 as evidence for an unconfigured account.
+
+
+PTY transport uses Tokio `AsyncFd` readiness, with a bounded output queue and
+serialized writes/deadlines; an idle terminal performs no periodic read syscall.
+Output flood/cancel fixtures verify backpressure and prompt group cleanup.
+Resize requests pass through the sole PTY supervisor. It applies the tty window
+size and signals SIGWINCH only while owning the unreaped ProcessGroup, so cleanup
+cannot recycle its PID/group between an alive check and a cached signal.
+Actual native Claude trust screen was preserved and redrew after the owned
+40x100 resize. This proves redraw and cleanup, not a consultation response or
+controlling-tty support; Interactive/Attach remain unadvertised.
+
+Mark input uncertainty before attempting its wire write. If dispatch may have
+occurred but no correlated native terminal is observed, timeout/protocol failure
+and pre-supervisor cancellation retain Lost even after confirmed group death
+(clear PID only after cleanup). A validated native negative terminal is Failed.
+Lost Executors retain their reservation and cannot silently start another attempt.
+Malformed result markers and injected background/channel/peer turn results never
+complete the prepared input or contribute its usage; only native unassigned or
+human-attributed correlated terminals do so, matching the pinned SDK origin contract.
