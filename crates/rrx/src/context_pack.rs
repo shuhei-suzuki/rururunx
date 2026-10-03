@@ -245,6 +245,11 @@ impl TaskDraft {
             "repository:inventory".into(),
             self.pack.repository.inventory_hash.clone(),
         );
+        if let Some(cp) = &self.pack.checkpoint
+            && cp.scope == self.pack.scope
+        {
+            versions.insert("checkpoint:head".into(), cp.digest.clone());
+        }
         versions
     }
     /// Engine owns the version/pointer transaction, never the source provider.
@@ -491,8 +496,10 @@ impl ContextPacks {
             cp.scope.project_id == scope.project_id && cp.scope.goal_id == scope.goal_id,
             "foreign consultation/checkpoint promotion"
         );
-        self.ensure_checkpoint_head(reference)?;
         let cross = cp.scope != *scope;
+        if !cross {
+            self.ensure_checkpoint_head(reference)?;
+        }
         ensure!(
             !cross || cp.role == SessionRole::Consultant,
             "only consultation facts may promote across Tasks"
@@ -519,7 +526,7 @@ impl ContextPacks {
         Ok(
             json!({"scope":cp.scope,"session":cp.session,"revision":cp.authority.revision,"role":cp.role,
             "retained":retained,"mandatory_goal_at_checkpoint":cp.mandatory_goal,"mandatory_rules_at_checkpoint":cp.mandatory_rules,
-            "mandatory_task_at_checkpoint":cp.mandatory_task,"recent":if cross {vec![]} else {cp.recent}}),
+            "mandatory_task_at_checkpoint":if cross {json!({"id":cp.mandatory_task["id"],"title":cp.mandatory_task["title"],"acceptance_criteria":cp.mandatory_task["acceptance_criteria"]})} else {cp.mandatory_task},"recent":if cross {vec![]} else {cp.recent}}),
         )
     }
     fn ensure_checkpoint_head(&self, reference: &CheckpointRef) -> Result<()> {
@@ -527,16 +534,8 @@ impl ContextPacks {
             .store
             .lock()
             .map_err(|_| anyhow::anyhow!("Store poisoned"))?;
-        let head = store
-            .records(&reference.scope, RecordKind::Checkpoint)?
-            .into_iter()
-            .filter(|r| r.data["format"] == CHECKPOINT)
-            .max_by_key(|r| r.data["chain_version"].as_u64().unwrap_or(0))
-            .context("checkpoint head missing")?;
         ensure!(
-            head.id == reference.id
-                && head.version == reference.version
-                && digest(&head.data)? == reference.digest,
+            store.pack_checkpoint_head(&reference.scope)?.as_ref() == Some(reference),
             "stale checkpoint head reference"
         );
         Ok(())
@@ -656,7 +655,13 @@ impl ContextPacks {
             "terminal Task/Goal context is historical and never launchable"
         );
         ensure!(
-            t.context_version == reference.version,
+            t.context_version == reference.version
+                && self
+                    .store
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("Store poisoned"))?
+                    .context(&reference.scope, None)?
+                    .is_some_and(|c| c.version == reference.version),
             "stale Task pack pointer"
         );
         ensure!(
@@ -732,6 +737,16 @@ impl ContextPacks {
         budget: Budget,
     ) -> Result<DraftPreparation> {
         self.source().validate(&draft.map).await?;
+        let historical = draft
+            .pack
+            .checkpoint
+            .as_ref()
+            .map(|r| self.promotion(&draft.pack.scope, r))
+            .transpose()?;
+        ensure!(
+            historical == draft.pack.historical_checkpoint,
+            "stale draft checkpoint promotion"
+        );
         let (_, g, t) = self.snapshot(&draft.pack.scope)?;
         ensure!(
             !crate::state::task_terminal(t.state) && !crate::state::goal_terminal(g.state),
@@ -793,6 +808,7 @@ impl ContextPacks {
             SelectionOutcome::NeedsBudget { evidence } => {
                 let required_bytes = header.len() + evidence.required_bytes;
                 self.audit_preparation(
+                    pack,
                     map,
                     version,
                     json!({"ready":false,"required_bytes":required_bytes,"budget":budget}),
@@ -811,13 +827,14 @@ impl ContextPacks {
                     input.payload.len() <= available,
                     "rendered pack exceeds budget"
                 );
-                self.audit_preparation(map,version,json!({"ready":true,"estimated_bytes":input.payload.len(),"estimated_tokens":input.payload.len(),"estimate_method":"utf8_bytes_v1","measured_tokens":null}))?;
+                self.audit_preparation(pack,map,version,json!({"ready":true,"estimated_bytes":input.payload.len(),"estimated_tokens":input.payload.len(),"estimate_method":"utf8_bytes_v1","measured_tokens":null}))?;
                 Ok(PreparedPack::Ready(input))
             }
         }
     }
     fn audit_preparation(
         &self,
+        pack: &TaskPack,
         map: &RepositoryMap,
         version: Option<u64>,
         mut data: Value,
@@ -826,10 +843,10 @@ impl ContextPacks {
         self.store
             .lock()
             .map_err(|_| anyhow::anyhow!("Store poisoned"))?
-            .audit_if_current(
+            .audit_pack_preparation(
                 &map.freshness().scope,
                 map_versions(map),
-                "context.pack.prepared",
+                pack.checkpoint.as_ref(),
                 data,
             )?;
         Ok(())
@@ -1240,6 +1257,12 @@ impl ContextPacks {
         let (p, g) = self.goal_snapshot(&pack.scope)?;
         ensure!(
             g.context_version == reference.version
+                && self
+                    .store
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("Store poisoned"))?
+                    .context(&reference.scope, None)?
+                    .is_some_and(|c| c.version == reference.version)
                 && projection(&g)? == pack.goal
                 && p.repository_identity == pack.repository_identity,
             "stale/foreign Goal pack"

@@ -109,6 +109,24 @@ impl Fixture {
         ContextPacks::new(self.store.clone())
     }
 }
+// Isolated corruption fixture for reader validation; public production writers
+// reject typed context creation and owned pointer movement.
+fn corrupt_context(f: &Fixture, context: &ContextVersion) {
+    let raw = rusqlite::Connection::open(f._temp.path().join("state.db")).unwrap();
+    raw.execute("INSERT INTO context_versions(project_id,goal_id,task_id,owner,version,body) VALUES(?1,?2,?3,?4,?5,?6)",rusqlite::params![context.scope.project_id.to_string(),context.scope.goal_id.unwrap().to_string(),context.scope.task_id.unwrap().to_string(),format!("task:{}",context.scope.task_id.unwrap()),context.version,serde_json::to_string(context).unwrap()]).unwrap();
+    let mut task = f.store.lock().unwrap().task(f.task.id).unwrap().unwrap();
+    task.context_version = context.version;
+    task.version += 1;
+    raw.execute(
+        "UPDATE tasks SET body=?1,version=?2 WHERE id=?3",
+        rusqlite::params![
+            serde_json::to_string(&task).unwrap(),
+            task.version,
+            task.id.to_string()
+        ],
+    )
+    .unwrap();
+}
 fn budget() -> Budget {
     Budget {
         estimated_tokens: 100_000,
@@ -756,11 +774,12 @@ async fn typed_reader_does_not_accept_metadata_that_disagrees_with_actual_task()
     context.data["task"]["title"] = serde_json::json!("FORGED TASK PURPOSE");
     {
         let mut store = f.store.lock().unwrap();
-        store.put_context(&context).unwrap();
+        assert!(store.put_context(&context).is_err());
         let mut task = store.task(f.task.id).unwrap().unwrap();
         task.context_version = context.version;
-        store.put_task(&mut task).unwrap();
+        assert!(store.put_task(&mut task).is_err());
     }
+    corrupt_context(&f, &context);
     let forged = PackRef {
         scope: f.task.scope(),
         version: context.version,
@@ -1102,12 +1121,14 @@ async fn typed_checkpoints_are_immutable_and_promotion_matches_exact_current_hea
         } else {
             forged.data["checkpoint"] = serde_json::Value::Null;
         }
-        let mut store = f.store.lock().unwrap();
-        store.put_context(&forged).unwrap();
-        let mut t = store.task(f.task.id).unwrap().unwrap();
-        t.context_version = forged.version;
-        store.put_task(&mut t).unwrap();
-        drop(store);
+        {
+            let mut store = f.store.lock().unwrap();
+            assert!(store.put_context(&forged).is_err());
+            let mut t = store.task(f.task.id).unwrap().unwrap();
+            t.context_version = forged.version;
+            assert!(store.put_task(&mut t).is_err());
+        }
+        corrupt_context(&f, &forged);
         use sha2::{Digest, Sha256};
         let reference = PackRef {
             scope: forged.scope.clone(),
@@ -1141,6 +1162,12 @@ async fn typed_checkpoints_are_immutable_and_promotion_matches_exact_current_hea
         )
         .await
         .unwrap();
+    assert!(
+        packs
+            .prepare_draft(&stale, SelectionRequest::default(), budget())
+            .await
+            .is_err()
+    );
     let error = packs.publish_task(&stale).await.unwrap_err();
     assert!(
         error
@@ -1353,11 +1380,9 @@ async fn terminal_task_and_goal_never_prepare_draft_native_input() {
     ));
     {
         let mut store = f.store.lock().unwrap();
-        store.put_context(&envelope).unwrap();
-        let mut task = store.task(f.task.id).unwrap().unwrap();
-        task.context_version = 1;
-        store.put_task(&mut task).unwrap();
+        assert!(store.put_context(&envelope).is_err());
     }
+    corrupt_context(&f, &envelope);
     let reference = PackRef {
         scope: envelope.scope.clone(),
         version: 1,
@@ -1489,5 +1514,178 @@ async fn genuine_foreign_project_and_goal_checkpoints_in_one_store_cannot_promot
             .to_string()
             .contains("foreign consultation/checkpoint promotion"),
         "{error:#}"
+    );
+}
+
+#[tokio::test]
+async fn typed_pack_generic_writers_cannot_move_pointers_or_hide_unresolved_facts() {
+    let f = Fixture::new();
+    let packs = f.packs();
+    let first = packs
+        .publish_task(&packs.draft_task(&f.task.scope(), input()).await.unwrap())
+        .await
+        .unwrap();
+    let second = packs
+        .publish_task(
+            &packs
+                .draft_task(
+                    &f.task.scope(),
+                    TaskInputs {
+                        failures: vec!["X unresolved".into()],
+                        ..input()
+                    },
+                )
+                .await
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(second.version, 2);
+    packs.validate_task(&second).await.unwrap();
+    {
+        let mut store = f.store.lock().unwrap();
+        let mut task = store.task(f.task.id).unwrap().unwrap();
+        task.context_version = first.version;
+        assert!(store.put_task(&mut task).is_err());
+        let mut append = store.context(&f.task.scope(), None).unwrap().unwrap();
+        append.version += 1;
+        append.data = serde_json::json!({"opaque":"cannot poison a typed owner"});
+        assert!(store.put_context(&append).is_err());
+    }
+    let (native, _) = session(&f, SessionRole::Executor, SessionState::Running);
+    {
+        let mut store = f.store.lock().unwrap();
+        let mut task = store.task(f.task.id).unwrap().unwrap();
+        task.context_version = first.version;
+        assert!(store.put_task(&mut task).is_err());
+        let (mut native, version) = store.session(native.id).unwrap().unwrap();
+        native.state = SessionState::Lost;
+        store.put_session(&native, version).unwrap();
+        task.context_version = 0;
+        assert!(store.put_task(&mut task).is_err());
+    }
+    assert!(packs.validate_task(&first).await.is_err());
+    packs.validate_task(&second).await.unwrap();
+    assert_eq!(
+        packs.task_pack(&second).unwrap().failures,
+        vec!["X unresolved"]
+    );
+    let goal = packs
+        .publish_goal(
+            &Scope::goal(f.project.id, f.task.goal_id),
+            vec![],
+            Default::default(),
+        )
+        .await
+        .unwrap();
+    {
+        let mut store = f.store.lock().unwrap();
+        let mut g = store.goal(f.task.goal_id).unwrap().unwrap();
+        g.context_version = 0;
+        assert!(store.put_goal(&mut g).is_err());
+    }
+    packs.validate_goal(&goal).await.unwrap();
+}
+
+#[tokio::test]
+async fn cross_task_consultation_is_an_explicit_immutable_snapshot_not_a_live_head_dependency() {
+    let f = Fixture::new();
+    let packs = f.packs();
+    let (consultant, _) = session(&f, SessionRole::Consultant, SessionState::Exited);
+    let cp = packs
+        .checkpoint(
+            &f.task.scope(),
+            consultant.id,
+            None,
+            vec![event(1, EventKind::Decision, "promoted snapshot")],
+            HistoryPolicy {
+                recent_history_bytes: 0,
+            },
+        )
+        .await
+        .unwrap();
+    let mut target = Task::new(f.project.id, f.task.goal_id, "Target".into(), "fake".into());
+    {
+        let mut store = f.store.lock().unwrap();
+        store.put_task(&mut target).unwrap();
+        WorktreeManager::create(&mut store, target.id).unwrap();
+        target = store.task(target.id).unwrap().unwrap();
+    }
+    let draft = packs
+        .draft_task(
+            &target.scope(),
+            TaskInputs {
+                checkpoint: Some(cp.clone()),
+                ..input()
+            },
+        )
+        .await
+        .unwrap();
+    let reference = packs.publish_task(&draft).await.unwrap();
+    let source_versions = draft.source_versions();
+    assert!(!source_versions.contains_key("checkpoint:head"));
+    packs
+        .checkpoint(
+            &f.task.scope(),
+            consultant.id,
+            Some(cp.clone()),
+            vec![event(
+                2,
+                EventKind::Failure,
+                "source Task continues independently",
+            )],
+            HistoryPolicy {
+                recent_history_bytes: 0,
+            },
+        )
+        .await
+        .unwrap();
+    packs.validate_task(&reference).await.unwrap();
+    let DraftPreparation::Ready(prepared) = packs
+        .prepare_draft(&draft, SelectionRequest::default(), budget())
+        .await
+        .unwrap()
+    else {
+        panic!("budget");
+    };
+    assert_eq!(prepared.source_versions, source_versions);
+    assert!(
+        !prepared
+            .payload
+            .contains("source Task continues independently")
+    );
+    assert!(prepared.payload.contains("promoted snapshot"));
+    assert_eq!(
+        packs
+            .publish_task(
+                &packs
+                    .draft_task(
+                        &target.scope(),
+                        TaskInputs {
+                            checkpoint: Some(cp),
+                            ..input()
+                        }
+                    )
+                    .await
+                    .unwrap()
+            )
+            .await
+            .unwrap(),
+        reference
+    );
+    let historical = packs
+        .task_pack(&reference)
+        .unwrap()
+        .historical_checkpoint
+        .unwrap();
+    assert!(
+        historical["mandatory_task_at_checkpoint"]
+            .get("worktree")
+            .is_none()
+    );
+    assert!(
+        historical["mandatory_task_at_checkpoint"]
+            .get("executor")
+            .is_none()
     );
 }

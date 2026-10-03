@@ -15,13 +15,15 @@ pub(super) fn guard_checkpoint_write(tx: &Transaction<'_>, record: &Record) -> R
     );
     Ok(())
 }
+fn checkpoint_head_record(connection: &Connection, scope: &Scope) -> Result<Option<Record>> {
+    // Interim pre-v4 accessor: private append order, one decoded body. The v4
+    // integration replaces this with the atomically maintained indexed head row.
+    let body:Option<String>=connection.query_row("SELECT body FROM records WHERE kind='checkpoint' AND project_id=?1 AND goal_id=?2 AND task_id=?3 AND json_extract(body,'$.data.format')='rrx.checkpoint.v1' ORDER BY rowid DESC LIMIT 1",params![scope.project_id.to_string(),str_id(scope.goal_id),str_id(scope.task_id)],|r|r.get(0)).optional()?;
+    body.map(decode).transpose()
+}
 fn current_checkpoint_tx(tx: &Transaction<'_>, reference: &CheckpointRef) -> Result<()> {
-    let latest:Option<String>=tx.query_row("SELECT body FROM records WHERE kind='checkpoint' AND project_id=?1 AND goal_id=?2 AND task_id=?3 AND json_extract(body,'$.data.format')='rrx.checkpoint.v1' ORDER BY json_extract(body,'$.data.chain_version') DESC LIMIT 1",
-        params![reference.scope.project_id.to_string(),str_id(reference.scope.goal_id),str_id(reference.scope.task_id)],|r|r.get(0)).optional()?;
-    let latest: Record = latest
-        .map(decode)
-        .transpose()?
-        .context("checkpoint head missing")?;
+    let latest =
+        checkpoint_head_record(tx, &reference.scope)?.context("checkpoint head missing")?;
     ensure!(
         latest.id == reference.id
             && latest.version == 1
@@ -31,7 +33,70 @@ fn current_checkpoint_tx(tx: &Transaction<'_>, reference: &CheckpointRef) -> Res
     );
     Ok(())
 }
+fn typed_pack(data: &Value) -> bool {
+    matches!(
+        data["format"].as_str(),
+        Some("rrx.task-pack.v1" | "rrx.goal-pack.v1")
+    )
+}
+fn latest_context(connection: &Connection, scope: &Scope) -> Result<Option<ContextVersion>> {
+    let owner = context_owner(scope)?;
+    let body:Option<String>=connection.query_row("SELECT body FROM context_versions WHERE project_id=?1 AND owner=?2 ORDER BY version DESC LIMIT 1",params![scope.project_id.to_string(),owner],|r|r.get(0)).optional()?;
+    body.map(decode).transpose()
+}
+pub(super) fn guard_context_write(tx: &Transaction<'_>, context: &ContextVersion) -> Result<()> {
+    ensure!(
+        !typed_pack(&context.data)
+            && !latest_context(tx, &context.scope)?.is_some_and(|c| typed_pack(&c.data)),
+        "typed pack context requires the owned publication transaction"
+    );
+    Ok(())
+}
+pub(super) fn guard_pack_pointer(
+    tx: &Transaction<'_>,
+    scope: &Scope,
+    old: u64,
+    next: u64,
+) -> Result<()> {
+    ensure!(
+        old == next || !latest_context(tx, scope)?.is_some_and(|c| typed_pack(&c.data)),
+        "typed pack pointer requires the owned publication transaction"
+    );
+    Ok(())
+}
 impl Store {
+    pub(crate) fn pack_checkpoint_head(&self, scope: &Scope) -> Result<Option<CheckpointRef>> {
+        checkpoint_head_record(&self.connection, scope)?
+            .map(|r| {
+                Ok(CheckpointRef {
+                    scope: r.scope,
+                    id: r.id,
+                    version: r.version,
+                    digest: checkpoint_digest(&r.data)?,
+                })
+            })
+            .transpose()
+    }
+    pub(crate) fn audit_pack_preparation(
+        &mut self,
+        scope: &Scope,
+        expected: [u64; 3],
+        checkpoint: Option<&CheckpointRef>,
+        data: Value,
+    ) -> Result<()> {
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        pack_guard(&tx, scope, expected)?;
+        if let Some(reference) = checkpoint
+            && reference.scope == *scope
+        {
+            current_checkpoint_tx(&tx, reference)?;
+        }
+        append_event(&tx, scope, "context.pack.prepared", data)?;
+        tx.commit()?;
+        Ok(())
+    }
     pub(crate) fn publish_context_pack(
         &mut self,
         binding: &Scope,
@@ -59,7 +124,9 @@ impl Store {
         );
         if let Some(value) = context.data.get("checkpoint").filter(|v| !v.is_null()) {
             let reference: CheckpointRef = serde_json::from_value(value.clone())?;
-            current_checkpoint_tx(&tx, &reference)?;
+            if reference.scope == *binding {
+                current_checkpoint_tx(&tx, &reference)?;
+            }
         }
         pack_idle(&tx, &context.scope)?;
         for (id, version) in task_versions {
@@ -192,9 +259,7 @@ impl Store {
                 && task.worktree.as_ref() == Some(&session.worktree),
             "checkpoint Session changed/foreign"
         );
-        let latest:Option<String>=tx.query_row("SELECT body FROM records WHERE kind='checkpoint' AND project_id=?1 AND goal_id=?2 AND task_id=?3 AND json_extract(body,'$.data.format')='rrx.checkpoint.v1' ORDER BY json_extract(body,'$.data.chain_version') DESC LIMIT 1",
-            params![scope.project_id.to_string(),str_id(scope.goal_id),str_id(scope.task_id)],|r|r.get(0)).optional()?;
-        let latest: Option<Record> = latest.map(decode).transpose()?;
+        let latest = checkpoint_head_record(&tx, scope)?;
         match (previous, latest) {
             (None, None) => ensure!(
                 checkpoint.chain_version == 1 && checkpoint.first_sequence == 1,

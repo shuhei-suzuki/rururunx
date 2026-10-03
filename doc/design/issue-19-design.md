@@ -47,9 +47,12 @@ Consultant checkpoints promote only within the same Project/Goal after source
 reference validation, retaining historical source Session/Task/HEAD provenance.
 Target rules/constraints and source hashes are rebuilt; no full chat is copied.
 
-Keep SQL tables and Record kinds unchanged. After the Workflow format 3 migration,
+Keep Record kinds unchanged. After the Workflow format 3 migration,
 an atomic ordered 3→4 marker upgrade fences older writers from modifying typed
-checkpoint authority; preserve earlier 1→2→3 migrations. Add narrow Store transactions beside existing
+checkpoint authority and installs an atomically maintained indexed checkpoint head;
+preserve earlier 1→2→3 migrations. The interim independent core uses append row
+order and decodes one head body rather than loading all checkpoint history. Add
+narrow Store transactions beside existing
 helpers and coordinate their workflow fences with Issue 8. The PhaseContext port
 provides a draft payload/source authority while Engine owns ContextVersion/Task
 pointer publication and attempt lifecycle. Provider operations remain in adapters.
@@ -62,11 +65,19 @@ Important guarantees receive detached mutation proof and immutable native review
 
 Typed checkpoint records are immutable through generic Store writes; only the
 owned append transaction creates them. Promotion rederives exact compact content
-from the current chain head, and publication checks that head atomically. Mixed
+from an exact immutable checkpoint. Same-Task preparation and publication require
+the current chain head, including a final atomic preparation audit; source versions
+include its digest. Cross-Task consultation promotion remains a fixed snapshot when
+the source Task appends later checkpoints. Mixed
 Executor/Consultant chains retain all source facts, while cross-Task promotion
 selects only actual Consultant events. Omitted transient history records count,
 first/last sequence and a rolling SHA256 commitment, without storing omitted text.
 Checkpoints also preserve original Task criteria alongside mandatory Goal/rules.
+Cross-Task promotion carries only source Task id/title/criteria, rather than its
+runtime fields. Generic Context writes and pointer changes are fenced once a typed
+pack owns the scope; readers require both the current pointer and latest version.
+The v1 pack formats are new in this unreleased feature; intermediate branch payloads
+are not a supported persisted format.
 
 Draft preparation returns a source DTO without Adapter InputKind or native version;
 only the Engine binds it to a persisted phase context. Terminal Task/Goal preparation

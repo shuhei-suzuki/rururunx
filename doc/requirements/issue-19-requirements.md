@@ -26,7 +26,10 @@ no supervisor model or transcript summarization model is introduced.
 - Checkpoint creation appends evidence without overwriting an active launch's
   ContextVersion. Consultation promotion is explicit, scoped and compact; it copies
   preserved facts with historical provenance, never the full transcript or target
-  source authority. No cross-Project or cross-Goal implicit promotion is allowed.
+  source authority. Cross-Task promotion is an explicit immutable snapshot; later
+  source checkpoints do not silently replace it. Same-Task preparation/publication
+  requires the latest checkpoint head. No cross-Project or cross-Goal implicit
+  promotion is allowed.
 - Mandatory Project rules and Goal/Task constraints survive packing and promotion.
   The source Task criteria are preserved in checkpoints as well.
   Byte/estimated-token budgets apply to fully rendered payloads; provider metrics
@@ -36,7 +39,9 @@ no supervisor model or transcript summarization model is introduced.
   publication uses the workflow phase port; standalone publication cannot rewrite
   its phase/attempt context. After Workflow format 3 is merged, an ordered format 3→4 marker upgrade
   makes older writers refuse the authoritative checkpoint write contract. SQL
-  tables and Record kinds remain unchanged.
+  checkpoint-head indexing is maintained atomically with append. Generic Context
+  writes and pointer changes cannot bypass typed publication or restore an older
+  pack. Record kinds remain unchanged.
 
 Goal-only packs use read-only exact primary-root identity/source validation and
 atomic Project/Goal/Task-summary CAS, including before Tasks and after worktree

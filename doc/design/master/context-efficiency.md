@@ -136,7 +136,10 @@ Goals, decisions, completed work, failures, findings, next actions, constraints,
 critical references and verification remain intact across checkpoints. Only
 explicitly transient events leave the configurable serialized-byte tail, with
 count/sequence-range/rolling-digest evidence. Typed checkpoint records are immutable
-and promotion binds the current chain head. Mandatory
+and same-Task preparation/publication binds the current chain head. Cross-Task
+consultation promotion is an explicit immutable snapshot, independent of later
+source checkpoint appends. Generic Context updates cannot move a typed pack pointer
+backward or replace its authority. Mandatory
 state overflow fails explicitly; no summarizer guesses which text is safe to drop.
 Checkpoint refs bind exact Session/Task/Goal provenance and retain historical source
 metadata. Cross-Task Consultant promotion requires the same Project/Goal and copies

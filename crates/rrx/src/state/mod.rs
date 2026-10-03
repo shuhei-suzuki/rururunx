@@ -273,6 +273,9 @@ impl Store {
                 "goal project binding is immutable"
             );
         }
+        let old =
+            read_tx::<Goal>(&tx, "goals", &goal.id.to_string())?.map_or(0, |g| g.context_version);
+        context_pack::guard_pack_pointer(&tx, &goal.scope(), old, goal.context_version)?;
         validate_goal_references(&tx, goal)?;
         let mut next = goal.clone();
         bump(&mut next.version)?;
@@ -348,6 +351,9 @@ impl Store {
                 "workflow downgrade is forbidden"
             );
         }
+        let old =
+            read_tx::<Task>(&tx, "tasks", &task.id.to_string())?.map_or(0, |t| t.context_version);
+        context_pack::guard_pack_pointer(&tx, &task.scope(), old, task.context_version)?;
         ensure!(
             task.worktree.is_some() == task.branch.is_some(),
             "task path/branch must bind together"
@@ -528,6 +534,7 @@ impl Store {
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        context_pack::guard_context_write(&tx, context)?;
         let latest: u64 = tx.query_row("SELECT COALESCE(MAX(version),0) FROM context_versions WHERE project_id=?1 AND owner=?2",
             params![context.scope.project_id.to_string(), owner], |row| row.get(0))?;
         ensure!(
