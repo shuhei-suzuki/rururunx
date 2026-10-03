@@ -34,10 +34,13 @@ Native provider adapters and runtime CLI orchestration remain separate.
   adapter unit regressions (one macOS-specific), and 37 existing tests. Clippy
   `-D warnings`, fmt-check, locked debug/release builds also pass. Earlier integrated
   `5ecfff7` passed Linux and macOS [CI](https://github.com/shuhei-suzuki/rururunx/actions/runs/37094557400).
-  Integrated `2b56a53` passes 77 macOS tests: six adapter unit, 18 adapter native,
+  Final code/test `d37b8d0` passes 77 macOS tests: six adapter unit, 18 adapter native,
   18 Git, 15 Project registry, 12 state, five CLI, and three config tests. Two
   inspector tests are macOS-specific (75 Linux total). Clippy all-targets
-  `-D warnings` passed; exact final-head build/CI gates are recorded before merge. On this macOS host real signal/ps tests require native
+  `-D warnings`, fmt, locked debug/release builds passed. Exact code/test head
+  `d37b8d0` passes both [Linux/macOS CI](https://github.com/shuhei-suzuki/rururunx/actions/runs/37097725721).
+  Final documentation-head CI and native delta review complete before merge; any
+  later evidence-only commits preserve this exact Rust/test source. On this macOS host real signal/ps tests require native
   OS access; sandbox ps was denied and Tokio subprocess waits timed out. Authorized
   `require_escalated` verification uses temporary Git fixtures only.
 
@@ -148,6 +151,25 @@ tree was clean:
 | Goal version recheck | ownership_change_during_native_preflight_prevents_executor_launch |
 | Shared pure Git common directory check | foreign_git_repository_inside_namespace_detached_and_protected_branches_are_rejected |
 | Typed transactional contention | atomic_starting_reservation_excludes_duplicate_executor_and_review_acquisition |
+
+At integrated immutable `d37b8d0`, all eleven additional mutations failed the
+protected test; each source was restored, all 77 tests passed and the disposable
+tree was clean. The inspector fixture captures its native PID immediately from
+Child rather than assuming its shim executes before the timeout on a loaded host.
+
+| Removed guarantee | Failing regression |
+| --- | --- |
+| Inspector deadline | native_inspection_timeout_kills_and_reaps_its_trusted_direct_child |
+| Original lifecycle version baseline | lifecycle_change_before_git_snapshot_is_detected_from_original_versions |
+| Uncertain Running-write cleanup stays Lost | running_write_failure_cleans_confirmed_groups_and_reserves_uncertain_groups_with_audit |
+| Cancelled native child stays reserved | cancelled_preflight_keeps_uncertain_session_reserved_and_large_unread_stdin_is_failed |
+| Runtime-native Git environment | agent_git_configuration_does_not_override_runtime_ownership_preflight |
+| Metadata namespace rejected before binding | separate_git_metadata_namespace_is_rejected_before_binding_or_native_creation |
+| Typed inactive Project category | running_write_failure_cleans_confirmed_groups_and_reserves_uncertain_groups_with_audit |
+| Blocked terminal updates allowed safely | blocked_project_rejects_new_launch_and_allows_owned_native_stop |
+| Shared pure common-dir ownership | foreign_git_repository_inside_namespace_detached_and_protected_branches_are_rejected |
+| Post-Git Goal version check | ownership_change_during_native_preflight_prevents_executor_launch |
+| EPERM live group rejection | signal_permission_failure_requires_verified_dead_group |
 
 ## Limits
 
