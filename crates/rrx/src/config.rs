@@ -120,7 +120,9 @@ impl Config {
             )
         })?;
         if let Some(path) = project {
-            result.apply_project(parse_file(path)?);
+            result
+                .apply_project(parse_file(path)?)
+                .with_context(|| format!("invalid project config {}", path.display()))?;
             result
                 .validate()
                 .with_context(|| format!("invalid project config {}", path.display()))?;
@@ -128,7 +130,7 @@ impl Config {
         Ok(result)
     }
 
-    fn apply_project(&mut self, project: ProjectOverlay) {
+    fn apply_project(&mut self, project: ProjectOverlay) -> Result<()> {
         if let Some(minimum) = project.minimum_workflow {
             self.minimum_workflow = self.minimum_workflow.max(minimum);
         }
@@ -157,7 +159,9 @@ impl Config {
             }
         }
         for (name, overlay) in project.agents {
-            let agent = self.agents.entry(name).or_default();
+            let agent = self.agents.get_mut(&name).with_context(|| {
+                format!("project cannot configure unregistered runtime agent {name}")
+            })?;
             if let Some(model) = overlay.model {
                 agent.model = Some(model);
             }
@@ -165,6 +169,7 @@ impl Config {
                 agent.effort = Some(effort);
             }
         }
+        Ok(())
     }
 
     pub fn validate(&self) -> Result<()> {

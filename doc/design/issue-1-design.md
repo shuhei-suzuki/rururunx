@@ -19,7 +19,8 @@ Native CLI providers must not leak into scheduling/domain modules.
 
 `--config` loads runtime-global TOML. `--project-config` loads one explicit project
 overlay through a separate typed schema. Only project task limits, context options,
-and agent model/effort are overridable. Global session/agent limits and executable
+and model/effort for runtime-registered agents are overridable. Project overlays
+cannot register a new agent. Global session/agent limits and executable
 argv are runtime-owned; project `minimum_workflow` is combined by maximum. Unknown
 fields, malformed TOML,
 missing explicit paths and zero concurrency/context budgets are errors. Agent

@@ -3,9 +3,11 @@ use std::{path::PathBuf, process::Command};
 struct Fixture(PathBuf);
 impl Fixture {
     fn new() -> Self {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let dir = std::env::temp_dir().join(format!(
-            "rrx-config-test-{}-{}",
+            "rrx-config-test-{}-{}-{}",
             std::process::id(),
+            NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -112,6 +114,7 @@ fn invalid_configs_fail_through_actual_loader_with_source_path() {
         "[agents.codex]\ncommand = ['other']",
         "[agents.codex]\nmax_concurrent = 9",
         "[context]\nreview_context_tokens = 0",
+        "[agents.unknown]\nmodel = 'x'",
     ] {
         let path = fixture.write("project.toml", input);
         let output = rrx()
@@ -130,6 +133,9 @@ fn readme_configuration_example_is_valid() {
     let fixture = Fixture::new();
     let readme = include_str!("../../../README.md");
     let toml = readme
+        .split("## Development")
+        .nth(1)
+        .unwrap()
         .split("```toml\n")
         .nth(1)
         .unwrap()
