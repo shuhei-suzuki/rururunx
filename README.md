@@ -118,6 +118,8 @@ Grok   → Gemini
 Local agent → Claude
 ```
 
+Review sets may use 1, 2, 3, or more agents with `all`, `quorum` (N-of-M), or `any` completion policies. Two-reviewer mode is a first-class configuration; Claude / Codex / Grok Triple Review is a preset, not a hard-coded requirement.
+
 Reviewers return a decision such as:
 
 ```text
@@ -162,7 +164,7 @@ The MVP is complete when the development workflow currently performed across mul
 - mutation verification where required
 - headed browser verification for UI/browser-facing changes
 - staging verification for relevant API/auth/DB/infra changes
-- parallel adversarial review across Claude / Codex / Grok
+- configurable parallel review with 1, 2, 3, or more reviewers (including 2-reviewer mode and Claude / Codex / Grok Triple Review)
 - multi-round verify → fix → commit → re-review
 - cross-agent permission approval
 - human escalation
