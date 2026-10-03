@@ -191,7 +191,8 @@ byte for byte and all 65 Codex regressions passed after every batch. Initial
 ambiguous M618/M620/M620B attempts have no credit; only their separately compiled
 replacement variants count. This is regression evidence, not native TUI acceptance.
 
-Linux CI passed at that head. macOS CI run `37119853652` failed the existing
+CI run `37119853652` failed on macOS and cancelled Ubuntu through matrix
+fail-fast, so neither host receives a completed CI pass at that head. macOS failed the existing
 same-HEAD replacement test's successful fresh Git check. That assertion hid the
 returned cause; replace it with `unwrap` to preserve sanitized adapter diagnostics.
 The cause remains unverified, and no process-ownership guard, cleanup latch or
