@@ -48,6 +48,11 @@ struct Evidence {
     turn: Option<String>,
     counters: Option<TokenCounters>,
 }
+struct NativeTurn {
+    thread: String,
+    turn: String,
+    previous_turn: Option<String>,
+}
 struct Reservation {
     store: SharedStore,
     session: Session,
@@ -415,8 +420,13 @@ impl CodexAdapter {
             sender,
             stopped,
             evidence,
-            thread,
-            turn,
+            NativeTurn {
+                thread,
+                turn,
+                previous_turn: resume.and_then(|session| {
+                    session.recovery["native_turn"].as_str().map(str::to_owned)
+                }),
+            },
         ));
         Ok(session)
     }
@@ -596,9 +606,13 @@ async fn supervise(
     sender: watch::Sender<SessionStatus>,
     mut stop: mpsc::Receiver<()>,
     evidence: Arc<Mutex<Evidence>>,
-    thread: String,
-    turn: String,
+    identity: NativeTurn,
 ) {
+    let NativeTurn {
+        thread,
+        turn,
+        previous_turn,
+    } = identity;
     let mut status = sender.borrow().clone();
     let mut tracker = UsageTracker::new(thread.clone(), turn.clone());
     let result = loop {
@@ -609,9 +623,12 @@ async fn supervise(
             },
             event = native.receive() => event,
         };
-        match event
-            .and_then(|event| decision_event(event, &thread, &turn, &mut tracker, &mut status))
-        {
+        match event.and_then(|event| {
+            if resumed_usage(&event, &thread, previous_turn.as_deref())? {
+                return Ok(None);
+            }
+            decision_event(event, &thread, &turn, &mut tracker, &mut status)
+        }) {
             Ok(Some(completed)) => break Ok(completed),
             Ok(None) => {
                 if let Ok(mut evidence) = evidence.lock() {
@@ -657,6 +674,29 @@ async fn supervise(
     sender.send_replace(status);
 }
 
+/// Native resume can report the already completed, owned prior turn's counters.
+/// Validate and discard that gauge; it is neither current input nor new usage.
+fn resumed_usage(event: &Event, thread: &str, previous_turn: Option<&str>) -> AdapterResult<bool> {
+    let Event::Notification { method, params } = event else {
+        return Ok(false);
+    };
+    if method != "thread/tokenUsage/updated"
+        || previous_turn.is_none()
+        || params["turnId"].as_str() != previous_turn
+    {
+        return Ok(false);
+    }
+    if params["threadId"] != thread {
+        return Err(failure(
+            ErrorKind::OwnershipMismatch,
+            "foreign historical native usage thread",
+        ));
+    }
+    TokenCounters::from_native(&params["tokenUsage"]["total"])?;
+    TokenCounters::from_native(&params["tokenUsage"]["last"])?;
+    Ok(true)
+}
+
 fn decision_event(
     event: Event,
     thread: &str,
@@ -675,7 +715,7 @@ fn decision_event(
     {
         return Err(failure(
             ErrorKind::OwnershipMismatch,
-            "foreign native notification thread/turn",
+            format!("foreign native notification thread/turn ({method})"),
         ));
     }
     match method.as_str() {
@@ -846,6 +886,32 @@ mod tests {
             .unwrap_err()
             .kind,
             ErrorKind::ProcessFailure
+        );
+    }
+    #[test]
+    fn resume_accepts_only_validated_owned_previous_usage_without_recounting_it() {
+        let event = |thread: &str, turn: &str| Event::Notification {
+            method: "thread/tokenUsage/updated".into(),
+            params: json!({"threadId":thread,"turnId":turn,"tokenUsage":{"total":{"inputTokens":10},"last":{"inputTokens":10}}}),
+        };
+        assert!(resumed_usage(&event("own", "previous"), "own", Some("previous")).unwrap());
+        assert!(!resumed_usage(&event("own", "current"), "own", Some("previous")).unwrap());
+        assert!(!resumed_usage(&event("own", "previous"), "own", None).unwrap());
+        assert_eq!(
+            resumed_usage(&event("foreign", "previous"), "own", Some("previous"))
+                .unwrap_err()
+                .kind,
+            ErrorKind::OwnershipMismatch
+        );
+        let mut forged = event("own", "previous");
+        if let Event::Notification { params, .. } = &mut forged {
+            params["tokenUsage"]["last"]["inputTokens"] = json!(-1);
+        }
+        assert_eq!(
+            resumed_usage(&forged, "own", Some("previous"))
+                .unwrap_err()
+                .kind,
+            ErrorKind::ParseFailure
         );
     }
 }
