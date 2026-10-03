@@ -589,6 +589,41 @@ mod tests {
         );
     }
     #[test]
+    fn preparation_audit_rechecks_checkpoint_head_without_task_version_change() {
+        let mut f = Fixture::new();
+        let scope = f.t.scope();
+        let expected = [f.p.version, f.g.version, f.t.version];
+        let insert = |store: &Store, chain: u64| {
+            let mut r = Record::new(
+                scope.clone(),
+                RecordKind::Checkpoint,
+                json!({"format":"rrx.checkpoint.v1","chain_version":chain}),
+            );
+            r.version = 1;
+            store.connection.execute("INSERT INTO records(id,project_id,goal_id,task_id,kind,version,body) VALUES(?1,?2,?3,?4,'checkpoint',1,?5)",params![r.id.to_string(),scope.project_id.to_string(),str_id(scope.goal_id),str_id(scope.task_id),serde_json::to_string(&r).unwrap()]).unwrap();
+        };
+        // Raw immutable rows isolate the final transaction from earlier service gates.
+        insert(&f.store, 1);
+        let old = f.store.pack_checkpoint_head(&scope).unwrap().unwrap();
+        f.store
+            .audit_pack_preparation(&scope, expected, Some(&old), json!({"control":true}))
+            .unwrap();
+        insert(&f.store, 2);
+        let before = f.store.events(&scope, 0, 100).unwrap().len();
+        assert!(
+            f.store
+                .audit_pack_preparation(&scope, expected, Some(&old), json!({"stale":true}))
+                .is_err()
+        );
+        assert_eq!(f.store.events(&scope, 0, 100).unwrap().len(), before);
+        assert_eq!(f.store.task(f.t.id).unwrap().unwrap().version, f.t.version);
+        let current = f.store.pack_checkpoint_head(&scope).unwrap().unwrap();
+        f.store
+            .audit_pack_preparation(&scope, expected, Some(&current), json!({"current":true}))
+            .unwrap();
+        assert_eq!(f.store.events(&scope, 0, 100).unwrap().len(), before + 1);
+    }
+    #[test]
     fn goal_pack_transaction_rechecks_summary_activity_and_goal_session() {
         let mut f = Fixture::new();
         let scope = f.g.scope();

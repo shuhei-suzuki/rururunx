@@ -1565,6 +1565,28 @@ async fn typed_pack_generic_writers_cannot_move_pointers_or_hide_unresolved_fact
         assert!(store.put_task(&mut task).is_err());
     }
     assert!(packs.validate_task(&first).await.is_err());
+    // Corrupt only the stored pointer to exercise the reader independently of writers.
+    let original = f.store.lock().unwrap().task(f.task.id).unwrap().unwrap();
+    let mut rollback = original.clone();
+    rollback.context_version = first.version;
+    let raw = rusqlite::Connection::open(f._temp.path().join("state.db")).unwrap();
+    raw.execute(
+        "UPDATE tasks SET body=?1 WHERE id=?2",
+        rusqlite::params![
+            serde_json::to_string(&rollback).unwrap(),
+            rollback.id.to_string()
+        ],
+    )
+    .unwrap();
+    assert!(packs.validate_task(&first).await.is_err());
+    raw.execute(
+        "UPDATE tasks SET body=?1 WHERE id=?2",
+        rusqlite::params![
+            serde_json::to_string(&original).unwrap(),
+            original.id.to_string()
+        ],
+    )
+    .unwrap();
     packs.validate_task(&second).await.unwrap();
     assert_eq!(
         packs.task_pack(&second).unwrap().failures,
@@ -1622,6 +1644,18 @@ async fn cross_task_consultation_is_an_explicit_immutable_snapshot_not_a_live_he
         .await
         .unwrap();
     let reference = packs.publish_task(&draft).await.unwrap();
+    // Publication advances Task DB authority. Capture a current target draft before
+    // the independent source checkpoint append so only that append is varied.
+    let draft = packs
+        .draft_task(
+            &target.scope(),
+            TaskInputs {
+                checkpoint: Some(cp.clone()),
+                ..input()
+            },
+        )
+        .await
+        .unwrap();
     let source_versions = draft.source_versions();
     assert!(!source_versions.contains_key("checkpoint:head"));
     packs
