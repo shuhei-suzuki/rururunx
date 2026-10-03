@@ -150,6 +150,18 @@ impl TurnEvidence {
         prompt: &str,
         decision: bool,
     ) -> AdapterResult<Option<String>> {
+        // Native title/summary housekeeping is Session-scoped, not a prompt
+        // event. It never feeds output, tool evidence, usage or completion.
+        if params["update"]["sessionUpdate"] == "session_info_update" {
+            return if params["sessionId"] == native {
+                Ok(None)
+            } else {
+                Err(failure(
+                    ErrorKind::OwnershipMismatch,
+                    "foreign native Session housekeeping",
+                ))
+            };
+        }
         if params["sessionId"] != native || params["_meta"]["promptId"] != prompt {
             return Err(failure(
                 ErrorKind::OwnershipMismatch,
@@ -245,5 +257,37 @@ impl TurnEvidence {
         } else {
             Ok(())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn native_title_housekeeping_never_grants_prompt_or_tool_authority() {
+        let mut evidence = TurnEvidence::default();
+        let root = Path::new("/owned/task");
+        let mut params = json!({"sessionId":"native","update":{"sessionUpdate":"session_info_update","title":"native title"}});
+        assert!(
+            evidence
+                .update(root, &params, "native", "prompt", true)
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(evidence.callbacks, 0);
+        evidence.finished().unwrap();
+        params["sessionId"] = json!("foreign");
+        assert!(
+            evidence
+                .update(root, &params, "native", "prompt", true)
+                .is_err()
+        );
+        params["sessionId"] = json!("native");
+        params["update"]["sessionUpdate"] = json!("tool_call");
+        assert!(
+            evidence
+                .update(root, &params, "native", "prompt", false)
+                .is_err()
+        );
     }
 }

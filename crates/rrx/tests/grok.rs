@@ -199,6 +199,7 @@ for line in sys.stdin:
  elif method=='_x.ai/session/info':result={'result':{'sessionId':sid,'cwd':os.getcwd(),'agentName':'rururunx-decision' if decision else 'rururunx-executor','context':{'toolDefinitionsCount':(0 if decision else 2)+(1 if mode=='inventory' else 0),'toolCallCount':calls}}}
  elif method=='session/prompt':
   prompt=p['_meta']['promptId'];assert 'bash_command' not in p['prompt'][0].get('_meta',{})
+  send({'jsonrpc':'2.0','method':'session/update','params':{'sessionId':sid,'update':{'sessionUpdate':'session_info_update','title':'native title'}}})
   connection=sqlite3.connect(os.environ['RRX_DATABASE']);rows=connection.execute("select body from records where kind='session'").fetchall();connection.close()
   assert any(json.loads(row[0])['data']['recovery'].get('prompt_id')==prompt and json.loads(row[0])['data']['recovery'].get('input_version') in [1,2] for row in rows),'dispatch not durable'
   if mode=='hang':time.sleep(60)
@@ -375,6 +376,93 @@ async fn native_stop_permissions_foreign_refs_and_environment_guards_are_explici
         !adapter
             .capabilities()
             .contains(&Capability::PermissionInterception)
+    );
+}
+
+#[tokio::test]
+async fn unknown_native_dispatch_keeps_clean_dead_executor_reserved() {
+    let mut fixture = Fixture::new();
+    fixture.mode("oversize");
+    let adapter = fixture.adapter();
+    let session = adapter.start(fixture.request.clone()).await.unwrap();
+    let status = finished(&adapter, &session).await;
+    assert_eq!(status.session.state, SessionState::Lost);
+    assert!(status.session.pid.is_none());
+    assert!(!adapter.transport_succeeded(&status));
+    assert_eq!(
+        fixture
+            .store
+            .lock()
+            .unwrap()
+            .session(session.id)
+            .unwrap()
+            .unwrap()
+            .0
+            .state,
+        SessionState::Lost
+    );
+    assert_eq!(
+        git(&fixture.request.worktree, &["status", "--porcelain"]),
+        ""
+    );
+    assert!(
+        rrx::git::WorktreeManager::lock_review(
+            &mut fixture.store.lock().unwrap(),
+            fixture.request.scope.task_id.unwrap(),
+            &fixture.request.input.revision,
+            "cannot lock Lost executor"
+        )
+        .is_err()
+    );
+    assert_eq!(
+        adapter
+            .start(fixture.request.clone())
+            .await
+            .unwrap_err()
+            .kind,
+        ErrorKind::StateConflict
+    );
+    assert_eq!(
+        adapter.release((&session).into()).unwrap_err().kind,
+        ErrorKind::SessionLost
+    );
+    let mut input = fixture.request.input.clone();
+    input.version = 2;
+    assert_eq!(
+        adapter
+            .checkpoint((&session).into(), input)
+            .await
+            .unwrap_err()
+            .kind,
+        ErrorKind::InvalidInput
+    );
+}
+
+#[tokio::test]
+async fn stop_after_dispatch_preserves_unknown_outcome_until_explicit_recovery() {
+    let mut fixture = Fixture::new();
+    fixture.mode("hang");
+    let adapter = fixture.adapter();
+    let session = adapter.start(fixture.request.clone()).await.unwrap();
+    let mut watch = adapter.subscribe((&session).into()).unwrap();
+    tokio::time::timeout(Duration::from_secs(10), async {
+        while watch.borrow().session.state != SessionState::Running {
+            watch.changed().await.unwrap();
+        }
+    })
+    .await
+    .unwrap();
+    let stopped = adapter.stop((&session).into()).await.unwrap();
+    assert_eq!(stopped.session.state, SessionState::Lost);
+    assert!(stopped.session.pid.is_none());
+    assert!(!adapter.transport_succeeded(&stopped));
+    assert_eq!(
+        adapter
+            .start(fixture.request.clone())
+            .await
+            .unwrap_err()
+            .kind,
+        ErrorKind::StateConflict
     );
 }
 
