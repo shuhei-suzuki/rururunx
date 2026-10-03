@@ -3280,6 +3280,28 @@ async fn native_input_pin_allows_verified_fresh_continuation_and_only_exact_pre_
             .put_session(&terminal, version)
             .is_err()
     );
+    let mut unconsume = native.clone();
+    unconsume
+        .recovery
+        .as_object_mut()
+        .unwrap()
+        .remove("dispatch_intent");
+    assert!(
+        f.store
+            .lock()
+            .unwrap()
+            .put_session(&unconsume, version)
+            .is_err()
+    );
+    let mut replace_intent = native.clone();
+    replace_intent.recovery["dispatch_intent"]["id"] = serde_json::json!("replacement");
+    assert!(
+        f.store
+            .lock()
+            .unwrap()
+            .put_session(&replace_intent, version)
+            .is_err()
+    );
     let mut rebind = native.clone();
     rebind.recovery["source_versions"]["checkpoint:head"] = serde_json::json!("none");
     assert!(

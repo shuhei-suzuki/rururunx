@@ -231,6 +231,18 @@ pub(super) fn guard_launch_checkpoint(tx: &Transaction<'_>, record: &Record) -> 
             "terminal restore proof requires persisted prior terminal Session"
         );
     }
+    if protected
+        && !fresh
+        && !restoring
+        && let Some(old) = &previous
+        && dispatch_consumed(old)
+    {
+        ensure!(
+            dispatch_consumed(&session)
+                && session.recovery["dispatch_intent"] == old.recovery["dispatch_intent"],
+            "consumed native dispatch authority is immutable"
+        );
+    }
     // The dispatch CAS precedes the native wire and Running acknowledgement.
     // A newly consumed intent must use live authority even if the Session state
     // remains Starting or a caller publishes it from a later observation.
