@@ -30,6 +30,7 @@ struct FakeAgent {
     native_completions: Mutex<BTreeSet<SessionId>>,
     launches: Mutex<Vec<LaunchRequest>>,
     statuses: Mutex<BTreeMap<SessionId, SessionStatus>>,
+    before_ack: Mutex<Option<Box<dyn FnOnce() + Send>>>,
 }
 impl FakeAgent {
     fn new(name: &str, store: SharedStore, review: bool) -> Self {
@@ -42,6 +43,7 @@ impl FakeAgent {
             native_completions: Mutex::new(BTreeSet::new()),
             launches: Mutex::new(vec![]),
             statuses: Mutex::new(BTreeMap::new()),
+            before_ack: Mutex::new(None),
         }
     }
 }
@@ -103,6 +105,9 @@ impl AgentAdapter for FakeAgent {
                     failure: None,
                 },
             );
+            if let Some(hook) = self.before_ack.lock().unwrap().take() {
+                hook();
+            }
             Ok(session)
         })
     }
@@ -4092,5 +4097,101 @@ async fn checkpoint_drift_before_pr_or_merge_claim_never_invokes_external_gate()
             snapshot.history[snapshot.active.unwrap()].state,
             AttemptState::Waiting
         );
+    }
+}
+
+#[tokio::test]
+async fn actor_ack_refresh_accepts_only_bookkeeping_and_preserves_changed_authority_claims() {
+    for change in ["progress", "constraints", "project_refs", "paused", "task"] {
+        let f = Fixture::new(WorkflowClass::Quick);
+        let (project, goal, task) = {
+            let store = f.store.lock().unwrap();
+            (
+                store.project(f.project.id).unwrap().unwrap(),
+                store.goal(f.task.goal_id).unwrap().unwrap(),
+                store.task(f.task.id).unwrap().unwrap(),
+            )
+        };
+        f.sources
+            .snapshot
+            .lock()
+            .unwrap()
+            .source_versions
+            .extend(crate::context_pack::instruction_versions(&project, &goal, &task).unwrap());
+        f.engine.initialize(f.task.id, None).await.unwrap();
+        let store = f.store.clone();
+        let task_id = f.task.id;
+        *f.executor.before_ack.lock().unwrap() = Some(Box::new(move || {
+            let mut store = store.lock().unwrap();
+            match change {
+                "project_refs" => {
+                    let mut p = store.project(project.id).unwrap().unwrap();
+                    p.environment_refs.push("ADDITIONAL_SCOPED_ENV_REF".into());
+                    store.put_project(&mut p).unwrap();
+                }
+                "task" => {
+                    let mut t = store.task(task_id).unwrap().unwrap();
+                    t.acceptance_criteria
+                        .push("changed while actor acknowledged".into());
+                    store.put_task(&mut t).unwrap();
+                }
+                _ => {
+                    let mut g = store.goal(goal.id).unwrap().unwrap();
+                    match change {
+                        "progress" => g.completion_criteria[0].satisfied = true,
+                        "constraints" => g.constraints.push("new mandatory rule".into()),
+                        "paused" => g.state = GoalState::Paused,
+                        _ => unreachable!(),
+                    }
+                    store.put_goal(&mut g).unwrap();
+                }
+            }
+        }));
+        let mut outcome = None;
+        for _ in 0..8 {
+            let result = f.engine.step(f.task.id, Default::default()).await;
+            if result.is_err()
+                || matches!(
+                    result,
+                    Ok(StepResult::Started {
+                        phase: Phase::Requirements,
+                        ..
+                    })
+                )
+            {
+                outcome = Some(result);
+                break;
+            }
+        }
+        let outcome = outcome.expect("actor acknowledgement observed");
+        assert_eq!(f.executor.launches.lock().unwrap().len(), 1);
+        let snapshot = f.engine.snapshot(f.task.id).unwrap();
+        let attempt = &snapshot.history[snapshot.active.unwrap()];
+        assert_eq!(attempt.state, AttemptState::Running);
+        assert!(attempt.dispatch_started);
+        if change == "progress" {
+            assert!(matches!(
+                outcome,
+                Ok(StepResult::Started {
+                    phase: Phase::Requirements,
+                    session: Some(_)
+                })
+            ));
+            assert!(attempt.session_id.is_some());
+        } else {
+            assert!(outcome.is_err(), "{change}: {outcome:?}");
+            assert!(attempt.session_id.is_none());
+            // Failure preserves the admitted Session and exact unresolved claim;
+            // it never silently retries or drops potentially executed work.
+            let sessions = f
+                .store
+                .lock()
+                .unwrap()
+                .records(&f.task.scope(), RecordKind::Session)
+                .unwrap();
+            assert_eq!(sessions.len(), 1);
+            let session: Session = serde_json::from_value(sessions[0].data.clone()).unwrap();
+            assert_eq!(session.state, SessionState::Running);
+        }
     }
 }
