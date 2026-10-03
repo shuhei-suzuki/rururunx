@@ -189,6 +189,7 @@ impl ScopeSnapshot {
             if task.scope() != request.scope
                 || task.worktree.as_ref() != Some(&request.worktree)
                 || (request.role == SessionRole::Executor && task.executor != agent)
+                || (review && !task.reviewers.iter().any(|reviewer| reviewer == agent))
             {
                 return Err(failure(
                     ErrorKind::OwnershipMismatch,
@@ -529,9 +530,12 @@ impl ScopeSnapshot {
 pub(super) async fn filesystem<T: Send + 'static>(
     action: impl FnOnce() -> AdapterResult<T> + Send + 'static,
 ) -> AdapterResult<T> {
-    let permit = FILESYSTEM_WORKERS
-        .try_acquire()
-        .map_err(|_| failure(ErrorKind::Timeout, "native filesystem worker limit reached"))?;
+    let permit = FILESYSTEM_WORKERS.try_acquire().map_err(|_| {
+        failure(
+            ErrorKind::Locked,
+            "native filesystem worker capacity reached; retry without dispatch",
+        )
+    })?;
     tokio::time::timeout(
         Duration::from_secs(5),
         tokio::task::spawn_blocking(move || {
@@ -643,6 +647,7 @@ pub(super) mod tests {
                 );
                 store.put_goal(&mut goal).unwrap();
                 let mut task = Task::new(project.id, goal.id, "fixture".into(), "claude".into());
+                task.reviewers.push("claude".into());
                 task.issue = Some(42);
                 store.put_task(&mut task).unwrap();
                 let worktree = WorktreeManager::create(&mut store, task.id)
@@ -721,6 +726,34 @@ pub(super) mod tests {
                 .unwrap_err()
                 .kind,
             ErrorKind::Locked
+        );
+    }
+    #[test]
+    fn decision_agent_must_be_explicitly_assigned_to_the_task() {
+        let mut fixture = Fixture::new(true);
+        fixture.review();
+        assert_eq!(
+            ScopeSnapshot::capture(&fixture.store, &fixture.request, "unassigned")
+                .err()
+                .unwrap()
+                .kind,
+            ErrorKind::OwnershipMismatch
+        );
+        assert!(ScopeSnapshot::capture(&fixture.store, &fixture.request, "claude").is_ok());
+        let mut store = fixture.store.lock().unwrap();
+        let mut task = store
+            .task(fixture.request.scope.task_id.unwrap())
+            .unwrap()
+            .unwrap();
+        task.reviewers.clear();
+        store.put_task(&mut task).unwrap();
+        drop(store);
+        assert_eq!(
+            ScopeSnapshot::capture(&fixture.store, &fixture.request, "claude")
+                .err()
+                .unwrap()
+                .kind,
+            ErrorKind::OwnershipMismatch
         );
     }
     #[tokio::test]

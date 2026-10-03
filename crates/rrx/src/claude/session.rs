@@ -150,17 +150,21 @@ impl Reservation {
         Ok(())
     }
     fn persist(&mut self) -> AdapterResult<()> {
+        self.commit_session_only(self.session.clone())
+    }
+    fn commit_session_only(&mut self, candidate: Session) -> AdapterResult<()> {
         self.version = self
             .store
             .lock()
             .map_err(|_| failure(ErrorKind::StateFailure, "state store poisoned"))?
-            .put_session(&self.session, self.version)
+            .put_session(&candidate, self.version)
             .map_err(|_| {
                 failure(
                     ErrorKind::StateConflict,
                     "native Session publication conflict",
                 )
             })?;
+        self.session = candidate;
         Ok(())
     }
     fn publish(
@@ -366,7 +370,7 @@ impl ClaudeAdapter {
         candidate.state = SessionState::WaitingHuman;
         candidate.recovery["prepared_input_submitted"] = json!(false);
         candidate.recovery["requested_native_uuid"] = json!(native);
-        candidate.recovery["dispatch_intent"] = json!({"kind":"terminal_start","attempt":candidate.recovery["attempt"],"requested_native_uuid":native,"input_version":request.input.version,"input_revision":request.input.revision,"input_bytes":request.input.payload.len()});
+        candidate.recovery["dispatch_intent"] = json!({"kind":"terminal_start","prepared_input_submitted":false,"attempt":candidate.recovery["attempt"],"requested_native_uuid":native,"input_version":request.input.version,"input_revision":request.input.revision,"input_bytes":request.input.payload.len()});
         reservation.commit_current(candidate, &snapshot)?;
         let transport = PtyTransport::launch(
             &self.executable,
@@ -1246,12 +1250,17 @@ async fn supervise(
             .failure
             .get_or_insert_with(|| "owned native process cleanup unverified".into());
     }
-    reservation
-        .session
-        .recovery
-        .as_object_mut()
-        .expect("runtime recovery object")
-        .remove("pending_permission");
+    // Lost retains the last durable pending hash as forensic metadata. Clearing
+    // it would prevent the conservative lifecycle update on a Blocked Project;
+    // the private grant ledger is still cleared below and cannot be resumed.
+    if reservation.session.state != SessionState::Lost {
+        reservation
+            .session
+            .recovery
+            .as_object_mut()
+            .expect("runtime recovery object")
+            .remove("pending_permission");
+    }
     let persisted = reservation.persist().is_ok();
     status.session = reservation.session.clone();
     if !persisted {
@@ -1302,7 +1311,7 @@ async fn run(
             _=tokio::time::sleep_until(deadline)=>return Err(failure(ErrorKind::Timeout,"native turn deadline exceeded")),
             reply=replies.recv()=>if let Some(reply)=reply {
                 let outcome=respond(transport,reservation,status,sender,evidence,request,snapshot,binding,native,broker,agent,&reply.decision,&reply.result).await;
-                let fatal=outcome.as_ref().err().is_some_and(|e|!matches!(e.kind,ErrorKind::InvalidInput|ErrorKind::OwnershipMismatch|ErrorKind::StateConflict));
+                let fatal=outcome.as_ref().err().is_some_and(|e|!matches!(e.kind,ErrorKind::InvalidInput|ErrorKind::OwnershipMismatch|ErrorKind::StateConflict|ErrorKind::Locked));
                 let _=reply.result.send(outcome);
                 if fatal {return Err(failure(ErrorKind::ProcessFailure,"native permission response failed"));}
             },
@@ -1314,9 +1323,21 @@ async fn run(
                     if !state.initialized || message.get("session_id").is_some_and(|id|id!=native) {return Err(failure(ErrorKind::OwnershipMismatch,"native permission before confirmed init or from foreign UUID"));}
                     let pending=Pending::parse(&message,native)?;
                     if !request_ids.insert(pending.request_id.clone())||request_ids.len()>128 {return Err(failure(ErrorKind::ParseFailure,"native permission request reused or limit exceeded"));}
+                    let concurrent=evidence.lock().map_err(|_|failure(ErrorKind::StateFailure,"native pending journal poisoned"))?.pending.is_some();
+                    if concurrent {
+                        // One broker operation is exposed at a time. Extra native
+                        // requests receive exact, durable DENY rather than an
+                        // operation grant or loss of the already-pending turn.
+                        let response=Transport::encode(&pending.reply(false))?;
+                        let mut candidate=reservation.session.clone();
+                        candidate.recovery["dispatch_intent"]=json!({"kind":"permission","operation":pending.public(native),"decision":"DENY","reason":"pending_operation_capacity"});
+                        reservation.commit_session_only(candidate)?;
+                        status.session=reservation.session.clone();sender.send_replace(status.clone());
+                        transport.write_encoded(&response).await?;
+                        continue;
+                    }
                     {
                         let mut evidence=evidence.lock().map_err(|_|failure(ErrorKind::StateFailure,"native pending journal poisoned"))?;
-                        if evidence.pending.is_some(){return Err(failure(ErrorKind::ParseFailure,"concurrent native permission requests unsupported"));}
                         evidence.pending=Some(pending.clone());
                     }
                     reservation.session.state=SessionState::WaitingApproval;
@@ -1454,8 +1475,10 @@ async fn respond(
         } else {
             // Denial grants no operation authority. It still consumes only the
             // exact owned pending Session, even if scoped lifecycle was revoked.
-            reservation.session = candidate;
-            reservation.persist()?;
+            reservation.commit_session_only(candidate).map_err(|_| failure(
+                ErrorKind::ProcessFailure,
+                "native denial publication rejected; stop required without granting an operation",
+            ))?;
         }
     }
     status.session = reservation.session.clone();
@@ -1590,19 +1613,26 @@ for line in sys.stdin:
   if behavior=='preinit':
    emit({{'type':'control_request','request_id':'early','request':{{'subtype':'can_use_tool','tool_name':'Read','tool_use_id':'early-op','input':{{'file_path':'proof.txt'}}}}}});continue
   emit({{'type':'system','subtype':'init','session_id':native,'cwd':os.getcwd(),'tools':[],'mcp_servers':[]}})
-  if behavior=='pending':
+  if behavior in ['pending','parallel']:
    emit({{'type':'control_request','request_id':'permission-1','request':{{'subtype':'can_use_tool','tool_name':'Bash','tool_use_id':'operation-1','input':{{'command':'pwd'}}}}}})
+   if behavior=='parallel':emit({{'type':'control_request','request_id':'permission-2','request':{{'subtype':'can_use_tool','tool_name':'Read','tool_use_id':'operation-2','input':{{'file_path':'private-second'}}}}}})
    continue
   if behavior=='hang':continue
   if behavior.startswith('background'):emit({{'type':'system','subtype':'task_started','task_type':'local_agent','task_id':'still-running'}})
   emit({{'type':'result','uuid':'result-1','subtype':'success' if behavior!='native-error' else 'error_during_execution','is_error':behavior=='native-error','session_id':native,'result':'{{"fixture":true}}','usage':{{'input_tokens':2,'output_tokens':13,'cache_creation_input_tokens':5,'cache_read_input_tokens':7}},'total_cost_usd':0.2 if '--resume='+native in sys.argv else 0.1,'duration_api_ms':200 if '--resume='+native in sys.argv else 100}})
-  if behavior=='background-complete':
+  if behavior in ['background-complete','background-error']:
    emit({{'type':'system','subtype':'session_state_changed','state':'idle'}})
    emit({{'type':'system','subtype':'task_notification','task_id':'still-running','status':'completed'}})
+   emit({{'type':'assistant','parent_tool_use_id':'child-task','message':{{'content':[{{'type':'text','text':'nested-not-owned'}}]}}}})
    emit({{'type':'assistant','parent_tool_use_id':None,'message':{{'content':[{{'type':'text','text':'injected-not-owned'}}]}}}})
-   emit({{'type':'result','subtype':'success','is_error':False,'session_id':native,'origin':{{'kind':'task-notification'}},'result':'injected-not-owned','usage':{{'input_tokens':999}},'total_cost_usd':99}})
+   emit({{'type':'result','subtype':'error_during_execution' if behavior=='background-error' else 'success','is_error':behavior=='background-error','session_id':native,'origin':{{'kind':'task-notification'}},'result':'injected-not-owned','usage':{{'input_tokens':999}},'total_cost_usd':99}})
    emit({{'type':'system','subtype':'session_state_changed','state':'idle'}})
  elif m['type']=='control_response':
+  if behavior=='parallel' and m['response']['request_id']=='permission-2':
+   assert m['response']['response']['behavior']=='deny'
+   open(__file__+'.second-denied','w').write('exact-denial')
+   emit({{'type':'control_cancel_request','request_id':'permission-2'}})
+   continue
   assert m['response']['request_id']=='permission-1'
   assert 'updatedPermissions' not in m['response']['response']
   if m['response']['response']['behavior']=='allow':assert m['response']['response']['updatedInput']=={{'command':'pwd'}}
@@ -1769,6 +1799,116 @@ for line in sys.stdin:
         assert_eq!(usage.estimated_cost, None);
         assert!(usage.missing_reason.is_some());
         assert_eq!(usage.cache_metadata["observed_human_input_tokens"], 2);
+    }
+    #[tokio::test]
+    async fn injected_native_error_is_failed_aggregate_with_human_output_and_nullable_usage() {
+        let fixture = Fixture::new(false);
+        let temp = tempfile::tempdir().unwrap();
+        let adapter = ClaudeAdapter::new(
+            "claude".into(),
+            executable(&temp, "background-error"),
+            fixture.store.clone(),
+        )
+        .unwrap();
+        let session = adapter.start(fixture.request.clone()).await.unwrap();
+        let status = terminal(&adapter, (&session).into()).await;
+        assert_eq!(status.session.state, SessionState::Failed);
+        assert!(!adapter.transport_succeeded(&status));
+        assert_eq!(
+            serde_json::from_slice::<Value>(&status.stdout).unwrap(),
+            json!({"fixture":true})
+        );
+        let usage = adapter
+            .usage((&session).into(), "consult".into(), None)
+            .await
+            .unwrap();
+        assert_eq!(usage.cache_metadata["observed_human_input_tokens"], 2);
+        assert!(usage.input_tokens.is_none() && usage.estimated_cost.is_none());
+        assert!(usage.missing_reason.is_some());
+    }
+    #[tokio::test]
+    async fn blocked_project_denial_stops_without_publishing_a_phantom_grant() {
+        let fixture = Fixture::new(true);
+        let temp = tempfile::tempdir().unwrap();
+        let adapter = ClaudeAdapter::new(
+            "claude".into(),
+            executable(&temp, "pending"),
+            fixture.store.clone(),
+        )
+        .unwrap()
+        .with_runtime_broker();
+        let session = adapter.start(fixture.request.clone()).await.unwrap();
+        let mut receiver = adapter.subscribe((&session).into()).unwrap();
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while receiver.borrow().session.state != SessionState::WaitingApproval {
+                receiver.changed().await.unwrap();
+            }
+        })
+        .await
+        .unwrap();
+        let mut decision = adapter.pending_operation((&session).into()).unwrap();
+        decision.as_object_mut().unwrap().remove("tool_name");
+        decision.as_object_mut().unwrap().remove("input");
+        decision["decision"] = json!("DENY");
+        {
+            let mut store = fixture.store.lock().unwrap();
+            let mut project = store.project(session.scope.project_id).unwrap().unwrap();
+            project.state = crate::domain::ProjectState::Blocked;
+            store.put_project(&mut project).unwrap();
+        }
+        assert!(
+            adapter
+                .submit_approval((&session).into(), decision)
+                .await
+                .is_err()
+        );
+        let status = terminal(&adapter, (&session).into()).await;
+        assert_eq!(status.session.state, SessionState::Lost);
+        assert!(status.session.pid.is_none());
+        assert!(status.session.recovery["dispatch_intent"]["decision"].is_null());
+        let store = fixture.store.lock().unwrap();
+        assert!(
+            store
+                .events(&session.scope, 0, 100)
+                .unwrap()
+                .iter()
+                .all(|event| event.data["evidence"]["dispatch_intent"]["decision"] != "DENY")
+        );
+    }
+    #[tokio::test]
+    async fn parallel_native_permissions_receive_exact_denial_without_losing_first_request() {
+        let fixture = Fixture::new(true);
+        let temp = tempfile::tempdir().unwrap();
+        let path = executable(&temp, "parallel");
+        let marker = PathBuf::from(format!("{}.second-denied", path.display()));
+        let adapter = ClaudeAdapter::new("claude".into(), path, fixture.store.clone())
+            .unwrap()
+            .with_runtime_broker();
+        let session = adapter.start(fixture.request.clone()).await.unwrap();
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while !marker.exists() {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .unwrap();
+        let mut decision = adapter.pending_operation((&session).into()).unwrap();
+        assert_eq!(decision["request_id"], "permission-1");
+        decision.as_object_mut().unwrap().remove("tool_name");
+        decision.as_object_mut().unwrap().remove("input");
+        decision["decision"] = json!("DENY");
+        adapter
+            .submit_approval((&session).into(), decision)
+            .await
+            .unwrap();
+        let status = terminal(&adapter, (&session).into()).await;
+        assert!(adapter.transport_succeeded(&status), "{:?}", status.failure);
+        let store = fixture.store.lock().unwrap();
+        assert!(store.events(&session.scope, 0, 100).unwrap().iter().any(
+            |event| event.data["evidence"]["dispatch_intent"]["decision"] == "DENY"
+                && event.data["evidence"]["dispatch_intent"]["operation"]["request_id"]
+                    == "permission-2"
+        ));
     }
     #[tokio::test]
     async fn cancelled_allow_never_grants_and_owner_edit_does_not_block_exact_denial() {
@@ -2339,6 +2479,21 @@ for line in sys.stdin:
             .await
             .unwrap();
         assert!(usage.input_tokens.is_none() && usage.estimated_cost.is_none());
+        assert!(usage.context_pack_version.is_none() && usage.context_pack_size.is_none());
+        assert!(
+            fixture
+                .store
+                .lock()
+                .unwrap()
+                .events(&session.scope, 0, 100)
+                .unwrap()
+                .iter()
+                .any(
+                    |event| event.data["evidence"]["dispatch_intent"]["kind"] == "terminal_start"
+                        && event.data["evidence"]["dispatch_intent"]["prepared_input_submitted"]
+                            == false
+                )
+        );
     }
     #[tokio::test]
     #[ignore = "actual native UI fixture on authorized public primary repository; no automatic trust selection"]

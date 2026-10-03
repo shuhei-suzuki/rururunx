@@ -227,3 +227,40 @@ Initialization buffers bounded known non-control metadata while correlating the 
 PTY master/slave allocation and duplicated descriptors use atomic CLOEXEC. Read/write supervision uses AsyncFd readiness; the owner continues draining output and observing stop while an input write is backpressured. Resize remains synchronized with unreaped process-group ownership. The shared hidden setsid helper proposal must separately verify session/controlling-tty identity with a bounded READY/GO handshake before this prototype can advertise Interactive/Attach. No permanent requirement for a detached user supervisor is intended.
 
 Installed native provider routing/TLS aliases and OS login identity are trusted baseline controls, never scoped application credential replacements. Another Project's reference to an identity/control name cannot disable the current native baseline. Current Project API-key references still receive normal exact Project scoping. Sources: [native environment variables](https://code.claude.com/docs/en/env-vars), [gateway routing](https://code.claude.com/docs/en/llm-gateway-connect), [network settings](https://code.claude.com/docs/en/network-config).
+
+## Verified source-review corrections
+
+Decision agents must be explicitly listed in Task.reviewers. A provider may be
+both the configured executor and an explicitly assigned reviewer; independent
+review still uses a fresh role-owned native UUID and factual ReviewBundle.
+Injected terminals receive outcome/schema validation before their payload is
+excluded. Failed injected work invalidates aggregate success; malformed injected
+terminals leave the operation outcome unknown. Mid-turn native feedback does not
+create a separate post-result turn. Nested or injected assistant text never
+changes the recorded human result after its terminal.
+
+Only one operation is exposed to the broker at a time. An additional correlated
+permission request receives a durable exact DENY, retaining the original pending
+request; it never receives implicit approval. DENY candidates replace in-memory
+state only after Session CAS succeeds. If denial publication fails, the owned
+native is stopped immediately; unobserved operation outcome remains Lost. Lost
+retains the last durable pending hash as forensic metadata, with the private
+permission ledger cleared. This allows the shared conservative Blocked-Project
+lifecycle update without manufacturing an unsent denial audit.
+
+Project declarations cannot override native cloud/model/credential-file/process
+selectors in CLAUDE_, ANTHROPIC_, AWS_, AZURE_, CLOUDSDK_, GOOGLE_, GCLOUD_,
+CLOUD_ML_, VERTEX_ or NODE_ classes. An explicit direct-key allowlist remains
+scopable, including ANTHROPIC_API_KEY and OPENAI_API_KEY. Any name declared by a
+foreign Project is excluded unless also declared by the current Project, apart
+from trusted OS login identity; a native prefix never restores a foreign secret.
+Undeclared trusted baseline settings remain available. Installed2.1.283 static
+control-name metadata and [official native environment documentation](https://code.claude.com/docs/en/env-vars)
+confirm credential-file, regional and model selectors; no credential values were
+read for verification.
+
+Filesystem admission exhaustion is a retryable Locked result before dispatch,
+not a native turn timeout. Terminal-start audit explicitly says prepared input
+was not submitted. ContextCheckpoint stages a higher-version continuation for
+later owned resume; it does not deliver context to a live turn. Retained native
+evidence requires explicit release after the consumer records its result.

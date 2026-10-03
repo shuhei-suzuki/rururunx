@@ -289,8 +289,9 @@ impl RunState {
                         "decision native tool attempt",
                     ));
                 }
-                if message["parent_tool_use_id"].is_null() && self.result.is_some() {
-                    self.injected_turn = true;
+                if self.result.is_some() {
+                    self.had_background = true;
+                    self.injected_turn |= message["parent_tool_use_id"].is_null();
                     return Ok(false);
                 }
                 if self.injected_turn {
@@ -306,10 +307,6 @@ impl RunState {
                 }
                 // Native streaming can inject separate background/peer/channel
                 // turns. Their results are not proof for the input we sent.
-                if !message["origin"].is_null() && message["origin"]["kind"] != "human" {
-                    self.injected_turn = false;
-                    return Ok(false);
-                }
                 let subtype = message["subtype"].as_str().filter(|s| !s.is_empty());
                 let is_error = message["is_error"].as_bool();
                 if subtype.is_none()
@@ -320,6 +317,12 @@ impl RunState {
                         ErrorKind::ParseFailure,
                         "malformed native terminal",
                     ));
+                }
+                if !message["origin"].is_null() && message["origin"]["kind"] != "human" {
+                    self.had_background |= self.result.is_some();
+                    self.injected_turn = false;
+                    self.failed_tasks |= subtype != Some("success") || is_error != Some(false);
+                    return Ok(false);
                 }
                 if message["subtype"] != "success" || message["is_error"] != false {
                     let authentication =
@@ -344,7 +347,12 @@ impl RunState {
                 self.result = Some(message.clone());
             }
             Some("user") => {
-                if !message["origin"].is_null() && message["origin"]["kind"] != "human" {
+                if self.result.is_some()
+                    && message["parent_tool_use_id"].is_null()
+                    && !message["origin"].is_null()
+                    && message["origin"]["kind"] != "human"
+                {
+                    self.had_background = true;
                     self.injected_turn = true;
                 }
             }
@@ -378,6 +386,50 @@ impl RunState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn injected_failures_do_not_replace_human_proof_and_midturn_user_does_not_hang() {
+        let path = std::path::Path::new("/owned");
+        for injected in [
+            json!({"type":"result","session_id":"n","subtype":"error_during_execution","is_error":true,"origin":{"kind":"task-notification"}}),
+            json!({"type":"result","session_id":"n","origin":{"kind":"task-notification"}}),
+        ] {
+            let mut state = RunState::default();
+            state.observe(&json!({"type":"system","subtype":"init","session_id":"n","cwd":"/owned","tools":[],"mcp_servers":[]}),"n",path,false).unwrap();
+            state
+                .observe(
+                    &json!({"type":"user","origin":{"kind":"hook"},"parent_tool_use_id":null}),
+                    "n",
+                    path,
+                    false,
+                )
+                .unwrap();
+            state.observe(&json!({"type":"result","session_id":"n","subtype":"success","is_error":false,"result":"human"}),"n",path,false).unwrap();
+            assert!(
+                state.complete(),
+                "mid-turn feedback must not strand the owned input"
+            );
+            assert!(!state.observe(&json!({"type":"assistant","parent_tool_use_id":"subagent","message":{"content":[{"type":"text","text":"foreign"}]}}),"n",path,false).unwrap());
+            assert!(
+                state.complete(),
+                "nested output cannot create an untracked top-level turn"
+            );
+            state.observe(&json!({"type":"user","origin":{"kind":"task-notification"},"parent_tool_use_id":null}),"n",path,false).unwrap();
+            assert!(!state.complete());
+            if injected.get("subtype").is_some() {
+                assert!(!state.observe(&injected, "n", path, false).unwrap());
+                assert!(state.failed_tasks);
+                assert!(state.complete());
+            } else {
+                assert_eq!(
+                    state.observe(&injected, "n", path, false).unwrap_err().kind,
+                    ErrorKind::ParseFailure
+                );
+                assert!(!state.complete());
+            }
+            assert_eq!(state.result.as_ref().unwrap()["result"], "human");
+            assert!(state.had_background);
+        }
+    }
     #[test]
     fn injected_or_malformed_results_cannot_complete_the_owned_input() {
         let path = std::path::Path::new("/owned");

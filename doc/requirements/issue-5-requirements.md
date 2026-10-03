@@ -55,3 +55,12 @@ reviews precede acceptance. Other providers and workflow/approval engines remain
 separate consumers, not prerequisites on unmerged provider implementations.
 
 Acceptance remains pending the reviewed shared session-isolation helper and actual native interactive consultation/attachment. The current explicitly opted-in PTY trust-screen prototype is not an advertised production capability. Independent source review must verify the fixed immutable head; prior request-changes rounds are not approvals.
+
+Source-review acceptance also requires explicit Task reviewer assignment,
+validated injected terminal outcomes, preserved human result output, an exact
+fail-safe denial for concurrent native permission requests, no phantom DENY
+publication after failed CAS, and conservative Lost persistence on a Blocked
+Project. Native baseline selector controls must reject Project overlay while
+foreign Project environment names remain excluded. Direct scoped keys and trusted
+OS login identity keep their documented isolation rules. Staged continuation and
+explicit evidence release semantics must be visible to consumers.

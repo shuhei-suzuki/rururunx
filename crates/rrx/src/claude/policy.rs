@@ -101,11 +101,36 @@ const OS_IDENTITY: &[&str] = &[
 // Installed native routing/TLS/identity controls are trusted baseline policy,
 // never Project-provided application credentials. API keys remain scoped refs.
 fn baseline_control(name: &str) -> bool {
+    // Direct keys can be explicitly scoped; selectors, credential-file/process
+    // indirection, routing, models and TLS remain native baseline authority.
+    if matches!(
+        name,
+        "ANTHROPIC_API_KEY"
+            | "OPENAI_API_KEY"
+            | "AWS_ACCESS_KEY_ID"
+            | "AWS_SECRET_ACCESS_KEY"
+            | "AWS_SESSION_TOKEN"
+            | "AWS_BEARER_TOKEN_BEDROCK"
+            | "ANTHROPIC_AWS_API_KEY"
+            | "ANTHROPIC_FOUNDRY_API_KEY"
+    ) {
+        return false;
+    }
     OS_IDENTITY.contains(&name)
-        || (name.starts_with("ANTHROPIC_") && name.ends_with("_BASE_URL"))
-        || name == "ANTHROPIC_CUSTOM_HEADERS"
-        || name.starts_with("AWS_ENDPOINT_URL")
-        || matches!(name, "AWS_CA_BUNDLE" | "NODE_TLS_REJECT_UNAUTHORIZED")
+        || [
+            "CLAUDE_",
+            "ANTHROPIC_",
+            "AWS_",
+            "AZURE_",
+            "CLOUDSDK_",
+            "GOOGLE_",
+            "GCLOUD_",
+            "CLOUD_ML_",
+            "VERTEX_",
+            "NODE_",
+        ]
+        .iter()
+        .any(|prefix| name.starts_with(prefix))
 }
 pub(super) fn environment(
     baseline: impl IntoIterator<Item = (OsString, OsString)>,
@@ -154,11 +179,12 @@ pub(super) fn environment(
                 return false;
             };
             if name.starts_with("GIT_")
-                || (!baseline_control(name) && scoped.contains(name) && !own.contains(name))
+                || (!OS_IDENTITY.contains(&name) && scoped.contains(name) && !own.contains(name))
             {
                 return false;
             }
-            OS_IDENTITY.contains(&name)
+            baseline_control(name)
+                || OS_IDENTITY.contains(&name)
                 || matches!(
                     name,
                     "HOME"
@@ -286,6 +312,16 @@ mod tests {
             "AWS_ENDPOINT_URL_BEDROCK_RUNTIME",
             "AWS_CA_BUNDLE",
             "NODE_TLS_REJECT_UNAUTHORIZED",
+            "AWS_CONFIG_FILE",
+            "AWS_SHARED_CREDENTIALS_FILE",
+            "AWS_PROFILE",
+            "AWS_REGION",
+            "CLOUD_ML_REGION",
+            "GOOGLE_APPLICATION_CREDENTIALS",
+            "GOOGLE_EXTERNAL_ACCOUNT_ALLOW_EXECUTABLES",
+            "ANTHROPIC_MODEL",
+            "ANTHROPIC_DEFAULT_OPUS_MODEL",
+            "VERTEX_REGION_CLAUDE_OPUS",
         ] {
             foreign.environment_refs = vec![name.into()];
             let baseline = [(OsString::from(name), OsString::from("trusted-value"))];
@@ -300,6 +336,20 @@ mod tests {
             .collect();
             assert_eq!(
                 filtered.get(&OsString::from(name)),
+                (name == "USER").then_some(&OsString::from("trusted-value"))
+            );
+            // Undeclared trusted baseline controls remain available.
+            let retained: BTreeMap<_, _> = environment(
+                baseline.clone(),
+                std::slice::from_ref(&own),
+                &own,
+                &BTreeMap::new(),
+            )
+            .unwrap()
+            .into_iter()
+            .collect();
+            assert_eq!(
+                retained.get(&OsString::from(name)),
                 Some(&OsString::from("trusted-value"))
             );
             let mut scoped = own.clone();
