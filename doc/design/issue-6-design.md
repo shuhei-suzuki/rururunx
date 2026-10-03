@@ -28,6 +28,10 @@ Session CAS and its scoped `session.saved` audit. A metadata-only consumed-input
 intent contains a private submission ID, byte count, digest and input version;
 neither the native prompt nor credentials enter the audit. Failed admission
 restores the previous in-memory intent and sends no native inference request.
+Encode and bound the entire RPC frame before consumption, including JSON escape
+overhead. The single private dispatch method performs admission then sends that
+prepared frame; caller-wire fixtures exercise a second SQLite writer after final
+preflight and check that committed consumption precedes actual wire delivery.
 
 Task roles validate exact worktree/common-dir ownership and prepared HEAD. Review
 also verifies a clean immutable locked revision. Source-only consultation does not
@@ -129,81 +133,136 @@ reservations until a reply, explicit stop or verified cleanup.
 Current interactive/attach implementation is still pending. The transport probe
 at a native trust prompt is not claimed as completed interactive operation.
 
-## Proposed native TUI gateway (requires independent design review)
+## Proposed native TUI gateway (revised; conformance and re-review required)
 
-Use the real installed native Codex TUI in an owned PTY. The TUI connects to a
-runtime-owned private Unix gateway and the exact stored native UUID. Its requests
-are handled by the **single** owning native RPC supervisor; do not give it an
-independent upstream app-server client that can bypass the approval ledger.
-The native screen, folder trust, authentication and instructions stay native.
-A runtime conversation renderer is not an alternative implementation.
+Run the real installed native Codex CLI in an owned PTY, connecting its exact
+stored native UUID to a private runtime Unix gateway. One native RPC actor owns
+all upstream requests, callbacks and turn state; the frontend never gets a second
+upstream connection. Native UI, instructions, authentication and trust remain
+native. Initial scope is Consultant-only, text-only and decision-only. Executor,
+Reviewer and ApprovalReviewer interactive conversions are unavailable.
 
-The initial interactive route is Consultant-only and decision-only. Executor
-interactive input/grants and attachment to an active executor need separate
-conformance before capability claims. Review/ApprovalReviewer cannot be converted
-to an interactive mutating session. A stored prepared turn is required for native
-rollout resume; its completion is not evidence of a human conversation. Between
-turns, the owning server and native PTY remain supervised and their reservations
-held. Native trust/onboarding remain WaitingHuman and are never selected by rrx.
+A completed prepared seed permits native rollout resume, but does not prove a
+human conversation. Journal seed completion before accepting a human submission;
+never steer or interrupt a runtime seed through frontend input. Runtime checkpoint,
+resume and context refresh reject overlap with an attached or unresolved human
+turn under the same exclusive transition claim. Stop remains independently
+available. Scope/environment/profile snapshots are frozen for the supervisor;
+changes require explicit stop and fresh admission rather than hidden rebinding.
 
-Authenticate the gateway client's UID, PID and membership in the still-owned
-unreaped native TUI group before WebSocket upgrade. Its directory/socket are
-owner-only and checked by inode identity, with one bounded connection and one
-host-terminal attachment. Never accept an audited PID or arbitrary external
-client as an owning process. Every gateway request/response/notification is
-bounded and correlated independently from the app-server RPC ID namespace.
+### Native trust and frontend conformance
 
-Forward only conformed native methods. Read/resume/turn requests require the exact
-owning native UUID; active-turn requests also require the current owned turn ID.
-Resume cannot supply history, a rollout path, config, instructions, provider,
-permission expansion or a new workspace. Enforce the original scoped CWD,
-decision profile, disabled execution environments and exact own roots before
-forwarding; verify the native response still reports them. Unknown mutations,
-thread fork/list/history search, global config writes, persistent grants, remote
-execution and feature re-enablement return explicit Unsupported errors.
+Preserve the exact existing trust entries relevant to the owning CWD, primary Git
+root and applicable parent resolution; neither drop them nor fabricate trust in a
+UI config projection. Identify the installed native trust lookup and write path
+before advertising Interactive. A native human trust choice is never selected by
+rrx, and its action cannot silently broaden Project permissions. If the required
+native trust route cannot be retained with scoped metadata and the installed
+native safety controls, return typed UnsupportedCapability with an unmet native
+trust prerequisite. Never write trust/config/auth just to make a probe pass.
 
-Native UI metadata is also a scope boundary. Project-related metadata is requested
-only for the exact owning CWD/UUID; do not forward another Project's configuration,
-credential references, file contents or thread roster. Project/global config
-responses need a minimal conformed UI projection, never a raw config dump.
-Preserve installed model/effort defaults. Explicit native UI changes can be
-supported only when conformed and compatible with the caller's explicit settings;
-no default model/effort is invented to make the UI work.
+Before the gateway binds the expected native client, report that the client is
+not yet bound and its cause is unobserved. Production does not parse PTY screen
+text to infer trust, approval or readiness. Fixed-label screen inspection belongs
+only to installed-CLI conformance tests. Local frontend file/editor/shell/slash
+commands, trust handling and descendant job control may bypass RPC; inspect and
+conform those paths with native controls before claiming a runtime boundary.
+Gateway allowlisting alone is insufficient. Unconformed frontend action paths
+keep Interactive/Attach unavailable rather than being replaced with a chat UI.
 
-For an initial conversation, allow bounded text input only. File/remote images,
-skill attachments, tool output and opaque additional context require their own
-scoped facts and are unavailable until conformed. A user message gets a private
-one-time submission identity and a durable metadata-only write-ahead consumption
-record before native inference. Record its byte count/digest and owning scope,
-without storing the full native transcript or credentials in runtime audit.
-Recheck Store Project/Goal/Task versions and locks atomically with the Session CAS
-after bounded filesystem/Git checks outside the Store mutex. Once dispatch may
-have begun, never replay an interrupted/uncertain user message automatically.
+### Gateway identity and native policy
 
-The single supervisor binds new native turns, usage baselines and pending callback
-identities before exposing their observations. Seed and later turns cannot be
-counted as duplicate completion or attributed to an older Context Pack. Decision
-sessions reject target-operation grants; unsupported native callbacks are denied
-explicitly with scoped audit. A future executor attachment must choose one Human
-or broker grant authority, revalidate exact operation contents and journal intent
-before wire approval. A native TUI choice alone is not permission to persist a
-grant or broaden the runtime boundary.
+Persist the second owned frontend PID/PGID and known SID, if available, in Session
+recovery before accepting a gateway client. These are diagnostics, never restart
+ownership credentials. Authenticate the connecting UID/PID and membership in the
+still-owned unreaped frontend group; check owner-only socket directory/inodes.
+Permit one bounded connection and one in-process host-terminal attachment; no
+external attach IPC or recorded-PID adoption is part of this initial route.
 
-PTY allocation uses safe Rust APIs and its own process-group guard. A real host
-TTY attachment obtains an exclusive permit, forwards native bytes/input and
-resize events, and restores terminal attributes through RAII on detach/error.
-Bounded nonblocking I/O must remain stoppable when either side stalls; no blocked
-stdin worker survives cancellation. Detached output remains bounded. Confirm
-death of both app-server and native TUI groups before reaping and publishing
-terminal/releasing reservations. Any unverified group leaves Lost with scoped
-diagnostics. PTY isatty alone does not prove controlling-terminal/native-screen
-conformance; actual installed CLI behavior must be observed.
+Use fixed validated native argv and the same scoped native home/environment as
+the server; reject foreign Git routing, history paths and native UUIDs. Initialize
+the upstream once. The frontend receives a bounded cached validated initialize
+response, may request only a subset of negotiated capabilities and cannot add
+unknown opt-outs. Keep frontend and upstream RPC ID namespaces separate.
 
-Acceptance includes native text conversation on the same UUID; native trust gate
-retention; detach/reattach/resize; cancellation with descendants; identity/replay,
-config projection and permission-expansion fixtures; text submission CAS races;
-new-turn usage attribution; compiled semantic mutations and independent source
-review. Until those pass, Interactive/Attach remain explicitly unavailable.
+Every read/resume/turn route binds the exact UUID/CWD and, when applicable, owned
+turn ID. Serve frontend resume from the owning already verified resume result
+with fresh own-thread observations; never blindly forward frontend policy fields
+or perform an independent raw resume. Reject settings, model/effort/profile,
+provider, environment, instructions, history and permission changes before wire
+dispatch rather than silently rewriting a UI choice. Preserve native defaults
+when the caller left model/effort unspecified; an echoed UI default must not
+create a sticky explicit override. Initial native settings changes are unsupported.
+
+Before each human inference, perform the owning native policy/config/tool
+inventory checks and bounded filesystem/Git preflight, then atomic Store admission.
+`thread/read` has no active permission-profile field in the pinned schema, so it
+cannot alone prove that binding; use a conformed authoritative owner-controlled
+check or reject dispatch. Recheck after native trust/config reload as well. No
+surviving external tools or unknown inventory is allowed. Project config responses
+are a conformed minimal projection including exact applicable trust facts, never
+raw global config, credential references or another Project's metadata. Unknown
+methods, fork/list/search, global writes, persistent grants, remote execution and
+feature expansion receive explicit Unsupported errors.
+
+### Submission, callbacks and telemetry
+
+Accept bounded text only; images, skill attachments and opaque context require
+separate scoped conformance. Each submission has one private identity/origin and
+only one unresolved input may exist. In one SQLite Immediate transaction, fence
+Project/Goal/Task versions, scoped lock versions and Session CAS, publishing
+metadata-only consumed intent in recovery and the same `session.saved` audit.
+Record byte count/digest/version, never full prompt/auth values. Once wire dispatch
+may begin, an unobserved outcome stays Lost even with dead owned processes; never
+resend or replay it automatically. Steer/compact/review or any other inference
+method uses the identical admission boundary or is explicitly unsupported.
+
+Bind the acknowledged native turn to that submission before exposing completion,
+usage or callbacks. Native terminal success requires exact IDs, private completion
+evidence and verified cleanup where terminal release is requested. A prior seed
+or cumulative gauge is only a baseline, never completion for the new input.
+Human-turn Usage has existing nonnull phase `consult`, null Context Pack/round
+attribution, and submission/native-turn/origin metadata. Missing/reset counters
+remain nullable with a reason; do not reuse the seed's Context Pack telemetry.
+
+Callback disposition is explicit: operation/grant requests are declined before
+frontend relay; no accept-for-session, permission amendment or persistent grant
+is accepted. Unsupported questions/elicitations receive a bounded native error
+until their reply path is conformed. Native resolved/completed notices retire
+ledger entries and are relayed only for exact own identities. Correlate each
+frontend callback ID for one reply; unknown/replayed replies receive an error.
+A future executor route must choose a single Human or broker grant authority and
+journal verified operation intent before wire approval; it is not advertised here.
+
+### PTY lifecycle and attachment
+
+Safe Rust PTY allocation and the existing owned unreaped ProcessGroup guards
+supervise server and frontend separately. Use readiness-based bounded I/O. Never
+await a frontend socket/PTY write in the sole upstream reader: use a bounded
+outgoing queue and nonblocking admission, while stop/callback draining remain
+responsive. Oversize or queue overflow closes the route, records failure and
+performs verified frontend cleanup; never truncate/drop protocol messages and
+continue. Detached output has bounded retention and continues bounded draining.
+
+A host TTY requires an exclusive attachment permit, raw-mode RAII, exact attribute
+restoration on detach/error and supported graceful SIGTERM/HUP handling. No claim
+of SIGKILL restoration is made. Resize signals must execute while the actor still
+owns an unreaped frontend group; a cached PID is insufficient. Actual native
+redraw/controlling-terminal behavior requires an installed-CLI conformance test.
+A byte tail is not reconstructed screen state. Initial reattachment is idle-only
+and needs observed native redraw or a fresh frontend after verified old-group
+death, using the same owned UUID and supervisor.
+
+Frontend exit during an unresolved human input requests interruption and stops
+both groups, retaining Lost if no authoritative native terminal was observed.
+Idle exit performs bounded stop without claiming transport success. Confirm all
+owned groups dead before reaping/releasing reservations; escaping descendants or
+unverified cleanup retain Lost. Recovery never adopts PID/SID hints or kills global
+native sessions. Production capability claims require actual same-UUID human
+conversation, retained trust, local-action boundaries, detach/reattach/resize,
+descendant cancellation, CAS/replay/policy/queue fault fixtures, compiled semantic
+mutations and independent implementation review. Current transport/trust-screen
+probes do not satisfy these gates, so Interactive/Attach remain unavailable.
 
 ## Impact and verification
 
@@ -242,6 +301,11 @@ Persist the new input revision/version/bytes/source versions in the new Starting
 attempt before admission. Starting-to-Running and subsequent observations retain
 that same source binding; failure before dispatch restores the original terminal
 record and its watch state rather than consuming the new attempt.
+The new Starting recovery contains `pre_dispatch_restore_sha256`, lowercase hex
+SHA-256 of the exact prior terminal Session serialization. Shared context guards
+can verify that proof against the prior persisted record and permit exact
+historical restoration only while no current dispatch intent was consumed and
+`native_dispatch_unobserved` is not true. It never permits post-dispatch rollback.
 Checkpoint may refresh mutable own Project metadata, preserving its canonical
 repository/base/worktree identity. Observation of usage/pending grants/completion
 binds one registry owner to the exact persisted turn, preventing resume races.
