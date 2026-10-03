@@ -789,8 +789,14 @@ mod tests {
             let mut bad = config.clone();
             bad["model_providers"]["custom"]["env_key"] = value;
             assert!(
-                provider_environment(&bad, &baseline, &[own.clone()], &own, &BTreeMap::new())
-                    .is_err()
+                provider_environment(
+                    &bad,
+                    &baseline,
+                    std::slice::from_ref(&own),
+                    &own,
+                    &BTreeMap::new()
+                )
+                .is_err()
             );
         }
     }
