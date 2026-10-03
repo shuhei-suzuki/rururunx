@@ -861,9 +861,8 @@ async fn supervise(
             stopped = true;
             if let Some(pid) = child.id() {
                 // Only a process group created and still owned by this supervisor is signalled.
-                if let Err(e) = killpg(Pid::from_raw(pid as i32), Signal::SIGKILL) {
-                    if e != nix::errno::Errno::ESRCH { stop_failure = Some(format!("native process group stop failed: {e}")); }
-                }
+                if let Err(e) = killpg(Pid::from_raw(pid as i32), Signal::SIGKILL)
+                    && e != nix::errno::Errno::ESRCH { stop_failure = Some(format!("native process group stop failed: {e}")); }
             }
             child.wait().await
         }
