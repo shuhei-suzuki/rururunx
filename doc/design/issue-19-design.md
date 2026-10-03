@@ -438,7 +438,11 @@ SQLite schema editing is outside the Store contract. Future migrations must reta
 required earlier functions and install their own exact-version write fence.
 
 The actual old5 native fixture is compiled from immutable public source
-`e6cf75dc61d0c9c9a6a225c64c8f9aaf7d6ffd26`, never from modified current source.
+`e6cf75dc61d0c9c9a6a225c64c8f9aaf7d6ffd26`, plus the latest schema5 production
+source `79af00a603149729fe26bd1079aa4d49c1932cad` after the reviewed Grok/CAS merge,
+never by patching the version constant in new schema6 source. This feature has
+no deployed schema5 release; record exact source/binary identities rather than
+inventing a deployment claim.
 Save binary/source hashes and verify no writer-v6 registration in that source.
 Prove both native old5 open refusal and a real compiled old5 Store held open BEFORE
 migration, then released to attempt public writes AFTER migration. Test Session,
@@ -464,9 +468,12 @@ Typed Workflow-owned contexts cannot silently downgrade to opaque legacy payload
 Important guards receive caller-level mutation proof and immutable source review.
 
 The private ack row additionally stores input_version and checks SHA length64.
-Its single row may be replaced only by Validated/ConsumedHistorical with a strictly
-higher input_version; equal matching metadata is idempotent, unequal equal-version
-metadata is rejected. There is no plural ack history: while higher input is pending,
+Its ADMITTED pair may be replaced only by Validated/ConsumedHistorical with a
+strictly higher input_version; equal matching metadata is idempotent, unequal
+equal-version admitted metadata is rejected. The preparation pair follows only a
+freshly validated Starting/Running input. It may be refreshed for a legitimate
+new prewire continuation that restored an older terminal input; this never changes
+the admitted pair or creates historical-observation authority. There is no plural ack history: while higher input is pending,
 the single row still describes the previous admitted input until replacement.
 Canonicalize nested JSON keys before restore/checkpoint/instruction hashing. Keep
 the restore Session outer fixed serde field order for compatibility with the shared
