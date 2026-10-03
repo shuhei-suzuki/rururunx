@@ -188,7 +188,21 @@ impl DecisionPolicy {
     pub fn thread_parameters(&self, cwd: &Path) -> Value {
         // A decision session cannot request an escape from its read-only profile.
         // Managed policies remain authoritative; rejection is an explicit failure.
-        json!({"cwd":cwd,"permissions":self.profile_name(),"approvalPolicy":self.approval,"environments":[],"runtimeWorkspaceRoots":[cwd],"ephemeral":false})
+        let environments = if self.execute {
+            json!([{"environmentId":"local","cwd":cwd,"runtimeWorkspaceRoots":[cwd]}])
+        } else {
+            json!([])
+        };
+        json!({"cwd":cwd,"permissions":self.profile_name(),"approvalPolicy":self.approval,"environments":environments,"runtimeWorkspaceRoots":[cwd],"ephemeral":false})
+    }
+    pub fn verify_local_environment(&self, status: &Value) -> AdapterResult<()> {
+        if self.execute && status["status"] != "ready" {
+            return Err(failure(
+                ErrorKind::UnsupportedCapability,
+                "native local execution environment is not ready; no remote fallback",
+            ));
+        }
+        Ok(())
     }
     pub fn verify_configuration(&self, effective: &Value) -> AdapterResult<()> {
         if effective["web_search"] != "disabled"
@@ -435,6 +449,18 @@ mod tests {
     fn executor_preserves_native_reviewer_and_rule_prompts_without_profile_expansion() {
         let mut config = json!({"mcp_servers":{"known":{}},"sandbox_mode":"workspace-write","approval_policy":"on-request","approvals_reviewer":"auto_review"});
         let policy = DecisionPolicy::for_executor(&config).unwrap();
+        assert_eq!(
+            policy.thread_parameters(Path::new("/own"))["environments"],
+            json!([{"environmentId":"local","cwd":"/own","runtimeWorkspaceRoots":["/own"]}])
+        );
+        policy
+            .verify_local_environment(&json!({"status":"ready"}))
+            .unwrap();
+        assert!(
+            policy
+                .verify_local_environment(&json!({"status":"unknown"}))
+                .is_err()
+        );
         assert!(
             !policy
                 .arguments()

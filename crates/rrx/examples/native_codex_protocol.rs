@@ -111,6 +111,7 @@ async fn main() -> Result<()> {
     let verified = async {
         let config = native.rpc.call("config/read",json!({"cwd":own,"includeLayers":false})).await?;
         policy.verify_configuration(&config["config"])?;
+        if execute { let environment=native.rpc.call("environment/status",json!({"environmentId":"local"})).await?; policy.verify_local_environment(&environment)?; }
         let started = native.rpc.call("thread/start",policy.thread_parameters(&own)).await?;
         let thread = policy.verify_thread(&started,&own)?;
         let mut cursor: Option<String> = None;
