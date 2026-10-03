@@ -17,7 +17,8 @@ Reservation ownership is invocation-local proof. Create a private token only
 AFTER this invocation's `reserve` returned success and AFTER the EvidencePort
 branch. The token captures exact Task scope, committed Workflow Record ID/version,
 generation, active history index, context pointer, reserved worktree/branch and
-original attempt data read from the committed Record. The latter already includes
+original attempt data from the Record/Task values returned by the successful
+reserve call, without an intervening re-read or await. The latter already includes
 the reserved actor. Before the marker, compare refreshed Task actor and binding
 against this token; an executor/reviewer override is an eligible preparation
 error, release under the original token and reserve anew with the new actor.
@@ -40,9 +41,12 @@ decision. Disable eligibility immediately before each non-release persist call:
 fail, invalidate, hold and marker. The private invalidation helper must expose
 this call-site boundary to owned agent preparation, while its other callers keep
 existing behavior. A failed definitive publication must not become a retry.
-A typed `StateGuardError::SnapshotChanged` from that transaction proves rollback
-before commit and may restore eligibility; arbitrary database/commit errors do
-not. After a successful marker commit or any call to `adapter.start`, no error is
+Only a typed `StateGuardError::SnapshotChanged` for the owning tasks-table
+snapshot from the marker transaction restores eligibility after pre-commit
+rollback. Project/Goal/Record version conflicts retain the reservation for #14,
+even if the latest owners are active. Definitive fail/invalidate/hold publication
+errors never restore eligibility, typed or untyped; neither do arbitrary marker
+database/commit errors. After a successful marker commit or any `adapter.start`, no error is
 eligible. Native side effects and Session acknowledgements keep their existing
 conservative behavior and are reconciled through Issue 14.
 
@@ -69,7 +73,8 @@ reserve again only after this successful owner-local no-dispatch release.
 Process crash, dropped owner futures, inactive-owner failure, conflicting Workflow
 records, unknown/untyped marker publication outcomes (including a marker without a
 Session even when start was never called), release CAS conflicts/executor-Lost
-fences, and post-dispatch Session-binding failures are intentionally conservative
+fences, marker Project/Goal-version conflicts, and post-dispatch Session-binding
+failures are intentionally conservative
 and depend on #14. A committed terminal decision may still use existing explicit
 TerminalRecovery: the terminal-Task transaction fence and no Session/dispatch
 marker exclude the suspended owner from future dispatch, while executor/Lost
@@ -94,12 +99,20 @@ changes or automatic native replay are introduced.
   retries and context pointer, then complete the same attempt; strengthen its
   assertions without changing its existing evaluation path.
 - Pause and cancel at each held preparation capture. After owner resumes, there
-  is no native launch and no release write. Pause/resume remains held. Record the
+  is no native launch and no release write. Resume after this observed inactivity
+  remains held. Also pause, resume, then continue an owner at each main capture:
+  before refresh, active refreshed owners may launch the same claim once; after
+  refresh, marker Goal-version CAS fails and stays held. Neither ordering releases
+  or re-reserves a claim merely because of lifecycle ABA. A mutant widening
+  eligible marker errors to Project/Goal versions must fail. Record the
   expected lifecycle/decision change independently of observation. For each held
   capture, cancel then explicitly TerminalRecover before resuming the owner; no
   owner input/write occurs and Interrupted history/decision stay unchanged.
 - Hold adapter.start, cancel, then assert TerminalRecovery refuses the dispatched
-  unbound reservation and leaves it unchanged. Resume start: exactly one start
+  unbound reservation and leaves Task/Record versions unchanged. Hold before the
+  adapter persists any Session and assert its absence. Single removals of the
+  Engine and Store dispatch fences are masked equivalents, without kill credit;
+  removing both must fail this consumer. Resume start: exactly one start
   call, terminal-Task fence rejects Session binding, no owner release or replay.
 - Hold both source-invalidation branches’ internal capture/pack awaits. Capture
   errors remain eligible until publication; active owners release with no dispatch.
@@ -109,7 +122,11 @@ changes or automatic native replay are introduced.
   old actor claim; the next reservation uses the new actor. Public Store rejects
   assigned worktree/branch changes rather than admitting an impossible fixture.
 - Inject a second-writer conflict on release, a definitive decision publication
-  conflict, and a Session-binding conflict after held adapter start. Each retains
+  conflict, and a Session-binding conflict after held adapter start. For definitive
+  publications, use Task metadata-only conflicts with the same Workflow Record
+  version and active owners, so terminal/Record fences cannot mask an actual
+  incorrect release. Removed disable or wrongly restored typed eligibility must
+  be killed by detecting committed release, not differing error text. Each retains
   the exact reservation and concurrent metadata; dispatched cases send no replay.
 - Use cfg(test) one-shot hooks at release's fresh-read/CAS boundary and a fixed
   attempt timestamp for owner-race tests. A metadata writer AFTER re-read must
@@ -123,16 +140,23 @@ changes or automatic native replay are introduced.
   defense-in-depth equivalent, with no mutation credit. A combined mutant that
   mints on reserve failure and adopts the winner's fresh committed token must
   fail the controlled loser/winner consumer race. No stale tuple is ownership.
-- Use a one-shot SQLite UPDATE trigger to abort marker publication with an
-  untyped SQLite error; retained same-version claim proves conservative category
-  handling. The any-marker-error-eligible mutant must fail. This does not simulate
+- Use a marker-specific SQLite UPDATE trigger on the owning Store connection to
+  abort only a Workflow-body false-to-true active dispatch_started transition.
+  A database-written one-shot counter would roll back, so do not rely on it.
+  The single marker UPDATE returns its unique trigger error; owner release keeps
+  dispatch_started false and is not aborted. Retained same-version claim proves
+  conservative classification. Under the any-marker-error-eligible mutant, assert
+  release actually committed Failed+RetryEvent and incremented versions. Drop the
+  trigger before next-step control. This does not simulate
   an unknown COMMIT outcome, which remains conservative and explicitly untested.
 - Compiled mutants: premature observer reset/observer writes, owner release
   omission, exact-version check omission, incorrect EvidencePort release,
-  marker-after-start, missing unbound-dispatch TerminalRecovery fence, retry after
+  marker-after-start, combined missing Engine/Store TerminalRecovery dispatch
+  fences, retry after
   release CAS loss, removed definitive-publication disable, and unknown marker
   error eligibility. Restore exact source and run controls. Document equivalent
   single mutants separately from causal combined mutants; no false killing credit.
+  Fixed attempt timestamps and hooks are per Engine/Store, never process-global.
 
 All tests use synthetic domain/adapters, owned temporary SQLite/Git fixtures and
 bounded synchronization. Run full Workflow/shared-state regressions, formatting,
@@ -141,6 +165,26 @@ immutable source review follows verification; no current-head green claim is
 inferred from earlier checks or constrained-concurrency diagnostics.
 
 ## Impact
+
+Inspected nine reservation entrypoints: step/poll (workflow.rs 753/1020), retry
+(1819), resume_gate (1409), request_finalization (1254), cancel/fail_task via
+terminate (1177–1183), release_terminal_reservation (1226), and escalate (656).
+Only step/poll acquire new preparation/release behavior. retry refuses Running;
+resume_gate requires Waiting or irreversible Failed; finalization and escalation
+require no active claim. cancel/fail commit a terminal decision without closing
+the reservation. TerminalRecovery requires that decision and both Engine/Store
+dispatch fences. No nonterminal entrypoint releases on a missing Session alone.
+Recovery reason references distinguish reversible owner recovery14 from
+irreversible outcome reconciliation13 without changing their fences.
+
+Search of README/docs/source found old reset/retry strings only in workflow.rs
+1073–1087 and the old Evaluating reason at1054. No production string-parsing
+consumer was found. dispatch_started test consumers are workflow/tests.rs590
+(preset marker),999/2188 (synthetic histories), and3186 (final-claim regression).
+The first three keep their assertions; final-claim changes only its agent path to
+immediate owner release then next Started, preserving the EvidencePort path.
+Existing Issue8 verification remains historical; README/master describe current
+behavior rather than rewriting old evidence. New tests cover entrypoint refusals.
 
 `WorkflowEngine::step/poll`, shared Workflow reservation consumers, Task metadata
 CAS and StateOnly Store transition validation. Review (#9), Goal/Scheduler
