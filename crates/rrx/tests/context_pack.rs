@@ -1,5 +1,5 @@
 use rrx::{
-    adapter::{InputKind, SharedStore},
+    adapter::SharedStore,
     context::{Budget, SelectionRequest},
     context_pack::*,
     domain::*,
@@ -689,23 +689,20 @@ async fn stale_drafts_lost_sessions_and_immutable_locks_cannot_publish_context()
         .put_session(&native, version)
         .unwrap();
     let revision = git(&f.worktree, &["rev-parse", "HEAD"]);
-    let mut lock = f
-        .store
-        .lock()
-        .unwrap()
-        .acquire_review_lock(&f.task.scope(), &f.worktree, &revision, "fixture".into())
-        .unwrap();
+    let lock = WorktreeManager::lock_review(
+        &mut f.store.lock().unwrap(),
+        f.task.id,
+        &revision,
+        "fixture",
+    )
+    .unwrap();
     assert!(
         packs
             .publish_task(&packs.draft_task(&f.task.scope(), input()).await.unwrap())
             .await
             .is_err()
     );
-    f.store
-        .lock()
-        .unwrap()
-        .release_worktree_lock(&mut lock)
-        .unwrap();
+    WorktreeManager::unlock_review(&mut f.store.lock().unwrap(), lock).unwrap();
     packs
         .publish_task(&packs.draft_task(&f.task.scope(), input()).await.unwrap())
         .await
