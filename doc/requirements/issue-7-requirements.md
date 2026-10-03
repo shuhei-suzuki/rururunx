@@ -17,9 +17,9 @@ credentials extraction, bypass mode, always-approve flag or snapshot restoration
   The first implementation exposes only native `read_file` and `search_replace` tools,
   routed through ACP filesystem callbacks. It does not advertise shell execution.
 - Consultant, Reviewer and ApprovalReviewer Sessions are decision-only: profile identity
-  and native zero-tool inventory are checked before every fresh/resumed prompt. Empty
+  and a tested curated tool contract plus native zero-tool inventory are checked before every fresh/resumed prompt. Empty
   strings, unknown tool names or prompt instructions are never security controls.
-- Native `outputSchema` produces collected structured results. Missing/invalid native
+- Native `outputSchema` produces collected structured results. Missing/invalid or locally schema-invalid native
   structured output is a typed failure, never a fabricated review verdict.
 - Explicit model/effort are applied through ACP configuration setters and verified from
   returned current values before inference. Unspecified values preserve native defaults.
@@ -33,12 +33,14 @@ credentials extraction, bypass mode, always-approve flag or snapshot restoration
   base/main/master branches, inactive owners and live/Lost executors remain fenced.
 - Filesystem callbacks require the exact current native Session ID and owned Task root.
   Traversal, symlinks, hard-link aliases, foreign Projects, Git/native metadata and
-  rule/config authority writes are rejected. Filesystem/Git I/O runs outside SharedStore.
+  rule/config authority writes are rejected. ASCII-only no-follow paths and case-insensitive
+  protected names reject platform aliases; unsupported UTF-8 file-name/range operations fail. Filesystem/Git I/O runs outside SharedStore.
   Structural identity and version checks preserve concurrent owner changes.
 - Process groups, RPC deadlines/frames/output and pending work are bounded. Stop and
   cancellation affect only owned private children. Unknown termination keeps Lost
   reserved; completion cannot be inferred from cancellation or process exit alone.
-- Native prompt completion and actual OS exit status remain separate. A successful
+- Native prompt completion and actual OS exit status remain separate. Unexplained native/hook
+  worktree changes invalidate completion; decision-only covers model tool authority. A successful
   native turn requires private owned completion evidence, verified process cleanup and
   successful terminal persistence before `transport_succeeded` can return true.
 - Resume preserves the owned native UUID and rururunx Session ID; it requires an explicit
@@ -50,7 +52,8 @@ credentials extraction, bypass mode, always-approve flag or snapshot restoration
 Interactive PTY/attach, shell/terminal operations, universal permission interception,
 native Goals and cross-process recovery are unsupported in this baseline. Unknown reverse
 callbacks fail closed. Native one-time permission callbacks may be denied conservatively;
-ordinary auto-approved edits do not prove an interception capability. Future extensions
+ordinary auto-approved edits do not prove an interception capability. All permission
+callbacks are denied; native cached-token authentication has no interactive fallback. Future extensions
 must prove those native authority boundaries independently before advertising support.
 
 ## Verification

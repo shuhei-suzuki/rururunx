@@ -1,6 +1,6 @@
 # Issue 7: Grok ACP adapter design
 
-Status: committed design; implementation and acceptance gates pending.
+Status: corrected formal design; runtime implementation and acceptance gates pending.
 
 `adapter::grok::GrokAdapter::new(agent, absolute_executable, SharedStore)` is an explicit
 provider constructor compatible with Registry.register. It implements AgentAdapter and
@@ -9,32 +9,47 @@ shared structured-start contract lands. No provider inference or config-schema c
 
 ## Native profiles and launch
 
-Create protected runtime-owned temporary profile files with frontmatter only. Executor
-profile permits exactly `read_file` and `search_replace`; exact disallowed IDs remove
-`search_tool` and `use_tool`. No shell, terminal, web, MCP discovery entrypoint, subagent,
-scheduler or native Goal tools are exposed to the model. Use workspace sandbox plus
-ACP client filesystem capabilities; native file tools delegate to the supervisor's scoped
-filesystem, independently of the sandbox's broad read policy.
+Create protected runtime-owned temporary profile files with frontmatter only. Both
+profiles declare nonempty exact `toolConfig.tools` IDs `GrokBuild:read_file` and
+`GrokBuild:search_replace`, `injectDefaultTools: false`, and the corresponding recognized
+allowlist. This curated native harness prevents optional/default tool injection and remote
+harness substitution. Executor retains those two file tools; decision explicitly denies
+both. Both explicitly deny `search_tool`, `use_tool`, `web_search`, `x_search`, and
+`web_fetch`; hosted search is not included in ACP bridge tool counts. Use strict sandbox
+for executor and read-only for decision. Native sandbox labels alone do not establish
+Task isolation: executor tools delegate to the supervisor's scoped filesystem.
 
-Decision profile permits recognized WebSearch while `--disable-web-search` makes it
-unavailable, and explicitly removes both MCP meta-tools. Use native read-only sandbox
-and dontAsk. This preserves default system prompt/rule/skill discovery and native hooks;
-native inherited MCP startup may still occur, but no model tool entrypoint remains.
+Decision also uses dontAsk. Default system prompt/rule/skill discovery, native hooks and
+inherited MCP startup remain. Decision-only means no model tool entrypoint; it does not
+mean native hooks/config discovery have no effects. A before/after worktree observation
+must detect unexplained effects before any completed transport result is accepted.
+
+Support is initially pinned to native `initialize._meta.agentVersion == 1.0.46`, protocol
+1 and advertised cached-token/load capabilities. Record the verified safe native version,
+profile digest and capabilities. ACP offers tool counts but no exhaustive pre-prompt
+names API: exact names are authorized by the tested curated profile contract, not inferred
+from count alone. Unknown versions or missing identity/contract fields fail before prompt.
+The public source snapshot supports this contract but is not binary-source identity proof.
 
 Both use `agent --no-leader --agent-profile <owned-file> stdio`. Exact argv is constructed
 internally, not shell-interpolated. Explicit intentional native baseline environment is
-retained; project leakage and Git overrides are rejected. Preserve native auth home;
+retained; project leakage and Git overrides are rejected. Native authentication/config,
+loader and permission override variables may only equal the constructor-captured intentional
+runtime baseline; per-launch replacement HOME/GROK_HOME/config/auth/library injection or
+native safety overrides fail. Additional ordinary explicit environment remains scoped. Preserve native auth home;
 never create an empty replacement config/auth home. No native trust bypass is introduced.
 
 Fresh lifecycle: reserve persisted Starting → async immutable Git/owner preflight → owned
 child spawn → initialize ACP version 1 → authenticate existing cached_token → session/new
 with exact CWD → apply/verify explicit model then effort → native session/info gate →
-persist owned UUID/PID/metadata with CAS → send unique prompt ID and prepared payload.
+persist owned UUID/PID/metadata with CAS → durably consume exact input version and unique
+prompt ID with CAS → send prepared payload. A failed or uncertain send consumes that input;
+no durable dispatch marker means no prompt. Unknown outcomes remain reserved.
 Every async boundary is followed by necessary owner checks before irreversible dispatch.
 Failure after actual native creation is recorded factually, even if owner activity changes;
 conservative Session updates preserve Blocked ownership metadata guards.
 
-Inventory gate requires expected agent identity, native Session ID/CWD and exact tool
+Inventory gate requires expected agent identity, native Session ID/CWD and the tested curated profile contract plus exact tool
 count (executor two, decision zero). Missing/malformed fields or mismatches terminate the
 owned process without prompting. Fresh and loaded Sessions use the same gate. Native
 model/effort current values must match explicit requested values before prompting.
@@ -48,8 +63,16 @@ scoped factual audit. Public supplied recovery JSON cannot create completion aut
 
 Executor client FS supports ACP read/write only. Resolve relative paths against the exact
 Task root and walk pinned directory descriptors with no-follow flags; check directory/file
-identity, regular-file type and hard-link count. Reject foreign paths and protected Git,
-native config, rules and runtime metadata. Bound content and line/range requests. Perform
+identity, regular-file type and hard-link count. Reject foreign paths, every dot-prefixed
+component (including .git/.grok/.claude/.codex/.agents/.rrx/.github), AGENTS.md/CLAUDE.md
+case-insensitively, and exact configured Project rule/config paths and their inode aliases.
+The baseline accepts ASCII path components only, so Unicode/case-normalization ambiguity
+cannot grant authority on macOS. Deny FIFOs/devices/hardlinks/symlinks. Text reads/writes
+are UTF-8 and bounded; unsupported ranges or absent parents fail explicitly. New files use
+exclusive no-follow creation under the pinned parent. Existing files preserve their mode
+and are only written after identity/type/content checks; partial failed effects remain
+factual failures, never rolled back or accepted. Recheck root/parent identity and scoped
+owner versions around operations. Bound content and line/range requests. Perform
 I/O off SharedStore, recheck owner/source snapshots before action, and journal actual
 effects before post-operation policy checks. A denied foreign request is a tool failure,
 not evidence that the enclosing Task passed or native process died.
@@ -57,14 +80,30 @@ not evidence that the enclosing Task passed or native process died.
 Decision Sessions expose no FS/terminal model capability and reject all unexpected file,
 terminal and permission requests. For executor native permission callbacks, accept no
 persistent grants; unsupported requests receive native reject_once/cancelled. Universal
-interception is not advertised: native auto-allowed file edits can bypass callbacks and
-native extension hooks are known to fail open on some failures.
+interception is not advertised: ordinary native file edits may omit permission callbacks,
+but the tested file tools still delegate their file I/O through ACP FS. Every permission
+callback is rejected with reject_once/cancelled; no approval grant path is advertised.
+Native extension hooks are known to fail open on some failures and are not isolation gates.
 
 Native assistant text updates feed bounded output. Schema launch sends native
 `session/prompt._meta.outputSchema`; native terminal structuredOutput is retained and
-validated for success/error/size. Review Engine owns verdict/evidence policy. Native
+validated locally against the same bounded supported schema contract as well as native
+success/error/size. Unsupported schema keywords/dialects fail before inference; native
+metadata alone does not validate a result. Post-turn identity/count checks are mandatory;
+decision toolCallCount must remain zero, and any FS/terminal callback invalidates decision
+success. Executor must retain its two-tool contract. Notifications replayed during load
+are excluded from live output/evidence until the load response has been verified. Review Engine owns verdict/evidence policy. Native
 `_meta.usage` aggregate counters are preferred over last-call fields; absent telemetry
 and uncontracted cost conversion remain null.
+
+Before native startup and after shutdown, observe exact HEAD, current branch ref, index,
+status, and bounded Task file inventory/content hashes, including ignored files. Executor
+changes must match recorded ACP writes; decision changes must be empty. Missing/over-budget
+observations or unexplained hook/native/concurrent effects fail completion. Preserve hooks
+and report evidence rather than silently roll back effects. Other Project/native-global
+lifecycle effects are outside the model tool authority claim. Owned group cleanup includes
+ordinary inherited descendants; processes deliberately escaping the group remain an
+explicit native lifecycle limit, not a claim of whole-machine supervision.
 
 ## Lifetime and resume
 
@@ -73,7 +112,9 @@ terminate the owned group before leader reap, then preserve actual OS exit statu
 Prompt end_turn is a separate native success fact. On native completion, close only the
 owned session and shut down/reap its private server. Success is privately authorized only
 when exact native UUID/prompt/Scope and durable terminal Session match. Stop/cancel/timeouts
-do not synthesize success or zero exit. Uncertain cleanup/persistence remains Lost/reserved.
+do not synthesize success or zero exit. Only native end_turn can establish turn completion;
+cancelled/max_tokens/refusal/unknown reasons do not. Once stop is requested, reject new
+file/permission work while cleaning up. Uncertain cleanup/persistence remains Lost/reserved.
 
 Private registry state prevents duplicate live launches or concurrent same-Session resume.
 Checkpoint accepts explicit scope/version/source-bound fresh PreparedInput, persists only
@@ -92,10 +133,14 @@ verified reconstruction. PTY/attach/shell/native Goal support remain typed Unsup
 Real installed Grok 1.0.46 reconnaissance used existing cached auth, an owned private ACP
 server and isolated temporary files. Two tools were reported before actual edit; own
 read/write arrived through ACP FS and the foreign read was denied. Native end_turn and
-aggregate four-call usage were observed; the actual server stopped with OS status 143.
+aggregate four-call usage were observed under a curated strict profile; the actual server stopped with OS status 143.
 Separate pre-prompt zero-tool validation yielded a schema-constrained DENY, post-turn
 toolDefinitionsCount/toolCallCount zero and no callbacks. This is actual invocation proof,
-not an inference from empty inventory metadata. Adapter implementation must reproduce it.
+not an inference from empty inventory metadata. Adapter implementation must reproduce it. A second curated decision profile explicitly
+removed its two declared tools and hosted/MCP entrypoints; it yielded zero bridge tool
+calls and native DENY. ACP model/effort setters returned the exact requested current values.
+A new private server loaded the exact prior native UUID and CWD, then acted only on a fresh
+continuation prompt; loaded history is not live evidence.
 
 First-party references: [sandbox](https://docs.x.ai/build/features/sandbox),
 [permissions](https://docs.x.ai/build/features/permissions),
