@@ -376,6 +376,14 @@ fn macos_group_is_dead(pid: Pid) -> std::io::Result<bool> {
 }
 #[cfg(target_os = "macos")]
 fn process_group_inspection(executable: &Path, pid: i32) -> std::io::Result<bool> {
+    inspect_process_group(executable, pid, |_| {})
+}
+#[cfg(target_os = "macos")]
+fn inspect_process_group(
+    executable: &Path,
+    pid: i32,
+    observed: impl FnOnce(u32),
+) -> std::io::Result<bool> {
     use std::io::Read;
     let mut child = std::process::Command::new(executable)
         .args(["-axo", "pgid=,stat="])
@@ -384,6 +392,7 @@ fn process_group_inspection(executable: &Path, pid: i32) -> std::io::Result<bool
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()?;
+    observed(child.id());
     let stdout = child.stdout.take().expect("piped inspector stdout");
     // Drain concurrently so a full process table cannot block ps on its pipe.
     let reader = std::thread::spawn(move || {
@@ -1756,19 +1765,15 @@ mod tests {
     fn native_inspection_timeout_kills_and_reaps_its_trusted_direct_child() {
         let temp = tempfile::tempdir().unwrap();
         let shim = temp.path().join("inspector");
-        let marker = temp.path().join("pid");
-        let quoted = marker.to_str().unwrap().replace('\'', "'\\''");
-        std::fs::write(
-            &shim,
-            format!("#!/bin/sh\nprintf '%s' \"$$\" > '{quoted}'\nexec /bin/sleep 2\n"),
-        )
-        .unwrap();
+        std::fs::write(&shim, "#!/bin/sh\nexec /bin/sleep 2\n").unwrap();
+        let pid = std::cell::Cell::new(0);
         std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o700)).unwrap();
         let started = std::time::Instant::now();
-        let result = process_group_inspection(&shim, 42).unwrap_err();
+        let result =
+            inspect_process_group(&shim, 42, |native_pid| pid.set(native_pid)).unwrap_err();
         assert_eq!(result.kind(), std::io::ErrorKind::TimedOut);
         assert!(started.elapsed() < Duration::from_secs(1));
-        let pid = std::fs::read_to_string(marker).unwrap();
+        let pid = pid.get().to_string();
         let output = std::process::Command::new("ps")
             .args(["-o", "stat=", "-p", &pid])
             .output()
