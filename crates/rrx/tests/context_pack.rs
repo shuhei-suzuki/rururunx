@@ -2052,3 +2052,383 @@ async fn checkpoint_v4_index_migrates_atomically_and_is_independent_of_record_ro
         .unwrap();
     assert_eq!(tables, 0);
 }
+
+// Inference is deliberately synthetic; repository capture, Engine publication,
+// native Session persistence and Git disposal use the actual implementations.
+struct PackFixtureAgent {
+    store: SharedStore,
+    sessions: Mutex<std::collections::BTreeMap<SessionId, Session>>,
+    name: String,
+}
+impl rrx::adapter::AgentAdapter for PackFixtureAgent {
+    fn capabilities(&self) -> std::collections::BTreeSet<rrx::adapter::Capability> {
+        use rrx::adapter::Capability::*;
+        std::collections::BTreeSet::from([Execute, Review, NonInteractive])
+    }
+    fn probe(&self) -> rrx::adapter::AdapterResult<rrx::adapter::AgentInfo> {
+        Ok(rrx::adapter::AgentInfo {
+            agent: self.name.clone(),
+            provider: "fixture".into(),
+            adapter_version: "fixture".into(),
+            executable: "fixture".into(),
+            authenticated: None,
+            model_configuration: false,
+            effort_configuration: false,
+            capabilities: self.capabilities(),
+        })
+    }
+    fn start(
+        &self,
+        request: rrx::adapter::LaunchRequest,
+    ) -> rrx::adapter::AdapterFuture<'_, Session> {
+        Box::pin(async move {
+            let mut s = Session {
+                id: SessionId::new(),
+                scope: request.scope,
+                agent: self.name.clone(),
+                provider: "fixture".into(),
+                role: request.role,
+                native_ref: None,
+                pid: None,
+                worktree: request.worktree,
+                state: SessionState::Starting,
+                model: None,
+                effort: None,
+                recovery: serde_json::json!({"source_versions":request.input.source_versions,"input_version":request.input.version}),
+                started_at: now_ms(),
+            };
+            let mut store = self.store.lock().unwrap();
+            let v = store.put_session(&s, 0).map_err(pack_fixture_error)?;
+            s.state = SessionState::Running;
+            store.put_session(&s, v).map_err(pack_fixture_error)?;
+            self.sessions.lock().unwrap().insert(s.id, s.clone());
+            Ok(s)
+        })
+    }
+    fn status(
+        &self,
+        reference: rrx::adapter::SessionRef,
+    ) -> rrx::adapter::AdapterFuture<'_, rrx::adapter::SessionStatus> {
+        Box::pin(async move {
+            let mut store = self.store.lock().unwrap();
+            let (mut s, v) = store.session(reference.id).unwrap().unwrap();
+            assert_eq!(s.scope, reference.scope);
+            if s.state == SessionState::Running {
+                s.state = SessionState::Exited;
+                store.put_session(&s, v).map_err(pack_fixture_error)?;
+            }
+            Ok(rrx::adapter::SessionStatus {
+                session: s,
+                exit_code: Some(0),
+                stdout: vec![],
+                stderr: vec![],
+                stdout_truncated: false,
+                stderr_truncated: false,
+                failure: None,
+            })
+        })
+    }
+    fn stop(
+        &self,
+        reference: rrx::adapter::SessionRef,
+    ) -> rrx::adapter::AdapterFuture<'_, rrx::adapter::SessionStatus> {
+        self.status(reference)
+    }
+    fn attach(&self, _: rrx::adapter::SessionRef) -> rrx::adapter::AdapterFuture<'_, ()> {
+        Box::pin(async { Err(pack_fixture_error(anyhow::anyhow!("fixture unsupported"))) })
+    }
+    fn resume(&self, _: rrx::adapter::SessionRef) -> rrx::adapter::AdapterFuture<'_, Session> {
+        Box::pin(async { Err(pack_fixture_error(anyhow::anyhow!("fixture unsupported"))) })
+    }
+    fn release(&self, _: rrx::adapter::SessionRef) -> rrx::adapter::AdapterResult<()> {
+        Ok(())
+    }
+    fn subscribe(
+        &self,
+        _: rrx::adapter::SessionRef,
+    ) -> rrx::adapter::AdapterResult<tokio::sync::watch::Receiver<rrx::adapter::SessionStatus>>
+    {
+        Err(pack_fixture_error(anyhow::anyhow!("fixture unsupported")))
+    }
+    fn usage(
+        &self,
+        reference: rrx::adapter::SessionRef,
+        phase: String,
+        round: Option<u32>,
+    ) -> rrx::adapter::AdapterFuture<'_, Usage> {
+        Box::pin(async move {
+            Ok(Usage {
+                scope: reference.scope,
+                session_id: reference.id,
+                agent: self.name.clone(),
+                phase,
+                review_round: round,
+                input_tokens: None,
+                cached_input_tokens: None,
+                output_tokens: None,
+                estimated_cost: None,
+                context_pack_version: None,
+                context_pack_size: None,
+                repo_map_size: None,
+                cache_metadata: serde_json::Value::Null,
+                missing_reason: Some("synthetic fixture has no provider telemetry".into()),
+            })
+        })
+    }
+}
+fn pack_fixture_error(error: anyhow::Error) -> rrx::adapter::AdapterError {
+    rrx::adapter::AdapterError {
+        kind: rrx::adapter::ErrorKind::StateFailure,
+        message: error.to_string(),
+    }
+}
+struct PackFixtureGates;
+impl rrx::workflow::PhaseGates for PackFixtureGates {
+    fn complete(
+        &self,
+        i: rrx::workflow::PhaseInvocation,
+        status: Option<rrx::adapter::SessionStatus>,
+    ) -> rrx::workflow::WorkflowFuture<'_, rrx::workflow::GateOutcome> {
+        Box::pin(async move {
+            if i.phase == rrx::workflow::Phase::Cleanup {
+                git(
+                    &i.project.root,
+                    &[
+                        "worktree",
+                        "remove",
+                        i.task.worktree.as_ref().unwrap().to_str().unwrap(),
+                    ],
+                );
+            }
+            Ok(rrx::workflow::GateOutcome::Passed(
+                rrx::workflow::Evidence {
+                    scope: i.task.scope(),
+                    phase: i.phase,
+                    revision: i.sources.revision,
+                    dependencies: i.sources.source_versions.clone(),
+                    source_versions: i.sources.source_versions,
+                    artifacts: vec![format!("fixture://{}", i.phase.key())],
+                    review_approved: (i.phase.actor() == rrx::workflow::Actor::Reviewer)
+                        .then_some(true),
+                    session_id: status.map(|s| s.session.id),
+                    context_version: i.context.version,
+                },
+            ))
+        })
+    }
+}
+fn phase_config() -> rrx::config::Config {
+    let mut config = rrx::config::Config::default();
+    config.minimum_workflow = rrx::config::WorkflowClass::Quick;
+    config.workflow.default = rrx::config::WorkflowClass::Quick;
+    config.context.repo_map_tokens = 64_000;
+    config.context.review_context_tokens = 64_000;
+    config
+}
+#[tokio::test]
+async fn actual_workflow_publishes_typed_phase_packs_and_freezes_cleanup_provenance() {
+    use rrx::{
+        adapter::AgentRegistry,
+        context_pack::workflow::{PhasePackArtifact, WorkflowPackSources},
+        workflow::{Phase, StepResult, WorkflowEngine},
+    };
+    let f = Fixture::new();
+    let mut task = Task::new(
+        f.project.id,
+        f.task.goal_id,
+        "Phase target".into(),
+        "fake".into(),
+    );
+    task.workflow = rrx::config::WorkflowClass::Quick;
+    task.risk = RiskClass::R0;
+    task.reviewers = vec!["fixture-reviewer".into()];
+    {
+        let mut store = f.store.lock().unwrap();
+        store.put_task(&mut task).unwrap();
+        WorktreeManager::create(&mut store, task.id).unwrap();
+        task = store.task(task.id).unwrap().unwrap();
+    }
+    let worktree = task.worktree.clone().unwrap();
+    let packs = f.packs();
+    let sources = Arc::new(WorkflowPackSources::new(packs.clone()));
+    sources.set_inputs(&task.scope(), input()).unwrap();
+    let mut registry = AgentRegistry::default();
+    for name in ["fake", "fixture-reviewer"] {
+        registry
+            .register(
+                name.into(),
+                Arc::new(PackFixtureAgent {
+                    store: f.store.clone(),
+                    sessions: Mutex::new(Default::default()),
+                    name: name.into(),
+                }),
+            )
+            .unwrap();
+    }
+    let engine = WorkflowEngine::new(
+        f.store.clone(),
+        Arc::new(registry),
+        phase_config(),
+        sources,
+        Arc::new(PackFixtureGates),
+    )
+    .unwrap();
+    let first = engine.initialize(task.id, None).await.unwrap();
+    let c = f
+        .store
+        .lock()
+        .unwrap()
+        .context(&task.scope(), Some(first.context_version))
+        .unwrap()
+        .unwrap();
+    let artifact: PhasePackArtifact = serde_json::from_value(c.data["task_pack"].clone()).unwrap();
+    assert_eq!(artifact.pack.scope, task.scope());
+    assert_eq!(
+        c.data["payload"]
+            .as_str()
+            .unwrap()
+            .matches("MANDATORY: preserve Project boundaries.")
+            .count(),
+        1
+    );
+    assert_eq!(
+        c.data["rendered_estimate"]["estimated_bytes"]
+            .as_u64()
+            .unwrap() as usize,
+        c.data["payload"].as_str().unwrap().len()
+    );
+    let mut saved_cleanup = None;
+    let mut finalized = false;
+    for _ in 0..40 {
+        let snapshot = engine.snapshot(task.id).unwrap();
+        if snapshot.finished {
+            if !finalized {
+                engine
+                    .request_finalization(task.id, "fixture disposal proof".into())
+                    .await
+                    .unwrap();
+                finalized = true;
+                continue;
+            }
+            break;
+        }
+        if f.store
+            .lock()
+            .unwrap()
+            .context(&task.scope(), Some(snapshot.context_version))
+            .unwrap()
+            .unwrap()
+            .data["phase"]
+            == serde_json::to_value(Phase::Cleanup).unwrap()
+        {
+            saved_cleanup = Some(
+                f.store
+                    .lock()
+                    .unwrap()
+                    .context(&task.scope(), Some(snapshot.context_version))
+                    .unwrap()
+                    .unwrap()
+                    .data["task_pack"]
+                    .clone(),
+            );
+        }
+        let result = engine.step(task.id, Default::default()).await.unwrap();
+        assert!(
+            !matches!(
+                result,
+                StepResult::Waiting { .. } | StepResult::Failed { .. }
+            ),
+            "{result:?}"
+        );
+    }
+    let final_state = engine.snapshot(task.id).unwrap();
+    assert!(final_state.finished);
+    assert!(!worktree.exists());
+    let c = f
+        .store
+        .lock()
+        .unwrap()
+        .context(&task.scope(), None)
+        .unwrap()
+        .unwrap();
+    assert_eq!(c.data["frozen_task_pack"], true);
+    assert_eq!(c.data["task_pack"], saved_cleanup.unwrap());
+    let proof = f.store.lock().unwrap().task(task.id).unwrap().unwrap();
+    assert_eq!(proof.state, TaskState::Completed);
+    let goal = packs
+        .publish_goal(
+            &Scope::goal(task.project_id, task.goal_id),
+            vec![],
+            Default::default(),
+        )
+        .await
+        .unwrap();
+    let summary = packs.goal_pack(&goal).unwrap();
+    assert!(
+        summary
+            .tasks
+            .iter()
+            .find(|t| t.id == task.id)
+            .unwrap()
+            .historical
+    );
+}
+#[tokio::test]
+async fn workflow_capture_cache_binds_complete_scope_payload_phase_and_budget() {
+    use rrx::{
+        context_pack::workflow::WorkflowPackSources,
+        workflow::{BudgetClass, ContextBudget, Phase, WorkflowSources},
+    };
+    let f = Fixture::new();
+    let source = WorkflowPackSources::new(f.packs());
+    let p = f
+        .store
+        .lock()
+        .unwrap()
+        .project(f.project.id)
+        .unwrap()
+        .unwrap();
+    let t = f.store.lock().unwrap().task(f.task.id).unwrap().unwrap();
+    let original = source
+        .capture(
+            p.clone(),
+            t.clone(),
+            Phase::Implement,
+            ContextBudget {
+                class: BudgetClass::Normal,
+                discretionary_tokens: 64_000,
+            },
+        )
+        .await
+        .unwrap();
+    assert!(source.pack_artifact(&original).unwrap().is_some());
+    for kind in 0..4 {
+        let mut changed = original.clone();
+        match kind {
+            0 => changed.scope.project_id = ProjectId::new(),
+            1 => changed.payload.push('x'),
+            2 => changed.revision.push('x'),
+            _ => {
+                changed
+                    .source_versions
+                    .insert("foreign".into(), "hash".into());
+            }
+        };
+        assert!(source.pack_artifact(&changed).is_err());
+    }
+    let other = source
+        .capture(
+            p,
+            t,
+            Phase::ImplementationReview,
+            ContextBudget {
+                class: BudgetClass::Broad,
+                discretionary_tokens: 63_000,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(original.source_versions, other.source_versions);
+    assert_ne!(original.payload, other.payload);
+    assert!(source.pack_artifact(&other).unwrap().is_some());
+}

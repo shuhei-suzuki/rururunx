@@ -1022,7 +1022,16 @@ impl WorkflowEngine {
             revision: context.revision.clone(),
             version: context.version,
             source_versions: context.source_hashes.clone(),
-            payload: serde_json::to_string(&context.data)?,
+            payload: if context.data.get("task_pack").is_some() {
+                // Durable typed metadata stays in the envelope. The native input
+                // is the exactly estimated rendered pack, without duplicate JSON.
+                context.data["payload"]
+                    .as_str()
+                    .context("typed phase payload missing")?
+                    .into()
+            } else {
+                serde_json::to_string(&context.data)?
+            },
         };
         let Some(worktree) = snapshot.task.worktree.clone() else {
             return self.fail(
