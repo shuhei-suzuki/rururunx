@@ -1,6 +1,6 @@
 # rururunx Product Requirements
 
-**Version:** 0.7
+**Version:** 0.8
 **Status:** Draft
 **Project:** rururunx
 **CLI:** `rrx`
@@ -45,6 +45,64 @@ The MVP is complete when the development workflow currently performed manually a
 The user must not need to patrol terminals merely to notice that an agent is waiting.
 
 The MVP includes the current strict development practices, not only process multiplexing.
+
+### 4.1 Scope classes
+
+Work is classified so optional features do not delay the core runtime.
+
+**MVP Core / release-blocking**
+
+- Rust runtime, durable state, Git/worktree safety, and Project isolation
+- Claude Code, Codex, and Grok native adapters
+- QUICK / STANDARD / STRICT workflow execution with risk-based escalation
+- configurable Review Engine and cross-agent Approval Broker
+- persistent Goal model, Task DAG, scheduler, 4+ Task concurrency, restart/recovery, and multi-project fairness
+- Context Efficiency: repository map, Context Packs, deterministic Review Bundles, delta re-review, and usage/cache telemetry where exposed
+- provider-neutral verification gates including headed browser verification, staging where configured, PR/merge/cleanup, audit, CLI/TUI, and Human escalation
+
+**MVP Optional / Stretch — never release-blocking**
+
+- adaptive/agentic browser backends such as Stagehand
+- Jev or similar browser fast paths
+- provider-native Goal delegation
+- additional adapters beyond the MVP MUST set
+
+Optional work may land before MVP if it does not delay or destabilize the core path.
+
+**Post-MVP**
+
+- iOS/iPadOS companion PWA and `rrx serve` remote status UI
+- Tailscale-specific companion setup beyond documentation needed for later remote viewing
+- remote write actions such as approve/merge/deploy from a companion UI
+- hosted dashboard/control plane
+
+### 4.2 MVP critical path
+
+Implementation priority is:
+
+```text
+Native adapters (#5/#6/#7)
+  ↓
+Workflow Engine (#8)
+  ↓
+Review Engine (#9)
+  ↓
+Task/Goal Context Packs + Review Bundles (#19/#20)
+  ↓
+Approval Broker (#10)
+  ↓
+Goal model / Task DAG (#23)
+  ↓
+Scheduler + restart/recovery (#14)
+  ↓
+rrx goal continuous loop (#24)
+  ↓
+Global multi-project scheduler (#27)
+  ↓
+Full dogfood (#16)
+```
+
+Independent work may proceed in parallel, but MVP Optional/Post-MVP work must not become a dependency of this path.
 
 ## 5. Core entities
 
@@ -483,6 +541,10 @@ The MVP must support mutation-style verification when required:
 For UI/browser-facing changes, the workflow must support headed-browser verification and preservation of configured evidence such as screenshots.
 
 Passing automated tests alone is insufficient when project policy requires headed verification.
+
+MVP correctness is **browser-backend neutral**. At least one deterministic backend must be able to perform required headed verification and capture evidence without requiring an LLM. Playwright is an acceptable implementation.
+
+Adaptive/agentic browser backends such as Stagehand are **MVP Optional / Stretch**. They may improve resilience or semantic exploration, but MVP acceptance, #12 verification workflow, and #16 dogfood must not depend on Stagehand, Jev, or any other adaptive browser backend.
 
 ## 19. Staging verification
 
@@ -948,17 +1010,20 @@ The Rust implementation should target low startup latency, low idle overhead, ef
 
 ## 39. MVP non-goals
 
-Do not build in MVP:
+Do not require for MVP:
 
 - a new coding agent
 - a new LLM
 - desktop application
-- web dashboard
+- web dashboard or remote companion PWA
+- `rrx serve` / iOS remote status access
 - hosted SaaS requirement
 - proprietary IDE
 - proprietary cloud VM layer
 - long-term vector-memory platform
 - proprietary RAG stack
+
+These may be explored as explicitly Optional/Post-MVP work, but they must not gate MVP completion.
 
 ## 40. Context and token efficiency
 
@@ -966,7 +1031,7 @@ Context/token efficiency is a **core MVP requirement**, not a post-MVP optimizat
 
 Parallel Tasks and 1/2/3+ reviewer workflows can otherwise multiply identical repository, design, rule, and conversation context. rururunx must reduce redundant context while preserving correctness, safety, and independent review.
 
-### 38.1 Repository Map / Context Index
+### 40.1 Repository Map / Context Index
 
 Issue 18's initial implementation is a Task-scoped local Rust library with a CLI
 inspection example, lexical graphs, deterministic budgeted selection/expansion,
@@ -987,7 +1052,7 @@ The index should support, where practical:
 
 Only a budgeted, task-relevant slice is injected by default.
 
-### 38.2 Versioned Task Context Pack
+### 40.2 Versioned Task Context Pack
 
 Each Task must maintain a versioned Context Pack containing durable working context such as:
 
@@ -1004,7 +1069,7 @@ Each Task must maintain a versioned Context Pack containing durable working cont
 
 The Context Pack is a compact coordination artifact, not a substitute for source code or authoritative requirements/design documents.
 
-### 38.3 Progressive disclosure
+### 40.3 Progressive disclosure
 
 Optional rules, skills, design sections, and repository detail should be loaded only when relevant.
 
@@ -1012,7 +1077,7 @@ Mandatory safety rules and project-required constraints must not be omitted to s
 
 Agents must be able to request context expansion when selected context is insufficient.
 
-### 38.4 Conversation condensation
+### 40.4 Conversation condensation
 
 Long-running consultation/execution sessions must support auditable condensation/checkpointing.
 
@@ -1030,7 +1095,7 @@ A checkpoint must preserve at least:
 
 Recent context may remain verbatim for a configurable window.
 
-### 38.5 Deterministic Review Bundle
+### 40.5 Deterministic Review Bundle
 
 Reviewers must receive a deterministic factual Review Bundle rather than the executor's full conversation transcript.
 
@@ -1049,7 +1114,7 @@ Reviewers in the same independent review round should receive equivalent factual
 
 One reviewer's conclusions must not be injected into another independent reviewer before that reviewer completes.
 
-### 38.6 Delta re-review
+### 40.6 Delta re-review
 
 Review round N > 1 should prefer:
 
@@ -1064,7 +1129,7 @@ instead of replaying all transient context from previous rounds.
 
 A reviewer may request broader context.
 
-### 38.7 Provider cache awareness
+### 40.7 Provider cache awareness
 
 Adapters should expose and use native prompt/context caching where the provider/agent supports it.
 
@@ -1075,7 +1140,7 @@ Caching and logical context minimization are distinct:
 - caching reduces repeated provider processing/cost/latency
 - context selection/condensation reduces the amount of logical context sent
 
-### 38.8 Token budgets
+### 40.8 Token budgets
 
 The runtime must allow configurable context budgets at least for:
 
@@ -1086,7 +1151,7 @@ The runtime must allow configurable context budgets at least for:
 
 Budget exhaustion must trigger context prioritization or explicit expansion behavior, not silent truncation of mandatory material.
 
-### 38.9 Token/cost telemetry
+### 40.9 Token/cost telemetry
 
 When exposed by an adapter/provider, record:
 
@@ -1102,7 +1167,7 @@ When exposed by an adapter/provider, record:
 
 Metrics must be attributable by Task, phase, review round, and agent.
 
-### 38.10 Optimization KPI
+### 40.10 Optimization KPI
 
 In addition to Human Interruptions per Task, rururunx should report:
 
@@ -1132,7 +1197,7 @@ The MVP is accepted when all of the following are demonstrable:
 9. Impact analysis is integrated.
 10. Unit/integration/E2E/regression/type/lint/build commands can be orchestrated.
 11. Mutation verification is supported.
-12. Headed browser verification is supported.
+12. Provider-neutral headed browser verification is supported through at least one deterministic backend; adaptive Stagehand/Jev support is not required for MVP.
 13. Relevant staging verification is supported.
 14. Review phases support configurable 1/2/3+ reviewers.
 15. Two reviewers can be selected and run in parallel.
