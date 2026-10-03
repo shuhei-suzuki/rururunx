@@ -13,8 +13,11 @@ rrx
 Long-running objectives can be launched as persistent Goals:
 
 ```bash
+rrx project add ~/src/project-a
+rrx project add ~/src/project-b
 rrx goal "Complete the project MVP"
 rrx goal status
+rrx status --all
 ```
 
 ## Why
@@ -29,7 +32,7 @@ Coding agents can already complete substantial development work autonomously, bu
 - checking tests, CI, PRs, merges, and cleanup
 - deciding which workflow is appropriate for a change
 
-rururunx automates that supervision layer while keeping native agent CLIs and existing project rules intact.
+rururunx automates that supervision layer while keeping native agent CLIs and existing project rules intact. One runtime can supervise multiple repositories/projects at the same time.
 
 ## Core principles
 
@@ -41,8 +44,9 @@ rururunx automates that supervision layer while keeping native agent CLIs and ex
 6. **Respect existing safety controls.** Never bypass agent permissions, repository hooks, project rules, or Git safety policies.
 7. **CLI first, local first.** A desktop app, web dashboard, or cloud control plane is not required.
 8. **Spend context deliberately.** Reuse stable context, retrieve only relevant repository detail, condense long sessions, and measure token use.
-9. **Goal-oriented autonomy.** Persist objectives above Tasks and keep moving through the dependency graph until explicit completion criteria are satisfied.
-10. **Fast core runtime.** Use Rust to keep orchestration overhead and idle resource usage low.
+9. **Multi-project by default.** Run multiple repositories, Goals, and Tasks concurrently without mixing their context or rules.
+10. **Goal-oriented autonomy.** Persist objectives above Tasks and keep moving through the dependency graph until explicit completion criteria are satisfied.
+11. **Fast core runtime.** Use Rust to keep orchestration overhead and idle resource usage low.
 
 ## Intended workflow
 
@@ -169,6 +173,8 @@ rrx logs 201
 
 The MVP is complete when the development workflow currently performed across multiple terminal sessions can be managed from one `rrx` session, including:
 
+- multi-project runtime with isolated project registry, Goals, context, rules, and worktrees
+- global/per-project/per-agent concurrency control
 - first-class persistent Goals with explicit completion criteria and Task DAGs
 - `rrx goal` continuous execution across Tasks
 - 4+ parallel tasks in independent Git worktrees
@@ -194,7 +200,7 @@ The MVP is complete when the development workflow currently performed across mul
 - TUI and native session attach
 - context/token efficiency: repository maps, Context Packs, progressive loading, condensation, delta re-review, cache awareness, and token telemetry
 
-See [Product Requirements](doc/requirements/product-requirements.md), [Architecture](doc/design/master/architecture.md), [Goal Runtime](doc/design/master/goal-runtime.md), and [Context Efficiency](doc/design/master/context-efficiency.md).
+See [Product Requirements](doc/requirements/product-requirements.md), [Architecture](doc/design/master/architecture.md), [Goal Runtime](doc/design/master/goal-runtime.md), [Multi-Project Runtime](doc/design/master/multi-project-runtime.md), and [Context Efficiency](doc/design/master/context-efficiency.md).
 
 ## Status
 
