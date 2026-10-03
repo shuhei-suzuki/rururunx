@@ -307,8 +307,9 @@ mod cancellation_tests {
     async fn cancelled_receive_retains_already_consumed_partial_frame() {
         let directory = tempfile::tempdir().unwrap();
         let ready = directory.path().join("ready");
+        let go = directory.path().join("go");
         let mut child = tokio::process::Command::new("python3")
-            .args(["-u", "-c", "import sys,time,pathlib;sys.stdout.write('{\"jsonrpc\":\"2.0\",');sys.stdout.flush();pathlib.Path(sys.argv[1]).touch();time.sleep(0.2);print('\"id\":1,\"result\":{}}')"])
+            .args(["-u", "-c", "import sys,time,pathlib\nsys.stdout.write('{\"jsonrpc\":\"2.0\",');sys.stdout.flush();pathlib.Path(sys.argv[1]).touch()\nwhile not pathlib.Path(sys.argv[2]).exists():time.sleep(0.001)\nprint('\"id\":1,\"result\":{}}')"])
             .arg(&ready).stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).kill_on_drop(true).spawn().unwrap();
         let mut rpc = Rpc::new(child.stdin.take().unwrap(), child.stdout.take().unwrap());
         tokio::time::timeout(Duration::from_secs(5), async {
@@ -323,6 +324,7 @@ mod cancellation_tests {
                 .await
                 .is_err()
         );
+        std::fs::write(&go, "continue").unwrap();
         let value = tokio::time::timeout(Duration::from_secs(5), rpc.receive())
             .await
             .unwrap()

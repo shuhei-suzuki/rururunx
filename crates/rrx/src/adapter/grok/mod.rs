@@ -1005,12 +1005,11 @@ async fn supervise(mut actor: Actor, load: Option<String>) {
         if actor.native_outcome { *actor.entry.usage.lock().map_err(|_|failure(ErrorKind::StateFailure,"usage poisoned"))?=response["_meta"]["usage"].clone(); }
         if !actor.native_outcome || response["stopReason"]!="end_turn" {return Err(failure(ErrorKind::ProcessFailure,"native turn did not complete with owned end_turn evidence"));}
         actor.store.lock().map_err(|_|failure(ErrorKind::StateFailure,"state poisoned"))?.audit(&actor.session.scope,"grok.native_turn_observed",json!({"session":actor.session.id,"native":native,"prompt":actor.prompt,"stop_reason":"end_turn","structured_output_digest":response["_meta"].get("structuredOutput").and_then(|v|serde_json::to_vec(v).ok()).map(|v|digest(&v))})).map_err(state_error)?;
-        actor.evidence.finished()?;
         for field in ["serverSideToolCalls","serverToolCalls","webSearchCalls","xSearchCalls","searchSources"] {
             if response["_meta"].get(field).is_some_and(|v| v!=&Value::Null && v!=&json!(0) && v!=&json!([])) {return Err(failure(ErrorKind::OwnershipMismatch,"native hosted tool/search evidence outside contract"));}
         }
         let info=actor.request("_x.ai/session/info",json!({"sessionId":native}),Duration::from_secs(15)).await?;actor.inventory_gate(&info)?;
-        actor.active=false;
+        actor.evidence.finished()?;
         if response["_meta"].get("structuredOutputError").is_some_and(|v|!v.is_null()){return Err(failure(ErrorKind::ParseFailure,"native structured output failed"));}
         if let Some(schema)=&actor.entry.schema {
             let output=response["_meta"].get("structuredOutput").ok_or_else(||failure(ErrorKind::ParseFailure,"native structured output missing"))?;

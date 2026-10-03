@@ -217,6 +217,10 @@ for line in sys.stdin:
   if mode=='invalid_callback_id':
    send({'jsonrpc':'2.0','id':None,'method':'fs/write_text_file','params':{'sessionId':sid,'path':'invalid-id.txt','content':'forbidden'}});json.loads(sys.stdin.readline())
   if mode=='config_update':update({'sessionUpdate':'config_option_update','configOptions':[]})
+  if mode=='callback_budget':
+   for _ in range(257):
+    send({'jsonrpc':'2.0','id':'permission','method':'session/request_permission','params':{'sessionId':sid,'options':[{'kind':'reject_once','optionId':'deny'}]}});assert json.loads(sys.stdin.readline())['result']['outcome']['optionId']=='deny'
+  if mode=='path_budget':fs('fs/read_text_file','a'*4097)
   if mode=='permission':
    send({'jsonrpc':'2.0','id':'permission','method':'session/request_permission','params':{'sessionId':sid,'options':[{'kind':'allow_once','optionId':'allow'},{'kind':'reject_once','optionId':'deny'}]}})
    answer=json.loads(sys.stdin.readline());assert answer['result']['outcome']['optionId']=='deny'
@@ -314,6 +318,8 @@ async fn native_auth_inventory_config_parser_and_tool_evidence_fail_closed() {
         "late_tool",
         "invalid_callback_id",
         "config_update",
+        "callback_budget",
+        "path_budget",
     ] {
         let mut fixture = Fixture::new();
         fixture.mode(mode);
@@ -328,7 +334,9 @@ async fn native_auth_inventory_config_parser_and_tool_evidence_fail_closed() {
                 "bypass",
                 "denied_completed",
                 "invalid_callback_id",
-                "config_update"
+                "config_update",
+                "callback_budget",
+                "path_budget"
             ]
             .contains(&mode)
             {
