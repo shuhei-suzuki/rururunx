@@ -1756,12 +1756,24 @@ mod tests {
     fn native_inspection_timeout_kills_and_reaps_its_trusted_direct_child() {
         let temp = tempfile::tempdir().unwrap();
         let shim = temp.path().join("inspector");
-        std::fs::write(&shim, "#!/bin/sh\nexec /bin/sleep 2\n").unwrap();
+        let marker = temp.path().join("pid");
+        let quoted = marker.to_str().unwrap().replace('\'', "'\\''");
+        std::fs::write(
+            &shim,
+            format!("#!/bin/sh\nprintf '%s' \"$$\" > '{quoted}'\nexec /bin/sleep 2\n"),
+        )
+        .unwrap();
         std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o700)).unwrap();
         let started = std::time::Instant::now();
         let result = process_group_inspection(&shim, 42).unwrap_err();
         assert_eq!(result.kind(), std::io::ErrorKind::TimedOut);
         assert!(started.elapsed() < Duration::from_secs(1));
+        let pid = std::fs::read_to_string(marker).unwrap();
+        let output = std::process::Command::new("ps")
+            .args(["-o", "stat=", "-p", &pid])
+            .output()
+            .unwrap();
+        assert!(output.stdout.is_empty(), "inspector child must be reaped");
     }
 
     #[tokio::test]
@@ -1870,6 +1882,10 @@ mod tests {
             assert_eq!(session.state, SessionState::Lost);
             if fail_cleanup {
                 assert_eq!(outcome.kind, ErrorKind::SessionLost);
+                assert!(
+                    outcome.message.starts_with("InvalidInput"),
+                    "original inactive-project category must remain in diagnostics"
+                );
                 assert!(
                     session.pid.is_none(),
                     "Blocked native ownership hint remains unchanged"

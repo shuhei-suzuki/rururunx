@@ -34,9 +34,10 @@ Native provider adapters and runtime CLI orchestration remain separate.
   adapter unit regressions (one macOS-specific), and 37 existing tests. Clippy
   `-D warnings`, fmt-check, locked debug/release builds also pass. Earlier integrated
   `5ecfff7` passed Linux and macOS [CI](https://github.com/shuhei-suzuki/rururunx/actions/runs/37094557400).
-  #26 integration adds its 15 registry regressions and one direct adapter/Blocked
-  Project stop regression (72 macOS tests total; 71 Linux because EPERM is macOS-specific).
-  Exact final-head tests/lint/build/Linux/macOS CI gates are recorded before merge. On this macOS host real signal/ps tests require native
+  Integrated `2b56a53` passes 77 macOS tests: six adapter unit, 18 adapter native,
+  18 Git, 15 Project registry, 12 state, five CLI, and three config tests. Two
+  inspector tests are macOS-specific (75 Linux total). Clippy all-targets
+  `-D warnings` passed; exact final-head build/CI gates are recorded before merge. On this macOS host real signal/ps tests require native
   OS access; sandbox ps was denied and Tokio subprocess waits timed out. Authorized
   `require_escalated` verification uses temporary Git fixtures only.
 
@@ -83,6 +84,28 @@ cleanup/coverage/error details. Each was verified in code and corrected:
 A native metadata gate regression also changes the Goal during preflight and
 proves StateConflict occurs before the executor spawns. Final delta review covers
 these corrections and full unchanged adapter source.
+
+The third immutable review at published `ba80c9b` fetched source directly from
+PUBLIC GitHub and checked byte identity. It used native Claude with tools and MCP
+disabled through capability restriction, preserving normal hooks/rules/auth. It
+reported no Critical/High; verified Medium/Low residuals were corrected:
+
+| Finding | Disposition |
+| --- | --- |
+| R1/R3 unbounded macOS inspection/deadline claim | Native inspector drains bounded output and kills/reaps after 250 ms; direct Git child reap/output also bounded. Five-second observation budget plus separate cleanup bounds documented. Trusted /bin/ps availability is an explicit macOS host requirement; denied inspection retains Lost. |
+| R2 initial lifecycle version gap | Original validation versions retained across Starting and both Git snapshot checks; pause-before-snapshot regression |
+| R4 collector environment mismatch | Shared runtime-native Git environment builder retains existing Git config/hooks and excludes routing overrides; deliberately malformed agent HOME Git config regression proves it cannot alter ownership preflight |
+| R5 uncertain diagnostics/Blocked hints | State-only Lost plus scoped PID/PGID/error audit; original categories retained on failed state save. Reviewer proposal to expand Blocked native metadata writes rejected to preserve #26 safety contract. |
+| R6 Running-write failure async/coverage | Cleanup uses blocking worker; deterministic native post-spawn gate verifies operator CAS preservation/whole-group death and injected cleanup failure preserves Lost with scoped audit under Blocked Project. |
+| R7 inactive Project category | Typed ProjectInactive maps to InvalidInput, with direct launch and actual post-spawn guard assertions |
+| R8 final evidence/integration | Full combined gates and integration mutations recorded below; integrated schema2 is explicitly from #26 |
+
+Linux CI at `ba80c9b` exposed an outdated cancellation test assertion: the native
+Git cleanup worker may still own the group when the launch future is dropped. The
+correct conservative result is Lost, and the updated regression asserts that it
+continues blocking another executor. Child death is confirmed only after reap; an
+unread-input case uses a separate isolated Task fixture. No production safety
+guard was weakened to make that assertion pass.
 
 ## Isolated mutation evidence
 
@@ -131,7 +154,8 @@ tree was clean:
 Generic CLI does not claim read-only review/consultation or native recovery/PTY.
 Intentional setsid/setpgid escapes need stronger future OS containment. A runtime
 SIGKILL/crash cannot prove group death; its persisted reservation remains blocking.
-Process-group inspection/permission failure becomes Lost rather than asserting safe
+On macOS, trusted /bin/ps process inspection must be available. Process-group
+inspection/permission failure becomes Lost rather than asserting safe
 termination. Native adapters must preserve their own safety/config/auth settings
 when supplying the explicit environment. No browser/staging target applies to this
 local Rust library; runtime recovery, scheduler and provider adapters remain their
