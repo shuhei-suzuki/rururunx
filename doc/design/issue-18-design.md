@@ -41,6 +41,12 @@ preimage and postimage paths remain visible. Filesystem jobs (including native
 executable resolution and ownership canonicalization) and scanner/graph work have
 five-second deadlines. Synchronous registry/manager commands use the same absolute
 native Git resolver while preserving configuration, hooks and environment.
+Configured native Git infrastructure retains Git's lifecycle: on macOS,
+`core.fsmonitor=true` can start a detached Git fsmonitor daemon during inventory
+queries, including with `--no-optional-locks`. That Git-managed service can outlive
+the observation process group. Context neither disables native configuration nor
+claims to supervise that service as an AgentSession; process-group cleanup and
+bounded command output cover the owned observation processes.
 An uncertain Git cleanup latches a process-wide context launch block, including
 when cancellation drops the native preflight future; no later context result can
 be published through another helper call. Automatic recovery of that uncertainty
