@@ -113,13 +113,16 @@ pub(super) fn guard_cleanup_checkpoint(tx: &Transaction<'_>, record: &Record) ->
         return Ok(());
     };
     let next = &record.data["history"][index];
-    if next["phase"] != "Cleanup" || next["state"] != "Evaluating" {
+    let evaluating = serde_json::to_value(crate::workflow::AttemptState::Evaluating)?;
+    if next["phase"] != serde_json::to_value(crate::workflow::Phase::Cleanup)?
+        || next["state"] != evaluating
+    {
         return Ok(());
     }
     let previous = read_tx::<Record>(tx, "records", &record.id.to_string())?
         .context("Cleanup claim requires existing workflow")?;
     if previous.data["active"].as_u64() == Some(index as u64)
-        && previous.data["history"][index]["state"] == "Evaluating"
+        && previous.data["history"][index]["state"] == evaluating
     {
         return Ok(());
     }
