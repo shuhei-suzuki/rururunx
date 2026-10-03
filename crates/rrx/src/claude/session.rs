@@ -3160,9 +3160,19 @@ for line in sys.stdin:
         .unwrap();
         let status = adapter.status((&review).into()).await.unwrap();
         assert!(adapter.transport_succeeded(&status), "{:?}", status.failure);
-        assert_eq!(
-            serde_json::from_slice::<Value>(&status.stdout).unwrap(),
-            json!({"review_fixture":true})
+        // Native stream-json envelopes do not force a JSON schema on model
+        // text. Accept only an exact JSON document or exact JSON code fence,
+        // matching the independent manual source-review runner; never extract
+        // a JSON fragment from prose. Retain bounded format/usage metadata even
+        // if the model does not comply with the factual fixture response.
+        let text = std::str::from_utf8(&status.stdout).unwrap().trim();
+        let fenced = text
+            .strip_prefix("```json\n")
+            .and_then(|s| s.strip_suffix("\n```"));
+        eprintln!(
+            "actual reviewer response format: bytes={} exact_json_fence={}",
+            status.stdout.len(),
+            fenced.is_some()
         );
         eprintln!(
             "actual fresh immutable reviewer usage={}",
@@ -3173,6 +3183,10 @@ for line in sys.stdin:
                     .unwrap()
             )
             .unwrap()
+        );
+        assert_eq!(
+            serde_json::from_str::<Value>(fenced.unwrap_or(text)).unwrap(),
+            json!({"review_fixture":true})
         );
     }
     #[tokio::test]
