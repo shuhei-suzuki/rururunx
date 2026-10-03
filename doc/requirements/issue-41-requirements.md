@@ -21,24 +21,32 @@ existing concurrent-step regression; macOS was cancelled through matrix failfast
 3. While one owner is suspended after reservation, a concurrent `step` must
    leave it able to publish exactly one native Session after preparation resumes.
 4. A new Engine or process observing an abandoned undispatched reservation also
-   preserves it. Explicit recovery must establish preparation-owner absence and
-   no dispatch before releasing it; that integration remains Issue 14.
+   preserves it. For nonterminal Tasks, explicit recovery must establish
+   preparation-owner absence and no dispatch before releasing it; that
+   integration remains Issue 14. The existing explicit TerminalRecovery path
+   remains valid after a committed terminal decision: its transactional terminal
+   Task fence prevents further owner dispatch, and no Session/dispatch marker
+   plus executor/Lost fences prove safe closure without owner-absence inference.
 5. Dispatched or unknown native outcomes remain reserved. No automatic replay,
    fabricated process death, timeout relaxation or permission change.
 6. Existing final-claim CAS losses retain changed user metadata. A failed owner
    is distinguishable only through trusted recovery evidence, not a polling
    snapshot alone.
-7. Owner-local release is available only after this invocation's own reservation
+7. For Executor/Reviewer attempts only, owner-local release is available only
+   after this invocation's own reservation
    commit has returned success, and only for preparation errors without a
    definitive Failed/Invalidated decision. Reservation CAS losers and unknown
    reservation commit outcomes release nothing. Capture the committed Workflow
-   record identity/version and immutable attempt identity as this invocation's
-   ownership token; the generation/index/context/agent tuple alone is insufficient.
+   record identity/version and exact original attempt data as this invocation's
+   in-memory ownership token; release requires that committed Record version
+   still matches. No persisted attempt field or schema change is introduced.
+   The generation/index/context/agent tuple alone is insufficient.
    Before returning a preparation error, re-read and CAS-release only that exact
    still-Running attempt, with no Session or dispatch marker, recording Failed
    and a factual RetryEvent while preserving concurrent user metadata. Project,
    Goal and Task must still be active. Inactive/terminal owners retain the
-   reservation without changing their Task, decision, context or history; pause
+   reservation without owner-local changes to Task, decision, context or history;
+   explicit TerminalRecovery remains available as described in requirement 4. Pause
    then resume alone does not release it. Explicit recovery in #14 must resolve
    this retained reservation. Conflicting attempts, live/Lost Sessions or failed
    release remain reserved. Never release after dispatch may have committed.
@@ -48,17 +56,26 @@ existing concurrent-step regression; macOS was cancelled through matrix failfast
 8. Running EvidencePort attempts retain the existing claim-CAS evaluation path;
    its state mutation/port invocation is not covered by requirements 1–4. Unknown
    evaluating claims and irreversible outcomes retain their existing fences.
+   Pre-claim capture/refresh/CAS errors leave the same Running attempt, history,
+   retries and ContextVersion intact. They never use agent owner-local release.
 9. Both no-Session observer reasons must state preparation/launch may still be
    active and must not assert interruption. Status/Scheduler use durable attempt
    actor/state/Session/dispatch fields to distinguish these waits without parsing
    human-facing reason text. A genuine orphan retains its phase/reservation;
-   cancellation, Project removal and conflicting execution remain fenced until
-   trusted recovery resolves it. Process/owner restart recovery belongs to #14;
+   Project removal and conflicting execution remain fenced until trusted recovery
+   resolves it; committed cancellation may use existing TerminalRecovery.
+   Process/owner restart recovery belongs to #14;
    external GitHub/irreversible port outcome reconciliation belongs to #13.
 10. Once dispatch may have committed, all errors retain the reservation. This
     includes a Session-binding CAS loss after an adapter returns an owned Session;
     #14 must reconcile it. This issue does not claim post-dispatch liveness under
     metadata conflicts or change the existing Session acknowledgement policy.
+11. This PR must align README status, master Workflow design and code recovery
+    references with the #13 external/irreversible versus #14 owner/restart split.
+    Record #14's retained classes explicitly: orphaned undispatched attempts,
+    dropped futures/crashes, inactive-owner preparation errors, definitive-decision
+    publication conflicts and post-dispatch Session-binding conflicts. This issue
+    persists no owner-absence evidence; #14 must establish its own trusted proof.
 
 ## Verification and completion
 
@@ -69,10 +86,16 @@ adapter launch/Session. A fresh Engine must conservatively retain an orphaned
 undispatched attempt. Owner capture errors and final-claim CAS loss release only
 the proven undispatched owned attempt and let the next step progress; an injected
 release conflict retains Waiting. EvidencePort CAS-loss behavior stays unchanged.
+For its claim-CAS loss, assert the active index, history length, retries and
+ContextVersion pointer unchanged, then verify the next step evaluates that same
+attempt. A compiled mutant applying agent release to EvidencePort must fail.
 Race two owners at reservation commit: the loser must leave the winner's claim
 untouched and the winner must launch exactly once. Pause or cancel the owner in
 each held pre-dispatch capture: the returning owner sends no native input and
 retains the unchanged reservation; pause/resume does not silently retry. A
+cancelled Task may then explicitly close its undispatched reservation with
+TerminalRecovery. Resuming the suspended owner must send no native input or
+write; Interrupted history and the terminal decision remain unchanged. A
 definitive-decision publication CAS loss and a dispatched Session-binding loss
 also remain reserved with concurrent metadata intact.
 Compiled mutations restoring premature reset, making observer state changes or
@@ -87,3 +110,4 @@ implementation, LLM orchestration, native agent changes or Git cleanup change.
 This fix preserves truthful durable state while Issue 14 supplies explicit
 recovery, including inactive-owner preparation failures and post-dispatch
 Session-binding conflicts; it does not claim that recovery or the MVP is complete.
+Existing explicit terminal-reservation recovery is preserved.
