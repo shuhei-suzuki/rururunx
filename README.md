@@ -279,8 +279,17 @@ checks; unknown outcomes keep recovery reservations. QUICK PR-created stays nont
 until requested merge/cleanup gates supply evidence. Cancellation preserves native
 reservations until verified termination.
 The generic CLI cannot review. Workflow CLI/TUI, independent review sets (#9),
-approval routing (#12), recovery (#13), and production Context Pack publication (#19)
+approval routing (#10), owner/restart recovery (#14), and production Context Pack publication (#19)
 remain pending. Issue #18 repository-context selection is available independently. See [Workflow Engine](doc/design/master/workflow-engine.md).
+
+Issue #41's reviewed requirements specify passive observation of agent preparation
+reservations and release only by their committing owner; implementation is pending.
+Inactive-owner errors, dropped/crashed owners and CAS losses while publishing a
+definitive decision or binding a dispatched Session remain recovery dependencies
+of #14. Retaining a failed decision publication prevents turning an intended
+definitive failure/invalidation into automatic retry. Existing explicit terminal
+reservation recovery stays available under its terminal-Task/dispatch fences.
+External GitHub/irreversible gate outcomes are reconciled by #13.
 
 The repository pins Rust 1.91.1 (minimum supported Rust 1.91) with rustfmt/clippy.
 
