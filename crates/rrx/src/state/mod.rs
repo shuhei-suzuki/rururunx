@@ -527,7 +527,7 @@ fn str_id<T: std::fmt::Display>(id: Option<T>) -> Option<String> {
     id.map(|id| id.to_string())
 }
 fn decode<T: DeserializeOwned>(body: String) -> Result<T> {
-    Ok(serde_json::from_str(&body).context("invalid persisted snapshot")?)
+    serde_json::from_str(&body).context("invalid persisted snapshot")
 }
 fn validate_scope(scope: &Scope) -> Result<()> {
     ensure!(

@@ -351,3 +351,30 @@ fn future_schema_is_rejected_without_rewriting_database() {
         .unwrap();
     assert_eq!(version, 999);
 }
+
+#[test]
+fn changing_decisions_preserves_previous_round_evidence_in_journal() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut store = Store::memory().unwrap();
+    let project = project(&mut store, "one", dir.path());
+    let goal = goal(&mut store, &project);
+    let task = task(&mut store, &project, &goal);
+    let mut approval = Record::new(
+        task.scope(),
+        RecordKind::Approval,
+        json!({"decision":"ESCALATE","reason":"conflict"}),
+    );
+    store.put_record(&mut approval).unwrap();
+    approval.data = json!({"decision":"DENY","reason":"human decision"});
+    store.put_record(&mut approval).unwrap();
+    let decisions: Vec<_> = store
+        .events(&task.scope(), 0, 100)
+        .unwrap()
+        .into_iter()
+        .filter(|event| event.kind == "approval.saved")
+        .collect();
+    assert_eq!(decisions.len(), 2);
+    assert_eq!(decisions[0].data["evidence"]["decision"], "ESCALATE");
+    assert_eq!(decisions[1].data["evidence"]["decision"], "DENY");
+    assert_eq!(store.record(approval.id).unwrap().unwrap().version, 2);
+}
