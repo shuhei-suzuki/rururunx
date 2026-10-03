@@ -119,6 +119,82 @@ reservations until a reply, explicit stop or verified cleanup.
 Current interactive/attach implementation is still pending. The transport probe
 at a native trust prompt is not claimed as completed interactive operation.
 
+## Proposed native TUI gateway (requires independent design review)
+
+Use the real installed native Codex TUI in an owned PTY. The TUI connects to a
+runtime-owned private Unix gateway and the exact stored native UUID. Its requests
+are handled by the **single** owning native RPC supervisor; do not give it an
+independent upstream app-server client that can bypass the approval ledger.
+The native screen, folder trust, authentication and instructions stay native.
+A runtime conversation renderer is not an alternative implementation.
+
+The initial interactive route is Consultant-only and decision-only. Executor
+interactive input/grants and attachment to an active executor need separate
+conformance before capability claims. Review/ApprovalReviewer cannot be converted
+to an interactive mutating session. A stored prepared turn is required for native
+rollout resume; its completion is not evidence of a human conversation. Between
+turns, the owning server and native PTY remain supervised and their reservations
+held. Native trust/onboarding remain WaitingHuman and are never selected by rrx.
+
+Authenticate the gateway client's UID, PID and membership in the still-owned
+unreaped native TUI group before WebSocket upgrade. Its directory/socket are
+owner-only and checked by inode identity, with one bounded connection and one
+host-terminal attachment. Never accept an audited PID or arbitrary external
+client as an owning process. Every gateway request/response/notification is
+bounded and correlated independently from the app-server RPC ID namespace.
+
+Forward only conformed native methods. Read/resume/turn requests require the exact
+owning native UUID; active-turn requests also require the current owned turn ID.
+Resume cannot supply history, a rollout path, config, instructions, provider,
+permission expansion or a new workspace. Enforce the original scoped CWD,
+decision profile, disabled execution environments and exact own roots before
+forwarding; verify the native response still reports them. Unknown mutations,
+thread fork/list/history search, global config writes, persistent grants, remote
+execution and feature re-enablement return explicit Unsupported errors.
+
+Native UI metadata is also a scope boundary. Project-related metadata is requested
+only for the exact owning CWD/UUID; do not forward another Project's configuration,
+credential references, file contents or thread roster. Project/global config
+responses need a minimal conformed UI projection, never a raw config dump.
+Preserve installed model/effort defaults. Explicit native UI changes can be
+supported only when conformed and compatible with the caller's explicit settings;
+no default model/effort is invented to make the UI work.
+
+For an initial conversation, allow bounded text input only. File/remote images,
+skill attachments, tool output and opaque additional context require their own
+scoped facts and are unavailable until conformed. A user message gets a private
+one-time submission identity and a durable metadata-only write-ahead consumption
+record before native inference. Record its byte count/digest and owning scope,
+without storing the full native transcript or credentials in runtime audit.
+Recheck Store Project/Goal/Task versions and locks atomically with the Session CAS
+after bounded filesystem/Git checks outside the Store mutex. Once dispatch may
+have begun, never replay an interrupted/uncertain user message automatically.
+
+The single supervisor binds new native turns, usage baselines and pending callback
+identities before exposing their observations. Seed and later turns cannot be
+counted as duplicate completion or attributed to an older Context Pack. Decision
+sessions reject target-operation grants; unsupported native callbacks are denied
+explicitly with scoped audit. A future executor attachment must choose one Human
+or broker grant authority, revalidate exact operation contents and journal intent
+before wire approval. A native TUI choice alone is not permission to persist a
+grant or broaden the runtime boundary.
+
+PTY allocation uses safe Rust APIs and its own process-group guard. A real host
+TTY attachment obtains an exclusive permit, forwards native bytes/input and
+resize events, and restores terminal attributes through RAII on detach/error.
+Bounded nonblocking I/O must remain stoppable when either side stalls; no blocked
+stdin worker survives cancellation. Detached output remains bounded. Confirm
+death of both app-server and native TUI groups before reaping and publishing
+terminal/releasing reservations. Any unverified group leaves Lost with scoped
+diagnostics. PTY isatty alone does not prove controlling-terminal/native-screen
+conformance; actual installed CLI behavior must be observed.
+
+Acceptance includes native text conversation on the same UUID; native trust gate
+retention; detach/reattach/resize; cancellation with descendants; identity/replay,
+config projection and permission-expansion fixtures; text submission CAS races;
+new-turn usage attribution; compiled semantic mutations and independent source
+review. Until those pass, Interactive/Attach remain explicitly unavailable.
+
 ## Impact and verification
 
 Additive provider implementation and optional adapter methods; generic capability
