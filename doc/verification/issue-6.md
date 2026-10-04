@@ -537,3 +537,18 @@ The failed lint log is retained, not credited as passing. No production admissio
 process deadline or internal parallelism changed for this correction.
 Evidence: `/private/tmp/rururunx-issue6-f4-89de50a-codex.log`,
 `/private/tmp/rururunx-issue6-f4-89de50a-clippy.log`.
+
+Seven further compiled causal mutants are assertion-killed against the clean
+`89de50a` production/test control: M650 predecessor Finished fence, M651 duplicate
+post-publication watch send, M652 historical-version-as-new-publication inference,
+M653 installed journal rebinding, M654 Lost caller error, M655 private cleanup
+detail retention, and M656 later cleanup kind retention after an earlier failed
+cause. Each isolated mutant was committed before verification, then its exact
+three-file control was restored and committed. Total F4 compiled mutation kills
+are **18**, with the earlier narrow-test survivors still recorded without credit.
+The cleanup-uncertainty test uses a synthetic ownership flag plus actual
+Reservation/Store/error publication; it is not an induced host inspection failure.
+The abnormal-drop fixture is an actual owned synthetic Unix RPC child and keeps
+its runtime alive until the child is reaped, while its operation remains Lost.
+Evidence: `/private/tmp/rururunx-issue6-f4-mutation-results6.json`,
+`/private/tmp/rururunx-issue6-f4-mutations6-run.log`.
