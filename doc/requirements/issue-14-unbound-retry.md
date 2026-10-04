@@ -1,72 +1,123 @@
 # Issue 14: fence explicit retry of an unbound native dispatch
 
-Requirements1 candidate, NOT APPROVED. Risk STRICT: shared Workflow reservation/replay boundary.
-Base main2c6ae9d; related open Issue14's "Verified explicit retry gap" acceptance.
-This is a limited prerequisite, not Scheduler/restart/native recovery completion.
+Requirements2 candidate, NOT APPROVED. Risk STRICT: shared Workflow/Store
+reservation and replay boundary. Base main efe9774, normal composition of63 after
+both Requirements1 reviewers finished/cleaned. No production change.
+Related open Issue14's "Verified explicit retry gap" acceptance; limited
+prerequisite only, not Scheduler/restart/native recovery completion.
 
 ## Problem and scope
 
-`WorkflowEngine::retry` admits Waiting/Failed nonirreversible attempts and checks
-persisted Sessions, but a committed native dispatch marker with no bound Session
-can pass the Session loop. `preparation_existing_explicit_retry_gap_is_characterized_not_recovery_proof`
-records the existing Failed outcome. Missing durable Session does not prove that
-an adapter was never called, that no input was sent, or that an owner is absent.
-Explicit replay must obey the same unknown-outcome reservation boundary as ordinary
-observation. Issue41 deliberately left this behavior for Issue14.
+WorkflowEngine::retry admits Waiting/Failed nonirreversible attempts and checks
+Sessions, but a committed native marker with no bound Session passes that loop.
+The Store's crate-private StateOnly closure also accepts it. Missing Session does
+not prove that no input was sent or that the preparation/native owner is absent.
+Issue41 deliberately left this gap for14; ordinary observation never replays.
 
-## Required behavior
+## Required behavior and enforcement
 
-1. For an active Executor or Reviewer attempt with `dispatch_started=true` and
-   no bound `session_id`, explicit `retry()` refuses. Failed/Waiting state, a user
-   retry reason, no Session rows, or unrelated terminal Session rows do not prove
-   safe release. Preserve the exact Task, Workflow Record/body/version, active
-   pointer, history/retries, context rows/pointer, Sessions, owners and audit.
-   Return a fixed explanation that trusted owner/dispatch recovery is required;
-   do not include raw native or persisted payload data.
-2. Running/Interrupted/Evaluating attempts keep their existing retry refusal;
-   irreversible EvidencePort attempts keep their external-outcome reconciliation
-   fence. EvidencePort phase markers are not native launch evidence and are not
-   subject to the new native-only predicate. Existing live/Lost/executor/Session
-   scope checks and transition CAS must remain intact.
-3. Existing supported retries remain available: resolved nonirreversible
-   EvidencePort Waiting/Failed outcomes, and agent Waiting/Failed outcomes with an
-   exact terminal bound Session that pass all existing Store/Engine fences. This
-   component adds no terminal/death attestation and does not certify those legacy
-   bound-Session paths beyond their existing policy.
-4. Do not introduce a bypass option, force flag, inferred no-dispatch certificate,
-   public recovery JSON, elapsed-time release, PID adoption, timeout relaxation,
-   schema change, or fabricated Session/termination. The retained unbound marker
-   remains reserved until a separately reviewed genuine Issue14 recovery producer
-   resolves the original attempt. That producer is unimplemented here.
-5. Preserve proven pre-marker owner-local release and committed terminal Task
-   recovery under Issue41's exact ownership/dispatch/Session fences. A marker may
-   exist even when launch was never called; this component does not classify or
-   clear that case on absence alone.
+1. An active Executor/Reviewer attempt with dispatch_started=true and no bound
+   session_id cannot be explicitly retried. Failed/Waiting, user reason, no Session
+   rows or unrelated terminal Sessions prove no safe release. Refuse before
+   mutation with exact Task/Workflow Record/body/version/active/history/retries,
+   all contexts/pointers, Sessions/locks, Project/Goal rows/versions and audit
+   unchanged. Fixed bounded explanation: launch outcome unknown, launch may or
+   may not have begun, trusted original-attempt recovery required. Do not assert
+   alive/dead/interrupted or echo caller reason, native or persisted payload.
+2. Use BOTH public Engine retry and existing crate-private Store transaction
+   closure fences. Store must refuse any closure/replacement of an active native
+   marked-unbound reservation, including via StateOnly or generation change;
+   marker/Session/phase identity alone supplies no resolution. Preserve the same
+   active reservation when recording Failed/terminal decision. Do not add a new
+   proof/API/schema. Existing CAS compares original Task/Record and owner versions;
+   existing non-Running marker/Session immutability and native termination checks
+   remain. A future genuine14 recovery producer needs its own reviewed authority.
+3. Existing supported retries remain available: definitive pre-marker Failed
+   native decisions with dispatch_started=false/session_id=None (both actors),
+   resolved nonirreversible EvidencePort Waiting/Failed outcomes, and native
+   Waiting/Failed outcomes with an exact terminal bound Session satisfying all
+   existing fences. Pre-marker registry/capability/missing-worktree failures must
+   not become permanent reservations. The component certifies no legacy bound
+   Session's native/F1 termination beyond existing policy.
+4. Running/Interrupted/Evaluating retry and irreversible outcome fences stay.
+   EvidencePort attempts never carry a native marker or Session under the Store
+   transition invariant. Proven pre-marker owner-local release, pre-marker source
+   invalidation/generation changes and committed terminal-Task recovery remain
+   valid under41's exact ownership/dispatch/Session fences. Bound terminal Session
+   progression stays unchanged. No generation change may waive an unresolved
+   marked-unbound native reservation.
+5. No force/bypass flag, inferred no-dispatch certificate, recovery JSON, elapsed
+   time/PID proof, fabricated Session/termination, timeout or permission relaxation.
+   Adapter ErrorKind/text, including deterministic configuration refusal, is NOT
+   trusted no-dispatch evidence. Retain unknown outcome until a genuine reviewed
+   producer resolves the exact original attempt.
 
-## Acceptance and impact
+## Accepted availability consequence
 
-- Use an actual `WorkflowEngine::step` native adapter start held after the marker
-  commits. Observe the real durable marker and no Session, release the held start
-  with a synthetic unknown-outcome error, then verify the actual Failed unbound
-  attempt is retained and public retry refuses without any durable changes or
-  second adapter call. Both Executor and Reviewer paths require actual controls.
-  A Fake fixture supplies no native/F1 certificate and proves no host process death.
-- Retain the earlier synchronous start-error characterization as historical
-  evidence; update its behavior assertion only after the approved fix. Cover the
-  shared refusal without asserting an unreachable production Waiting path was run.
-- Positive actual consumers must preserve resolved agent terminal-Session retry
-  and nonirreversible EvidencePort retry. Assert their real active-pointer and
-  RetryEvent transitions and meaningful no-extra-launch observations.
-- Compiled mutations removing the new guard, narrowing it to one actor, or wrongly
-  applying it to EvidencePort must fail at the relevant public consumer. Conditional
-  mutants without a reachable independent control earn no kill credit. Restore
-  exact committed source/tree and rerun controls.
-- Inspect step/poll, retry, resume_gate, terminal reservation release, Store's
-  workflow transition guard and Project removal consumers. Preserve shared schema,
-  native/environment/Context and ownership policies. Run default full workspace
-  regression, fmt, all-target Clippy, debug/release builds and affected Workflow
-  release tests; independent immutable source review and current Linux/macOS
-  exact-source CI are required before a limited merge.
-- Keep README/master Workflow/Issue41 historical disclosure aligned with the
-  component's implemented state and pending trusted recovery. Do not close whole
-  Issue14 or claim scheduling, restart, F1/native or full MVP acceptance.
+The marker commits BEFORE every adapter.start. Generic executable/config/model/
+effort/input/binding/Git/preflight/Store/process-start errors and Grok environment/
+input/capture/ownership/registration/spawn errors can therefore yield the same
+Failed marked-unbound attempt. Enumerate all current start implementations and
+transitive error producers in source impact analysis; do not infer effects from
+an error label. Conservatively, even user-fixable post-marker configuration errors
+retain the claim: Task cannot progress, Goal cannot complete through it, and Project
+removal is blocked. Neither retry, resume_gate nor cancel/fail plus TerminalRecovery
+provides an operator escape before separate14 trusted recovery exists. This is an
+explicit accepted prerequisite consequence of the open Issue14 no-replay contract,
+not production availability or parent completion. README/master/Issue14 must state
+it. Current status/Scheduler integration remains pending; classify this state from
+actor/state/dispatch_started/session_id, never error text, and claim no new endpoint.
+
+## Actual controls and mutation evidence
+
+- Hold actual WorkflowEngine::step adapter.start AFTER the marker commits, for
+  both Executor and Reviewer. Verify durable marker/no bound Session; release
+  start with a synthetic error, then verify real Failed unbound outcome. Refusal
+  is independent of error kind/text: existing Fake Unsupported label earns no
+  no-dispatch proof. Public retry refuses unchanged, subsequent ordinary step
+  does not replay, and both adapter launch counters are stable. Fake fixtures
+  provide no native/F1 certificate or actual host-process-death evidence.
+- Explicitly map Executor fixture to no Session rows and Reviewer fixture to an
+  unrelated terminal Executor Session from Implement. Before/after snapshots must
+  include Project/Goal versions, Task, ALL Task-scope Record kinds, EVERY context
+  version and complete audit rows (not only latest context or a paginated prefix),
+  plus both launch counters. Use isolated SQLite fixture/raw reads for snapshots;
+  schema checks remain enabled. No raw rewrite to bypass marker constraints.
+- Real pre-marker Executor and Reviewer failures through step remain retryable:
+  unregistered Executor and Reviewer lacking Review are viable controls. Verify
+  marker=false/no Session, exact original-index RetryEvent and active=None; fix
+  actor configuration through supported writer and next step reserves a new
+  attempt/launches exactly once. Run resolved bound-Session and EvidencePort retry
+  positives with actual transition/counter assertions too.
+- Direct crate-private Store closure of the actual marked-unbound Failed fixture
+  must refuse unchanged; matching pre-marker/bound/port closures must work.
+  Include direct generation-change bypass refusal without claiming it a reachable
+  public retry consumer. Existing synchronous characterization remains in Git
+  history; rename/update post-fix assertions and all41 references truthfully.
+- Killable compiled mutants: remove Store fence (direct Store consumer); remove
+  BOTH Engine+Store fences (public held-start consumer); narrow BOTH fences to
+  either actor (other held-start consumer); drop dispatch_started condition in
+  either guard (pre-marker positives); refuse all sessionless attempts (port
+  positives). Exact forms must be recorded. Engine-only removal remains masked
+  by Store, actor-condition removal is equivalent because port marker impossible,
+  and Failed-only narrowing cannot be killed by production Waiting: NO credit.
+  Any constructed marked-unbound Waiting coverage is defense in depth only, not
+  a public consumer/mutation claim. Restore exact source/tree and rerun controls.
+
+## Impact, gates and boundaries
+
+Enumerate every retry caller, every put_workflow_transition caller and reader of
+phase actor/dispatch_started/session_id across the workspace using rg. Current
+production transition writers are persist, reserve and persist_decision; tests
+also use crate-private Store directly. Inspect step/poll, prepare_agent/owner
+release, retry, resume_gate, fail/hold/invalidation, escalate, request_finalization,
+cancel/fail_task/terminate, terminal release, Store CAS/generation/closure guards,
+Project removal and existing status consumers. Record symbol/file/line and actual
+non-impact rationale: no active closure, requires active=None, terminal-decision
+only, existing marker/Session fence or new fence. No parsing of refusal text.
+
+Default full regression, fmt/all-target Clippy-Dwarnings, debug/release builds and
+affected Workflow release tests; independent requirements/design/source reviews
+and current both-OS exact-source CI before limited merge. Retain prior failures
+with source/cause limits. No direct main edits or tracking Issue14 closure. No new
+schema/native producer, scheduling, attach, restart, full14/native/F1/MVP acceptance.
