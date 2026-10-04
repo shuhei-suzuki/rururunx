@@ -5271,6 +5271,76 @@ mod tests {
         assert_eq!(starts[1]["params"]["input"][0]["text"], input.payload);
         adapter.release(reference).unwrap();
     }
+
+    #[tokio::test]
+    async fn post_consumption_caller_drop_keeps_the_registered_stop_channel_idle() {
+        let owned = Fixture::new(true);
+        let (executable, directory) = wire_fixture(&owned, "ack_hold");
+        let adapter =
+            Arc::new(CodexAdapter::new("codex".into(), executable, owned.store.clone()).unwrap());
+        let gate = adapter.gates.install(TestPoint::BeforeDispatch);
+        let actor = adapter.clone();
+        let request = owned.request.clone();
+        let caller = tokio::spawn(async move { actor.start(request).await });
+        bounded(gate.reached()).await;
+        let (reference, control) = {
+            let registry = adapter.registry().unwrap();
+            let entry = registry.values().next().unwrap();
+            (
+                SessionRef::from(&entry.status.borrow().session),
+                entry.control.clone(),
+            )
+        };
+        gate.release();
+        bounded(async {
+            while !journal_values(&directory)
+                .iter()
+                .any(|value| value["method"] == "turn/start")
+            {
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            }
+        })
+        .await;
+        caller.abort();
+        let _ = caller.await;
+        std::fs::write(directory.join("release-ack"), "").unwrap();
+        bounded(async {
+            let mut phase = control.subscribe();
+            loop {
+                if matches!(
+                    *phase.borrow_and_update(),
+                    Phase::Supervised | Phase::Finished(_)
+                ) {
+                    break;
+                }
+                phase.changed().await.unwrap();
+            }
+        })
+        .await;
+        // A finite quiet window distinguishes the preserved live receiver from
+        // replacing it with a closed channel that injects an unsolicited stop.
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        let unsolicited = journal_values(&directory)
+            .iter()
+            .filter(|value| value["method"] == "turn/interrupt")
+            .count();
+        let stopped = bounded(adapter.stop(reference.clone())).await.unwrap();
+        bounded(control.wait_finished()).await.unwrap();
+        assert_leader_reaped(&directory.join("leader"));
+        assert_eq!(
+            unsolicited, 0,
+            "caller drop cannot retire the live stop receiver"
+        );
+        assert_eq!(stopped.session.state, SessionState::Stopped);
+        assert_eq!(
+            journal_values(&directory)
+                .iter()
+                .filter(|value| value["method"] == "turn/interrupt")
+                .count(),
+            1
+        );
+        adapter.release(reference).unwrap();
+    }
     #[tokio::test]
     async fn actual_failed_admission_cas_latches_cause_before_cleanup_and_survives_stop_caller_drop()
      {
@@ -5703,6 +5773,27 @@ mod tests {
                 .unwrap()
                 .0
                 .recovery["dispatch_intent"],
+            stored.recovery["dispatch_intent"]
+        );
+        // Observe the actual consumer's failure before any outer async launch
+        // helper can redundantly latch it. Failed CAS must already be terminal
+        // under the same admission mutex when admit_dispatch returns.
+        writer.execute_batch("CREATE TRIGGER synthetic_dispatch_error BEFORE UPDATE ON records WHEN NEW.kind='session' AND json_extract(NEW.body,'$.data.recovery.dispatch_intent.consumed')=1 BEGIN SELECT RAISE(ABORT,'synthetic dispatch write failure'); END;").unwrap();
+        let (failed_control, _) = Control::new(None);
+        fixture.reservation.attempt = failed_control.clone();
+        let error = fixture
+            .reservation
+            .admit_dispatch(&fixture.authority.snapshot, &fixture.authority.request)
+            .unwrap_err();
+        assert_eq!(error.kind, ErrorKind::StateFailure);
+        assert!(matches!(
+            failed_control.preparation.state().unwrap(),
+            Admission::Failing(Cause::Failed(ErrorKind::StateFailure, _))
+        ));
+        assert!(!failed_control.preparation.cancel());
+        assert_eq!(fixture.reservation.version, previous);
+        assert_eq!(
+            fixture.reservation.session.recovery["dispatch_intent"],
             stored.recovery["dispatch_intent"]
         );
     }
