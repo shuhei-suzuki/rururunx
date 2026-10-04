@@ -880,6 +880,23 @@ impl Store {
 
     pub fn put_usage(&mut self, usage: &Usage) -> Result<()> {
         validate_scope(&usage.scope)?;
+        // Legacy observations remain unqualified. Enforce the same integer
+        // storage range required by the composed telemetry design without
+        // casting, clamping or turning an invalid observation into zero.
+        ensure!(
+            [
+                usage.input_tokens,
+                usage.cached_input_tokens,
+                usage.output_tokens,
+                usage.context_pack_version,
+                usage.context_pack_size,
+                usage.repo_map_size,
+            ]
+            .into_iter()
+            .flatten()
+            .all(|value| i64::try_from(value).is_ok()),
+            "usage integer exceeds the supported storage range"
+        );
         ensure!(
             usage
                 .estimated_cost

@@ -1,0 +1,79 @@
+{
+  "scope": "legacy six typed Usage integer storage boundary only",
+  "whole_issue_acceptance": false,
+  "outcomes": [
+    {
+      "head": "41c60fe67492f64a2829eeaab42857e3ba8fa7a9",
+      "section": "source1a",
+      "native_session": "64f9bf1b-8177-41f8-b6af-43af52a75e60",
+      "cleanup_verified": true,
+      "meter_scope": "raw_native_fresh_session_fields_unverified_operation_inventory",
+      "review": {
+        "verdict": "approve",
+        "findings": [
+          {
+            "id": "L1",
+            "severity": "Low",
+            "file": "crates/rrx/tests/state.rs",
+            "line": 668,
+            "claim": "No mutant shows that the 'no publication on rejection' assertion can fail. That assertion backs the component's central pre-write ordering claim.",
+            "evidence": "All six recorded mutants omit one field from the guard. Each fails at `expect_err(\"overflow stored for {field}\")` before the `after == before` comparison runs. No mutant moves the guard after the INSERT/append_event/commit. So the 'overflow published data for {field}' assertion is never shown to be reachable. The verification ledger still claims rejection happens 'before any Usage/audit or P/G/T/Session mutation'. By inspection the assertion is sound: it compares serialized P/G/T/Session/usage/events. A post-commit-guard mutant would return Err, pass expect_err and the message check, then fail on the second usage row and the extra usage.recorded event.",
+            "fix": "Add one compiled ordering mutant to the ledger, for example placing the range `ensure!` after `tx.commit()`. Record that it fails at 'overflow published data for input_tokens' and that the restored control passes. Alternatively, narrow the ledger wording so it claims only field-omission kills."
+          },
+          {
+            "id": "L2",
+            "severity": "Low",
+            "file": "doc/verification/issue-21-range-mutations.json",
+            "line": 66,
+            "claim": "Public bytes cannot show that the source was restored exactly. control-restored runs at a different commit (5ef12f6) than control-before (b47b773), and the ledger records only one source digest.",
+            "evidence": "The JSON has a single top-level `source_sha256` and no per-check source or tree digest. 'control-restored' has head 5ef12f677a99\u2026 while 'control-before' has head b47b7739\u2026. The mutant and restore commits are described as private. A reader holding only the public JSON and patches cannot confirm that the restored tree equals the baseline tree, which the ledger asserts ('original source/tree bytes are restored').",
+            "fix": "Record the tree hash and the state/mod.rs sha256 for each check. Or state explicitly that 5ef12f6^{tree} == b47b773^{tree} and that state/mod.rs hashes to the recorded source_sha256 at both control heads."
+          },
+          {
+            "id": "L3",
+            "severity": "Low",
+            "file": "doc/verification/issue-21.md",
+            "line": 198,
+            "claim": "Optional wording: the commit attribution and the zero-value claim are slightly broader than the evidence.",
+            "evidence": "'Source b47b773 adds only a pre-write signed-i64 range guard' \u2014 per the commit history, the guard landed in 5a2f47a; c0267f4 and b47b773 are test-fixture corrections. 'Values at i64::MAX and observed zero remain exact' \u2014 only cached_input_tokens is exercised at zero.",
+            "fix": "Say 'Source head b47b773 (guard introduced in 5a2f47a)' and 'a real zero (cached_input_tokens)'. Nonblocking."
+          }
+        ],
+        "assessment": "Scope is limited to the legacy Store::put_usage integer boundary. The guard is correct. `i64::try_from(u64)` accepts exactly 0..=i64::MAX, with no cast, clamp or zero substitution. It covers all six Option<u64> integer fields of domain::Usage; review_round is u32 and estimated_cost is f64 with its existing finiteness check. It runs after validate_scope and before the Session lookup and the Immediate transaction, so a rejection cannot leave Usage, audit or snapshot writes behind. Rejecting the whole legacy row instead of invalidating a single field departs from the qualified design ('Overflow invalidates the affected metric'). That is acceptable here: legacy rows stay unqualified and there is no production caller of put_usage. Per-field qualified invalidation stays an open design obligation, not a regression. The test round-trips i64::MAX through the real Session/Task fixture and rejects i64::MAX+1 and u64::MAX for each field independently while the other fields are valid. Its message check and full state-equality check are sound. The six public patches carry index 0a023c0, which matches the post-delta blob, and their hunk line numbers (832\u2013843) match the guard's position, so each patch omits exactly one field. Each such mutant necessarily fails at its field-named expect_err. The 14 state tests counted in the ledger match the file. The doc delta keeps the qualified telemetry architecture explicitly unimplemented, makes no whole-#21 or native benchmark claim, and sets whole_issue_acceptance:false. Limitation: my attempted local git cross-checks (tree equality of the restore head, source_sha256 recomputation, caller grep) did not complete in this session. This review rests on the supplied public bytes and static reasoning. The CI, full-suite, fmt/clippy and build results are taken as reported, not re-verified. No Critical, High or Medium causal defects were found.",
+        "unresolved_blockers": []
+      }
+    },
+    {
+      "head": "41c60fe67492f64a2829eeaab42857e3ba8fa7a9",
+      "section": "source1b",
+      "native_session": "3ca463bb-3845-40b3-8c91-6803b522e4b7",
+      "cleanup_verified": true,
+      "meter_scope": "raw_native_fresh_session_fields_unverified_operation_inventory",
+      "review": {
+        "verdict": "approve",
+        "findings": [
+          {
+            "id": "L1",
+            "severity": "Low",
+            "file": "doc/verification/issue-21-range-mutations.json",
+            "line": 79,
+            "claim": "The structured mutation ledger does not show that the 'exact restoration' control ran on restored bytes.",
+            "evidence": "control-before ran at public baseline b47b773. control-restored ran at a different, non-public head 5ef12f6. The file has one top-level source_sha256 that does not name the path it hashes and is not tied to any single check. No tree OID is recorded for any check. So the artifact cannot show that 5ef12f6^{tree} equals b47b773^{tree}, or that the test file was unchanged at the restored head. The ledger at doc/verification/issue-21.md asserts 'original source/tree bytes are restored', but nothing public backs it. The kill mechanics themselves are sound. A static trace shows each omission patch deterministically reaches its own expect_err, because earlier fields in the loop still refuse.",
+            "fix": "Record a tree OID and a path-labelled sha256 for both crates/rrx/src/state/mod.rs and crates/rrx/tests/state.rs on every check. Show that the control-restored tree equals the baseline tree. Alternatively, re-run the restored control at the public b47b773 or 41c60fe head."
+          },
+          {
+            "id": "L2",
+            "severity": "Low",
+            "file": "doc/verification/issue-21.md",
+            "line": 199,
+            "claim": "The ledger says the guard covers 'token counts', but one token counter persisted through put_usage stays unguarded. The sentence also credits the source change to the wrong commit.",
+            "evidence": "GrokAdapter::usage writes cache_metadata {\"cache_creation_tokens\": usage[\"cacheCreationTokens\"].as_u64()}. That native token count can exceed i64::MAX. It is stored verbatim, because the new guard checks only the six typed fields and cache_metadata is arbitrary JSON. Separately, the guard itself was introduced in 5a2f47a. b47b773 only corrected the test fixture, yet the text reads 'Source b47b773 adds'.",
+            "fix": "Wording only; do not add a cache_metadata validator in this component. State that the guard covers exactly the six typed Usage integer fields. List integers inside arbitrary cache_metadata (including Grok cache_creation_tokens) as an explicit unguarded, unqualified exclusion until raw-writer retirement. Say the guard landed in 5a2f47a and was validated at b47b773."
+          }
+        ],
+        "assessment": "No Critical, High or Medium causal defect was found in this narrow component.\n\nGuard behaviour (crates/rrx/src/state/mod.rs put_usage):\n- i64::try_from(u64) accepts exactly 0..=i64::MAX. flatten() skips None, so a missing value stays missing and is never turned into zero.\n- Nothing is cast, clamped or relabelled; the stored body is the caller's original Usage.\n- The ensure! runs after validate_scope and before the Session lookup and the Immediate transaction. A rejection therefore cannot append a Usage row or a usage.recorded audit event, and cannot touch Project, Goal, Task or Session.\n- Existing cost, missing-reason, Session-scope and agent checks are unchanged.\n- Callers are unaffected in practice. Generic input_bytes comes from a payload length and always fits. Generic context_pack_version comes from a u64 input version, so a value above i64::MAX is now deliberately refused at put_usage; there is still no production caller of put_usage. The Generic Store-persistence test and the existing state tests use small values.\n\nTest (usage_integer_overflow_cannot_publish_rows_or_audit_or_change_owners):\n- It uses a genuine put_task/put_session fixture inside Project.worktree_root.\n- It persists i64::MAX on five fields and zero on one, and asserts exact readback.\n- It drives each field independently to both i64::MAX+1 and u64::MAX while the other fields stay valid.\n- It requires the specific 'supported storage range' message, so a refusal for an unrelated reason earns no credit.\n- It compares the serialized Project, Goal, Task, Session, usage rows and task-scoped audit before and after each attempt.\n\nMutation evidence:\n- All six public patches match the post-change blob 0a023c0 line for line (hunks at 832\u2013837).\n- Each patch compiles: it only shrinks an array literal.\n- Without the guard, an overflow body would previously have been accepted: json_valid accepts large integers and serde round-trips u64. So each mutant's put_usage returns Ok and panics at its own field-named expect_err, which matches the recorded exit code 101.\n\nScope and claims:\n- The design and verification text keep Req8/Design4 qualified telemetry, raw-writer retirement, producers, epoch, native benchmark and whole-#21 acceptance open.\n- They make no clamp, missing-zero, qualification or native-default claim.\n- The fixture-setup failures in 5a2f47a and c0267f4 are retained without credit.\n\nThis approval covers only the legacy integer storage boundary. It is not source, telemetry or benchmark acceptance for #21. The declared pending gates remain: exact-head Linux/macOS CI for this new source and the other independent source review.",
+        "unresolved_blockers": []
+      }
+    }
+  ]
+}
