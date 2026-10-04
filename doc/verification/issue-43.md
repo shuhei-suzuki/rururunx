@@ -207,3 +207,21 @@ atomic closure. This replaces the earlier insufficient ordinary current-W CAS/no
 statement. All actual producer controls, mutation kills, source/native/recovery and
 co-integration remain required/unimplemented. Requirements9 normative clauses unchanged;
 Design8 independent review pending. No documentation CI is native source acceptance.
+
+
+Design8 atda312dc: both native independent request_changes, actual v3 cleanup/reap
+verified, A1Medium2Low/B1Medium2Low. Root confirms terminate→TerminalDecision writes
+W+Task before active closure, so missing its genuine successor stranded TerminalRecovery
+or could launder drift. Design9 inventories this and gate hold/Waiting writers, adds
+dependency-owned exact private factual links and actual bound/unbound cancel/cleanup
+controls, preserving separately authorized inactive terminal closure without any new
+binding/grant. Normal active native currency remains strict. Gate result/Waiting fuses
+ONE transaction rather than an extra ordinary Task/W persist.
+
+Finite256-link classes explicitly reserve99gatepairs+bind+decision+closure+8holds+
+47diagnostics, with before-effect refusal and closure/cancellation headroom. Typed sealed
+full chain derives outside write lock, exact compact head/full-body publication CAS and
+append-only reserved-link guards inside; actual producer/race controls remain required.
+Diagnostic exact fields, unknown-field refusal and current design labels aligned.
+Requirements9 normative clauses unchanged. All source/native/recovery/co-integration
+gates remain unimplemented/pending; Design9 independent review still required.

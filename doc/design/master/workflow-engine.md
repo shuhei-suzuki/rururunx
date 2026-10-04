@@ -447,7 +447,7 @@ mutants are required. This port/source is unimplemented, not part of merged #41;
 terminal/authorized lifecycle/unknown recovery transitions retain their own gates.
 
 
-Issue43 proposed Design8 additionally carries one immutable resulting marker frame
+Issue43 proposed Design9 additionally carries one immutable resulting marker frame
 through actual native preparation/consumption/AllowCurrent, derives binding readiness
 from marked/unbound/phase-open private operations, reserves per-Project operation
 capacity atomically inside41reserve and parks only definitive Held observations without repeated binder
@@ -475,3 +475,15 @@ coalesced at exhaustion. No extra binder operation-row/table write or P/G/T/Sess
 lock/source/input refresh. Separate #19/#8 record-only gate claim/observation requires
 its own real gate/result/effect-owner authority and adds no Task bump before closure.
 These source/native/recovery producers remain unimplemented mandatory gates.
+
+
+Proposed #43 Design9 adds an exhaustive managed open-phase writer table. Genuine
+#19/#8 TerminalDecision and gate hold/Waiting publication must be private factual
+successors, with separately validated lifecycle/gate authority; terminal release checks
+the same genuine prefix for bound and unbound attempts, never washes raw W drift.
+Gate observed facts and their typed Waiting/held disposition publish in ONE W-only
+transaction; #15/#23 derive held status without a Task version bump before closure.
+Explicit256-link allowances are99claim/result pairs+1bind+1terminal decision+1closure+
+8holds+47diagnostics. Complete ≤1-MiB immutable-chain proof derives outside SharedStore;
+exact compact head/current-body/version CAS and append-only reserved guards qualify
+publication. All actual producers/consumer mutations/native/recovery remain pending.

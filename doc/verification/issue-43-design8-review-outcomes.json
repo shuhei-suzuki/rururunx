@@ -1,0 +1,37 @@
+{
+  "head": "da312dc3f050545118bcba088c1c56c298b948e9",
+  "stage": "proposal design only; source/native unimplemented",
+  "reviews": [
+    {
+      "reviewer": "a",
+      "native_session": "22ed2626-4cc0-47bc-ab84-297460971005",
+      "verdict": "request_changes",
+      "finding_severities": [
+        "Medium",
+        "Low",
+        "Low"
+      ],
+      "unresolved_blockers": [
+        "R43-D8-01"
+      ],
+      "cleanup_verified": true,
+      "private_result_sha256": "7831900871d0b3272c560f5b11b2dbe7db7b615ccfb6803a52e58809c6e492ef"
+    },
+    {
+      "reviewer": "b",
+      "native_session": "05a54d3e-e8b3-423c-ac25-ab484b29a951",
+      "verdict": "request_changes",
+      "finding_severities": [
+        "Medium",
+        "Low",
+        "Low"
+      ],
+      "unresolved_blockers": [
+        "D8-01"
+      ],
+      "cleanup_verified": true,
+      "private_result_sha256": "4b16275c033ca8193d4de16f6e2a2ea9d889d9237252beb35249f69edf7e8935"
+    }
+  ],
+  "meter_scope": "raw_native_resumed_session_attribution_unverified"
+}

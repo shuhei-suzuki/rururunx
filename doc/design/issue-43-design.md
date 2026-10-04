@@ -1,6 +1,6 @@
 # Issue 43 Design: Preserve native authority during Workflow Session binding
 
-**Status:** Design8 proposed from Requirements9 approved at91d4f34; independent
+**Status:** Design9 proposed from Requirements9 approved at91d4f34; independent
 design/source reviews and actual producer/native/recovery gates pending
 **Workflow:** STRICT  
 **Scope:** factual native binding, managed settled-success route and two bounded live diagnostics
@@ -59,7 +59,7 @@ The exact Rust names may differ, but the primitive must not be exposed as a gene
 
 ### 3.1 Expected snapshot
 
-The marker transaction privately captures resulting post-marker authority atomically before launch (see Design7 mechanics):
+The marker transaction privately captures resulting post-marker authority atomically before launch (see Design9 mechanics):
 
 - project_id + expected Project version
 - goal_id + expected Goal version
@@ -566,7 +566,7 @@ this method neither grants their authority nor pretends to suspend already
 dispatched work. Current fresh-start Workflow has no resumed-UUID predecessor
 exemption; any future exception requires verified private resume lineage.
 
-Design4/item6 was approved at77da799. Requirements9 is approved at91d4f34; both Design7 documents remain proposed pending independent STRICT design/source review. No production implementation is present.
+Design4/item6 was approved at77da799. Requirements9 is approved at91d4f34; both Design9 documents remain proposed pending independent STRICT design/source review. No production implementation is present.
 
 The narrow binding primitive is the only writer of existing PhaseAttempt Session
 IDs. All ordinary WorkflowAccess modes refuse an existing ID delta; new native
@@ -666,14 +666,14 @@ Protected Tasks reject Interactive/PTY startup and terminal input before any
 reservation, Starting row, spawn or terminal bytes; NonInteractive Workflow
 configuration alone does not protect the direct native adapter entry points.
 
-Design4 and Design7 proposal reviews were approved; Design8 actual #19/#23/#14 composition and independent review remain pending;
+Design4 and Design7 proposal reviews were approved; Design9 actual #19/#23/#14 composition and independent review remain pending;
 source remains absent. Positive post-binding decision and later typed closure
 must retain the exact consumed UUID/pair. A new Journal name is not itself proof
 of correctness; actual reply/closure controls and causal mutants are required.
 
-## 22. Design8 composition and diagnostic contract
+## 22. Design9 composition and diagnostic contract
 
-[Binding mechanics](issue-43-binding-mechanics.md) contains the detailed Design8
+[Binding mechanics](issue-43-binding-mechanics.md) contains the detailed Design9
 transaction, managed driver, diagnostic and extended control/mutation contracts.
 Requirements9 approved at91d4f34 governs both documents. Normal return and authentic
 settled-success registration use the SAME immutable full frame captured atomically
@@ -693,3 +693,15 @@ and EACH branch's Task-rewrite mutant are required. No diagnostic binds, fails/r
 releases or grants. Known actual current failure uses #19 non-success closure without
 absent Session-ID binding; actual #14 restore/fencing gates restart. All private source,
 required native conformance and co-integration gates remain pending.
+
+
+Design9 additionally classifies ALL open-phase Workflow writers, including authorized
+TerminalDecision and gate holds. Those #19/#8 producers emit genuine private factual
+links under exact projections; TerminalRecovery validates that complete chain for both
+bound and unbound cancellation. Source drift cannot be laundered by cancellation, and
+native admission never adopts changed parent authority. Explicit256-link allowances
+reserve99 claim/fused-observation pairs,1binding/1decision/1closure,8gate holds and
+47diagnostics; mandatory closure survives optional exhaustion. Full sealed factual
+proof derives outside the write lock with exact compact current-head/body publication
+CAS inside. Final dependency schemas/private writer guards and actual #15/#23 derived
+Waiting consumers remain required source gates, not accepted implementation.
