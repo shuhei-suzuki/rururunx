@@ -596,3 +596,85 @@ fn context_versions_reject_sql_update_delete_and_replace() {
         "a"
     );
 }
+
+#[test]
+fn usage_integer_overflow_cannot_publish_rows_or_audit_or_change_owners() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut store = Store::memory().unwrap();
+    let p = project(&mut store, "usage-range", temp.path());
+    let g = goal(&mut store, &p);
+    let mut t = task(&mut store, &p, &g);
+    t.worktree = Some(temp.path().join("task-worktree"));
+    store.put_task(&mut t).unwrap();
+    let s = session(&t, t.worktree.clone().unwrap());
+    store.put_session(&s, 0).unwrap();
+    let maximum = u64::try_from(i64::MAX).unwrap();
+    let valid = Usage {
+        scope: t.scope(),
+        session_id: s.id,
+        agent: s.agent.clone(),
+        phase: "legacy-unqualified".into(),
+        review_round: None,
+        input_tokens: Some(maximum),
+        cached_input_tokens: Some(0),
+        output_tokens: Some(maximum),
+        estimated_cost: None,
+        context_pack_version: Some(maximum),
+        context_pack_size: Some(maximum),
+        repo_map_size: Some(maximum),
+        cache_metadata: json!({"legacy":true}),
+        missing_reason: Some("legacy observations have no qualified counter contract".into()),
+    };
+    // The exact representable boundary and a real zero are persisted unchanged.
+    store.put_usage(&valid).unwrap();
+    let saved = store.usage(&t.scope()).unwrap();
+    assert_eq!(saved.len(), 1);
+    assert_eq!(saved[0].input_tokens, Some(maximum));
+    assert_eq!(saved[0].cached_input_tokens, Some(0));
+    assert_eq!(saved[0].output_tokens, Some(maximum));
+    assert_eq!(saved[0].context_pack_version, Some(maximum));
+    assert_eq!(saved[0].context_pack_size, Some(maximum));
+    assert_eq!(saved[0].repo_map_size, Some(maximum));
+    let before = serde_json::to_value((
+        store.project(p.id).unwrap(),
+        store.goal(g.id).unwrap(),
+        store.task(t.id).unwrap(),
+        store.session(s.id).unwrap(),
+        saved,
+        store.events(&t.scope(), 0, 100).unwrap(),
+    ))
+    .unwrap();
+    // Independent fields must each refuse at the actual write consumer, even
+    // when the other fields and genuine existing Session are otherwise valid.
+    for field in [
+        "input_tokens",
+        "cached_input_tokens",
+        "output_tokens",
+        "context_pack_version",
+        "context_pack_size",
+        "repo_map_size",
+    ] {
+        for overflow in [maximum + 1, u64::MAX] {
+            let mut body = serde_json::to_value(&valid).unwrap();
+            body[field] = json!(overflow);
+            let invalid: Usage = serde_json::from_value(body).unwrap();
+            let error = store
+                .put_usage(&invalid)
+                .expect_err(&format!("overflow stored for {field}"));
+            assert!(
+                error.to_string().contains("supported storage range"),
+                "{field}: {error}"
+            );
+            let after = serde_json::to_value((
+                store.project(p.id).unwrap(),
+                store.goal(g.id).unwrap(),
+                store.task(t.id).unwrap(),
+                store.session(s.id).unwrap(),
+                store.usage(&t.scope()).unwrap(),
+                store.events(&t.scope(), 0, 100).unwrap(),
+            ))
+            .unwrap();
+            assert_eq!(after, before, "overflow published data for {field}");
+        }
+    }
+}
