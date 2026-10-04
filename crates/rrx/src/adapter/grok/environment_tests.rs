@@ -666,3 +666,126 @@ async fn reference_child() {
     );
     child_completed("adapter::grok::environment_tests::reference_child");
 }
+
+#[tokio::test]
+async fn owning_reference_refresh_and_existing_consultant_reservation_guards_remain_required() {
+    isolated("adapter::grok::environment_tests::ownership_child").await;
+}
+#[tokio::test]
+#[ignore = "only entered by owned env-cleared canary parent"]
+async fn ownership_child() {
+    assert_eq!(std::env::var("RRX_INSPECTION_FIXTURE_CHILD").unwrap(), "1");
+    let mut fixture = Fixture::new();
+    own_refs(&mut fixture, &["TZ"]);
+    fixture
+        .request
+        .environment
+        .insert("TZ".into(), "synthetic-own-tz".into());
+    let adapter = fixture.adapter();
+    let first = fixture.start(&adapter).await.unwrap();
+    let status = terminal(&adapter, &fixture, &first).await;
+    assert!(
+        adapter.transport_succeeded(&status),
+        "initial owning continuation control failed"
+    );
+    own_refs(&mut fixture, &[]);
+    let mut input = fixture.request.input.clone();
+    input.version = 2;
+    input.payload = "explicit fresh continuation".into();
+    adapter
+        .checkpoint((&first).into(), input.clone())
+        .await
+        .unwrap();
+    let prior = adapter.status((&first).into()).await.unwrap();
+    let denied = adapter.resume((&first).into()).await.unwrap_err();
+    assert_eq!(denied.kind, ErrorKind::InvalidConfiguration);
+    let unchanged = adapter.status((&first).into()).await.unwrap();
+    assert_eq!(
+        serde_json::to_value(&prior.session).unwrap(),
+        serde_json::to_value(&unchanged.session).unwrap()
+    );
+    own_refs(&mut fixture, &["TZ"]);
+    // A metadata mutation after checkpoint must remain the original stale-owner guard.
+    assert_eq!(
+        adapter.resume((&first).into()).await.unwrap_err().kind,
+        ErrorKind::StateConflict
+    );
+    input.version = 3;
+    adapter
+        .checkpoint((&first).into(), input.clone())
+        .await
+        .unwrap();
+    fixture.request.input = input;
+    let second = fixture.resume(&adapter, (&first).into(), 3).await.unwrap();
+    let status = terminal(&adapter, &fixture, &second).await;
+    assert!(
+        adapter.transport_succeeded(&status),
+        "explicit fresh owning Project refresh did not restore continuation; {:?}; {}",
+        status.failure,
+        fixture.receipt_message(&status)
+    );
+    adapter.release((&second).into()).unwrap();
+
+    let mut fixture = Fixture::new();
+    fixture.request.role = SessionRole::Consultant;
+    let mut adapter = fixture.adapter();
+    let database = fixture.directory.path().join("state.db");
+    let scope = fixture.request.scope.clone();
+    let worktree = fixture.request.worktree.clone();
+    let executor = Session {
+        id: SessionId::new(),
+        scope,
+        agent: "grok".into(),
+        provider: "grok".into(),
+        role: SessionRole::Executor,
+        native_ref: None,
+        pid: None,
+        worktree,
+        state: SessionState::Starting,
+        model: None,
+        effort: None,
+        recovery: json!({}),
+        started_at: now_ms(),
+    };
+    let executor_id = executor.id;
+    adapter.before_environment_admission = Some(Arc::new(move |_entry| {
+        let database = database.clone();
+        let executor = executor.clone();
+        Box::pin(async move {
+            Store::open(&database)
+                .unwrap()
+                .put_session(&executor, 0)
+                .unwrap();
+            Ok(())
+        })
+    }));
+    let session = fixture.start(&adapter).await.unwrap();
+    let status = terminal(&adapter, &fixture, &session).await;
+    assert_not_spawned(&fixture, &status);
+    assert_eq!(
+        status.failure.as_deref(),
+        Some("Locked: native review conflicts with an active or Lost executor")
+    );
+    assert_eq!(status.session.state, SessionState::Failed);
+    assert!(
+        fixture
+            .store
+            .lock()
+            .unwrap()
+            .session(executor_id)
+            .unwrap()
+            .unwrap()
+            .0
+            .pid
+            .is_none()
+    );
+    // Synthetic reservation owns no OS process. Explicitly settle it; never infer
+    // another executor's death from the failed Consultant or from a numeric PID.
+    let mut store = fixture.store.lock().unwrap();
+    let (mut executor, version) = store.session(executor_id).unwrap().unwrap();
+    executor.state = SessionState::Stopped;
+    store.put_session(&executor, version).unwrap();
+    drop(store);
+    adapter.release((&session).into()).unwrap();
+    child_completed("adapter::grok::environment_tests::ownership_child");
+}

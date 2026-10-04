@@ -55,7 +55,7 @@ for line in sys.stdin:
   send({'jsonrpc':'2.0','method':'session/update','params':{'sessionId':sid,'update':{'sessionUpdate':'session_info_update','title':'native title'}}})
   connection=sqlite3.connect(synthetic['RRX_DATABASE']);rows=connection.execute("select body from records where kind='session'").fetchall()
   owned=[json.loads(row[0]) for row in rows if json.loads(row[0])['data']['recovery'].get('prompt_id')==prompt];assert len(owned)==1,'dispatch not durable'
-  record=owned[0];recovery=record['data']['recovery'];assert recovery['input_version'] in [1,2]
+  record=owned[0];recovery=record['data']['recovery'];assert recovery['input_version'] in [1,2,3]
   audit=connection.execute("select data from audit where kind='session.saved' order by sequence desc").fetchall();connection.close()
   saved=next(json.loads(row[0]) for row in audit if json.loads(row[0])['id']==record['id'])
   assert saved['evidence']['dispatch_intent']=={'input_version':recovery['input_version'],'prompt_id':prompt},'Grok dispatch intent was not atomically durable before wire'
