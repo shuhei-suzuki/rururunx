@@ -253,7 +253,9 @@ recovery and lossless hot upgrade are not claimed by this Core.
 Policy bounds: 1–32 slots, 1–32 configured local parallel launches, effective=min(configured,roster size,actual
 Runtime/Project/provider permits); record requested/effective values rather than
 rejecting policy parallelism above roster size. Reject 0/33; 64 cumulative rounds per immutable obligation-budget lineage,256
-findings per result,8192 UTF-8 bytes per finding and 1 MiB per COMPLETE prepared member
+findings per result,8192 UTF-8 bytes per COMPLETE encoded finding entry (identity,
+severity, original claim, locations, evidence references and framing INCLUDED),
+not8192 text bytes plus metadata; and1 MiB per COMPLETE prepared member
 frame (core+specialization+inline required claims+rules/wrapper) AND per result envelope.
 The core alone is not the combined-frame ceiling; no additional specialization bypass. Limits are simultaneous ceilings: maximum count does not promise every
 maximum-size text fits the envelope. No semantic truncation occurs. A 128 MiB
@@ -556,13 +558,29 @@ a labelled claim; (b) a safely settled native failure/timeout/cancellation with 
 verified diagnostic progress, only when every other settled slot APPROVEs and no
 slot has a potential/verified blocker or nonapproval. Mixed transient failure and
 REQUEST_CHANGES/ESCALATE cannot resample that dissent: cause(a) concern-linked
-inspection or explicit Human adjudication is required. At most two such
+inspection or explicit Human adjudication is required. At most two total cause(b) OR cause(c)
 full-roster retry rounds per lineage
-and at most one per (lineage, exact target tree, provider-family/error-kind) cause.
+and at most one per (lineage, exact target tree, cause identity). Cause(b) identity
+is provider-family/error-kind; cause(c) identity is exact frozen qualified schedule,
+actual resource scope and schedule/queue/capacity failure kind.
 The same cause on a changed target can consume the remaining lineage-wide allowance;
 changing tree never resets the separate two-retry ceiling or 64-round quota. They consume the same 64-round
 and artifact limits. A repeated proof/cause, exhausted retry allowance, unresolved
 partial result or Lost requires Human/recovery rather than another automatic sample.
+Cause(c) is an explicitly frozen finite controller-contention retry: a qualified
+schedule/queue expiry or lost-free capacity change safely closes a non-certifying
+round, all actually started owners are genuinely fully settled, and every received
+opinion APPROVEs with no potential/verified blocker, nonapproval, ambiguous suffix
+or unexamined result. A never-started cancelled slot is not a native failure or
+APPROVE. A genuine recorded changed scheduling/capacity fact not previously used
+for the same cause is required before the full-roster retry. It SHARES the two-
+retry ceiling with(b), charges the same64-round/artifact budgets, and cannot reset
+on a changed tree. Retained Lost/unknown blocking-capacity cause never qualifies(c);
+unchanged blocked scheduling parks. Dissent or partial/unknown outputs require the
+existing inspection/Human path, not this scheduling exemption. Test healthy opinion-
+free schedule closure→genuine fair-capacity change→bounded full roster, third retry
+refusal and foreignLost no retry/budget burn. All previous exposures/findings remain
+retained and the new roster still needs genuine current native channel qualification.
 Repeated blind same-target sampling is not authorized by the lineage ceiling.
 A relaxed policy starts a new round or explicitly superseding Set,
 retaining prior opinions, obligations and lineage limits; it never manufactures an
@@ -710,8 +728,8 @@ and typed source-delivery integration remain prerequisites.
 ## Consolidated acceptance
 
 Numbered I9-AC-1–21, including their mapped case lists and all normative acceptance
-subcriteria with explicit stable IDs below, are the complete closing set. Each ID
-requires linked actual evidence; no unnumbered acceptance paragraph adds a hidden
+subcriteria with explicit stable IDs below, are the complete closing set EXCEPT
+explicitly POST-closure MVP criterion21.n. Each pre-closure ID requires linked actual evidence; no unnumbered acceptance paragraph adds a hidden
 closing obligation. Definitions above specify the tested behavior. Items 1–8 map to the public
 Issue #9 checkboxes; items 9–21 add integrity/availability and their explicit cases. Every criterion
 needs actual consumer evidence; proposed tests and independent development reviews
@@ -722,8 +740,8 @@ are not runtime proof.
    independent member ownership. Reject 0/33 slots, invalid parallelism and duplicate
    Session ownership. M=2/parallelism8 accepts with effective at most2; lower actual
    resource authority queues remaining slots without policy rewrite.
-   One eligible non-author slot can pass QUICK/STANDARD; STRICT with one slot
-   rejects before input because F=2, even if its mode would need only one opinion.
+   Explicit M=1 closing coverage is I9-AC-1.c; one eligible member within M=2
+   does not prove the one-reviewer roster positive.
 2. Two-of-three quorum counts exact-round APPROVE only; reject N=0/N>M and quorum
    parameters on all/any. All, quorumM and any/quorum1 have equivalent boundary
    outcomes and retain every nonapproval/blocker.
@@ -1186,7 +1204,7 @@ independent reviewer. This never supplies F or clears Lost/ownership. Stricter a
 policy may require non-self Human provenance. Test default flagged self-adjudication
 and non-self-required rejection for Human-authored STRICT/security blockers.
 The WHY is explicit escalation to the trusted application policy principal under
-product §26, whose adjudication is recorded as Human authority rather than a model
+product §29 (and §26 for its PR/merge subset), whose adjudication is recorded as Human authority rather than a model
 confirmation. Even this decision cannot count as an independent reviewer, lower F,
 resolve conflicting trusted decisions, release Lost, or erase original findings.
 Frozen activated policy can require independent Human review instead. This deliberate
@@ -1310,7 +1328,7 @@ authorship disposition, relaxation or policy activation; actor=Human is rejected
 with retained evidence. Actual trusted Human ingress succeeds with exact
 principal/origin/digest/evidence. Direct same-UID local binary/DB/machine action
 outside these APIs is explicitly outside the application guarantee, as in Issue 23.
-The positive authority is the actual Issue 9-owned library Human-ingress port,
+The positive authority is the actual Issue9-owned provider-neutral library Human-ingress port,
 not a mock actor field or an assumed future Issue 23 implementation. Its evidence
 records origin=library-composition and proves that application port, not biological
 Human action; no CLI ingress is implemented or implied by this library fixture. Production
@@ -1323,7 +1341,12 @@ use its ACTUAL library-composition port with explicitly nongating origin and neg
 relabel tests; they prove the component, never product certificate authority. Actual
 product-ingress positive belongs to public #15/#24 under I9-AC-21.e, I9-AC-21.i and remains a mandatory
 MVP enablement gate, not a conditional Issue #9 library-test waiver;
-never accept native/controller/API origin relabeling.
+never accept native/controller/API origin relabeling. On actual23 composition, this interim
+derivation is REPLACED by importing the one canonical23 type/derivation, not wrapped
+with a second independently trusted constructor. Convergence tests show identical
+principal/origin for identical accepted invocation and reject the removed interim
+constructor; trusted library origin remains nongating. No divergent derivation may
+remain callable alongside the production23 authority.
 
 **8.e — All-slot no-show window.** With an allow-self author slot or a queued/
 duplicate slot still active after eligible peers finish, current-round findings
@@ -1689,7 +1712,7 @@ is claimed merely because this table names an Issue; it must actually be quoted 
 | I9-AC-11.b, I9-AC-11.e, I9-AC-18.b, I9-AC-21.a, I9-AC-21.c, I9-AC-21.d, I9-AC-21.g | #14 exact held native/lineage/resource recovery; #27 fair admission; #16 scoped hold/availability measurements |
 | I9-AC-8.g, I9-AC-10.d, I9-AC-18.a | #20 production typed bundle/delta/coverage; #9 consumer contract; #12 actual complete delta impact-closure producer; #18 captured inputs; #16 actual full-fallback/delta-efficiency |
 | I9-AC-11.c, I9-AC-11.d, I9-AC-21.h | #12 trusted applicability producer, #18/#20 inputs, #9 consumer; #16 actual disjoint/unknown/resource impact and pre12 author-growth/zero-eligible availability |
-| 1, 4/I9-AC-4.a, I9-AC-12.b, I9-AC-17.a, I9-AC-18.f, I9-AC-20.a, I9-AC-20.c, I9-AC-16.b, I9-AC-16.c, I9-AC-16.d, I9-AC-18.g, I9-AC-14.g, I9-AC-8.a, I9-AC-8.c, I9-AC-21.f | #5/#6/#7 actual supported native/config/permission/cleanup and actual bounded retained-overhead declarations or tracked reviewed follow-up; #16 real enforcement/trace/default evidence |
+| 1, 4/I9-AC-4.a, I9-AC-12.b, I9-AC-17.a, I9-AC-18.f, I9-AC-20.a, I9-AC-20.c, I9-AC-16.b, I9-AC-16.c, I9-AC-16.d, I9-AC-18.g, I9-AC-14.g, I9-AC-14.i, I9-AC-8.a, I9-AC-8.c, I9-AC-21.f | #5/#6/#7 actual supported native/config/permission/cleanup and actual bounded retained-overhead declarations or tracked reviewed follow-up; #16 real enforcement/trace/default evidence |
 | I9-AC-2.b, I9-AC-7.a, I9-AC-18.h, I9-AC-8.d, I9-AC-8.h, I9-AC-8.i, I9-AC-12.j, I9-AC-14.f, I9-AC-16.a, I9-AC-14.c, I9-AC-14.d, I9-AC-14.e, I9-AC-17.c, I9-AC-20.a, I9-AC-20.b, I9-AC-21.b, I9-AC-9.c, I9-AC-9.f, I9-AC-14.h | #16 actual exposure, efficiency, finite delivered versus retained bytes, quotas/retries/eligibility/Human impact; #21 nullable native telemetry |
 | I9-AC-3.b, I9-AC-3.c, I9-AC-9.d, I9-AC-9.i, I9-AC-21.e, I9-AC-21.i, I9-AC-21.j | #9 typed phase-policy/ingress/readiness consumer; #23 shared principal derivation; #15/#24 actual scoped product policy/Human handlers; #14/#27 actual recovery/admission |
 | I9-AC-12.k, I9-AC-18.a | #60 actual owned deterministic-effect attribution producer; #12 inspected effect/source evidence; #9 checker; LLM/unknown origin refuses/conservative exclusion |
@@ -1697,7 +1720,7 @@ is claimed merely because this table names an Issue; it must actually be quoted 
 | I9-AC-1, I9-AC-1.a, I9-AC-16, I9-AC-18.a, I9-AC-18.h, I9-AC-20.d, I9-AC-12.j, I9-AC-21.j | PRE-CLOSURE: #19/#43 actual member/phase input, original-frame binding and full owned closure; #5/#6/#7 actual supported native ports; #9 fixed conformance ingress + refusing formal consumer. POST-CLOSURE: #16 representative dogfood; #14 restart/uncertain recovery; #27 fair admission |
 | I9-AC-21.g, I9-AC-18.h | #14 actual retained-share recovery, #27 admission, #12 relevant verification evidence, #16 scoped recovery/fairness metrics |
 | I9-AC-21.n | POST-CLOSURE MVP: #9 real formal consumer; #14/#15/#24/#27 actual readiness composers; #16 representative positive/removal matrix |
-| I9-AC-1.b, I9-AC-8.k, I9-AC-18.i | #9 frozen roster/schedule/rerun consumer; #5/#6/#7 actual qualified native profiles; #27 permits; #16 observed qualification and rerun metrics |
+| I9-AC-1.b, I9-AC-1.c, I9-AC-8.k, I9-AC-18.i | #9 frozen roster/schedule/rerun consumer; #5/#6/#7 actual qualified native profiles; #27 permits; #16 observed qualification and rerun metrics |
 | I9-AC-21.k | #8/#19/#43 real legacy Workflow upgrade/ownership consumer; #9 unavailable formal-gate regression; #12 actual impact evidence; #16 withdrawal/Task availability measurements |
 | I9-AC-18.c, I9-AC-14.j, I9-AC-14.h, I9-AC-21.l, I9-AC-13 | #5/#6/#7 actual requested/effective configuration; #60 actual between-round/source-capture effect ownership; #14/#27 retained-share recovery/admission; #15/#24 actual attention/termination ingress; #43 record-only boundary; #16 profile-availability and quota impact |
 
@@ -1881,7 +1904,15 @@ I9-AC-21.i readiness composes, production Workflow formal-review consumers retur
 ReviewGatingUnavailable before claim/reservation/native input, with no legacy weaker
 single-Reviewer fallback. Separately, a sealed fixed conformance ingress may exercise
 NONCERTIFYING ReviewSet delegation through the SAME actual production Store/Workflow,
-native adapter/preparation/ownership and member-closure ports. It binds an immutable
+native adapter/preparation/ownership and member-closure ports. This ingress ITSELF
+requires the actual controller-owned dedicated conformance-state/fixture provenance
+of21.m, before claim/reservation/native setup/input: owned freshly created fixture
+repositories and state, genuine creation/root/common-Git identity and nonoverlap
+with registered user Projects. A public test-mode flag/path, existing user registry
+or native/API claim cannot mint that provenance. Direct calls on real-state/user-
+Project targets refuse before effects; tests reach the actual port and prove zero
+claim/process/model bytes. Pending/unknown physical scope still refuses, preserving
+actual native defaults/ownership. It binds an immutable
 nongating basis and cannot mint a formal certificate, satisfy a phase gate or allow
 PR/merge/finalization. It is not a public user/native JSON nongating flag or permission
 bypass. Actual provider-neutral #5/#6/#7 workload ownership and full owned settlement,
@@ -2051,10 +2082,13 @@ current permits and exact original channel qualification. Outside the qualified
 envelope, no further member input is delivered and the WHOLE round is non-certifying;
 already admitted owners settle normally with retained evidence. A new full-roster
 round needs existing genuine retry authority, never a refreshed basis assertion. An
-unbounded queue policy cannot qualify a profile with only a finite start window. Test
-concurrent-only qualified starts followed by a permit drop and a late serialized
-second slot: zero certificate, explicit schedule-basis refusal, first owner's genuine
-settlement retained. A mutant omitting this real queued-member check must fail.
+unbounded queue policy cannot qualify a profile with only a finite start window. Test a finite-window SERIALIZED-CAPABLE profile whose first owner starts, then
+healthy permit contention delays the queued second member beyond its qualified
+window: second input zero, zero certificate, explicit schedule refusal and genuine
+first-owner settlement retained. Separately, concurrent-only cohort capacity missing
+at initial admission has zero member input; actual failure during qualified cohort
+startup makes the whole round non-certifying rather than serialized. Cohort capacity
+reservation is not a guarantee that every native startup physically succeeds. A mutant omitting this real queued-member check must fail.
 Actual default-preserving native producer evidence remains required, not a synthetic
 clock or channel label positive.
 
@@ -2080,3 +2114,149 @@ actual charges. A frozen stricter policy may require the original dissenting slo
 disposition; the Core does not impose a new per-fix Human gate or deterministic
 semantic proof producer. Existing64-round/shared allowances and anti-cosmetic controls
 remain in force.
+
+
+**1.c — Explicit one-reviewer roster.** M=1 non-author actual registered qualified
+Reviewer accepts QUICK/STANDARD through the genuine fixed conformance consumer;
+formal eligibility requires mode and independent floorF=1. STRICT M=1 refuses
+before input becauseF=2, even with any/quorum1. Use21.m's separate transport/profile
+evidence annotations. M=2 with only one eligible member is not this positive.
+
+**8.l — Native channel feasibility and exposure reporting.** Before the formal
+design gate, record each required candidate family's feasibility under PRESERVED
+native defaults: feasible with exact actual source/control/conformance evidence,
+infeasible-under8.j with concrete incompatible channel property, or unknown with
+named missing proof/owner. Document which actual load/write key/timing properties
+would suffice: no reachable current-peer writer in the qualified profile; genuinely
+disjoint memory keys under the exact authorized workspace/source authority; or a
+proved peer-free initial snapshot with ALL relevant loads completed before ANY
+current-round write under the frozen finite schedule. None is assumed from family,
+SID/read-only label, docs-only capability or feature field defaults. Unbounded writes,
+unknown load timing or an unenforceable schedule do not qualify. Conditional feature
+and injection defaults are distinct; neither alone proves installed activation.
+
+Unknown/infeasible status surfaces21.l attention EARLY, before implementation can
+claim a profile positive, with bounded candidate investigation and concrete owner/
+proof. Design may specify honest refusing consumers while feasibility is unknown;
+Issue9 closure and its required repeated-family positives still cannot pass without
+the actual qualified producer. This is no scope waiver or endless automatic candidate
+loop, and no invocation-scoped memory/default change. Actual registered conformance
+uses21.j's genuine isolated ingress and producer ownership; vendor docs alone cannot
+make a feasible certificate. Preserve all historical observed review evidence.
+
+Per-member certificate/status exposure metadata separately flags any documented-
+capable EXECUTOR/BROKER/CONSULTANT chat channel versus prior-round reviewer history.
+Under Core default a disclosed unobserved NON-current-peer channel can coexist with
+the limited independence basis of8.j; a frozen stricter policy may refuse it. Actual
+observed unapproved chat still invalidates the whole round under8.i, and unknown or
+capable CURRENT-peer channels always refuse under8.c/8.k. Test these classes and
+exposure-specific policy refusal; lower observability never implies broader secrecy.
+#16 records actual observations independently from capability/disclosure flags.
+
+
+## Ordered stable acceptance index
+
+This complete index aids navigation; the named criterion defines its actual closing
+proof and public producer handoffs. PRE means its #9 consumer/contract/handoff proof
+is required before closure, not that all named later MVP producers are implemented.
+Only21.n is explicitly POST-closure MVP. Numeric1–21 remain the primary public
+acceptance above; body definitions cannot add an unnamed closing obligation.
+
+| Stable key | Owner contract | Stage |
+| --- | --- | --- |
+| I9-AC-1.a | #9 consumer; #5/#6/#7 actual native profile/producer; #16 measurement | PRE #9; later MVP only as named in criterion |
+| I9-AC-1.b | #9 consumer; #5/#6/#7 actual native profile/producer; #16 measurement | PRE #9; later MVP only as named in criterion |
+| I9-AC-1.c | #9 consumer; #5/#6/#7 actual native profile/producer; #16 measurement | PRE #9; later MVP only as named in criterion |
+| I9-AC-2.a | #9 consumer | PRE #9; later MVP only as named in criterion |
+| I9-AC-2.b | #9 consumer | PRE #9; later MVP only as named in criterion |
+| I9-AC-3.a | #9 consumer | PRE #9; later MVP only as named in criterion |
+| I9-AC-3.b | #9 consumer; #23 canonical ingress; #15/#24 production ingress | PRE #9; later MVP only as named in criterion |
+| I9-AC-3.c | #9 consumer; #23 canonical ingress; #15/#24 production ingress | PRE #9; later MVP only as named in criterion |
+| I9-AC-4.a | #9 consumer; #5/#6/#7 actual native profile/producer; #16 measurement | PRE #9; later MVP only as named in criterion |
+| I9-AC-7.a | #9 consumer | PRE #9; later MVP only as named in criterion |
+| I9-AC-8.a | #9 consumer; #5/#6/#7 actual native profile/producer; #16 measurement | PRE #9; later MVP only as named in criterion |
+| I9-AC-8.b | #9 consumer; #5/#6/#7 actual native profile/producer; #16 measurement | PRE #9; later MVP only as named in criterion |
+| I9-AC-8.c | #9 consumer; #5/#6/#7 actual native profile/producer; #16 measurement | PRE #9; later MVP only as named in criterion |
+| I9-AC-8.d | #9 consumer; #5/#6/#7 actual native profile/producer; #16 measurement | PRE #9; later MVP only as named in criterion |
+| I9-AC-8.e | #9 consumer; #5/#6/#7 actual native profile/producer; #16 measurement | PRE #9; later MVP only as named in criterion |
+| I9-AC-8.f | #9 consumer; #5/#6/#7 actual native profile/producer; #16 measurement | PRE #9; later MVP only as named in criterion |
+| I9-AC-8.g | #9 consumer; #5/#6/#7 actual native profile/producer; #16 measurement; #12 actual impact/applicability; #18/#20 inputs | PRE #9; later MVP only as named in criterion |
+| I9-AC-8.h | #9 consumer; #5/#6/#7 actual native profile/producer; #16 measurement | PRE #9; later MVP only as named in criterion |
+| I9-AC-8.i | #9 consumer; #5/#6/#7 actual native profile/producer; #16 measurement | PRE #9; later MVP only as named in criterion |
+| I9-AC-8.j | #9 consumer; #5/#6/#7 actual native profile/producer; #16 measurement | PRE #9; later MVP only as named in criterion |
+| I9-AC-8.k | #9 consumer; #5/#6/#7 actual native profile/producer; #16 measurement | PRE #9; later MVP only as named in criterion |
+| I9-AC-8.l | #9 consumer; #5/#6/#7 actual native profile/producer; #16 measurement | PRE #9; later MVP only as named in criterion |
+| I9-AC-9.a | #9 consumer; #23 canonical ingress; #15/#24 production ingress | PRE #9; later MVP only as named in criterion |
+| I9-AC-9.b | #9 consumer; #23 canonical ingress; #15/#24 production ingress | PRE #9; later MVP only as named in criterion |
+| I9-AC-9.c | #9 consumer; #23 canonical ingress; #15/#24 production ingress | PRE #9; later MVP only as named in criterion |
+| I9-AC-9.d | #9 consumer; #23 canonical ingress; #15/#24 production ingress | PRE #9; later MVP only as named in criterion |
+| I9-AC-9.e | #9 consumer; #23 canonical ingress; #15/#24 production ingress | PRE #9; later MVP only as named in criterion |
+| I9-AC-9.f | #9 consumer; #23 canonical ingress; #15/#24 production ingress | PRE #9; later MVP only as named in criterion |
+| I9-AC-9.g | #9 consumer; #23 canonical ingress; #15/#24 production ingress | PRE #9; later MVP only as named in criterion |
+| I9-AC-9.h | #9 consumer; #23 canonical ingress; #15/#24 production ingress | PRE #9; later MVP only as named in criterion |
+| I9-AC-9.i | #9 consumer; #23 canonical ingress; #15/#24 production ingress | PRE #9; later MVP only as named in criterion |
+| I9-AC-10.a | #9 consumer; #12 actual impact/applicability; #18/#20 inputs | PRE #9; later MVP only as named in criterion |
+| I9-AC-10.d | #9 consumer; #12 actual impact/applicability; #18/#20 inputs | PRE #9; later MVP only as named in criterion |
+| I9-AC-11.a | #9 consumer | PRE #9; later MVP only as named in criterion |
+| I9-AC-11.b | #9 consumer; #14 recovery; #27 admission; #16 measurement | PRE #9; later MVP only as named in criterion |
+| I9-AC-11.c | #9 consumer; #12 actual impact/applicability; #18/#20 inputs | PRE #9; later MVP only as named in criterion |
+| I9-AC-11.d | #9 consumer; #12 actual impact/applicability; #18/#20 inputs | PRE #9; later MVP only as named in criterion |
+| I9-AC-11.e | #9 consumer; #14 recovery; #27 admission; #16 measurement | PRE #9; later MVP only as named in criterion |
+| I9-AC-12.a | #9 consumer | PRE #9; later MVP only as named in criterion |
+| I9-AC-12.b | #9 consumer | PRE #9; later MVP only as named in criterion |
+| I9-AC-12.c | #9 consumer | PRE #9; later MVP only as named in criterion |
+| I9-AC-12.d | #9 consumer | PRE #9; later MVP only as named in criterion |
+| I9-AC-12.e | #9 consumer | PRE #9; later MVP only as named in criterion |
+| I9-AC-12.f | #9 consumer | PRE #9; later MVP only as named in criterion |
+| I9-AC-12.g | #9 consumer | PRE #9; later MVP only as named in criterion |
+| I9-AC-12.h | #9 consumer | PRE #9; later MVP only as named in criterion |
+| I9-AC-12.i | #9 consumer | PRE #9; later MVP only as named in criterion |
+| I9-AC-12.j | #9 consumer | PRE #9; later MVP only as named in criterion |
+| I9-AC-12.k | #9 consumer | PRE #9; later MVP only as named in criterion |
+| I9-AC-13.a | #9 consumer | PRE #9; later MVP only as named in criterion |
+| I9-AC-14.a | #9 consumer | PRE #9; later MVP only as named in criterion |
+| I9-AC-14.b | #9 consumer | PRE #9; later MVP only as named in criterion |
+| I9-AC-14.c | #9 consumer | PRE #9; later MVP only as named in criterion |
+| I9-AC-14.d | #9 consumer | PRE #9; later MVP only as named in criterion |
+| I9-AC-14.e | #9 consumer | PRE #9; later MVP only as named in criterion |
+| I9-AC-14.f | #9 consumer | PRE #9; later MVP only as named in criterion |
+| I9-AC-14.g | #9 consumer; #5/#6/#7 actual native profile/producer; #16 measurement | PRE #9; later MVP only as named in criterion |
+| I9-AC-14.h | #9 consumer | PRE #9; later MVP only as named in criterion |
+| I9-AC-14.i | #9 consumer; #5/#6/#7 actual native profile/producer; #16 measurement | PRE #9; later MVP only as named in criterion |
+| I9-AC-14.j | #9 consumer | PRE #9; later MVP only as named in criterion |
+| I9-AC-16.a | #9 consumer; #5/#6/#7 actual native profile/producer; #16 measurement | PRE #9; later MVP only as named in criterion |
+| I9-AC-16.b | #9 consumer; #5/#6/#7 actual native profile/producer; #16 measurement | PRE #9; later MVP only as named in criterion |
+| I9-AC-16.c | #9 consumer; #5/#6/#7 actual native profile/producer; #16 measurement | PRE #9; later MVP only as named in criterion |
+| I9-AC-16.d | #9 consumer; #5/#6/#7 actual native profile/producer; #16 measurement | PRE #9; later MVP only as named in criterion |
+| I9-AC-17.a | #9 consumer | PRE #9; later MVP only as named in criterion |
+| I9-AC-17.b | #9 consumer | PRE #9; later MVP only as named in criterion |
+| I9-AC-17.c | #9 consumer | PRE #9; later MVP only as named in criterion |
+| I9-AC-17.d | #9 consumer | PRE #9; later MVP only as named in criterion |
+| I9-AC-17.e | #9 consumer | PRE #9; later MVP only as named in criterion |
+| I9-AC-18.a | #9 consumer | PRE #9; later MVP only as named in criterion |
+| I9-AC-18.b | #9 consumer; #14 recovery; #27 admission; #16 measurement | PRE #9; later MVP only as named in criterion |
+| I9-AC-18.c | #9 consumer; #5/#6/#7 actual native profile/producer; #16 measurement | PRE #9; later MVP only as named in criterion |
+| I9-AC-18.d | #9 consumer | PRE #9; later MVP only as named in criterion |
+| I9-AC-18.e | #9 consumer | PRE #9; later MVP only as named in criterion |
+| I9-AC-18.f | #9 consumer; #5/#6/#7 actual native profile/producer; #16 measurement | PRE #9; later MVP only as named in criterion |
+| I9-AC-18.g | #9 consumer; #5/#6/#7 actual native profile/producer; #16 measurement | PRE #9; later MVP only as named in criterion |
+| I9-AC-18.h | #9 consumer; #14 recovery; #27 admission; #16 measurement | PRE #9; later MVP only as named in criterion |
+| I9-AC-18.i | #9 consumer | PRE #9; later MVP only as named in criterion |
+| I9-AC-20.a | #9 consumer | PRE #9; later MVP only as named in criterion |
+| I9-AC-20.b | #9 consumer | PRE #9; later MVP only as named in criterion |
+| I9-AC-20.c | #9 consumer; #5/#6/#7 actual native profile/producer; #16 measurement | PRE #9; later MVP only as named in criterion |
+| I9-AC-20.d | #9 consumer; #19/#43 actual typed Workflow ports | PRE #9; later MVP only as named in criterion |
+| I9-AC-21.a | #9 consumer | PRE #9; later MVP only as named in criterion |
+| I9-AC-21.b | #9 consumer | PRE #9; later MVP only as named in criterion |
+| I9-AC-21.c | #9 consumer | PRE #9; later MVP only as named in criterion |
+| I9-AC-21.d | #9 consumer; #14 recovery; #27 admission; #16 measurement | PRE #9; later MVP only as named in criterion |
+| I9-AC-21.e | #9 consumer; #23 canonical ingress; #15/#24 production ingress | PRE #9; later MVP only as named in criterion |
+| I9-AC-21.f | #9 consumer; #5/#6/#7 actual native profile/producer; #16 measurement | PRE #9; later MVP only as named in criterion |
+| I9-AC-21.g | #9 consumer; #14 recovery; #27 admission; #16 measurement | PRE #9; later MVP only as named in criterion |
+| I9-AC-21.h | #9 consumer; #12 actual impact/applicability; #18/#20 inputs | PRE #9; later MVP only as named in criterion |
+| I9-AC-21.i | #9 consumer; #23 canonical ingress; #15/#24 production ingress | PRE #9; later MVP only as named in criterion |
+| I9-AC-21.j | #9 consumer; #19/#43 actual typed Workflow ports | PRE #9; later MVP only as named in criterion |
+| I9-AC-21.k | #9 consumer; #19/#43 actual typed Workflow ports | PRE #9; later MVP only as named in criterion |
+| I9-AC-21.l | #9 consumer; #5/#6/#7 actual native profile/producer; #16 measurement | PRE #9; later MVP only as named in criterion |
+| I9-AC-21.m | #9 consumer | PRE #9; later MVP only as named in criterion |
+| I9-AC-21.n | #9 actual formal consumer; #14/#15/#24/#27 readiness; #16 positive | POST MVP |
