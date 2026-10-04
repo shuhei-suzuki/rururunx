@@ -322,10 +322,10 @@ KILL with non-signalable survivors remain residual limits; Linux cleanup semanti
 remain unchanged.
 
 
-### Pending Grok cleanup provenance (Issue #55)
+### Grok cleanup provenance (Issue #55 source candidate)
 
 [Requirements](../../requirements/issue-55-requirements.md) approved the narrow diagnostic
-follow-up; proposed [design](../issue-55-design.md) awaits two independent approvals.
+follow-up; [design](../issue-55-design.md) received two independent Design4 approvals.
 Current Grok result-error priority can obscure separate cleanup/ownership/drain facts.
 Proposed fixed bounded receipt captures the exact final clean operands after reconciliation
 with stage-labelled supervisor flags, preserving original diagnostic and all process/PID/
@@ -333,3 +333,13 @@ Lost/reservation/transport rules. Shared group cause stays unclassified; no mess
 or new death authority. Actual dispatched forcedUnknown proof remains pending and
 macOS-only; Linux clean receipt coverage is separate. No provider fix, schema change,
 historical timeout explanation or Issue41 red-gate resolution is claimed.
+
+
+The source candidate adds `cleanup_receipt` to scoped `grok.turn_observed` after
+reconciliation: owned-group existence, cleanup result/state, nullable finite reap
+I/O kind, output verification, finite stderr-drain state, unavailable stderr-read
+error, all-flag uncertainty and four stage booleans, dispatched and native outcome.
+These fixed facts do not replace ownership authority or expose error bodies. Shared
+group failure remains unclassified; a completed stderr task does not prove successful
+reads. Native outcome stays provisional until original terminal gates pass. Source
+review and actual consumer gates remain pending.

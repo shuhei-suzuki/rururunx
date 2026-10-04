@@ -149,3 +149,12 @@ restored/default checks/exact bothOS CI. No acceptance rerun/deadline or latch r
 Inspection test correction cannot alone solve original41Grok retained-PID Unknown.
 Design4 independent fix re-reviews precede implementation. Design3 raw resumed native
 meters are attribution-unverified and not measured wall time.
+
+
+## Design4 approval and first source candidate
+
+Both independent native Design4 delta reviewers approved adcb0637b04fea4962bd05dbc559684987b1431b with no Critical/High/Medium findings or blockers. Their owned CLI processes completed and cleanup was verified. Source preparation adopts the Low precision points: macOS-only library support, track_caller strict-state assertions, nonblocking trace append with explicit loss evidence checked before trace credit, completed-clean-only block-count relations, and sidecars outside canonical Project/Task paths.
+
+The first source candidate records a fixed eleven-key cleanup receipt after reconciliation, with independently sampled all-flag uncertainty and diagnostic stage projections. It preserves cleanup/result error precedence, terminal/PID/reservation predicates and existing limits. Shared synthetic ACP fixtures and the bounded test-only projection capture exact scoped before-launch/terminal audit windows, including resume version2. The existing cat control remains pre-dispatch and earns no dispatched acceptance credit. Default test, mutation, source-review and exact both-OS CI gates have not yet run for this candidate.
+
+Normal cherry-pick f2c7cce integrates only independently source-reviewed cap-test correction 3d3039932159400017fb1562b9df8484edd5da05, whose verified parent is 6982708f1f98cb43b6536f1c52cdde8a9ca57f62. Production inspection code is unchanged. The actual prepared-reader unit remains the causal size guard; the wrapper accepts size or actual timeout only as Unknown/no accepted frame. This correction does not explain or close historical #41 retained PID or #55 Design3 red CI.

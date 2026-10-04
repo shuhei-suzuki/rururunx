@@ -27,19 +27,104 @@ static FILESYSTEM_WORKERS: Semaphore = Semaphore::const_new(16);
 
 /// Abandoned native preflight must never free an executor reservation on a guess.
 /// A separate flag per process prevents another Git child clearing a live server's flag.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum OwnershipStage {
+    NativeChild,
+    PreSpawn,
+    InSessionBinding,
+    Reconciliation,
+    Checkpoint,
+}
+
+#[derive(Default, Clone, Copy, serde::Serialize)]
+pub(super) struct StageUncertainty {
+    pub native_child: bool,
+    pub pre_spawn: bool,
+    pub in_session_binding: bool,
+    pub reconciliation: bool,
+}
+
+pub(super) struct OwnershipSample {
+    pub uncertain: bool,
+    pub stages: StageUncertainty,
+}
+
+#[cfg(all(test, target_os = "macos"))]
+#[derive(Default)]
+pub(super) struct OwnershipTrace {
+    entries: std::sync::Mutex<Vec<(u64, OwnershipStage)>>,
+    incomplete: AtomicBool,
+}
+#[cfg(all(test, target_os = "macos"))]
+impl OwnershipTrace {
+    fn append(&self, version: u64, stage: OwnershipStage) {
+        if let Ok(mut entries) = self.entries.try_lock() {
+            entries.push((version, stage));
+        } else {
+            self.incomplete.store(true, Ordering::SeqCst);
+        }
+    }
+    pub fn snapshot(&self, version: u64) -> Option<Vec<OwnershipStage>> {
+        if self.incomplete.load(Ordering::SeqCst) {
+            return None;
+        }
+        self.entries.try_lock().ok().map(|entries| {
+            entries
+                .iter()
+                .filter(|(input, _)| *input == version)
+                .map(|(_, stage)| *stage)
+                .collect()
+        })
+    }
+}
+
 #[derive(Default)]
 pub(super) struct ProcessOwnership {
-    flags: Vec<Arc<AtomicBool>>,
+    flags: Vec<(Arc<AtomicBool>, OwnershipStage)>,
+    #[cfg(all(test, target_os = "macos"))]
+    trace: Option<(Arc<OwnershipTrace>, u64)>,
 }
 impl ProcessOwnership {
-    pub fn group(&mut self) -> Arc<AtomicBool> {
-        self.flags.retain(|flag| flag.load(Ordering::SeqCst));
+    #[cfg(all(test, target_os = "macos"))]
+    pub fn with_trace(trace: Arc<OwnershipTrace>, version: u64) -> Self {
+        Self {
+            flags: vec![],
+            trace: Some((trace, version)),
+        }
+    }
+    pub fn group(&mut self, stage: OwnershipStage) -> Arc<AtomicBool> {
+        self.flags.retain(|(flag, _)| flag.load(Ordering::SeqCst));
         let flag = Arc::new(AtomicBool::new(false));
-        self.flags.push(flag.clone());
+        self.flags.push((flag.clone(), stage));
+        #[cfg(all(test, target_os = "macos"))]
+        if let Some((trace, version)) = &self.trace {
+            trace.append(*version, stage);
+        }
         flag
     }
+    /// Total includes every flag independently of labels. Each value is sampled
+    /// once; a diagnostic label can never remove uncertainty from clean.
+    pub fn sample(&self) -> OwnershipSample {
+        let mut sample = OwnershipSample {
+            uncertain: false,
+            stages: StageUncertainty::default(),
+        };
+        for (flag, stage) in &self.flags {
+            let value = flag.load(Ordering::SeqCst);
+            sample.uncertain |= value;
+            match stage {
+                OwnershipStage::NativeChild => sample.stages.native_child |= value,
+                OwnershipStage::PreSpawn => sample.stages.pre_spawn |= value,
+                OwnershipStage::InSessionBinding => sample.stages.in_session_binding |= value,
+                OwnershipStage::Reconciliation => sample.stages.reconciliation |= value,
+                OwnershipStage::Checkpoint => {}
+            }
+        }
+        sample
+    }
+    #[cfg(test)]
     pub fn uncertain(&self) -> bool {
-        self.flags.iter().any(|flag| flag.load(Ordering::SeqCst))
+        self.sample().uncertain
     }
 }
 
@@ -334,8 +419,9 @@ impl ScopeSnapshot {
         request: &LaunchRequest,
         ownership: &mut ProcessOwnership,
         expected: &Value,
+        stage: OwnershipStage,
     ) -> AdapterResult<()> {
-        if self.verify_git(request, ownership).await? != *expected {
+        if self.verify_git(request, ownership, stage).await? != *expected {
             return Err(failure(
                 ErrorKind::OwnershipMismatch,
                 "native workspace replaced during session initialization",
@@ -348,6 +434,7 @@ impl ScopeSnapshot {
         &self,
         request: &LaunchRequest,
         ownership: &mut ProcessOwnership,
+        stage: OwnershipStage,
     ) -> AdapterResult<Value> {
         let project = self.project.clone();
         let workspace = request.worktree.clone();
@@ -355,7 +442,7 @@ impl ScopeSnapshot {
         let executable = filesystem(|| resolve_executable("git")).await?;
         let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
         let mut observe = |cwd: PathBuf, args: Vec<String>| {
-            let flag = ownership.group();
+            let flag = ownership.group(stage);
             let executable = executable.clone();
             async move {
                 bounded_git(
@@ -550,4 +637,106 @@ fn canonical_binding(root: &Path, workspace: &Path) -> AdapterResult<Value> {
         ]))
     };
     Ok(serde_json::json!([identity(root)?, identity(workspace)?]))
+}
+
+#[cfg(test)]
+mod process_ownership_tests {
+    use super::*;
+    #[test]
+    fn sampling_preserves_legacy_total_even_for_unprojected_labels() {
+        let stages = [
+            OwnershipStage::NativeChild,
+            OwnershipStage::PreSpawn,
+            OwnershipStage::InSessionBinding,
+            OwnershipStage::Reconciliation,
+            OwnershipStage::Checkpoint,
+        ];
+        for bits in 0..32 {
+            let mut ownership = ProcessOwnership::default();
+            for (index, stage) in stages.iter().copied().enumerate() {
+                ownership
+                    .flags
+                    .push((Arc::new(AtomicBool::new(bits & (1 << index) != 0)), stage));
+            }
+            let legacy = ownership
+                .flags
+                .iter()
+                .any(|(flag, _)| flag.load(Ordering::SeqCst));
+            let sample = ownership.sample();
+            assert_eq!(sample.uncertain, legacy);
+            assert_eq!(ownership.uncertain(), legacy);
+            assert_eq!(sample.stages.native_child, bits & 1 != 0);
+            assert_eq!(sample.stages.pre_spawn, bits & 2 != 0);
+            assert_eq!(sample.stages.in_session_binding, bits & 4 != 0);
+            assert_eq!(sample.stages.reconciliation, bits & 8 != 0);
+        }
+    }
+    #[test]
+    fn group_drops_false_entries_and_retains_true_arc_with_its_label() {
+        let mut ownership = ProcessOwnership::default();
+        let resolved = ownership.group(OwnershipStage::PreSpawn);
+        let native = ownership.group(OwnershipStage::NativeChild);
+        assert_eq!(ownership.flags.len(), 1);
+        assert!(
+            !ownership
+                .flags
+                .iter()
+                .any(|(flag, _)| Arc::ptr_eq(flag, &resolved))
+        );
+        native.store(true, Ordering::SeqCst);
+        let next = ownership.group(OwnershipStage::Reconciliation);
+        assert_eq!(ownership.flags.len(), 2);
+        assert!(Arc::ptr_eq(&ownership.flags[0].0, &native));
+        assert_eq!(ownership.flags[0].1, OwnershipStage::NativeChild);
+        assert!(Arc::ptr_eq(&ownership.flags[1].0, &next));
+        assert_eq!(ownership.flags[1].1, OwnershipStage::Reconciliation);
+        let sample = ownership.sample();
+        assert!(sample.uncertain && sample.stages.native_child);
+        assert!(!sample.stages.reconciliation);
+        native.store(false, Ordering::SeqCst);
+        ownership.group(OwnershipStage::Checkpoint);
+        assert_eq!(ownership.flags.len(), 1);
+        assert!(!ownership.uncertain());
+    }
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn poisoned_and_contended_creation_traces_cannot_change_flag_lifecycle() {
+        for poisoned in [false, true] {
+            let trace = Arc::new(OwnershipTrace::default());
+            if poisoned {
+                let captured = trace.clone();
+                assert!(
+                    std::panic::catch_unwind(move || {
+                        let _guard = captured.entries.lock().unwrap();
+                        panic!("synthetic trace poison");
+                    })
+                    .is_err()
+                );
+            }
+            let held = if poisoned {
+                None
+            } else {
+                Some(trace.entries.lock().unwrap())
+            };
+            let mut ownership = ProcessOwnership::with_trace(trace.clone(), 1);
+            let native = ownership.group(OwnershipStage::NativeChild);
+            assert!(Arc::ptr_eq(&ownership.flags[0].0, &native));
+            assert!(!native.load(Ordering::SeqCst));
+            native.store(true, Ordering::SeqCst);
+            ownership.group(OwnershipStage::Reconciliation);
+            assert_eq!(ownership.flags.len(), 2);
+            assert!(ownership.sample().uncertain);
+            assert!(ownership.sample().stages.native_child);
+            assert!(trace.incomplete.load(Ordering::SeqCst));
+            drop(held);
+            assert!(
+                trace.snapshot(1).is_none(),
+                "trace loss must precede stage credit"
+            );
+            native.store(false, Ordering::SeqCst);
+            ownership.group(OwnershipStage::Checkpoint);
+            assert_eq!(ownership.flags.len(), 1);
+            assert!(!ownership.sample().uncertain);
+        }
+    }
 }
