@@ -1,0 +1,13 @@
+diff --git a/crates/rrx/tests/support/grok_receipt.rs b/crates/rrx/tests/support/grok_receipt.rs
+index 569c7fd..bf18a37 100644
+--- a/crates/rrx/tests/support/grok_receipt.rs
++++ b/crates/rrx/tests/support/grok_receipt.rs
+@@ -243,7 +243,7 @@ pub(super) fn assert_state<T: std::fmt::Debug + PartialEq>(
+ ) {
+     assert_eq!(
+         actual, expected,
+-        "grok_terminal_state_assertion {context}; {projection}"
++        "grok_terminal_state_assertion {context}"
+     );
+ }
+ pub(super) fn assert_receipt(receipt: &Result<Value, &'static str>) {
