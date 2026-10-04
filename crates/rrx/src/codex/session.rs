@@ -1505,6 +1505,8 @@ impl CodexAdapter {
         let (thread, turn) = match setup {
             Ok(value) => value,
             Err(error) => {
+                #[cfg(test)]
+                self.gates.wait(TestPoint::BeforeNativeCleanup).await;
                 return Err(failure_after_cleanup(
                     error,
                     native.shutdown().await.map(|_| ()),
@@ -4876,9 +4878,10 @@ mod tests {
         let executable = directory.join("synthetic-codex");
         let binary = std::env::current_exe().unwrap();
         let script = format!(
-            "#!/bin/sh\nif [ \"$1\" = '--version' ]; then printf '%s\\n' 'codex-cli 0.160.0'; exit 0; fi\nprintf '%s\\n' \"$@\" > {args}\nexport RRX_SYNTHETIC_NATIVE_DIRECTORY={directory}\nexec {binary} --exact codex::session::tests::synthetic_owned_native_rpc_child --ignored --nocapture\n",
+            "#!/bin/sh\nif [ \"$1\" = '--version' ]; then printf '%s\\n' 'codex-cli 0.160.0'; exit 0; fi\nprintf '%s\\n' \"$@\" > {args}\nexport RRX_SYNTHETIC_NATIVE_DIRECTORY={directory}\nprintf '%s' \"$$\" > {leader}\nexec {binary} --exact codex::session::tests::synthetic_owned_native_rpc_child --ignored --nocapture\n",
             args = quoted_path(&directory.join("arguments")),
             directory = quoted_path(&directory),
+            leader = quoted_path(&directory.join("leader")),
             binary = quoted_path(&binary)
         );
         std::fs::write(&executable, script).unwrap();
@@ -5119,10 +5122,15 @@ mod tests {
                 );
             } else {
                 let error = bounded(&mut caller).await.unwrap().unwrap_err();
-                assert!(matches!(
-                    error.kind,
-                    ErrorKind::ProcessFailure | ErrorKind::SessionLost
-                ));
+                assert!(
+                    matches!(
+                        error.kind,
+                        ErrorKind::ProcessFailure
+                            | ErrorKind::SessionLost
+                            | ErrorKind::ParseFailure
+                    ),
+                    "actual missing-ack transport error: {error:?}"
+                );
                 let outcome = bounded(control.wait_finished()).await.unwrap();
                 assert!(matches!(
                     outcome,
@@ -5218,6 +5226,183 @@ mod tests {
         );
         let values = journal_values(&directory);
         assert_eq!(values.iter().filter(|value|value["id"]=="synthetic-approval" && value.get("method").is_none()).count(),1);
+        let starts: Vec<_> = values
+            .iter()
+            .filter(|value| value["method"] == "turn/start")
+            .collect();
+        assert_eq!(starts.len(), 2);
+        assert_eq!(starts[1]["params"]["input"][0]["text"], input.payload);
+        adapter.release(reference).unwrap();
+    }
+    #[tokio::test]
+    async fn actual_failed_admission_cas_latches_cause_before_cleanup_and_survives_stop_caller_drop()
+     {
+        for database_failure in [false, true] {
+            let owned = Fixture::new(true);
+            let (executable, directory) = wire_fixture(&owned, "complete");
+            let adapter = Arc::new(
+                CodexAdapter::new("codex".into(), executable, owned.store.clone()).unwrap(),
+            );
+            let admission_gate = adapter.gates.install(TestPoint::BeforeDispatch);
+            let actor = adapter.clone();
+            let request = owned.request.clone();
+            let caller = tokio::spawn(async move { actor.start(request).await });
+            bounded(admission_gate.reached()).await;
+            let (reference, control) = {
+                let registry = adapter.registry().unwrap();
+                let entry = registry.values().next().unwrap();
+                (
+                    SessionRef::from(&entry.status.borrow().session),
+                    entry.control.clone(),
+                )
+            };
+            let db = owned
+                .request
+                .project
+                .root
+                .parent()
+                .unwrap()
+                .join("state.sqlite3");
+            if database_failure {
+                let writer = rusqlite::Connection::open(&db).unwrap();
+                writer.execute_batch("CREATE TRIGGER synthetic_admission_error BEFORE UPDATE ON records WHEN NEW.kind='session' AND json_extract(NEW.body,'$.data.recovery.dispatch_intent.consumed')=1 BEGIN SELECT RAISE(ABORT,'synthetic admission write failure'); END;").unwrap();
+            } else {
+                let mut writer = crate::state::Store::open(&db).unwrap();
+                let mut task = writer
+                    .task(owned.request.scope.task_id.unwrap())
+                    .unwrap()
+                    .unwrap();
+                task.title = "actual owner changed after final preflight".into();
+                writer.put_task(&mut task).unwrap();
+            }
+            let cleanup_gate = adapter.gates.install(TestPoint::BeforeNativeCleanup);
+            admission_gate.release();
+            bounded(cleanup_gate.reached()).await;
+            let cause = match control.preparation.state().unwrap() {
+                Admission::Failing(cause) => cause,
+                other => panic!("failed CAS must latch before cleanup: {other:?}"),
+            };
+            caller.abort();
+            let _ = caller.await;
+            let stop_gate = adapter.gates.install(TestPoint::StopWaiting);
+            let actor = adapter.clone();
+            let target = reference.clone();
+            let stopper = tokio::spawn(async move { actor.stop(target).await });
+            bounded(stop_gate.reached()).await;
+            let after_cancel = control.preparation.state().unwrap();
+            let before_cleanup = adapter.current(&reference).unwrap();
+            cleanup_gate.release();
+            stop_gate.release();
+            let stopped = bounded(stopper).await.unwrap().unwrap_err();
+            let outcome = bounded(control.wait_finished()).await.unwrap();
+            let expected = if database_failure {
+                ErrorKind::StateFailure
+            } else {
+                ErrorKind::StateConflict
+            };
+            assert_eq!(cause.error().kind, expected);
+            assert!(
+                matches!(after_cancel,Admission::Failing(Cause::Failed(kind,_)) if kind==expected)
+            );
+            assert_eq!(before_cleanup.session.state, SessionState::Starting);
+            assert_eq!(stopped.kind, expected);
+            assert!(!stopped.message.contains("cancelled"));
+            assert!(
+                matches!(outcome,Outcome::FailedBeforeAdmission{cause:Cause::Failed(kind,_),..} if kind==expected)
+            );
+            let stored = adapter.current(&reference).unwrap();
+            assert_eq!(stored.session.state, SessionState::Failed);
+            assert_eq!(stored.session.pid, None);
+            assert!(stored.session.recovery.get("dispatch_intent").is_none());
+            assert!(!journal_values(&directory).iter().any(|value| matches!(
+                value["method"].as_str(),
+                Some("turn/start" | "turn/interrupt")
+            )));
+            assert_leader_reaped(&directory.join("leader"));
+            let events = owned
+                .store
+                .lock()
+                .unwrap()
+                .events(&owned.request.scope, 0, 1000)
+                .unwrap();
+            assert!(
+                events
+                    .iter()
+                    .any(|event| event.kind == "codex.preparation.finished"
+                        && event.data["cause"] == "failed")
+            );
+            adapter.release(reference).unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn actual_resume_pre_admission_cancel_has_zero_new_wire_and_restores_prior_turn_output() {
+        let owned = Fixture::new(true);
+        let (executable, directory) = wire_fixture(&owned, "complete");
+        let adapter =
+            Arc::new(CodexAdapter::new("codex".into(), executable, owned.store.clone()).unwrap());
+        let first = bounded(adapter.start(owned.request.clone())).await.unwrap();
+        let reference = SessionRef::from(&first);
+        let previous = terminal_status(&adapter, &reference).await;
+        let mut input = owned.request.input.clone();
+        input.version += 1;
+        input.payload = "only explicit new input".into();
+        adapter
+            .checkpoint(reference.clone(), input.clone())
+            .await
+            .unwrap();
+        let gate = adapter.gates.install(TestPoint::BeforeDispatch);
+        let actor = adapter.clone();
+        let target = reference.clone();
+        let caller = tokio::spawn(async move { actor.resume(target).await });
+        bounded(gate.reached()).await;
+        let starting = adapter.current(&reference).unwrap();
+        let control = preparing_control(&adapter, reference.id);
+        let stop_gate = adapter.gates.install(TestPoint::StopWaiting);
+        let actor = adapter.clone();
+        let target = reference.clone();
+        let stopper = tokio::spawn(async move { actor.stop(target).await });
+        bounded(stop_gate.reached()).await;
+        gate.release();
+        stop_gate.release();
+        let resumed = bounded(caller).await.unwrap().unwrap_err();
+        let stopped = bounded(stopper).await.unwrap().unwrap_err();
+        let outcome = bounded(control.wait_finished()).await.unwrap();
+        assert!(
+            starting.stdout.is_empty(),
+            "preparation cannot relabel historical output as this turn's output"
+        );
+        assert_eq!(resumed.kind, ErrorKind::StateConflict);
+        assert!(stopped.message.contains("exact prior Session restored"));
+        assert!(matches!(
+            outcome,
+            Outcome::RestoredBeforeAdmission {
+                cause: Cause::Cancelled,
+                ..
+            }
+        ));
+        let current = adapter.current(&reference).unwrap();
+        assert_eq!(
+            serde_json::to_value(&current.session).unwrap(),
+            serde_json::to_value(&previous.session).unwrap()
+        );
+        assert_eq!(current.stdout, previous.stdout);
+        assert!(adapter.transport_succeeded(&current));
+        assert_eq!(
+            journal_values(&directory)
+                .iter()
+                .filter(|value| value["method"] == "turn/start")
+                .count(),
+            1
+        );
+        assert_leader_reaped(&directory.join("leader"));
+        // Cancellation retains the explicit pending input for a later, fresh
+        // owned resume; it never replays the previous mutating payload.
+        bounded(adapter.resume(reference.clone())).await.unwrap();
+        let actual = terminal_status(&adapter, &reference).await;
+        assert_eq!(actual.session.recovery["input_version"], input.version);
+        assert_eq!(actual.stdout, b"synthetic-turn-2");
+        let values = journal_values(&directory);
         let starts: Vec<_> = values
             .iter()
             .filter(|value| value["method"] == "turn/start")

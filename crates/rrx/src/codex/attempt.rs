@@ -240,6 +240,7 @@ pub(super) enum TestPoint {
     BeforeStarting,
     BeforeBootstrap,
     BeforeDispatch,
+    BeforeNativeCleanup,
     BeforeCheckpointCommit,
     AfterCheckpointCommit,
     AfterCheckpointFinished,
