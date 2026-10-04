@@ -96,3 +96,15 @@ loss, and pools same-source/configuration valid repetitions without deleting inv
 attempts. Fixing source/configuration creates a separate narrower claim, with prior
 history retained after fixture cleanup; unregistered runs cannot close acceptance.
 Requirements6 review pending. No source/runtime, benchmark or MVP completion claim.
+
+Req6 f24862a CI37197492421 passed both Linux/macOS fmt, clippy, tests and
+debug/release builds (individual job steps inspected). Two independent
+native Req6 reviews completed with actual owned cleanup verified and request_changes.
+Verified remaining Medium classes: valid-only pooling could hide attempted invalid
+repetitions; a known-regression-tuned fix needs fresh held-out sensitive quality
+items; and narrowed benchmark settings must not leave the shipped default with an
+unfixed regressing feature. Req7 pools ALL attempts and fixes stopping before runs,
+preserves unknown/failure denominators, separates independently evidenced environment
+reasons, requires independent held-out checks and actual default-configuration pins.
+Default-off never waives required MVP producer acceptance. Requirements7 review
+pending; no runtime/source or native benchmark acceptance is claimed.

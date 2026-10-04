@@ -1,8 +1,8 @@
 # Issue 21: Attributable telemetry and Context Efficiency comparison
 
 Workflow: STRICT (shared durable metrics, provider normalization and Project isolation).
-Status: Requirements6; independent Req1–Req5 findings verified and refined below.
-Requirements6/design/source reviews pending.
+Status: Requirements7; independent Req1–Req6 findings verified and refined below.
+Requirements7/design/source reviews pending.
 Baseline: main80452f4, schema3. Depends on merged #2 and #4; part of #17.
 
 ## Purpose and existing gap
@@ -221,14 +221,25 @@ producer or benchmark conditions needed for #21 closure below.
   roster without separately reviewed justification. Previous observed regressions
   remain disclosed beside later fixes/results. An unchanged-source/configuration
   successor is allowed only for a registered measurement-invalid or execution-
-  environment reason, never unfavorable quality/savings. Pool ALL valid repetitions
-  of the same source/frozen configuration across registered plans into one claim
-  denominator and dispersion under a stopping rule declared before the first run.
+  environment reason, never unfavorable quality/savings. Pool ALL attempted repetitions
+  of the same source/frozen configuration across registered plans into one reported
+  denominator, with measured values/dispersion and invalidity/failure by lane/order.
+  The stopping rule is fixed attempt count or time before the first run, never
+  "until N valid". Invalid attempts remain unknown/failing and prevent a whole-run
+  claim under the ANY-required-repetition rule; a successor cannot replace them.
+  Unmeasured efficiency-layer calls are enabled coverage failures, not a rerun reason.
+  Crash/timeout environment labels need independent evidence (actual provider status
+  or both lanes affected); otherwise retain the actual lane's execution failure.
   The latest/most favorable plan never drives the claim alone. Changed source or
   configuration has its own claim scope and cannot pool with or replace old results.
   Registry/history is append-only under the shared writer epoch and survives fixture
   cleanup; ad-hoc/unregistered runs are inadmissible acceptance evidence. No OS
   integrity claim extends beyond the stated application trust boundary.
+  The accepted enabled lane equals the actual shipped default Context Efficiency
+  configuration, with applicable frozen Project policy and an exact content digest.
+  A disabled feature must also be default-off or verifiably fixed before acceptance;
+  otherwise it remains an explicit producer/#17 blocker. Required MVP capabilities
+  and producer acceptance cannot be waived merely by default-off/narrowed claims.
   For EVERY dispatch in both lanes, retain actual producer-backed delivery evidence
   mapping the complete mandatory rules/evidence set computed from that dispatch's
   current authorized inputs to delivered content identities/digests and scope.
@@ -329,6 +340,14 @@ producer or benchmark conditions needed for #21 closure below.
   makes the full result quality-unverified/descriptive, even if the overall oracle
   for other features passes. An uncovered feature must be predeclared disabled to
   avoid that result. Per-feature credit needs predeclared same-input ablation runs.
+  A behavior/configuration-fixing successor retains known prior cases as regression
+  checks. Certification of each affected feature additionally needs fresh predeclared
+  held-out sensitive items from an independent creator, registered before the first
+  successor run and not disclosed to fix authors; track prior author exposure per
+  item. Without such items, the feature and whole-lane quality remain unverified
+  with no savings credit. This is a supplied-input/producer boundary, not OS secrecy.
+  Sensitive coverage must discriminate at the frozen baseline detection-rate rule;
+  items missed by both lanes cannot be nominal proof of feature sensitivity.
   Both lanes begin from the same frozen starting artifacts, without pre-generated
   reduction outputs; any enabled setup generation is charged in provider cost and
   completion time. Equality of cross-lane inputs means equality after canonical
@@ -466,6 +485,10 @@ actual execution failure and independently verified safety/quality regression.
 Reject real consumer mutants that condense, skip mandatory re-delivery and hide the
 loss as unverified measurement; mark equal/baseline-only oracle misses as a reduction
 regression; or select a favorable unchanged-source plan instead of its pooled history.
+Reject attempts-until-valid pooling, missing held-out coverage after a known-item-
+tuned fix, or acceptance of a feature-disabled plan while the shipped default still
+enables its regressing feature. Invalid attempts remain in the actual whole-run
+claim denominator; no fixture/default edit silently waives required MVP features.
 
 Run relevant state/provider/context/workflow regressions, fmt/clippy/build, exact
 Linux/macOS CI and independent source reviews. Update master design/README only to
