@@ -497,5 +497,17 @@ closed ([primary source](https://raw.githubusercontent.com/tokio-rs/tokio/tokio-
 Reentrant TaskGuard release could deadlock that mutex. The next source stage uses
 an Installing/Released owner level without holding the mutex across submission or
 JoinHandle destruction. Closed-runtime, missing-runtime and unpolled-runtime-drop
-consumers and the corresponding original-race mutation remain under verification;
-no claim of final source approval follows from the earlier passing suite.
+consumers pass at clean `fe127ee` (four controller tests, no native/Git child).
+Compiled M649 restores the actual lock-across-submission race and fails the bounded
+closed-runtime consumer after two seconds. Exact source was restored and committed;
+no OS child was orphaned. This is the eleventh killed F4 mutation. Final combined
+checks and independent source reviews remain pending; the earlier passing suite
+does not establish approval of this later production fix. Native defaults and all
+process/transport deadlines remain unchanged. The earlier `069fa88` exact Linux/macOS
+CI [37186707768](https://github.com/shuhei-suzuki/rururunx/actions/runs/37186707768)
+passes and is attributed only to that source, not this new fix.
+
+Evidence: `/private/tmp/rururunx-issue6-f4-runtime-control.log`,
+`/private/tmp/rururunx-issue6-f4-mutation-results5.json`,
+`/private/tmp/rururunx-issue6-f4-M649-round5.log`,
+`/private/tmp/rururunx-issue6-f4-final-gates-result.json` (earlier `069fa88`).
