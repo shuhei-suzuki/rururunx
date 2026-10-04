@@ -1,6 +1,7 @@
 # Issue60 selected Git reader lifetime verification
 
-Status: requirements candidate UNAPPROVED; no implementation or acceptance.
+Status: Requirements4 approved at a8e8a8b; Design2 UNAPPROVED; no reader
+implementation or acceptance. Earlier diagnostic/environment partial gates are separate.
 Base2c6ae9d includes diagnostic partialPR61 and environment partialPR53. Their
 independent approvals do not authorize this reader/owner-driver change. Parent60
 and native16/F1/runtime-workload settlement remain OPEN.
@@ -178,3 +179,31 @@ CI37239214385 and Requirements4 CI37240132705 report all steps both OS success;
 actual checkout/tree proofs are not yet captured here, so these are docs baseline
 observations only, never reader Source, Release TEST or availability evidence.
 All historical reds, cause AND regression UNKNOWN, full60/F1/native16 remain OPEN.
+
+Reader Design1 at8f95adb completed BOTH fresh independent native reviews:
+ownership00677738-28ea-413e-aa5b-1919c43421ac and capacity
+5a3cf784-2c81-4218-a9ec-5488292ff43e, both request_changes/cleanup_verified=true.
+[All16 findings](issue-60-reader-design1-findings.json) retain exact raw hashes
+and verified dispositions. Two distinct Medium omissions: no live caller wake/
+typed outcome on supervisor loss, and undefined private-pool/plan propagation
+through Grok's spawned actor. Four counted jobs/std Child/runtime independence/
+unreaped observer/terminal frame accounting were accepted by both, not Source proof.
+Design2 adds the bounded loss publication and actual cfgtest carriers, distinct
+wakes/cancelled-before-spawn state, attempted-signal bit/no releasing Drop,
+pre-effect SIGCHLD/BOTH readers order, actual worker join before settled result,
+off-poller retained Runtime holder and explicit impact/errorfact parity. Bounded
+command parking and one actual owning Child.wait on reserved worker replace the
+proposed5ms worker/reap polling; supervisor's existing250ms reap cutoff and late
+same-wait observation stay unchanged. No new native/effect/readiness authority.
+
+After both reviewers finished, normal main47830b0 integration preserves both
+public ancestries. Incoming #6 EMPTY ordinary routes refuse before Git/process;
+only additive common visibility/traits, Grok structured delegation and Tokio net/
+dependencies change shared files. Actual Git/common cleanup bodies and locked
+Tokio1.53.1 remain unchanged; future/private Codex Git copies remain unqualified.
+Design1 CI37242481311 allstepsbothOS SUCCESS tested merge13de0884 with parents
+47830b0/8f95adb; COMPLETE tree differs trigger8f because incoming6 is present.
+This is merge-context/docs-baseline evidence, not reviewed-head equality or
+reader Source/ReleaseTEST acceptance. Private finite CI provenance/inventory
+retains that difference; Design2/source gates still pending. Historical reds,
+cause AND regression UNKNOWN; whole60/F1/native16 remain OPEN.

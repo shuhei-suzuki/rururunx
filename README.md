@@ -413,6 +413,6 @@ No backend availability fix or owned-reader/workload settlement is claimed; full
 and native acceptance remain open.
 
 Selected Git reader lifetime has two independent Requirements4 approvals. The
-[Design1 candidate](doc/design/issue-60-reader-design.md) proposes bounded actual
+[Design2 candidate](doc/design/issue-60-reader-design.md) proposes bounded actual
 Child/readers custody independently of caller runtime; design/source gates are
 pending. Shared native process lifetime and full #60/F1 acceptance remain open.
