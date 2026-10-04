@@ -4195,7 +4195,7 @@ async fn standalone_complete_frame_exact_boundary(draft_only: bool) {
     let mut adjustable = PathBuf::new();
     for n in 0..5 {
         let path = f.root.join(format!("frame-boundary-{n}.md"));
-        std::fs::write(&path, "X".repeat(200_000)).unwrap();
+        std::fs::write(&path, format!("\t💡\"{}", "X".repeat(200_000))).unwrap();
         project.rule_refs.push(path.clone());
         adjustable = path;
     }
@@ -4244,13 +4244,14 @@ async fn standalone_complete_frame_exact_boundary(draft_only: bool) {
         assert!(payload.contains("never omit required evidence"));
         assert!(payload.contains("Use scoped authoritative references"));
         assert_eq!(payload.matches("\"kind\":\"project_rule\"").count(), 6);
+        assert_eq!(payload.matches("\\t💡\\\"").count(), 5);
         if payload.len() == CAP {
             exact = true;
             break;
         }
         size += CAP - payload.len();
         assert!(size <= 256 * 1024, "fixture exceeds actual file bound");
-        std::fs::write(&adjustable, "X".repeat(size)).unwrap();
+        std::fs::write(&adjustable, format!("\t💡\"{}", "X".repeat(size))).unwrap();
     }
     assert!(exact, "exact complete-frame boundary must remain usable");
     // Optional selection must fit the remaining complete-frame budget without
@@ -4280,7 +4281,7 @@ async fn standalone_complete_frame_exact_boundary(draft_only: bool) {
     };
     assert_eq!(payload.len(), CAP);
     assert!(!payload.contains("\"kind\":\"file_map\""));
-    std::fs::write(&adjustable, "X".repeat(size + 1)).unwrap();
+    std::fs::write(&adjustable, format!("\t💡\"{}", "X".repeat(size + 1))).unwrap();
     let draft = packs.draft_task(&f.task.scope(), input()).await.unwrap();
     let reference = if draft_only {
         None
