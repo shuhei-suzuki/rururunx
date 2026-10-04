@@ -1,11 +1,5 @@
 --- a/crates/rrx/src/state/mod.rs
 +++ b/crates/rrx/src/state/mod.rs
-@@ -919,7 +919,7 @@
-                 usage.scope.project_id.to_string() == project
-                     && str_id(usage.scope.goal_id) == goal
-                     && str_id(usage.scope.task_id) == task
+@@ -922 +922 @@
 -                    && usage.session_id.to_string() == session,
 +                    && true,
-                 "usage row/body identity mismatch"
-             );
-             Ok(usage)

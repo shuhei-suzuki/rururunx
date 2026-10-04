@@ -13,12 +13,13 @@
       "exit": 101,
       "failed_consumer": "legacy_usage_query_checks_row_body_identity_and_invalid_scope_without_writes",
       "source_sha256": "ac462d585126b12da95c1b650c1c767bff6ac1113efc6136fc3442ce0d227886",
-      "patch_sha256": "47e67719ee7b0988fd7ef18956e86cd736f5290345fd97a2c925a54f50169c12",
+      "patch_sha256": "dadc42e8d8504835ace74cc2b55e5bb54474e7ed99b8960ea91ce1e37e15bbbb",
       "log_sha256": "cb8656b770b72dded8c2728b581e66e8b4beb7aa5645dcf25e3d743d8f21290e",
       "observed_assertions": [
         "thread 'legacy_usage_query_checks_row_body_identity_and_invalid_scope_without_writes' (230615665) panicked at crates/rrx/tests/state.rs:775:44:",
         "called `Result::unwrap_err()` on an `Ok` value: [Usage { scope: Scope { project_id: ProjectId(cc8e418f-961b-409b-a55c-25c7f9eb4e53), goal_id: Some(GoalId(0f7431d4-8d57-49ef-8c26-661f86681648)), task_id: Some(TaskId(031e6461-2067-46be-a034-92bea8c80f49)) }, session_id: SessionId(0584a72d-d3bd-46b9-97a8-02bb58316fff), agent: \"fake\", phase: \"legacy-unqualified\", review_round: None, input_tokens: Some(7), cached_input_tokens: None, output_tokens: Some(3), estimated_cost: None, context_pack_version: None, context_pack_size: None, repo_map_size: None, cache_metadata: Object {\"legacy\": Bool(true)}, missing_reason: Some(\"legacy history is unqualified\") }]"
-      ]
+      ],
+      "original_private_patch_sha256": "47e67719ee7b0988fd7ef18956e86cd736f5290345fd97a2c925a54f50169c12"
     },
     {
       "mutation": "omit_goal_identity",
@@ -28,12 +29,13 @@
       "exit": 101,
       "failed_consumer": "legacy_usage_query_checks_row_body_identity_and_invalid_scope_without_writes",
       "source_sha256": "5285466c9ee6eb5993c753dc38637b77dba5e91b36555074422808fc16da46bd",
-      "patch_sha256": "d2f935cb7fbd38858618e2962a9cb9c50561a4358895f2da6a34e767f70b25a1",
+      "patch_sha256": "59c0fe81f9b3dd553d572617e2684c07c7bbff36e6b6d68f5be224b13a1c75af",
       "log_sha256": "a30f5f536ec603189834de481e6195add5e05314c4c51642550be4fc658c086b",
       "observed_assertions": [
         "thread 'legacy_usage_query_checks_row_body_identity_and_invalid_scope_without_writes' (230616485) panicked at crates/rrx/tests/state.rs:775:44:",
         "called `Result::unwrap_err()` on an `Ok` value: [Usage { scope: Scope { project_id: ProjectId(d90234fb-4f03-4713-a098-9a78ed507b15), goal_id: Some(GoalId(3cd8c015-020e-451d-beb0-a49dbde33459)), task_id: Some(TaskId(57d8dc6d-9d41-4c23-8661-8a150d6b197f)) }, session_id: SessionId(8a71c2d4-b4af-4fa0-8aa1-437b61329341), agent: \"fake\", phase: \"legacy-unqualified\", review_round: None, input_tokens: Some(7), cached_input_tokens: None, output_tokens: Some(3), estimated_cost: None, context_pack_version: None, context_pack_size: None, repo_map_size: None, cache_metadata: Object {\"legacy\": Bool(true)}, missing_reason: Some(\"legacy history is unqualified\") }]"
-      ]
+      ],
+      "original_private_patch_sha256": "d2f935cb7fbd38858618e2962a9cb9c50561a4358895f2da6a34e767f70b25a1"
     },
     {
       "mutation": "omit_task_identity",
@@ -43,12 +45,13 @@
       "exit": 101,
       "failed_consumer": "legacy_usage_query_checks_row_body_identity_and_invalid_scope_without_writes",
       "source_sha256": "7cc3751c313e2af9ba0e7358e051613f05654b56cfa893f887ae84a75cca2eb4",
-      "patch_sha256": "400e4b3a51a9b270427ffced04790014bf9109f00a94bd853020259b338466ab",
+      "patch_sha256": "c58f7bc0c9a57cd46e55ff810fc595c50ab8e107cafde728f60f658bf52fc6d3",
       "log_sha256": "8334d6014477b9ee56c31f450a79ae47b2af5594e212a4d098645e694013a34d",
       "observed_assertions": [
         "thread 'legacy_usage_query_checks_row_body_identity_and_invalid_scope_without_writes' (230617169) panicked at crates/rrx/tests/state.rs:775:44:",
         "called `Result::unwrap_err()` on an `Ok` value: [Usage { scope: Scope { project_id: ProjectId(32df0ee3-d90b-4420-bd8e-5e32839b5243), goal_id: Some(GoalId(6a44f8c4-e904-4a56-bc6a-813f106e049b)), task_id: Some(TaskId(20bb634c-0b0e-49dc-a72f-52f4ec7e52c2)) }, session_id: SessionId(b22d9ff6-ab99-4a5b-b022-697330132c21), agent: \"fake\", phase: \"legacy-unqualified\", review_round: None, input_tokens: Some(7), cached_input_tokens: None, output_tokens: Some(3), estimated_cost: None, context_pack_version: None, context_pack_size: None, repo_map_size: None, cache_metadata: Object {\"legacy\": Bool(true)}, missing_reason: Some(\"legacy history is unqualified\") }]"
-      ]
+      ],
+      "original_private_patch_sha256": "400e4b3a51a9b270427ffced04790014bf9109f00a94bd853020259b338466ab"
     },
     {
       "mutation": "omit_session_identity",
@@ -58,12 +61,13 @@
       "exit": 101,
       "failed_consumer": "legacy_usage_query_checks_row_body_identity_and_invalid_scope_without_writes",
       "source_sha256": "9d428267b65e8c822afe04fe0435d10cd645d4178c021e45d7362c3f19db989c",
-      "patch_sha256": "f7def4f282058dfe6d0ec1a6428c50cc5f50ed73bce7802ca388e4a90f5cb128",
+      "patch_sha256": "b70dd1ca35d2e88031614610f6f383037d3c73dc946f0781f777b072252d727f",
       "log_sha256": "91300fc6929c200b1e3c46b16b2339d04c7128c19b20f777ab487efba3d302fd",
       "observed_assertions": [
         "thread 'legacy_usage_query_checks_row_body_identity_and_invalid_scope_without_writes' (230617868) panicked at crates/rrx/tests/state.rs:775:44:",
         "called `Result::unwrap_err()` on an `Ok` value: [Usage { scope: Scope { project_id: ProjectId(2958c119-fb95-4be9-98bf-b30bc08c4e9e), goal_id: Some(GoalId(b3f1caf9-7bc6-48ad-b681-0df256043ea2)), task_id: Some(TaskId(c9196631-098a-4b53-99e3-0d7bfbc047f9)) }, session_id: SessionId(883a9777-1ceb-424a-bd9e-5a45177ad56a), agent: \"fake\", phase: \"legacy-unqualified\", review_round: None, input_tokens: Some(7), cached_input_tokens: None, output_tokens: Some(3), estimated_cost: None, context_pack_version: None, context_pack_size: None, repo_map_size: None, cache_metadata: Object {\"legacy\": Bool(true)}, missing_reason: Some(\"legacy history is unqualified\") }]"
-      ]
+      ],
+      "original_private_patch_sha256": "f7def4f282058dfe6d0ec1a6428c50cc5f50ed73bce7802ca388e4a90f5cb128"
     },
     {
       "mutation": "omit_scope_shape",
@@ -73,12 +77,13 @@
       "exit": 101,
       "failed_consumer": "legacy_usage_query_checks_row_body_identity_and_invalid_scope_without_writes",
       "source_sha256": "2d1c55f93d2c35b63faaee564f7216b56d7e690aa467a2ec9173b659e4494029",
-      "patch_sha256": "c815b19cabcb2d154b2013ebfe508f731d65701cd089b15fa08056c5f955a2bb",
+      "patch_sha256": "3f87c2bf4c72261e672c8c191449f7140ee740bdbe3b399322a36b35a773d552",
       "log_sha256": "ee950cde10a33380bcca8bec011ae34105fdeb1ed848acf7186eb8ce6932c6d9",
       "observed_assertions": [
         "thread 'legacy_usage_query_checks_row_body_identity_and_invalid_scope_without_writes' (230618598) panicked at crates/rrx/tests/state.rs:800:31:",
         "called `Result::unwrap_err()` on an `Ok` value: [Usage { scope: Scope { project_id: ProjectId(fd9ecc91-6e2e-414a-9309-0953999c5c29), goal_id: Some(GoalId(96a4b7d1-d2bc-429a-bf9f-061c7959d279)), task_id: Some(TaskId(06a55d4e-dde6-47c6-bd2a-cbab15eea927)) }, session_id: SessionId(e5d54f0f-2b94-4053-a463-3ad632885078), agent: \"fake\", phase: \"legacy-unqualified\", review_round: None, input_tokens: Some(7), cached_input_tokens: None, output_tokens: Some(3), estimated_cost: None, context_pack_version: None, context_pack_size: None, repo_map_size: None, cache_metadata: Object {\"legacy\": Bool(true)}, missing_reason: Some(\"legacy history is unqualified\") }]"
-      ]
+      ],
+      "original_private_patch_sha256": "c815b19cabcb2d154b2013ebfe508f731d65701cd089b15fa08056c5f955a2bb"
     }
   ],
   "control": {
@@ -93,5 +98,6 @@
     "tests": 1,
     "source_sha256": "59ed49fd1a56b5b0e046f30ad190d627a8369e50911f418280ab72e66951ecc6",
     "log_sha256": "6189b958589a426931ea2b46102513ab0193e834261090adb51766e3aac9ccd5"
-  }
+  },
+  "public_patch_format": "zero-context unified; git apply --unidiff-zero; identical executed mutated source hashes verified"
 }

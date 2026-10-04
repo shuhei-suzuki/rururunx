@@ -1,10 +1,4 @@
 --- a/crates/rrx/src/state/mod.rs
 +++ b/crates/rrx/src/state/mod.rs
-@@ -894,7 +894,6 @@
-     }
- 
-     pub fn usage(&self, scope: &Scope) -> Result<Vec<Usage>> {
+@@ -897 +896,0 @@
 -        validate_scope(scope)?;
-         let mut statement = self.connection.prepare("SELECT project_id,goal_id,task_id,session_id,body FROM usage WHERE project_id=?1 AND (?2 IS NULL OR goal_id=?2) AND (?3 IS NULL OR task_id=?3) ORDER BY sequence")?;
-         let rows = statement.query_map(
-             params![
