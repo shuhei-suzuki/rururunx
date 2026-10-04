@@ -739,15 +739,7 @@ fn legacy_usage_query_checks_row_body_identity_and_invalid_scope_without_writes(
         let body: String = raw
             .query_row("SELECT body FROM usage", [], |row| row.get(0))
             .unwrap();
-        let identities: (String, Option<String>, Option<String>, String) = raw
-            .query_row(
-                "SELECT project_id,goal_id,task_id,session_id FROM usage",
-                [],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
-            )
-            .unwrap();
         json!({"usage_body":body,"project":store.project(p.id).unwrap(),
-            "usage_row_identities":identities,
             "goal":store.goal(g.id).unwrap(),"task":store.task(t.id).unwrap(),
             "session":store.session(s.id).unwrap(),
             "audit":store.events(&t.scope(),0,1000).unwrap()})
@@ -793,21 +785,6 @@ fn legacy_usage_query_checks_row_body_identity_and_invalid_scope_without_writes(
             );
         }
     }
-    let mut malformed_scope = valid.clone();
-    malformed_scope.scope.goal_id = None;
-    raw.execute(
-        "UPDATE usage SET goal_id=NULL,body=?1",
-        [serde_json::to_string(&malformed_scope).unwrap()],
-    )
-    .unwrap();
-    let before = snapshot();
-    assert_eq!(
-        store.usage(&views[2]).unwrap_err().to_string(),
-        "task scope requires goal identity"
-    );
-    assert_eq!(snapshot(), before);
-    raw.execute("UPDATE usage SET goal_id=?1", [g.id.to_string()])
-        .unwrap();
     raw.execute(
         "UPDATE usage SET body=?1",
         [serde_json::to_string(&valid).unwrap()],

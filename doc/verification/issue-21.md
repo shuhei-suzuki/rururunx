@@ -323,3 +323,17 @@ retaining Task. The component now validates decoded Scope shape after identity
 matching, with a real Project query control and complete row-column snapshot. This
 preserves old identity-mismatch priority and valid NoTask shape. New-source regression,
 mutation and review remain pending; previous checks are not claimed for changed bytes.
+
+
+The b29aee8 agreeing-malformed-scope addition is WITHDRAWN. Both its attempted
+focused control and workspace test failed BEFORE the intended read assertion:
+schema3 already has CHECK(task_id IS NULL OR goal_id IS NOT NULL). This is fixture
+setup failure, not consumer/mutation/native credit. Its full run passed every prior
+consumer but14state passed/1fixture failed; no rerun erased it. The extra body guard
+was redundant for supported schema3 columns once all body identities are matched.
+Exact production AND test blobs are restored to the initial b1b643b verified bytes;
+restoration/failed-log hashes are retained. Initial5 compiled mutations,222 Rust+2docs
+pass and debug/release builds apply through this explicit byte equality; no testing
+claim applies to b29 itself. Unsupported/corrupted schema and qualified query/epoch
+producers remain beyond this narrow component. Fresh independent source review and
+exact-source CI still required. No new read/write authority or legacy waiver.
