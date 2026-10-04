@@ -1816,8 +1816,8 @@ for line in sys.stdin:
    open(__file__+'.second-denied','w').write('exact-denial')
    emit({{'type':'control_cancel_request','request_id':'permission-2'}})
    continue
- assert m['response']['request_id']=='permission-1'
- assert 'updatedPermissions' not in m['response']['response']
+  assert m['response']['request_id']=='permission-1'
+  assert 'updatedPermissions' not in m['response']['response']
   open(__file__+'.permission-response','w').write(json.dumps(m))
   if m['response']['response']['behavior']=='allow':assert m['response']['response']['updatedInput']=={{'command':'pwd'}}
   emit({{'type':'result','subtype':'success','is_error':False,'session_id':native,'result':'done'}})
