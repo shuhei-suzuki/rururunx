@@ -169,3 +169,17 @@ inventory, pure-only capture revocation, typed Task launch signatures and SQLite
 predicate flags/self-tests explicit. Native/resource/instance/recovery producers remain
 unimplemented/mandatory; Design3 independent review pending. No early physical fence,
 row labels or permanently Unsupported path counts as positive or whole58 acceptance.
+
+
+Design3 at6de2f28: two own-session independent delta reviews request_changes; A1M3L,
+B2M4L, both actual owned cleanup/reap verified. Actual AgentAdapter native-goal,
+attach/checkpoint/approval and public scope/ref constructors verify the typed boundary
+gap. First-level original Lost recovery lacked the replacement authorization predicate
+and instance-only witness could not recover an ended supervisor while B remains live.
+Proposed Design4 closes these design contradictions with complete trait inventory and
+the unified genuine supervisor/instance protocol. Legacy schema3 lacks the candidate
+lease and cannot prove dead helpers from DB; mandatory actual14 controlled bridge and
+connection coordination are explicit unimplemented readiness gates. Primary lease
+semantics inform required installed-host controls, not resource proof. No tests/source,
+schema, native profile or whole-Issue acceptance is claimed. Requirements8 unchanged;
+Design4 independent review pending. Historical failures remain retained.
