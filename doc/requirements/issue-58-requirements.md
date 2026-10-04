@@ -1,7 +1,7 @@
 # Issue 58: Retained ownership of Task-free native Consultant work
 
 Workflow: STRICT (native ownership, durable authority and Project exclusion).
-Status: Requirements4; verified independent Req1–Req3 gaps corrected below;
+Status: Requirements5; verified independent Req1–Req4 gaps corrected below;
 requirements/design/source gates pending.
 Baseline: main80452f4/schema3. MVP follow-up from #6 F1 and #19; see
 [Issue58](https://github.com/shuhei-suzuki/rururunx/issues/58).
@@ -107,6 +107,27 @@ results do not prove Workflow transport success. Preserve that scope.
   runtime-job reservations in that same Immediate transaction. Missing actual
   producers or unknown compatibility mean Unsupported/scoped conflict, never
   assumed disjointness or an invented #19 EvidencePort native operation.
+  EVERY runtime Git/helper-executing observation or capture is also a two-sided
+  party irrespective of read-only intent: physical repository/common-dir identity
+  resolution, Consultant pre-acquisition context/source capture, per-submission/
+  continuation revalidation, #18–20 source/Goal-pack/context and gate-claim capture,
+  #15 status/attach/TUI, #26 add/validate/reconcile and #14 recovery inspection.
+  These callers either use strictly non-executing in-process reads that cannot
+  invoke configured fsmonitor/hooks/filters/textconv/external helpers, or obtain
+  their ACTUAL #60 runtime owner and retained reservation BEFORE execution, with
+  current #19/#58/#60 physical holds checked atomically. Its known current effect
+  outcome AND complete runtime-profile cleanup/reconciliation settle that work.
+  A later Consultant native owner cannot retroactively cover pre-acquisition Git,
+  nor can its native-only cleanup predicate settle a runtime helper job. After
+  acquisition, any composed owner-bound runtime observation must still possess the
+  actual #60 execution/cleanup contract and continuously enforced compatibility
+  with that Consultant and all other holds; native owner recognition alone is no
+  exemption. Missing actual producer or unprovable physical scope refuses before
+  external execution. Consultant acquisition/input/continuation check in-flight
+  observation reservations; observation checks existing Consultant/Task/job holds.
+  Safe bounded in-process held-state reporting stays available without a Git
+  freshness or cleanup claim; executing held-scope observation requires the actual
+  continuously enforced compatible profile or returns held/Unsupported.
   Reverse reservations and every lock used as one require an actual nonserializable
   effect-owner capability acquired atomically before effects. Creation, factual
   observation and release use only the private exclusion protocol. Release needs
@@ -138,6 +159,8 @@ results do not prove Workflow transport success. Preserve that scope.
   reconciliation. Include every Goal terminal/cancel/fail surface. Enumerate exact
   call sites before source. Do not rely solely on
   Session state, executor_reserved or a cached ready/status result.
+  Include every runtime executing observation/capture caller above, especially the
+  Consultant driver's own pre-acquisition/per-submission source and identity reads.
 - An exact owner may perform its separately allowed factual observations, denial
   and cleanup without treating its own hold as an unrelated competing owner.
   Native/Source/Git calls remain outside SQLite/SharedStore locks. Inactive-owner
@@ -230,6 +253,12 @@ Consultant acquisition/input/continuation, live Consult blocking job admission,
 Lost job retaining its hold, physically disjoint positives, and protection of an
 already-running native/job peer when either side becomes Lost. Exercise actual
 reservations/consumers on both sides, not native-only labels or seeded job SQL.
+At an intersecting held Project root, exercise configured fsmonitor/hook and
+filter/textconv routes at actual status/registry/capture callers, in both reservation
+directions and with Lost work. Verify pre-acquisition Consultant capture has its own
+actual runtime owner, and held in-process status stays available without executing
+Git. Pure capture must report typedUnknown/refuse when filters/attributes prevent
+current source equivalence; raw bytes cannot impersonate Git-transformed content.
 
 Compiled causal mutants must reach the actual removal/admission/settlement/TUI
 consumers: omit hold lookup, release on terminal label/PID absence, forge owner from
@@ -252,6 +281,11 @@ Mutate omitted #60 job-reservation lookup at actual Consultant acquisition/input
 continuation, omitted Consultant lookup at runtime-job admission, and missing
 already-live peer→Lost enforcement. A live hook/test job must reach the intended
 consumer assertion; setup failure or blanket serialization is not causal credit.
+Also mutate Consultant capture before its runtime reservation, substitution of the
+later native owner/cleanup for that runtime job, and omitted executing-observation
+reservation checks at actual status/registry/capture and Consultant acquisition.
+Restore real positives, including configured helper cleanup and transformed-content
+capture, without changing native/user hooks or defaults for production acceptance.
 
 Run shared-state/native/Git/registry/Workflow regressions, fmt/clippy/build, exact
 Linux/macOS CI and independent immutable source reviews. Update README/master

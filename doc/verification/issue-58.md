@@ -62,3 +62,15 @@ both admission directions and already-live peer protection, plus actual-consumer
 mutants. It also adopts Low single composed epoch/all-table fencing for #60 and
 applicable #23/#43 authority. Req4 review pending; no producer, port, native profile,
 schema or runtime implementation is claimed.
+
+Req4 46ec2e3 completed two independent native request_changes reviews, both actual
+v3 owned cleanup verified. Both confirmed prior gaps closed; the remaining shared
+Medium is verified against newly clarified public #60 actual callers: status,
+registry and Consultant source/identity capture may execute Git/helpers outside
+native or Evidence jobs. Req5 makes EVERY such observation/capture a symmetric
+runtime reservation party, with strictly non-executing capture or actual #60 owner
+before effects and full runtime cleanup. A later Consultant owner cannot cover it;
+held in-process status remains available without Git freshness/death claims.
+Configured fsmonitor/filter/textconv controls and actual-consumer mutants cover
+pre-acquisition and both conflict directions. Req5 review pending; no runtime port,
+kernel profile or capture implementation claimed.
