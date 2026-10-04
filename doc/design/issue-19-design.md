@@ -3,7 +3,7 @@
 Status: actual main80452f4 is schema3; this unmerged component source is5. Proposed
 schema6 remains fixture-only/pre-code until its independent gate and actual composed
 source/native production release. No Phase::DecisionReview or native producer is
-created by prose. The schema6 canonical writer table below plus Design16–26 private
+created by prose. The schema6 canonical writer table below plus Design16–27 private
 port/bounds define proposed native authority. Earlier schema5 protocol examples are
 historical component context ONLY and cannot authorize a managed/public writer;
 artifact/encoding contracts continue where this table does not supersede them.
@@ -165,8 +165,9 @@ Native reservation validates prepared `checkpoint:head` (including `none`) with
 the scoped indexed head. Typed Issue 19 native inputs cannot omit that key; legacy
 non-pack callers retain their existing contract. The same comparison applies to
 first/new consumed dispatch-intent publication before the native wire, including
-Starting→Starting, and Starting→Running acknowledgement, so an intervening
-checkpoint prevents stale launch.
+Starting→Starting or a COMBINED unconsumed first-Running admission, so an intervening
+checkpoint prevents stale launch. Already consumed Starting→Running acknowledgement
+is historical under the canonical table and never re-compares the live head.
 Existing admitted Running/terminal observations remain valid and preserve immutable active
 attempt identity. `Store::validate_checkpoint_source` exposes the pure bounded
 comparison for native adapters; it performs no Git/filesystem work.
@@ -174,7 +175,8 @@ comparison for native adapters; it performs no Git/filesystem work.
 Admitted native Sessions keep their immutable launch head through approval/human
 observations and Lost diagnostics. Under the schema6 transition contract below,
 Lost is absorbing and cannot reenter Running through generic writes. New reservations, new consumed dispatch intents and
-Starting→Running publication compare the current head. Finalized frozen Cleanup binds its original historical head; a
+combined unconsumed first-Running admission compare the current head; consumed ACK
+retains its immutable admitted head. Finalized frozen Cleanup binds its original historical head; a
 checkpoint appended during Waiting Cleanup remains durable and cannot prevent
 final persistence after actual disposal. Goal descriptors preserve exact opaque
 legacy context envelopes with `typed_context=false`, without asserting typed pack
@@ -552,7 +554,8 @@ Schema6 does not implement hot migration of active native work. Before ANY schem
 mutation, under the same Immediate lock, inspect persisted scopes and REFUSE
 migration if ANY Session in ANY scope is nonterminal (including Lost), any active
 or malformed WorktreeLock remains, or any Workflow has active.is_some() OR owns a
-nonterminal Task while unfinished (including idle, held, or post-PR phases). A
+nonterminal Task REGARDLESS of finished (including idle, held, QUICK PrCreated or
+post-PR phases). A
 terminal Task plus active=None is non-owning historical Workflow even if finished
 is false: existing explicit cancellation/release produces this state. Validate
 history consistency and refuse contradictory/malformed ownership; never equate
@@ -597,13 +600,14 @@ through the preflight. Opening an unsupported version rejects before mutation.
 
 Every v6 Store connection registers a private zero-argument SQLite function
 `rrx_writer_v6()` returning 6 before migration or application writes. Add distinct
-BEFORE INSERT/UPDATE/DELETE fence triggers to EVERY application table: projects,
-goals, tasks, records, context_versions, usage, audit, checkpoint_heads,
-prepared_pack_inputs, session_input_acks, phase_session_owners,
-context_admission_epochs, native_phase_operations, native_phase_settlements and
-workflow_context_counters.
-This is the candidate6 component table inventory, not the first deployed composed
-schema inventory (Design21 below). Each requires this function to return
+BEFORE INSERT/UPDATE/DELETE fence triggers to EVERY non-sqlite_ application table,
+including projects/goals/tasks/records/context_versions/usage/audit/checkpoint_heads,
+prepared_pack_inputs/session_input_acks/phase_session_owners/context_admission_epochs,
+native_phase_operations/native_phase_settlements/workflow_context_counters,
+workflow_observation_sources/workflow_observation_outcomes and EVERY actually composed
+authority table such as goal_authority. This is an open exhaustive schema-enumeration
+rule, not a closed literal table allowlist. Final DDL goldens enumerate the actual
+composed source schema, never this candidate component list alone. Each requires this function to return
 6. Register UTF8|DETERMINISTIC|INNOCUOUS, never DIRECTONLY, and verify
 writes with trusted_schema=OFF. A schema-enumerating regression requires every non-sqlite_ application
 table to have all three compatibility triggers; new tables cannot silently escape.
@@ -1752,7 +1756,7 @@ new-open-attempt validation never substitutes a historical receipt for current p
 | Post-marker, no Session/allocation, no receipt | Held for actual supervisor settlement or private Issue14 recovery |
 | Allocated current failed preparation with NoCurrentDispatch receipt | Non-success closure/TerminalRecovery with exact frozen preparation/terminal receipt body; unbound session_id may stay None |
 | Allocated older restored terminal with NoCurrentDispatch receipt | RestoredPriorNotAdmitted failure/interruption/TerminalRecovery only; exact frozen checksum and no current admitted/consumed input; unbound session_id stays None |
-| Allocated known current terminal receipt | Non-success TerminalRecovery can leave unbound session_id None with exact allocation/current receipt proof; existing metadata/claim checks; Succeeded additionally bound Exited + actual successful outcome + exact current admitted/consumed pair |
+| Allocated known current terminal receipt | Exact active current unbound known failure may use separate KnownCurrentFailureClosure without SessionID write (Design27); Cancelled/Failed Task TerminalRecovery remains separate; Succeeded additionally bound Exited + actual successful outcome + exact current admitted/consumed pair |
 | Missing operation for marked/allocated post-epoch native context, stale/foreign receipt, Lost/uncertain owner | Corruption/hold; never generic label fallback |
 
 Both no-Session and allocated-but-unbound receipt rows explicitly update retry and
@@ -2594,7 +2598,9 @@ repeat outcomes may reuse the prior entry under Design26, releasing the unused s
 There is never a65th unique observation or an unrecorded changed outcome. Reserve64 KiB
 within that body cap for exact terminal/hold/closure metadata; ordinary claim/history/
 publication writes cannot consume that headroom. Existing bound text/authority/history/
-context limits still apply. SQLite enforces UTF-8 body bytes before JSON scans and Rust
+context limits still apply. Every JSON-reading SQLite trigger must first enforce UTF-8 body bytes within
+its OWN body/explicit sequential CASE before any JSON call (trigger ordering is not
+a guarantee); a separate length trigger alone is insufficient. Rust
 checks the complete rendered Record before every Workflow write; receipts remain
 separate so a bounded hold cannot erase owned cleanup. Overflow holds with evidence/
 operations intact, not repeated retries that reset review budgets. Boundary63/64/65 and
@@ -2689,7 +2695,7 @@ never claims the previous native history forgot facts. Exhaustive classification
 | --- | --- |
 | Scope/actor/provider/profile/role/worktree/repository:identity, generation | EXACT unchanged; mismatch Fresh, foreign identity rejects |
 | instruction:project.v2 / goal.v2 / task.v2, governing policy/evaluator/constraints, config:* / rule:* / rules:* and environment-name/ref declarations | EXACT unchanged complete key set/digests; missing/added/changed authority Fresh |
-| checkpoint:head + own historical checkpoint; instruction:pack_facts.v2 / legacy spelling under explicit projection version | Own consecutive factual head advance/new decisions/findings/completed facts may be new input; full fresh frame/head checks still required; separate references below are not hidden inside pack_facts |
+| checkpoint:head + own historical checkpoint; instruction:pack_facts.v2 / legacy spelling under explicit projection version | ONLY typed append-only facts (every prior list is an exact prefix, old scalar facts unchanged) may be new input; any removal/replacement/reordering routes Fresh, aggregate pack_facts digest cannot route; full fresh frame/head checks still required; references below remain separate |
 | promoted_consultation and artifact/reference scope/path/identity/digest manifest (typed pack fields, even if represented only inside pack_facts) | ANY revoked/removed/replaced reference Fresh; addition also Fresh unless separately reviewed monotonic reference rule; identical immutable referenced snapshot may Continue |
 | actual captured HEAD/tree, repository:inventory/map manifest, worktree:* source content/missing/dirty hashes and declared Task revision | New source facts may Continue only within unchanged semantic/ref authority and exact same accepted scope/phase chain; source movement into governing/reference category uses that stricter row |
 | workflow:* or raw bookkeeping versions | Not accepted semantic keys in the phase source map; malformed producer rejects, never grant Continue |
@@ -2753,10 +2759,10 @@ revoked lifecycle/lock and stale semantic version→zero-wire controls. An immut
 comparison-removal mutant must causally reach the real grant consumer.
 
 New post-epoch GateObservation is a compact reference, never an embedded SourceSnapshot
-map. An immutable scoped observation-source blob stores the complete sorted source map
+map. Private immutable workflow_observation_sources stores the complete sorted source map
 once per exact scope/digest (maximum2 MiB, actual encoded bytes counted); its digest,
 revision and producer projection bind its immutable ContextVersion/observation authority.
-Each complete outcome/evidence/error blob is bounded to1 MiB of encoded UTF-8;
+Private immutable workflow_observation_outcomes stores each complete outcome/evidence/error blob is bounded to1 MiB of encoded UTF-8;
 counts/references share the64-unique-observation ceiling. Overflow retains the bounded
 observed prefix with exact overflow/count provenance and cannot certify Passed. Large
 outcome/evidence/error text is separately bounded immutable content with exact references. Workflow embeds at most512 UTF-8 bytes per observation entry: typed source-
@@ -2838,3 +2844,58 @@ Notification is only a wake hint, never the sole proof/trigger. Early-before-dro
 lost/full/closed notification channels and duplicate notifications must converge to one
 binding/audit without dispatch/fail/retry; the notification-only mutant must fail.
 These actual19/23/43 source-positive and14 authenticated-restart gates remain pending.
+
+
+### Design27: drained legacy history and exact unbound failure closure
+
+Migration refuses EVERY pre-epoch Workflow owning a nonterminal Task regardless of
+Workflow.finished. Actual5 QUICK Pr sets finished=true/active=None with TaskPrCreated;
+request_finalization later resumes MergeGate/Cleanup. This is operational post-effect
+history, not drained terminal history. Refuse unchanged DB bytes/version/audit and
+require compatible old-runtime completion or explicit terminal cancellation/drain
+and actual external reconciliation. TerminalTask+activeNone, even finishedfalse, may
+migrate as validated non-owning immutable history. No pre-epoch Workflow gets fabricated
+context counter/tail/admission rows or post-epoch progression/finalization. S6-01 includes
+actual old5 QUICK PrCreated, finished ReadyForPr nonterminal and terminal non-owning
+controls; removing the finished-independent predicate must admit the dangerous real
+fixture. Ordinary/recovery availability limits remain explicit, never a hot-upgrade claim.
+
+A separate private KnownCurrentFailureClosure handles an allocated but unbound active
+attempt after a genuine sealed KnownCurrentTerminal FAILURE and complete actual settlement.
+It leaves history.session_id None and cannot invoke success-only43binding or infer outcome
+from start-Err/Session label/public enum/JSON. Its transaction checks original immutable
+marker frame against current P/G/T/Workflow/context/input/actor/source/full locks, exact
+operation/allocation/current Session body/version/admitted-consumed provenance and genuine
+known failure receipt. It writes only the policy-authorized non-success phase closure,
+operation.phaseClosed and one bounded factual failure audit atomically, plus actual
+existing23/8 authorized lifecycle consequences in their coordinated transaction contract.
+This is not an inactive-owner exemption. TaskFail requires actual existing lifecycle policy;
+ordinary PhaseFailed may preserve an admissible Task for policy-authorized retry. Subsequent
+retry is a NEW independently admitted operation/input under current policy and shared review
+lineage; no receipt reuse, immediate native input or unrelated claim/owner release.
+Missing/stale/unknown outcome/cohort cleanup stays held14. Actual managed supervisor+
+authoritative driver lost-start-result failure→exact close then fresh retry is S6-09;
+forged/stale/unknown receipt, original-frame drift and public start-Err negatives retain
+claim with zero retry dispatch. Consumer closure/receipt/source checks receive causal mutants.
+This actual19/23/8 source port remains pending, not an implemented Phase variant/API.
+
+S6-05 explicitly covers consumed Starting, live own checkpoint append, then historical
+Running ACK succeeding with original input pins. Native-originated permission cancellation
+(including Claude control_cancel_request) is private historical observation with the existing
+provider-specific target-state/activity predicate; Blocked→Running still rejects. Codex
+OperationDecision::Cancel is a fixed non-grant protocol response via DenyHistorical, never
+ALLOW. S6-05/06 inventory both actual writer paths and their valid/currency/lifecycle no-wire
+controls; failure keeps owned cleanup, no fallback to generic writes or invented permissions.
+
+Typed per-family pack facts must preserve exact prior-list prefixes and old scalar facts
+for Continue. Drop/replacement/reordering or an unclassifiable projection forces Fresh,
+even if checkpoint head also advances; an aggregate pack_facts hash supplies no comparison
+proof. Old Decision removal and failing→passing replacement controls and selector mutant
+reach the real pre-marker routing. Caller factual classification remains unverified.
+
+All-table SQL fencing names the new observation-source/outcome tables and composed23
+Goal authority explicitly; schema enumeration includes every application table. Each
+JSON-reading marker/receipt/body trigger independently checks encoded length before its
+JSON calls using explicit sequential short-circuit CASE or one ordered trigger body;
+SQLite BEFORE-trigger order is unspecified. S6-13 oversized rawSQL body control and
+length-before-JSON mutant verify bounded rejection without table/audit changes.

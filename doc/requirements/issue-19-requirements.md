@@ -18,7 +18,7 @@ passed fixture. The matrix is the single current native acceptance inventory.
 | S6-06 | AllowCurrent + actual grant versus private DenyHistorical | Current23/head/immutable governing sources/fullscope/locks forALLOW; actual Executor own-write allowed; provider-specific factual DENY/activity, separate journals |
 | S6-07 | Owned Lost observation / no generic transition | Universal absorbing hold, remembered pins, no receipt/release or caller JSON cleanup |
 | S6-08 | Actual supervisor settlement + atomic restoration | KnownCurrentTerminal/eligible NoCurrentDispatch, complete cohort proof; consumedzeroWire held14 |
-| S6-09 | Receipt freeze + all closure/replacement consumers | Exact body/version/claim; allocated-unbound Cancelled failure release without SessionID, no success |
+| S6-09 | Receipt freeze + all closure/replacement consumers | Exact body/version/claim; allocated-unbound actual known-failure closure and Cancelled/Failed terminal recovery without SessionID; no success |
 | S6-10 | Sole active43 record-only binding/reconcile | Actual original frame+private owner/current or sealed successful receipt; noTask/P/G/Session/lock bump; passivepoll read-only |
 | S6-11 | Sealed Fresh/Continue selector | Latest closed delivery/predecessor+registry, exhaustive typed family/reference checks, failedprewireContinue→Fresh |
 | S6-12 | All checkpoint/pack render and publication consumers | EVERY own/promoted event caller-classified; immutable snapshots/current head vs admitted historical closure |
@@ -28,7 +28,7 @@ passed fixture. The matrix is the single current native acceptance inventory.
 | S6-16 | Exact composed projection/schema/caller readiness | Actual5/6/7/Generic/Fake and23/43/58/60 integration; synthetic producer mechanics≠production native acceptance |
 
 Each stable key requires named exact consumer tests AND meaningful causal mutants
-in final source evidence; it is not an invented available API or a checkmark. Design16–26
+in final source evidence; it is not an invented available API or a checkmark. Design16–27
 and the canonical writer table define the required private predicates. Source evidence
 must map each key to actual fixture/result SHA and list unready production ports.
 
@@ -619,3 +619,13 @@ clean settlement. Every typed23 Goal writer preserves current context pointer in
 Actual19/23/43 co-integration is a source-positive gate; seeded/stub ports cannot pass.
 Original43 raw pins retain conservative hold/resume recovery availability limits;14 remains
 pending. S6-06/13/14/16 include these causal controls, not implemented source6 claims.
+
+
+Design27 migration refuses every pre-epoch nonterminal Workflow Task, including finished
+QUICK PrCreated, without inventing post-epoch counter/tail authority. Terminal non-owning
+history remains migratable/read-only. Separate actual known-current failure closure may
+close exact active unbound failure without SessionID and only under existing23/8 lifecycle
+policy; subsequent retry is separately admitted, missing/stale/unknown proof stays held14.
+S6-01/05/06/09/11/13 cover old QUICK refusal, historical consumed ACK after append, actual
+fixed/native cancellation paths, typed append-only facts orFresh, and every JSON trigger's
+own pre-parse byte bound plus all-table fences. These remain source6-positive pending gates.
