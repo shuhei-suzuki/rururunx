@@ -100,8 +100,9 @@ after PR/merge effects, an append may hold the Task until explicit Issue 13/23
 reconciliation is available. This core demonstrates auditable condensation and
 constraint preservation, but does not claim automatic post-PR recovery. A bound
 owned worktree created by the existing WorktreeManager remains necessary before Engine initialization.
-Cross-Task promotion copies Consultant-origin facts only; it preserves the target
-Goal/Project/rule constraints and does not implicitly copy source Executor facts.
+Cross-Task promotion selects caller-classified Consultant-origin history only; its
+unverified role/native provenance is explicit in the target frame. It preserves
+target Goal/Project/rule constraints and does not implicitly select source Executor history.
 
 Ordered schema 4→5 adds private immutable prepared-frame authority for standalone
 selection. Preparation publishes scope/context version/HEAD/source versions/UTF-8
@@ -274,8 +275,10 @@ runtimes and owned groups stopped/drained before migration.
 
 
 The universal Lost safety change intentionally replaces legacy Lost-to-Stopped
-settlement: Goal publication/Project removal may stay held until trusted #14
-recovery, and actual legacy fixtures must assert that hold. Initial factual
+settlement. Candidate6 Task fixtures use actual managed ownership to prove held
+Lost; NoTask initial/live/Lost publication and old live/Lost migration refuse.
+Goal-publication/Project-removal Lost positive controls require the actual58 producer
+and trusted14 recovery, not generic Starting seeding. Initial factual
 terminal Consultant history remains supported. Protected input dispatch uses an
 exact typed runtime intent and private consumed UUID per admitted input version;
 a second delivery at the same (Session UUID,input_version) rejects, while identical intent means observation
@@ -513,3 +516,15 @@ is immutable accepted definition. Drop must not block, aggregate authority tuple
 precede phase publication/marker, and decision-only native review still needs actual
 operation/slot ownership. Historical component waiting/Lost/resume positives do not
 assert schema6 launch permission. All require actual source/caller gate evidence.
+
+
+Design22 adds a handle-bound AllowCurrent branch requiring actual trusted grant
+proof, exact current CPP/head/source plus full NativeCAS P/G/T/lifecycle/lock/own-
+Session checks before wire; historical observation never grants. Candidate6 DDL/
+state construction is internal fixture-only: actual main is3 and unmerged component
+baseline is5, each preserved until actual composed release/migration/profile gates. NoTask Lost positives belong to
+actual58 producer; candidate refusal/drain controls stay reachable. Latest closed
+Session-less predecessor selects Fresh, refusal chain cannot be skipped. Workflow
+history256/generation64 and atomic phase-context publication bound retry growth.
+Promoted caller-classified Consultant history renders its unverified provenance.
+These are corrected pre-code contracts, not schema6 implementation/acceptance.

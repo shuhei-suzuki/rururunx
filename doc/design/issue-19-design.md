@@ -174,8 +174,11 @@ after PR/merge effects, an append may hold the Task until explicit Issue 13/23
 reconciliation is available. This core demonstrates auditable condensation and
 constraint preservation, but does not claim automatic post-PR recovery. A bound
 owned worktree created by the existing WorktreeManager remains necessary before Engine initialization.
-Cross-Task promotion copies Consultant-origin facts only; it preserves the target
-Goal/Project/rule constraints and does not implicitly copy source Executor facts.
+Cross-Task promotion selects caller-classified Consultant-origin history only; it
+preserves the target Goal/Project/rule constraints and does not implicitly select
+source Executor history. Initial terminal Consultant role is unverified caller
+classification, not evidence of a native Consultant process or truth of its prose.
+Promoted content must render that classification explicitly (Design22 below).
 
 Ordered schema 4→5 adds private immutable prepared-frame authority for standalone
 selection. Preparation publishes scope/context version/HEAD/source versions/UTF-8
@@ -1348,9 +1351,12 @@ terminal factual/Consultant history remains allowed. Only future reviewed privat
 Every generic and native new-Session INSERT rejects initial Lost, WaitingApproval
 and WaitingHuman in every scope, including Project/Goal and legacy Task history.
 Lost is a conservative transition of a persisted nonterminal owned Session, never
-an initial record that creates an unresolvable fabricated hold. Existing Goal-pack
-Lost fixtures first persist legitimate Starting/Running ownership, then transition
-the same ID to Lost; initial terminal factual history remains a separate control.
+an initial record that creates an unresolvable fabricated hold. Candidate6 has no
+legitimate NoTask live owner before58; Goal/Project fixtures therefore prove initial
+nonterminal/Lost and terminal→Lost refusal and old live/Lost migration refusal. The
+positive Goal-publication/Project-removal Lost hold fixture belongs to actual58
+owned producer integration. Managed Task fixtures use the actual19 operation to
+reach Lost and prove its hold. Initial terminal factual history is a separate control.
 
 The phase-owner reader needs an explicit migration epoch to distinguish old typed
 contexts without allocations from post6 absence violations. Private fenced table
@@ -1555,13 +1561,14 @@ operation, even an identical body that would bump its Record version. This inclu
 state, diagnostics, actor fields, recovery journals, terminal observations,
 RestoredPrior and Lost updates. Separate Usage/audit remain allowed and bounded.
 The actual supervisor uses observe_managed_native for nonterminal historical Acked
-observations, pending permission/decision publication, fixed DENY reentry and
+observations, pending permission publication, fixed DENY reentry and
 monotonic uncertain/Lost diagnostics. This private nonserializable observation is
 bound to the exact operation/Session/remembered versions and unchanged prepared or
 admitted actor/input pins. It cannot create admission, consumption, allocation,
 terminal restoration or settlement. Those use their dedicated private ports.
-Post-consumption ALLOW still needs full-current NativeCAS/Broker before wire; private
-historical DENY preserves each provider's existing activity/write constraints and
+Post-consumption ALLOW uses the explicit handle-bound AllowCurrent branch with
+full-current NativeCAS/Broker before wire (Design22 below); private historical DENY
+preserves each provider's existing activity/write constraints and
 does not grant authority. No broad ProjectBlocked/lifecycle exemption is added.
 All five managed writers migrate every Session publication, not just first admission.
 
@@ -2128,8 +2135,13 @@ in every generic audit/audit_if_current path. Only actual ports emit inserted,
 effects_started, abandoned, settlement/phase_closed events; caller JSON cannot
 forge operator-facing producer history.
 
-While schema6 is a gated integration candidate, plain Store::open(path) creates a
-fresh empty current database or opens an already-current database. An existing
+Actual merged main80452f4 is schema3; the unmerged Issue19 component baseline is
+schema5. Neither baseline automatically becomes candidate6. The ordinary/default
+build retains its exact source baseline until the actual composed release gate passes. Candidate6 construction is reachable ONLY
+through an explicit private fixture constructor/test-only or non-default internal
+fixture build, never ordinary rrx Store::open or shipped CLI configuration. In that
+scoped candidate fixture build, the fixture constructor creates fresh candidate
+state; its current-version open can reopen that exact isolated fixture. An existing
 older application database returns MigrationRequired before DDL, user_version,
 audit, journal-mode or reconciliation mutation. A deliberate
 Store::migrate_to_current(path, expected_old_schema) library entry performs the
@@ -2264,11 +2276,106 @@ nonterminal writes reject; own managed Lost uses actual private observation, sta
 Supported continuation is only the sealed managed path with the actual private owner.
 These supersede old standalone/component positives without making native readiness claims.
 
-An ApprovalReviewer is action-decision-only, never native-ownership-free. Actual
-Workflow DecisionReview uses its typed native phase and managed19 operation/receipt.
+An ApprovalReviewer is action-decision-only, never native-ownership-free. Existing
+Workflow RequirementsReview/DesignReview/ImplementationReview/SecurityReview phases
+use typed managed19 Reviewer operations/receipts; no Phase::DecisionReview exists.
 Cross-Agent Broker review needs the separately reviewed9/10 decision-member/slot lease
 bound to original request/operation, exact input/source and its own actual native
 settlement; no such DecisionTask port is claimed today. Consultant58 cannot cover it.
 Until the exact owned producer composes, approval-review native launch is Unsupported
 before effects; public role/operation-free wording cannot adopt an Executor frame or
 release native work through a terminal label.
+
+
+### Design22: current managed grants and fixture-only candidate persistence
+
+OwnedNativeObservation has an exhaustive private branch distinction. Historical
+Acked observation/DenyHistorical carries exact operation, Session and remembered
+version/input/actor pins and preserves the existing provider-specific activity
+predicate; it never grants an operation. AllowCurrent additionally carries actual
+nonserializable permission-grant authority from the trusted native policy/Broker
+integration, bound to the exact pending native request/tool operation, decision,
+original admitted frame and current operation. A PermissionDecision enum, public
+JSON, operation_intent string, ScopeSnapshot alone or row existence is not that proof.
+The actual supervisor possesses the operation; its private grant branch publishes
+bounded operation journal and any required Session lifecycle update atomically.
+
+AllowCurrent performs the SAME full NativeCAS current P/G/T and own-Session versions,
+active Goal/nonterminal Task, Executor ReadyForPr/PrCreated and existing worktree
+constraints, plus composed23 Running-Goal policy, complete lock-set and exact private
+operation/frame/pair predicates in one Immediate transaction before ALLOW bytes.
+Current CPP pointer/checkpoint head, exact complete prepared payload/source authority
+and relevant semantic/current source observation remain mandatory even though the
+prepared consumed UUID is unchanged. Capture bounded physical hashes outside the
+Store mutex, then revalidate their source/owner/version pins in the transaction;
+no external Git/IO runs inside it and no OS-atomic filesystem claim is made. A current
+owned grant does NOT create another prepared admission/consumption or alter its pins.
+Publication failure/stale head/lifecycle/lock/source emits zero grant wire bytes and
+retains the operation. There is no fallback to historical observe or generic CAS.
+
+The private permission producer/#10 integration is not claimed present. Unsupported
+managed ALLOW fails before grant effects until its actual trusted producer composes;
+controlled production-consumer fixtures must call the real private operation/grant
+port, not seed JSON/SQL. Inventory Claude commit_current, Codex Approve, Generic/Grok
+permission surfaces and every mid-turn operation journal consumer. Controls prove
+current ALLOW→wire, Paused Goal/held Task/changed P/G/T/own Session/lock/current head
+or source→zero wire, and a caller-reachable mutant removing the ALLOW-only current
+predicate. Historical DENY keeps the Claude Blocked no-wire and Codex unchanged
+Waiting fixed-Decline asymmetry; no additional DENY privilege/fence is inferred.
+
+Candidate6 source/DDL must not be merged as a standalone default runtime upgrade.
+Merged main ordinary Store/state remains its actual schema3; unmerged Issue19
+component ordinary Store/state remains5 until one actual reviewed composed source/
+CLI migration release is ready. No main5 state or deployed5 release is asserted.
+Internal candidate fixture builds explicitly label artifacts nonproduction and
+cannot open user state or advertise native capability/readiness. The default-build
+control pins its exact baseline (main3 or unmerged component5) and creates/reopens
+that version; isolated candidate control creates/reopens6, and
+ordinary runtime refuses candidate fixture state instead of silently adopting it.
+Candidate6 DBs are NOT a supported production migration origin and may not contain
+real user/native state; teardown requires actual safe owned cleanup, never force
+upgrade of held fixtures. The first composed deployment receives its exact final
+version/DDL/projection, complete native supported-profile gates and trusted deliberate
+migration ingress in the co-integration review. No stranded user6 state or default-baseline
+regression is accepted merely by a docs-only release disclaimer. Native old-writer
+compatibility proofs run against actual isolated candidate/composed fixture helpers.
+
+Continue predecessor means the LATEST closed native attempt in the exact same
+Workflow generation/role chain, INCLUDING Session-less attempts. If that entry has
+no bound Session, selects Fresh; no skipping backwards to a convenient old UUID.
+A privately recorded Fresh-only refusal remains in the chain until a successfully
+admitted/settled Fresh attempt establishes a new eligible owner; pure pristine
+attempts do not erase it. When Continue is eligible, the latest Session-bearing
+operation must also be the operation that last actually delivered admitted input
+to that exact native UUID; authority comparison uses its immutable frame/receipt
+and the current semantic/source contract. Record-only historical native labels cannot
+create delivery. Test A→B(Continue refusal/Fresh-only)→C(pristine no Session)→D Fresh,
+unchanged chain budget/author/history, no registry/wire query for an older A bypass.
+
+Bound new post-epoch Workflow history to256 entries and64 generations, including
+native and EvidencePort attempts and failed/refused entries. The finite history
+bounds SQL history scans and Engine phase-context growth to at most256 fresh phase
+contexts (each at most1 MiB) for this Workflow. Each phase ContextVersion is published
+with its corresponding new attempt in the same atomic transition; no orphaned phase
+pack can grow through a failed reserve. Existing reentry never adds history/context.
+Check caps before new phase publication, reservation or marker/effects; overflow is
+a typed capacity hold with the prior state/owners/evidence unchanged, not an infinite
+source-drift retry loop or eviction. Legacy pre-epoch terminal histories stay read-only
+and cannot be adopted as new managed ownership. Scope reorganization never launders
+review obligations/exhausted lineage9 or physical holds. Controls at255/256/257
+history entries and63/64/65 generations prove no overflow ContextVersion/operation,
+retained exact history and no hidden reset; trigger work is O(256) worst case per
+Workflow update. Standalone Goal/artifact histories have their separate retention
+contracts; this cap does not claim a global DB size bound.
+
+Role-classified factual Consultant history is explicitly UNVERIFIED CALLER CLASSIFICATION.
+Every cross-Task promoted event includes that marker in the typed provenance and
+actual rendered target frame; its content/hash proves captured bytes, not native
+origin or assertions. Unknown/legacy role provenance defaults to caller-classified.
+No generic initial terminal record can produce owned-native role provenance; future
+actual retained58 or separately reviewed producer may supply scoped native proof
+only through its actual private port. This never broadens58 to Task Consultant launch.
+Target accepted Goal/Task constraints remain authoritative and original scope/hash/
+actor/event provenance remains immutable. Test a generically inserted Consultant
+terminal history promotes only with the explicit marker, and caller JSON/role change
+cannot render it as verified native evidence or clear a blocker.

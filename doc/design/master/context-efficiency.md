@@ -446,3 +446,9 @@ defines runtime-aware Continue, ordered marker/receipt SQL backstops and generic
 NoTask live Session denial pending58. Candidate6 is component-only; first production
 schema/projection must be the actual reviewed composition. Decision-only review still
 owns native operations. Current source5 is unchanged by these proposed gates.
+
+[Design22](../issue-19-design.md#design22-current-managed-grants-and-fixture-only-candidate-persistence)
+requires a separate owned current grant branch, fixture-only candidate persistence,
+finite Workflow phase history and explicit unverified promoted role provenance.
+Actual main3/unmerged component5 defaults remain unchanged until composed release; future approval
+slot/native producer, recovery and Consultant ports are not available by this text.
