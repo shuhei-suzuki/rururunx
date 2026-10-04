@@ -116,7 +116,10 @@ Workflow phase/generation/active claim and required review-instruction/skill
 digest, round/target,
 core/specialization hashes, policy/roster, per-member prior-claim exposure
 (author slot/text hash), context provenance, individual settled
-outcomes and verification/evidence references. It is evidence, not merge authority.
+outcomes and verification/evidence references. Prior-round claims and their original
+hashes/actors are in the byte-identical shared core; per-member exposure entries attest that
+same delivery, never conceal a different prior claim set. Specialization is separately
+declared/hashed and cannot remove this core. It is evidence, not merge authority.
 
 | Slot result | Counting and round consequence |
 | --- | --- |
@@ -217,7 +220,7 @@ without an implicit self-review exception. With an MVP executor in that roster,
 default selection rejects before input. An explicit visible allow-self independent-
 Session policy makes that same preset usable; the author slot is never eligible
 as a blocker-resolution confirmer. Acceptance exercises both default rejection
-and actual supported explicit-policy execution, rather than calling the unresolved
+and actual registered production-adapter explicit-policy consumer execution with a declared synthetic native transport peer, rather than calling the unresolved
 default a working configuration. Formal policies and the triple preset default require explicit
 resolved model/
 effort configuration before input; unresolved None rejects. An explicit advisory
@@ -251,19 +254,28 @@ inherits unresolved potential/verified blockers, adjudication and cumulative
 limits across roster, policy and generation changes. Target change never erases
 unresolved findings; verification must explicitly resolve applicability or fixes.
 Lineage exhaustion can terminate without certificate or hold for explicit Task
-scope decomposition; it cannot reset into a new passing Set. Decomposition never
-certifies the old phase and must preserve unresolved obligations in Goal history.
+scope decomposition; it cannot reset into a new passing Set. Decomposition requires an explicit
+Human actor/reason, never autonomous Goal follow-up creation. Child Tasks inherit unresolved
+potential/verified blocker vetoes and original evidence, cumulative author attribution from the
+parent frozen base, all remaining budgets and the same parent obligation-lineage identity.
+Counters/quota are shared across those descendants, not restarted per child Task. The inherited
+findings require the same independent resolution before any child certificate. Decomposition never
+certifies the old phase; Goal history alone is insufficient enforcement.
 
 Hold exits are explicit: persistent nonblocking REQUEST_CHANGES or too few approvals
-requires an authorized Human/Workflow choice of a new full-roster round, explicit
-policy relaxation above the frozen mandatory floor, or termination without a
-certificate. Same-target Workflow reruns after a nonapproval require a recorded new repository/
-verification fact; without it, only explicit authorized Human adjudication can
+requires an authorized Human/Workflow choice of a new full-roster round under its existing retry authority, explicit
+Human-only post-observation policy relaxation above the frozen mandatory floor, or termination without a
+certificate. Automated Workflow may not relax a frozen policy in response to opinions. A
+deterministic conditional policy branch frozen before first admission is not post-observation
+relaxation; its condition/authority/outcome are retained and it cannot weaken mandatory floors
+or clear blockers. Same-target Workflow reruns after a nonapproval require a recorded new repository/verification fact; without it, only explicit authorized Human adjudication can
 request another round. Autonomous same-target causes are explicit: (a) one
-confirmation round per (Task/phase lineage, target tree) after nonapproval, for a newly recorded verification inspection
+confirmation round per (Task/phase obligation lineage, target tree) after nonapproval or a
+potential-blocker hold (including APPROVE with a potential blocker), for a newly recorded
+verification inspection
 with exact locations, target and check/observed-source digest not used for that
 finding in any prior round. The inspection must address a retained finding or explicit concern
-of a nonapproving slot; an unrelated inspection cannot authorize resampling that slot. Even
+of a nonapproving or potential-blocker-bearing slot; an unrelated inspection cannot authorize resampling that slot. Even
 inspections of different findings cannot authorize a second autonomous confirmation round for
 the same lineage/tree. Further same-tree confirmation needs explicit Human adjudication; an
 executor rationale alone is insufficient and remains
@@ -279,8 +291,13 @@ APPROVE. ESCALATE/dispute requires authorized Human adjudication,
 then a new full-roster round or termination without certificate; malformed/partial
 output needs independently recorded inspection/resolution and new round; unknown
 suffix requires new successful review rather than pretending it was examined;
-quota/round exhaustion requires termination without certificate or explicit scope
-decomposition; Lost remains held until trusted native #14 cleanup. None of these
+quota/round exhaustion requires termination without certificate or explicit Human-authorized scope
+decomposition with inherited obligation lineage; Lost remains held until trusted native #14
+cleanup. The specific hazard is accepting generic late terminal/cleanup JSON as a claimed
+continuously owned supervisor without a private continuity proof bound to the persisted Lost
+owner/attempt. That would launder uncertain ownership into capacity release or fresh dispatch.
+No such reviewed atomic recovery handoff exists here, so factual late evidence is retained but
+cannot authorize release. None of these
 exits counts the prior failed/non-approving slot as approval.
 
 Rule, policy, context/Workflow generation or required instruction change during a
@@ -422,7 +439,7 @@ are not runtime proof.
 11. Supersession retains unresolved obligations and lineage floors across executor,
     roster, policy and generation changes. Cumulative 64-round/128-MiB limits never
     reset: supersession at round 63 permits only one further round. Scope decomposition
-    preserves Goal obligations and cannot certify the prior phase.
+    preserves the same obligation-lineage vetoes, author attribution and budgets in descendants; Human authorization is required and no child certifies the prior phase.
 12. Class/Project policy floors reject missing/weaker policies (including blocking
     {Critical,High} without Medium), early-stop under STRICT/security and absent
     required configuration. Pairwise independence/delta-author exclusion and unknown
@@ -583,8 +600,8 @@ explicit eligible custom roster. Human authorship remains separately attributed.
     entries (Issue bodies or linked requirements) that own the specific inherited
     obligations: #14 exact ReviewSet Lost/uncertain member ownership/locks/permits;
     #20 production deterministic two/Triple bundle/delta/expansion; #16 real native
-    two/Triple isolation/results/efficiency plus timeout/retry/partial-output hold
-    frequencies and Human-interruption impact. If a public owner does not carry
+    two/Triple isolation/results/efficiency plus timeout/retry/partial-output and settlement-expiry Lost hold
+    frequencies, retained capacity/Task-time and Human-interruption impact. If a public owner does not carry
     its obligation, this Issue cannot close until that tracking is concrete. This
     requires traceability, not completion of #20 or a cyclic merge dependency.
     Status/Human attention must state that no in-runtime Human action can release
@@ -618,3 +635,31 @@ two native families. Supported alternatives are an eligible custom roster meetin
 floor, or explicit Human adjudication/termination; allow-self never supplies the missing
 independent approval. #16 must exercise this availability limit alongside supported Triple
 configurations.
+
+Every disposition removing a potential/verified blocker from the effective veto
+uses the same explicit Human/original eligible finder/two diverse eligible confirmer
+rule. Fix, false-positive dismissal, severity downgrade, not-applicable, duplicate
+and superseded-by-target-change are typed dispositions; unknown dispositions reject.
+Actual source removal/checks are facts, but executor-only applicability conclusions
+never clear the blocker. Criteria 9/19 test target-change applicability and duplicate
+claims under all/quorum/any/supersession: unresolved independent confirmation holds.
+
+Criterion 11 tests Human-authorized decomposition after lineage exhaustion with an
+open High: descendants retain its veto, original base authors and shared exhausted
+round/quota counters. A child certificate remains held; relabeling the frozen child
+base or creating an autonomous Goal follow-up cannot restore eligibility/budget.
+
+Criteria 1/14/18 prove actual parallel admission with production adapters and reviewed
+synthetic contract peers: with M available resource shares and local parallelism M,
+a causal peer barrier keeps every member unsettled until all M admissions occur.
+Observed admission-before-any-settlement plus owned operation overlap is retained
+as evidence for two and Triple rosters. Parallelism 1 reports serialized execution,
+never parallel success; unavailable shares queue visibly without bypass.
+
+Criterion 3 rejects automatic post-opinion all→quorum relaxation; explicit Human
+relaxation above floors starts a new retained round. A frozen pre-admission conditional
+policy is separately attested, not fabricated after dissent. Criterion 18 allows one
+concern-linked inspection confirmation for APPROVE with a potential Medium blocker;
+it still requires independent blocker resolution and rejects a second same-tree
+autonomous confirmation. Criterion 21's #16 handoff must include settlement-expiry
+Lost frequency and retained capacity/Task-time, not only inference timeout counts.

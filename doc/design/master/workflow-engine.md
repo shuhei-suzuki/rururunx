@@ -379,3 +379,8 @@ The implemented Workflow phase owns one native Reviewer Session through
 PhaseAttempt.session_id. A parallel ReviewSet roster and certificates are not yet
 implemented. Current context ownership does not permit per-member Session cloning
 or arbitrary role-based delegation.
+
+Review roster examples including the current executor or any cumulative author family
+require explicit allow-self independent Sessions; those opinions never meet the
+independent approval floor. Default selection rejects before member input. Actual
+registered-adapter synthetic consumer proof is distinct from real native #16 success.

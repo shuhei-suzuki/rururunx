@@ -1260,3 +1260,8 @@ The MVP is accepted when all of the following are demonstrable:
 51. Runtime-wide status/TUI groups activity by Project → Goal → Task.
 52. Runtime restart restores Project registry and multi-project Goal/Task scheduling state.
 53. Dogfooding demonstrates at least two repositories progressing concurrently with no cross-project context/worktree contamination.
+
+Review roster examples including the current executor or any cumulative author family
+require explicit allow-self independent Sessions; those opinions never meet the
+independent approval floor. Default selection rejects before member input. Actual
+registered-adapter synthetic consumer proof is distinct from real native #16 success.
