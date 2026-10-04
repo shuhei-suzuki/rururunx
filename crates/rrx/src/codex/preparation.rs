@@ -182,10 +182,7 @@ impl Preparation {
                 ));
             }
         }
-        drop(admission);
-        let result = publish();
-        let mut admission = self.admission.lock().unwrap();
-        match result {
+        match publish() {
             Ok(value) => {
                 *admission = checkpoint.map_or(Admission::Consumed, Admission::CheckpointCommitted);
                 Ok(value)
