@@ -5399,7 +5399,11 @@ mod tests {
             let before_cleanup = adapter.current(&reference).unwrap();
             cleanup_gate.release();
             stop_gate.release();
-            let stopped = bounded(stopper).await.unwrap().unwrap_err();
+            let stopped = bounded(stopper).await.unwrap();
+            // Preserve fixture ownership even if a mutant completes the private
+            // phase too early: the real final shared publication follows cleanup.
+            terminal_status(&adapter, &reference).await;
+            let stopped = stopped.unwrap_err();
             let outcome = bounded(control.wait_finished()).await.unwrap();
             assert!(
                 !finished_before_cleanup,
