@@ -1,9 +1,10 @@
-# Issue60 selected Git reader lifetime — Requirements1 candidate
+# Issue60 selected Git reader lifetime — Requirements2 candidate
 
 Risk: STRICT. Status: UNAPPROVED requirements candidate. Separate from the merged
 inspection diagnostics slice. Combined Requirements2 was request_changes twice;
-its source findings motivate this contract, not approval. Requirements, design and
-source gates for this component are still required before production edits.
+its source findings motivate this contract, not approval. Reader Requirements1
+was also request_changes twice; verified corrections below remain pending
+re-review. Requirements, design and source gates for this component are still required before production edits.
 Base: public main2c6ae9d6f54e68a3bdbead25817c46981d231db0.
 
 ## Problem and verified scope
@@ -30,7 +31,8 @@ Changing this component must not certify those broader profiles as supported.
 
 Actual current consumers: Generic validate_git preflight, Grok initial/refresh
 ownership and index_digest, Context git_value_owned/git_value and scalar bounded_git.
-Synchronous git.rs/runtime registry and future provider copies remain explicitly
+Synchronous git.rs/runtime registry, Generic native constructor/reader abort,
+Grok native constructor/stderr abort and future provider copies remain explicitly
 unmigrated inventory; no consumer obtains full lifetime proof merely by its label.
 
 ## Proposed normative contract
@@ -44,16 +46,19 @@ UNAPPROVED. In particular:
   operations/32 readers. Dispatcher/monitor/setup work cannot hide additional
   unbounded jobs or per-waiter tasks. Admission waits only within the existing caller
   deadline, with no effects or new uncertainty on proven pre-effect refusal.
-- Acquire the actual Child before fallible group binding; retain Child/group,
-  both readers and cleanup work independently of the caller future/runtime.
+- Acquire the actual native Child before ALL fallible Tokio/runtime wrapping, stdio/
+  signal registration and group binding. Tokio spawn Err can follow native spawn.
+  Retain Child/group, both readers and cleanup work independently of the caller future/runtime.
   Cancellation is nonblocking. A bounded preavailable independent driver must
   deliver existing first cleanup even when the caller runtime shuts down before
   dispatch. Total driver loss/poison/panic stays retained Unknown; no fallback job,
   numeric PID rescue, automatic replay or restart recovery.
 - Keep internal native uncertainty separate from the caller's publication flag.
-  The caller flag becomes uncertain before effects and clears only on a live,
-  in-budget complete-settlement return. Dropped/returned Unknown is irreversible
-  for that call; late settlement never clears Context's existing sticky latch.
+  The caller flag becomes uncertain before effects. Mandatory clear points are a
+  live in-budget complete-settlement return, including a fully settled error, and
+  a genuine native OS-spawn failure/no actual Child return. A wrapper/registration
+  Err is not no-effect. Dropped/returned Unknown is irreversible for that call;
+  late settlement never clears Context's existing sticky latch.
 - Preserve primary error priority and original kinds: cleanup/reap, observe,
   stdout then stderr read/join collection, output_open, unsuccessful Git exit,
   success. A peer reader failure must not reorder the first established error.
@@ -69,7 +74,10 @@ UNAPPROVED. In particular:
 - Selected-group death and direct-child exit remain weaker than whole workload
   settlement. This process-local component cannot release a durable effect hold,
   authorize native input/replay, mint source freshness, or advertise F1 readiness.
-  Current Context, Generic and Grok consumer equations stay authoritative.
+  Context and Grok equations remain unchanged. Explicit Generic live launch-error
+  change is impact-gated: Lost on SessionLost OR retained own uncertainty, original
+  error kind preserved. Grok checkpoint Err only retains pool resources; its absent
+  receipt/durable sink and later-resume conflict enforcement remain OPEN.
 
 ## Shared impact and exclusions
 
@@ -87,8 +95,9 @@ production common helper edit before these gates.
 No schema/Store authority, native auth/hooks/default model/effort, environment,
 ACP/permission, Git configuration/hook bypass, scheduler, kernel backend, global
 signal, PID adoption, deadline/latch/Unknown relaxation or test serialization.
-Exactly four-plus selected operations must progress where the supported fixture
-allows; this is not actual native3/runtime mixed-workload MVP acceptance.
+At least four selected operations must progress with healthy driver/free capacity;
+global capacity couples Projects and cannot promise isolation/fairness under holds.
+This is not actual native3/runtime mixed-workload MVP acceptance.
 
 ## Acceptance gates — pending
 
@@ -97,8 +106,13 @@ allows; this is not actual native3/runtime mixed-workload MVP acceptance.
    the full linked candidate and actual common/consumer source, not copied prose.
 2. Real isolated Git/child consumers prove success and settled errors, first cleanup
    on caller runtime shutdown, caller Drop before/after spawn, constructor failure
-   anchor retention, pending peer after primary read error, observed cancellation,
-   cleanup/reap failure and late reader completion. Preserve error priority and
+   anchor retention before runtime/stdio/signal wrapping, real native-spawned std
+   Child then forced initializer Err with retained-Unknown AND fully-settled-error
+   controls, pending peer after primary read error, observed cancellation,
+   cleanup/reap failure, healthy reserved-supervisor late observation and mandatory
+   permit release with unchanged flag/latch, and lost-supervisor no-observer permanent
+   retention. Prove owning-runtime resource survival after caller runtime shutdown;
+   no raw-PID or outside-Child reap. Preserve error priority and
    demonstrate flags/permits/anchors at the actual consuming boundary.
 3. Actual cap admission/wait/no-spawn and four-progress controls, destructive
    private pool isolation, driver panic/poison/shutdown ownership and no native work
@@ -107,6 +121,13 @@ allows; this is not actual native3/runtime mixed-workload MVP acceptance.
 4. Compiled actual consumer mutants reach the intended missing guard; masked or
    unit-only effects earn corresponding limited attribution. Exact restored
    controls pass. No caller-only copied helper can substitute for real routing.
+   Route current7+1
+   Unknown fixtures and new destructive Generic/Grok consumers through cfg(test)
+   private pools; prove production retained count unchanged and non-poller private
+   teardown/retention. Actual Generic returned output_open/peer/Timeout/initialization
+   Unknown must persist Lost/reserve, with original non-SessionLost API kind; settled
+   errors must remain Failed. Checkpoint Err plus pool retention carries no false
+   receipt or durable-state credit.
 5. Two independent immutable source reviews and fix/rereview; appropriate default
    debug/release tests, fmt/all-target Clippy, both builds and current Linux/macOS
    CI with actual checkout/parents/tree proof. Preserve every prior failure and

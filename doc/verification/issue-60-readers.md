@@ -26,3 +26,51 @@ not observed evidence that a particular old failure left a live task.
 was checked2026-10-05JST; that page currently labels1.53.2. The baseline statement
 is independently checked against locked1.53.1 source; no dependency/version change
 is proposed or inferred from the latest-page label.
+
+Reader Requirements1 at20c1fdf completed two independent native reviews:
+ownership `e0bdd4dc-5102-4f3e-bc44-0a21c01f9689`, capacity
+`0f60fea3-8864-40f4-ad83-2c70aceb359a`. Both returned request_changes;
+both actual review wrappers completed with cleanup_verified=true. This wrapper
+fact is not full enabled-workload/F1 certification. The complete15 findings,
+raw-result hashes and verified candidate dispositions are preserved in
+[the findings ledger](issue-60-reader-requirements1-findings.json). Requirements2
+corrections have no implementation or approval yet. Diagnostic and environment
+partial reviews do not substitute for this reader gate.
+
+Verified consumer correction: Generic's live returned launch error at
+adapter.rs630–646 uses ErrorKind::SessionLost only and disarms its reservation;
+only Reservation::drop457–468 reads process_uncertain. Requirements2 explicitly
+adds the live own-uncertainty Lost predicate while preserving the API error kind,
+with Unknown-versus-settled error controls still pending. Grok checkpoint's local
+ownership flags atmod.rs596–599 have no receipt/Session/reservation sink; its Err
+and proposed pool retention cannot claim durable protection or a checkpoint-to-
+resume fence. That stronger fence and non-Git native constructor/reader sites
+remain OPEN. Global capacity's Project coupling/fairness acceptance also remains
+OPEN.
+
+Locked primary spawn evidence was byte-verified against public tagged sources:
+[Tokio1.53.1 process](https://github.com/tokio-rs/tokio/blob/tokio-1.53.1/tokio/src/process/mod.rs)
+lines863–866 create a std Child before wrapper construction; lines950–962 create
+the kill-on-drop guard only after fallible imp::build_child.
+[Unix wrapper](https://github.com/tokio-rs/tokio/blob/tokio-1.53.1/tokio/src/process/unix/mod.rs)
+lines118–144 contain fallible pipe/pidfd/signal setup, and365–373 pipe registration.
+[PollEvented](https://github.com/tokio-rs/tokio/blob/tokio-1.53.1/tokio/src/io/poll_evented.rs)
+lines110–120 use the current scheduler handle and fallible registration.
+[Rust1.91.1 Child](https://github.com/rust-lang/rust/blob/1.91.1/library/std/src/process.rs)
+lines181–200 documents neither automatic stopping nor waiting on drop. Exact
+public blobs/SHA256 and locked-crate equality are in the findings ledger. Therefore
+Err/no returned Tokio Child is not uniformly proof of no native effect. Candidate
+requires an actual native Child anchor before those fallible steps and a real
+native-spawned std Child/forced-initializer-failure control; it permits neither
+numeric resurrection nor reaping outside the owning Child. No old CI failure,
+real wrapper error occurrence or invalid PID is attributed to this source fact.
+
+Same already-reserved healthy supervisor must continue observing existing
+resources after caller Unknown and release capacity on complete actual settlement;
+it never clears the published flag or Context latch late. Returned reap error or
+lost supervisor/driver instead retains Unknown without a promised replacement
+observer. Resources must be created/driven in the independent owning context,
+not merely moved from the caller runtime. Current seven adapter and one Context
+Unknown fixtures must use private cfg(test) pools through actual consumer paths;
+teardown/production-counter controls remain pending. These are candidate gate
+corrections, not executed tests or an available owner implementation.
