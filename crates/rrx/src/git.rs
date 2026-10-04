@@ -95,6 +95,10 @@ pub fn validate_worktree_ownership(
 
 pub struct WorktreeManager;
 impl WorktreeManager {
+    /// Validate an owned snapshot without retaining a caller's Store lock during Git I/O.
+    pub fn validate_binding(project: &Project, task: &Task) -> Result<WorktreeStatus> {
+        owned_status(project, task)
+    }
     pub fn create(store: &mut Store, task_id: TaskId) -> Result<WorktreeStatus> {
         let mut task = task(store, task_id)?;
         let project = project(store, &task)?;

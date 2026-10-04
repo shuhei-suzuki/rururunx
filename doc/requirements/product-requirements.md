@@ -548,6 +548,15 @@ MVP correctness is **browser-backend neutral**. At least one deterministic backe
 
 Adaptive/agentic browser backends such as Stagehand are **MVP Optional / Stretch**. They may improve resilience or semantic exploration, but MVP acceptance, #12 verification workflow, and #16 dogfood must not depend on Stagehand, Jev, or any other adaptive browser backend.
 
+The [browser backend contract](../design/master/browser-verification.md) uses
+provider-neutral Rust operations, Playwright for known deterministic checks without
+inference and optional/stretch Stagehand v4 adaptive semantic checks. Runtime/safe Project
+policy chooses routing and evidence; each Project/Task owns fresh browser cookies,
+profiles and artifacts. Production/destructive mutations hold for scoped approval
+or Human intervention. Fallback cannot replay possibly executed effects. Usage,
+cache and cost remain nullable when the actual backend does not report them;
+optional Jev support must never become a correctness dependency.
+
 ## 19. Staging verification
 
 The workflow must support staging verification for configured classes such as:

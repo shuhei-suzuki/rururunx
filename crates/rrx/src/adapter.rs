@@ -392,7 +392,7 @@ impl ProcessGroup {
 }
 
 #[cfg(target_os = "macos")]
-fn macos_group_is_dead(pid: Pid) -> std::io::Result<bool> {
+pub(crate) fn macos_group_is_dead(pid: Pid) -> std::io::Result<bool> {
     process_group_inspection(Path::new("/bin/ps"), pid.as_raw_nonzero().get())
 }
 #[cfg(target_os = "macos")]
@@ -416,13 +416,20 @@ fn inspect_process_group(
     observed(child.id());
     let stdout = child.stdout.take().expect("piped inspector stdout");
     // Drain concurrently so a full process table cannot block ps on its pipe.
-    let reader = std::thread::spawn(move || {
+    let reader = match std::thread::Builder::new().spawn(move || {
         let mut bytes = vec![];
         stdout
             .take(1024 * 1024 + 1)
             .read_to_end(&mut bytes)
             .map(|_| bytes)
-    });
+    }) {
+        Ok(reader) => reader,
+        Err(error) => {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(error);
+        }
+    };
     let deadline = std::time::Instant::now() + Duration::from_millis(250);
     let result = loop {
         match child.try_wait() {

@@ -6,6 +6,21 @@ on:
 permissions:
   contents: read
 jobs:
+  browser-contract:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.19.0'
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+        working-directory: scripts/browser
+      - run: node --test scripts/browser/*.test.mjs
   check:
     strategy:
       matrix:

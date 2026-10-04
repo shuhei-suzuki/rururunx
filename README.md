@@ -210,7 +210,7 @@ The MVP is complete when the development workflow currently performed across mul
 - impact analysis
 - unit / integration / E2E / regression checks
 - mutation verification where required
-- provider-neutral headed browser verification for UI/browser-facing changes through at least one deterministic backend
+- [Provider-neutral headed browser verification](doc/design/master/browser-verification.md) for UI/browser-facing changes through at least one deterministic backend
 - staging verification for relevant API/auth/DB/infra changes
 - configurable parallel review with 1, 2, 3, or more reviewers (including 2-reviewer mode and Claude / Codex / Grok Triple Review)
 - multi-round verify → fix → commit → re-review

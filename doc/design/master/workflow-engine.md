@@ -178,6 +178,14 @@ Project policy determines when these gates are mandatory.
 
 They should generate durable evidence references for PR/report generation.
 
+The [browser verification backend](browser-verification.md) supplies a scoped
+Rust API with Stagehand v4 adaptive operations and model-free deterministic
+Playwright. Its fresh local browser/owned-connect lifecycle, bounded failures,
+headed evidence, mutation holds and safe fallback are ready for consumer #12.
+The consumer owns scheduling, scoped approvals and gate persistence; arbitrary
+shared/remote profiles are unsupported. Jev is optional and never a correctness
+dependency. Unreported model usage/cache/cost remains null.
+
 ## 11. Merge gate
 
 Merge gate checks configured conditions such as:
