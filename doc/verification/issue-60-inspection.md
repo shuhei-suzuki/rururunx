@@ -233,8 +233,8 @@ availability, reader/driver draft, recovery14, full60 and native16 limits remain
 Both independent public immutable Source1 reviews at03cd688 completed with actual
 owned cleanup verified. Facts reviewer requested changes (2Medium+6Low); authority
 reviewer approved (5Low). [Per-finding disposition](issue-60-inspection-source1-findings.json)
-retains overlap and raw hashes. CI37227213174 was later both-OS successful; actual
-checkout/provenance publication remains pending. Reviewer launch-time CI blockers
+retains overlap and raw hashes. [CI37227213174 provenance](issue-60-inspection-source1-ci.json): both-OS success;
+actual checkout7439d9d parents054+03c, tested tree equals trigger tree. Reviewer launch-time CI blockers
 were factual pending gates, not defects ignored after the run completed.
 
 Verified Medium I60-SR-01: retained-writer fixture had replaced cleanup().unwrap with
@@ -265,3 +265,36 @@ cleanup and kill stages, so optional unavailable vocabulary for these three fiel
 is unreachable; design documents every current site instead of adding unused states.
 No old red rerun, deadline/Unknown/native authority or reader/driver correction. The
 following commit precedes affected tests/mutants and own-session source re-review.
+
+
+## Source1 fixes verified at555098d; Source2 pending
+
+Affected default controls passed: inspector20, actual Context1, Generic terminal
+and post-spawn audit2, completed synthetic Grok ACP receipt1. fmtcheck/all-target
+Clippy/debug+release builds passed. The synthetic child is entered only by its
+env-cleared owning parent; no installed native/auth/model acceptance is claimed.
+
+[Delta mutation ledger](issue-60-inspection-delta-mutations.json) records10 compiled
+assertion-killed cases:6 actual consumers (including2 audit-only projections) and
+4 labelled fixture/prepared-result/private-clock unit guards. Broad attachment
+omissions fail at preceding returned/status assertions; independent audit-only
+omissions D09/D10 reach the actual scoped audit assertions while preserving earlier
+facts. These are10 cases, not10 distinct operator families. The helper-result
+refusal is injected only AFTER successful real child settlement, not an actual
+OS wait error. Exact source restoration controls passed; both private worktrees
+were normally removed clean after fixtures completed.
+
+[Current full-suite outcomes](issue-60-inspection-source555-tests.json): DEFAULT
+DEBUG passed234 Rust+2doctests/9 explicit ignored. Distinct DEFAULT RELEASE FAILED
+at existing Grok executor pre-spawn inspection: lib133/Generic19/CLI5/Context16/
+Git18 passed; Grok12pass1fail2ignored, later targets/doctests not executed. Actual
+new facts froze deadline_loop_entry: inspector direct-child exit success and stderr
+EOF observed, stdout EOF pending after43 reads/17bytes/42WouldBlock;250870us
+observation,1012us spawn; validation not reached; inspector cleanup reaped by status,
+kill not requested. Grok receipt marks pre_spawn uncertainty before native group
+creation/dispatch. This distinguishes missing stdout EOF from missing observed exit;
+it does NOT identify retained endpoint owner, scheduling/pipe-inheritance cause,
+target-group death or repaired availability. The local suite exited101; no same-head
+rerun, default-concurrency change, deadline relaxation or sticky-Unknown reset.
+This red is retained alongside every old red and frozen Issue51; full60/runtime
+availability/native16 remain OPEN. Source2 and final required both-OS CI pending.
