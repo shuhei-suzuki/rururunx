@@ -192,17 +192,33 @@ hooks and shared/common-directory configuration that can execute commands must
 be blocked by bound, enforceable profile controls before the first native execution.
 These surfaces have standing ungoverned consumers, including user/IDE Git: hooks,
 core.hooksPath/fsmonitor/sshCommand, credential/filter/diff/merge helpers, shell
-aliases and executable include/includeIf configuration. A worktree-tracked script
-referenced by an existing hooksPath is also current delegation if an ungoverned
-consumer can read it. Later-consumer coverage applies only to inert/private
-artifacts read exclusively by governed rrx consumers; a shared path does not qualify.
+aliases and executable include/includeIf configuration. Trace concrete configured
+automatic activation edges, including hooksPath and its transitive commands/targets.
+An existing ambient activation edge does not become inert merely because its target
+is Task code. Ordinary worktree code/scripts/build.rs stored for a later genuinely
+governed runtime operation are inert work products; that operation must freshly
+validate exact sources/current authority and own its actual workload. F1 covers
+runtime-owned workload/resource lifetime, not all future execution of generated
+code. Task worktrees are not claimed OS-private from the same user. Mere user/IDE
+readability does not classify every file as current delegation; independent
+same-UID user/IDE actions outside rrx are explicit application-boundary limits,
+not a universal future-code containment guarantee. Concrete existing automatic
+activation/conflict surfaces must still be covered or blocked; an independent
+action cannot be used to disguise a route already delegated by this attempt.
 Files consumed automatically by an external scheduler/service/autostart mechanism
 remain current delegation routes. Preserve mandatory native hooks/settings; if
 their required shared writes cannot coexist with this boundary, the profile is
 unsupported and remains an MVP blocker, rather than disabling those hooks.
+An explicitly requested edit to an ungoverned ambient activation chain has no
+supported route unless a separately reviewed governed mechanism exists. Refuse
+that required capability before reservation/effects when known; enforce the bound
+write restriction before any later attempted activation change. A native tool
+denial is not proof of cleanup or a fabricated terminal outcome. Record the
+specific capability limit and settle/hold using actual outcome and cleanup rules.
 A real attempted shared hook/config write plus ungoverned-reader fixture must
-prove the profile refuses the write. A separate private-artifact fixture exercises
-the later governed consumer's boundary.
+prove the profile refuses the write, including a concrete hook executing an
+otherwise ordinary editable non-hook target. A separate ordinary-code persistence
+and later governed execution fixture exercises fresh admission at that consumer.
 
 Before any native process may have executed, registered Preparing cleanup and
 exact historical rollback/factual failure remain authoritative. Once any native
@@ -313,31 +329,49 @@ separately reviewed audited recovery. Issue19 managed Task receipts do not suppl
 this authority. Until those
 actual hold/release/recovery consumers compose, this profile is unsupported before
 effects and remains a native Core acceptance blocker, not a ready capability.
-The held extent includes the primary checkout and Git common directory, including
-shared refs/config/hooks and worktree lifecycle metadata. Default held behavior
-blocks primary-root execution, overlapping native launch, base update/merge,
-worktree create/remove and Project removal/rebinding until known cleanup and any
-required Lost recovery. Same-repository mutation may proceed only under a separately
-reviewed actual consumer that proves the held profile cannot write/interfere with
-that shared extent and preserves current ownership/currency. No such exception
-is assumed here. Independent work in another Project/disjoint repository may
+The conflict extent includes the primary checkout and Git common directory,
+including shared refs/config/hooks and worktree lifecycle metadata. An unresolved
+hold (Lost, unknown ownership/enforcement or incomplete post-attempt cleanup)
+blocks new conflicting primary-root execution, overlapping native launch,
+base update/merge, worktree create/remove and Project removal/rebinding until
+actual cleanup and required Lost recovery. Common-directory identity alone does
+not blanket-exclude all live, currently owned governed work. Issue58's live
+Consult conflict contract must compose the continuously enforced compatibility
+matrix below before same-repository concurrency can be accepted. No current
+producer or noninterference proof is assumed here. Independent work in another
+Project/disjoint repository may
 continue; a Task sharing this Git common directory is not automatically disjoint.
 A generic-relabel fixture and actual primary/common-Git mutation/removal consumers
 must prove the retained hold cannot be released by terminal labels or dead-parent
 hints. Restart preserves uncertainty; recorded IDs never recreate the private owner.
 
 No resume, checkpoint continuation, retry or fresh replacement may execute in the
-same Session/worktree/lock scope until the earlier workload's cleanup is proven
+same exact Session/worktree or an incompatible locked/effect scope until the earlier workload's cleanup is proven
 and, for Lost, Issue14's separately approved audited recovery has released it.
 Proven cleanup is necessary and never sufficient to release Lost.
-Known-alive, pending, incomplete and unknown cleanup all block same-scope execution.
-For Task Executor/reviewer workloads with reachable shared Git writes, the default
-held extent also includes the Git common directory and every shared ref/config/hook
-and worktree-lifecycle surface they can affect. Apply the same default primary/base
-update/merge, worktree lifecycle and overlapping same-repository mutation exclusion
-described above; a separate Task worktree is not automatically independent. A
-narrower exception requires separately approved, bound, enforced noninterference
-proof at the actual competing consumer, not merely different Task/branch IDs.
+Known-alive, pending, incomplete and unknown cleanup all block that incompatible
+replacement; the wider same-repository concurrency boundary is defined below.
+For held Task workloads (Lost, unknown ownership/enforcement or incomplete cleanup
+after the attempt), the conflict extent includes every reachable Git common-directory
+ref/config/hook and worktree-lifecycle surface. Apply the same new-conflicting-effect
+exclusion above; a separate Task worktree is not automatically independent. This
+uncertainty rule does not serialize all live owned work by common-directory identity.
+
+Issue6 F1 owns the required reviewed live compatibility matrix and continuously
+enforced effect contract, with Issue3 Git/Issue19 managed-operation consumers and
+Issue58's Consultant conflict contract. It must cover own-branch/worktree effects,
+atomic append-only shared objects or a proven equivalent, shared executable surface
+protection and current currency, from the first effect throughout native lifetime.
+Different Task/branch IDs or Git locking alone do not prove those restrictions.
+Unknown enforcement/profile remains unsupported; no passing live producer is
+claimed here. The required four-plus parallel Task acceptance remains open until
+actual matrix/enforcement and aggregate conformance succeed, not replaced with
+serialization as a product change. A supported matrix must genuinely protect an
+already-admitted Task B when Task A becomes Lost: prevent conflicting B effects
+under its own enforcement/settlement path, or prove their continued noninterference.
+Rejecting new rrx admission cannot stop already-running native B writes, and a Lost
+label cannot retroactively do so. Require both positive same-repository live
+Executors plus open Consult concurrency, and B-already-live→A-Lost conformance.
 Lost is absorbing under ordinary adapter calls. Escalate to Human and retain the
 reservation; a recorded human judgement, PID clearing or manual state change
 does not certify cleanup, settle the operation or authorize implicit replay.
@@ -376,6 +410,9 @@ Goal support remains optional. Completion also requires actual private Issue19
 managed composition, Issue58 non-Task hold/settlement, Issue14 recovery/fencing,
 Issues9/10 retained approval-decision ownership, the Issues6/11/15/19/14 composed
 Task-attach contract, and Issues3/12/13 later-consumer execution/publication guards.
+The Issue6 F1 live compatibility/enforcement matrix composed with Issues3/19/58
+must also meet product §31's four-plus simultaneous Task requirement; an unresolved
+concurrency boundary is a Core blocker, not permission to serialize the product.
 These are acceptance dependencies, not implied existing ports. Issue 16 then
 verifies the whole multi-Project
 workflow using these real accepted routes. Neither Issue 6 nor Issue 16 can close
@@ -430,9 +467,17 @@ permission for privileged installation or silently change the required hosts.
   private artifacts without its own current ownership and command-safety admission.
   A separate attempted shared hook/config write with an ungoverned reader proves
   pre-execution profile enforcement; a guard-removal mutant exposes the refusal.
+  Include a transitive configured hook target and ordinary persisted code consumed
+  later under a genuinely fresh governed operation. Same-user readability alone
+  must not classify every worktree file as ambient delegation.
 - A Lost Task workload with reachable common-Git writes prevents another Task's
   actual shared-Git mutation/base/worktree-lifecycle consumer; removing that caller
   hold guard must fail the fixture. Different Task IDs do not establish independence.
+- Positive live same-repository Executors and an open Consult progress under the
+  actual compatibility matrix. With B already admitted/running when A becomes Lost,
+  actual enforcement prevents conflicting B effects or proves noninterference;
+  a caller/enforcement mutation fails this fixture. A new-admission-only test cannot
+  certify the existing native workload. Issue16 retains aggregate four-plus proof.
 - A Lost approval reviewer keeps its requesting operation and affected scope held
   at the real broker/settlement consumer until actual native cleanup and separately
   gated recovery; removing the retained member/slot guard must fail the fixture.
