@@ -3,12 +3,12 @@
 Status: actual merged main is schema3; this unmerged component source is5. Proposed
 schema6 remains fixture-only/pre-code until its independent gate and actual composed
 source/native production release. No Phase::DecisionReview or native producer is
-created by prose. The schema6 canonical writer table below plus Design16–30 private
+created by prose. The schema6 canonical writer table below plus Design16–31 private
 port/bounds define proposed native authority. Earlier schema5 protocol examples are
 historical component context ONLY and cannot authorize a managed/public writer;
 artifact/encoding contracts continue where this table does not supersede them.
 
-## Canonical schema6 native writer predicate table
+## Canonical schema6 Session/Workflow writer predicate table
 
 Each managed row below requires actual nonserializable owned operation authority,
 exact scope/attempt/frame/pair/remembered Session version, complete pinned lock set,
@@ -2512,7 +2512,9 @@ policy/budget reuses current context and changes no Task/Workflow authority/vers
 real changed context still charges. Tests repeat no-op escalation and exercise real
 escalation/invalidation publications at255/256/257, checking exact no overflow pointer,
 row/audit/history/operation and no ghost phase pack. This bounds fresh Workflow context
-history by256×1 MiB without claiming a bound on every standalone/Goal artifact.
+history by at most 256 complete encoded bodies of at most 8 MiB EACH, subject ALSO
+to the stricter shared 128-MiB used/reserved Workflow quota (Design31). Payload bytes
+are not complete stored-body bytes; standalone/Goal artifacts have separate bounds.
 
 Task-worktree create/adopt/remove/maintenance effects require an ACTUAL durable
 exclusive maintenance reservation BEFORE external Git/fs effects. Its acquisition
@@ -3132,7 +3134,8 @@ MVP acceptance. A concrete proposed #23/#24 composition derives progress/status 
 Task facts or separate bounded factual Records without rewriting Goal.version;
 already accepted prepared DAG Tasks execute concurrently without Goal-row rewrites
 per Task poll/completion. Authoritative DAG/follow-up acceptance and lifecycle changes
-queue until applicable genuine owned-turn settlement, or deliberately revoke under
+queue until applicable exact native phase closure (including binding and closure, not
+receipt publication alone), or deliberately revoke under
 the existing strict gates. This is a candidate controller policy, not implemented
 progress, external-bookkeeping exemption or a release waiver. Actual #19/#23/#43/#24
 source integration must prove 4+ Tasks, follow-up proposal/creation and two Projects
@@ -3154,3 +3157,177 @@ input-update publication route needs separately reviewed actual19 atomic authori
 and actual60 independent Git reservation/settlement plus any native cleanup conjunct.
 Neither NoCurrentDispatch nor native KnownCurrentTerminal may be borrowed to invent
 a successful checkpoint receipt. This integration remains pending.
+
+
+### Design31: exhaustive authority writers and complete stored bounds
+
+The canonical Session/Workflow table and the following table are the exhaustive
+union. Each row is a required real source consumer + rollback/control + causal mutant
+in the listed S6 keys. Private handles are genuine owned producers; table/row/JSON
+existence is never a constructor. All new application tables require length-first
+validation, exact-version writer fences, scope/FKs, uniqueness and no-REPLACE/Delete
+semantics in both fresh/migrated goldens. These are candidate6 design, not current
+schema5 source or installed production ports.
+
+| Authority write | Only actual private producer / allowed write set | Same-transaction authority | S6 keys |
+| --- | --- | --- | --- |
+| Operation INSERT + marker | Successful exact Engine invocation/marker owner, immutable original frame | Current composed23 admission + full scope/attempt/source/lock CAS, no maintenance conflict/pending Goal change; predicted resulting versions verified before commit | 02/03/10/14/16 |
+| effects_started false→true | Owned Pristine handle transferred to actual supervisor | Exact open own operation/version, no receipt; monotonic transition before first Session/IO | 03/08 |
+| Pristine refusal receipt | Consuming settle_refused_before_effect | Actual tracked pristine invocation, no effects/Session/allocation/admit/consume/uncertainty; no row-only proof | 08/09 |
+| Session NULL→Some + preparation/allocation | Actual private preparation under owned effect-started operation | One-time immutable exact owner and frame, actual23 current admission, remembered version installed atomically | 02/03/04 |
+| Remembered Session/operation version update | Exact private preparation/admission/historical observation or settlement | Corresponding canonical branch only; immutable original marker frame and consumed input unchanged | 04/05/06/07/08 |
+| phase_closed false→true | Actual receipt-checked Workflow closure | Exact current claim/body/version/pair/receipt, allowed lifecycle; only matching phase closure, no receipt-only release | 09/10/16 |
+| NoCurrentDispatch non-success closure after pre-input revocation | Actual sealed full-own-cleanup/no-current-input settlement consumer | Original marker/claim/actor retained; exact current closure CAS preserves lifecycle/decision, no binding/success/advance/grant | 08/09/16 |
+| KnownCurrentFailureClosure | Actual sealed known-current failed settlement consumer | Original immutable marker/input/actor/locks and current active claim, no SessionID write, existing23/8 non-success policy | 09/10/16 |
+| TerminalRecovery | Exact actual private settlement/recovery consumer | Factual full own cleanup under Cancelled/Failed hold, same attempt/body/input/receipt; no fresh grant/success/inactive binder | 08/09/16 |
+| Fresh-only refusal fact | Actual owned Continue selector/refusal producer | Exact predecessor/new operation/input chain and settled refusal; append-only, cannot be cleared by a later pristine attempt | 12 |
+| Maintenance acquire/close | Actual owned maintenance/effect producer (production60 pending) | Reciprocal durable physical conflict check; Held→Closed only actual NoEffect/Settled, unknown retained | 14 |
+| Host effect admission/outcome | Actual HostCallbackCurrent / owned joined-worker completion | Unique admitted request and quota before IO; outcome only matching admitted effect, actual worker-known finish, no receipt with unknown work | 06/08/13 |
+| Workflow counters/quota reserve/spend | Actual context/effect/receipt/closure producer | Scope/version + full-body byte charge and terminal headroom before effect; only safe unspent reserve release, used history never reset | 13 |
+| Source/outcome/native-result blob INSERT | Actual captured source/owned result/settlement producer | Exact typed immutable bytes/hash/scope + quota charge, no row-only native verdict; immutable identity dedup only | 08/10/13 |
+| New-Task epoch INSERT | Schema-owned Task AFTER INSERT trigger | Exact inserted scoped Task, boundary zero, exact-version fence; Task insert rolls back if epoch fails | 01/02 |
+| WorktreeLock activate/change/deactivate | Actual authorized lock/closure consumer, no generic owner release | All matching native operations/maintenance reservations counted regardless Session label; no lock mutation/release while its operation/phase owns it except exact required final closure | 03/09/14 |
+| Pending Goal authority barrier | Actual trusted23/24 queued-change producer | Durable scoped accepted proposal + expected Goal version, no Goal version change merely to queue; marker refuses while pending | 16 |
+| Task non-lifecycle edit while operation open | None through generic put_task | Operation-aware typed hold; issue/title/criteria/executor/reviewers cannot rewrite native-fenced Task/version during open phase | 05/10/16 |
+
+**Immutable original marker columns and insert ordering.** native_phase_operations
+explicitly stores marker_project_version, marker_goal_version, marker_task_version,
+marker_workflow_record_version and canonical full marker_lock_set plus SHA256 digest.
+The full sorted ID/version list is bounded to 256 entries/64 KiB before marker; its
+exact encoded bytes also fit the existing aggregate authority-tuple bound. The columns
+are immutable under EVERY UPDATE/REPLACE/Delete guard, including private bookkeeping
+updates. At operation INSERT, derive resulting values from the transaction's exact
+validated write plan: unchanged P/G stay expected; each actually written Task/Workflow
+row uses expected+1 with checked arithmetic, not a later current-row read. The ordinary
+marker put_task_tx path writes Task and therefore records expected Task+1. Any future
+change in marker write set must change this explicit derivation/golden, never guess.
+The marker UPDATE trigger for false→true checks NEW Workflow.version equals recorded
+marker_workflow_record_version; the Rust transaction verifies the resulting Task/P/G
+versions, full lock set and complete final relation before commit. Other legitimate
+Workflow observations do not rewrite these columns. A failed second statement rolls
+back operation/marker/audit. Actual differing resulting version, refresh-column UPDATE
+and dropped-start-result binder controls/mutants prove the immutable frame.
+
+**Durable maintenance surface.** Private task_maintenance_reservations stores UUID,
+Project/Goal/Task FKs, actual anchored canonical root/worktree/common-Git identities,
+registered bounded effect kind/physical read-write conflict scope, runtime-instance
+and private claim UUID, monotonic version, Held or Closed{NoEffect|Settled}, created/
+closed timestamps and exact actual settlement reference. Complete body ≤64 KiB; paths
+are separately bounded by the existing scope inventory. One open reservation per
+exact physical conflict key has a partial unique index. Acquisition and native marker
+are reciprocal Immediate transactions: acquisition rejects every overlapping open
+native/58/60 effect reservation, marker/preparation/input rejects every overlapping
+Held maintenance reservation. Conflict includes canonical path containment and actual
+shared common-Git effect scope across Project IDs, not string equality/Task labels;
+partial uniqueness is a backstop, not the nested-scope algorithm. Actual compiled
+58/60 conflict producer supplies complete bounded anchored scope observations outside
+Store and the same-transaction conflict reader; absent/unknown producer refuses.
+
+The actual private owner retains Held across out-of-lock Git, timeout/crash/unknown
+cleanup. Only genuine tracked no-effect refusal or full known actual owned cleanup
+closes Held→Closed once, with matching immutable scope/claim/runtime and receipt plus
+reserved audit. No public terminal JSON, Drop, stale claim or caller Closed enum may
+close it. SQL fences reject immutable-field updates, reopen, DELETE/REPLACE and unproved
+closure; actual closure rows retain history. True disjoint scopes may progress when
+the actual physical producer proves them. S6-14 uses the same real candidate reservation
++ conflict transactions through explicitly closed synthetic mechanical producers,
+never inserted proof rows; native60 readiness remains a separate real producer gate.
+Crash reopen retains Held; acquisition/marker race has exactly one winner BEFORE
+Git/removal bytes, nested-root/common-Git conflicts hold and truly disjoint controls
+progress. No production containment inferred from selected group death.
+
+**Complete ContextVersion bound.** Every newly published Workflow-owned ContextVersion
+complete encoded body is ≤8 MiB, including payload escaping, task_pack copy, all source
+maps, wrapper/metadata and references. Actual Rust computes full stored UTF-8 bytes
+before publication; a length-first context_versions trigger enforces the same bound
+for post-epoch Workflow ownership before JSON inspection. Standalone/Goal/old immutable
+rows retain their separately scoped rules; no historical rewrite. The 1-MiB prepared
+model frame remains independent, and worst component maxima need not jointly fit.
+Every actual stored Workflow context body charges used/reserved 128-MiB quota atomically
+with context counter/pointer/Task/Workflow/audit. Duplicate pack bytes are counted;
+no claimed reference dedup when two copies really persist. Terminal tail reservation
+includes worst complete frozen ContextVersion body bytes, not merely payload/count.
+Capacity insufficient for the whole context/tail refuses before external effect with
+NeedsContext, preserving current authority/history. S6-13 actual source-map/pack duplicate
+and escaping fixtures exercise 8-MiB−1/exact/+1, repeated-context aggregate quota and
+ContextVersion length/quota mutants. Storage ≤256×8 MiB and ≤128 MiB charged complete
+context/blob/managed-authority bytes per Workflow; no unsupported 256×payload claim.
+
+**Goal change drain barrier.** Genuine trusted23/24 queued authority changes use a
+durable scoped pending-request/barrier under accepted policy and original expected
+Goal version. Queueing does NOT rewrite Goal.version. ALL new native markers for that
+Goal observe this same pending barrier in their admission transaction and return a
+typed retryable pending-authority hold without claim/input; already owned phases retain
+their exact historical observation/settlement rights. A queued authoritative mutation
+may apply only after EVERY open phase that pins that Goal version has phase_closed=true
+(binding+closure or genuine non-success/TerminalRecovery closure), never merely after
+receipt publication. Do not strand a successful unbound receipt by applying first.
+
+The actual23/24 controller drain/check/apply transaction revalidates complete current
+ownership and expected Goal authority, applies only authorized additive DAG/lifecycle
+policy, then clears the barrier atomically. New marker admissions remain blocked until
+that transaction completes; repeated scheduling cannot starve the pending change with
+new phase openings. Lost/unknown/held closure preserves barrier and honest14 recovery
+attention; no bounded-time drain promise for unknown native work. A stale/cancelled
+proposal may be retired only by its actual trusted policy, with factual reason and
+no native release. Accepted Goal definitions remain immutable. Source acceptance needs
+actual19/23/43/24 producer/controller: settle→pending change BEFORE lost-result binder
+remains blocked, later exact bind+close permits change, and continuous healthy parallel
+requests cannot prevent drain/follow-up creation. This is no completed controller or
+implicit version-refresh privilege. Generic Task issue/title/criteria/executor/reviewer
+updates likewise reject with operation-aware typed hold until exact phase closure;
+typed lifecycle revocation remains available without treating it as cleanup.
+
+**Historical binary/encoding evidence.** PRAGMA and DDL are outside table-trigger fences.
+Every identified historical v1–v5 executable has an exact source/binary hash and native
+fresh-open refusal test against candidate/composed higher-version/RRXC fixtures, with
+unchanged original DB bytes/version/schema. Verify version-range check occurs BEFORE
+PRAGMA/DDL mutation; already-open old4/old5 writer fence tests are additional, not a
+substitute. A supported old binary that can mutate markers must be explicitly held
+unavailable until actual safe drain/version coordination, never assumed protected by
+a table trigger. Record each historical build's resolved serde_json feature set and
+encoding recipe with its binary hash (Cargo tree/build evidence); preserve checkpoint-v1
+bytes accordingly. The proved default sorted-map recipe is not evidence that an arbitrary
+feature-unified preserve_order build wrote sorted bytes. Unsupported/unrecognized old
+encoding explicitly refuses migration unchanged; no rehash/adoption of ambiguous
+chains. Actual known historical recipes, both-configuration goldens and old binaries
+prove the supported migration contract in source acceptance.
+
+
+**Original frame reaches actual callers.** ManagedPhaseLaunch carries the sealed
+Store-derived original marker P/G/T/full-lock frame into every adapter ScopeSnapshot,
+first preparation, first/new consumption and AllowCurrent. An adapter may read current
+rows to compare against that ORIGINAL frame; it cannot construct admission expectations
+from newer current parent rows at start. Actual source/grant revalidation preserves
+the original frame. Drift BEFORE setup/first input yields the actual pristine refusal
+or tracked cleanup NoCurrentDispatch path; after consumption it cannot be called
+NoCurrentDispatch. Actual each-provider caller controls/mutants must prove no changed-
+parent native setup/input bytes and no later binder stranded after silently renewed
+admission. Component standalone ScopeSnapshot captures are not this managed proof.
+
+For genuine fully settled pre-input NoCurrentDispatch only, the distinct private
+non-success closure may tolerate now-revoked raw P/G/T versions. It retains the exact
+immutable original frame, current attempt/claim/actor/private preparation/restoration
+pins, and proves no CURRENT admission/consumption/uncertainty plus complete actually
+owned setup/tool/host-effect cleanup. Current rows are freshly read only for exact
+closure-write CAS and preservation of their actual decisions/holds, never re-admission,
+actor binding or renewed source authority. The actual23/8 lifecycle port may record
+Interrupted/Failed non-success closure of that exact attempt; no phase advance,
+Succeeded, fresh input, clearing Pause/Blocked/Cancelled/Failed or release of unrelated
+owners. Genuine receipt/phase closure retires the exact lease, leaving any independent
+policy/resource holds intact. Public Err/row labels/JSON/NoCurrentDispatch enum cannot
+mint this closure. Any consumed input, unknown native/effect work, missing/stale/foreign
+receipt or restored-prior input falsely presented as current success retains ownership.
+Cold restart requires actual14 authentication, not a reader constructing live authority
+from rows. S6-08/09/16 actual revocation-before-consumption with full cleanup positive,
+revocation-after-consumption, forged/missing/unjoined cleanup and lifecycle-preservation
+negatives plus causal original-frame/closure mutants are required. KnownCurrentFailure
+and successful closed-receipt43 binding retain their stricter original current fences.
+
+Proposed43 settlement readiness is derived from the exact marked/unbound/phase-open
+private operation and actual receipt/body/input state; there is no separate caller-
+writable ready row. Binding or genuine closure naturally retires eligibility. Actual
+per-Project operation capacity reservation precedes41 claim; parked held scans use
+nonauthoritative changed-version/recovery-event cache without repeated Immediate
+mutations. These are actual43-owned co-integration requirements, not available APIs
+or exceptions to14 restart/runtime-instance and original-frame authority.

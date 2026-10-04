@@ -28,7 +28,7 @@ passed fixture. The matrix is the single current native acceptance inventory.
 | S6-16 | Exact composed projection/schema/caller readiness | Actual5/6/7/Generic/Fake and23/43/58/60 integration; synthetic producer mechanics≠production native acceptance |
 
 Each stable key requires named exact consumer tests AND meaningful causal mutants
-in final source evidence; it is not an invented available API or a checkmark. Design16–29
+in final source evidence; it is not an invented available API or a checkmark. Design16–31
 and the canonical writer table define the required private predicates. Source evidence
 must map each key to actual fixture/result SHA and list unready production ports.
 
@@ -669,9 +669,33 @@ will include these tables in every writer/migration/golden fence.
 Exact raw native/marker Goal authority stays enforced; safe stale-version refusal
 does not prove mandatory parallel Goal/follow-up availability. Actual23/24 composition
 may derive progress from Task facts/separate bounded Records without per-poll Goal
-rewrites, and queue authoritative DAG/follow-up changes until applicable genuine
-settlement or deliberately revoke through existing gates. Actual 4+ Tasks/two Projects
+rewrites, and queue authoritative DAG/follow-up changes until exact native phase closure (not receipt alone), with new markers held by a durable
+pending-authority barrier, or deliberately revoke through existing gates. Actual 4+ Tasks/two Projects
 and follow-up progress with full19/23/43 authority remains an acceptance gate; no
 docs-only policy or fixture proves it. Protected standalone checkpoint success stays
 Unsupported before effects until its separately reviewed real19/60 ownership and
 atomic no-dispatch publication producer composes.
+
+
+The complete private writer inventory includes operation state/Session binding/
+remembered versions, host admissions AND outcomes, receipt/phase closure, maintenance
+reservation, context/counters/quota/blobs, Fresh-only facts, epoch insertion and every
+lock mutation (Design31). Every listed real consumer requires its own S6 control/
+causal mutant. S6-06/08 prove 256/257 host effects, row bounds and no receipt with
+unjoined/unknown host work; S6-13 proves complete stored ContextVersion ≤8 MiB, all
+copies/source maps/escaping charged to128-MiB quota, private journal bounds and reserved
+terminal tail. S6-14 proves actual durable maintenance acquire/close/crash/conflict
+transactions; S6-16 proves pending Goal change after binding+phase closure, prevents
+new-marker drain starvation and rejects generic non-lifecycle Task edits while open.
+Exact immutable marker resulting-version/full-lock columns and raw-SQL refresh mutants
+are S6-02/10. S6-01 verifies native historical v1–v5 open-before-PRAGMA refusal and
+resolved binary serde feature/encoding evidence with unchanged supported fixture bytes.
+No fixture or proposed barrier is actual production controller/native proof.
+
+
+S6-02/03/04/06 require actual adapters to consume the ORIGINAL marker frame, never
+new parent snapshots at start. S6-08/09/16 genuine fully cleaned unconsumed
+NoCurrentDispatch may close that exact phase non-successfully after lifecycle/version
+revocation under actual23/8 policy, preserving current decisions/holds; no binding,
+success, phase advance or new bytes. Consumed/uncertain/forged cleanup remains held.
+Known-current failure and successful43 binding keep original current fences.

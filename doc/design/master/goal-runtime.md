@@ -302,11 +302,16 @@ mandatory 4+ parallel Tasks/follow-up/two-Project availability gate is not met m
 by safe stale-version refusal. Candidate23/24 controller composition derives factual
 progress from Task facts/separate bounded Records, avoiding Goal-row rewrites on
 every poll/completion; ready accepted Tasks may run concurrently. Authoritative
-DAG/follow-up acceptance queues until applicable genuine owned-turn settlement or
+DAG/follow-up acceptance queues until exact owned native phase closure (binding
+plus closure/non-success closure), not settlement receipt alone, or
 deliberately revokes under existing admission gates. It does not refresh original
 marker pins or exempt external bookkeeping. Actual composed controller/native tests
 must demonstrate progress, exact currency and safe held/recovery outcomes before
 whole-source/MVP acceptance; this proposed path is not an implemented controller.
+A durable pending authoritative-change barrier blocks new native markers for that
+Goal without rewriting Goal.version; healthy in-flight phases drain before the actual
+trusted controller atomically applies/clears it. Lost/unknown closure retains the
+barrier for real recovery rather than certifying progress.
 
 Typed Goal context publication has separate metadata authority: `Goal.version`
 tracks semantic/lifecycle changes, while `ContextVersion.version` is a consecutive
