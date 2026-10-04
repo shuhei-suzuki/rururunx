@@ -26,9 +26,13 @@ retain their own acceptance criteria.
    Goal/Task state, Workflow scope/generation/active attempt, committed dispatch marker,
    current context pointer and identity. Stale snapshots fail without DB/audit change.
 3. Require exact expected native actor, role, Task worktree and owning scope. Require
-   the persisted Session to equal the adapter-returned Session snapshot at binding.
-   A Session may advance legitimately before binding: a stale returned snapshot must
-   fail explicitly rather than weaken equality; #14 reconciles that reservation.
+   the persisted Session's immutable ID/scope/provider/actor/role/worktree to equal
+   the trusted registered adapter's returned identity. If a native UUID was already
+   returned, require it unchanged. A Starting return can legitimately precede PID,
+   UUID, Running or terminal publication; binding reads the latest durable lifecycle
+   in its transaction without treating mutable startup fields as an identity change.
+   No PID/UUID hint grants process ownership or transport completion. Typed input's
+   private allocation remains mandatory even when a public identity matches.
    Lost, foreign, malformed, ambiguous or missing Sessions cannot bind.
 4. Preserve the original reservation after binding failure, including a still-running
    Session. No release, retry, ownership transfer, native turn or fabricated completion
@@ -62,7 +66,7 @@ one factual audit and valid exact binding. Retain observed native failures separ
 from fake-protocol controls and avoid claiming real model acceptance from a fake.
 
 Second SQLite writers change Task, Project, Goal and Workflow versions; invalid actor,
-role, worktree, context, marker, Session snapshot/state and extra record deltas fail
+role, worktree, context, marker, Session identity/state and extra record deltas fail
 without DB/audit change. Hold start before binding and preserve passive #41 polling.
 Typed private-owner tests compose with #19 after its implementation is available.
 
@@ -73,7 +77,7 @@ restore exact bytes and pass controls. A merely mirrored helper test is insuffic
 ## Limits
 
 Arbitrary parent bookkeeping during a live turn is not authorized by this primitive.
-A Session advancing before returned-snapshot binding can still require explicit recovery;
-this issue does not guess ownership or adopt PID/UUID hints. Restart, unknown dispatch,
+Actual identity drift still requires explicit recovery; this issue does not guess
+ownership or adopt PID/UUID hints. Restart, unknown dispatch,
 explicit retry with unbound markers, Review Set slots, scheduler and external side
- effects retain their separate issue contracts.
+effects retain their separate issue contracts.
