@@ -49,13 +49,15 @@ inspection failure. A flag substitution alone does not close this safety gap.
    a live row must not conceal malformed later data.
 3. Exit failure or any nonempty stderr is Unknown, including exit-zero sysctl
    diagnostics. Do not parse diagnostic wording/localization to decide safety.
-   stdout/stderr are concurrently drained, individually bounded by the existing
+   stdout/stderr are drained without blocking one another, individually bounded by the existing
    1MiB frame ceiling; exceeding either ceiling is Unknown. Stderr is not copied
    into durable unscoped output or used as instructions. Diagnostics can identify
    the bounded failure category without revealing the process table.
 4. Preserve the existing 250ms observation deadline, including pipe completion.
-   Use fallible reader creation, bounded completion and owned direct-child
-   kill/reap on spawn/reader/poll/read/timeout/exit failure. Reader allocation,
+   Use fallible pipe/drain setup (and reader creation if readers are used), bounded
+   completion and owned direct-child kill/reap on setup/poll/read/timeout/exit
+   failure. Observation starts after spawn; mandatory blocking direct-child reap
+   may extend total cleanup beyond the observation deadline and stays explicit. Reader allocation,
    inspector PID or arbitrary stale hints cannot authorize unrelated signals.
    Trusted `/bin/ps` direct-child cleanup remains separate from supervised-agent
    group cleanup and must not recursively invoke its own inspection.

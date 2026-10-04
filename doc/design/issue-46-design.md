@@ -35,18 +35,39 @@ and only then `reap` clears uncertainty.
 ## Framing and failure
 
 Split bounded process execution from a pure exact-row validator. A result frame
-contains completed stdout/stderr plus actual child exit; no data is trusted before
-both readers complete and exit succeeds. Start one monotonic 250ms deadline for
-inspection, keep existing bounded poll interval, and check deadline at every
-blocking-result boundary. Reader creation is fallible and communicates through
-completion channels; joining an unfinished reader must not extend the deadline.
-Each stream reads at most 1MiB+1 bytes to detect overflow. Reader failures,
-overflow, timeout, nonzero exit or nonempty stderr are Unknown. Failure terminates
-and reaps the owned inspector direct child without invoking group inspection;
-completed reader handles are joined and owned handles remain accounted for.
-Implementation must prove trusted ps pipe closure and failure-path ownership;
-it cannot claim this direct-child contract contains arbitrary forking executables.
-Test shims must not spawn detached descendants or hide pipe ownership.
+contains completed stdout/stderr plus actual child exit; success requires both EOFs
+and a successful exit within one monotonic observation deadline. Start the unchanged
+250ms budget immediately after spawn returns, before pipe configuration/observation;
+spawn itself remains outside that existing post-spawn budget. Check the deadline
+before/after each drain and process-status boundary, retaining bounded 5ms polling.
+
+Use a single-thread nonblocking drain, not reader threads/channels. Existing rustix
+fs support provides safe fcntl_getfl/fcntl_setfl on each owned stdout/stderr AsFd;
+retain flags and add O_NONBLOCK. Each iteration drains both streams with bounded
+chunks, distinguishes WouldBlock from EOF, and checks the shared deadline between
+chunks so a continuous writer cannot starve the other pipe or deadline. EINTR does
+not restart the budget. Each stream retains the existing 1MiB limit and reads at most
+1MiB+1 to detect overflow. Configuration/read errors, overflow, timeout, nonzero
+exit or nonempty stderr are Unknown. No unfinished reader join or detached reader
+can survive the inspection call; dropping read FDs closes this observer's endpoints.
+
+On failure, close both read endpoints; if try_wait already reaped the child, never
+signal that numeric PID. Otherwise kill the exact owned direct Child and wait for
+its mandatory reap, checking errors rather than claiming cleanup succeeded. This
+blocking kill/reap remains outside the 250ms observation budget and can extend total
+call duration; it is an explicit existing residual, not a hard realtime promise.
+Syscall/spawn scheduling likewise has no hard bound. The inspector is trusted ps,
+not recursively group-inspected or a contract for arbitrary forking programs.
+
+Pinned Rust1.91.1 std unix anon_pipe uses pipe followed by separate FD_CLOEXEC on
+macOS, unlike supported pipe2 targets. A concurrent fork between these operations
+can inherit a pipe writer; ps exit alone consequently cannot prove EOF. Nonblocking
+reads plus the common EOF deadline handle this without unbounded joining. The causal
+fixture supplies owned pipe endpoints to the same private completion runner and
+retains a duplicate write endpoint after its direct child exits; it owns that handle
+without descendants. The runner must return Unknown by its observation deadline,
+then the fixture closes its handle and verifies owned child reap. A mutant restoring
+an unconditional read/join is killed by this control, independently of child timeout.
 
 The validator requires a newline-complete nonempty UTF-8 frame; each nonblank row
 has exactly three fields, positive PID/PGID, the expected group and a recognized
@@ -93,6 +114,14 @@ byte-matched to the installed binary. Cached immutable blob provenance:
   only explicit COMMAND_MODE legacy disables it. Published
   [compat.5](https://github.com/apple-oss-distributions/Libc/blob/main/gen/compat.5),
   blob `1366bf160ac76501481195075d2989b49d1070cf`, agrees with installed manual.
+- Apple [print.c](https://github.com/apple-oss-distributions/adv_cmds/blob/main/ps/print.c),
+  blob `a6f02a86eb29dec5dc39e54ff3692f191c203879`: state prints Z for SZOMB
+  and T for SSTOP, otherwise Mach state; documented suffixes follow primary state.
+  [keyword.c](https://github.com/apple-oss-distributions/adv_cmds/blob/main/ps/keyword.c),
+  blob `aad756d34520c213286959a12615592376f919d7`, binds stat to state.
+- Rust [unix pipe.rs at1.91.1](https://github.com/rust-lang/rust/blob/1.91.1/library/std/src/sys/pal/unix/pipe.rs),
+  blob `4798acf9dad6b152d158d044e560798417751f1e`: macOS fallback pipe then
+  separate close-on-exec configuration; atomic pipe2 is used on other listed targets.
 - Linux [procps ps manual source](https://gitlab.com/procps-ng/procps/-/blob/master/man/ps.1)
   has personality-sensitive selection. This change deliberately keeps existing
   Linux rustix cleanup; no BSD selector is introduced there.
@@ -111,33 +140,77 @@ cause, no-allocation claim or guaranteed250ms completion under global load.
 ## Consumer verification and impact
 
 Review all ProcessGroup::kill_group callers, Drop, cleanup_group, reap and the
-macOS EPERM resolver. Inspect bounded_git_raw and Context Git callers so Unknown
-still becomes SessionLost/sticky refusal. Include native Grok's copied process
-ownership integration and incoming Claude/Codex shared helper consumers only when
-those exact reviewed sources are normally integrated. No private provider branch
-is silently modified.
+macOS EPERM resolver. Generic execution, bounded_git_raw and native Grok directly
+construct/use the shared ProcessGroup; Grok is already a direct consumer, not a
+conditional copied integration. Incoming Claude/Codex count only after their exact
+reviewed sources are normally integrated. Every construction site must set
+Command.process_group(0) before spawning: ProcessGroup::new currently checks PID>1,
+not getpgid equality. This issue does not silently change signal/ESRCH semantics.
 
-Real owned-group acceptance compares selected membership with a global table only
-as diagnostic fixture evidence. It checks a second owned group is excluded,
-leader+live children refuse death, zombie leader+live children refuse death and
-owned zombie members satisfy observational acceptance while the leader remains unreaped.
-Record exact env_clear argv; a deliberate COMMAND_MODE=legacy diagnostic fixture
-must be rejected by missing leader/foreign frame or exit/diagnostic failure. It is
-not the production environment and must never signal its returned numeric hints.
-Record actual exit status and stderr byte count for each real installed fixture,
-especially all-zombie and zombie-leader outcomes. Failure
-fixtures exercise empty/exit0 stderr, timeout, both output overflows, incomplete
-and malformed rows, foreign groups, duplicate PIDs, absent leader, reader failure
-and fallible reader spawn. Direct-child cleanup is checked using its actual owned
-PID before reap; no unrelated PID is signaled.
+Ordinary cleanup remains on its blocking worker. A failed cleanup drops the group
+there and may retry inspection once, so two 250ms observation windows plus spawn
+and mandatory reap can occur. Cancellation Drop may run on an async worker; that
+existing boundary remains an explicit residual, not a newly claimed bounded total
+cleanup or closed async-blocking issue.
 
-Mutants must compile. Assert real consumer death/refusal/Lost state before human
-error wording. Selection removal needs an actual owned second group to expose
-foreign rows, not just an argv matcher. Leader/error/frame guards use the actual
-observer and cleanup boundary; parser-only tests carry unit credit. If successful
-KILL masks EPERM inspection, use an explicitly injected signal-result seam with
-actual observation and label that scope; never call it full native signal proof.
-Restored control must pass. Preserve timing/resource samples and any CI failures.
+Real owned-group acceptance uses Rust Command.process_group(0), matching production,
+and records actual exit status, stderr byte count, raw state spellings and exact
+argv/environment. A global-table comparison is diagnostic fixture evidence only.
+Selected membership must equal the known fixture members and exclude a second owned
+group. Live leader/children and unreaped zombie leader/live children refuse death;
+owned all-zombie members satisfy observational acceptance before leader reap. Same-UID
+fixtures do not prove cross-credential completeness/signalability. Pinned ps/XNU source
+provides the explicitly limited cross-UID selection argument; any read-only installed
+foreign-UID query adds visibility evidence only and never signals returned PID hints.
+
+The exact argument order is -g <PGID> BEFORE -o pid=,pgid=,stat=. Production env_clear
+removes COMMAND_MODE; a legacy negative control uses this same ordering and must fail
+(exit/diagnostic or invalid frame). Reordering format before -g in legacy mode can
+interpret the numeric argument as a PID-only selector; a dedicated zombie-leader/live-
+child control kills that defense mutant. This is a mode/order defense fixture, not
+an assertion that production env_clear inherits legacy mode.
+
+Failure fixtures cover exit0 stderr, empty output, timeout, both stream overflows,
+malformed/incomplete rows, foreign groups, duplicate PIDs, absent leader, nonblocking
+configuration/read failure and the retained pipe writer. Parser-only assertions
+carry unit credit; inspector/owned cleanup and actual consumers supply integration
+credit. No detached descendants or unknown PID signals are used by test shims.
+
+### Per-invocation consumer seam and mutant causality
+
+Use cfg(all(test, target_os = "macos")) owned test plans only; no global/thread-local
+override, runtime configuration or public provider option. An individual ProcessGroup
+can carry an inspection executable plus a signal-result plan. For Unknown-consumer
+cases, the plan performs the actual KILL on its owned group and then feeds PERM into
+the unchanged real resolver; the actual shim inspection returns malformed/missing-
+leader/stderr/timeout evidence. For the live-child selection case only, a separately
+labeled plan feeds PERM without sending KILL, preserving the live child needed to
+expose false death. Fixture cleanup remains separately owned and signals only its
+still-unreaped known group; fake inspection never grants arbitrary PID authority.
+Existing fail_cleanup bypasses the resolver and cannot count as this evidence.
+
+A private internal bounded_git_raw core receives the per-invocation test plan; its
+production wrapper passes no override. A private Context Git core receives its
+normal latch from the public caller, while tests supply a fresh isolated latch plus
+this plan. Actual GitObservation/confirm_git_cleanup must retain SessionLost and
+sticky refusal of the next operation; tests do not reset/poison the process-global
+production latch. Native Grok's private test-only instance/Actor plan installs on its
+native child after ProcessGroup creation, leaving preflight Git unchanged, and the
+real supervise→cleanup_group→terminal persistence path must publish Lost/reservation.
+All plan fields/functions are absent on production and Linux; Linux all-target clippy
+checks catch conditional compilation/dead-code mistakes. No shared schema is added.
+
+Distinguish selection operators: replacing -g with -p <leader> is the safety mutant:
+unreaped zombie leader plus live child yields a superficially valid leader-only frame,
+so the actual resolver/consumer must refuse death and stay Lost. Removing the selector
+(default UID/TTY narrowing) or replacing it with global -A usually yields rejection;
+positive all-zombie controls kill those as liveness/completeness operators, not false-
+death proof. Removing foreign-row validation may require a shim/pure-validator test
+because real global selection is otherwise rejected/masked; record that narrower
+credit. Frame/stderr/leader/error guards must reach actual observer and consumer,
+with Lost/sticky/death state asserted before error wording. Every operator compiles,
+has an exact patch/head/base, a restored passing control, and explicit masked/survived
+outcomes. No deadline/latch/default serialization relaxation earns mutant credit.
 
 Default-concurrency required suite and Linux/macOS exact-head CI remain gates.
 No deadline/latch resets, default serialization, replay policy, detached-process

@@ -73,3 +73,41 @@ null. R46-10 verified pinned sysctl_prochandle needed>copied oldlen returns ENOM
 then ps resize/retry/exhaustion surfaces stderr even if exit0. These refinements
 are included for scoped recheck in the independent design gate before code.
 Raw resumed native token/cost/API counters have unverified per-round attribution.
+
+
+## Design1 findings verified before code
+
+At immutable public d56f2bf, independent native ownership reviewer24c2b45d-8de7-
+43c0-986e-a8bad432b1ea approved with optional refinements; bounded/consumer reviewer
+ a92952cc-9d95-4f4f-922d-f106a0ea3a02 requested changes with three Medium blockers.
+Both operations completed and owned cleanup was verified before these edits.
+
+BOUND-D46-1 is verified: existing helper joins the reader after timeout and does not
+bound EOF after inspector exit. Design2 chooses a single-thread nonblocking drain,
+retained-writer causal fixture and explicit mandatory blocking reap outside the
+unchanged250ms observation budget. No detached reader/new reader-spawn gate remains.
+Pinned Rust1.91.1 pipe.rs confirms macOS pipe+separate CLOEXEC race; this is a residual
+inheritance possibility, not a measured cause of existing CI failures.
+
+BOUND-D46-2 is verified mutant misattribution: a removed/global selector commonly
+causes rejection and does not prove false death. Design2 separates those liveness
+controls from safety-critical -g→-p leader-only zombie/live-child false-death operator.
+BOUND-D46-3 is verified: current fail_cleanup skips signal/resolver/inspection and
+cannot prove Unknown consumer propagation. Explicit per-invocation macOS test plans
+now target real resolver, bounded Git/Context isolated latch and native Grok terminal
+consumer; injected PERM scope remains distinct from real native signal proof.
+
+Optional OWN/BOUND refinements specify legacy argument ordering, direct Grok helper
+consumption, constructor process_group(0) obligation, two-window Drop retry/blocking
+residual, production-shaped fixtures, actual exit/stderr/state spelling and macOS-only
+conditional compilation. Apple print.c/keyword.c formatter blobs and Rust pipe blob
+were fetched from primary public repositories and pinned; installed/source identity
+remains unverified. Requirements4 wording aligns the approved fallible-reader intent with fallible
+nonblocking pipe setup and explicitly scopes the observation/reap deadline; no
+timeout increase is introduced. The combined requirements/design alignment delta
+is included in Design2 before code. No runtime code/tests changed.
+
+Issue41 final63bbd1d exact CI37177404219 preserved Linux success/macOS failure: both
+Grok failures reported native process inspection timed out after library, adapter,
+CLI, Context and Git tests passed. Earlier ba70c3f/bab6f54 both-platform successes do
+not supersede this exact failure. No rerun/dummy evidence commit or root-cause claim.
