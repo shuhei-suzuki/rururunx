@@ -603,3 +603,113 @@ The V2 harness has real normal-death and persistent Unknown/partial-frame tests;
 its stronger framing is not retroactively attributed to the original A/B runner.
 Evidence: `/private/tmp/rururunx-review-guardian-v2-normal-result.json`,
 `/private/tmp/rururunx-owned-review-guardian-v2-result.jsonl`.
+
+
+## F1 Stage A EMPTY/no-effect component checkpoint
+
+This checkpoint changes production Codex availability to **EMPTY**. It has no
+ready-backend constructor or ordinary producer. Public and private new-effect
+routes refuse before registry, Store/read/lock, filesystem, Git, metadata, native,
+model or grant effects. Completion remains false, and release refuses before
+claiming ownership. A broker flag cannot produce readiness. Private `cfg(test)`
+backend-and-producer inputs exercise the component bodies; they are absent from
+ordinary builds. The 32-entry bound retains unsettled owners without eviction;
+it is not an execution quota, fairness proof or native capacity result.
+
+The requirements and Stage A Design10 approvals remain limited to their exact
+public contracts (`a79850c`, `6cf6adf`). Source1 at `09e658d` has one approve and
+one request_changes, followed by Source2 at `0dc26ad` with two request_changes.
+They are not retrospectively approved. Source2's direct Approve control missed
+Deny/Cancel audit, Session CAS and Grant effects before the lower send refusal.
+Its unchanged checkpoint input also failed before reaching the Store-read site.
+Source3 corrects these controls, observes the actual fresh-unpublished outcome,
+and atomically replaces the synthetic sidecar. Normal main composition preserves
+#55/#41/#51 and #63, including its static `Store::usage` decode-error projection.
+No shared ownership/cleanup authority was changed by the Stage A component.
+
+At clean public `cba0b1d3b52ca643eae7add73b73417138e3ff38`, default-concurrency
+workspace debug and release tests each pass **370 top-level Rust tests plus two
+doctests**, with 26 ignored. The nested ordinary witness child passes one extra
+test, counted separately. Formatting, all-target Clippy with warnings denied and
+both all-target builds pass. The ordinary non-`cfg(test)` child uses a canonical
+registered Project and finite synthetic sentinels; it requires its own final
+positive witness. It is not a real native workload or a managed #19 certificate.
+
+All three approval decisions use separate fresh synthetic fixtures and compare
+Store Sessions/audit, local Session/version/ledger, native peer frames and RPC
+Grant/Frame counters before error labels. A separate fixture consumes input
+through the actual private `Reservation::admit_dispatch` Store CAS; it does not
+send native wire bytes or supply #19 readiness/settlement. Existing no-consumption
+controls are retained. Checkpoint controls use a strictly higher input version
+with distinct payload and observe the pre-Store `ScopeAccess` site. Fresh
+registration checks the actual `FreshUnpublished` outcome rather than inferring
+it from registry removal alone. Every actual synthetic peer is joined before
+effect assertions.
+
+Six compiled Source3 mutants are assertion-killed: omitted approval gate, separate
+Cancel-only and Deny-only bypasses, omitted fresh-unpublished publication, omitted
+initial checkpoint guard, and a widened partial-sidecar window. All corrected
+baseline/restored controls pass and archived source bytes match the immutable
+head. A plain non-atomic truncate mutant **survives without kill credit**. The
+reader/writer barrier and fixed read loop do not prove overlap; this is a
+probabilistic observation. The partial-window mutant adds 10ms only inside the
+mutant and is a separate recorded kill, not detection of every narrow write race.
+The first mutation driver's incorrect expected match count stops before the
+checkpoint operator; its failed run is preserved separately from corrected runs.
+
+Two fresh peer-free native Claude manual source sessions independently approve
+Source3 with **zero Critical/High/Medium findings and one Low each**. Both Low
+findings concern the probabilistic sidecar control, now explicitly qualified in
+its comment and evidence. The supplied 30 public source files match unauthenticated
+GitHub bytes, and the 1,016,469-byte packet has SHA-256
+`07bbcd939eceab038cc62a6c0db3a893f64782bd0bbd9b86c382b9b48f3da5cc`.
+The packet includes all nine current Codex modules and complete composed authority
+files, with explicitly identified requirements/design/master excerpts and exact
+new State-test delta. Other providers' production and full State/Workflow tests
+are omitted; no independent acceptance of those producers is inferred.
+
+Review sessions are `4ad8dc12-1663-4a48-be6c-be4e175e9338` and
+`669a97c3-363e-4872-8339-af85c6e56a79`. Native reported costs are respectively
+USD 0.5985884 and 3.478336, with API durations 249,766ms and 218,818ms. Native usage
+and model-usage values are recorded as returned, without inventing missing fields
+or claiming billed/incremental attribution. Zero tools and strict empty MCP retain
+native auth/rules/hooks/default model/effort. Each explicit Python runtime passes
+the non-reaping `waitid` preflight before spawn; its guardian verifies the actual
+unreaped leader's selected group before reap. That is selected-group evidence,
+not all detached/delegated workload containment or a production settlement.
+
+CI [37239308460](https://github.com/shuhei-suzuki/rururunx/actions/runs/37239308460)
+passes every step on Linux and macOS. Trigger head is `cba0b1d`; both jobs actually
+checkout `84d225ddba33b07c278dda9c81fee18920cbadfd`, whose parents are
+`efe977486693a065122d8fc177b0e83d29620bdc` and the reviewed head. Its tree
+`7a6dbf9e3e90bd484957808acbcc7f4d46d3b0b2` equals the reviewed source tree;
+all 31 full-source or exact-delta blobs are compared and equal. Trigger identity
+alone is never attributed as exact-source CI acceptance.
+
+Historical failures remain failures: the first composed `0c25878` default debug
+run has ten Grok environment/receipt failures (several Git preflight timeouts),
+with precise cause **unknown**. Its release run fails the structured fixture's
+leftover caller environment marker, corrected into the sidecar at `0dc26ad`.
+The original lint errors and mutation-driver errors are retained; no deadlines,
+internal concurrency, serialization or guard policy were relaxed. The older
+review wrappers 54058/35522 lack the required interpreter observer and retain
+actual anchors under sticky Unknown; they supply no verdict, cleanup or release
+credit. New successful sessions do not erase those private harness failures.
+
+This is a partial Stage A source checkpoint, **not Issue #6 or MVP completion**.
+Required Stage B remains open: genuine pre-start whole native workload authority,
+all nested jobs/callbacks/custodians and detached/delegated resource cleanup,
+Decision-CWD/config provenance, actual #19/#58/#60/#14 ownership and settlement,
+#9/#10 decision-member ownership, continuously compatible already-live peer to
+Lost enforcement, ready Project/root capacity, native Task attachment and both-host
+required roles/resume/stop/broker/four-plus concurrency. Workflow's earlier
+capture/context/reservation/WaitingHuman effects remain #43 integration work.
+The Tokio post-spawn wrapper and shared ProcessGroup construction/Drop gaps remain
+pending #60/full-F1 contracts. No ready native profile, new privilege, default
+hook/auth/tool change or Unsupported-only permanent product waiver is claimed.
+
+Evidence: [gates](issue-6-stageA-source3-gates.json),
+[reviews](issue-6-stageA-source3-reviews.json),
+[public bytes](issue-6-stageA-source3-public-manifest.json),
+[mutations](issue-6-stageA-source3-mutations.json),
+[actual CI provenance](issue-6-stageA-source3-ci.json).

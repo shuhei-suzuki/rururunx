@@ -152,6 +152,8 @@ impl Fixture {
 
 #[test]
 fn synthetic_sidecar_stays_complete_for_actual_concurrent_reader() {
+    // Scheduling determines whether reads overlap replacements. This is a
+    // probabilistic control, not proof that any particular replacement was read.
     let fixture = Fixture::new();
     let barrier = std::sync::Barrier::new(2);
     std::thread::scope(|scope| {

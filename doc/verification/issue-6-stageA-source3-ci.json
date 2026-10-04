@@ -1,0 +1,180 @@
+{
+  "run": 37239308460,
+  "trigger_head": "cba0b1d3b52ca643eae7add73b73417138e3ff38",
+  "actual_checkout": "84d225ddba33b07c278dda9c81fee18920cbadfd",
+  "parents": [
+    "efe977486693a065122d8fc177b0e83d29620bdc",
+    "cba0b1d3b52ca643eae7add73b73417138e3ff38"
+  ],
+  "tree": "7a6dbf9e3e90bd484957808acbcc7f4d46d3b0b2",
+  "reviewed_head_tree_equal": true,
+  "all31_reviewed_full_sources_or_delta_blobs_equal": true,
+  "all_steps_both_os_success": true,
+  "blobs": [
+    {
+      "path": "crates/rrx/src/codex/attempt.rs",
+      "reviewed_blob": "8c929c2bebcff3e1dbad92b23221c0a93b9f558a",
+      "ci_blob": "8c929c2bebcff3e1dbad92b23221c0a93b9f558a"
+    },
+    {
+      "path": "crates/rrx/src/codex/availability.rs",
+      "reviewed_blob": "ca8abbfa125d01b5c7457a92b44416c73327b9ff",
+      "ci_blob": "ca8abbfa125d01b5c7457a92b44416c73327b9ff"
+    },
+    {
+      "path": "crates/rrx/src/codex/mod.rs",
+      "reviewed_blob": "09142b47c2a9f73fa28739fbb1ad4977c6ec6bce",
+      "ci_blob": "09142b47c2a9f73fa28739fbb1ad4977c6ec6bce"
+    },
+    {
+      "path": "crates/rrx/src/codex/ownership.rs",
+      "reviewed_blob": "38fafd413c71f75235ce3c6ca9d458813623252d",
+      "ci_blob": "38fafd413c71f75235ce3c6ca9d458813623252d"
+    },
+    {
+      "path": "crates/rrx/src/codex/policy.rs",
+      "reviewed_blob": "551920f8fddf4f67199dbff378ed9b644c1a35a7",
+      "ci_blob": "551920f8fddf4f67199dbff378ed9b644c1a35a7"
+    },
+    {
+      "path": "crates/rrx/src/codex/preparation.rs",
+      "reviewed_blob": "67e4795fb09e8435bfbdec48f656dd5474a615f0",
+      "ci_blob": "67e4795fb09e8435bfbdec48f656dd5474a615f0"
+    },
+    {
+      "path": "crates/rrx/src/codex/protocol.rs",
+      "reviewed_blob": "6ba832caf4a4aadc5ad6a631ff075db3d7d90b36",
+      "ci_blob": "6ba832caf4a4aadc5ad6a631ff075db3d7d90b36"
+    },
+    {
+      "path": "crates/rrx/src/codex/session.rs",
+      "reviewed_blob": "73ec2483d8f923cbdcfbd8ce05b1ce325d0e3dfb",
+      "ci_blob": "73ec2483d8f923cbdcfbd8ce05b1ce325d0e3dfb"
+    },
+    {
+      "path": "crates/rrx/src/codex/transport.rs",
+      "reviewed_blob": "787870bd8960935758246d38a01c00776e84a34a",
+      "ci_blob": "787870bd8960935758246d38a01c00776e84a34a"
+    },
+    {
+      "path": "crates/rrx/src/lib.rs",
+      "reviewed_blob": "046c271e4668d8625fc7104d79c0904f3c2ef42f",
+      "ci_blob": "046c271e4668d8625fc7104d79c0904f3c2ef42f"
+    },
+    {
+      "path": "crates/rrx/src/adapter.rs",
+      "reviewed_blob": "37ff624a646f54656439b9e7928627ae1aca9947",
+      "ci_blob": "37ff624a646f54656439b9e7928627ae1aca9947"
+    },
+    {
+      "path": "crates/rrx/src/adapter/inspection.rs",
+      "reviewed_blob": "376b6556758129eaa7c585a452ebe1dd387c40e3",
+      "ci_blob": "376b6556758129eaa7c585a452ebe1dd387c40e3"
+    },
+    {
+      "path": "crates/rrx/src/state/mod.rs",
+      "reviewed_blob": "9a4dfe0682804079efa409bf94bda8f2bb11dec5",
+      "ci_blob": "9a4dfe0682804079efa409bf94bda8f2bb11dec5"
+    },
+    {
+      "path": "crates/rrx/src/state/environment.rs",
+      "reviewed_blob": "8f7f937b90751540a5f5bcbbaffa8befb5af257c",
+      "ci_blob": "8f7f937b90751540a5f5bcbbaffa8befb5af257c"
+    },
+    {
+      "path": "crates/rrx/src/project.rs",
+      "reviewed_blob": "07a829bad7eb0394e616323e7e5887d56af8b873",
+      "ci_blob": "07a829bad7eb0394e616323e7e5887d56af8b873"
+    },
+    {
+      "path": "crates/rrx/src/domain.rs",
+      "reviewed_blob": "f3f70b8667c1894afdf7c7425472f29eb5aeb3e5",
+      "ci_blob": "f3f70b8667c1894afdf7c7425472f29eb5aeb3e5"
+    },
+    {
+      "path": "crates/rrx/src/config.rs",
+      "reviewed_blob": "fd167b8723654f3b096e27c5c99f903ec59bcd1d",
+      "ci_blob": "fd167b8723654f3b096e27c5c99f903ec59bcd1d"
+    },
+    {
+      "path": "crates/rrx/src/git.rs",
+      "reviewed_blob": "ec5ca45bd0c4ed5b2edaada8bfe51f07a6ff3e2b",
+      "ci_blob": "ec5ca45bd0c4ed5b2edaada8bfe51f07a6ff3e2b"
+    },
+    {
+      "path": "crates/rrx/src/workflow.rs",
+      "reviewed_blob": "294c4629e55d3bc0b7b7be1e451835aff1418e6b",
+      "ci_blob": "294c4629e55d3bc0b7b7be1e451835aff1418e6b"
+    },
+    {
+      "path": "crates/rrx/tests/codex_unavailable.rs",
+      "reviewed_blob": "f4605649c00eb05cb88d0803fe004212101d8747",
+      "ci_blob": "f4605649c00eb05cb88d0803fe004212101d8747"
+    },
+    {
+      "path": "crates/rrx/examples/native_codex_protocol.rs",
+      "reviewed_blob": "a019d5907be1f547ad96a9ad1f15ee10b5d4ba11",
+      "ci_blob": "a019d5907be1f547ad96a9ad1f15ee10b5d4ba11"
+    },
+    {
+      "path": "crates/rrx/examples/native_codex_session.rs",
+      "reviewed_blob": "a019d5907be1f547ad96a9ad1f15ee10b5d4ba11",
+      "ci_blob": "a019d5907be1f547ad96a9ad1f15ee10b5d4ba11"
+    },
+    {
+      "path": "doc/requirements/issue-6-requirements.md",
+      "reviewed_blob": "d6d1e57fa19e3515cd5b9dcd44bdb43d60adef47",
+      "ci_blob": "d6d1e57fa19e3515cd5b9dcd44bdb43d60adef47"
+    },
+    {
+      "path": "crates/rrx/tests/support/grok_fixture.rs",
+      "reviewed_blob": "ad23553c636792c3c87ea5e80e6cac97b17b4741",
+      "ci_blob": "ad23553c636792c3c87ea5e80e6cac97b17b4741"
+    },
+    {
+      "path": "crates/rrx/tests/support/grok_fake.py",
+      "reviewed_blob": "dfae67dde3a2852da177d7372be1e343c47f451f",
+      "ci_blob": "dfae67dde3a2852da177d7372be1e343c47f451f"
+    },
+    {
+      "path": "crates/rrx/tests/grok.rs",
+      "reviewed_blob": "67eefbe8be75955950d68c6902b8bed71c9447a5",
+      "ci_blob": "67eefbe8be75955950d68c6902b8bed71c9447a5"
+    },
+    {
+      "path": "Cargo.toml",
+      "reviewed_blob": "1709e725120ed00aff17d9cb7d046f536d3eaa0a",
+      "ci_blob": "1709e725120ed00aff17d9cb7d046f536d3eaa0a"
+    },
+    {
+      "path": "crates/rrx/Cargo.toml",
+      "reviewed_blob": "553d39807d6ca050569dc8c7128377c40618509b",
+      "ci_blob": "553d39807d6ca050569dc8c7128377c40618509b"
+    },
+    {
+      "path": "doc/design/issue-6-design.md",
+      "reviewed_blob": "4fbce9ed939735e78ee7145fff3c981d24e316b3",
+      "ci_blob": "4fbce9ed939735e78ee7145fff3c981d24e316b3"
+    },
+    {
+      "path": "doc/design/master/agent-adapter.md",
+      "reviewed_blob": "f5036daabc7a864fc9bee61005f8cc9ae1619313",
+      "ci_blob": "f5036daabc7a864fc9bee61005f8cc9ae1619313"
+    },
+    {
+      "path": "crates/rrx/tests/state.rs",
+      "reviewed_blob": "0c096ee3d3221b01e757277f8168a74755f0f17c",
+      "ci_blob": "0c096ee3d3221b01e757277f8168a74755f0f17c"
+    }
+  ],
+  "logs": {
+    "mac": {
+      "path": "/private/tmp/rururunx-issue6-stageA-source3-ci37239308460-mac.log",
+      "sha256": "6899973ae3fef7d64951f46da5299d6675e94254f793c6c0641cee6bc89174c6"
+    },
+    "linux": {
+      "path": "/private/tmp/rururunx-issue6-stageA-source3-ci37239308460-linux.log",
+      "sha256": "f1eb9bc4a17282acb00f2de9591813e47bc708fb4eb4166daea749dd4ab0364c"
+    }
+  }
+}
