@@ -140,7 +140,7 @@ permission checks keep their exact own scope/session/lock CAS.
 Provide an explicit state-only Project-scoped policy inspection method. It reports only
 the selected Project's own referenced baseline names and unsupported/control declarations;
 it reads no values and reports no foreign IDs, launches, counts or timestamps. Invoke it
-only through an explicit operator check or independent inventory maintenance, never as a
+only through an explicit operator check in the runtime that owns the frozen baseline, never as a
 side effect of another Project's blocked admission or inventory/registration change.
 Its non-control candidate set is derived only from that Project's own declarations and
 the retained baseline name set, independent of other Projects' co-declarations. A's
