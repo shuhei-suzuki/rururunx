@@ -917,8 +917,8 @@ impl Store {
             let usage: Usage = decode(body)?;
             ensure!(
                 usage.scope.project_id.to_string() == project
+                    && str_id(usage.scope.goal_id) == goal
                     && true
-                    && str_id(usage.scope.task_id) == task
                     && usage.session_id.to_string() == session,
                 "usage row/body identity mismatch"
             );
