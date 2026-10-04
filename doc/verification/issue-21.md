@@ -195,12 +195,16 @@ No helper, unavailable measurement or fixture can close the whole telemetry issu
 
 ## Initial source component: legacy integer storage boundary
 
-Source b47b773 adds only a pre-write signed-i64 range guard to the existing legacy
-Store::put_usage for token counts, artifact bytes and context version. Values at
-i64::MAX and observed zero remain exact; each field at i64::MAX+1 or u64::MAX
+Source head b47b773 (guard introduced in5a2f47a) contains only a pre-write signed-i64
+range guard for the six typed Usage integers: input_tokens, cached_input_tokens,
+output_tokens, context_pack_version, context_pack_size and repo_map_size. Values at
+i64::MAX and the real cached_input_tokens zero remain exact; each typed field at
+i64::MAX+1 or u64::MAX
 rejects before any Usage/audit or P/G/T/Session mutation. No clamp/cast/relabeling.
 Legacy Usage, collection-time phase/round and arbitrary cache_metadata remain
 UNQUALIFIED; this narrow component neither measures native tokens nor completes21.
+Integers inside arbitrary cache_metadata, including Grok cache_creation_tokens,
+are explicitly unguarded and unqualified pending raw-writer retirement.
 Raw-writer retirement, typed operation provenance, bounded projections/queries and
 all coordinated private producer/epoch/native benchmark gates remain pending.
 
@@ -233,3 +237,24 @@ legacy Store consumer kills, not qualified telemetry/report/native benchmark tes
 The normal main55/41 integration commit63a6a29 has CI37207493561 all steps green
 on both OS; that precedes this new source and does not test its guard. Independent
 source component review and new CI remain pending; no whole21 source acceptance.
+
+Source1 component head41c60fe received two independent native approvals with no
+Critical/High/Medium or blockers; actual owned cleanup/reap verified for both.
+Three/two Low findings were verified: incomplete restoration hashes, missing
+ordering mutant and overbroad guard/commit/zero wording. Each original private
+mutation commit is retained in Git objects; its tree OID and path-labeled hashes
+for state/mod.rs and tests/state.rs now accompany every check. The before/restored
+control trees and both file hashes match exactly. An additional compiled mutant
+moves the guard after actual Usage/audit commit. It returns the intended range
+error but fails at 'overflow published data for input_tokens', exercising the
+snapshot comparison omitted by field-removal kills. Its exact restored41c60fe tree
+passes the same real control. No production Rust bytes changed for these fixes.
+
+Trigger-head CI37209367789 succeeded for both OS, every fmt/clippy/test/debug and
+release-build step inspected. Actual checkoutcd3f6e6da0f30f463fd77dca300ca5022b36dc0b
+is the synthetic PR merge with parents d87faec and41c60fe. Its complete tree matches
+the reviewed41c60fe tree, including every Rust source/test and Cargo/CI input blob;
+this is tested-source provenance, distinct from run.headSha. Public structured
+provenance accompanies this ledger. Prior failures remain. This is narrow component
+approval, not qualified #21 telemetry/source/native benchmark or MVP acceptance.
+Evidence/wording delta re-review remains pending.

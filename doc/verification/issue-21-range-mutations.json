@@ -18,7 +18,12 @@
       "head": "b47b7739e33f9cf2b79f8831b0ec1e7f98e7d94f",
       "exit_code": 0,
       "seconds": 8.761,
-      "log": "rururunx-issue21-range-control-before.log"
+      "log": "rururunx-issue21-range-control-before.log",
+      "tree": "ed830f12a2c429c9e0e3a92d23cb5906d28e4178",
+      "path_sha256": {
+        "crates/rrx/src/state/mod.rs": "fffde33dd0dda236680b5fe0aa8e6fd70a2d8ce4187a5308f55f546704559641",
+        "crates/rrx/tests/state.rs": "d6619dd93db60ed224561eda0d0cf2ac79d88b90bed67c217178dab82f5a81d0"
+      }
     },
     {
       "label": "input_tokens",
@@ -27,7 +32,12 @@
       "seconds": 2.475,
       "log": "rururunx-issue21-range-input_tokens.log",
       "intended_assertion": "overflow stored for input_tokens",
-      "intended_kill": true
+      "intended_kill": true,
+      "tree": "7122ad36b80e544115bce491952d09967c06d6fd",
+      "path_sha256": {
+        "crates/rrx/src/state/mod.rs": "6a034119b93843c556a7314fdf6b7bcde332d446a054569455b0bad56430c246",
+        "crates/rrx/tests/state.rs": "d6619dd93db60ed224561eda0d0cf2ac79d88b90bed67c217178dab82f5a81d0"
+      }
     },
     {
       "label": "cached_input_tokens",
@@ -36,7 +46,12 @@
       "seconds": 4.15,
       "log": "rururunx-issue21-range-cached_input_tokens.log",
       "intended_assertion": "overflow stored for cached_input_tokens",
-      "intended_kill": true
+      "intended_kill": true,
+      "tree": "5b755c1a41ad66282f01a7739ca0585752adb4b3",
+      "path_sha256": {
+        "crates/rrx/src/state/mod.rs": "de4f330e98d4f8b098f1be2a50df8a468d9167e60d23d8fc0782cbef30af4a2b",
+        "crates/rrx/tests/state.rs": "d6619dd93db60ed224561eda0d0cf2ac79d88b90bed67c217178dab82f5a81d0"
+      }
     },
     {
       "label": "output_tokens",
@@ -45,7 +60,12 @@
       "seconds": 2.853,
       "log": "rururunx-issue21-range-output_tokens.log",
       "intended_assertion": "overflow stored for output_tokens",
-      "intended_kill": true
+      "intended_kill": true,
+      "tree": "7d93e985e3e7a1f68db76aa05caa0fd772bcf708",
+      "path_sha256": {
+        "crates/rrx/src/state/mod.rs": "27fbd149ba0759854dd8a7f78aa442bb3ff04b1e1fa8f834a36c9abd1191cf2f",
+        "crates/rrx/tests/state.rs": "d6619dd93db60ed224561eda0d0cf2ac79d88b90bed67c217178dab82f5a81d0"
+      }
     },
     {
       "label": "context_pack_version",
@@ -54,7 +74,12 @@
       "seconds": 2.356,
       "log": "rururunx-issue21-range-context_pack_version.log",
       "intended_assertion": "overflow stored for context_pack_version",
-      "intended_kill": true
+      "intended_kill": true,
+      "tree": "9c1ac841e58f95b17f3727971a6f8073c26a524c",
+      "path_sha256": {
+        "crates/rrx/src/state/mod.rs": "ed846ea1be450a2592ec97bb407ed9f27a3fcd3b97763b66ef3ebf3bbc168209",
+        "crates/rrx/tests/state.rs": "d6619dd93db60ed224561eda0d0cf2ac79d88b90bed67c217178dab82f5a81d0"
+      }
     },
     {
       "label": "context_pack_size",
@@ -63,7 +88,12 @@
       "seconds": 4.924,
       "log": "rururunx-issue21-range-context_pack_size.log",
       "intended_assertion": "overflow stored for context_pack_size",
-      "intended_kill": true
+      "intended_kill": true,
+      "tree": "d8fbb0884884f924211bc9c45c47826114a86a3d",
+      "path_sha256": {
+        "crates/rrx/src/state/mod.rs": "a8e6d0cfa7bf9de7d416c8302ffabb47bfc8f3c97912d021a58f5d4382348a2b",
+        "crates/rrx/tests/state.rs": "d6619dd93db60ed224561eda0d0cf2ac79d88b90bed67c217178dab82f5a81d0"
+      }
     },
     {
       "label": "repo_map_size",
@@ -72,15 +102,53 @@
       "seconds": 2.56,
       "log": "rururunx-issue21-range-repo_map_size.log",
       "intended_assertion": "overflow stored for repo_map_size",
-      "intended_kill": true
+      "intended_kill": true,
+      "tree": "a3d4347456acd1ce11e9a1c829d44068059c16ae",
+      "path_sha256": {
+        "crates/rrx/src/state/mod.rs": "e58170211862c2f7ea9f650a3d7d4bec0be29db66c4629399628a750599e7c02",
+        "crates/rrx/tests/state.rs": "d6619dd93db60ed224561eda0d0cf2ac79d88b90bed67c217178dab82f5a81d0"
+      }
     },
     {
       "label": "control-restored",
       "head": "5ef12f677a99a725e5985b6795eab7a350fd8a3a",
       "exit_code": 0,
       "seconds": 2.492,
-      "log": "rururunx-issue21-range-control-restored.log"
+      "log": "rururunx-issue21-range-control-restored.log",
+      "tree": "ed830f12a2c429c9e0e3a92d23cb5906d28e4178",
+      "path_sha256": {
+        "crates/rrx/src/state/mod.rs": "fffde33dd0dda236680b5fe0aa8e6fd70a2d8ce4187a5308f55f546704559641",
+        "crates/rrx/tests/state.rs": "d6619dd93db60ed224561eda0d0cf2ac79d88b90bed67c217178dab82f5a81d0"
+      }
+    },
+    {
+      "label": "ordering",
+      "head": "582ad45f7a720413d59310ead3db6e4180e1c927",
+      "tree": "d82866522c212153a9d156dbee21c9eed57c5d99",
+      "path_sha256": {
+        "crates/rrx/src/state/mod.rs": "5ae6b3ac229fe7b44c881d4b4bdb9699f58104b298d2ffdc619847a485740b1e",
+        "crates/rrx/tests/state.rs": "d6619dd93db60ed224561eda0d0cf2ac79d88b90bed67c217178dab82f5a81d0"
+      },
+      "exit_code": 101,
+      "seconds": 4.531,
+      "log": "rururunx-issue21-range-ordering.log",
+      "intended_assertion": "overflow published data for input_tokens",
+      "intended_kill": true
+    },
+    {
+      "label": "ordering-restored",
+      "head": "1855a48a8dffa7fd4e24bfc6fd8d68cd5eb0387e",
+      "tree": "057e999454636fdb7a85d94a91fb431e7d113db3",
+      "path_sha256": {
+        "crates/rrx/src/state/mod.rs": "fffde33dd0dda236680b5fe0aa8e6fd70a2d8ce4187a5308f55f546704559641",
+        "crates/rrx/tests/state.rs": "d6619dd93db60ed224561eda0d0cf2ac79d88b90bed67c217178dab82f5a81d0"
+      },
+      "exit_code": 0,
+      "seconds": 2.088,
+      "log": "rururunx-issue21-range-ordering-restored.log"
     }
   ],
-  "whole_issue_acceptance": false
+  "whole_issue_acceptance": false,
+  "additional_ordering_baseline": "41c60fe67492f64a2829eeaab42857e3ba8fa7a9",
+  "exact_restoration_verified": true
 }
