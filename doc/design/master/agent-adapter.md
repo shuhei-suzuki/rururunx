@@ -320,3 +320,16 @@ traverses/allocates against global processes. This contract does not explain pri
 CI timeouts or contain detached native descendants. Non-atomic fork/exit sampling and existing partial-success
 KILL with non-signalable survivors remain residual limits; Linux cleanup semantics
 remain unchanged.
+
+
+### Pending Grok cleanup provenance (Issue #55)
+
+[Requirements](../../requirements/issue-55-requirements.md) approved the narrow diagnostic
+follow-up; proposed [design](../issue-55-design.md) awaits two independent approvals.
+Current Grok result-error priority can obscure separate cleanup/ownership/drain facts.
+Proposed fixed bounded receipt captures the exact final clean operands after reconciliation
+with stage-labelled supervisor flags, preserving original diagnostic and all process/PID/
+Lost/reservation/transport rules. Shared group cause stays unclassified; no message parsing
+or new death authority. Actual dispatched forcedUnknown proof remains pending and
+macOS-only; Linux clean receipt coverage is separate. No provider fix, schema change,
+historical timeout explanation or Issue41 red-gate resolution is claimed.

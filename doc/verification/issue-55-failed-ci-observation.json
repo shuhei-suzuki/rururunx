@@ -20,5 +20,21 @@
     "ps timeout",
     "native child death",
     "later mode passed"
-  ]
+  ],
+  "field_provenance": {
+    "head_run_job_runner_test_mode": "structured transcription of public GH log metadata; runner is job label",
+    "assertion": "public source text, not verbatim panic output",
+    "panic_location_panic_text": "verbatim panic location and payload",
+    "target_result": "paraphrased; see verbatim_test_result",
+    "later_mode_not_observed": "source-derived loop order after panic",
+    "digest": "sha256 exported gh run view --log-failed copy; only verifiable while original GH log or retained copy exists"
+  },
+  "verbatim_panic_line": "thread 'native_auth_inventory_config_parser_and_tool_evidence_fail_closed' (40268) panicked at crates/rrx/tests/grok.rs:479:9:",
+  "verbatim_test_result": "test result: FAILED. 8 passed; 1 failed; 2 ignored; 0 measured; 0 filtered out; finished in 23.87s",
+  "runner_image": {
+    "name": "macos-26-arm64",
+    "version": "20260907.0351.1",
+    "provenance": "verbatim Set up job Runner Image fields from original public macOS job111408797958"
+  },
+  "full_macos_job_export_sha256": "2a3cc70a8699e1e109fd6109b45c51fa798a7cf90b3480218ab12fe9ed3ece2c"
 }
