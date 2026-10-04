@@ -1,9 +1,9 @@
 # Issue 43 Design: Preserve native authority during Workflow Session binding
 
-**Status:** Design4 draft; joint private-publication alignment, independent delta
-review and implementation pending
+**Status:** Design5 proposed from Requirements9 approved at91d4f34; independent
+design/source reviews and actual producer/native/recovery gates pending
 **Workflow:** STRICT  
-**Scope:** Workflow native Session binding only
+**Scope:** factual native binding, managed settled-success route and two bounded live diagnostics
 
 ## 1. Goal
 
@@ -40,7 +40,7 @@ Binding a factual Session identity must not mutate Task authority merely because
 5. A public Session ID is not a native ownership credential.
 6. Native provider authority remains provider-specific and unchanged.
 7. Binding failure never releases, retries, transfers or fabricates completion.
-8. No schema migration is required for this change.
+8. No independent binding-only migration; compose the mandatory #19/#23/#43/#58/#60 writer epoch.
 
 ## 3. New private Store primitive
 
@@ -59,7 +59,7 @@ The exact Rust names may differ, but the primitive must not be exposed as a gene
 
 ### 3.1 Expected snapshot
 
-The caller supplies the authority captured before launch:
+The marker transaction privately captures resulting post-marker authority atomically before launch (see Design5 details):
 
 - project_id + expected Project version
 - goal_id + expected Goal version
@@ -264,7 +264,7 @@ It never calls retry/release/recovery automatically.
 
 ## 9. StateOnly semantics
 
-Session binding remains `StateOnly` factual registration.
+Session binding is factual registration through the dedicated private record-only port. It must not call ordinary `WorkflowAccess::StateOnly` persistence, which rewrites Task.
 
 Do not repurpose reserve-time ReadOnly/Mutating admission sweeps for this operation.
 
@@ -375,7 +375,7 @@ After successful bind:
 - continue polling using the bound Session
 - preserve captured Task authority for the already-running native turn
 
-All ordinary phase transitions continue using existing Task/Workflow/context atomic transitions.
+Ordinary phase/context transitions retain their atomic paths; the two bound-live poll diagnostic branches use the separate record-only port specified below.
 
 This is not a broad optimization to avoid Task writes elsewhere.
 
@@ -505,15 +505,15 @@ Before merge:
 
 This issue does not implement:
 
-- restart recovery
+- general restart recovery (actual #14 is required for the narrow authentic settled-success route)
 - unknown dispatch retry
 - external side-effect reconciliation
 - Review Set slot allocation
-- scheduler behavior
+- general scheduler behavior (actual #23 durable readiness is required for this factual route)
 - provider permission-policy changes
 - native PID/UUID adoption
 - broad Task-write optimization
-- new schema
+- an independent schema history outside the composed writer epoch
 - cross-project native UUID ownership
 - native completion inference
 
@@ -522,7 +522,7 @@ This issue does not implement:
 See [binding mechanics](issue-43-binding-mechanics.md) for the same proposed
 design's concrete Engine/Store boundary, complete-JSON delta validation, trusted
 registry probe, exact full scoped lock-set capture/comparison, and audit writer.
-The lock expectation is captured after dispatch-marker commit and before start;
+The complete lock expectation is captured INSIDE the dispatch-marker transaction with its resulting P/G/T/Workflow versions before start;
 binding never refreshes revoked owner snapshots to make a CAS pass.
 
 The allowed Record write includes its ordinary updated_at as well as version;
@@ -549,9 +549,7 @@ this method neither grants their authority nor pretends to suspend already
 dispatched work. Current fresh-start Workflow has no resumed-UUID predecessor
 exemption; any future exception requires verified private resume lineage.
 
-Both documents remain draft pending independent STRICT design review. The
-requirements baseline approved d8c5266; the subsequent item6 clarification is
-subject to this joint delta review. No production implementation is present.
+Design4/item6 was approved at77da799. Requirements9 is approved at91d4f34; both Design5 documents remain proposed pending independent STRICT design/source review. No production implementation is present.
 
 The narrow binding primitive is the only writer of existing PhaseAttempt Session
 IDs. All ordinary WorkflowAccess modes refuse an existing ID delta; new native
@@ -651,7 +649,27 @@ Protected Tasks reject Interactive/PTY startup and terminal input before any
 reservation, Starting row, spawn or terminal bytes; NonInteractive Workflow
 configuration alone does not protect the direct native adapter entry points.
 
-Joint #19 publication alignment and independent Design4 review are pending;
+Design4 publication alignment was approved; Design5 actual #19/#23/#14 composition and independent review remain pending;
 source remains absent. Positive post-binding decision and later typed closure
 must retain the exact consumed UUID/pair. A new Journal name is not itself proof
 of correctness; actual reply/closure controls and causal mutants are required.
+
+## 22. Design5 composition and diagnostic contract
+
+[Binding mechanics](issue-43-binding-mechanics.md) contains the detailed Design5
+transaction, managed driver, diagnostic and extended control/mutation contracts.
+Requirements9 approved at91d4f34 governs both documents. Normal return and authentic
+settled-success registration use the SAME immutable full frame captured atomically
+INSIDE marker commit; no later parent/lock recapture. Genuine #19 current successful
+receipt/profile cleanup is required for the late path, with actual #23 durable pending
+readiness and owned launch supervision independent of dropped Engine futures. Lost
+notification is recovered by bounded fair active-driver wake, never passive poll.
+
+The separate record-only bound-live diagnostic port changes only bounded active detail,
+Workflow version/updated_at and a reserved audit; no P/G/T/Session/lock or native pin
+write. Its factual lineage must compose with #19/#23 closure without renewing grant
+authority. Actual held-native status-error and persisted/status mismatch controls
+and EACH branch's Task-rewrite mutant are required. No diagnostic binds, fails/retries,
+releases or grants. Known actual current failure uses #19 non-success closure without
+absent Session-ID binding; actual #14 restore/fencing gates restart. All private source,
+required native conformance and co-integration gates remain pending.

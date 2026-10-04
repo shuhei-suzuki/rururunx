@@ -151,3 +151,13 @@ pin writes and repeated diagnostic coalescing. It inventories remaining mid-turn
 writers and requires held live native eligibility controls/branch-specific mutants.
 Binding remains single-field-only; no new live authority from diagnostics. Master
 explicit gaps updated. Requirement delta review and Design5/source remain pending.
+
+Requirements9 91d4f34 received two independent native approvals, zero findings and
+blockers, both actual v3 owned cleanup/reap verified. Design5 incorporates SAME
+atomic original marker frame for normal/late binding, genuine sealed-current success,
+managed dropped-launch supervision and bounded durable driver readiness/wake; one
+separate record-only bound-live diagnostic port preserves currency. Earlier Design4
+mechanics updated to remove after-marker lock capture, return-only/independent-schema
+and overbroad historical Running observations. Actual #19/#23/#14/source/native ports
+remain unimplemented/mandatory; Design5 review pending. TriggerCI37211388550 is green,
+with tested checkout/source provenance still to be captured; no prior failure repaired.

@@ -1,7 +1,7 @@
 # Issue 43 design: record-only native Session binding
 
-Status: proposed Design4; joint private-publication alignment and independent
-STRICT delta review pending. No implementation.
+Status: proposed Design5 from approved Requirements9 at91d4f34; independent STRICT
+design/source and actual composed producer/native/recovery gates pending. No implementation.
 Requirements: [issue-43-requirements.md](../requirements/issue-43-requirements.md).
 This supplements [the shared Issue43 design](issue-43-design.md). Both describe
 the same proposed gate; neither is implemented. The exact transaction mechanics
@@ -16,9 +16,7 @@ that same transaction again. `put_task_tx` increments Task.version even though
 the Task body was otherwise unchanged. Native scope snapshots captured after the
 marker are thereby invalidated by their own runtime registration.
 
-Introduce a private binding transaction for that single successful-start path.
-Keep the dispatch-marker reservation and every other phase, context, risk,
-observation and terminal transition on the ordinary transaction. This does not
+Use the sole private binding transaction for normal return and authentic settled-success late registration. Dispatch marker/ordinary phase transitions retain their paths; the two bound-live poll diagnostic arms use the separate private record-only diagnostic port below. This does not
 make an unchanged Task write generally optional. No new native operation or
 permission is admitted by binding, and transport exit never becomes gate evidence.
 
@@ -26,8 +24,7 @@ The dedicated transaction is the sole writer of an existing attempt's Session ID
 Every ordinary `put_workflow_transition` access mode and its `validate_transition`
 reject any existing history entry's session_id change. Newly appended attempts
 still require session_id=None. Keep closure guards on the ordinary path; move
-binding validation to the narrow path. A future recovery binder needs its own
-reviewed private port. Current production has one assignment (workflow.rs:1016)
+binding validation to the narrow path. The approved narrow authentic settled-success route uses this SAME sole binder and actual #14 restore/fencing; all other recovery retains its own private ports. Current production has one assignment (workflow.rs:1016)
 and one native reservation initializer with None (workflow.rs:879); Evidence's
 separate session_id is an outcome reference, not a PhaseAttempt writer.
 
@@ -68,8 +65,7 @@ Lost Session is rejected even if its durable record subsequently changes. The
 returned Session is an identity observation from the selected adapter, not a
 process handle, native ACK or prepared-input credential.
 
-After the dispatch-marker commit, capture every scoped WorktreeLock ID/version
-under Store before calling start. This is the same complete set used by native
+INSIDE the dispatch-marker Immediate transaction capture every scoped WorktreeLock ID/version and resulting post-marker P/G/T/Workflow marker frame before calling start. This is the same complete set used by native
 scope consumers, including inactive historical lock records. Retain it in the
 private binding expectation; no lock is created or adopted by this capture.
 
@@ -192,7 +188,7 @@ public arbitrary-event API and cannot substitute for required Store guards.
 
 ## Integration with typed ownership and follow-ups
 
-Issue19's schema6 source is not yet implemented. Its reviewed design allocates
+Issue19's final composed candidate schema/private source is not yet implemented; main is schema3. Its reviewed design allocates
 one phase_session_owners row per scoped native context_version; every typed
 Starting/first-consumed write allocates it atomically. The binding predicate must
 read that row and the private validated-preparation/admitted input pair using
@@ -319,7 +315,7 @@ becomes one. Align this contract with #19 before joint source acceptance.
 | Claude f9b671f explicit permission reply :1639/:1647/:1653 | Write a separate bounded recovery.operation_intent journal, retaining pending native request/operation digest and actual ALLOW/DENY fact. ALLOW keeps commit_current/NativeCAS with full current scope and lock fences before wire. DENY keeps own-Session CAS and existing activity/worktree constraints through the explicitly allowed Acked historical observation outcome, without a raw parent-version CAS or new consumption. |
 | Claude automatic DENY :1496/:1513, pending/cancel :1504/:1531 | Move all decision facts away from dispatch_intent. Exact pending request publication/removal and WaitingApproval-to-Running observation keep actor/input/consumed pair unchanged and use the historical observation mode. Broker-disabled/capacity denial remains durable before wire; failed publication stops without a phantom response. |
 | Claude terminal transport :411/:1696 | Protected Tasks reject Interactive/PTY startup and terminal_input before reservation, Starting publication, spawn or terminal bytes. Do not allocate a typed phase merely to reject later; pending Waiting states grant no bypass. Outside protected Tasks, transport facts may use a separate bounded recovery.transport_intent journal, without fabricating prepared input consumption or typed Workflow authority. Workflow is NonInteractive. |
-| Codex 6749505 answer_approval :2020–2062 | The actual code does not overwrite dispatch_intent. Its separate codex.approval.reply_intent audit precedes reply: Approve uses audit_if_current then put_session_if_current/NativeCAS; Decline uses audit then unchanged own-Session put_session/historical observation. Post-reply removal of the native in-memory pending request and Running publication use the Acked historical observation outcome with the consumed pair intact. Preserve existing audit/wire ordering; do not invent a new consumed intent. |
+| Codex 6749505 answer_approval :2020–2062 | The actual code does not overwrite dispatch_intent. Its separate codex.approval.reply_intent audit precedes reply: Approve uses audit_if_current then put_session_if_current/NativeCAS; Decline uses audit then unchanged own-Session put_session/historical observation. Post-reply removal preserves the consumed pair; any Running-target publication still requires the remembered full version fence under #19. Exact unchanged Waiting fixed Decline is a separate historic nongrant case. Preserve existing audit/wire ordering; do not invent a new consumed intent. |
 | Grok 65aa940 callback :804–927 and prompt intent :1041 | Callback ownership/FS checks and grok.fs_observed audit remain separate from input consumption. Reject-only native permission callbacks confer no grant. The input intent at prompt dispatch becomes the canonical DTO during #19 migration; callbacks cannot replace it. Preserve existing Actor::owner before every side effect/result. |
 
 For this operation publication, #19 Acked requires the new protected tuple to
@@ -341,8 +337,7 @@ ALLOW's separate full current NativeCAS and actual owned pending-request proof
 remain mandatory. Parent Task metadata/version revocation alone cannot turn
 DENY into an operation grant or require ALLOW's parent-version fence.
 
-Pre-reply Running-to-WaitingApproval with its exact pending request is also the
-Acked historical outcome with unchanged tuple/consumed UUID, before any decision.
+Pre-reply Running-target/ACK observations preserve exact tuple/consumed UUID and remembered full P/G/T version fences under #19. Only the specifically exact unchanged-Waiting fixed Decline and conservative Lost diagnostics use historic provenance without renewed parent grant.
 
 Inventory every consumer of the renamed operation/transport journal: Claude
 permission assertions, reserved intent audit payloads, SQL ALLOW-failure trigger
@@ -456,3 +451,138 @@ unprotected-era Interactive Consultant on a Task later protected by a ReadOnly
 Reviewer frame, or the actual native-entry guard seam with retained owned terminal.
 Startup rejection cannot itself kill an omitted terminal_input guard. The source
 review must resolve the reachable construction rather than count setup failures.
+
+## Design5: one immutable marker frame and receipt-sourced route
+
+Approved Requirements9 is authoritative. The marker transaction itself constructs
+and privately persists `DispatchBindingFrame`: resulting POST-marker P/G/T versions,
+post-marker Workflow ID/version/generation/active index/context/source/marker tuple,
+selected registered actor/provider/role/worktree and complete scoped WorktreeLock
+ID/version set. Capture that full set INSIDE the SAME Immediate marker transaction.
+The normal returned-Session and late receipt-sourced binder read exactly this frame;
+no later lock read/current-version refresh or #19 bookkeeping refresh replaces it.
+Marker/owner provenance is actual private operation evidence; DTO labels/JSON cannot
+construct it. Scope, context and source remain immutable. Any strict mismatch,
+including sibling Goal metadata version change, holds without automatic fail/retry/
+release; actual #14 recovery is required. This availability limit does not waive
+native multi-Task acceptance. No unrelated-parent tolerance is introduced.
+
+The sole binder takes a private binding request variant, NormalReturned or
+ClosedSettlement; the caller cannot select weaker predicates. NormalReturned uses
+captured registered identity and actual #19 current allocated/preparation/admitted
+input evidence (Starting need not have ACK). ClosedSettlement constructs sealed
+`ClosedSettlementBinding` INSIDE its Immediate transaction, from the exact private
+current operation, actual allocated/admitted/consumed actor/input, genuine successful
+KnownCurrentTerminal receipt, exact current Session body/version checksum and full
+profile cleanup. Require current Exited success; Lost, unknown cleanup/outcome,
+restored prior terminal, NoSession/NoCurrentDispatch never binds. Both variants apply
+all original frame/current activity, full locks, context, immutable Session identity
+and latest native UUID uniqueness predicates; no public receipt IDs manufacture
+native evidence. Both write only absent active Session ID, ordinary Record version/
+updated_at and ONE reserved factual audit. Add bounded proof_source enum normal_return
+or closed_settlement plus exact private operation/receipt references (receipt absent
+for normal return); maximum audit4KiB. No native output/error/prompt or outcome claim.
+Binding proves identity only; #19 current-success closure is independently necessary.
+
+If a delayed normal return races late binding, exactly one succeeds/audits. A loser
+writes nothing and keeps original actual owner/claim/receipt; AlreadyBound may only
+report a SAME private bound operation fact, never infer it from a matching public ID.
+No retry, fail or native dispatch follows a lost binder race.
+
+## Design5: managed launch endings and durable readiness
+
+Introduce private Engine `reconcile_settled_native_binding` called ONLY by the
+actual #23 authoritative active Task driver and that managed invocation's post-marker
+start-Err path. Passive #41 step/poll/status observers never call it. Managed invocation
+ownership lives in actual runtime launch supervision independently of droppable Engine
+futures; caller abort/drop is an observed ending, not the sole destructor callback.
+Marker commit registers private durable pending binding readiness in the SAME Tx.
+Actual #19 settlement publishes its genuine receipt and readiness before/atomically
+in the same settlement transaction. This flag/queue is scheduling ONLY; every binder
+re-derives sealed proof under Immediate. Closed/full/lost/duplicate notification never
+manufactures success or becomes the only progress source.
+
+Driver registers its event wait then rechecks durable ready/pending state. Every active
+Task evaluation and managed launch ending re-derives actual private state. Proposed
+finite timer fallback: at least100ms and at most5s adaptive backoff per runtime wake,
+fair round-robin at most64 pending members per pass with a4096 pending-entry cap;
+no high-frequency busy loop or passive observer writes. Capacity is pre-admission,
+never drop a pending obligation; preserve disjoint progress through #23 scheduling.
+Real #23 timer/queue implementation and actual controlled wake/lost-notification
+fixtures must prove eventual progress within these configured finite policies;
+numbers are policy bounds, not real-time/OS deadline claims. Required native effect
+cleanup deadlines are unchanged. Reset/wake scheduling does not refresh authority.
+
+Post-marker outcomes: genuine current successful receipt -> binder route; pending/
+unknown -> held under existing real supervisor; NoCurrentDispatch -> its #19 proven
+non-success closure only; genuine current failure with complete required settlement
+-> separately reviewed #19 non-success closure WITHOUT absent Session-ID binding.
+Missing start return is never a native failure. Explicit abort/cancel/lifecycle revocation
+can make current activity fail; then keep held ownership rather than binding stale
+success. Restart requires authentic durable frame/current-success evidence AND actual
+#14 fencing/restore before this route, never row-based native owner reconstruction.
+Actual #19/#23/#43/#14 producer ancestry co-integration is the merge vehicle; no
+completed-merge cycle or SQL-seeded/direct-binder-only acceptance.
+
+## Design5: separate record-only bound-live diagnostics
+
+Current d87faec bound `poll` writes Task through refresh_owners + ordinary persist on
+adapter.status error and validate_persisted_status mismatch. Replace ONLY those arms
+with private `observe_native_diagnostic`, distinct from binding. Transaction checks
+exact Workflow Record version/generation/active Running bound attempt and genuine
+private operation/context/input/actor/Session identity. Use original expected private
+identity, not parent authority recapture. Return latest committed Workflow Record only.
+
+Allowed delta is solely active.detail -> allowlisted reason status_unavailable or
+persisted_status_mismatch with bounded fact fields (total128UTF-8 bytes), plus checked
+Wversion/updated_at and one bounded reserved workflow.native_diagnostic event. Audit
+maximum4KiB; public audit APIs refuse this kind. Compare complete previous/candidate
+JSON and Record metadata, rejecting every extra field including unknown fields.
+Identical diagnostic is true no-write/no-audit; no infinite repeat history list.
+No Task/P/G/Session/full-lock body/version write, private input/owner/admission pin
+change, marker/Session ID/context/attempt outcome or grant. Status mismatch is simply
+unverified observation, not native terminal or failure. No new Source/native/FS call
+under Store. Stale Workflow or missing exact private proof holds/refuses unchanged.
+
+An accepted bound-live diagnostic is a Workflow factual revision only. It never
+updates the immutable marker frame or native currency. #19/#23 terminal/PhaseGates
+consumers must accept the resulting current Workflow Record only through this exact
+record-only diagnostic lineage while still checking unchanged private native pins,
+actual current source/owners and genuine settlement/outcomes; they cannot refresh
+admission authority or discard existing evidence. Diagnostic replay/races do not bind
+or close anything. Inventory every actual Workflow persist/refresh_owners call at the
+source revision: marker pre-admission; binding sole private ID writer; these diagnostic
+arms record-only; unbound poll passive; genuine terminal/evaluation transitions normal
+with private settlement; authorized cancel/fail/lifecycle revoke authority and retain
+ownership; other Source/retry/recovery transitions retain separate reviewed gates.
+Unclassified live bookkeeping cannot claim native-currency preservation.
+
+## Design5: extended actual consumer controls and mutations
+
+Keep all prior concrete provider/ordinary-access/private publication matrices.
+Add genuine managed controls: normal and late paths use exact marker frame/full locks;
+actual success before dropping pending start; BOTH Err and drop endings still pending,
+later genuine settlement and lost/full/closed notification converge once WITHOUT
+restart/fail/retry/second dispatch. Genuine two-binder race audits once. Restart positive
+uses actual #14 proof, not public receipt seed. Negative actual former terminal,
+Unknown/Lost/non-dispatch/current failure, refreshed parent/lock expectation and stale
+original frame all hold without binding. Known current failure independently uses
+#19 non-success closure and never becomes success or absent-ID binding.
+
+Kill fresh-recaptured-frame, notification-only, missing real driver lookup, fail-retry,
+and missing durable registration/wake mutants. The latter keeps normal evaluation/
+launch-ending rederivation and notification wakes, so late settlement AFTER a pending
+Err/drop plus lost notification must expose stranding, not a weaker mutant that drops
+all evaluation. Timer/wait registration/recheck controls must exercise real #23 driver.
+
+For EACH bound-live diagnostic arm hold a genuine native turn and force actual status
+error or actual persisted/watch mismatch. Poll truthfully waits with preserved P/G/T,
+all Session/lock bodies/versions and native pins; once status converges the exact owned
+callback/decision remains eligible without redispatch. Repeated reason has no writes;
+stale Workflow/op CAS, unauthorized detail/outcome/ID extra delta and audit failure
+leave every row unchanged. Mutate ordinary Task-writing persist in EACH branch,
+owner/attempt CAS omission, extra-state/ID allowance and mismatch->fail/retry. Preserve
+normal terminal and authorized revocation negatives, restore exact passing source.
+Actual default native5/6/7 conformance, required restart and co-integrated producer
+controls remain mandatory; synthetic callback/SQL/direct binder alone does not count.
+No implementation/native/profile acceptance is claimed by these design documents.

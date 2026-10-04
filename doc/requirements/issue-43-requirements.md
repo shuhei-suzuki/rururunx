@@ -3,7 +3,7 @@
 Workflow: STRICT. Requirements baseline `d8c5266` approved by native independent
 requirements re-review4; joint item6/Design4 approved at `77da799` by two independent
 reviewers. Requirements9 covers durable readiness and record-only bound-live poll diagnostics;
-independent requirements/design delta and all implementation gates remain pending.
+Requirements9 approved by two independent reviewers with no findings; Design5/source gates pending.
 
 ## Problem and MVP relationship
 
