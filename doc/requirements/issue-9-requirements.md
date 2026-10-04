@@ -144,7 +144,9 @@ An author-only opinion can never trigger it. It retains all partial output and
 applies the same blocker verification and safe cleanup conditions. Cancelled
 members with partial/ambiguous structured content still hold until independently
 resolved; safe process cleanup alone does not permit a certificate.
-STRICT/security review disables early stop. Other explicitly enabled early stop
+STRICT or a frozen security_review=true policy disables early stop. The security flag is
+explicit for any class and is mandatory where Project/Workflow policy requires security review.
+Other explicitly enabled early stop
 never permits discarding inconvenient findings. Within-round retry is disabled in Core: a retry needs a new immutable
 round, includes prior failure/attempt history and consumes the round limit.
 Each new round reruns the full frozen roster; approvals never carry across rounds
@@ -189,7 +191,13 @@ startup/review expiry or terminal cleanup request. All three are frozen in polic
 missing authoritative terminal/cleanup evidence at settlement expiry becomes a
 durable uncertain/Lost Human hold, retaining permits/locks/owned supervisor
 bookkeeping. The owned operation remains supervised; expiry never drops its
-process-group owner or invents death. Timely safe settlement remains a distinct
+process-group owner or invents death. Once persisted as uncertain/Lost, this universal absorbing
+hold does not release permits/locks on a late observation even from the same original
+supervisor. Late terminal/cleanup observations are retained as attributed evidence only. Trusted
+#14 recovery must explicitly consume that evidence before ownership release; this is a
+deliberate conservative availability limitation until that port is integrated.
+Broken-supervisor/restart evidence likewise cannot release the hold. Timely safe settlement
+remains a distinct
 failure/cancellation outcome; startup expiry is a distinct failure only after authoritative
 safe cleanup, otherwise an uncertain/Lost hold. It never counts as approval. Resource-queue wait is a separate visible state with 1–3600-second
 attention threshold, default 600; exceeding it holds for Human without pretending
@@ -252,9 +260,13 @@ policy relaxation above the frozen mandatory floor, or termination without a
 certificate. Same-target Workflow reruns after a nonapproval require a recorded new repository/
 verification fact; without it, only explicit authorized Human adjudication can
 request another round. Autonomous same-target causes are explicit: (a) one
-confirmation round per finding/lineage for a newly recorded verification inspection
+confirmation round per (Task/phase lineage, target tree) after nonapproval, for a newly recorded verification inspection
 with exact locations, target and check/observed-source digest not used for that
-finding in any prior round; an executor rationale alone is insufficient and remains
+finding in any prior round. The inspection must address a retained finding or explicit concern
+of a nonapproving slot; an unrelated inspection cannot authorize resampling that slot. Even
+inspections of different findings cannot authorize a second autonomous confirmation round for
+the same lineage/tree. Further same-tree confirmation needs explicit Human adjudication; an
+executor rationale alone is insufficient and remains
 a labelled claim; (b) a safely settled native failure/timeout/cancellation with only
 verified diagnostic progress, at most two such full-roster retry rounds per lineage
 and at most one per provider-family/error-kind cause. They consume the same 64-round
@@ -273,7 +285,11 @@ exits counts the prior failed/non-approving slot as approval.
 
 Rule, policy, context/Workflow generation or required instruction change during a
 round invalidates certificate publication. Findings may carry a typed upward risk
-signal to Workflow; no automatic downgrade.
+signal to Workflow; no automatic downgrade. An upward signal immediately holds certification;
+already admitted peers settle normally as retained evidence, with no new input under obsolete
+currency. After settlement, Workflow applies the escalation and a new full-roster round must
+meet the escalated floor. Risk-escalation hold exits only through that settled escalation/new
+round or termination without certificate, preserving native holds.
 
 Reviewer-assigned severity is immutable in the original finding. Any adjudication
 that lowers a finding out of the effective blocking set uses the same independent
@@ -289,7 +305,12 @@ Human relaxation above the floor is explicit with authority/reason in the result
 mandatory rules are never disabled. Self-review and dismissal exclusion includes
 all recorded agents/native provider families that modified the cumulative Task
 delta since the frozen Task base revision, including fixes by former executors,
-not only the current Task.executor. Unknown authorship is surfaced and requires
+not only the current Task.executor. Authorship is established by runtime-owned Session/dispatch
+evidence binding the registered native identity/family to observed before/after tree deltas, or
+explicit attributable Human records. Git author/committer strings, trailers and executor claims
+are claims, never attribution authority. Delta content not covered by that evidence is unknown;
+overlapping uncertain ownership cannot silently be assigned to a convenient identity. Unknown
+authorship is surfaced and requires
 explicit policy/Human disposition; a changed executor cannot silently self-confirm
 its own earlier changes.
 
@@ -344,7 +365,10 @@ round/byte counters and original outcomes.
 
 ## Consolidated acceptance
 
-Numbered criteria 1–21 are the complete closing set. Items 1–8 map to the public
+Numbered criteria 1–21, including their mapped case lists and all normative acceptance
+paragraphs below, are the complete closing set. Unnumbered MUST/required/reject obligations in
+this section require linked evidence under the governing numbered criterion; they are not
+optional commentary. Items 1–8 map to the public
 Issue #9 checkboxes; items 9–21 add integrity/availability and their explicit cases. Every criterion
 needs actual consumer evidence; proposed tests and independent development reviews
 are not runtime proof.
@@ -461,10 +485,17 @@ an author alias as independent. Test both outcomes.
 
 Items 1–4 require actual runtime consumer execution through registered production
 Claude/Codex/Grok capability resolution and provider adapter contracts. Deterministic
-stand-ins may replace only the native process/transport peer, with realistic
-startup/read-only/input/settlement behavior; the production registry, scoped Store,
+stand-ins may replace only the native process/transport peer. Conformance evidence must identify
+the exact reviewed #5/#6/#7 adapter contract fixture source commit/path/digest and the replayed
+or derived frame/error/exit shapes: startup and capability negotiation, requested/effective
+configuration, input, permission denial, auth/stderr-only failures, partial/overflow output,
+terminal response and stalled cancellation. Unsupported shapes reject rather than idealizing
+successful startup/read-only/settlement; the production registry, scoped Store,
 private input ports and Workflow consumer remain real. Every such evidence record
-states native_execution=synthetic and the stand-in identity. Declaration-only or
+states native_execution=synthetic, the stand-in identity and contract-fixture source digest.
+Native read-only enforcement and real transport/model acceptance remain unverified by these
+peers and are mandatory #16 evidence; production runtime permission construction/denial can be
+tested here. Declaration-only or
 fixture-only adapter success cannot close these items. This proves deterministic
 runtime plumbing, not real native-model acceptance reserved for #16.
 
@@ -493,8 +524,7 @@ requires safe round settlement plus a verified committed target before new revie
 - Early-stop cannot fire on author-only approval, below-floor counts or potential
   blockers. It preserves diagnostics/partial output and holds on partial findings
   until independent resolution. STRICT/security rejects enabling it.
-- New inspected verification authorizes one confirmation round; repeated rationale
-  without new evidence rejects. Two safely settled transient retry rounds consume
+- New concern-linked inspected verification authorizes only one autonomous confirmation round per lineage/tree. Sequential fresh inspections of different Low findings after nonblocking dissent reject a second automatic same-tree round; unrelated inspections and repeated rationale without new evidence reject. Two safely settled transient retry rounds consume
   lineage budgets; repeated causes/exhaustion/partial/Lost do not automatically retry.
 - Missing/unresolvable/undeliverable required review/security instructions or skills
   reject before any member input. Delivery and native activation measurements
@@ -523,7 +553,7 @@ explicit eligible custom roster. Human authorship remains separately attributed.
 - Freeze and test startup/review/settlement deadline minima/maxima. After a stalled
   cancellation expires, status exposes exact uncertain member ownership and
   durable Human attention while the owned operation is still supervised and all
-  permits/locks remain held. Later observed cleanup does not fabricate an approval.
+  permits/locks remain held. Later original-supervisor cleanup is retained as factual evidence but neither grants an approval nor releases the absorbing hold before trusted #14 recovery. Repeat with restart/broken supervisor continuity; ownership remains held in both cases.
 - Custom two-reviewer and four-plus-reviewer rosters deliver distinct explicit
   model/effort per slot. Known effective mismatch fails only that slot without
   counting approval; require-verified-effective rejects unavailable measurements
@@ -569,3 +599,22 @@ This does not invent an automatic weak-policy fallback to reduce interruptions.
 Criterion 2 also rejects outvoting a potential Medium finding: two approvals plus
 that dissent stay held, while safely settled Low-only dissent outside the blocking
 set may be tolerated. Independent resolution is recorded before any certificate.
+
+Criterion 8 excludes raw-output/transcript copies by recorded provenance as well as storage
+location: known exact output-hash copies and paths declared by the scoped artifact policy are
+excluded with a visible note, or hold before input if mandatory. A committed copy under
+doc/verification does not become eligible merely because Git tracks it. Unknown content is not
+claimed to be exhaustively recognized; native/source visibility limits are reported. Test
+committed copies, explicit requests and symlink aliases.
+
+Criterion 12/20 tests forged Git author/trailers: runtime-owned Codex dispatch/delta attribution
+keeps Codex excluded despite a commit string naming Human/Grok. Uncovered delta bytes require
+explicit recorded disposition before formal input. Criterion 9/10 class-wide verification
+records the checked locations and N inspected / M changed, preserving scope and check artifact
+provenance; synthetic facts do not claim exhaustive native inspection.
+
+STRICT fixed Triple is unavailable when document drafting and implementation have contributed
+two native families. Supported alternatives are an eligible custom roster meeting the same
+floor, or explicit Human adjudication/termination; allow-self never supplies the missing
+independent approval. #16 must exercise this availability limit alongside supported Triple
+configurations.

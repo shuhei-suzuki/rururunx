@@ -610,6 +610,11 @@ outputs and raw executor transcripts; native permissions remain unchanged, with
 same-user filesystem visibility stated separately rather than an invented sandbox.
 
 The existing Claude + Codex + Grok Triple Adversarial Review is provided as a preset, not hard-coded into the runtime.
+STRICT fixed Triple is unavailable when cumulative document drafting and implementation
+include two native author families: only one eligible independent slot remains. An
+eligible custom roster or explicit Human adjudication is required; allow-self opinions
+do not meet the independent approval floor. Issue #16 must measure this availability
+boundary alongside supported native Triple configurations.
 
 ### Parallel review
 
