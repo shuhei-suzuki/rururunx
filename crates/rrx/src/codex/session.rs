@@ -432,6 +432,8 @@ impl Reservation {
         });
         let attempt = self.attempt.clone();
         let admitted = attempt.preparation.consume(|| {
+            #[cfg(test)]
+            attempt.cas_entered.store(true, Ordering::SeqCst);
             self.store
                 .lock()
                 .map_err(|_| failure(ErrorKind::StateFailure, "state store poisoned"))
@@ -5598,5 +5600,110 @@ mod tests {
         );
         assert_leader_reaped(&directory.join("leader"));
         adapter.release(reference).unwrap();
+    }
+    #[tokio::test]
+    async fn actual_admission_cas_holds_cancellation_order_through_a_second_sqlite_writer() {
+        let mut fixture = ApprovalFixture::new(true).await;
+        let db = fixture
+            .authority
+            .request
+            .project
+            .root
+            .parent()
+            .unwrap()
+            .join("state.sqlite3");
+        let writer = rusqlite::Connection::open(db).unwrap();
+        writer.execute_batch("BEGIN IMMEDIATE").unwrap();
+        let control = fixture.reservation.attempt.clone();
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let attempted = Arc::new(AtomicBool::new(false));
+        let snapshot = &fixture.authority.snapshot;
+        let request = &fixture.authority.request;
+        let reservation = &mut fixture.reservation;
+        let (admitted, cancellation, entered) = std::thread::scope(|threads| {
+            let admission = threads.spawn(|| reservation.admit_dispatch(snapshot, request));
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+            while !control.cas_entered.load(Ordering::SeqCst)
+                && std::time::Instant::now() < deadline
+            {
+                std::thread::yield_now();
+            }
+            let entered = control.cas_entered.load(Ordering::SeqCst);
+            let cancellation = threads.spawn({
+                let control = control.clone();
+                let attempted = attempted.clone();
+                let cancelled = cancelled.clone();
+                move || {
+                    attempted.store(true, Ordering::SeqCst);
+                    let won = control.preparation.cancel();
+                    cancelled.store(won, Ordering::SeqCst);
+                    won
+                }
+            });
+            while !attempted.load(Ordering::SeqCst) {
+                std::thread::yield_now();
+            }
+            // SQL is held on the independent connection. A cancellation attempt
+            // runs concurrently with the actual consumer's blocked Store CAS.
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            writer.execute_batch("COMMIT").unwrap();
+            (
+                admission.join().unwrap(),
+                cancellation.join().unwrap(),
+                entered,
+            )
+        });
+        assert!(
+            entered,
+            "actual consumer reached its Store CAS before cancellation"
+        );
+        admitted.unwrap();
+        assert!(
+            !cancellation,
+            "cancel cannot win inside a consumed-input CAS critical section"
+        );
+        assert!(!cancelled.load(Ordering::SeqCst));
+        assert!(control.consumed());
+        assert_eq!(
+            fixture.reservation.session.recovery["dispatch_intent"]["consumed"],
+            true
+        );
+        let stored = fixture
+            .reservation
+            .store
+            .lock()
+            .unwrap()
+            .session(fixture.reservation.session.id)
+            .unwrap()
+            .unwrap()
+            .0;
+        assert_eq!(
+            stored.recovery["dispatch_intent"],
+            fixture.reservation.session.recovery["dispatch_intent"]
+        );
+        // The opposite order rejects the actual consumer before any second write.
+        let previous = fixture.reservation.version;
+        let (cancelled_control, _) = Control::new(None);
+        assert!(cancelled_control.preparation.cancel());
+        fixture.reservation.attempt = cancelled_control;
+        let error = fixture
+            .reservation
+            .admit_dispatch(&fixture.authority.snapshot, &fixture.authority.request)
+            .unwrap_err();
+        assert_eq!(error.kind, ErrorKind::StateConflict);
+        assert_eq!(fixture.reservation.version, previous);
+        assert_eq!(
+            fixture
+                .reservation
+                .store
+                .lock()
+                .unwrap()
+                .session(fixture.reservation.session.id)
+                .unwrap()
+                .unwrap()
+                .0
+                .recovery["dispatch_intent"],
+            stored.recovery["dispatch_intent"]
+        );
     }
 }

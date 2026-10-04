@@ -91,6 +91,8 @@ pub(super) struct Control {
     // admission/registry. It cannot be stolen by a later attempt's shared watch.
     published: watch::Sender<Option<SessionStatus>>,
     task: Mutex<Option<tokio::task::JoinHandle<()>>>,
+    #[cfg(test)]
+    pub cas_entered: std::sync::atomic::AtomicBool,
 }
 impl Control {
     pub fn new(previous: Option<SessionStatus>) -> (Arc<Self>, mpsc::Receiver<()>) {
@@ -104,6 +106,8 @@ impl Control {
                 phase,
                 published,
                 task: Mutex::new(None),
+                #[cfg(test)]
+                cas_entered: std::sync::atomic::AtomicBool::new(false),
             }),
             stopped,
         )
