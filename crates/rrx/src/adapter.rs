@@ -1007,6 +1007,7 @@ fn state_error(error_value: anyhow::Error) -> AdapterError {
     let kind = match error_value.downcast_ref::<StateGuardError>() {
         Some(StateGuardError::WorktreeLocked) => ErrorKind::Locked,
         Some(StateGuardError::ProjectInactive) => ErrorKind::InvalidInput,
+        Some(StateGuardError::EnvironmentAuthority) => ErrorKind::InvalidConfiguration,
         Some(StateGuardError::ExecutorReserved | StateGuardError::SnapshotChanged { .. }) => {
             ErrorKind::StateConflict
         }

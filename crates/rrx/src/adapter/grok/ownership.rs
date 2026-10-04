@@ -145,6 +145,7 @@ fn state_error(error: anyhow::Error) -> crate::adapter::AdapterError {
             ErrorKind::StateConflict
         }
         Some(StateGuardError::ProjectInactive) => ErrorKind::InvalidInput,
+        Some(StateGuardError::EnvironmentAuthority) => ErrorKind::InvalidConfiguration,
         None => ErrorKind::StateFailure,
     };
     failure(kind, error.to_string())

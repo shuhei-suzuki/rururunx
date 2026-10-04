@@ -163,3 +163,79 @@ fn native_dispatch_supports_optional_consultation_and_rejects_inactive_owner() {
         SessionState::Starting
     );
 }
+
+
+fn environment_policy() -> EnvironmentAdmission {
+    EnvironmentAdmission::new(["GROK_SYNTHETIC_AUTH".into()], ["LANG".into()]).unwrap()
+}
+fn foreign_environment(store: &mut Store) -> (tempfile::TempDir, Project) {
+    let directory = tempfile::tempdir().unwrap();
+    let mut project = Project::new("foreign".into(), directory.path().to_path_buf(), "foreign-fixture".into(), "main".into());
+    store.put_project(&mut project).unwrap();
+    (directory, project)
+}
+#[test]
+fn environment_admission_rechecks_live_names_without_foreign_version_tokens() {
+    let (directory, mut store, mut project, goal, task, session) = fixture();
+    project.environment_refs = vec!["LANG".into()];
+    store.put_project(&mut project).unwrap();
+    let expected = [project.version, goal.version, task.version];
+    let policy = environment_policy();
+    store.check_environment_admission(project.id, &policy).unwrap();
+    let (_foreign_dir, mut foreign) = foreign_environment(&mut store);
+    let version = store.put_session_if_current(&session, 0, expected, &[]).unwrap();
+    let mut other = Store::open(&directory.path().join("state.db")).unwrap();
+    foreign.environment_refs = vec!["GROK_SYNTHETIC_AUTH".into()];
+    other.put_project(&mut foreign).unwrap();
+    let watermark = store.events(&task.scope(), 0, 100).unwrap().len();
+    assert!(matches!(store.put_session_with_environment_if_current(&session, version, expected, &[], &policy).unwrap_err().downcast_ref::<StateGuardError>(), Some(StateGuardError::EnvironmentAuthority)));
+    assert_eq!(store.session(session.id).unwrap().unwrap().1, version);
+    assert_eq!(store.events(&task.scope(), 0, 100).unwrap().len(), watermark);
+    foreign.environment_refs = vec!["FOREIGN_UNRELATED".into()];
+    other.put_project(&mut foreign).unwrap();
+    let next = store.put_session_with_environment_if_current(&session, version, expected, &[], &policy).unwrap();
+    assert_eq!(next, version+1);
+}
+#[test]
+fn environment_admission_preserves_session_and_parent_guard_precedence() {
+    let (_directory, mut store, mut project, goal, task, session) = fixture();
+    project.environment_refs = vec!["LANG".into()];
+    store.put_project(&mut project).unwrap();
+    let expected = [project.version, goal.version, task.version];
+    let (_foreign_dir, mut foreign) = foreign_environment(&mut store);
+    foreign.environment_refs = vec!["GROK_SYNTHETIC_AUTH".into()];
+    store.put_project(&mut foreign).unwrap();
+    let version = store.put_session_if_current(&session, 0, expected, &[]).unwrap();
+    let policy = environment_policy();
+    let error = store.put_session_with_environment_if_current(&session, version+1, expected, &[], &policy).unwrap_err();
+    assert!(matches!(error.downcast_ref::<StateGuardError>(), Some(StateGuardError::SnapshotChanged { table, .. }) if table=="records"));
+    let error = store.put_session_with_environment_if_current(&session, 0, expected, &[], &policy).unwrap_err();
+    assert_eq!(error.to_string(), "snapshot insert failed");
+    let mut wrong = session.clone(); wrong.agent = "rebound".into();
+    assert_eq!(store.put_session_with_environment_if_current(&wrong, version, expected, &[], &policy).unwrap_err().to_string(), "session actor/worktree identity is immutable");
+    let error = store.put_session_with_environment_if_current(&session, version, [project.version,goal.version,task.version+1], &[], &policy).unwrap_err();
+    assert!(matches!(error.downcast_ref::<StateGuardError>(), Some(StateGuardError::SnapshotChanged { table, .. }) if table=="tasks"));
+}
+#[test]
+fn environment_projection_streams_all_names_and_ignores_unrelated_foreign_metadata() {
+    let (_directory, mut store, mut project, _goal, _task, _session) = fixture();
+    project.environment_refs = vec!["LANG".into()]; store.put_project(&mut project).unwrap();
+    let (_foreign_dir, foreign) = foreign_environment(&mut store);
+    let policy = environment_policy();
+    let mut body = serde_json::to_value(&foreign).unwrap();
+    body["root"] = json!({"invalid unrelated metadata":true});
+    body["environment_refs"] = json!(vec!["INVALID-NAME";3000]);
+    store.connection.execute("UPDATE projects SET body=?1 WHERE id=?2", params![body.to_string(),foreign.id.to_string()]).unwrap();
+    store.check_environment_admission(project.id,&policy).unwrap();
+    body["environment_refs"].as_array_mut().unwrap().push(json!("GROK_SYNTHETIC_AUTH"));
+    store.connection.execute("UPDATE projects SET body=?1 WHERE id=?2", params![body.to_string(),foreign.id.to_string()]).unwrap();
+    assert!(matches!(store.check_environment_admission(project.id,&policy).unwrap_err().downcast_ref::<StateGuardError>(),Some(StateGuardError::EnvironmentAuthority)));
+    project.environment_refs.push("GROK_SYNTHETIC_AUTH".into()); store.put_project(&mut project).unwrap();
+    store.check_environment_admission(project.id,&policy).unwrap();
+    for value in [Value::Null,json!({}),json!(["UNRELATED",null])] {
+        body["environment_refs"]=value;
+        store.connection.execute("UPDATE projects SET body=?1 WHERE id=?2", params![body.to_string(),foreign.id.to_string()]).unwrap();
+        assert_eq!(store.check_environment_admission(project.id,&policy).unwrap_err().to_string(),"native environment authority unavailable");
+    }
+    assert_eq!(store.environment_candidates(project.id,&policy).unwrap(), std::collections::BTreeSet::from(["GROK_SYNTHETIC_AUTH".into()]));
+}
