@@ -48,3 +48,19 @@ extractor. Legacy origin/evaluators stay unverified, definition proposals cannot
 apply, explicit graph writes retain native raw Goal currency invalidation, and
 coordinated schema/writer fencing remains required before source integration.
 Design/source reviews and actual acceptance remain pending.
+
+Design1 aad526b review completed with owned cleanup verified: High generic Goal
+DAG/pack/legacy-observation writer bypass, Medium missing managed-Goal predicate
+at real dispatch consumers, and Medium Human fingerprint invalidated by hold
+resolution/pack refresh. Primary put_goal/version, Workflow active and native
+owner code verify the gaps. Design2 rejects every generic Goal diff, inventories
+actual protected Task admission predicates, and separates semantic attestation
+DAG/source/Task pins from raw lifecycle currency, with declared pack dependency.
+Causal controls/mutants are required; Design2 approval and source remain pending.
+
+Exact Design1 CI37188880032: Ubuntu succeeded; macOS Context binary9PASS/7FAIL.
+First failure was bounded-context Git cleanup SessionLost from inspection timeout;
+six later failures reported the sticky prior-uncertainty latch. They are not seven
+independent observer failures. Full external log preserved at temporary
+rururunx-issue23-design1-ci-failed.log; #46 owns the observer fix/regression.
+No rerun, serialization, relaxed timeout or root-cause attribution is claimed.

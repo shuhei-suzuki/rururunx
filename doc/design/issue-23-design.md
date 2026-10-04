@@ -1,6 +1,6 @@
 # Issue 23: Goal authority, DAG and completion
 
-Status: proposed Design1. Requirements3 `1fc82b1` independently approved; design
+Status: proposed Design2. Requirements3 `1fc82b1` independently approved; design
 review, source integration and acceptance remain pending. No implementation fact
 is claimed. Current main4851fcd has schema3 and generic Goal snapshots; the native
 branches and proposed #19 schema6/private input projection must be composed before
@@ -11,7 +11,8 @@ source acceptance. Allocate the final migration number in that combined revision
 Goal definition lives in the existing Goal snapshot: objective/title, criterion
 IDs/descriptions/evaluators, constraints, non-goals and fixed source references.
 Do not create a second authoritative definition or DAG in another table. Extend
-CompletionCriterion with a typed evaluator (RequiredTasksVerified or Human),
+CompletionCriterion with a typed evaluator (RequiredTasksVerified or
+Human { goal_pack_input: bool }),
 legacy default Unverified, while its public satisfied/evidence fields remain
 non-authoritative legacy claims. Accepted definition fields never change.
 
@@ -26,6 +27,9 @@ The executable's Human ingress is a direct local rrx command handler, taking its
 principal from the operating-system caller UID plus the invocation's own origin,
 not a principal supplied in model JSON. The runtime controller is constructed by
 local runtime composition under a durable, Human-approved policy identity/version.
+The Human ingress approves the exact policy content digest; every content change
+requires fresh approval. Repository/config/agent JSON cannot activate or replace
+that policy, even if it repeats an approved name/version.
 Non-serializable authority objects have private constructors in that ingress/
 controller module. Native adapters, Workflow, proposal JSON, agent output and
 ordinary Store APIs cannot obtain these objects or call an ingress via runtime
@@ -38,9 +42,13 @@ No OS sandbox or proof of biological Human identity is claimed. Direct Rust
 library composition is trusted code; typed objects do not secure malicious code
 linked into the runtime. Audit origin describes the actual ingress used.
 
-Store generic put_goal rejects inserts, accepted-definition edits and lifecycle
-changes. Read-only replay of an identical snapshot is a no-op, with no version or
-audit increment. Observation writers use separate ports below. Managed creation
+Store generic put_goal rejects inserts and EVERY change to the Goal snapshot,
+including DAG nodes/edges, followups, context_version, blockers, timestamps, state
+and definition fields. Only byte-identical replay is a no-op, with no version or
+audit increment. Every actual Goal-row mutation uses its typed authority port.
+Legacy followups and blockers remain frozen unverified legacy data, ignored by
+managed evaluation; new proposals/reasons never write those fields. Observation
+writers use separate ports below. Managed creation
 requires registered Project, expected Project version, immutable scoped definition
 and a supported evaluator set; transactionally insert Goal Created, authority row
 and goal.created audit. Created/Analyzing cannot dispatch. Unaccepted planning
@@ -109,7 +117,8 @@ Git/filesystem/native calls occur while holding SQLite or SharedStore locks. A
 conflict/error rolls back all rows/audit/versions and never automatically refreshes
 caller authority. Versions are checked positive integers within SQLite i64 range.
 
-Initial caps: accepted Goal JSON 1MiB; 4096 total scoped Tasks including unlisted;
+Initial caps: accepted definition encoding1MiB and whole Goal JSON4MiB;
+4096 total scoped Tasks including unlisted;
 16384 edges; 128 criteria; 128 fixed source references; 256 followups and 64
 DefinitionChange proposals; 256 evidence records per criterion (32768 per Goal);
 16KiB per individual text; 64KiB per proposal/evidence; decoded nesting depth32.
@@ -117,6 +126,12 @@ A coherent report scans at most4096 Workflow records,8192 Session records and819
 lock/recovery records, with32MiB aggregate decoded input per Goal. Evidence ledger
 aggregate bytes are capped32MiB independently of record-count limits. Count and
 SQL length projections enforce both before decoding; no truncated scan is success.
+Caps are independent upper bounds, not a promise that all maxima fit simultaneously.
+Routine reevaluation never appends evidence; identical attestation replay returns
+its existing identity. Historical-record capacity is finite and explicit: session/
+lock admission checks remaining Goal capacity before new reservations, and exhaustion
+returns a bounded capacity error requiring controller/Human action, never silently
+drops history, clears owned work or hot-retries. #14/#24 surface this condition.
 Reject before constructing unbounded vectors. SQL count/limited projection reads
 precede bounded body decoding; stored legacy oversize rows produce bounded error,
 not a truncated ready/success result. Evaluation is iterative O(V+E) plus bounded
@@ -149,6 +164,24 @@ versions. Validate row/body scope agreement and bounds before returning results.
 Return a report with its version frame and per-node reasons, never a dispatch
 permit. Scheduler/Workflow admission revalidates current scope and existing native
 input/lock authority at its own actual consumer.
+
+One private Store-derived managed-Goal admission predicate requires Registered
+Project, exact present authority row with matching accepted definition digest,
+Running Goal and no whole-Goal hold. No caller boolean/token replaces it. Invoke
+it before protected Task preparation/reservation/Start in Generic lifecycle
+validation (adapter.rs1102), Claude ownership(f9b671f168), Codex ownership(a7a219b182),
+Grok ownership169, Workflow step/retry active2424 and put_workflow_transition407,
+and again in dispatch/ALLOW put_session_if_current733 under the transaction.
+Workflow progression uses the predicate; conservative TerminalDecision/
+TerminalRecovery and factual historical observation retain their separate closure
+guards under inactive owners, never grant dispatch or fabricate process death.
+Current code admits Created/Analyzing in Workflow and excludes only four Goal
+states in native owners; all those consumers must migrate. A later hold increments
+Goal.version and conflicts with captured scope. Preserve independent own-Session
+DENY/terminal observations: the new predicate grants no reason to block a denial
+with a parent fence. Goal/project-scoped Consultant planning may run outside
+protected Task dispatch, with separately reviewed scope rules; it cannot mutate
+accepted definition, mint a Task permit or bypass native owner checks.
 
 Logical ready requires Registered Project, verified Running Goal, valid listed
 Created/admissible Task, hard prerequisites with verified success, and no native/
@@ -188,9 +221,14 @@ reasons. No count, public satisfied bit or LLM assertion is sufficient.
 ## Completion, lifecycle and recovery
 
 Human criterion target fingerprint includes exact accepted definition digest,
-Project authority/rule/config/source pins, Goal version/context reference, all
+Project repository/rule/config/source identity pins, canonical DAG digest, all
 required Task identities and Task/Workflow versions, relevant Session/lock/recovery
-versions. Attestation itself is excluded from that fingerprint, so attesting one
+versions. Exclude raw Goal.version and lifecycle-only hold/resume changes; they
+still participate in dispatch and final publication CAS, not criterion semantics.
+Include Goal Context Pack identity/version only when the accepted Human evaluator
+declares goal_pack_input=true; unrelated pack refresh does not stale attestation.
+Actual DAG/followup additions, source/config/rule or required-Task evidence changes
+stale it. Attestation itself is excluded from that fingerprint, so attesting one
 criterion does not stale another. Evidence/proposal ledger revisions are included
 in the final commit compare frame. Source revalidation runs off-lock, then all DB
 versions and exact observed source digest compare under IMMEDIATE; stale source
@@ -245,12 +283,20 @@ second-connection conflicts, definition edits/criterion replacement leading to
 Task-only completion, forged Human/controller origin, unsupported/stale evidence,
 actual Workflow success versus Merged/raw Completed, Lost/session-less claims,
 explicit hold resolution versus display blockers, idempotent material followups,
+generic Goal DAG removal/weakening/retroactive edge, context rewind/forgery and
+followup/blocker edits (no version/audit changes), Created/Analyzing/Blocked/
+WaitingHuman/legacy actual native launch refusal with Running positive controls,
+Human attest-under-WaitingHuman then resume+complete, pack refresh with and without
+declared pack input, and followup graph drift staling attestation,
 terminal reopening and observation writes invalidating sibling native currency.
-Mutants must reach the intended consumer, compile and fail an assertion; setup
+Include a generic DAG-write mutant making a formerly blocked dependent ready,
+an omitted managed-Goal hold/proof predicate at actual native wire, and ignored
+attestation DAG-drift mutant. Mutants must reach the intended consumer, compile
+and fail an assertion; setup
 refusal, timeout or unrelated safety guards provide no causal credit. Restore
 source and passing controls after each isolated mutation.
 
-Requirements passed independently; Design1 now needs review before source.
+Requirements passed independently; Design2 now needs delta review before source.
 Source updates Goal master design/README to actual behavior, runs full appropriate
 shared-state/native/Workflow regressions plus fmt/clippy/build and exact Linux/
 macOS CI, independently reviews the immutable source/security scope, and composes
