@@ -114,7 +114,15 @@ impl Preparation {
                     }
                     Cause::Cancelled.error()
                 }
-                Admission::Failing(cause) => cause.error(),
+                Admission::Failing(cause) => {
+                    if let Ok(mut later) = self.later_failures.lock()
+                        && later.len() < 8
+                        && error.kind != ErrorKind::StateConflict
+                    {
+                        later.push(error.kind);
+                    }
+                    cause.error()
+                }
                 Admission::Consumed | Admission::CheckpointCommitted(_) => error,
             },
             Err(_) => failure(ErrorKind::StateFailure, "native preparation cause poisoned"),
