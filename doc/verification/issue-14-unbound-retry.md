@@ -1,7 +1,7 @@
 # Issue14 unbound native retry component
 
 Requirements3 approved at1463d37: TWO independent APPROVE, noCHM/blockers.
-Design1 candidate NOT APPROVED; no implementation/source qualification yet.
+Design2 candidate NOT APPROVED; no implementation/source qualification yet.
 Open Issue14 explicitly requires this follow-up from Issue41. Current main efe9774
 still allows explicit Failed+dispatch_started+session_id=None retry when the
 Session loop has nothing to reject. Existing characterization is evidence of the
@@ -39,3 +39,11 @@ guard, and co-located valid pre-marker raw-builder controls. Design1 records fin
 precision/disposition with no WHAT change. Requirements amended only to qualify
 the binding sentence; source/test/build untouched. Design1 independent review next;
 whole14/MVP/native/F1 and genuine recovery producer remain OPEN.
+
+Design1 c1b9d1b: BOTH independent native APPROVE, noCritical/High/blockers, B one
+verified nonblockingMedium: new closure guard would mask41TRmutation evidence.
+Design2 chooses explicit non-TR newguard; existing earlierTRidenticalpredicate still
+fences everyaccess and preserves41causalmutants. Sharedstaticmessage mandatory;
+first-configured-phasecontext, staleCAS priority, directbound/port retrybuilders
+and3/4pausecounterfacts specified. Bothwrappers closed; no source edits. Design2
+independent delta review required before source; no parent/native/F1 qualification.

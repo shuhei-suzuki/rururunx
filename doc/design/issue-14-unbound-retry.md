@@ -1,6 +1,6 @@
 # Issue14 explicit unbound native retry fence
 
-Design1 candidate NOT APPROVED. STRICT shared Engine/Store reservation boundary.
+Design2 candidate NOT APPROVED. STRICT shared Engine/Store reservation boundary.
 Requirements3 approved1463d37 with two independent native APPROVE/noCHM/blockers;
 precise Low dispositions recorded in requirements3-reviews.json. Base main efe9774.
 No production changes yet. Whole14, Scheduler/restart/native/F1/MVP remain OPEN.
@@ -21,7 +21,13 @@ No consumer parses it. Classification uses the durable fields only.
 
 Store put_workflow_transition: in its existing previous.active Some and after.active
 !=previous.active closure block, inspect the original attempt and refuse the same
-predicate BEFORE Session iteration or context/Task/Record/audit publication. Keep
+predicate for access!=WorkflowAccess::TerminalRecovery BEFORE Session iteration
+or context/Task/Record/audit publication. TerminalRecovery keeps its EARLIER
+conservative identical unbound marker fence; exempt it only from the redundant new
+guard, so every access mode still refuses this unresolved closure. No recovery
+proof is created or removed. This preserves41's single Store TerminalRecovery and
+combined Engine+Store TerminalRecovery causal mutants; a differing error-text
+assertion never earns kill credit. Keep
 validate_transition and all owner/Task/Record CAS, context identity, generation,
 Session/lock and terminal fences. SQLite immediate transaction rolls back refusal;
 input Task/Record structs update only after successful commit. Refuse a raw current
@@ -31,14 +37,18 @@ Keep active unchanged when the actual owner publishes Running→Failed, binds th
 returned Session (Running→Running) or records TerminalDecision. These bypass the
 closure block correctly; its purpose is preventing removal of the original unknown
 reservation, not preventing truthful facts. TerminalRecovery's independent marker
-fence stays. Pre-marker release/invalidation/generation and bound valid progress
+fence stays and is the sole enforcement for that access mode. Pre-marker
+release/invalidation/generation and bound valid progress
 remain available. A future14 genuine producer needs separate reviewed authority;
 this component adds no bypass/proof/certificate/force flag.
 
 The Engine and Store guard expressions remain locally explicit, using existing
 Actor and actor() with no new public helper/type. Two guards enable independent
-consumer checks; a shared static explanation may be a crate-private constant only,
-with no capability meaning. Removing one Engine guard is masked by Store and cannot
+consumer checks; require ONE shared crate-private static explanation literal for
+Engine and the new Store guard, with no capability meaning. Engine-only removal
+must remain indistinguishable; actual accepted closure/state/counter changes, not
+message differences, determine causal kill credit. Removing one Engine guard is
+masked by Store and cannot
 earn mutation credit. No production decoder or error-chain behavior outside these
 valid-snapshot guard refusals changes.
 
@@ -69,14 +79,24 @@ continue to clear active and append the exact-index RetryEvent without extra lau
 For direct Store retry builders, clone fresh actual Task/Workflow Record and scoped
 owner versions. Same-generation closure changes active=None, original Running→Failed
 if necessary, completed_at only if absent, an exact prior-index RetryEvent and
-only the permitted retry fields. Reuse the same builder on pre-marker and marked
-fixtures. For generation closure, use actual held Running (not Failed), clone the
+only the permitted retry fields. The SAME retry builder must also COMMIT on a
+bound terminal Failed native review-rejection fixture, nonirreversible port
+Waiting/Failed fixture and pre-marker definitive Failed fixture, with exact-index
+RetryEvent and active=None. These validate construction, not extra mutation credit.
+Reuse it on pre-marker and marked Running fixtures too. For generation closure,
+use actual held Running (not Failed), clone the
 snapshot, call existing invalidate/new-generation helpers and make_context for the
-next configured phase with consecutive version; clear completed/active, append one
+FIRST configured phase AFTER invalidate (next_phase(&invalidated).unwrap()), using
+workflow.sources, new generation/class/budget and latest_context+1. Match
+Task.context_version/revision and Workflow.context_version as set_context does;
+clear completed/active, append one
 invalidation, set old Running→Interrupted with timestamp and publish matching valid
 ContextVersion/Task pointer. Do not guess invalid context data. The generation
 builder must first succeed on actual held pre-marker Running for BOTH actors.
-Resume/join that former owner: it cannot overwrite the changed Record or launch.
+Run both pre-marker capture_pause offsets3 and4 for each actor. Resume/join that
+former owner and compare the full post-closure snapshot and both launch counters:
+no stale write/audit or launch. Its error/eligibility differs before/after refresh;
+assert no specific error text or release-eligibility path.
 
 On actual held marked-unbound Running for both actors, the same builders must be
 refused unchanged only by the new Store guard. Resume/join owner afterwards and
@@ -124,7 +144,13 @@ Publish actual rg inventory of every retry/transition caller, attempt-field read
 and Workflow Record writer, with current symbol/file/line and closure rationale.
 Current source transition writers: persist, reserve, persist_decision; other direct
 writer observe_workflow_gate keeps same Evaluating active and only observation/
-detail. put_record rejects Workflow. Include step/poll, prepare_agent/release,
+detail. put_record rejects Workflow. The new closure guard is before Task/Record
+CAS, so stale closure callers may receive its untyped refusal instead of typed
+SnapshotChanged; no current closure caller relies on that classification. Marker
+publication keeps active unchanged, so41 own_task_marker_rollback typed-classifier
+semantics are unaffected. Include41 terminal recovery tests/design/mutation evidence
+as consumers; their existing TR guards remain independently causal under the new
+non-TR guard. Include step/poll, prepare_agent/release,
 retry/resume_gate, fail/hold/invalidation, terminate/cancel/fail_task, escalation/
 finalization, terminal recovery, Store owner/CAS/generation/closure, Project removal
 and current status interfaces. All default settings/hooks/permissions unchanged.
