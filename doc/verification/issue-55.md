@@ -41,10 +41,44 @@ is unverified; duration_api_ms is not measured wall time. All H1/H2/M1-M3 fixes 
 reviewed, with dispatched forced-unclean still a downstream acceptance gate, not proof
 of implemented reachability or cleanup. Six Low precision findings are pinned in the
 proposed design: exact category/status, independent dispatch/native-outcome facts and
-complete-paged Session attempt ordinal, joined_returned with read-error unavailable
+complete-paged Session attempt lookup (subsequently refined by Design1), joined_returned with read-error unavailable
 (shared drain returns unit), supervise-only stage labels excluding checkpoint, existing
 env-cleared PATH-only synthetic dispatch fake, and verbatim/paraphrase/digest provenance.
 Full original public macOS job metadata confirms image macos-26-arm64 version
 20260907.0351.1; artifact records those observed values and finite log-retention limits.
 No source change/native execution. Two independent immutable Design1 gates precede
 implementation; #41 finalred and #14/#43/#51/#16 remain independent.
+
+
+## Design1 verified corrections; proposed Design2
+
+Both independent native Design1 reviews completed request_changes at14050d3 with owned
+cleanup verified: lifecycle2f901fbd-944b-4325-a994-ab7ab22a726f and receiptafa1ccdf-d466-
+4186-ba21-9944a59b7a9c. Five Mediums verified against source: group retains TRUE uncertain
+flags and drops false resolved flags; required explicit stage must reach all Git/native
+call sites, with authoritative total independent of labels; mandatory impact analysis
+was absent; dispatch removal-mutant reachability must survive missing receipt; receipt
+field/null/key vocabulary must be closed. No code/tests were executed or changed.
+
+Proposed Design2 corrects true-only Arc/label retention, one load per flag/all-flags OR,
+required group/verify_git/verify_binding/index_digest stage and explicit unprojected
+Checkpoint. Other-stage mislabel causality is unit/call-site only; native-label receipt
+credit is metadata-only (cleanup Err already forces Lost). Adds impact inventory with
+actual call sites/constants/event consumers/fixture environment/file-backed Store.
+Dispatched consumer/mutants must FIRST pass independent prompt marker, durable saved
+prompt+dispatching and exact own fs audit, then receipt assertion. Adds result-error-
+conditional operator beside removal. No wire proof from Actor.dispatched alone.
+
+Low refinements adopted: exact receipt/stage keys, stderr_read_error ALWAYS unavailable,
+explicit crate-owned reap kind match+other fallback, owned_process_group_created name
+and PID-validation edge, complete attempt sequence window including terminal upper
+watermark before resume, projection Result so strict PID assertion runs first, actual
+both-OS before-spawn stop receipt, actual interpreter provenance, all forced-plan/Drop/
+Tokio deliveries with unobserved native descendant reap, and genuine clean-pair unclean
+failure retained as blocker. Design2 independent fix reviews precede implementation;
+full protocol/files/preflight source must be included in re-review to examine actual
+fs callback/dispatch fixture reachability. Design1 meters are fresh native reports,
+not measured wall time; cost/usage facts cannot substitute for acceptance.
+
+Exact docs-only14050d3 CI37195099963 bothOS passed; no Issue55 implementation or native
+provenance acceptance. #41 final3d844 red is preserved, with no diagnosis-only closure.
