@@ -1,6 +1,6 @@
 # Issue21 legacy Usage decode-error projection component
 
-STRICT limited follow-up under approved Requirements8 e001483 (safe error requirements at lines170–172) and Design4 8a4016a (safe malformed-state refusal). Base mainb8b1906.
+STRICT limited follow-up under approved Requirements8 e001483 (safe error requirements at lines170–172) and Design4 8a4016a (safe malformed-state refusal). Initial base mainb8b1906, normally composed with environment main2c6ae9d at775dc7d.
 Whole21 and private qualified query/native/epoch/raw-retirement producers remain OPEN.
 
 The prior read identity component correctly rejects row/body mismatches, but its

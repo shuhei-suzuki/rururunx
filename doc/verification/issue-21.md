@@ -405,3 +405,15 @@ retained; compiler/setup errors earn no credit. Other shared decode readers, leg
 valid raw metadata, allocation bounds, SQL error/backtrace details, native and full21
 producer gates remain outside this limited component. Two independent reviews and
 current CI still required before merge. No tracking Issue closure.
+
+
+Normal no-conflict integration775dc7d of merged environment2c6ae9d preserves the
+Usage projection/test and Session/CAS environment guards. New DEFAULT full263 Rust+
+2doc tests PASS,24explicitignored; fmt/alltargetClippy-Dwarnings/debug/release BUILD
+PASS, affected State RELEASE17/17 PASS. No full775 workspace release TEST claimed.
+Three projection/cause/message mutants at this composed source again compile and
+actually leak the canary; all killed by the public read consumer, exact full tree
+and source restored and control PASS. Current input/patch/tree/log hashes retained.
+Earlier237+2/fullsourcec44 results remain separate, not reassigned. Two independent
+immutable Source1 reviews and exact current CI still required; no native/full21 gate
+waiver, historical555 cause/regression UNKNOWN retained, no issue closure.
