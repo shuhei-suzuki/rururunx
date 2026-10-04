@@ -379,3 +379,16 @@ Identical command retried with this evidence was approved; no workaround or priv
 payload used. Public proof retained. Final evidence-only metadata commit is manually
 reviewed with all38 source/test/build blobs unchanged; final current CI still required
 before normal limited merge. Whole21/MVP and native acceptance remain OPEN.
+
+
+Next legacy Usage decode-error component under approved Req8/Design4: actual
+public Store::usage body-type corruption reproduces a synthetic canary in alternate
+Display through the serde source chain at test-only17915ed. The initialacb5 control
+stopped earlier on outer static-text difference and earns no leakage kill credit;
+its log is retained. Only this Usage decode maps failure to a static message with
+no raw source chain. Task/Goal/Project corrupt fields, exact Display/alternate
+Display and canary-free Debug controls retain schema checks and snapshot all usage/
+audit rows and owners/Sessions. Debug may retain ordinary anyhow backtrace behavior;
+no configuration override or bound on arbitrary backtrace is claimed. Whole21/
+private projection/native/epoch/raw-retirement remain OPEN. Changed-source checks,
+causal mutants, two independent reviews and current CI are pending.

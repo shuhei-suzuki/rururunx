@@ -914,7 +914,10 @@ impl Store {
         )?;
         rows.map(|row| {
             let (project, goal, task, session, body) = row?;
-            let usage: Usage = decode(body)?;
+            // Serde errors can quote arbitrary persisted body values. Keep
+            // this legacy read refusal static, including the anyhow chain.
+            let usage: Usage =
+                decode(body).map_err(|_| anyhow::anyhow!("invalid persisted usage snapshot"))?;
             ensure!(
                 usage.scope.project_id.to_string() == project
                     && str_id(usage.scope.goal_id) == goal

@@ -1064,7 +1064,7 @@ fn legacy_usage_query_redacts_malformed_body_decode_chain_without_writes() {
                     "usage read leaked body via {field}: {text}"
                 );
             }
-            for text in rendered {
+            for text in &rendered[..2] {
                 assert_eq!(
                     text, "invalid persisted usage snapshot",
                     "decode refusal has only its static projection"
