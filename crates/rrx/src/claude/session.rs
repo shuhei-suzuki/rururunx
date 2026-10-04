@@ -63,6 +63,8 @@ pub struct ClaudeAdapter {
     before_input_fence: Option<(Arc<tokio::sync::Barrier>, Arc<tokio::sync::Barrier>)>,
     #[cfg(test)]
     before_pid_publication: Option<SpawnPublicationFence>,
+    #[cfg(test)]
+    pid_cleanup_unverified: bool,
 }
 struct Entry {
     admission: Arc<tokio::sync::OwnedSemaphorePermit>,
@@ -149,12 +151,7 @@ impl Reservation {
                 snapshot.versions(),
                 &snapshot.lock_versions(),
             )
-            .map_err(|_| {
-                failure(
-                    ErrorKind::StateConflict,
-                    "native dispatch authority changed",
-                )
-            })?;
+            .map_err(super::ownership::state_error)?;
         self.session = candidate;
         Ok(())
     }
@@ -232,6 +229,8 @@ impl ClaudeAdapter {
             before_input_fence: None,
             #[cfg(test)]
             before_pid_publication: None,
+            #[cfg(test)]
+            pid_cleanup_unverified: false,
         })
     }
     /// Enable exact one-shot replies from the trusted runtime broker. Native
@@ -406,19 +405,30 @@ impl ClaudeAdapter {
         if let Err(primary) = reservation.commit_current(candidate, &snapshot) {
             let pid = transport.pid();
             let cleanup = transport.cleanup().await;
+            let cleanup_verified = cleanup.is_ok();
+            #[cfg(test)]
+            let cleanup_verified = if self.pid_cleanup_unverified {
+                reservation.ownership.group().store(true, Ordering::SeqCst);
+                false
+            } else {
+                cleanup_verified
+            };
+            let audited =
+                audit_pid_publication_failure(&reservation, pid, cleanup_verified, primary.kind);
             return Err(failure(
-                if cleanup.is_err() {
+                if !cleanup_verified {
                     ErrorKind::SessionLost
                 } else {
                     primary.kind
                 },
                 format!(
-                    "native terminal PID publication failed: {primary}; owned pid={pid} cleanup={}",
-                    if cleanup.is_err() {
+                    "native terminal PID publication failed: {primary}; owned pid={pid} cleanup={} audit={}",
+                    if !cleanup_verified {
                         "unverified"
                     } else {
                         "verified"
-                    }
+                    },
+                    if audited { "recorded" } else { "unavailable" }
                 ),
             ));
         }
@@ -752,19 +762,30 @@ impl ClaudeAdapter {
         if let Err(primary) = reservation.commit_current(candidate, &snapshot) {
             let pid = transport.pid();
             let cleanup = transport.cleanup().await;
+            let cleanup_verified = cleanup.is_ok();
+            #[cfg(test)]
+            let cleanup_verified = if self.pid_cleanup_unverified {
+                reservation.ownership.group().store(true, Ordering::SeqCst);
+                false
+            } else {
+                cleanup_verified
+            };
+            let audited =
+                audit_pid_publication_failure(&reservation, pid, cleanup_verified, primary.kind);
             return Err(failure(
-                if cleanup.is_err() {
+                if !cleanup_verified {
                     ErrorKind::SessionLost
                 } else {
                     primary.kind
                 },
                 format!(
-                    "native PID publication failed: {primary}; owned pid={pid} cleanup={}",
-                    if cleanup.is_err() {
+                    "native PID publication failed: {primary}; owned pid={pid} cleanup={} audit={}",
+                    if !cleanup_verified {
                         "unverified"
                     } else {
                         "verified"
-                    }
+                    },
+                    if audited { "recorded" } else { "unavailable" }
                 ),
             ));
         }
@@ -1232,6 +1253,22 @@ impl AgentAdapter for ClaudeAdapter {
         })
     }
 }
+/// Diagnostic identity only: an audit PID never authorizes a later signal.
+/// Publication failure must retain the last durable Session metadata.
+fn audit_pid_publication_failure(
+    reservation: &Reservation,
+    pid: u32,
+    cleanup_verified: bool,
+    kind: ErrorKind,
+) -> bool {
+    reservation.store.lock().ok().is_some_and(|mut store| {
+        store.audit(
+            &reservation.session.scope,
+            "claude.launch_failure",
+            json!({"session_id":reservation.session.id,"pid":pid,"pgid":pid,"cleanup_verified":cleanup_verified,"failure_kind":format!("{kind:?}"),"identity_authority":"diagnostic_only; no recovered PID signals"}),
+        ).is_ok()
+    })
+}
 fn tail(target: &mut Vec<u8>, truncated: &mut bool, bytes: &[u8]) {
     target.extend_from_slice(bytes);
     if target.len() > OUTPUT_LIMIT {
@@ -1334,20 +1371,27 @@ async fn supervise(
                 final_authority_current = Some(true);
                 true
             }
-            Err(_) => {
+            Err(error) => {
                 let mut candidate = reservation.session.clone();
-                candidate.recovery["final_authority_current"] = json!(false);
-                final_authority_current = Some(false);
+                final_authority_current = matches!(
+                    error.kind,
+                    ErrorKind::StateConflict | ErrorKind::Locked | ErrorKind::InvalidInput
+                )
+                .then_some(false);
+                // Storage failure withholds proof without asserting that
+                // authority changed. Preserve a nullable factual observation.
+                candidate.recovery["final_authority_current"] = json!(final_authority_current);
                 reservation.commit_session_only(candidate).is_ok()
             }
         }
     } else {
         if observed {
-            final_authority_current = Some(
-                snapshot
-                    .recheck_scope(&reservation.store, &request, &agent)
-                    .is_ok(),
-            );
+            final_authority_current =
+                match snapshot.recheck_scope(&reservation.store, &request, &agent) {
+                    Ok(()) => Some(true),
+                    Err(error) if error.kind == ErrorKind::StateFailure => None,
+                    Err(_) => Some(false),
+                };
         }
         reservation.persist().is_ok()
     };
@@ -2131,8 +2175,60 @@ for line in sys.stdin:
         }
     }
     #[tokio::test]
+    async fn decision_terminal_storage_failure_withholds_proof_without_claiming_revocation() {
+        let mut fixture = Fixture::new(true);
+        fixture.review();
+        let temp = tempfile::tempdir().unwrap();
+        let path = executable(&temp, "result-gated");
+        let ready = PathBuf::from(format!("{}.ready", path.display()));
+        let go = PathBuf::from(format!("{}.go", path.display()));
+        let adapter = ClaudeAdapter::new("claude".into(), path, fixture.store.clone()).unwrap();
+        let session = adapter.start(fixture.request.clone()).await.unwrap();
+        fixture_marker(&ready).await;
+        // Reject only the final current-authority publication, then allow the
+        // nullable fallback. No parent/lock facts are changed by this trigger.
+        let connection = rusqlite::Connection::open(
+            fixture
+                .request
+                .project
+                .root
+                .parent()
+                .unwrap()
+                .join("state.sqlite3"),
+        )
+        .unwrap();
+        connection.execute_batch("CREATE TRIGGER fixture_storage_error BEFORE UPDATE ON records WHEN json_extract(NEW.body,'$.data.recovery.final_authority_current')=1 BEGIN SELECT RAISE(ABORT,'synthetic storage failure'); END;").unwrap();
+        std::fs::write(go, "go").unwrap();
+        let status = terminal(&adapter, (&session).into()).await;
+        assert_eq!(
+            status.session.state,
+            SessionState::Exited,
+            "{:?}",
+            status.failure
+        );
+        assert!(status.session.pid.is_none());
+        assert!(status.session.recovery["final_authority_current"].is_null());
+        assert!(!adapter.transport_succeeded(&status));
+        assert_eq!(
+            serde_json::from_slice::<Value>(&status.stdout).unwrap(),
+            json!({"fixture":true})
+        );
+        let usage = adapter
+            .usage((&session).into(), "review".into(), Some(1))
+            .await
+            .unwrap();
+        assert_eq!(usage.input_tokens, Some(2));
+        assert!(usage.cache_metadata["final_authority_current"].is_null());
+        assert!(usage.missing_reason.is_some());
+        let mut fresh = fixture.request.input.clone();
+        fresh.version = 2;
+        assert!(adapter.checkpoint((&session).into(), fresh).await.is_err());
+    }
+    #[tokio::test]
     async fn blocked_after_spawn_preserves_committed_metadata_and_cleans_owned_print_and_pty() {
-        for terminal_mode in [false, true] {
+        for (terminal_mode, cleanup_unverified) in
+            [(false, false), (true, false), (false, true), (true, true)]
+        {
             let mut fixture = Fixture::new(!terminal_mode);
             if terminal_mode {
                 fixture.request.mode = LaunchMode::Interactive;
@@ -2148,6 +2244,9 @@ for line in sys.stdin:
             )
             .unwrap();
             adapter.before_pid_publication = Some((ready.clone(), release.clone(), pid.clone()));
+            // Actual cleanup still runs first. This models unavailable proof,
+            // retains sticky uncertainty and never leaves a real child alive.
+            adapter.pid_cleanup_unverified = cleanup_unverified;
             if terminal_mode {
                 adapter = adapter.with_terminal_prototype();
             }
@@ -2166,8 +2265,21 @@ for line in sys.stdin:
                 .unwrap()
                 .unwrap()
                 .unwrap_err();
-            assert_eq!(error.kind, ErrorKind::StateConflict, "{error}");
-            assert!(error.message.contains("cleanup=verified"));
+            assert_eq!(
+                error.kind,
+                if cleanup_unverified {
+                    ErrorKind::SessionLost
+                } else {
+                    ErrorKind::StateConflict
+                },
+                "{error}"
+            );
+            assert!(error.message.contains(if cleanup_unverified {
+                "cleanup=unverified"
+            } else {
+                "cleanup=verified"
+            }));
+            assert!(error.message.contains("audit=recorded"));
             let records = fixture
                 .store
                 .lock()
@@ -2178,7 +2290,7 @@ for line in sys.stdin:
             let saved: Session = serde_json::from_value(records[0].data.clone()).unwrap();
             assert_eq!(
                 saved.state,
-                if terminal_mode {
+                if terminal_mode || cleanup_unverified {
                     SessionState::Lost
                 } else {
                     SessionState::Failed
@@ -2186,6 +2298,22 @@ for line in sys.stdin:
             );
             assert!(saved.pid.is_none());
             assert!(saved.recovery["dispatch_intent"]["kind"] != "input");
+            let events = fixture
+                .store
+                .lock()
+                .unwrap()
+                .events(&fixture.request.scope, 0, 100)
+                .unwrap();
+            let event = events
+                .iter()
+                .find(|event| event.kind == "claude.launch_failure")
+                .unwrap();
+            assert_eq!(event.data["session_id"], json!(saved.id));
+            assert_eq!(event.data["pid"], pid.load(Ordering::SeqCst));
+            assert_eq!(event.data["pgid"], pid.load(Ordering::SeqCst));
+            assert_eq!(event.data["cleanup_verified"], !cleanup_unverified);
+            assert_eq!(event.data["failure_kind"], "StateConflict");
+            assert!(event.data.get("payload").is_none());
             let output = std::process::Command::new("/bin/ps")
                 .args(["-axo", "pgid=,stat="])
                 .env_clear()
