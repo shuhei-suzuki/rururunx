@@ -5373,15 +5373,16 @@ mod tests {
         })
         .await;
         let current = adapter.current(&reference).unwrap();
-        let evidence = evidence.lock().unwrap();
         assert_eq!(pending["requests"].as_array().unwrap().len(), 1);
         assert_eq!(current.session.state, SessionState::Lost);
-        assert!(
-            evidence.pending.is_none(),
-            "Drop must clear the journal installed for this actual turn"
-        );
-        assert!(!evidence.completed);
-        drop(evidence);
+        {
+            let evidence = evidence.lock().unwrap();
+            assert!(
+                evidence.pending.is_none(),
+                "Drop must clear the journal installed for this actual turn"
+            );
+            assert!(!evidence.completed);
+        }
         assert!(
             bounded(adapter.pending_approvals(reference.clone()))
                 .await

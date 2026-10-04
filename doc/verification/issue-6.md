@@ -528,3 +528,12 @@ Review evidence: `/private/tmp/rururunx-issue6-f4-review-A-result.json`,
 `/private/tmp/rururunx-issue6-f4-review-B-result.json`,
 `/private/tmp/rururunx-issue6-f4-public-manifest.json`,
 `/private/tmp/rururunx-issue6-f4-a7a219b-gates-result.json`.
+
+Clean `89de50a` compiles and its complete default-concurrency Codex suite passes
+**94 tests** (one synthetic child entry ignored) in 38.94 seconds. All four new
+consumers pass. Its first all-target Clippy run rejects the explicit-drop test
+MutexGuard scope; the next test-only change uses a lexical scope before awaiting.
+The failed lint log is retained, not credited as passing. No production admission,
+process deadline or internal parallelism changed for this correction.
+Evidence: `/private/tmp/rururunx-issue6-f4-89de50a-codex.log`,
+`/private/tmp/rururunx-issue6-f4-89de50a-clippy.log`.
