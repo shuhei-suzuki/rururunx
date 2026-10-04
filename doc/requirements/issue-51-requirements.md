@@ -3,7 +3,7 @@
 Risk: STRICT. MVP-blocking follow-up to #7 and actual integration acceptance #16.
 Goal §6 separates credentials/environment references by Project. Requirements/design
 approval precedes native/shared implementation. No Grok, Store or provider source is
-changed by this requirements-only head.
+changed by this documentation-only head (requirements and proposed design).
 
 ## Verified problem and evidence limits
 
@@ -45,10 +45,12 @@ contracts, not universal provider safety evidence.
    exact non-control baseline name to conflict detection; a forbidden control name
    falls under requirement 3. Skipping a record never grants its references.
    Provide a separately Project-scoped operator diagnostic for that Project's own
-   conflicting reference names only; never copy it into A's context/audit or expose
+   non-control reference names present in the retained baseline only, independently of
+   other Projects' declarations; never copy it into A's context/audit or expose
    values/foreign identity in A's error. This diagnostic comes from explicit state-only
-   operator evaluation or inventory maintenance, never another Project's launch activity,
-   counts or timestamps. Explain clear/reactivate when the declaring source remains valid,
+   operator evaluation or that declaring Project's own state change, never another
+   Project's registration, inventory change, launch activity, counts or timestamps.
+   Explain clear/reactivate when the declaring source remains valid,
    or removing the variable from the runtime environment and reconstructing the adapter
    when that source is gone; lifecycle guards remain authoritative.
 2. Preserve the registry's RRX_ reserved-name prohibition. Caller RRX_ keys and routing/
@@ -76,8 +78,10 @@ contracts, not universal provider safety evidence.
    NODE_EXTRA_CA_CERTS/NODE_PATH. Membership is a predicate, not an exhaustive finite
    list: named controls, LD_/DYLD_ prefixes, baseline names forbidden by the registry,
    and the reviewed finite additions. Registry-forbidden names have control precedence
-   because no valid Project can own them. The credential-bearing/locating prohibition
-   applies to registry-valid names; existing HOME/XDG identity controls remain global.
+   because no valid Project can own them. Registry-valid credential-bearing or
+   credential-locating names must never be added to, or reclassified into, the protected
+   control set, including the reviewed finite additions. Existing HOME/XDG identity
+   controls remain global. The design's drift check must preserve this prohibition.
    Ambiguous registry-valid names cannot be silently stripped as credentials or accepted
    as controls. Reuse the registry predicate or verify drift explicitly.
 4. For any non-control baseline name referenced by another Project but not A, reject
@@ -101,9 +105,11 @@ contracts, not universal provider safety evidence.
    non-declaring Grok Projects. Supported multi-Project setups retain intentional
    undeclared global native auth, or explicitly share the same runtime references/value
    among all Grok-using Projects; ordinary own scoped caller values remain isolated.
-   Here native/baseline names include every baseline_key name declared by any Project
+   Here native/baseline names include every non-control baseline_key name declared by any Project
    for any provider, including NODE_/BUN_/OPENSSL_ names used privately by Claude/Codex.
    Such private references can make a multi-Project Grok configuration unsupported.
+   Declaring a protected control blocks only that declaring Project's own admission
+   under requirement 3; another Project's control declaration does not block A.
    Do not co-declare another Project's private credential as a workaround: this is
    operator configuration guidance, not an enforceable private/shared flag in the
    existing plain environment_refs list. Distinct

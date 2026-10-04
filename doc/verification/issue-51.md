@@ -1,6 +1,6 @@
 # Issue51 verification
 
-Requirements-only proposed change, STRICT; no implementation/tests changed in this
+Documentation-only proposed change, STRICT; no implementation/tests changed in this
 worktree. Design is now proposed; independent design/source approval remains required.
 
 The executor reports using actual GrokAdapter source at docs-only d56f2bf, identical
@@ -77,3 +77,10 @@ Optional E01..04 were verified against the provided source/documentation and ref
 `issue-51-valid-environment-observation.json` is a structured transcription of the historical fixture output, not raw bytes reproducible by the unchanged fixture: raw `canaries`, `exit_code`, and `failure` remain measured fields; every literal/asserted flag and revision becomes `provenance_annotations.author_or_asserted_conditions`, and fixture/test result labels are annotations. Compiled revision observed from build metadata remains null. No new native execution or credential observation was performed.
 
 The proposed design inventories current actual RRX fixture producers, a pure registry/control predicate, exact name-only foreign roster and an additive same-transaction Session/environment admission check before start/resume native spawn. Requirements precision delta rereview, two independent design gates and source/consumer verification remain pending. No Rust or test source changed; #46 review/cleanup remains the implementation priority.
+
+
+## Requirements4 verified correction before design approval
+
+Independent Requirements4 at `aea7655b53c3a3352dfc4ad996fdd48760c6fca6` completed request_changes, exit0 and owned cleanup verified. R51-F01 Medium is verified: the E02 precision edit referred to a credential-bearing/locating prohibition but deleted its explicit normative sentence. It is restored in substance: registry-valid credential-bearing or locating names can never enter the protected control set, including finite additions; registry-forbidden baseline precedence and existing HOME/XDG global identity controls remain. The proposed design now adds only NODE_TLS_REJECT_UNAUTHORIZED, with credential/ambiguous-name non-control drift assertions; OpenSSL runtime configuration documentation alone does not confer new protected authority. No source or test change is made.
+
+Optional F02..04 are adopted: availability concerns non-control baseline names only, a control declaration blocks only its owner; operator candidate names derive independently from its own refs and retained baseline names and never from another Project's registration/inventory change; head scope is documentation-only with proposed design. Formal Requirements5 fix rereview precedes the two independent design gates. No prior approval is attributed to these corrections. Counters remain raw resumed-session totals with unverified per-round attribution.

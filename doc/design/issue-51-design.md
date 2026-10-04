@@ -53,10 +53,11 @@ The Grok control predicate has these components, in precedence order:
    predicate. This includes NODE_PATH, NODE_EXTRA_CA_CERTS and every admitted *_PROXY
    spelling. Registry-forbidden proxy routing remains a control even if its URL could
    contain credentials: no valid Project can own such a reference.
-3. Reviewed finite additions: NODE_TLS_REJECT_UNAUTHORIZED, OPENSSL_CONF,
-   OPENSSL_CONF_INCLUDE, OPENSSL_ENGINES and OPENSSL_MODULES. These govern TLS checking,
-   configuration or dynamic engine/provider loading; the sources below support that
-   classification. They do not classify entire native prefixes as controls.
+3. Reviewed finite addition: NODE_TLS_REJECT_UNAUTHORIZED, a TLS certificate-checking
+   control documented below. It is not a credential value or credential-location key.
+   Do not classify entire native prefixes as controls. Registry-valid credential-bearing
+   or locating keys can never enter the additions; a drift test retains examples of
+   native credential and ambiguous native-reference names as non-controls.
 
 For registry-valid names, credential-bearing or locating names cannot be newly classified
 as controls. XAI_API_KEY is a policy example, not a claim about installed Grok consumption.
@@ -69,7 +70,11 @@ Own control refs fail even where the registry itself would otherwise accept the 
 Primary runtime references are [Node command-line environment documentation](https://nodejs.org/api/cli.html#node_tls_reject_unauthorizedvalue)
 and [OpenSSL environment documentation](https://docs.openssl.org/3.0/man7/openssl-env/).
 They explain the selected runtime keys, not whether a particular Grok build consumes
-every one. Installed native auth/config values are never read for this design or tests.
+every one. OpenSSL describes config/module path overrides; their existence alone does
+not grant a registry-valid name protected-control status. No additional OPENSSL_ name
+is newly trusted here: absent foreign references the existing global baseline remains,
+while declared non-control names obey the same conflict rule. Installed native auth/config
+values are never read for this design or tests.
 
 ## Name-only snapshot and atomic pre-spawn boundary
 
@@ -135,7 +140,10 @@ Provide an explicit state-only Project-scoped policy inspection method. It repor
 the selected Project's own referenced baseline names and unsupported/control declarations;
 it reads no values and reports no foreign IDs, launches, counts or timestamps. Invoke it
 only through an explicit operator check or independent inventory maintenance, never as a
-side effect of another Project's blocked admission. A's error/audit remains opaque.
+side effect of another Project's blocked admission or inventory/registration change.
+Its non-control candidate set is derived only from that Project's own declarations and
+the retained baseline name set, independent of other Projects' co-declarations. A's
+error/audit remains opaque.
 
 Explain two remedies: if the declaring source remains valid, use existing clear refs /
 reactivation commands without skipping removal guards; if it is gone or otherwise cannot
