@@ -2238,13 +2238,13 @@ for line in sys.stdin:
         let observed = receiver.borrow().clone();
         assert_eq!(observed.session.state, SessionState::Lost);
         assert!(!adapter.transport_succeeded(&observed));
-        let registry = adapter.registry().unwrap();
-        let evidence = registry.get(&session.id).unwrap().evidence.lock().unwrap();
-        assert!(evidence.terminal_observed);
-        assert!(!evidence.completed);
-        assert_eq!(evidence.final_authority_current, None);
-        drop(evidence);
-        drop(registry);
+        {
+            let registry = adapter.registry().unwrap();
+            let evidence = registry.get(&session.id).unwrap().evidence.lock().unwrap();
+            assert!(evidence.terminal_observed);
+            assert!(!evidence.completed);
+            assert_eq!(evidence.final_authority_current, None);
+        }
         assert_eq!(
             serde_json::to_value(other.session(session.id).unwrap().unwrap().0).unwrap(),
             serde_json::to_value(changed).unwrap()
