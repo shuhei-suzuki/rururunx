@@ -184,7 +184,7 @@ impl Preparation {
         }
         match publish() {
             Ok(value) => {
-                *admission = if checkpoint.is_some() { Admission::Preparing } else { Admission::Consumed };
+                *admission = checkpoint.map_or(Admission::Consumed, Admission::CheckpointCommitted);
                 Ok(value)
             }
             Err(error) => {
