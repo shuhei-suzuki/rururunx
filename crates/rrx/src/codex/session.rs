@@ -303,7 +303,7 @@ impl Reservation {
             .as_ref()
             .filter(|publication| publication.previous.terminal())
             .map(|publication| publication.previous.clone());
-        let unstarted = self.version == 0;
+        let unstarted = !self.published_attempt;
         let uncertain = self.ownership.uncertain() || self.inference_started;
         let uncertainty_reason = match (self.ownership.uncertain(), self.inference_started) {
             (true, true) => Some(
