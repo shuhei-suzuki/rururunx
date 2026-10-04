@@ -109,7 +109,11 @@ impl Fixture {
             .context(&r.scope, Some(r.version))
             .unwrap()
             .unwrap();
-        packs.task_pack(&r).unwrap();
+        let pack = packs.task_pack(&r).unwrap();
+        assert_eq!(
+            encoding::encoded_len(&pack).unwrap(),
+            serde_json::to_vec(&pack).unwrap().len()
+        );
         (c, r)
     }
     // Corrupt ONLY an owned negative fixture; never a publication/native proof.
@@ -242,6 +246,10 @@ async fn checkpoint_reader_guards_after_identity_before_digest_and_decode() {
         .unwrap();
     let checkpoint = f.packs().load_checkpoint(&reference).unwrap();
     assert_eq!(
+        encoding::encoded_len(&checkpoint).unwrap(),
+        serde_json::to_vec(&checkpoint).unwrap().len()
+    );
+    assert_eq!(
         checkpoint.recent_bytes,
         checkpoint
             .recent
@@ -368,6 +376,15 @@ async fn typed_task_and_provenance_readers_guard_before_digest_and_decode() {
     }
     let mut c = control;
     c.data["format"] = json!("unknown.format");
+    let fitting = f.corrupt(&c);
+    assert_eq!(
+        f.packs()
+            .task_pack(&fitting)
+            .bounded_err()
+            .root_cause()
+            .to_string(),
+        "invalid Task pack envelope"
+    );
     c.data["decisions"] = json!(["x".repeat(MAX_BYTES)]);
     let r = f.corrupt(&c);
     reset();
@@ -394,7 +411,11 @@ async fn typed_goal_reader_guards_before_digest_and_decode() {
         .context(&r.scope, Some(r.version))
         .unwrap()
         .unwrap();
-    f.packs().goal_pack(&r).unwrap();
+    let pack = f.packs().goal_pack(&r).unwrap();
+    assert_eq!(
+        encoding::encoded_len(&pack).unwrap(),
+        serde_json::to_vec(&pack).unwrap().len()
+    );
     for (field, value, message) in [
         (
             "cross_task_decisions",
@@ -408,9 +429,20 @@ async fn typed_goal_reader_guards_before_digest_and_decode() {
         let r = f.corrupt(&c);
         reset();
         refused(f.packs().goal_pack(&r).bounded_err(), message);
+        reset();
+        refused(f.packs().validate_goal(&r).await.bounded_err(), message);
     }
     let mut c = control;
     c.data["format"] = json!("unknown.format");
+    let fitting = f.corrupt(&c);
+    assert_eq!(
+        f.packs()
+            .goal_pack(&fitting)
+            .bounded_err()
+            .root_cause()
+            .to_string(),
+        "invalid Goal pack envelope"
+    );
     c.data["cross_task_decisions"] = json!(["x".repeat(MAX_BYTES)]);
     let r = f.corrupt(&c);
     reset();
@@ -421,15 +453,27 @@ async fn typed_goal_reader_guards_before_digest_and_decode() {
 async fn opaque_goal_format_in_task_scope_keeps_its_provenance_path() {
     let f = Fixture::new();
     let (mut c, _) = f.task_context().await;
-    c.data = json!({"format":GOAL_FORMAT,"opaque":"x".repeat(MAX_BYTES)});
-    let r = f.corrupt(&c); // Negative corruption stands for historical opaque shape.
-    reset();
-    f.packs()
-        .load_context(&r, ContextRead::TaskProvenance)
-        .unwrap();
-    assert_eq!(encoding::take_read_stages(), encoding::CONTEXT_DIGEST);
-    let t = f.store.lock().unwrap().task(f.task.id).unwrap().unwrap();
-    f.packs().validate_task_reference(&t, &r).await.unwrap();
+    for format in [GOAL_FORMAT, "unknown.format"] {
+        c.data = json!({"format":format,"opaque":"x".repeat(MAX_BYTES)});
+        let r = f.corrupt(&c); // Negative corruption stands for historical opaque shape.
+        reset();
+        f.packs()
+            .load_context(&r, ContextRead::TaskProvenance)
+            .unwrap();
+        assert_eq!(encoding::take_read_stages(), encoding::CONTEXT_DIGEST);
+        let t = f.store.lock().unwrap().task(f.task.id).unwrap().unwrap();
+        f.packs().validate_task_reference(&t, &r).await.unwrap();
+        let goal = f
+            .packs()
+            .publish_goal(&f.goal.scope(), vec![], Default::default())
+            .await
+            .unwrap();
+        let pack = f.packs().goal_pack(&goal).unwrap();
+        assert_eq!(pack.tasks.len(), 1);
+        assert!(!pack.tasks[0].typed_context);
+        assert_eq!(pack.tasks[0].context, Some(r));
+        f.packs().validate_goal(&goal).await.unwrap();
+    }
 }
 
 #[tokio::test]
@@ -459,7 +503,11 @@ async fn phase_reader_and_capture_guard_before_artifact_clone() {
         data: json!({"task_pack":artifact,"phase":Phase::Implement,"budget":budget,
             "payload":source.payload,"source_payload_offset":0}),
     };
-    workflow::context_artifact(&control).unwrap();
+    let typed_artifact = workflow::context_artifact(&control).unwrap();
+    assert_eq!(
+        encoding::encoded_len(&typed_artifact).unwrap(),
+        serde_json::to_vec(&typed_artifact).unwrap().len()
+    );
     f.task_context().await; // Genuine publication before owned negative corruption.
     let phase_reference = f.corrupt(&control);
     reset();
