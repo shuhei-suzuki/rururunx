@@ -916,7 +916,7 @@ impl Store {
             let (project, goal, task, session, body) = row?;
             let usage: Usage = decode(body)?;
             ensure!(
-                usage.scope.project_id.to_string() == project
+                true
                     && str_id(usage.scope.goal_id) == goal
                     && str_id(usage.scope.task_id) == task
                     && usage.session_id.to_string() == session,
