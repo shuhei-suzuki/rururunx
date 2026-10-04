@@ -1,7 +1,7 @@
 //! Transactional SQLite snapshots + append-only logical events, scoped by Project.
+mod environment;
 #[cfg(test)]
 mod native_dispatch_tests;
-mod environment;
 pub(crate) use environment::EnvironmentAdmission;
 use std::{path::Path, time::Duration};
 
@@ -705,7 +705,13 @@ impl Store {
         expected_locks: &[(RecordId, u64)],
         admission: &EnvironmentAdmission,
     ) -> Result<u64> {
-        self.put_session_current(session, expected_session, expected, expected_locks, Some(admission))
+        self.put_session_current(
+            session,
+            expected_session,
+            expected,
+            expected_locks,
+            Some(admission),
+        )
     }
 
     fn put_session_current(
@@ -812,11 +818,21 @@ impl Store {
         guard_record_tx(&tx, &record)?;
         if let Some(admission) = admission {
             // Preserve the existing guard/CAS order before any foreign decision.
-            let actual: Option<u64> = tx.query_row("SELECT version FROM records WHERE id=?1", [record.id.to_string()], |row| row.get(0)).optional()?;
+            let actual: Option<u64> = tx
+                .query_row(
+                    "SELECT version FROM records WHERE id=?1",
+                    [record.id.to_string()],
+                    |row| row.get(0),
+                )
+                .optional()?;
             if record.version == 0 {
                 ensure!(actual.is_none(), "snapshot insert failed");
             } else if actual != Some(record.version) {
-                bail!(StateGuardError::SnapshotChanged { table: "records".into(), id: record.id.to_string(), expected: record.version });
+                bail!(StateGuardError::SnapshotChanged {
+                    table: "records".into(),
+                    id: record.id.to_string(),
+                    expected: record.version
+                });
             }
             environment::evaluate(&tx, scope.project_id, admission)?;
         }

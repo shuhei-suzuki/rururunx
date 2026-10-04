@@ -124,7 +124,9 @@ impl Fixture {
         std::fs::write(path, serde_json::to_vec(&metadata).unwrap()).unwrap();
     }
     pub(super) fn synthetic_value(&self, key: &str) -> String {
-        let metadata: Value = serde_json::from_slice(&std::fs::read(self.executable.with_extension("json")).unwrap()).unwrap();
+        let metadata: Value =
+            serde_json::from_slice(&std::fs::read(self.executable.with_extension("json")).unwrap())
+                .unwrap();
         metadata[key].as_str().unwrap().to_owned()
     }
     pub(super) fn mode(&mut self, mode: &str) {

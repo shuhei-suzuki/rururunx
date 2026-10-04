@@ -54,10 +54,7 @@ async fn finished(
 async fn native_execute_edits_only_owned_files_and_preserves_actual_exit() {
     let mut fixture = Fixture::new();
     fixture.request.input.payload = "  /always-approve".into();
-    fixture.synthetic(
-        "RRX_EXPECT_INPUT",
-        fixture.request.input.payload.clone(),
-    );
+    fixture.synthetic("RRX_EXPECT_INPUT", fixture.request.input.payload.clone());
     let adapter = fixture.adapter();
     let session = fixture.start(&adapter).await.unwrap();
     let status = finished(&adapter, &session, &fixture).await;

@@ -213,14 +213,24 @@ impl GrokAdapter {
         drop(transition);
         Ok(entry)
     }
-    fn environment(&self, request: &LaunchRequest) -> AdapterResult<(BTreeMap<String,String>, crate::state::EnvironmentAdmission)> {
+    fn environment(
+        &self,
+        request: &LaunchRequest,
+    ) -> AdapterResult<(BTreeMap<String, String>, crate::state::EnvironmentAdmission)> {
         environment::select(self, request)
     }
     /// Explicit own-Project operator inspection. Only candidate names, never values
     /// or foreign inventory/activity. May inspect Registered, Blocked or Removed.
-    pub fn environment_candidates(&self, project: crate::domain::ProjectId) -> AdapterResult<BTreeSet<String>> {
+    pub fn environment_candidates(
+        &self,
+        project: crate::domain::ProjectId,
+    ) -> AdapterResult<BTreeSet<String>> {
         let admission = environment::admission(&self.baseline, std::iter::empty())?;
-        self.store.lock().map_err(|_| failure(ErrorKind::StateFailure,"state store poisoned"))?.environment_candidates(project,&admission).map_err(state_error)
+        self.store
+            .lock()
+            .map_err(|_| failure(ErrorKind::StateFailure, "state store poisoned"))?
+            .environment_candidates(project, &admission)
+            .map_err(state_error)
     }
     async fn launch(
         &self,
@@ -584,7 +594,9 @@ impl AgentAdapter for GrokAdapter {
                 .verify_git(&request, &mut ownership, OwnershipStage::Checkpoint)
                 .await?;
             #[cfg(test)]
-            if let Some(hook)=entry.checkpoint_environment.clone(){hook(entry.clone()).await?;}
+            if let Some(hook) = entry.checkpoint_environment.clone() {
+                hook(entry.clone()).await?;
+            }
             snapshot.recheck(&self.store, &request, &self.agent)?;
             let version = assert_saved(&self.store, &current)?;
             let mut next = current;
@@ -786,18 +798,42 @@ impl Actor {
     }
     fn admit_environment(&mut self) -> AdapterResult<()> {
         let entry = self.entry.clone();
-        let _transition = entry.transition.lock().map_err(|_| failure(ErrorKind::StateFailure,"transition poisoned"))?;
-        if self.stopped() { return Err(failure(ErrorKind::ProcessFailure,"native stop before admission")); }
+        let _transition = entry
+            .transition
+            .lock()
+            .map_err(|_| failure(ErrorKind::StateFailure, "transition poisoned"))?;
+        if self.stopped() {
+            return Err(failure(
+                ErrorKind::ProcessFailure,
+                "native stop before admission",
+            ));
+        }
         let candidate = self.session.clone();
-        let version = self.store.lock().map_err(|_| failure(ErrorKind::StateFailure,"state store poisoned"))?.put_session_with_environment_if_current(
-            &candidate,self.version,
-            [self.snapshot.project.version,self.snapshot.goal.as_ref().expect("Task Goal").version,self.snapshot.task.as_ref().expect("Task").version],
-            &self.snapshot.locks.iter().map(|lock|(lock.id,lock.version)).collect::<Vec<_>>(),
-            &self.environment_admission,
-        ).map_err(state_error)?;
+        let version = self
+            .store
+            .lock()
+            .map_err(|_| failure(ErrorKind::StateFailure, "state store poisoned"))?
+            .put_session_with_environment_if_current(
+                &candidate,
+                self.version,
+                [
+                    self.snapshot.project.version,
+                    self.snapshot.goal.as_ref().expect("Task Goal").version,
+                    self.snapshot.task.as_ref().expect("Task").version,
+                ],
+                &self
+                    .snapshot
+                    .locks
+                    .iter()
+                    .map(|lock| (lock.id, lock.version))
+                    .collect::<Vec<_>>(),
+                &self.environment_admission,
+            )
+            .map_err(state_error)?;
         self.version = version;
         self.session = candidate;
-        self.events.send_modify(|status| status.session=self.session.clone());
+        self.events
+            .send_modify(|status| status.session = self.session.clone());
         Ok(())
     }
     fn stopped(&self) -> bool {
