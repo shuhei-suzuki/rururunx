@@ -74,7 +74,7 @@ fn foreign(fixture: &Fixture, names: &[&str]) -> (tempfile::TempDir, crate::doma
         .unwrap();
     (directory, project)
 }
-fn assert_not_spawned(fixture: &Fixture, session: &Session, lower: u64) {
+fn assert_not_spawned(fixture: &Fixture, session: &Session, lower: i64) {
     let store = fixture.store.lock().unwrap();
     let events = store.events(&session.scope, lower, 500).unwrap();
     assert!(
@@ -133,7 +133,7 @@ async fn initial_child() {
         "synthetic native baseline mismatch"
     );
     assert!(canary["RRX_CALLER_FORBIDDEN"].is_null());
-    adapter.release(launched.into()).await.unwrap();
+    adapter.release((&launched).into()).unwrap();
 
     let mut denied = Fixture::new();
     assert!(
@@ -201,7 +201,7 @@ async fn initial_child() {
         status.failure,
         denied.receipt_message(&status)
     );
-    adapter.release(session.into()).await.unwrap();
+    adapter.release((&session).into()).unwrap();
     for key in [
         "RRX_CALLER_FORBIDDEN",
         "HOME",
@@ -247,13 +247,13 @@ async fn admission_child() {
     let session = fixture.start(&adapter).await.unwrap();
     let status = terminal(&adapter, &fixture, &session).await;
     assert_eq!(
-        status.failure.as_ref().unwrap().kind,
-        ErrorKind::InvalidConfiguration
+        status.failure.as_deref(),
+        Some("InvalidConfiguration: native environment authority unavailable")
     );
     assert_eq!(status.session.state, SessionState::Failed);
     assert!(status.session.pid.is_none());
     assert_not_spawned(&fixture, &session, lower);
-    adapter.release(session.into()).await.unwrap();
+    adapter.release((&session).into()).unwrap();
 
     let mut resumed = Fixture::new();
     let (_foreign_dir, mut other) = foreign(&resumed, &[]);
@@ -289,19 +289,16 @@ async fn admission_child() {
     input.version = 2;
     input.payload = "explicit fresh continuation".into();
     adapter
-        .checkpoint(first.clone().into(), input.clone())
+        .checkpoint((&first).into(), input.clone())
         .await
         .unwrap();
     resumed.request.input = input;
     let lower = receipt_support::watermark(&resumed.store, &resumed.request.scope).unwrap();
-    let second = resumed
-        .resume(&adapter, first.clone().into(), 2)
-        .await
-        .unwrap();
+    let second = resumed.resume(&adapter, (&first).into(), 2).await.unwrap();
     let status = terminal(&adapter, &resumed, &second).await;
     assert_eq!(
-        status.failure.as_ref().unwrap().kind,
-        ErrorKind::InvalidConfiguration
+        status.failure.as_deref(),
+        Some("InvalidConfiguration: native environment authority unavailable")
     );
     assert_eq!(status.session.state, SessionState::Failed);
     assert_eq!(
@@ -313,7 +310,7 @@ async fn admission_child() {
     }
     assert_not_spawned(&resumed, &second, lower);
     assert_eq!(invocations.load(Ordering::SeqCst), 2);
-    adapter.release(second.into()).await.unwrap();
+    adapter.release((&second).into()).unwrap();
 
     let fixture = Fixture::new();
     let mut adapter = fixture.adapter();
@@ -359,7 +356,7 @@ async fn admission_child() {
         version >= 3,
         "reservation, admission and terminal publications did not remain coherent"
     );
-    adapter.release(session.into()).await.unwrap();
+    adapter.release((&session).into()).unwrap();
     child_completed("adapter::grok::environment_tests::admission_child");
 }
 
