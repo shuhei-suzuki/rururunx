@@ -963,7 +963,9 @@ explicit eligible custom roster. Human authorship remains separately attributed.
   repeated identical trees follow I9-AC-17.c, and supersession/decomposition/new
   concern IDs never reset ancestry or exhausted budgets. There is no additional
   one-candidate-per-concern Human gate: bounded verify→fix→commit→re-review remains
-  autonomous, without allowing self-clearance or approval-shopping. Tests include
+  autonomous, without self-clearance, shared-budget reset or borrowing prior approval.
+  This is not a categorical no-resampling guarantee: the bounded nonblocking-dissent
+  rerun residual in18.i remains explicitly accepted. Tests include
   a genuine concern-linked multi-step fix with two changed commits/new full rosters,
   APPROVE+Medium→verify→fix→commit→full-roster rerun,
   labelled-claim-not-clearance, retained veto, cosmetic/unrelated/empty refusal,
@@ -1409,7 +1411,11 @@ alone cannot qualify that slot. Test genuine focus activation and this refusal.
 Task-authored hints remain unactivated proposals, never permission to omit rules.
 
 **11.c — New Task lineage base.** Registered-base sync retains recorded uncertified
-contributions even after upstream reachability. A new obligation may be fresh only
+contributions even after upstream reachability. This includes contributions recorded
+by earlier Workflow epochs whose legacy Passed/Completed labels provide no current
+ReviewSet certificate. They retain factual authors and uncertified obligations; unknown
+applicability inherits/refuses rather than applying an epoch cutoff or converting an
+old native result into certified upstream proof. A new obligation may be fresh only
 with trusted exact applicability evidence proving disjoint changed AND relied-on
 source/dependency/context and retained finding scopes. Affected or unknown obligations
 inherit exact vetoes/authors/shared remaining or exhausted budget, or refuse. No
@@ -2335,6 +2341,30 @@ capable CURRENT-peer channels always refuse under8.c/8.k. Test these classes and
 exposure-specific policy refusal; lower observability never implies broader secrecy.
 #16 records actual observations independently from capability/disclosure flags.
 
+
+## Requirements review37 dispositions
+
+Native review58639061-4cd8-41f2-af8d-e1ef4458cd4e at10e53704 found no Critical/High
+and three Medium observations. M1 is accepted as wording precision:18.a no longer
+claims to eliminate every form of opinion resampling; existing18.i explicitly retains
+bounded concern-linked reruns after nonblocking dissent. No new per-fix Human gate,
+semantic fix oracle or retry authority is added. M2 is clarified under11.c: recorded
+uncertified contributions from earlier Workflow epochs remain factual negative lineage
+evidence; legacy Passed/Completed never confers a current certificate. Applicable or
+unknown histories keep existing author/veto/budget inheritance, with12's actual producer
+still pending. No scope or epoch label washes that history.
+
+M3 proposes a NEW automatic recovery retry after a partially admitted round is closed
+by foreign Lost capacity. It does not establish a contradiction in18.h: the existing
+contract deliberately distinguishes an unchanged wholly-queued proposal (no admitted
+round) from a partly admitted/charged round. The latter remains Human/frozen-authorized-
+policy pending after genuine14 recovery; unchanged wakes/capacity restoration cannot
+mint cause(c) retry. Retain that reviewed availability limit and16 measurements rather
+than adopting unrequested recovery authority. All actual Lost/resource holds persist.
+Low observations do not change native isolation, quota ceilings or registered profile
+readiness: runtime-controlled input exclusions, measured residual exposure and finite
+actual admitted bytes retain their existing explicit limits. No native acceptance,
+ReviewGatingReady producer or source implementation is claimed by this clarification.
 
 ## Ordered stable acceptance index
 
