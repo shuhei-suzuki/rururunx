@@ -39,7 +39,7 @@ contains completed stdout/stderr plus actual child exit; success requires both E
 and a successful exit within one monotonic observation deadline. Start the unchanged
 250ms budget immediately after spawn returns, before pipe configuration/observation;
 spawn itself remains outside that existing post-spawn budget. Check the deadline
-before/after each drain and process-status boundary, retaining bounded 5ms polling.
+before/after each drain and process-status boundary, retaining bounded5ms idle polling; data-flow iterations do not sleep.
 
 Use a single-thread nonblocking drain, not reader threads/channels. Existing rustix
 fs support provides safe fcntl_getfl/fcntl_setfl on each owned stdout/stderr AsFd;
@@ -55,8 +55,8 @@ On failure, close both read endpoints; if try_wait already reaped the child, nev
 signal that numeric PID. Otherwise kill the exact owned direct Child and always attempt mandatory wait even
 if kill reports failure; a completed wait can resolve a benign exit-vs-kill race,
 whereas wait failure is explicit cleanup uncertainty. A non-retriable try_wait error
-(including ECHILD) makes reap status unknown: send no numeric signal, attempt wait
-without assuming ownership survived, and report cleanup uncertainty on failure. This
+(including ECHILD) makes reap status unknown: send neither signal nor another numeric wait; drop the direct-child handle and
+report explicit cleanup ownership uncertainty. This
 blocking kill/reap remains outside the 250ms observation budget and can extend total
 call duration; it is an explicit existing residual, not a hard realtime promise.
 Syscall/spawn scheduling likewise has no hard bound. The inspector is trusted ps,
@@ -72,7 +72,7 @@ by EOF/strict parsing. Do not serialize spawns or claim this race is eliminated.
 fixture supplies owned pipe endpoints to the same private completion runner and
 retains a duplicate write endpoint after its direct child exits; it owns that handle
 without descendants. The child emits a valid all-Z expected-leader frame. Run completion on a fixture-owned
-thread; a bounded watchdog (for example1s) receives its result. Whether completion
+thread; a bounded watchdog (for example5s) receives its result. Whether completion
 returns or the watchdog expires, close the retained writer and join that thread before
 asserting. The control is Unknown by the observation deadline; a mutant discarding EOF
 returns dead and fails, and an unconditional read/join mutant is released by watchdog
@@ -82,8 +82,8 @@ reap separately; do not claim a scheduler-hard upper bound.
 The validator requires a newline-complete nonempty UTF-8 frame; each nonblank row
 has exactly three fields, positive PID/PGID, the expected group and a recognized
 macOS process-state spelling. Exact PID rows cannot duplicate. Require one exact
-leader PID row. Recognize documented primary states with legitimate suffix flags;
-only primary Z counts as dead. Restrict recognized suffix spelling to the pinned emitter/documented intersection: <, N, X, E, V, L, s and +; E is invalid after Z. Unknown states are errors. Validate all rows first,
+leader PID row. Recognize documented primary states with the pinned emitter suffix grammar;
+only primary Z counts as dead. Restrict recognized suffix spelling to the pinned emitter/documented intersection: <, N, X, E, V, L, s and +; E is invalid after Z, < and N are mutually exclusive, and suffixes are ordered/unique: [<|N]?X?E?V?L?s?+?. Unknown states are errors. Validate all rows first,
 then return false if any primary state is non-Z, otherwise true. An early live
 row must not mask malformed trailing data. State suffix compatibility is verified
 against installed man/source and actual installed fixtures before code.
@@ -181,7 +181,9 @@ provides the explicitly limited cross-UID selection argument; any read-only inst
 foreign-UID query adds visibility evidence only and never signals returned PID hints.
 
 The exact argument order is -g <PGID> BEFORE -o pid=,pgid=,stat=. Production env_clear
-removes COMMAND_MODE; a legacy negative control uses this same ordering and must
+removes COMMAND_MODE; the test-only inspection executable may be a shim that execs
+/bin/ps with received argv plus only COMMAND_MODE=legacy. No production environment
+override is added; a legacy negative control uses this same ordering and must
 report actual exit1 with nonempty stderr (exit/diagnostic Unknown). Reordering format before -g in legacy mode can
 interpret the numeric argument as a PID-only selector; a dedicated zombie-leader/live-
 child control kills that defense mutant. This is a mode/order defense fixture, not
@@ -206,16 +208,22 @@ override, runtime configuration or public provider option. An individual Process
 can carry an inspection executable plus a signal-result plan. For Unknown-consumer
 cases, the plan performs the actual KILL on its owned group and then feeds PERM into
 the unchanged real resolver; the actual shim inspection returns malformed/missing-
-leader/stderr/timeout evidence. Consumer plans must actually kill their owned group
+leader/stderr/timeout evidence. Unknown consumer shims are single-process leaders with no group members. Their
+consumer performs the reap, so whole-fixture cleanup needs no lost descendant handle.
+Consumer plans must actually kill their owned group
 before it can be consumed/reaped, including Drop retry; they cannot leave a live
 member requiring numeric PGID cleanup after losing their leader handle.
 
 Live-child selection and legacy-reorder safety operators run at the ProcessGroup
 boundary instead: the fixture retains the actual ProcessGroup and unreaped leader,
 feeds PERM without KILL only for that observation, and asserts refusal/group_owned.
-Before any return/reap, remove the injected plan, perform real KILL on the same still-
-owned unreaped group even if a mutant incorrectly cleared group_owned, verify cleanup
-while retaining the leader, then reap. A guard enforces this cleanup on assertion/
+Before any return/reap, remove the injected plan, perform fixture-local direct rustix killpg on the same still-owned unreaped group
+even if a mutant incorrectly cleared group_owned. A live member is a direct test
+child, spawned with process_group(leader) while the leader was alive, retaining its
+Child handle. Verify member death with that independently owned handle/fixed diagnostic
+query independent of mutated observer construction; repeat direct KILL on uncertainty
+while retaining the leader and fail rather than silently reaping survivors. Reap only
+after this independent cleanup. A guard enforces this cleanup on assertion/
 error paths. No bounded Git/Grok consumer is allowed to consume this special plan;
 its credit is real ProcessGroup/resolver safety, not terminal Lost consumer coverage.
 Fake observation never grants arbitrary PID authority.

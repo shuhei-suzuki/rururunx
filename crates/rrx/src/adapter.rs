@@ -1,5 +1,7 @@
 //! Thin native process contracts. Context selection and workflow decisions belong upstream.
 pub mod grok;
+#[cfg(target_os = "macos")]
+mod inspection;
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     future::Future,
@@ -405,54 +407,7 @@ fn inspect_process_group(
     pid: i32,
     observed: impl FnOnce(u32),
 ) -> std::io::Result<bool> {
-    use std::io::Read;
-    let mut child = std::process::Command::new(executable)
-        .args(["-axo", "pgid=,stat="])
-        .env_clear()
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()?;
-    observed(child.id());
-    let stdout = child.stdout.take().expect("piped inspector stdout");
-    // Drain concurrently so a full process table cannot block ps on its pipe.
-    let reader = std::thread::spawn(move || {
-        let mut bytes = vec![];
-        stdout
-            .take(1024 * 1024 + 1)
-            .read_to_end(&mut bytes)
-            .map(|_| bytes)
-    });
-    let deadline = std::time::Instant::now() + Duration::from_millis(250);
-    let result = loop {
-        match child.try_wait() {
-            Ok(Some(exit)) => break Ok(exit),
-            Ok(None) if std::time::Instant::now() < deadline => {
-                std::thread::sleep(Duration::from_millis(5))
-            }
-            Ok(None) => {
-                break Err(std::io::Error::new(
-                    std::io::ErrorKind::TimedOut,
-                    "native process inspection timed out",
-                ));
-            }
-            Err(e) => break Err(e),
-        }
-    };
-    if result.is_err() {
-        let _ = child.kill();
-        let _ = child.wait();
-    }
-    let bytes = reader
-        .join()
-        .map_err(|_| std::io::Error::other("process inspection reader failed"))??;
-    let exit = result?;
-    if !exit.success() || bytes.len() > 1024 * 1024 {
-        return Err(std::io::Error::other(
-            "cannot verify owned process group death",
-        ));
-    }
-    process_group_is_dead(&bytes, pid)
+    inspection::inspect(executable, pid, observed)
 }
 
 #[cfg(target_os = "macos")]
@@ -466,23 +421,9 @@ fn resolve_macos_signal_result(
         Err(e) => Err(e.into()),
     }
 }
-#[cfg(target_os = "macos")]
+#[cfg(all(test, target_os = "macos"))]
 fn process_group_is_dead(output: &[u8], pid: i32) -> std::io::Result<bool> {
-    let text = std::str::from_utf8(output).map_err(std::io::Error::other)?;
-    for row in text.lines().filter(|row| !row.trim().is_empty()) {
-        let mut fields = row.split_whitespace();
-        let group = fields
-            .next()
-            .and_then(|v| v.parse::<i32>().ok())
-            .ok_or_else(|| std::io::Error::other("invalid process-group inspection"))?;
-        let state = fields
-            .next()
-            .ok_or_else(|| std::io::Error::other("missing process-group state"))?;
-        if group == pid && !state.starts_with('Z') {
-            return Ok(false);
-        }
-    }
-    Ok(true)
+    inspection::validate(output, pid)
 }
 
 impl Drop for ProcessGroup {
@@ -1576,10 +1517,11 @@ mod tests {
     fn signal_permission_failure_requires_verified_dead_group() {
         let denied = || Err(rustix::io::Errno::PERM);
         assert!(
-            resolve_macos_signal_result(denied(), || process_group_is_dead(b"42 R\n", 42)).is_err()
+            resolve_macos_signal_result(denied(), || process_group_is_dead(b"42 42 R\n", 42))
+                .is_err()
         );
         assert!(
-            resolve_macos_signal_result(denied(), || process_group_is_dead(b"42 Z\n99 R\n", 42))
+            resolve_macos_signal_result(denied(), || process_group_is_dead(b"42 42 Z\n", 42))
                 .is_ok()
         );
         assert!(

@@ -146,3 +146,16 @@ construction obligations, direct Grok use, Drop windows/residual and macOS cfg s
 Raw resumed usage/cost/API counters remain unverified per-round attribution. No code
 changed; combined requirements alignment was consistent in both Design2 assessments,
 and this narrowed Design3 delta must approve before implementation.
+
+
+## Design3 gate and implementation refinements
+
+Both independent native Design3 reviewers approved exact8aa434f with no blockers;
+owned cleanup verified before edits. Optional findings are applied in implementation:
+idle-only5ms sleep (data flow unthrottled), no signal or numeric wait after ECHILD/
+non-retriable ownership loss, canonical ordered suffixes, independent fixture-local
+killpg/member handles (not mutated cleanup), single-process Unknown consumer shims,
+legacy exec shim, generous retained-writer release watchdog. Workspace Cargo.toml
+already enables rustix fs; source review will include manifests to verify that fact.
+Mandatory reap/endpoint/sampling/global-kernel residuals remain explicit. Code/tests
+are not accepted by design approval; causal fixtures/mutants/source reviews remain.

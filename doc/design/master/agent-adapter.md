@@ -293,7 +293,7 @@ checkpoint input Scope to equal Session Scope. Generic prepared payload size is
 observable in bytes; provider token/cache values remain unknown.
 
 On macOS, native /bin/ps inspection must be available. Its trusted direct-child
-observation/output is bounded; mandatory post-KILL direct-child reap is not hard bounded. Failed inspection preserves Lost reservations. Launch
+observation and EOF/output are bounded by the post-spawn250ms budget with nonblocking drains; mandatory post-KILL direct-child reap is not hard bounded. Failed inspection preserves Lost reservations. Launch
 post-spawn executor cleanup diagnostics use scoped audit events and preserve
 Blocked Project native ownership metadata. Preflight/cancelled Lost may lack
 native PID evidence; generic reconnection is unsupported and explicit recovery
