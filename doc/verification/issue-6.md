@@ -5,16 +5,57 @@ final immutable independent delta source review and final
 exact-head CI remain required. Authentication/provider compatibility guards are
 implemented and tested; native Interactive/Attach remain explicitly unavailable.
 
-## Grok structured trait integration (verification pending)
+## Grok structured trait integration (source review pending)
 
 The merged Issue 7 provider already accepts caller schemas through its inherent
 API. Issue 6's additive object-safe structured-start API now delegates Grok's
 registry dispatch to that same implementation. Causal fixtures retain the inherent
 and standard registry launch paths, add concurrent constrained registry launches,
 and exercise enum, required-property and additional-property rejection through
-both inherent and trait dispatch. Live decision tools remain rejected. Focused
-controls, compiled delegation mutants and immutable source review are pending;
-this integration does not constitute Issue 9 Review Set or Broker acceptance.
+both inherent and trait dispatch. Live decision tools remain rejected.
+
+At isolated immutable `43e2567a3b098b0ba6ad0fd15b1933a9a9e29c7a`, the concurrent
+registered/inherent/standard launch control passes (one test, 5.86s). Both APIs'
+enum/required/additional-property and live-tool rejection control passes (one
+test, 16.68s). The initial additional release assertion incorrectly expected a
+Lost Session to release; its failure is retained and the corrected assertion
+proves that uncertainty keeps its reservation. M634 (omit the trait override)
+and M635 (ignore the caller schema) both compiled and failed actual consumer
+assertions. Exact restored control passes; the isolated mutation worktree is clean.
+Formatting and all-target Clippy with warnings denied pass.
+
+The actual installed Grok registered-schema decision first failed after 9.15s
+with an uncorrelated string ACP response (not a matching decimal request ID or
+exact prompt/native terminal). A single identical-head repeat passes in 26.40s.
+Both observations are retained; no correlation check was relaxed and the failed
+run receives no acceptance credit. This fixture keeps its existing explicit
+`grok-4.7`/`low` request, native auth/config/hooks and isolated zero-tool Project.
+It establishes one real successful trait-dispatched constrained decision, not
+native reliability under all timing or Issue 9 Review Set/Broker acceptance.
+Production was cherry-picked byte-identically to `65aa940` for later immutable
+Issue 6 source review and combined exact-head CI; those gates remain pending.
+
+Evidence: /private/tmp/rururunx-issue6-grok-trait-control.log,
+/private/tmp/rururunx-issue6-grok-trait-rejections.log (initial release failure),
+/private/tmp/rururunx-issue6-grok-trait-rejections-fixed.log,
+/private/tmp/rururunx-issue6-trait-mutation-result.json,
+/private/tmp/rururunx-issue6-grok-trait-actual-native.log (uncorrelated response),
+/private/tmp/rururunx-issue6-grok-trait-actual-native-repeat.log,
+/private/tmp/rururunx-issue6-grok-trait-clippy.log.
+
+## Preparing cancellation design gate
+
+Public immutable `26945b00f7b763b77c6bd2434465a06d612d6b4f` received independent
+native zero-tool design approval in round 5. Findings from rounds 1–4 were
+verified and corrected before implementation: level-triggered exact-attempt
+completion, preserved cancellation/failure cause, atomic consumed-input/stop and
+checkpoint-commit boundaries, independent owned task cleanup on caller drop,
+fresh preparation registration/watch continuity, and claim release before native
+approval observation. Native auth/hooks/default model/effort were retained;
+public-byte-verified delta packets contained no private settings or executor chat.
+Resumed raw usage/API-duration gauges are unattributed, not incremental metrics.
+This is design approval only. Preparing cancellation implementation/consumer
+proof and native containment/Decision-CWD/config-provenance closure remain pending.
 
 ## Installed native execution
 
