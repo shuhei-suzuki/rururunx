@@ -13,3 +13,10 @@ model/effort/auth/hooks, privileged infrastructure or unrelated repository chang
 Affected Consult/attach profiles remain required/pending/unsupported before effects
 until actual hold/profile/recovery composition. Requirements/design/source, real
 consumer controls/mutations, regressions and exact CI/reviews remain pending.
+
+Before the first independent requirements review, verified #19 Design20/ongoing
+review identified a direct generic Task-free native Session path which an entry-only
+Unsupported gate would miss. Requirements1 now explicitly denies generic fresh/live
+native Session writes until the actual #58 ownership port; it also consumes #19's
+complete Task/root/common-dir holds. This is a requirements correction, not a
+reproduced exploit, implemented denial, approved design or supported native profile.

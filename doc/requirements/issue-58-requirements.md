@@ -37,7 +37,12 @@ results do not prove Workflow transport success. Preserve that scope.
   conversion or Task dispatch/completion permit is introduced.
 - Actual local runtime composition selects supported profiles; native/model JSON,
   public role names, configuration self-labels or first-use success cannot enroll
-  a producer. Each implemented profile must have reviewed native conformance for
+  a producer. Every fresh Task-free native entry requires this actual retained-owner
+  port before effects. The shared Store denies generic nonterminal native Session
+  insertion/update, including terminal-to-live and identical-body version bumps,
+  regardless of public role/path; a direct adapter or generic record wrapper cannot
+  evade this fence. Initial terminal factual history grants no launch/release proof.
+  Each implemented profile must have reviewed native conformance for
   its complete required startup/turn/service/cleanup workload under #6 F1.
   Unsupported profiles reject before reserve/process/native-visible effect;
   required Consult/attach acceptance stays open rather than waived.
@@ -64,6 +69,9 @@ results do not prove Workflow transport success. Preserve that scope.
   A Consultant label is not proof of read-only behavior. Reject conflicting native/
   Git/write admission and Project removal while retained work may affect that
   scope. Independent Projects remain runnable; no runtime-global blanket hold.
+  The exclusion query also includes actual Task-managed ownership from #19 with
+  reachable shared root/common-Git effects, including Lost/uncertain Task work;
+  Task identity or separate worktree never proves disjoint shared effects.
 - Every actual consumer reads retained ownership under its current authority/CAS:
   Project removal/mutation, root/common-dir Git/worktree operations, native and
   input admission, applicable Goal completion/pack publication, capacity and restart
