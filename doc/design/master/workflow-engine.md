@@ -488,10 +488,12 @@ only W+one link, never parent/Session/operation/lock/native pins. Actual depende
 producers, consumer mutations, native/restart and exact-source CI remain pending.
 
 
-Issue43 staged source adds only the pre-reservation prepared-admission capability
-check and retained registered/probed selection. Current adapters/legacy fixtures do
-not advertise that capability until actual19 admission is wired; unsupported phase
-selection refuses without clearing held state or publishing context/marker/Session.
+Issue43 staged source checks pre-reservation capabilities and retained registered/
+probed selection, then explicitly refuses ALL native Workflow phases through a
+private composition guard until genuine19 admission and record-only binding compose.
+Even consistent advertised/probed capability metadata cannot enable the legacy binder.
+Refusals leave held state/context/marker/Session unchanged; current adapters and legacy
+fixtures provide no genuine prepared-input authority.
 This branch is not ready for merge: successful legacy Workflow fixtures require
 actual private-producer migration and full composed source/native/recovery checks.
 No record-only binder/diagnostic or native readiness is implemented by this slice.

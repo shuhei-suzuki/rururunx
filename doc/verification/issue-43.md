@@ -323,3 +323,30 @@ assertions retained. These replace no prior failed test/native/cleanup evidence 
 cannot qualify genuine private admission or native availability. Source2 independent
 review is pending. Full legacy positive fixture/CI/native/co-integration gates stay
 OPEN; whole #43 remains unready for merge.
+
+
+Staged Source2 at0bbb652409ab28dd6167f714370c8b995a1e19b5: TWO native independent
+APPROVE/noCHM/blockers and actual owned cleanup verified. A has0findings; B has3Low.
+B-L1 selected-agent display context is a nonblocking future operator-diagnosis item;
+public typed refusal classification works, exact caller Task/phase remains known,
+and real CLI/Goal integration is still pending. No production/typed-error code changed.
+B-L2 master wording now explicitly states the unconditional native composition guard.
+B-L3 full default workspace run is classified in the public outcome artifact.
+
+The first full run was inside workspace sandbox: observed process-inspection EPERM
+and downstream failures are retained, not claimed as ordinary-host regression.
+A separate normal-host run with same source/defaults/deadlines gives169 Rust+2docs
+PASS,55 legacy Workflow fixture FAIL,8 explicit ignores.38 fail directly on the new
+preflight refusal;16 await preparation/start pauses now unreachable, and1 expects
+at least one of two unsupported engines to launch. The latter17 are SOURCE-verified
+causal classifications (original FakeAgent lacks admission, preflight precedes all
+those hooks), not observed inner-future terminals. Every non-Workflow test target
+passed in that run; no full green/merge readiness is claimed.
+
+Changed-source-baseline main054 single ownership-change test PASS on normal host.
+The original exploratory StateConflict-vsSessionLost cause stays UNMEASURED: this
+baseline observation plus later sandbox EPERM exposes a confound, not a proven fix
+or retroactive cleanup/source/native qualification. Original logs/results remain.
+No deadline/serialization/latch/native-setting change or rerun-to-pass. Requirements9
+and Design10 unchanged. Full private producers/positive migration/native conformance,
+owned bounded probe, recovery and composed current CI gates remain OPEN.

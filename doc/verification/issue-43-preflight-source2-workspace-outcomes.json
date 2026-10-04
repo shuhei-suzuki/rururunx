@@ -1,0 +1,3338 @@
+{
+  "head": "0bbb652409ab28dd6167f714370c8b995a1e19b5",
+  "source_commit": "c95ac88d4dcd7bbaaccedecd1799784f10e4ffec",
+  "scope": "negative preflight only, full legacy workflow is broken/unmergeable until genuine producer migration",
+  "runs": [
+    {
+      "environment": "workspace sandbox; process-inspection EPERM observed; not host acceptance",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--workspace",
+        "--no-fail-fast"
+      ],
+      "exit": 101,
+      "log_sha256": "b37b8c24ee66df623d2cd4b8b81ad781121d934793685f12710caf2f17ad439f",
+      "target_summaries": [
+        {
+          "target": "Running unittests src/lib.rs",
+          "result": "test result: FAILED. 51 passed; 72 failed; 6 ignored; 0 measured; 0 filtered out; finished in 6.91s"
+        },
+        {
+          "target": "Running unittests src/main.rs",
+          "result": "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+        },
+        {
+          "target": "Running tests/adapter.rs",
+          "result": "test result: FAILED. 0 passed; 19 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.09s"
+        },
+        {
+          "target": "Running tests/cli.rs",
+          "result": "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.44s"
+        },
+        {
+          "target": "Running tests/context.rs",
+          "result": "test result: FAILED. 2 passed; 14 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.53s"
+        },
+        {
+          "target": "Running tests/git.rs",
+          "result": "test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.51s"
+        },
+        {
+          "target": "Running tests/grok.rs",
+          "result": "test result: FAILED. 5 passed; 8 failed; 2 ignored; 0 measured; 0 filtered out; finished in 10.50s"
+        },
+        {
+          "target": "Running tests/project.rs",
+          "result": "test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.85s"
+        },
+        {
+          "target": "Running tests/state.rs",
+          "result": "test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s"
+        },
+        {
+          "target": "Doc-tests rrx",
+          "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+        },
+        {
+          "target": "Doc-tests rrx",
+          "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s"
+        }
+      ],
+      "tests": [
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::cleanup::tests::reap_error_kind_is_a_closed_crate_owned_vocabulary",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::receipt_tests::before_spawn_stop_child",
+          "status": "ignored"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::receipt_tests::completed_resume_child",
+          "status": "ignored"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::ownership::process_ownership_tests::group_drops_false_entries_and_retains_true_arc_with_its_label",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::receipt_tests::dispatched_clean_child",
+          "status": "ignored"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::ownership::process_ownership_tests::sampling_preserves_legacy_total_even_for_unprojected_labels",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::protocol::tests::native_title_housekeeping_never_grants_prompt_or_tool_authority",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::protocol::tests::foreign_notification_diagnostics_never_copy_untrusted_kind",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::receipt_tests::dispatched_unknown_child",
+          "status": "ignored"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::receipt_support::tests::projection_rejects_impossible_cleanup_and_drain_combinations",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::receipt_support::tests::projection_rejects_extra_unbounded_values_and_inconsistent_operands",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::receipt_support::tests::exact_attempt_rejects_missing_duplicate_and_current_prompt_mismatch",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::ownership::process_ownership_tests::poisoned_and_contended_creation_traces_cannot_change_flag_lifecycle",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::receipt_tests::state_assertion_child",
+          "status": "ignored"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::registry_tests::sanitized_grok_cleanup_child",
+          "status": "ignored"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::schema::tests::output_contract_validates_nested_required_enum_extras_and_numeric_bounds",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::protocol::tests::failed_sync_after_owned_effect_never_establishes_completion",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::inspection::tests::actual_owned_zombie_leader_and_live_member_cannot_be_declared_dead",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::receipt_tests::positive_parent_rejects_zero_matched_child_after_owned_cleanup - should panic",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::files::configured_rule_tests::source_checkout_authority_refs_also_protect_task_copies",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::inspection::tests::complete_frame_requires_exact_leader_all_members_and_canonical_states",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::inspection::tests::actual_read_error_reaps_the_owned_inspector_without_accepting_a_frame",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::files::tests::scoped_paths_aliases_special_files_and_binary_are_denied",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::files::tests::scoped_text_writes_preserve_mode_and_fence_changed_reads",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::files::tests::inventory_includes_ignored_effects_and_rejects_unjournaled_metadata_changes",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::registry_tests::successful_retirement_permanently_fences_previously_handed_entry",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::inspection::tests::actual_selected_group_excludes_other_owned_group_and_accepts_only_all_zombies",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::registry_tests::actor_journals_failed_write_effect_and_denies_completion",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::inspection::tests::actual_legacy_mode_failure_keeps_owned_live_group_unknown",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::protocol::cancellation_tests::cancelled_receive_retains_already_consumed_partial_frame",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::tests::real_git_unknown_observations_keep_cleanup_reservation",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::tests::signal_permission_failure_requires_verified_dead_group",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "config::tests::defaults_support_multiple_projects_and_four_tasks",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "config::tests::project_cannot_set_runtime_wide_keys",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "config::tests::project_preserves_runtime_limits_and_only_escalates_minimum",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "context::tests::anchored_root_reader_cannot_read_a_replacement_project_directory",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::inspection::tests::actual_inspector_rejects_exit_zero_stderr_empty_and_incomplete_frames",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "context::tests::real_git_unknown_cleanup_preserves_cause_and_latches_later_context_launches",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "context::tests::uncertain_git_cleanup_retains_native_failure_and_rejects_successful_output",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::inspection::tests::oversized_child_streams_remain_unknown_when_size_or_deadline_wins",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "state::native_dispatch_tests::native_dispatch_fences_lock_version_aba_and_session_cas",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "state::native_dispatch_tests::native_dispatch_supports_optional_consultation_and_rejects_inactive_owner",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "state::native_dispatch_tests::native_dispatch_checks_each_owner_version_across_independent_connections",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::all_public_audit_entrypoints_reject_reserved_gate_journal_kinds",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::all_presets_drive_real_adapter_calls_and_persist_phase_context_history",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::atomic_context_pointer_rejects_wrong_revision_phase_or_source_versions",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::blocked_project_and_paused_goal_cannot_progress_or_publish_context",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::cancelled_unknown_gate_keeps_project_reserved_after_goal_terminal",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::atomic_authority_rejects_invented_initial_history_completion_and_finished_flags",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::inspection::tests::prepared_stream_cap_rejects_complete_zombie_prefix_before_hidden_live_row",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::changed_approved_artifact_invalidates_formal_reviews_and_known_drift_never_calls_gate",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::completed_attempt_rewrite_and_atomic_owner_version_or_activity_changes_are_rejected",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::commit_publishes_new_head_before_tests_review_and_pr_without_restart",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::tests::native_inspection_timeout_kills_and_reaps_its_trusted_direct_child",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::inspection::tests::exited_inspector_retained_output_writer_is_unknown_and_watchdog_releases_mutants",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::concurrent_metadata_before_gate_claim_or_native_dispatch_preserves_progress",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "context::tests::dense_graph_has_global_visit_bound_and_imports_survive_reference_limits",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::concurrent_native_polls_claim_evidence_evaluation_before_calling_external_gate",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::default_is_fallback_not_a_floor_and_finished_workflow_cannot_reopen",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::existing_live_executor_and_review_lock_reject_mutating_phase_before_evidence_port",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::escalation_restarts_mandatory_prerequisites_without_erasing_history_or_downgrading",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::equal_class_escalation_cannot_rebind_unverified_head_or_raw_authority",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::exit_zero_without_review_approval_cannot_satisfy_review_gate",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::final_claim_cas_loss_recovers_only_proven_undispatched_reservations",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::foreign_stale_unbound_or_empty_gate_evidence_never_advances_review",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::generic_completion_default_requires_real_zero_exit_and_no_failure",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::explicit_stricter_selection_and_unsupported_review_capability_are_honest",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::inactive_owners_allow_cancel_but_terminal_release_requires_verified_session",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::live_consultant_does_not_strand_readonly_review_but_mutating_gate_remains_fenced",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::known_irreversible_drift_holds_single_operation_and_cleanup_reuses_frozen_authority",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::lost_native_executor_fences_explicit_retry_and_other_phase_dispatch",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::native_gate_requires_persisted_owned_status_and_sessionless_completion_is_rejected",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::lost_reviewer_also_requires_verified_recovery_before_retry",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::gate_owner_updates_preserve_issue_binding_goal_metadata_and_task_blockers",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::native_preflight_requires_selected_reviewer_and_implementation_admission",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::native_preflight_refuses_before_context_reservation_or_session_writes",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::observed_gate_outcome_survives_paused_blocked_or_missing_postgate_sources",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::native_turn_completion_preserves_real_exit_and_still_requires_gate_evidence",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::ordered_format_migration_preserves_v2_state_and_unknown_future_is_rejected",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::ordinary_store_cannot_override_workflow_fields_or_context_and_retry_preserves_other_blockers",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::persisted_status_mismatch_is_durable_waiting_without_gate_or_rebinding",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::native_preflight_rejects_contradictory_probe_without_durable_mutation",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::receipt_support::tests::complete_paging_honors_closed_upper_window",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::preparation_existing_explicit_retry_gap_is_characterized_not_recovery_proof",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::native_git_commit_port_freezes_owning_worktree_head_for_review_and_pr",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::receipt_tests::dispatched_unknown_receipt_retains_result_error_and_reservation",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::preparation_marker_classifier_requires_exact_table_and_owning_task_id",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::tests::lifecycle_change_before_git_snapshot_is_detected_from_original_versions",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::tests::generic_real_native_unknown_observation_keeps_durable_executor_reserved",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::receipt_tests::completed_resume_receipts_keep_exact_attempt_windows_and_trace",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::receipt_tests::dispatched_clean_receipt_reaches_actual_supervise_stages",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::registry_tests::sanitized_native_process_unknown_cleanup_reaches_grok_durable_reservation",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::receipt_tests::before_spawn_stop_receipt_has_only_preflight_creation_trace",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::receipt_tests::earlier_state_assertion_exposes_bounded_unclean_receipt",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::tests::ownership_change_during_native_preflight_prevents_executor_launch",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::tests::running_write_failure_cleans_confirmed_groups_and_reserves_uncertain_groups_with_audit",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::preparation_capture_errors_release_only_current_owned_claim_and_preserve_metadata",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::preparation_actor_override_uses_new_claim_before_launch_and_binding_is_immutable",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::project_risk_recommendation_can_strengthen_but_cannot_weaken_runtime_mapping",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::record_cas_failure_rolls_back_context_task_and_all_transition_audit",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::quick_requires_actual_merge_cleanup_before_terminal_and_cancel_never_implies_native_death",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::rejected_review_cancel_releases_only_verified_terminal_attempt_and_project",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::preparation_definitive_fail_and_both_invalidation_publication_conflicts_retain",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::restarted_native_attempt_reports_durable_recovery_without_rebinding_or_launching",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::revision_changes_during_review_gate_preserve_reservation_and_never_accept_stale_verdict",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::running_attempt_preserves_native_actor_when_task_reviewer_choice_changes",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::preparation_dispatched_observation_and_direct_store_terminal_fence",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::resumed_round_claim_never_replays_prior_outcome_during_poll_restart_or_cancel",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::source_scope_and_concurrent_task_changes_fail_closed_without_orphan_context",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::second_engine_cannot_dispatch_duplicate_phase_and_interrupt_does_not_auto_retry",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::stale_revision_invalidates_evidence_and_waiting_requires_explicit_retry",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::unknown_gate_generation_cannot_be_released_by_raw_transition",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::waiting_gate_reuses_native_session_and_unknown_outcome_stays_reserved",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::workflow_authority_and_decision_history_require_atomic_monotonic_updates",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::waiting_irreversible_hold_then_resume_does_not_orphan_owned_blocker",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::preparation_dropped_owner_is_not_released_by_a_fresh_engine",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::project_minimum_and_rule_refresh_override_defaults_and_force_new_generation",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::preparation_invalidation_internal_errors_release_before_publication_only",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::preparation_lifecycle_aba_before_refresh_starts_same_claim_after_refresh_retains",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::preparation_observers_preserve_both_capture_awaits_and_owned_single_launch",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::tests::hanging_git_preflight_times_out_without_holding_shared_store",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::preparation_parent_metadata_and_record_replacement_remain_reserved",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::preparation_pause_cancel_and_terminal_recovery_keep_owner_fenced",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::preparation_post_dispatch_binding_cas_conflict_preserves_factual_session_and_claim",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::preparation_post_refresh_record_replacement_rejects_release_after_typed_task_marker_error",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::preparation_release_cas_and_executor_lost_fences_do_not_retry",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::preparation_reserve_loser_cannot_release_identical_winner_claim",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::preparation_unbound_to_bound_before_refresh_releases_for_new_reservation",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::preparation_untyped_marker_failure_keeps_claim_even_when_start_never_called",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running tests/adapter.rs",
+          "test": "runtime_shutdown_terminates_native_group_and_preserves_uncertain_reservation",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running tests/adapter.rs",
+          "test": "atomic_starting_reservation_excludes_duplicate_executor_and_review_acquisition",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running tests/adapter.rs",
+          "test": "stop_reaps_child_and_descendants_and_is_idempotent",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running tests/adapter.rs",
+          "test": "configured_command_receives_only_prepared_context_explicit_environment_and_task_cwd",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running tests/adapter.rs",
+          "test": "natural_exit_cleans_redirected_background_descendants_before_terminal_persistence",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running tests/adapter.rs",
+          "test": "blocked_project_rejects_new_launch_and_allows_owned_native_stop",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running tests/adapter.rs",
+          "test": "generic_terminal_status_matches_persisted_owned_session_before_return",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running tests/adapter.rs",
+          "test": "explicit_unsupported_operations_and_registry_preserve_provider_independence",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running tests/adapter.rs",
+          "test": "immediate_stop_and_adapter_drop_do_not_leave_running_children",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running tests/adapter.rs",
+          "test": "lost_executor_keeps_worktree_reserved_until_explicit_verified_dead_resolution",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running tests/adapter.rs",
+          "test": "executable_symlink_keeps_configured_argv_zero_and_terminal_goal_cannot_launch",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running tests/adapter.rs",
+          "test": "failed_launch_nonzero_exit_and_bounded_output_are_observable",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running tests/adapter.rs",
+          "test": "concurrent_snapshot_updates_are_not_overwritten_and_identity_survives_reopen",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running tests/adapter.rs",
+          "test": "foreign_git_repository_inside_namespace_detached_and_protected_branches_are_rejected",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running tests/adapter.rs",
+          "test": "terminal_retention_is_bounded_and_output_can_be_released",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running tests/adapter.rs",
+          "test": "agent_git_configuration_does_not_override_runtime_ownership_preflight",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running tests/adapter.rs",
+          "test": "separate_projects_run_concurrently_without_environment_or_context_reuse",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running tests/adapter.rs",
+          "test": "cancelled_preflight_keeps_uncertain_session_reserved_and_large_unread_stdin_is_failed",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running tests/adapter.rs",
+          "test": "project_goal_task_context_cwd_branch_and_lock_boundaries_fail_closed",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running tests/cli.rs",
+          "test": "readme_configuration_example_is_valid",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/cli.rs",
+          "test": "project_file_overrides_project_fields_and_preserves_global_limits",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/cli.rs",
+          "test": "missing_explicit_config_is_an_error_with_and_without_subcommand",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/cli.rs",
+          "test": "help_version_and_config_check_have_no_runtime_side_effects",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/cli.rs",
+          "test": "invalid_configs_fail_through_actual_loader_with_source_path",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/context.rs",
+          "test": "mandatory_rules_evidence_and_expansion_never_silently_drop",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running tests/context.rs",
+          "test": "ignored_and_primary_rules_configs_have_independent_hash_freshness",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running tests/context.rs",
+          "test": "dirty_sources_added_deleted_and_head_changes_invalidate",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running tests/context.rs",
+          "test": "budget_counts_actual_rendered_wrapper_and_optional_omissions",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running tests/context.rs",
+          "test": "whitespace_head_paths_staged_deletions_and_path_aliases_are_explicit",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running tests/context.rs",
+          "test": "in_flight_index_releases_store_and_rejects_concurrent_state_mutation",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/context.rs",
+          "test": "explicit_file_symbol_callers_and_callees_are_scoped",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running tests/context.rs",
+          "test": "local_map_selection_graph_and_observable_estimates",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running tests/context.rs",
+          "test": "state_version_recheck_rejects_changed_task_goal_and_worktree_branch",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running tests/context.rs",
+          "test": "binary_bounded_inputs_and_ignored_path_admission_are_explicit",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running tests/context.rs",
+          "test": "framing_and_budget_audit_cannot_forge_authoritative_sections",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running tests/context.rs",
+          "test": "concurrent_native_context_scans_do_not_share_live_cleanup_flags",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running tests/context.rs",
+          "test": "missing_moved_or_replaced_source_root_cannot_rebind",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running tests/context.rs",
+          "test": "root_directory_identity_and_hard_links_cannot_reuse_sources",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running tests/context.rs",
+          "test": "same_issue_number_foreign_scope_and_project_state_cannot_reuse_context",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running tests/context.rs",
+          "test": "symlink_nested_repo_metadata_namespace_and_special_files_fail_closed",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/git.rs",
+          "test": "separate_git_metadata_namespace_is_rejected_before_binding_or_native_creation",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/git.rs",
+          "test": "duplicate_executors_and_malformed_locks_fail_closed",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/git.rs",
+          "test": "symlinks_and_native_hook_failures_are_not_bypassed",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/git.rs",
+          "test": "aliased_worktree_bindings_and_goal_scoped_executors_are_rejected",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/git.rs",
+          "test": "concurrent_duplicate_issue_creation_has_one_durable_owner",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/git.rs",
+          "test": "linked_and_wrong_identity_project_roots_are_rejected",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/git.rs",
+          "test": "rejects_main_master_detached_and_mismatched_branch",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/git.rs",
+          "test": "qualified_base_ref_wins_over_same_named_tag_and_replacement_is_blocked",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/git.rs",
+          "test": "reservations_and_locks_serialize_across_connections",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/git.rs",
+          "test": "rejects_foreign_repository_and_existing_path_or_branch",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/git.rs",
+          "test": "immutable_review_detects_clean_head_change",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/git.rs",
+          "test": "cleanup_checks_native_branch_delete_predicate_before_removal",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/git.rs",
+          "test": "cleanup_after_upstream_tracking_ref_is_pruned",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/git.rs",
+          "test": "protected_base_and_git_metadata_namespace_are_rejected",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/git.rs",
+          "test": "review_locks_block_executor_and_detect_external_changes",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/git.rs",
+          "test": "independent_tasks_and_project_local_issue_numbers",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/git.rs",
+          "test": "dirty_tracked_untracked_and_ignored_files_block_review_cleanup",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/git.rs",
+          "test": "cleanup_rejects_unmerged_then_removes_only_owned_merged_tree",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/grok.rs",
+          "test": "installed_native_edit_fresh_continuation_and_structured_decision",
+          "status": "ignored"
+        },
+        {
+          "target": "Running tests/grok.rs",
+          "test": "installed_native_structured_decision_has_exact_response_correlation",
+          "status": "ignored"
+        },
+        {
+          "target": "Running tests/grok.rs",
+          "test": "receipt_support::tests::projection_rejects_impossible_cleanup_and_drain_combinations",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/grok.rs",
+          "test": "receipt_support::tests::projection_rejects_extra_unbounded_values_and_inconsistent_operands",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/grok.rs",
+          "test": "receipt_support::tests::exact_attempt_rejects_missing_duplicate_and_current_prompt_mismatch",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/grok.rs",
+          "test": "native_execute_edits_only_owned_files_and_preserves_actual_exit",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running tests/grok.rs",
+          "test": "native_auth_inventory_config_parser_and_tool_evidence_fail_closed",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running tests/grok.rs",
+          "test": "native_stop_permissions_foreign_refs_and_environment_guards_are_explicit",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running tests/grok.rs",
+          "test": "native_resume_requires_fresh_checkpoint_preserves_uuid_and_discards_replay",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running tests/grok.rs",
+          "test": "receipt_support::tests::complete_paging_honors_closed_upper_window",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/grok.rs",
+          "test": "unknown_native_dispatch_keeps_clean_dead_executor_reserved",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/grok.rs",
+          "test": "native_structured_consumer_rejects_each_schema_violation_and_live_decision_tools",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running tests/grok.rs",
+          "test": "concurrent_native_reviewers_share_exact_lock_and_validate_structured_verdict",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running tests/grok.rs",
+          "test": "parent_replacement_after_native_preflight_never_reaches_prompt_wire",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running tests/grok.rs",
+          "test": "stop_after_dispatch_preserves_unknown_outcome_until_explicit_recovery",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running tests/project.rs",
+          "test": "invalid_xdg_state_directory_falls_back_to_absolute_home",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/project.rs",
+          "test": "schema_one_project_migrates_without_changing_identity_or_history",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/project.rs",
+          "test": "git_routing_env_does_not_redirect_registry_to_other_project",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/project.rs",
+          "test": "active_creation_and_removal_race_has_one_valid_winner",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/project.rs",
+          "test": "relative_path_cannot_replace_native_git_and_global_git_config_remains_authoritative",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/project.rs",
+          "test": "global_default_state_and_help_config_check_are_independent_of_cwd",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/project.rs",
+          "test": "blocked_work_cannot_resurrect_terminal_rows_or_rewrite_goal_and_task_metadata",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/project.rs",
+          "test": "blocked_projects_accept_lost_and_blocker_updates_without_starting_new_work",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/project.rs",
+          "test": "cleared_refs_recover_and_stale_input_snapshots_are_rejected",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/project.rs",
+          "test": "separate_git_directory_and_symlink_namespace_are_not_source_references",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/project.rs",
+          "test": "blocked_cwd_and_missing_git_never_infer_or_rebind_foreign_sources",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/project.rs",
+          "test": "selector_ambiguity_linked_roots_subdirectories_and_foreign_cwd_are_rejected",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/project.rs",
+          "test": "two_project_issue42_worktrees_context_and_goals_are_isolated",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/project.rs",
+          "test": "removal_checks_live_goals_tasks_sessions_and_locks_under_store_transaction",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/project.rs",
+          "test": "actual_cli_registry_restarts_recovers_and_soft_removes_without_deleting_files",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/project.rs",
+          "test": "config_rules_environment_and_symlinks_never_cross_project",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/state.rs",
+          "test": "future_schema_is_rejected_without_rewriting_database",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/state.rs",
+          "test": "usage_missing_is_explicit_and_session_ownership_is_enforced",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/state.rs",
+          "test": "changing_decisions_preserves_previous_round_evidence_in_journal",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/state.rs",
+          "test": "project_identity_prevents_issue_collisions_and_rejects_cross_project_children",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/state.rs",
+          "test": "context_versions_are_immutable_consecutive_and_scoped",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/state.rs",
+          "test": "dag_and_followup_references_cannot_cross_project_or_goal_boundaries",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/state.rs",
+          "test": "context_versions_reject_sql_update_delete_and_replace",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/state.rs",
+          "test": "audit_replacement_upsert_and_backdated_sequence_are_rejected",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/state.rs",
+          "test": "usage_integer_overflow_cannot_publish_rows_or_audit_or_change_owners",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/state.rs",
+          "test": "stale_writers_do_not_overwrite_state_or_append_events",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/state.rs",
+          "test": "current_scope_audit_rechecks_versions_and_activity_across_connections",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/state.rs",
+          "test": "append_only_audit_and_failed_journal_write_roll_back_snapshot",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/state.rs",
+          "test": "restart_preserves_hierarchy_decisions_dag_sessions_context_and_nullable_usage",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/state.rs",
+          "test": "foreign_databases_and_unknown_snapshots_are_rejected_without_data_loss",
+          "status": "ok"
+        },
+        {
+          "target": "Doc-tests rrx",
+          "test": "crates/rrx/src/workflow.rs - workflow::WorkflowEngine (line 502) - compile",
+          "status": "ok"
+        },
+        {
+          "target": "Doc-tests rrx",
+          "test": "crates/rrx/src/workflow.rs - workflow::WorkflowEngine (line 498) - compile fail",
+          "status": "ok"
+        }
+      ],
+      "failures": [
+        {
+          "name": "adapter::inspection::tests::actual_owned_zombie_leader_and_live_member_cannot_be_declared_dead",
+          "classification": "observed_process_inspection_permission_denial_in_workspace_sandbox",
+          "observed_source_location": "crates/rrx/src/adapter/inspection.rs:739:23:"
+        },
+        {
+          "name": "adapter::grok::receipt_tests::positive_parent_rejects_zero_matched_child_after_owned_cleanup",
+          "classification": "observed_process_inspection_permission_denial_in_workspace_sandbox",
+          "observed_source_location": "crates/rrx/src/adapter/grok/receipt_tests.rs:39:40:"
+        },
+        {
+          "name": "adapter::inspection::tests::actual_selected_group_excludes_other_owned_group_and_accepts_only_all_zombies",
+          "classification": "observed_process_inspection_permission_denial_in_workspace_sandbox",
+          "observed_source_location": "crates/rrx/src/adapter/inspection.rs:805:25:"
+        },
+        {
+          "name": "adapter::inspection::tests::actual_legacy_mode_failure_keeps_owned_live_group_unknown",
+          "classification": "other_failure_not_attributed_to_preflight",
+          "observed_source_location": "crates/rrx/src/adapter/inspection.rs:760:9:"
+        },
+        {
+          "name": "adapter::tests::real_git_unknown_observations_keep_cleanup_reservation",
+          "classification": "other_failure_not_attributed_to_preflight",
+          "observed_source_location": "crates/rrx/src/adapter.rs:1595:9:"
+        },
+        {
+          "name": "context::tests::real_git_unknown_cleanup_preserves_cause_and_latches_later_context_launches",
+          "classification": "observed_process_inspection_permission_denial_in_workspace_sandbox",
+          "observed_source_location": "crates/rrx/src/context.rs:1438:10:"
+        },
+        {
+          "name": "workflow::tests::all_presets_drive_real_adapter_calls_and_persist_phase_context_history",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:491:18:"
+        },
+        {
+          "name": "workflow::tests::atomic_authority_rejects_invented_initial_history_completion_and_finished_flags",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:2564:10:"
+        },
+        {
+          "name": "workflow::tests::changed_approved_artifact_invalidates_formal_reviews_and_known_drift_never_calls_gate",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:504:78:"
+        },
+        {
+          "name": "workflow::tests::completed_attempt_rewrite_and_atomic_owner_version_or_activity_changes_are_rejected",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:504:78:"
+        },
+        {
+          "name": "workflow::tests::commit_publishes_new_head_before_tests_review_and_pr_without_restart",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:504:78:"
+        },
+        {
+          "name": "adapter::tests::native_inspection_timeout_kills_and_reaps_its_trusted_direct_child",
+          "classification": "observed_process_inspection_permission_denial_in_workspace_sandbox",
+          "observed_source_location": "crates/rrx/src/adapter.rs:1957:14:"
+        },
+        {
+          "name": "workflow::tests::concurrent_metadata_before_gate_claim_or_native_dispatch_preserves_progress",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:504:78:"
+        },
+        {
+          "name": "workflow::tests::concurrent_native_polls_claim_evidence_evaluation_before_calling_external_gate",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:1466:10:"
+        },
+        {
+          "name": "workflow::tests::default_is_fallback_not_a_floor_and_finished_workflow_cannot_reopen",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:491:18:"
+        },
+        {
+          "name": "workflow::tests::escalation_restarts_mandatory_prerequisites_without_erasing_history_or_downgrading",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:504:78:"
+        },
+        {
+          "name": "workflow::tests::equal_class_escalation_cannot_rebind_unverified_head_or_raw_authority",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:504:78:"
+        },
+        {
+          "name": "workflow::tests::exit_zero_without_review_approval_cannot_satisfy_review_gate",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:504:78:"
+        },
+        {
+          "name": "workflow::tests::final_claim_cas_loss_recovers_only_proven_undispatched_reservations",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:504:78:"
+        },
+        {
+          "name": "workflow::tests::foreign_stale_unbound_or_empty_gate_evidence_never_advances_review",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:504:78:"
+        },
+        {
+          "name": "workflow::tests::generic_completion_default_requires_real_zero_exit_and_no_failure",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:504:78:"
+        },
+        {
+          "name": "workflow::tests::explicit_stricter_selection_and_unsupported_review_capability_are_honest",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:504:78:"
+        },
+        {
+          "name": "workflow::tests::inactive_owners_allow_cancel_but_terminal_release_requires_verified_session",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:3385:14:"
+        },
+        {
+          "name": "workflow::tests::live_consultant_does_not_strand_readonly_review_but_mutating_gate_remains_fenced",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:504:78:"
+        },
+        {
+          "name": "workflow::tests::known_irreversible_drift_holds_single_operation_and_cleanup_reuses_frozen_authority",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:504:78:"
+        },
+        {
+          "name": "workflow::tests::lost_native_executor_fences_explicit_retry_and_other_phase_dispatch",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:1047:10:"
+        },
+        {
+          "name": "workflow::tests::native_gate_requires_persisted_owned_status_and_sessionless_completion_is_rejected",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:3615:10:"
+        },
+        {
+          "name": "workflow::tests::lost_reviewer_also_requires_verified_recovery_before_retry",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:504:78:"
+        },
+        {
+          "name": "workflow::tests::observed_gate_outcome_survives_paused_blocked_or_missing_postgate_sources",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:504:78:"
+        },
+        {
+          "name": "workflow::tests::native_turn_completion_preserves_real_exit_and_still_requires_gate_evidence",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:1860:10:"
+        },
+        {
+          "name": "workflow::tests::ordinary_store_cannot_override_workflow_fields_or_context_and_retry_preserves_other_blockers",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:504:78:"
+        },
+        {
+          "name": "workflow::tests::persisted_status_mismatch_is_durable_waiting_without_gate_or_rebinding",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:4064:10:"
+        },
+        {
+          "name": "workflow::tests::preparation_existing_explicit_retry_gap_is_characterized_not_recovery_proof",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:5008:14:"
+        },
+        {
+          "name": "workflow::tests::native_git_commit_port_freezes_owning_worktree_head_for_review_and_pr",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:504:78:"
+        },
+        {
+          "name": "adapter::grok::receipt_tests::dispatched_unknown_receipt_retains_result_error_and_reservation",
+          "classification": "observed_process_inspection_permission_denial_in_workspace_sandbox",
+          "observed_source_location": "crates/rrx/src/adapter/grok/receipt_tests.rs:39:40:"
+        },
+        {
+          "name": "adapter::tests::generic_real_native_unknown_observation_keeps_durable_executor_reserved",
+          "classification": "observed_process_inspection_permission_denial_in_workspace_sandbox",
+          "observed_source_location": "crates/rrx/src/adapter.rs:1649:18:"
+        },
+        {
+          "name": "adapter::grok::receipt_tests::completed_resume_receipts_keep_exact_attempt_windows_and_trace",
+          "classification": "observed_process_inspection_permission_denial_in_workspace_sandbox",
+          "observed_source_location": "crates/rrx/src/adapter/grok/receipt_tests.rs:39:40:"
+        },
+        {
+          "name": "adapter::grok::receipt_tests::dispatched_clean_receipt_reaches_actual_supervise_stages",
+          "classification": "observed_process_inspection_permission_denial_in_workspace_sandbox",
+          "observed_source_location": "crates/rrx/src/adapter/grok/receipt_tests.rs:39:40:"
+        },
+        {
+          "name": "adapter::grok::registry_tests::sanitized_native_process_unknown_cleanup_reaches_grok_durable_reservation",
+          "classification": "observed_process_inspection_permission_denial_in_workspace_sandbox",
+          "observed_source_location": "crates/rrx/src/adapter/grok/mod.rs:1431:44:"
+        },
+        {
+          "name": "adapter::grok::receipt_tests::before_spawn_stop_receipt_has_only_preflight_creation_trace",
+          "classification": "observed_process_inspection_permission_denial_in_workspace_sandbox",
+          "observed_source_location": "crates/rrx/src/adapter/grok/receipt_tests.rs:39:40:"
+        },
+        {
+          "name": "adapter::grok::receipt_tests::earlier_state_assertion_exposes_bounded_unclean_receipt",
+          "classification": "observed_process_inspection_permission_denial_in_workspace_sandbox",
+          "observed_source_location": "crates/rrx/src/adapter/grok/receipt_tests.rs:39:40:"
+        },
+        {
+          "name": "adapter::tests::ownership_change_during_native_preflight_prevents_executor_launch",
+          "classification": "other_failure_not_attributed_to_preflight",
+          "observed_source_location": "crates/rrx/src/adapter.rs:1927:9:"
+        },
+        {
+          "name": "adapter::tests::running_write_failure_cleans_confirmed_groups_and_reserves_uncertain_groups_with_audit",
+          "classification": "other_failure_not_attributed_to_preflight",
+          "observed_source_location": "crates/rrx/src/adapter.rs:2011:18:"
+        },
+        {
+          "name": "workflow::tests::preparation_capture_errors_release_only_current_owned_claim_and_preserve_metadata",
+          "classification": "unmigrated_native_fixture_pause_unreachable_after_preflight_refusal_source_verified",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:235:14:"
+        },
+        {
+          "name": "workflow::tests::preparation_actor_override_uses_new_claim_before_launch_and_binding_is_immutable",
+          "classification": "unmigrated_native_fixture_pause_unreachable_after_preflight_refusal_source_verified",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:235:14:"
+        },
+        {
+          "name": "workflow::tests::quick_requires_actual_merge_cleanup_before_terminal_and_cancel_never_implies_native_death",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:491:18:"
+        },
+        {
+          "name": "workflow::tests::rejected_review_cancel_releases_only_verified_terminal_attempt_and_project",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:504:78:"
+        },
+        {
+          "name": "workflow::tests::preparation_definitive_fail_and_both_invalidation_publication_conflicts_retain",
+          "classification": "unmigrated_native_fixture_pause_unreachable_after_preflight_refusal_source_verified",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:235:14:"
+        },
+        {
+          "name": "workflow::tests::restarted_native_attempt_reports_durable_recovery_without_rebinding_or_launching",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:2323:10:"
+        },
+        {
+          "name": "workflow::tests::revision_changes_during_review_gate_preserve_reservation_and_never_accept_stale_verdict",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:504:78:"
+        },
+        {
+          "name": "workflow::tests::running_attempt_preserves_native_actor_when_task_reviewer_choice_changes",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:504:78:"
+        },
+        {
+          "name": "workflow::tests::preparation_dispatched_observation_and_direct_store_terminal_fence",
+          "classification": "unmigrated_native_fixture_pause_unreachable_after_preflight_refusal_source_verified",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:235:14:"
+        },
+        {
+          "name": "workflow::tests::resumed_round_claim_never_replays_prior_outcome_during_poll_restart_or_cancel",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:504:78:"
+        },
+        {
+          "name": "workflow::tests::second_engine_cannot_dispatch_duplicate_phase_and_interrupt_does_not_auto_retry",
+          "classification": "unmigrated_native_fixture_both_legacy_selections_refuse_source_verified",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:1250:5:"
+        },
+        {
+          "name": "workflow::tests::stale_revision_invalidates_evidence_and_waiting_requires_explicit_retry",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:504:78:"
+        },
+        {
+          "name": "workflow::tests::unknown_gate_generation_cannot_be_released_by_raw_transition",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:504:78:"
+        },
+        {
+          "name": "workflow::tests::waiting_gate_reuses_native_session_and_unknown_outcome_stays_reserved",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:2254:10:"
+        },
+        {
+          "name": "workflow::tests::workflow_authority_and_decision_history_require_atomic_monotonic_updates",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:504:78:"
+        },
+        {
+          "name": "workflow::tests::waiting_irreversible_hold_then_resume_does_not_orphan_owned_blocker",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:504:78:"
+        },
+        {
+          "name": "workflow::tests::preparation_dropped_owner_is_not_released_by_a_fresh_engine",
+          "classification": "unmigrated_native_fixture_pause_unreachable_after_preflight_refusal_source_verified",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:235:14:"
+        },
+        {
+          "name": "workflow::tests::preparation_invalidation_internal_errors_release_before_publication_only",
+          "classification": "unmigrated_native_fixture_pause_unreachable_after_preflight_refusal_source_verified",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:235:14:"
+        },
+        {
+          "name": "workflow::tests::preparation_lifecycle_aba_before_refresh_starts_same_claim_after_refresh_retains",
+          "classification": "unmigrated_native_fixture_pause_unreachable_after_preflight_refusal_source_verified",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:235:14:"
+        },
+        {
+          "name": "workflow::tests::preparation_observers_preserve_both_capture_awaits_and_owned_single_launch",
+          "classification": "unmigrated_native_fixture_pause_unreachable_after_preflight_refusal_source_verified",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:235:14:"
+        },
+        {
+          "name": "adapter::tests::hanging_git_preflight_times_out_without_holding_shared_store",
+          "classification": "observed_process_inspection_permission_denial_in_workspace_sandbox",
+          "observed_source_location": "crates/rrx/src/adapter.rs:1858:14:"
+        },
+        {
+          "name": "workflow::tests::preparation_parent_metadata_and_record_replacement_remain_reserved",
+          "classification": "unmigrated_native_fixture_pause_unreachable_after_preflight_refusal_source_verified",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:235:14:"
+        },
+        {
+          "name": "workflow::tests::preparation_pause_cancel_and_terminal_recovery_keep_owner_fenced",
+          "classification": "unmigrated_native_fixture_pause_unreachable_after_preflight_refusal_source_verified",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:235:14:"
+        },
+        {
+          "name": "workflow::tests::preparation_post_dispatch_binding_cas_conflict_preserves_factual_session_and_claim",
+          "classification": "unmigrated_native_fixture_pause_unreachable_after_preflight_refusal_source_verified",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:235:14:"
+        },
+        {
+          "name": "workflow::tests::preparation_post_refresh_record_replacement_rejects_release_after_typed_task_marker_error",
+          "classification": "unmigrated_native_fixture_pause_unreachable_after_preflight_refusal_source_verified",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:235:14:"
+        },
+        {
+          "name": "workflow::tests::preparation_release_cas_and_executor_lost_fences_do_not_retry",
+          "classification": "unmigrated_native_fixture_pause_unreachable_after_preflight_refusal_source_verified",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:235:14:"
+        },
+        {
+          "name": "workflow::tests::preparation_reserve_loser_cannot_release_identical_winner_claim",
+          "classification": "unmigrated_native_fixture_pause_unreachable_after_preflight_refusal_source_verified",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:235:14:"
+        },
+        {
+          "name": "workflow::tests::preparation_unbound_to_bound_before_refresh_releases_for_new_reservation",
+          "classification": "unmigrated_native_fixture_pause_unreachable_after_preflight_refusal_source_verified",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:235:14:"
+        },
+        {
+          "name": "workflow::tests::preparation_untyped_marker_failure_keeps_claim_even_when_start_never_called",
+          "classification": "unmigrated_native_fixture_pause_unreachable_after_preflight_refusal_source_verified",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:235:14:"
+        },
+        {
+          "name": "runtime_shutdown_terminates_native_group_and_preserves_uncertain_reservation",
+          "classification": "observed_process_inspection_permission_denial_in_workspace_sandbox",
+          "observed_source_location": "crates/rrx/tests/adapter.rs:741:68:"
+        },
+        {
+          "name": "atomic_starting_reservation_excludes_duplicate_executor_and_review_acquisition",
+          "classification": "other_failure_not_attributed_to_preflight",
+          "observed_source_location": "crates/rrx/tests/adapter.rs:782:5:"
+        },
+        {
+          "name": "stop_reaps_child_and_descendants_and_is_idempotent",
+          "classification": "observed_process_inspection_permission_denial_in_workspace_sandbox",
+          "observed_source_location": "crates/rrx/tests/adapter.rs:308:64:"
+        },
+        {
+          "name": "configured_command_receives_only_prepared_context_explicit_environment_and_task_cwd",
+          "classification": "observed_process_inspection_permission_denial_in_workspace_sandbox",
+          "observed_source_location": "crates/rrx/tests/adapter.rs:166:64:"
+        },
+        {
+          "name": "natural_exit_cleans_redirected_background_descendants_before_terminal_persistence",
+          "classification": "observed_process_inspection_permission_denial_in_workspace_sandbox",
+          "observed_source_location": "crates/rrx/tests/adapter.rs:560:64:"
+        },
+        {
+          "name": "blocked_project_rejects_new_launch_and_allows_owned_native_stop",
+          "classification": "observed_process_inspection_permission_denial_in_workspace_sandbox",
+          "observed_source_location": "crates/rrx/tests/adapter.rs:832:64:"
+        },
+        {
+          "name": "generic_terminal_status_matches_persisted_owned_session_before_return",
+          "classification": "observed_process_inspection_permission_denial_in_workspace_sandbox",
+          "observed_source_location": "crates/rrx/tests/adapter.rs:891:64:"
+        },
+        {
+          "name": "explicit_unsupported_operations_and_registry_preserve_provider_independence",
+          "classification": "observed_process_inspection_permission_denial_in_workspace_sandbox",
+          "observed_source_location": "crates/rrx/tests/adapter.rs:217:64:"
+        },
+        {
+          "name": "immediate_stop_and_adapter_drop_do_not_leave_running_children",
+          "classification": "observed_process_inspection_permission_denial_in_workspace_sandbox",
+          "observed_source_location": "crates/rrx/tests/adapter.rs:519:64:"
+        },
+        {
+          "name": "lost_executor_keeps_worktree_reserved_until_explicit_verified_dead_resolution",
+          "classification": "observed_process_inspection_permission_denial_in_workspace_sandbox",
+          "observed_source_location": "crates/rrx/tests/adapter.rs:810:64:"
+        },
+        {
+          "name": "executable_symlink_keeps_configured_argv_zero_and_terminal_goal_cannot_launch",
+          "classification": "observed_process_inspection_permission_denial_in_workspace_sandbox",
+          "observed_source_location": "crates/rrx/tests/adapter.rs:709:64:"
+        },
+        {
+          "name": "failed_launch_nonzero_exit_and_bounded_output_are_observable",
+          "classification": "observed_process_inspection_permission_denial_in_workspace_sandbox",
+          "observed_source_location": "crates/rrx/tests/adapter.rs:345:64:"
+        },
+        {
+          "name": "concurrent_snapshot_updates_are_not_overwritten_and_identity_survives_reopen",
+          "classification": "observed_process_inspection_permission_denial_in_workspace_sandbox",
+          "observed_source_location": "crates/rrx/tests/adapter.rs:588:64:"
+        },
+        {
+          "name": "foreign_git_repository_inside_namespace_detached_and_protected_branches_are_rejected",
+          "classification": "other_failure_not_attributed_to_preflight",
+          "observed_source_location": "crates/rrx/tests/adapter.rs:484:5:"
+        },
+        {
+          "name": "terminal_retention_is_bounded_and_output_can_be_released",
+          "classification": "observed_process_inspection_permission_denial_in_workspace_sandbox",
+          "observed_source_location": "crates/rrx/tests/adapter.rs:664:62:"
+        },
+        {
+          "name": "agent_git_configuration_does_not_override_runtime_ownership_preflight",
+          "classification": "observed_process_inspection_permission_denial_in_workspace_sandbox",
+          "observed_source_location": "crates/rrx/tests/adapter.rs:880:48:"
+        },
+        {
+          "name": "separate_projects_run_concurrently_without_environment_or_context_reuse",
+          "classification": "observed_process_inspection_permission_denial_in_workspace_sandbox",
+          "observed_source_location": "crates/rrx/tests/adapter.rs:467:17:"
+        },
+        {
+          "name": "cancelled_preflight_keeps_uncertain_session_reserved_and_large_unread_stdin_is_failed",
+          "classification": "observed_process_inspection_permission_denial_in_workspace_sandbox",
+          "observed_source_location": "crates/rrx/tests/adapter.rs:654:48:"
+        },
+        {
+          "name": "project_goal_task_context_cwd_branch_and_lock_boundaries_fail_closed",
+          "classification": "other_failure_not_attributed_to_preflight",
+          "observed_source_location": "crates/rrx/tests/adapter.rs:411:5:"
+        },
+        {
+          "name": "mandatory_rules_evidence_and_expansion_never_silently_drop",
+          "classification": "observed_process_inspection_permission_denial_in_workspace_sandbox",
+          "observed_source_location": "crates/rrx/tests/context.rs:253:10:"
+        },
+        {
+          "name": "ignored_and_primary_rules_configs_have_independent_hash_freshness",
+          "classification": "observed_process_inspection_permission_denial_in_workspace_sandbox",
+          "observed_source_location": "crates/rrx/tests/context.rs:507:10:"
+        },
+        {
+          "name": "dirty_sources_added_deleted_and_head_changes_invalidate",
+          "classification": "observed_process_inspection_permission_denial_in_workspace_sandbox",
+          "observed_source_location": "crates/rrx/tests/context.rs:110:14:"
+        },
+        {
+          "name": "budget_counts_actual_rendered_wrapper_and_optional_omissions",
+          "classification": "observed_process_inspection_permission_denial_in_workspace_sandbox",
+          "observed_source_location": "crates/rrx/tests/context.rs:110:14:"
+        },
+        {
+          "name": "whitespace_head_paths_staged_deletions_and_path_aliases_are_explicit",
+          "classification": "observed_process_inspection_permission_denial_in_workspace_sandbox",
+          "observed_source_location": "crates/rrx/tests/context.rs:110:14:"
+        },
+        {
+          "name": "explicit_file_symbol_callers_and_callees_are_scoped",
+          "classification": "other_failure_not_attributed_to_preflight",
+          "observed_source_location": "crates/rrx/tests/context.rs:110:14:"
+        },
+        {
+          "name": "local_map_selection_graph_and_observable_estimates",
+          "classification": "other_failure_not_attributed_to_preflight",
+          "observed_source_location": "crates/rrx/tests/context.rs:110:14:"
+        },
+        {
+          "name": "state_version_recheck_rejects_changed_task_goal_and_worktree_branch",
+          "classification": "other_failure_not_attributed_to_preflight",
+          "observed_source_location": "crates/rrx/tests/context.rs:110:14:"
+        },
+        {
+          "name": "binary_bounded_inputs_and_ignored_path_admission_are_explicit",
+          "classification": "other_failure_not_attributed_to_preflight",
+          "observed_source_location": "crates/rrx/tests/context.rs:110:14:"
+        },
+        {
+          "name": "framing_and_budget_audit_cannot_forge_authoritative_sections",
+          "classification": "other_failure_not_attributed_to_preflight",
+          "observed_source_location": "crates/rrx/tests/context.rs:110:14:"
+        },
+        {
+          "name": "concurrent_native_context_scans_do_not_share_live_cleanup_flags",
+          "classification": "other_failure_not_attributed_to_preflight",
+          "observed_source_location": "crates/rrx/tests/context.rs:137:17:"
+        },
+        {
+          "name": "missing_moved_or_replaced_source_root_cannot_rebind",
+          "classification": "other_failure_not_attributed_to_preflight",
+          "observed_source_location": "crates/rrx/tests/context.rs:110:14:"
+        },
+        {
+          "name": "root_directory_identity_and_hard_links_cannot_reuse_sources",
+          "classification": "other_failure_not_attributed_to_preflight",
+          "observed_source_location": "crates/rrx/tests/context.rs:110:14:"
+        },
+        {
+          "name": "same_issue_number_foreign_scope_and_project_state_cannot_reuse_context",
+          "classification": "other_failure_not_attributed_to_preflight",
+          "observed_source_location": "crates/rrx/tests/context.rs:110:14:"
+        },
+        {
+          "name": "native_execute_edits_only_owned_files_and_preserves_actual_exit",
+          "classification": "observed_process_inspection_permission_denial_in_workspace_sandbox",
+          "observed_source_location": "crates/rrx/tests/grok.rs:64:5:"
+        },
+        {
+          "name": "native_auth_inventory_config_parser_and_tool_evidence_fail_closed",
+          "classification": "observed_process_inspection_permission_denial_in_workspace_sandbox",
+          "observed_source_location": "crates/rrx/tests/grok.rs:252:9:"
+        },
+        {
+          "name": "native_stop_permissions_foreign_refs_and_environment_guards_are_explicit",
+          "classification": "other_failure_not_attributed_to_preflight",
+          "observed_source_location": "crates/rrx/tests/grok.rs:410:5:"
+        },
+        {
+          "name": "native_resume_requires_fresh_checkpoint_preserves_uuid_and_discards_replay",
+          "classification": "observed_process_inspection_permission_denial_in_workspace_sandbox",
+          "observed_source_location": "crates/rrx/tests/grok.rs:355:5:"
+        },
+        {
+          "name": "native_structured_consumer_rejects_each_schema_violation_and_live_decision_tools",
+          "classification": "observed_process_inspection_permission_denial_in_workspace_sandbox",
+          "observed_source_location": "crates/rrx/tests/grok.rs:824:9:"
+        },
+        {
+          "name": "concurrent_native_reviewers_share_exact_lock_and_validate_structured_verdict",
+          "classification": "observed_process_inspection_permission_denial_in_workspace_sandbox",
+          "observed_source_location": "crates/rrx/tests/grok.rs:164:5:"
+        },
+        {
+          "name": "parent_replacement_after_native_preflight_never_reaches_prompt_wire",
+          "classification": "other_failure_not_attributed_to_preflight",
+          "observed_source_location": "crates/rrx/tests/grok.rs:870:6:"
+        },
+        {
+          "name": "stop_after_dispatch_preserves_unknown_outcome_until_explicit_recovery",
+          "classification": "other_failure_not_attributed_to_preflight",
+          "observed_source_location": "crates/rrx/tests/grok.rs:609:6:"
+        }
+      ],
+      "classification_counts": {
+        "observed_process_inspection_permission_denial_in_workspace_sandbox": 39,
+        "other_failure_not_attributed_to_preflight": 19,
+        "unmigrated_native_fixture_direct_preflight_refusal": 38,
+        "unmigrated_native_fixture_pause_unreachable_after_preflight_refusal_source_verified": 16,
+        "unmigrated_native_fixture_both_legacy_selections_refuse_source_verified": 1
+      }
+    },
+    {
+      "environment": "normal host; defaults and deadlines unchanged; separate evidenced environment from sandbox",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--workspace",
+        "--no-fail-fast"
+      ],
+      "exit": 101,
+      "log_sha256": "5879dc2979f589a8cc47c9ec374a4dd52df72c7e9cb50c7304d1f70e01b4b420",
+      "target_summaries": [
+        {
+          "target": "Running unittests src/lib.rs",
+          "result": "test result: FAILED. 68 passed; 55 failed; 6 ignored; 0 measured; 0 filtered out; finished in 8.75s"
+        },
+        {
+          "target": "Running unittests src/main.rs",
+          "result": "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+        },
+        {
+          "target": "Running tests/adapter.rs",
+          "result": "test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 13.43s"
+        },
+        {
+          "target": "Running tests/cli.rs",
+          "result": "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.41s"
+        },
+        {
+          "target": "Running tests/context.rs",
+          "result": "test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 26.00s"
+        },
+        {
+          "target": "Running tests/git.rs",
+          "result": "test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.70s"
+        },
+        {
+          "target": "Running tests/grok.rs",
+          "result": "test result: ok. 13 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 28.17s"
+        },
+        {
+          "target": "Running tests/project.rs",
+          "result": "test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.30s"
+        },
+        {
+          "target": "Running tests/state.rs",
+          "result": "test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s"
+        },
+        {
+          "target": "Doc-tests rrx",
+          "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+        },
+        {
+          "target": "Doc-tests rrx",
+          "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s"
+        }
+      ],
+      "tests": [
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::cleanup::tests::reap_error_kind_is_a_closed_crate_owned_vocabulary",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::ownership::process_ownership_tests::group_drops_false_entries_and_retains_true_arc_with_its_label",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::ownership::process_ownership_tests::sampling_preserves_legacy_total_even_for_unprojected_labels",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::receipt_tests::before_spawn_stop_child",
+          "status": "ignored"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::ownership::process_ownership_tests::poisoned_and_contended_creation_traces_cannot_change_flag_lifecycle",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::receipt_tests::completed_resume_child",
+          "status": "ignored"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::protocol::tests::native_title_housekeeping_never_grants_prompt_or_tool_authority",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::receipt_tests::dispatched_clean_child",
+          "status": "ignored"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::receipt_support::tests::projection_rejects_extra_unbounded_values_and_inconsistent_operands",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::receipt_tests::dispatched_unknown_child",
+          "status": "ignored"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::receipt_support::tests::exact_attempt_rejects_missing_duplicate_and_current_prompt_mismatch",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::receipt_support::tests::projection_rejects_impossible_cleanup_and_drain_combinations",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::protocol::tests::foreign_notification_diagnostics_never_copy_untrusted_kind",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::receipt_tests::state_assertion_child",
+          "status": "ignored"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::registry_tests::sanitized_grok_cleanup_child",
+          "status": "ignored"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::schema::tests::output_contract_validates_nested_required_enum_extras_and_numeric_bounds",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::protocol::tests::failed_sync_after_owned_effect_never_establishes_completion",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::files::configured_rule_tests::source_checkout_authority_refs_also_protect_task_copies",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::receipt_tests::positive_parent_rejects_zero_matched_child_after_owned_cleanup - should panic",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::files::tests::inventory_includes_ignored_effects_and_rejects_unjournaled_metadata_changes",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::files::tests::scoped_paths_aliases_special_files_and_binary_are_denied",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::files::tests::scoped_text_writes_preserve_mode_and_fence_changed_reads",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::inspection::tests::complete_frame_requires_exact_leader_all_members_and_canonical_states",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::inspection::tests::actual_read_error_reaps_the_owned_inspector_without_accepting_a_frame",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::protocol::cancellation_tests::cancelled_receive_retains_already_consumed_partial_frame",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::registry_tests::successful_retirement_permanently_fences_previously_handed_entry",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::registry_tests::actor_journals_failed_write_effect_and_denies_completion",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::inspection::tests::actual_legacy_mode_failure_keeps_owned_live_group_unknown",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::inspection::tests::actual_owned_zombie_leader_and_live_member_cannot_be_declared_dead",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::inspection::tests::actual_inspector_rejects_exit_zero_stderr_empty_and_incomplete_frames",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::inspection::tests::actual_selected_group_excludes_other_owned_group_and_accepts_only_all_zombies",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::tests::signal_permission_failure_requires_verified_dead_group",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "config::tests::defaults_support_multiple_projects_and_four_tasks",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "config::tests::project_cannot_set_runtime_wide_keys",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "config::tests::project_preserves_runtime_limits_and_only_escalates_minimum",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "context::tests::anchored_root_reader_cannot_read_a_replacement_project_directory",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::inspection::tests::oversized_child_streams_remain_unknown_when_size_or_deadline_wins",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::inspection::tests::prepared_stream_cap_rejects_complete_zombie_prefix_before_hidden_live_row",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "context::tests::uncertain_git_cleanup_retains_native_failure_and_rejects_successful_output",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "state::native_dispatch_tests::native_dispatch_checks_each_owner_version_across_independent_connections",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "state::native_dispatch_tests::native_dispatch_fences_lock_version_aba_and_session_cas",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "state::native_dispatch_tests::native_dispatch_supports_optional_consultation_and_rejects_inactive_owner",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "context::tests::real_git_unknown_cleanup_preserves_cause_and_latches_later_context_launches",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::inspection::tests::exited_inspector_retained_output_writer_is_unknown_and_watchdog_releases_mutants",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::all_public_audit_entrypoints_reject_reserved_gate_journal_kinds",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::all_presets_drive_real_adapter_calls_and_persist_phase_context_history",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::tests::native_inspection_timeout_kills_and_reaps_its_trusted_direct_child",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::atomic_context_pointer_rejects_wrong_revision_phase_or_source_versions",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::blocked_project_and_paused_goal_cannot_progress_or_publish_context",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::cancelled_unknown_gate_keeps_project_reserved_after_goal_terminal",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::commit_publishes_new_head_before_tests_review_and_pr_without_restart",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::changed_approved_artifact_invalidates_formal_reviews_and_known_drift_never_calls_gate",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::completed_attempt_rewrite_and_atomic_owner_version_or_activity_changes_are_rejected",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::concurrent_metadata_before_gate_claim_or_native_dispatch_preserves_progress",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::concurrent_native_polls_claim_evidence_evaluation_before_calling_external_gate",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::equal_class_escalation_cannot_rebind_unverified_head_or_raw_authority",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::default_is_fallback_not_a_floor_and_finished_workflow_cannot_reopen",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::escalation_restarts_mandatory_prerequisites_without_erasing_history_or_downgrading",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::existing_live_executor_and_review_lock_reject_mutating_phase_before_evidence_port",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::atomic_authority_rejects_invented_initial_history_completion_and_finished_flags",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::exit_zero_without_review_approval_cannot_satisfy_review_gate",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::final_claim_cas_loss_recovers_only_proven_undispatched_reservations",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::foreign_stale_unbound_or_empty_gate_evidence_never_advances_review",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::explicit_stricter_selection_and_unsupported_review_capability_are_honest",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::generic_completion_default_requires_real_zero_exit_and_no_failure",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::inactive_owners_allow_cancel_but_terminal_release_requires_verified_session",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::gate_owner_updates_preserve_issue_binding_goal_metadata_and_task_blockers",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::live_consultant_does_not_strand_readonly_review_but_mutating_gate_remains_fenced",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::lost_native_executor_fences_explicit_retry_and_other_phase_dispatch",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::known_irreversible_drift_holds_single_operation_and_cleanup_reuses_frozen_authority",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::lost_reviewer_also_requires_verified_recovery_before_retry",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::native_gate_requires_persisted_owned_status_and_sessionless_completion_is_rejected",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::native_preflight_requires_selected_reviewer_and_implementation_admission",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "context::tests::dense_graph_has_global_visit_bound_and_imports_survive_reference_limits",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::native_preflight_refuses_before_context_reservation_or_session_writes",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::native_turn_completion_preserves_real_exit_and_still_requires_gate_evidence",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::observed_gate_outcome_survives_paused_blocked_or_missing_postgate_sources",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::ordered_format_migration_preserves_v2_state_and_unknown_future_is_rejected",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::ordinary_store_cannot_override_workflow_fields_or_context_and_retry_preserves_other_blockers",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::persisted_status_mismatch_is_durable_waiting_without_gate_or_rebinding",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::receipt_support::tests::complete_paging_honors_closed_upper_window",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::native_preflight_rejects_contradictory_probe_without_durable_mutation",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::native_git_commit_port_freezes_owning_worktree_head_for_review_and_pr",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::tests::real_git_unknown_observations_keep_cleanup_reservation",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::preparation_existing_explicit_retry_gap_is_characterized_not_recovery_proof",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::tests::lifecycle_change_before_git_snapshot_is_detected_from_original_versions",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::preparation_marker_classifier_requires_exact_table_and_owning_task_id",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::receipt_tests::earlier_state_assertion_exposes_bounded_unclean_receipt",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::receipt_tests::before_spawn_stop_receipt_has_only_preflight_creation_trace",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::tests::ownership_change_during_native_preflight_prevents_executor_launch",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::receipt_tests::dispatched_unknown_receipt_retains_result_error_and_reservation",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::tests::running_write_failure_cleans_confirmed_groups_and_reserves_uncertain_groups_with_audit",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::tests::generic_real_native_unknown_observation_keeps_durable_executor_reserved",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::registry_tests::sanitized_native_process_unknown_cleanup_reaches_grok_durable_reservation",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::receipt_tests::dispatched_clean_receipt_reaches_actual_supervise_stages",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::preparation_actor_override_uses_new_claim_before_launch_and_binding_is_immutable",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::preparation_capture_errors_release_only_current_owned_claim_and_preserve_metadata",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::project_risk_recommendation_can_strengthen_but_cannot_weaken_runtime_mapping",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::preparation_definitive_fail_and_both_invalidation_publication_conflicts_retain",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::record_cas_failure_rolls_back_context_task_and_all_transition_audit",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::quick_requires_actual_merge_cleanup_before_terminal_and_cancel_never_implies_native_death",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::grok::receipt_tests::completed_resume_receipts_keep_exact_attempt_windows_and_trace",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::preparation_dispatched_observation_and_direct_store_terminal_fence",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::preparation_dropped_owner_is_not_released_by_a_fresh_engine",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::rejected_review_cancel_releases_only_verified_terminal_attempt_and_project",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::restarted_native_attempt_reports_durable_recovery_without_rebinding_or_launching",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::revision_changes_during_review_gate_preserve_reservation_and_never_accept_stale_verdict",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::resumed_round_claim_never_replays_prior_outcome_during_poll_restart_or_cancel",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::running_attempt_preserves_native_actor_when_task_reviewer_choice_changes",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::source_scope_and_concurrent_task_changes_fail_closed_without_orphan_context",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::second_engine_cannot_dispatch_duplicate_phase_and_interrupt_does_not_auto_retry",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::stale_revision_invalidates_evidence_and_waiting_requires_explicit_retry",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::unknown_gate_generation_cannot_be_released_by_raw_transition",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::waiting_gate_reuses_native_session_and_unknown_outcome_stays_reserved",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::workflow_authority_and_decision_history_require_atomic_monotonic_updates",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::waiting_irreversible_hold_then_resume_does_not_orphan_owned_blocker",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::preparation_invalidation_internal_errors_release_before_publication_only",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::preparation_lifecycle_aba_before_refresh_starts_same_claim_after_refresh_retains",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::preparation_observers_preserve_both_capture_awaits_and_owned_single_launch",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "adapter::tests::hanging_git_preflight_times_out_without_holding_shared_store",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::preparation_parent_metadata_and_record_replacement_remain_reserved",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::preparation_pause_cancel_and_terminal_recovery_keep_owner_fenced",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::preparation_post_dispatch_binding_cas_conflict_preserves_factual_session_and_claim",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::preparation_post_refresh_record_replacement_rejects_release_after_typed_task_marker_error",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::project_minimum_and_rule_refresh_override_defaults_and_force_new_generation",
+          "status": "ok"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::preparation_release_cas_and_executor_lost_fences_do_not_retry",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::preparation_reserve_loser_cannot_release_identical_winner_claim",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::preparation_unbound_to_bound_before_refresh_releases_for_new_reservation",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running unittests src/lib.rs",
+          "test": "workflow::tests::preparation_untyped_marker_failure_keeps_claim_even_when_start_never_called",
+          "status": "FAILED"
+        },
+        {
+          "target": "Running tests/adapter.rs",
+          "test": "explicit_unsupported_operations_and_registry_preserve_provider_independence",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/adapter.rs",
+          "test": "configured_command_receives_only_prepared_context_explicit_environment_and_task_cwd",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/adapter.rs",
+          "test": "atomic_starting_reservation_excludes_duplicate_executor_and_review_acquisition",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/adapter.rs",
+          "test": "runtime_shutdown_terminates_native_group_and_preserves_uncertain_reservation",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/adapter.rs",
+          "test": "executable_symlink_keeps_configured_argv_zero_and_terminal_goal_cannot_launch",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/adapter.rs",
+          "test": "generic_terminal_status_matches_persisted_owned_session_before_return",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/adapter.rs",
+          "test": "stop_reaps_child_and_descendants_and_is_idempotent",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/adapter.rs",
+          "test": "blocked_project_rejects_new_launch_and_allows_owned_native_stop",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/adapter.rs",
+          "test": "lost_executor_keeps_worktree_reserved_until_explicit_verified_dead_resolution",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/adapter.rs",
+          "test": "natural_exit_cleans_redirected_background_descendants_before_terminal_persistence",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/adapter.rs",
+          "test": "concurrent_snapshot_updates_are_not_overwritten_and_identity_survives_reopen",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/adapter.rs",
+          "test": "immediate_stop_and_adapter_drop_do_not_leave_running_children",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/adapter.rs",
+          "test": "agent_git_configuration_does_not_override_runtime_ownership_preflight",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/adapter.rs",
+          "test": "failed_launch_nonzero_exit_and_bounded_output_are_observable",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/adapter.rs",
+          "test": "separate_projects_run_concurrently_without_environment_or_context_reuse",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/adapter.rs",
+          "test": "cancelled_preflight_keeps_uncertain_session_reserved_and_large_unread_stdin_is_failed",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/adapter.rs",
+          "test": "project_goal_task_context_cwd_branch_and_lock_boundaries_fail_closed",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/adapter.rs",
+          "test": "foreign_git_repository_inside_namespace_detached_and_protected_branches_are_rejected",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/adapter.rs",
+          "test": "terminal_retention_is_bounded_and_output_can_be_released",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/cli.rs",
+          "test": "project_file_overrides_project_fields_and_preserves_global_limits",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/cli.rs",
+          "test": "missing_explicit_config_is_an_error_with_and_without_subcommand",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/cli.rs",
+          "test": "help_version_and_config_check_have_no_runtime_side_effects",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/cli.rs",
+          "test": "readme_configuration_example_is_valid",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/cli.rs",
+          "test": "invalid_configs_fail_through_actual_loader_with_source_path",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/context.rs",
+          "test": "in_flight_index_releases_store_and_rejects_concurrent_state_mutation",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/context.rs",
+          "test": "binary_bounded_inputs_and_ignored_path_admission_are_explicit",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/context.rs",
+          "test": "same_issue_number_foreign_scope_and_project_state_cannot_reuse_context",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/context.rs",
+          "test": "missing_moved_or_replaced_source_root_cannot_rebind",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/context.rs",
+          "test": "symlink_nested_repo_metadata_namespace_and_special_files_fail_closed",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/context.rs",
+          "test": "concurrent_native_context_scans_do_not_share_live_cleanup_flags",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/context.rs",
+          "test": "framing_and_budget_audit_cannot_forge_authoritative_sections",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/context.rs",
+          "test": "budget_counts_actual_rendered_wrapper_and_optional_omissions",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/context.rs",
+          "test": "state_version_recheck_rejects_changed_task_goal_and_worktree_branch",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/context.rs",
+          "test": "local_map_selection_graph_and_observable_estimates",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/context.rs",
+          "test": "ignored_and_primary_rules_configs_have_independent_hash_freshness",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/context.rs",
+          "test": "root_directory_identity_and_hard_links_cannot_reuse_sources",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/context.rs",
+          "test": "mandatory_rules_evidence_and_expansion_never_silently_drop",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/context.rs",
+          "test": "whitespace_head_paths_staged_deletions_and_path_aliases_are_explicit",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/context.rs",
+          "test": "explicit_file_symbol_callers_and_callees_are_scoped",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/context.rs",
+          "test": "dirty_sources_added_deleted_and_head_changes_invalidate",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/git.rs",
+          "test": "separate_git_metadata_namespace_is_rejected_before_binding_or_native_creation",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/git.rs",
+          "test": "symlinks_and_native_hook_failures_are_not_bypassed",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/git.rs",
+          "test": "duplicate_executors_and_malformed_locks_fail_closed",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/git.rs",
+          "test": "aliased_worktree_bindings_and_goal_scoped_executors_are_rejected",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/git.rs",
+          "test": "concurrent_duplicate_issue_creation_has_one_durable_owner",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/git.rs",
+          "test": "linked_and_wrong_identity_project_roots_are_rejected",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/git.rs",
+          "test": "qualified_base_ref_wins_over_same_named_tag_and_replacement_is_blocked",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/git.rs",
+          "test": "rejects_main_master_detached_and_mismatched_branch",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/git.rs",
+          "test": "rejects_foreign_repository_and_existing_path_or_branch",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/git.rs",
+          "test": "reservations_and_locks_serialize_across_connections",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/git.rs",
+          "test": "cleanup_checks_native_branch_delete_predicate_before_removal",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/git.rs",
+          "test": "cleanup_after_upstream_tracking_ref_is_pruned",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/git.rs",
+          "test": "immutable_review_detects_clean_head_change",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/git.rs",
+          "test": "protected_base_and_git_metadata_namespace_are_rejected",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/git.rs",
+          "test": "independent_tasks_and_project_local_issue_numbers",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/git.rs",
+          "test": "review_locks_block_executor_and_detect_external_changes",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/git.rs",
+          "test": "dirty_tracked_untracked_and_ignored_files_block_review_cleanup",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/git.rs",
+          "test": "cleanup_rejects_unmerged_then_removes_only_owned_merged_tree",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/grok.rs",
+          "test": "installed_native_edit_fresh_continuation_and_structured_decision",
+          "status": "ignored"
+        },
+        {
+          "target": "Running tests/grok.rs",
+          "test": "installed_native_structured_decision_has_exact_response_correlation",
+          "status": "ignored"
+        },
+        {
+          "target": "Running tests/grok.rs",
+          "test": "receipt_support::tests::projection_rejects_extra_unbounded_values_and_inconsistent_operands",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/grok.rs",
+          "test": "receipt_support::tests::projection_rejects_impossible_cleanup_and_drain_combinations",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/grok.rs",
+          "test": "receipt_support::tests::exact_attempt_rejects_missing_duplicate_and_current_prompt_mismatch",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/grok.rs",
+          "test": "receipt_support::tests::complete_paging_honors_closed_upper_window",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/grok.rs",
+          "test": "parent_replacement_after_native_preflight_never_reaches_prompt_wire",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/grok.rs",
+          "test": "stop_after_dispatch_preserves_unknown_outcome_until_explicit_recovery",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/grok.rs",
+          "test": "unknown_native_dispatch_keeps_clean_dead_executor_reserved",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/grok.rs",
+          "test": "native_stop_permissions_foreign_refs_and_environment_guards_are_explicit",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/grok.rs",
+          "test": "native_resume_requires_fresh_checkpoint_preserves_uuid_and_discards_replay",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/grok.rs",
+          "test": "concurrent_native_reviewers_share_exact_lock_and_validate_structured_verdict",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/grok.rs",
+          "test": "native_execute_edits_only_owned_files_and_preserves_actual_exit",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/grok.rs",
+          "test": "native_structured_consumer_rejects_each_schema_violation_and_live_decision_tools",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/grok.rs",
+          "test": "native_auth_inventory_config_parser_and_tool_evidence_fail_closed",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/project.rs",
+          "test": "schema_one_project_migrates_without_changing_identity_or_history",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/project.rs",
+          "test": "git_routing_env_does_not_redirect_registry_to_other_project",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/project.rs",
+          "test": "invalid_xdg_state_directory_falls_back_to_absolute_home",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/project.rs",
+          "test": "active_creation_and_removal_race_has_one_valid_winner",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/project.rs",
+          "test": "global_default_state_and_help_config_check_are_independent_of_cwd",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/project.rs",
+          "test": "relative_path_cannot_replace_native_git_and_global_git_config_remains_authoritative",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/project.rs",
+          "test": "blocked_projects_accept_lost_and_blocker_updates_without_starting_new_work",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/project.rs",
+          "test": "blocked_work_cannot_resurrect_terminal_rows_or_rewrite_goal_and_task_metadata",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/project.rs",
+          "test": "cleared_refs_recover_and_stale_input_snapshots_are_rejected",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/project.rs",
+          "test": "blocked_cwd_and_missing_git_never_infer_or_rebind_foreign_sources",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/project.rs",
+          "test": "separate_git_directory_and_symlink_namespace_are_not_source_references",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/project.rs",
+          "test": "selector_ambiguity_linked_roots_subdirectories_and_foreign_cwd_are_rejected",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/project.rs",
+          "test": "removal_checks_live_goals_tasks_sessions_and_locks_under_store_transaction",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/project.rs",
+          "test": "two_project_issue42_worktrees_context_and_goals_are_isolated",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/project.rs",
+          "test": "actual_cli_registry_restarts_recovers_and_soft_removes_without_deleting_files",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/project.rs",
+          "test": "config_rules_environment_and_symlinks_never_cross_project",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/state.rs",
+          "test": "future_schema_is_rejected_without_rewriting_database",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/state.rs",
+          "test": "context_versions_are_immutable_consecutive_and_scoped",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/state.rs",
+          "test": "changing_decisions_preserves_previous_round_evidence_in_journal",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/state.rs",
+          "test": "usage_missing_is_explicit_and_session_ownership_is_enforced",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/state.rs",
+          "test": "dag_and_followup_references_cannot_cross_project_or_goal_boundaries",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/state.rs",
+          "test": "project_identity_prevents_issue_collisions_and_rejects_cross_project_children",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/state.rs",
+          "test": "audit_replacement_upsert_and_backdated_sequence_are_rejected",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/state.rs",
+          "test": "context_versions_reject_sql_update_delete_and_replace",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/state.rs",
+          "test": "usage_integer_overflow_cannot_publish_rows_or_audit_or_change_owners",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/state.rs",
+          "test": "stale_writers_do_not_overwrite_state_or_append_events",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/state.rs",
+          "test": "append_only_audit_and_failed_journal_write_roll_back_snapshot",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/state.rs",
+          "test": "current_scope_audit_rechecks_versions_and_activity_across_connections",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/state.rs",
+          "test": "foreign_databases_and_unknown_snapshots_are_rejected_without_data_loss",
+          "status": "ok"
+        },
+        {
+          "target": "Running tests/state.rs",
+          "test": "restart_preserves_hierarchy_decisions_dag_sessions_context_and_nullable_usage",
+          "status": "ok"
+        },
+        {
+          "target": "Doc-tests rrx",
+          "test": "crates/rrx/src/workflow.rs - workflow::WorkflowEngine (line 502) - compile",
+          "status": "ok"
+        },
+        {
+          "target": "Doc-tests rrx",
+          "test": "crates/rrx/src/workflow.rs - workflow::WorkflowEngine (line 498) - compile fail",
+          "status": "ok"
+        }
+      ],
+      "failures": [
+        {
+          "name": "workflow::tests::all_presets_drive_real_adapter_calls_and_persist_phase_context_history",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:491:18:"
+        },
+        {
+          "name": "workflow::tests::commit_publishes_new_head_before_tests_review_and_pr_without_restart",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:504:78:"
+        },
+        {
+          "name": "workflow::tests::changed_approved_artifact_invalidates_formal_reviews_and_known_drift_never_calls_gate",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:504:78:"
+        },
+        {
+          "name": "workflow::tests::completed_attempt_rewrite_and_atomic_owner_version_or_activity_changes_are_rejected",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:504:78:"
+        },
+        {
+          "name": "workflow::tests::concurrent_metadata_before_gate_claim_or_native_dispatch_preserves_progress",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:504:78:"
+        },
+        {
+          "name": "workflow::tests::concurrent_native_polls_claim_evidence_evaluation_before_calling_external_gate",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:1466:10:"
+        },
+        {
+          "name": "workflow::tests::equal_class_escalation_cannot_rebind_unverified_head_or_raw_authority",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:504:78:"
+        },
+        {
+          "name": "workflow::tests::default_is_fallback_not_a_floor_and_finished_workflow_cannot_reopen",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:491:18:"
+        },
+        {
+          "name": "workflow::tests::escalation_restarts_mandatory_prerequisites_without_erasing_history_or_downgrading",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:504:78:"
+        },
+        {
+          "name": "workflow::tests::atomic_authority_rejects_invented_initial_history_completion_and_finished_flags",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:2564:10:"
+        },
+        {
+          "name": "workflow::tests::exit_zero_without_review_approval_cannot_satisfy_review_gate",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:504:78:"
+        },
+        {
+          "name": "workflow::tests::final_claim_cas_loss_recovers_only_proven_undispatched_reservations",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:504:78:"
+        },
+        {
+          "name": "workflow::tests::foreign_stale_unbound_or_empty_gate_evidence_never_advances_review",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:504:78:"
+        },
+        {
+          "name": "workflow::tests::explicit_stricter_selection_and_unsupported_review_capability_are_honest",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:504:78:"
+        },
+        {
+          "name": "workflow::tests::generic_completion_default_requires_real_zero_exit_and_no_failure",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:504:78:"
+        },
+        {
+          "name": "workflow::tests::inactive_owners_allow_cancel_but_terminal_release_requires_verified_session",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:3385:14:"
+        },
+        {
+          "name": "workflow::tests::live_consultant_does_not_strand_readonly_review_but_mutating_gate_remains_fenced",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:504:78:"
+        },
+        {
+          "name": "workflow::tests::lost_native_executor_fences_explicit_retry_and_other_phase_dispatch",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:1047:10:"
+        },
+        {
+          "name": "workflow::tests::known_irreversible_drift_holds_single_operation_and_cleanup_reuses_frozen_authority",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:504:78:"
+        },
+        {
+          "name": "workflow::tests::lost_reviewer_also_requires_verified_recovery_before_retry",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:504:78:"
+        },
+        {
+          "name": "workflow::tests::native_gate_requires_persisted_owned_status_and_sessionless_completion_is_rejected",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:3615:10:"
+        },
+        {
+          "name": "workflow::tests::native_turn_completion_preserves_real_exit_and_still_requires_gate_evidence",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:1860:10:"
+        },
+        {
+          "name": "workflow::tests::observed_gate_outcome_survives_paused_blocked_or_missing_postgate_sources",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:504:78:"
+        },
+        {
+          "name": "workflow::tests::ordinary_store_cannot_override_workflow_fields_or_context_and_retry_preserves_other_blockers",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:504:78:"
+        },
+        {
+          "name": "workflow::tests::persisted_status_mismatch_is_durable_waiting_without_gate_or_rebinding",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:4064:10:"
+        },
+        {
+          "name": "workflow::tests::native_git_commit_port_freezes_owning_worktree_head_for_review_and_pr",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:504:78:"
+        },
+        {
+          "name": "workflow::tests::preparation_existing_explicit_retry_gap_is_characterized_not_recovery_proof",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:5008:14:"
+        },
+        {
+          "name": "workflow::tests::preparation_actor_override_uses_new_claim_before_launch_and_binding_is_immutable",
+          "classification": "unmigrated_native_fixture_pause_unreachable_after_preflight_refusal_source_verified",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:235:14:"
+        },
+        {
+          "name": "workflow::tests::preparation_capture_errors_release_only_current_owned_claim_and_preserve_metadata",
+          "classification": "unmigrated_native_fixture_pause_unreachable_after_preflight_refusal_source_verified",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:235:14:"
+        },
+        {
+          "name": "workflow::tests::preparation_definitive_fail_and_both_invalidation_publication_conflicts_retain",
+          "classification": "unmigrated_native_fixture_pause_unreachable_after_preflight_refusal_source_verified",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:235:14:"
+        },
+        {
+          "name": "workflow::tests::quick_requires_actual_merge_cleanup_before_terminal_and_cancel_never_implies_native_death",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:491:18:"
+        },
+        {
+          "name": "workflow::tests::preparation_dispatched_observation_and_direct_store_terminal_fence",
+          "classification": "unmigrated_native_fixture_pause_unreachable_after_preflight_refusal_source_verified",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:235:14:"
+        },
+        {
+          "name": "workflow::tests::preparation_dropped_owner_is_not_released_by_a_fresh_engine",
+          "classification": "unmigrated_native_fixture_pause_unreachable_after_preflight_refusal_source_verified",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:235:14:"
+        },
+        {
+          "name": "workflow::tests::rejected_review_cancel_releases_only_verified_terminal_attempt_and_project",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:504:78:"
+        },
+        {
+          "name": "workflow::tests::restarted_native_attempt_reports_durable_recovery_without_rebinding_or_launching",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:2323:10:"
+        },
+        {
+          "name": "workflow::tests::revision_changes_during_review_gate_preserve_reservation_and_never_accept_stale_verdict",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:504:78:"
+        },
+        {
+          "name": "workflow::tests::resumed_round_claim_never_replays_prior_outcome_during_poll_restart_or_cancel",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:504:78:"
+        },
+        {
+          "name": "workflow::tests::running_attempt_preserves_native_actor_when_task_reviewer_choice_changes",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:504:78:"
+        },
+        {
+          "name": "workflow::tests::second_engine_cannot_dispatch_duplicate_phase_and_interrupt_does_not_auto_retry",
+          "classification": "unmigrated_native_fixture_both_legacy_selections_refuse_source_verified",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:1250:5:"
+        },
+        {
+          "name": "workflow::tests::stale_revision_invalidates_evidence_and_waiting_requires_explicit_retry",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:504:78:"
+        },
+        {
+          "name": "workflow::tests::unknown_gate_generation_cannot_be_released_by_raw_transition",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:504:78:"
+        },
+        {
+          "name": "workflow::tests::waiting_gate_reuses_native_session_and_unknown_outcome_stays_reserved",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:2254:10:"
+        },
+        {
+          "name": "workflow::tests::workflow_authority_and_decision_history_require_atomic_monotonic_updates",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:504:78:"
+        },
+        {
+          "name": "workflow::tests::waiting_irreversible_hold_then_resume_does_not_orphan_owned_blocker",
+          "classification": "unmigrated_native_fixture_direct_preflight_refusal",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:504:78:"
+        },
+        {
+          "name": "workflow::tests::preparation_invalidation_internal_errors_release_before_publication_only",
+          "classification": "unmigrated_native_fixture_pause_unreachable_after_preflight_refusal_source_verified",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:235:14:"
+        },
+        {
+          "name": "workflow::tests::preparation_lifecycle_aba_before_refresh_starts_same_claim_after_refresh_retains",
+          "classification": "unmigrated_native_fixture_pause_unreachable_after_preflight_refusal_source_verified",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:235:14:"
+        },
+        {
+          "name": "workflow::tests::preparation_observers_preserve_both_capture_awaits_and_owned_single_launch",
+          "classification": "unmigrated_native_fixture_pause_unreachable_after_preflight_refusal_source_verified",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:235:14:"
+        },
+        {
+          "name": "workflow::tests::preparation_parent_metadata_and_record_replacement_remain_reserved",
+          "classification": "unmigrated_native_fixture_pause_unreachable_after_preflight_refusal_source_verified",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:235:14:"
+        },
+        {
+          "name": "workflow::tests::preparation_pause_cancel_and_terminal_recovery_keep_owner_fenced",
+          "classification": "unmigrated_native_fixture_pause_unreachable_after_preflight_refusal_source_verified",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:235:14:"
+        },
+        {
+          "name": "workflow::tests::preparation_post_dispatch_binding_cas_conflict_preserves_factual_session_and_claim",
+          "classification": "unmigrated_native_fixture_pause_unreachable_after_preflight_refusal_source_verified",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:235:14:"
+        },
+        {
+          "name": "workflow::tests::preparation_post_refresh_record_replacement_rejects_release_after_typed_task_marker_error",
+          "classification": "unmigrated_native_fixture_pause_unreachable_after_preflight_refusal_source_verified",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:235:14:"
+        },
+        {
+          "name": "workflow::tests::preparation_release_cas_and_executor_lost_fences_do_not_retry",
+          "classification": "unmigrated_native_fixture_pause_unreachable_after_preflight_refusal_source_verified",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:235:14:"
+        },
+        {
+          "name": "workflow::tests::preparation_reserve_loser_cannot_release_identical_winner_claim",
+          "classification": "unmigrated_native_fixture_pause_unreachable_after_preflight_refusal_source_verified",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:235:14:"
+        },
+        {
+          "name": "workflow::tests::preparation_unbound_to_bound_before_refresh_releases_for_new_reservation",
+          "classification": "unmigrated_native_fixture_pause_unreachable_after_preflight_refusal_source_verified",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:235:14:"
+        },
+        {
+          "name": "workflow::tests::preparation_untyped_marker_failure_keeps_claim_even_when_start_never_called",
+          "classification": "unmigrated_native_fixture_pause_unreachable_after_preflight_refusal_source_verified",
+          "observed_source_location": "crates/rrx/src/workflow/tests.rs:235:14:"
+        }
+      ],
+      "classification_counts": {
+        "unmigrated_native_fixture_direct_preflight_refusal": 38,
+        "unmigrated_native_fixture_pause_unreachable_after_preflight_refusal_source_verified": 16,
+        "unmigrated_native_fixture_both_legacy_selections_refuse_source_verified": 1
+      }
+    }
+  ],
+  "baseline": {
+    "head": "054aefd3a22a02951fa72b9fa397bed58d156bbf",
+    "test": "adapter::tests::ownership_change_during_native_preflight_prevents_executor_launch",
+    "environment": "normal host",
+    "exit": 0,
+    "executed": 1,
+    "log_sha256": "c8824d617528b38e4b7a0fd290671f2cd6bba3e7b2d12ea1337ae7186293b450"
+  },
+  "causality_limits": [
+    "Normal-host source2 has169 passing Rust tests,55 failed legacy Workflow fixtures,8 ignored,2 passing doctests; no failing non-Workflow target observed in this one run.",
+    "Pause classification follows actual Fixture::ready_agent/spawn_step/capture_pause, FakeAgent default lacks prepared admission, and source preflight before all native preparation/start hooks; both-engine test expects at least one legacy start and both now refuse. These are source-verified classifications, not observed inner-future error terminals.",
+    "Original exploratory StateConflict-versus-SessionLost cause remains unmeasured; baseline success and sandbox EPERM show an environment confound, not a proven fix or retroactive cause/cleanup credit.",
+    "Sandbox outcomes are retained, not replaced; non-preflight failures beyond observed permission denial remain distinct. No unrelated deadline/latch/reset/rerun-to-pass or native settings change.",
+    "All actual private admission/binder/owned probe/native/recovery/positive co-integration gates remain OPEN."
+  ]
+}
