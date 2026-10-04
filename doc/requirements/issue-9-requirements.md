@@ -225,7 +225,10 @@ resolved; safe process cleanup alone does not permit a certificate.
 STRICT or a frozen security_review=true policy disables early stop. The security flag is
 explicit for any class and is mandatory where Project/Workflow policy requires security review.
 Other explicitly enabled early stop
-never permits discarding inconvenient findings. Within-round retry is disabled in Core: a retry needs a new immutable
+never permits discarding emitted findings. Certificate/status records each
+cancelled-before-output-by-early-stop slot explicitly: opt-in early stop trades
+unemitted review coverage for latency, without claiming that slot inspected or
+found no blocker. Within-round retry is disabled in Core: a retry needs a new immutable
 round, includes prior failure/attempt history and consumes the round limit.
 Each new round reruns the full frozen roster; approvals never carry across rounds
 or changed targets. Same-target retry/dismissal rounds consume a typed identity
@@ -258,7 +261,7 @@ Runtime/Project/provider permits); record requested/effective values rather than
 rejecting policy parallelism above roster size. Reject 0/33; 64 cumulative rounds per immutable obligation-budget lineage,256
 findings per result,8192 UTF-8 bytes per COMPLETE encoded finding entry (identity,
 severity, original claim, locations, evidence references and framing INCLUDED),
-not 8192 text bytes plus metadata; and1 MiB per COMPLETE prepared member
+not 8192 text bytes plus metadata; and 1 MiB per COMPLETE prepared member
 frame (core+specialization+inline required claims+rules/wrapper) AND per result envelope.
 The core alone is not the combined-frame ceiling; no additional specialization bypass. Limits are simultaneous ceilings: maximum count does not promise every
 maximum-size text fits the envelope. No semantic truncation occurs. A 128 MiB
@@ -323,7 +326,7 @@ preset/criterion stays open and refuses before effects, including Triple. Known 
 Unsupported BEFORE input. Their actual declared/detected configuration enters the
 profile contract; auth/hooks/rules/defaults are preserved, not silently removed.
 Unexpected late hooks, OS delay or newly escaped/uncertain ownership after dispatch
-remains tracked Unknown/Lost for 14, never selected-group death or cleanup fiction.
+remains tracked Unknown/Lost for #14, never selected-group death or cleanup fiction.
 Both envelopes are conditional on stated supported producer stages, not a
 universal real-time OS bound. Profile freezes an explicit safety margin in integer
 milliseconds: minimum/default 100ms, stronger finite margin required if its reviewed
@@ -428,7 +431,9 @@ Workflow, agent output/proposal and Approval Broker runtime JSON/API/IPC channel
 cannot label themselves Human or obtain that authority. Broker decisions never
 substitute for Human adjudication/activation. This covers blocker dispositions,
 post-opinion relaxation, supersession/decomposition, authorship/unknown-delta
-disposition and governing-policy activation. Direct same-UID machine/CLI/DB action
+disposition and approval of NEW governing-policy/rubric content digests.
+Instantiating an already exactly Human-approved digest is separately frozen-policy
+controller work under I9-AC-9.i, not authority to approve new content. Direct same-UID machine/CLI/DB action
 outside these runtime APIs is an explicit trust limit, consistent with Issue 23.
 This includes a native shell directly invoking the same-UID local rrx binary: CLI
 UID/origin records application provenance, not evidence that a biological Human
@@ -486,10 +491,10 @@ identifies retained contributions; it does not alone prove every later obligatio
 is affected by every reachable uncertified contribution.
 
 Until actual #12 applicability is available, unknown out-of-band recorded contributions
-may conservatively accumulate author exclusions/budgets/vetoes even for an apparently
+must conservatively accumulate applicable/unknown author exclusions/budgets/vetoes even for an apparently
 unrelated new obligation. This can make STRICT or ALL classes zero-eligible after
 several native families contributed; it is an explicit PRE12 AVAILABILITY LIMIT,
-not proof that upstream bytes were authored by the new Task.10.a still records true
+not proof that upstream bytes were authored by the new Task. I9-AC-10.a still records true
 byte/upstream attribution separately. No bytes-only intersection or trusted opinion
 may waive semantic applicability.21.h/public Issue #9 and #16 track author-set growth from
 out-of-band merges, inherited-budget refusals and resulting zero-eligible frequency/
@@ -941,7 +946,9 @@ explicit eligible custom roster. Human authorship remains separately attributed.
 
 - **18.a** Tree-identical commits remain same-target. Autonomous changed-target
   admission needs an actual nonempty committed source/artifact delta linked to an
-  immutable retained concern-root from an actual prior nonapproval finding/slot,
+  immutable retained concern-root from an actual prior nonapproval finding/slot OR
+  an unresolved potential/verified finding in the effective blocking set, including
+  a blocker carried by APPROVE,
   preceded by I9-AC-18.j exact-target recorded verification, with exact before/after trees, affected hunk hashes/locations and a truthful,
   explicitly unverified executor fix claim explaining that relationship. Pure
   relocation, rename-only, unrelated edits or cosmetic bytes without a specific
@@ -958,6 +965,7 @@ explicit eligible custom roster. Human authorship remains separately attributed.
   one-candidate-per-concern Human gate: bounded verify→fix→commit→re-review remains
   autonomous, without allowing self-clearance or approval-shopping. Tests include
   a genuine concern-linked multi-step fix with two changed commits/new full rosters,
+  APPROVE+Medium→verify→fix→commit→full-roster rerun,
   labelled-claim-not-clearance, retained veto, cosmetic/unrelated/empty refusal,
   same-tree rerun refusal and ancestor-budget reset refusal. This positive closes
   through real fixed nongating conformance delegation as I9-AC-21.j specifies;
@@ -1321,7 +1329,7 @@ native auto-loaded context or token/cost measurement. Test deduplicated/referenc
 backed repeated large coverage with every delivery charged and distinct metadata
 retained, plus copied-content reservation/quota exhaustion before round 64. #16
 reports retained versus delivered bytes, amplification and quota-before-round-limit
-frequency separately under 21; actual 21 provider token/cost counters remain nullable.
+frequency separately under I9-AC-21; actual #21 provider token/cost counters remain nullable.
 All retained ReviewSet evidence consumes the same 128 MiB lineage quota, including
 transport diagnostics, verification/check logs, adjudication, attention records,
 manifests, result/expanded/member frames and claim/exposure records. No uncharged
@@ -1555,7 +1563,7 @@ A profile-required stronger margin is enforced;
 configured deadline1–3600 must cover exact envelope+margin using checked arithmetic.
 Test preserved user hook/MCP configuration with known bound versus unbounded preinput
 Unsupported; after dispatch unexpected delayed hook/jitter-at-margin/escaped cohort
-retains actual supervision/Unknown ownership for 14. No disabling userdefaults and no
+retains actual supervision/Unknown ownership for #14. No disabling userdefaults and no
 universal real-time claim. One normal-result timer starts at complete owned result/
 native terminal/cleanup request, never partial tokens or repeated terminal extension.
 Percentile/typical/arbitrary-timeout-only declarations refuse. Actual Issue 16 owns observed
@@ -1671,10 +1679,18 @@ CLAUDE.md/AGENTS/rules that native discovery would activate differently from the
 accepted governing snapshot refuse before input, with exact conflicting paths and
 revision/digests. Supported exit is ONLY an actually reviewed native profile/view
 that delivers reviewed source with activated rubric while preserving required native
-user defaults, or termination without certificate. Such a view is not implemented or
-promised by this requirement; native cwd/worktree ownership requires actual 19/profile
+user defaults, or termination without certificate. Such a view is not implemented; its pending actual producer must not be inferred
+from this requirement; native cwd/worktree ownership requires actual 19/profile
 composition. Legitimate base-sync may explicitly activate a new trusted governing
-snapshot retaining floors/obligations, never automatic Task-edit self-activation.
+snapshot ONLY after trusted Human approval of its EXACT NEW content digest,
+retaining floors/obligations, never automatic Task-edit self-activation. Controller
+base-sync with an unapproved changed rubric digest MUST refuse.
+Required reviewed-source/activated-rubric view producers belong actual #5/#6/#7
+profiles with #19 workspace/input composition; the #9 consumer is currently BLOCKED
+for this conflicting-rule Task class until that proof exists. Public I9-AC-8.l/I9-AC-21.l
+feasibility tracking must name its exact missing view/owner/proof before design,
+including an actual supported rule-editing positive or explicit unready result.
+This is no formal-gating scope exemption or whole-MVP waiver.
 Test both Task edit and base-sync drift, refusal reason and available verified exit
 versus pending-profile/noexit.16 records frequency/Task availability/Human impact.
 
@@ -1699,12 +1715,22 @@ consumer requires real supported native producer/profile conformance and exact c
 certificate/coverage/independence basis, actual Issue 14 recovery, actual trusted policy
 activation and required #15/#24 Human adjudication ingress; multi-Project additionally
 requires #27 fair admission. Until these compose, single AND multi-Project product gating
-remain disabled.9 trusted controller/library ingress can activate initial policy and
+remain disabled.9 trusted controller/library ingress may instantiate ONLY an
+already exactly Human-approved initial policy digest and
 prove component mechanics, but does not claim completed product handlers or production
 ready certificates. Component native/controlled tests may retain nongating evidence;
 accepted pre-recovery risk I9-AC-21.d remains observable there, not an enablement exemption.
 Applicability-dependent fresh budget additionally needs I9-AC-21.h actual #12 producer; unknown
-inherit/refuse does not require pretending it exists. Readiness comes from actual
+inherit/refuse does not require pretending it exists. Readiness and eligibility
+are scoped to the actual Task/lineage/roster, not a blanket Project promise. Recorded
+uncertified ancestry with unknown applicability MUST retain inherited exclusions;
+missing the required eligible floor stays BLOCKED before input even if all generic
+native/product handlers are present. Actual #12 proof is required if this lineage
+asserts disjoint fresh obligations/budget; no Human 'accept upstream' wash is added.
+Test interim→product-readiness on retained uncertified history: no producer still
+inherits/refuses, actual applicability proof may qualify disjoint obligations, and
+true Lost/root/common-Git scope remains held. Clean/unaffected scopes need no fake
+#12 merge prerequisite. Readiness comes from actual
 implementation composition, never public JSON capability. Test actual downstream
 consumer returns distinct typed basis refusal and readiness-unavailable reasons.
 Both certificate provenance/basis and actual production readiness are required
@@ -1760,11 +1786,12 @@ is claimed merely because this table names an Issue; it must actually be quoted 
 | I9-AC-8.g, I9-AC-10.d, I9-AC-18.a | #20 production typed bundle/delta/coverage; #9 consumer contract; #12 actual complete delta impact-closure producer; #18 captured inputs; #16 actual full-fallback/delta-efficiency |
 | I9-AC-11.c, I9-AC-11.d, I9-AC-21.h | #12 trusted applicability producer, #18/#20 inputs, #9 consumer; #16 actual disjoint/unknown/resource impact and pre12 author-growth/zero-eligible availability |
 | 1, 4/I9-AC-4.a, I9-AC-12.b, I9-AC-17.a, I9-AC-18.f, I9-AC-20.a, I9-AC-20.c, I9-AC-16.b, I9-AC-16.c, I9-AC-16.d, I9-AC-18.g, I9-AC-14.g, I9-AC-14.i, I9-AC-8.a, I9-AC-8.c, I9-AC-21.f | #5/#6/#7 actual supported native/config/permission/cleanup and actual bounded retained-overhead declarations or tracked reviewed follow-up; #16 real enforcement/trace/default evidence |
-| I9-AC-2.b, I9-AC-7.a, I9-AC-8.l, I9-AC-21.m, I9-AC-18.h, I9-AC-8.d, I9-AC-8.h, I9-AC-8.i, I9-AC-12.j, I9-AC-14.f, I9-AC-16.a, I9-AC-14.c, I9-AC-14.d, I9-AC-14.e, I9-AC-17.c, I9-AC-20.a, I9-AC-20.b, I9-AC-21.b, I9-AC-9.c, I9-AC-9.f, I9-AC-14.h | #16 actual exposure, efficiency, finite delivered versus retained bytes, quotas/retries/eligibility/Human impact; #21 nullable native telemetry |
+| I9-AC-2.b, I9-AC-7.a, I9-AC-8.b, I9-AC-8.l, I9-AC-21.m, I9-AC-18.h, I9-AC-8.d, I9-AC-8.h, I9-AC-8.i, I9-AC-12.j, I9-AC-14.f, I9-AC-16.a, I9-AC-14.c, I9-AC-14.d, I9-AC-14.e, I9-AC-17.c, I9-AC-20.a, I9-AC-20.b, I9-AC-21.b, I9-AC-9.c, I9-AC-9.f, I9-AC-14.h | #16 actual exposure, efficiency, finite delivered versus retained bytes, quotas/retries/eligibility/Human impact; #21 nullable native telemetry |
 | I9-AC-3.b, I9-AC-3.c, I9-AC-9.d, I9-AC-9.i, I9-AC-21.e, I9-AC-21.i, I9-AC-21.j | #9 typed phase-policy/ingress/readiness consumer; #23 shared principal derivation; #15/#24 actual scoped product policy/Human handlers; #14/#27 actual recovery/admission |
 | I9-AC-12.k, I9-AC-18.a | #60 actual owned deterministic-effect attribution producer; #12 inspected effect/source evidence; #9 checker; LLM/unknown origin refuses/conservative exclusion |
 | I9-AC-13.a | #13 actual post-certificate irreversible reconciliation; no fabricated rollback or later certificate washing |
 | I9-AC-1, I9-AC-1.a, I9-AC-16, I9-AC-18.a, I9-AC-18.h, I9-AC-20.d, I9-AC-12.j, I9-AC-21.j | PRE-CLOSURE: #19/#43 actual member/phase input, original-frame binding and full owned closure; #5/#6/#7 actual supported native ports; #9 fixed conformance ingress + refusing formal consumer. POST-CLOSURE: #16 representative dogfood; #14 restart/uncertain recovery; #27 fair admission |
+| I9-AC-12.j | #5/#6/#7 actual reviewed-source/activated-rubric native view producer; #19 actual owned workspace/input; #9 refusing consumer; #16 rule-edit availability; I9-AC-8.l/21.l public feasibility tracking |
 | I9-AC-7.a | #9 typed restoration-evidence checker; #60 actual authorized restoration/source-effect producer; #14 actual uncertain-owner recovery; #16 restoration/eligibility availability |
 | I9-AC-21.g, I9-AC-18.h | #14 actual retained-share recovery, #27 admission, #12 relevant verification evidence, #16 scoped recovery/fairness metrics |
 | I9-AC-21.n | POST-CLOSURE MVP: #9 real formal consumer; #14/#15/#24/#27 actual readiness composers; #16 representative positive/removal matrix |
@@ -1927,7 +1954,8 @@ when Human events occurred; concurrency is neither origin proof nor automatic re
 | --- | --- |
 | Human fallback dismissal/downgrade/not-applicable/duplicate adjudication; policy relaxation; post-observation roster/confirmers change or supersession; Human authorship/unknown-origin disposition; decomposition | Actual trusted Human ingress with scoped principal/event/reason/evidence; automated controller cannot mint/borrow it |
 | Original eligible finder or frozen independent confirmer verification | Actual fresh owned verifier input/result/settlement provenance under I9-AC-9.a, I9-AC-9.e, I9-AC-9.g, I9-AC-9.h; never a controller-generated finding |
-| Initial activation under a Human-approved policy, frozen conditional branch, scheduling, verified bounded retry/fix/re-review progression | Separate automated controller under that exact activated policy, within immutable floor/lineage/designation; never post-opinion relaxation or approval shopping |
+| Initial INSTANCE of an EXACT already Human-approved policy digest; frozen conditional branch, scheduling, verified bounded retry/fix/re-review progression | Separate automated controller under that exact activated policy, within immutable floor/lineage/designation; never post-opinion relaxation or approval shopping |
+| Approve any NEW policy/rubric CONTENT digest, including rules introduced by base-sync | Actual trusted Human ingress approving that exact digest; controller base-sync/source capture cannot mint it |
 | Genuine safe cancellation/termination without certificate allowed by frozen policy | Actual owned controller/supervisor cancellation and required settlement/closure; never Human clearance, approval or Lost release |
 
 The existing Human-ingress library composition tests its application boundary, not
@@ -1979,7 +2007,7 @@ contention or releases the foreign owner.
 
 If reachable capacity becomes insufficient AFTER first input, safely cancel never-
 started slots and settle/cancel genuine started owners, then close without certificate.
-Consumed round/history charges remain; an uncertain own owner keeps its lock for14.
+Consumed round/history charges remain; an uncertain own owner keeps its lock for #14.
 Controller safe termination needs no new Human decision, and never releases foreign
 Lost shares. Repeated unchanged capacity causes park without new admission or round
 charge. Capacity restoration alone is not retry authority: a later full-roster round
@@ -2160,9 +2188,12 @@ consumer/production-port conformance evidence AND required registered native-pro
 proof, with separate annotations: `orchestration_transport=synthetic|real` and
 `profile_qualification=real-native(<exact evidence reference>)|pending` and
 `read_only_basis=contract+construction; native-enforcement-pending16` until the
-actual #16 proof exists. Only actual
-qualified native-profile evidence permits a check mark. `pending` is ONLY an
-unticked status note and can NEVER accompany a ticked item. Synthetic transport mechanics never imply synthetic profile qualification.
+actual #16 proof exists. ALL eight checkbox closures require their respective native orchestration/configured
+profile basis to have actual qualification; protocol negatives may use controlled
+peers but cannot qualify a fabricated profile. Only actual
+qualified native-profile evidence permits a check mark. `profile_qualification=pending` is ONLY an
+unticked status value and can NEVER accompany a ticked item. This prohibition does
+not apply to the separately mandated native-enforcement-pending16 annotation. Synthetic transport mechanics never imply synthetic profile qualification.
 No checkbox is ticked solely by a proposed test, synthetic profile declaration or
 unready port. The annotation explicitly names representative real-model/formal
 acceptance as mandatory #16/MVP PENDING when not yet proved; component check marks do
