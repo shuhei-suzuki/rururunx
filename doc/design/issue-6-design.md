@@ -689,16 +689,23 @@ DecisionReview/DecisionTask is only pending conceptual shorthand, not an enum/po
 No missing producer is supplied by this proposed interface; each is an explicit
 pre-effect refusal/deployment blocker, never narrowed required product acceptance.
 
-### Readiness, effect ordering and retention authority (Design6 proposal)
+### Readiness, effect ordering and retention authority (Design7 proposal)
 
-This correction refines Design5 before source. Proposed names are private roles,
+This correction refines Design6 before source. Proposed names are private roles,
 not callable ports. `ProfileReadiness` is an attempt-free, strictly non-executing
 role/scope/repository/host descriptor. Its implementation-owned admission set
 binds the widest startup lifetime extent, the exact installed executable and
 launcher/interpreter/platform-child resolution chain, immutable conformance basis,
 and effective controls/inputs whose authority can genuinely be established without
-execution. No Project TOML, environment, Store row or public builder can add an
-identity to that set. Unknown or unbounded identity/input closure is unavailable;
+execution. Its published per-host conformance artifact is compiled into the reviewed
+rrx binary as an immutable implementation-owned manifest, initially EMPTY. It binds
+OS/kernel/build, supported profile/class, exact native chain/digests and nonsecret
+control/delegation predicates. No writable runtime file, env/path, user config or
+Store row can add a manifest entry; changing it requires a new reviewed build and
+actual owned host conformance. Loading it executes no helper. Credentials/credential
+digests are never manifest fields; secret input binding remains private. No Project
+TOML, environment, Store row or public builder can add an identity to that set.
+Unknown or unbounded identity/input closure is unavailable;
 it is never a reason to run an unrestricted discovery probe.
 
 A composed driver freshly revalidates bounded non-executing metadata BEFORE
@@ -708,8 +715,17 @@ and has no native operation marker. It still belongs to the actual runtime's
 structured in-process job registry: EVERY nested async task, spawn_blocking callback,
 reader/drain and cancellation observer enrolls a private bounded job slot before
 submission, and a start gate stays closed until the genuine JoinHandle is transferred
-synchronously into that retained registry. Caller drop signals cancellation, never
-forgets the job. A top-level join, AbortHandle, runtime shutdown or timed-out
+synchronously into that retained registry. The pure premarker metadata pool has64
+runtime-global job cells independent of Project activation; each request reserves
+its finite job bundle before submission. Exhaustion refuses without execution or
+native claim. These cells are included in the global arithmetic below. On failed
+handoff/shutdown, CANCEL the unopened gate and observe the actual join; do not wait
+for a worker stuck waiting for a gate that will never open. A started/unjoinable
+worker retains its exact cell/handle and held state. Before any witness/cleanup,
+close ALL new registrations/admissions/queued grants for the captured generation,
+join ALL enrolled jobs, then recheck closure under the critical section. A finite
+controller exit or shutdown_timeout is not that proof. Caller drop signals
+cancellation, never forgets the job. A top-level join, AbortHandle, runtime shutdown or timed-out
 observation cannot prove all jobs complete; stalled workers retain their actual
 handles and bounded slots until observed completion. No helper capability/resource
 cleanup can be concluded while an enrolled callback/drain remains active. This
@@ -753,8 +769,15 @@ built from discovery config output at session.rs:1434–1440 before1455, is an
 explicit gate consumer. Complete final provider credential/header names and scoped
 values must be authoritatively resolved by bound NON-EXECUTING means before
 reservation and checked at each launch; executing discovery cannot add them.
-If this cannot be established, the profile is unavailable. Provider-env references
-in validate_environment's forbidden classes or LD_/DYLD_ prefixes refuse before
+Candidate rrx parsing is NOT this authority. Thus custom-provider env_key/headers
+selection is explicitly unavailable until a first-party authoritative nonexecuting
+resolver/control is verified; this is an open provider-selection acceptance limit,
+not a native-default waiver. Bind allowed credential NAME presence/absence and actual
+auth-route class privately as well as values, since presence can select authentication.
+Opaque value rotation alone is allowed under an unchanged conformed name/route.
+If complete current binding cannot be established, the profile is unavailable.
+Provider-env references in validate_environment's forbidden classes or LD_/DYLD_
+prefixes refuse before
 effects, including LD_PRELOAD, DYLD_INSERT_LIBRARIES, BASH_ENV, PYTHONPATH and
 PERL5OPT. Genuine trusted baseline inputs remain bound separately; they are not
 made permissible via provider env_key or env_http_headers. Discovery-derived drift
@@ -947,72 +970,99 @@ protect already-live B, including shared activation and recovery, or that pair i
 unavailable. Own-table checks are necessary, not protection from other providers;
 actual #19/#58/#60 durable common conflict consumers compose before readiness.
 
-Quota units are NATIVE ATTEMPTS, not Tasks. Initial implementation-owned active
-partition cap is32. Each partition fixes T from the exact version-pinned registered
-Store Project
-row's max_tasks (CLI/re-add provenance already persisted), with1≤T≤16. This is a
-bounded in-process read outside the coordinator, followed by current Project/version
-CAS. project::effective_config, validate, resolve_file, load_rules and git_text are
-EXCLUDED from readiness/activation/reactivation/claim paths: they execute Git.
-A config_ref identity needing revalidation uses strictly non-executing metadata, or
-its OWN actual60 capture/outcome/complete cleanup BEFORE activation, never a later
-native claim. The source table must inventory these transitive execution helpers;
-T's value already equals Project.max_tasks, so no overlay evaluation is needed.
-Reserve T
-Executor/ordinary phase slots PLUS2T decision/reviewer-member slots so T waiting
-Executors cannot starve required approval review; up to two simultaneous members
-per Task is this profile's bounded review-set policy. Larger configured required
-review sets make the profile unavailable, not silently lower quorum. Also reserve
-2 Consult and2 frontend attempts, and two concurrent setup/observation job slots
-per possible attempt:2*(3T+4). Thus ordinary attempt/job pool is9T+12 (maximum156),
-plus8 supplemental retained-setup slots, giving164 per active partition/5248 at32.
-Actual9/10 slot producers remain pending; budget does not mint their authority.
-T=4 reserves four ordinary and eight review-member owner slots. Under the current
-global_max_sessions=12 those four waiting Executors plus eight simultaneous members
-leave NO open Consult slot (13 would be needed). This is an unresolved scheduler/
-quota composition obligation, not a satisfied default-fit claim. Actual reviewed
-scheduler/slot producers and16 aggregate proof must preserve required four-plus
-Executors plus open Consult and approval progress without lowering required quorum
-or silently changing defaults; until then this combination remains unavailable.
+Quota units are ACTUAL retained attempts/resources/jobs, not Tasks or whole reserved
+Project partitions. Initial active admission-partition cap is32; residual owners do
+not consume an active partition. Each active partition fixes T from the exact
+version-pinned registered Store Project row's max_tasks (CLI/re-add provenance already
+persisted), with1≤T≤16. Read it in-process outside coordinator, then recheck current
+Project/version CAS. project::effective_config, validate, resolve_file, load_rules
+and git_text are EXCLUDED from readiness/activation/reactivation/claim: they execute
+Git. Config-ref validation is strictly nonexecuting or has OWN actual60 outcome+
+complete cleanup BEFORE activation. No overlay evaluation is needed for T.
 
-The8 supplemental slots are ONLY pre-reserved fallback metadata/anchor slots for
-partial-setup subresources/failed handoff retained outside a Session control, with
-specific reservation BEFORE resource creation. They are never stolen from another
-admitted claim nor used as a second admission pool. Every admitted origin claim
-keeps its original slot through live→Unknown/Lost; no allocation or supplemental
-slot is required for that transition. Bound setup fan-out/reservations at profile
-activation; wider closures remain unavailable. Checked sums, bounded per-slot
-metadata and actual resource allocation limits precede any activation/effects.
+A=3T+2 native attempts per active partition: T ordinary phase/Executor and2T required
+review-member slots (up to two simultaneous members/Task), plus2 Consult. Larger
+configured required review sets make this bounded profile unavailable, never reduce
+quorum. A frontend is NOT an independent attempt: at most2 per Project, each a
+subresource of the seed's same OwnedWorkload/ProfileBinding. Its exact effects must
+be a pre-enrolled subset of that seed's fixed widest profile; attach cannot mint a
+new owner, independent permit or second input ledger. Task frontend retains its
+actual6/11/15/19/14 authority, not58 Project conversion.
 
-Activation is lazy before claiming a first executable attempt and freezes current
-validated T/profile/epoch. Config changes revoke readiness and require explicit
-reactivation under fresh metadata/authority; refuse T>16 and never shrink below
-existing claims or overwrite owners. Project records may change, but that does not
-resize an already frozen runtime quota. Atomic deactivation returns the active
-partition only when no Pending/MarkerPending/live/Unknown resource anchors or
-unsettled child jobs remain. Anchor-free settled partitions can deactivate, and
-factual complete cleanup can retire Lost anchors without releasing the Lost hold.
-Next activation freshly validates/freezes current quota. Concurrent claim versus
-deactivation is an exact coordinator CAS, not a terminal-label predicate.
+Proposed checked resource/job ceilings per attempt (each cell is one actual anchor
+or independently submitted task/worker; a parent name never covers uncounted jobs):
 
-REFUSAL-ONLY durable held/Lost entries consume no active partition or owner quota.
-Read authoritative durable holds per affected Project/surface at admission, using
-bounded temporary metadata/cache; do not reserve32 partitions merely to cache
-historical holds. Overflow/missing inventory refuses the affected Project, leaving
-disjoint active quotas untouched. Cache eviction loses only cache, never the durable
-refusal or an actual anchor. Test32 refusal-only held Projects then disjoint33rd
-activation. A genuinely exhausted budget of32 still-anchored workloads is an explicit
-physical resource-capacity refusal, not an invented hold release or an unbounded
-progress promise; anchored ownership is never discarded. It does not excuse the
-required default four-plus/disjoint acceptance with available resource budget.
+| Class | Cells | Binding before effect |
+| --- | ---: | --- |
+| Attempt/operation/control retained origin | 1 | exact current attempt slot |
+| Native backend/server setup resource anchors | 4 | includes creator/subscription/discovery/server; backend proves its finite resource closure |
+| Native stdout/stderr and related stream drains | 8 | two per possible setup/server unit; streams reserved BEFORE process spawn |
+| Preparation/supervisor/cancellation observers | 4 | preparation→supervision overlap/startgate covered |
+| In-attempt metadata/filesystem blocking callbacks | 4 | stalled callbacks keep cells; exhaustion refuses/holds, never retries into an uncounted pool |
+| Two actual60 child Git/helper jobs | 16 | EACH8: owner1, output drains2, orchestrator1, cleanup blocking worker1, inspector anchor1 and inspector read threads2 |
+| Two independent native cleanup inspector units | 8 | EACH4: process anchor1, bounded read threads2, blocking worker1; outside observed cohort |
+| **Per-attempt total** | **45** | all enabled classes reserved before their creating effect |
 
-Aliases share one Project/owner-partition quota; continuously compatible Projects
-sharing physical config/common objects retain separate guarantees. Held A consumes
-only A's actual resource claims. Compatible B neither consumes A's quota nor blocks
-its otherwise authorized successor. Current global_max_sessions is not a durable
-hold pool; actual scheduler/resource consumers must distinguish retired complete
-resources from unreleased logical Lost exclusion, using private producer facts,
-never the label alone. These integration consumers remain pending.
+Each frontend additionally has13 seed-bound cells: process anchor1, drains2,
+driver/gateway/input/output/resize/cancellation jobs6, independent inspector anchor+
+reads/worker4. Thus local bound45A+26+8 supplemental setup cells is at most2284
+(45*50+26+8), with global actual-cell arena32*2284+64=73152. The64 pure premarker
+metadata cells above are separate from native operation allocation. Checked sums,
+actual cell layout/heap limits and measured low-idle overhead are source gates;
+these are proposed ceilings, not measured available backend/profile credits. A
+backend requiring a wider resource/fanout closure needs revised reviewed accounting,
+never omits a required native tool/hook to pass. Native cohort membership and service
+coverage require their OWN bounded backend contracts;4 resource anchors do not
+claim at most4 native child processes.
+
+For each creating process/worker/job, reserve its WHOLE finite bundle, including
+stdout/stderr/drain/cleanup/inspection capacity, BEFORE spawn/acquisition/submission.
+Reader or cleanup registration may not fail for lack of capacity after its child
+exists. Setup error uses its already-reserved actual cleanup resources. The8
+supplemental cells are only pre-reserved partial-setup fallback storage, not new
+admission capacity. Unknown/Lost uses the SAME original preallocated arena cells;
+no new allocation/moving/adoption of a kernel anchor is needed to retain it. A
+stalled or unexpected wider closure holds, cannot recycle cells or grow a side pool.
+
+The global arena charges only ACTUAL claimed/reserved bundles and retained cells,
+not all unused per-Project maxima. Per-class limits constrain live/pending admissions.
+An inactive Project's genuinely already-enrolled residual Unknown/Lost anchors stay
+in their SAME global slots and exact retained owner/generation, without consuming
+one of32 ACTIVE partitions or every unused local slot. Retire only their active
+partition metadata by exact CAS when no pending/MarkerPending/live admissions remain;
+keep residual metadata/current holds reachable. This is NOT adoption of legacy
+unrecorded helpers, saved rows/PIDs or a narrow helper exception. Capacity refusal
+occurs only when the actual checked arena/resource budget is exhausted, retaining
+all existing cells. Test32 Projects with one actual residual Unknown anchor each,
+then disjoint33rd activation from free cells; a partition-pinning/global-counter
+mutant must fail. Also test32 purely refusal-only durable holds plus disjoint33rd.
+Unknown resources retain their actual Project-local physical claims and conflicts;
+compatible disjoint B does not inherit A's quota/hold. A same-Project continuously
+compatible new attempt still needs actual current scheduler/task capacity. Unknown
+ongoing work is never relabelled idle to promise T fresh tasks; any reduced local
+availability is explicit and cannot waive baseline four-plus/open-Consult acceptance.
+
+Activation is lazy before first claim. Registered config/version drift REVOKES new
+admission only, never resizes/drops old owners. The next actual admission entry
+triggers nonexecuting revalidation and exact reactivation CAS for an anchor-free
+or proven-compatible active domain under latest T/profile/epoch; no CLI/manual label
+is a gate. Residual old-epoch owners remain fixed/held and excluded from current
+profile replacement, while compatible domains may reactivate under genuine shared
+producer facts. Atomic deactivation/reactivation versus claim keeps exact generations.
+
+REFUSAL-ONLY durable held/Lost entries consume no arena or active partition. Bounded
+affected-Project/surface durable reads/cache are authoritative at admission; cache
+eviction loses only cache, not holds. Include persisted nonterminal Sessions with
+NO genuine current in-runtime owner, not just rows already labelled Lost. Missing
+extent/overflow refuses affected surfaces, not unrelated activation. No startup
+reconstructs/adopts ownership or certifies cleanup from saved PID/row/terminal data.
+
+T=4 provides four ordinary/eight member quotas; current global_max_sessions=12 cannot
+simultaneously fit4 waiting Executors+8 members+open Consult13. Actual reviewed
+scheduler/slot producers and16 default aggregate acceptance remain unresolved;
+never silently lower quorum/change defaults to credit this proposal. Actual9/10
+member producers and runtime scheduler/resource consumers are pending. Separate
+runtimes also need actual durable exclusion/epoch consumers, not arena-row grants.
 
 The actual creator/preparation/supervisor synchronously transfers the same sole
 anchor into its keyed slot; controls only reference it. Ordinary release/eviction
@@ -1052,12 +1102,13 @@ release needs separately reviewed #14 recovery, never audit-number reconstructio
 
 These actual current callers must consume the corrected private predicates:
 
-| Current authority in cab665d56f7032f086946c1acfce448f5b9d076d (source unchanged in Design6) | Required correction |
+| Current authority in cab665d56f7032f086946c1acfce448f5b9d076d (source unchanged in Design7) | Required correction |
 | --- | --- |
 | session.rs:294 Reservation::finish_preparation_error; context-closure early errors | Before effects require genuine pristine; after any setup/Git/native/resource effect require tracked complete cleanup before Failed/restored outcome or scoped reservation release. |
 | session.rs:1010 prepare_checkpoint commit; 1221 prepare_launch; discovery result_after_cleanup at 1445 | Checkpoint restoration, policy discovery success and preparation errors cannot certify cleanup from selected groups only. |
 | transport.rs:320 failure_after_cleanup /332 result_after_cleanup and launch failure branches | Preserve original cause, represent workload uncertainty separately, and never return a successful discovery value as complete cleanup authority. |
 | session.rs:170 RegisteredTransition::Drop / restoration; register_fresh at 715 /register_existing at 757 | Preserve unsettled owner's independent anchor through initial-persist failure or old-control restoration; readiness runs before registry mutation. |
+| session.rs:626 Reservation::Drop, attempt.rs:193 TaskGuard and transition publication fallbacks | Drop only latches first cause/uncertainty in nonblocking level-triggered cells. No Store lock/SQLite/audit/publish or generic managed Session write; retained actual owner later uses actual private observation port. Failed publication remains explicitly held/unpublished. |
 | session.rs:546 Reservation::terminal; supervised terminal at2346; transport_succeeded1679 | Exact current native outcome AND complete enabled workload cleanup plus persisted exact current scope/input/source authority, not ACK/terminal labels. |
 | stop at 1704; release at 1819; evict_one_terminal at 110; resume at 1813; checkpoint at 1931 | Captured attempt identity remains exact; unknown setup/workload prevents ordinary release, eviction, restoration, continuation or reuse. |
 | preparation.rs:257 bounded_git; ownership.rs:345 verify_binding /360 verify_git /369 verify_git_preparing | Git/helper requires actual sealed #60 job enrollment, bound identity/input chain and retained settlement; fresh Preparation is not enrollment. |
@@ -1075,20 +1126,36 @@ verified backend/producer, never a Preparation, ProcessOwnership flag or record.
 Remove or gate fresh-Preparation execution variants such as NativeServer::launch
 and verify_git; all ProcessGroup construction in Codex must follow enrolled spawn.
 Add a mechanical standing guard: crate-wide Clippy disallowed_methods config with
-DENY lint level in codex/mod.rs (allow elsewhere) and narrow allowances ONLY in
-sealed enrolled functions. List std/tokio Command spawn/status/output, CommandExt
-exec, rustix/libc fork/posix_spawn and enabled PTY/process SDK constructors; no
-alternative creation primitive bypass. Own unsafe stays forbidden. Include shared
-ProcessGroup::Drop→kill_group→EPERM inspector and cleanup_group reachability; Drop
-cannot launch an unowned inspector. Those legacy shared paths remain unavailable
-to ready Codex except through the actual verified enrolled guard.
-Add a source-inventory control for shared helper calls from Codex. The allowlist
-pins exact enrolled function/token signatures and call sites; new direct spawn,
-ProcessGroup::new, bounded_git_raw or fresh-helper usage fails CI unless its actual
-sealed enrollment and conformance are reviewed. This does not claim other providers'
-shared helpers fixed. A compile-time/private seam plus mechanical inventory prevents
-unreviewed bypasses; causal mutants complement them. Inspector execution follows
-the same guard and owned route.
+DENY in codex/mod.rs and narrow allowances ONLY in sealed enrolled submit/exec paths.
+Include std/tokio Command spawn/status/output, CommandExt exec, rustix/libc fork/
+posix_spawn, PTY/SDK process constructors AND tokio::spawn/task::spawn_blocking,
+Handle::spawn*/JoinSet::spawn*, std::thread::spawn/Builder. A separate closed source
+inventory admits EVERY Codex reference to non-Codex crate items, with exact qualified
+item/token signature and transitive closure to spawn/task/thread/fs/blocking sinks.
+New external references fail CI by default; git_text/project validation/helper
+aliases cannot bypass via lexical lint in a shared module. Own unsafe stays forbidden.
+Add actual consumer mutants introducing unenrolled task/thread spawn and transitive
+git_text/resolve_file, not only deleting existing enrollment calls.
+
+Lint does NOT see implicit Drop glue. Every reachable process unit requires a
+TYPE-LEVEL non-executing destructor boundary, including native structs/error paths.
+The selected-group shared ProcessGroup::Drop currently invokes kill_group, whose
+macOS EPERM path may spawn /bin/ps. That source is NOT ready for a native profile.
+The proposed shared prerequisite makes Drop signal-only from its still-actual
+unreaped owned anchor plus sticky uncertainty; NEVER inspection/subprocess/thread/
+SQLite/allocating cleanup and NEVER a death certificate. Actual tracked observers
+and resources stay in retained registry slots; a dropped caller frame cannot move
+them into an untracked library reaper. Explicit cleanup may inspect ONLY through
+its independently enrolled/bound helper unit and preserves250ms/1MiB/full-frame/
+Unknown/unreaped rules. No by-value wrapper can suppress the original raw destructor.
+Ban unenrolled raw process-unit fields/captures by disallowed_types plus closed
+field/Drop inventory; only sealed resident resource factories may hold them.
+This shared helper correction needs independent source and every affected Generic/
+Grok/Codex consumer gate; no adapter.rs change or other-provider fix is claimed here.
+Until that type producer and enrollment are actual, the affected profile remains
+unavailable. Causal macOS EPERM drop-without-shutdown must observe zero spawned
+helpers and held/Unknown, killing a Drop-inspection-restoration mutant. Inspector
+execution is only an explicit owned cleanup route, never a lint allowance in Drop.
 
 If an effect occurred before model admission and its complete setup cleanup is
 unknown, keep held/Lost with a factual startup-cleanup reason. Persist Lost only
@@ -1206,9 +1273,12 @@ owner-version token. Missing/evicted/restarted owner or unsupported route select
 Fresh before marker, never reconstructs ownership from a receipt. Ordinary release/
 terminal eviction updates that generation and invalidates the eligibility token;
 it cannot remove unsettled owners. After the query releases its registry guard,
-the actual19 marker transaction consumes/rechecks the sealed owner-version token
-and all predecessor pins under its reviewed admission order; no coordinator lock
-spans it. Setup rechecks actual registry identity before effects. Raced owner loss
+the actual19 marker transaction rechecks predecessor pins and the sealed token's
+lock-free generation cell (retained Arc<AtomicU64>, bumped before release/eviction).
+It never locks registry/coordinator while holding Store/SQLite; registry→Store
+remains the only allowed edge elsewhere. The actual private token/admission producer
+must make its generation/current-authority semantics causal, not a serializable
+number; setup still rechecks actual registry identity before effects. Raced owner loss
 refuses without dispatch through actual pristine/tracked setup settlement and the
 bound Fresh-only refusal attribution, never auto-replays Continue. These are
 pending19 producer contracts. The exact prior closed receipt is provenance only,
@@ -1370,12 +1440,12 @@ installed backend gate. C/R alone cannot satisfy P or MVP acceptance.
 | Interactive trust/permission and required Task attach | C expansion/unadmitted turn/owned frontend lifecycle; R unavailable; P Issues 6/11/15/19/14 composed both-host native attachment. |
 | Callback correlation, replay and persistent-grant refusal | C actual submit/answer consumer, identity/effective-input rechecks, bounded ledger; R unsupported profile; P native backend and Issues 9/10 broker. |
 | Two-Project context/env/Git/reference isolation | C actual ownership/native request consumers; R before effects; P F2, Issue 51 and Issues 19/58/60 current authority. |
-| Bounded failure/cancel/stale/immutable review and source/CI checks | C held-owner release/evict/restore/Drop/publication; C-1/C/C+1 per-attempt pools with T Executors+2T required reviewers,16/32 activation caps, deactivate/reactivate and32refusal-only holds/disjoint33rd, frozen-config reactivation, A-full/B-admitted, premarker/MarkerPending-claim retention/release, complete-cleanup slot retirement with Lost hold unchanged, and global-counter mutant; exact debug/release/bothOS; P installed whole-workload and F2 proof. |
-| First runtime/native version/auth/config/Git/preflight probe | C gate-before-process/registry, cache-only readiness, replaced binary/changed config/selecting-env with zero marker/operation/history; actual activation/readiness effective_config-before-claim mutant with zero child control; opaque credential rotation and ephemeral endpoint predicate positives/changed-selector refusal; missed-layer discovery-reduction mutant; wrong-owner/version-probe-before-native-owner, sealed enrollment and unenrolled-helper mutants; R zero child/frame/consumption; P identity-bound backend. |
+| Bounded failure/cancel/stale/immutable review and source/CI checks | C held-owner release/evict/restore/Drop/publication; C-1/C/C+1 EACH class/native-drain/metadata/Git-child/inspector/frontend bundle through real launch/grant/cleanup,45A+26+8 local and73152 global arithmetic, T+2T quota,16/32 active caps;32 residual Unknown owners AND32refusal-only holds/disjoint33rd; exact deactivate/reactivate under version drift, residual-partition/global-counter mutants; premarker/MarkerPending claim retention, same-cell Unknown and complete-cleanup retirement with Lost hold unchanged; exact debug/release/bothOS; P installed whole-workload and F2 proof. |
+| First runtime/native version/auth/config/Git/preflight probe | C gate-before-process/registry, cache-only readiness, replaced binary/changed config/selecting-env with zero marker/operation/history; actual activation/readiness effective_config-before-claim mutant with zero child control; opaque credential rotation and ephemeral endpoint predicate positives/changed-selector refusal; missed-layer discovery-reduction mutant; wrong-owner/version-probe-before-native-owner, sealed enrollment, unenrolled-helper/task/thread/transitive-Git and implicit-Drop-inspection mutants; R zero child/frame/consumption; P identity-bound backend. |
 | Detached fsmonitor/hook before native startup; pre-consumption startup uncertainty | C finish_preparation_error/context/checkpoint/discovery/transition restoration each plus removal mutant; P finite escaped-owner control and actual whole native backend. |
 | Premarker/context/gate/status/registry/recovery capture, filters and held observation | C Issue 6 own preflight refusal and faithful nonexec content Unknown; P Issues 60/18–20/19/15/26/14 executing capture owner/settlement, LFS/filter/textconv and actual caller mutants. |
 | Runtime immediate/deferred delegation | P Issues 12/13/60 actual enabled route ownership or effective denial before execution; real readiness/settlement consumer mutants; no future cloud ownership theorem. |
-| Unsupported before marker; post-marker acquisition failure | C actual Workflow capability1132 with fixture-ready backend/no producer: no dispatch_started or native marker; backend-only capability mutant. Existing earlier context/reserve is still the documented gap. P actual19 driver gate before clear_hold/context/reserve: zero marker/operation/context/history. C coordinator/alias-retirement lock order, panic/ALL reachable Drop nonreentrancy, submit-under-registry-guard mutant, closed-runtime resident handoff with bounded return/no poison; nested async/spawn_blocking/drain enrollment/startgate/handle-transfer and top-level-join-only mutant, blocked Store and stalled-metadata, drop-before-first-poll/marker-to-registration; delayed-registration/claim-release/I-O-under-lock mutants; P actual19 pristine/partial setup settlement. |
+| Unsupported before marker; post-marker acquisition failure | C actual Workflow capability1132 with fixture-ready backend/no producer: no dispatch_started or native marker; backend-only capability mutant. Existing earlier context/reserve is still the documented gap. P actual19 driver gate before clear_hold/context/reserve: zero marker/operation/context/history. C coordinator/alias-retirement lock order, panic/ALL reachable Drop nonreentrancy, submit-under-registry-guard mutant, closed-runtime resident handoff with bounded return/no poison; nested async/spawn_blocking/drain enrollment/startgate/handle-transfer, failed-unopened-gate cancel+actualjoin/shutdown and top-level-join-only mutants; closeALLregistration/grants before alljob join/witness check, blocked Store and stalled-metadata, drop-before-first-poll/marker-to-registration; delayed-registration/claim-release/I-O-under-lock mutants; P actual19 pristine/partial setup settlement. |
 | New Continue input and Session-less setup owner | C premarker registry eligibility token valid/evicted/restarted and race-before-marker/setup controls, release/eviction-generation mutants; sealed Continue-shaped fixture pins new input in NEW owned Starting/admission; legacy checkpoint refuses and pure staging never mutates old pins; owner/old-receipt substitution mutant. C operation-keyed no-Session stop/observation/factual cleanup/publication failure, never hold release; P actual19 Continue and60 settlement. |
 | Adapter Git grant/preparation/status binding | C configured/env-injected fsmonitor/hooksPath, PATH swap/EDITOR/SSH_ASKPASS delegation, final-provider forbidden env ref, premarker capture-before-claim and parent self-admission positive/foreign-peer denial/held own-observation, and binding/exemption/job-conjunct/enrollment removal mutants; P actual60 binding/known outcome/cleanup conjunct at native settlement. |
 | Parent group death plus terminal cannot settle escaped workload | C terminal/transport/restore consumer mutant with actual finite second-SID owner; P installed nested sessions/backend. |
@@ -1393,7 +1463,7 @@ refusal, release/evict/transition anchor retention and empty production-build ch
 Backend/producer availability is a separately gated source and installed conformance
 fact. No newly added profile inherits earlier other-profile matrix proof.
 
-Requirements approval is not design approval. Design6 must pass independent immutable
+Requirements approval is not design approval. Design7 must pass independent immutable
 native design gates before source. Exact-head fmt/clippy/default debug+release tests,
 builds, source review and both-host CI are separate from genuine enabled-profile
 installed conformance and Issue 16 aggregate acceptance. An initial honest no-backend safety
