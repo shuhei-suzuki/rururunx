@@ -62,7 +62,16 @@ impl Fixture {
         );
         project.rule_refs = vec![root.join("RULES.md")];
         store.put_project(&mut project).unwrap();
-        let mut goal = Goal::new(project.id, "Preserve mandatory facts".into(), vec![]);
+        let mut goal = Goal::new(
+            project.id,
+            "Preserve mandatory facts".into(),
+            vec![CompletionCriterion {
+                id: "codec".into(),
+                description: "exact artifact boundaries verified".into(),
+                evidence: None,
+                satisfied: false,
+            }],
+        );
         goal.state = GoalState::Running;
         store.put_goal(&mut goal).unwrap();
         let mut task = Task::new(
@@ -272,13 +281,56 @@ async fn phase_reader_and_capture_guard_before_artifact_clone() {
         BYTES,
     );
     c = control;
-    c.data["task_pack"]["pack"]["task"] = nested(119); // artifact root + pack +119 =121
+    let old_header = format!(
+        "{}\n",
+        serde_json::to_string(&json!({
+            "kind":"phase_context_pack", "phase":Phase::Implement, "budget":budget,
+            "body":c.data["task_pack"]["pack"],
+        }))
+        .unwrap()
+    );
+    c.data["task_pack"]["pack"]["task"] = nested(119); // artifact1 + pack1 +119 =121
+    let mut changed: workflow::PhasePackArtifact =
+        serde_json::from_value(c.data["task_pack"].clone()).unwrap();
+    let header = format!(
+        "{}\n",
+        serde_json::to_string(&json!({
+            "kind":"phase_context_pack", "phase":Phase::Implement, "budget":budget,
+            "body":changed.pack,
+        }))
+        .unwrap()
+    );
+    let mut depth_source = source.clone();
+    depth_source.payload = format!(
+        "{header}{}",
+        source.payload.strip_prefix(&old_header).unwrap()
+    );
+    changed.mandatory_bytes = changed
+        .mandatory_bytes
+        .checked_sub(old_header.len())
+        .unwrap()
+        .checked_add(header.len())
+        .unwrap();
+    changed.estimated_bytes = depth_source.payload.len();
+    changed.estimated_tokens = depth_source.payload.len();
+    changed.payload_digest = format!(
+        "sha256:{:x}",
+        Sha256::digest(depth_source.payload.as_bytes())
+    );
+    c.data["task_pack"] = serde_json::to_value(changed).unwrap();
+    c.data["payload"] = json!(depth_source.payload);
+    assert!(depth_source.payload.len() < MAX_BYTES);
     reset();
     refused(workflow::context_artifact(&c).unwrap_err(), DEPTH);
     reset();
     refused(
-        workflow::validate_capture(&c.data["task_pack"], &source, Phase::Implement, &budget)
-            .unwrap_err(),
+        workflow::validate_capture(
+            &c.data["task_pack"],
+            &depth_source,
+            Phase::Implement,
+            &budget,
+        )
+        .unwrap_err(),
         DEPTH,
     );
 }
