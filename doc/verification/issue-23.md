@@ -64,3 +64,17 @@ six later failures reported the sticky prior-uncertainty latch. They are not sev
 independent observer failures. Full external log preserved at temporary
 rururunx-issue23-design1-ci-failed.log; #46 owns the observer fix/regression.
 No rerun, serialization, relaxed timeout or root-cause attribution is claimed.
+
+Design2 7023ee8 completed with verified owned cleanup: reviewer approved with a
+Medium D4 still reported. Do not treat that as no outstanding verified defect.
+D1-D3 are verified closed; D4 actual consumer revalidation lacked listed Task/hard
+prerequisite checks, and generic put_task could create unlisted managed Tasks.
+Primary Store/Workflow/native code verifies D4. Design3 extends actual admission
+and generic Task insertion fences, with causal tests/mutants; review pending.
+
+Independent #19 primary inspection found Engine terminal release/retry uses DB
+labels, not actual adapter cleanup authority. Design3 makes private allocated-owner
+settlement producer integration necessary for the WorkflowSuccessProof. No existing
+cleanup certificate, schema addition or native outcome proof is falsely claimed.
+#19 owns that shared design/source; its exact durable callback/receipt and #41/#14
+claim consumer gates remain pending.

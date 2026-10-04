@@ -1,6 +1,6 @@
 # Issue 23: Goal authority, DAG and completion
 
-Status: proposed Design2. Requirements3 `1fc82b1` independently approved; design
+Status: proposed Design3. Requirements3 `1fc82b1` independently approved; design
 review, source integration and acceptance remain pending. No implementation fact
 is claimed. Current main4851fcd has schema3 and generic Goal snapshots; the native
 branches and proposed #19 schema6/private input projection must be composed before
@@ -137,7 +137,10 @@ precede bounded body decoding; stored legacy oversize rows produce bounded error
 not a truncated ready/success result. Evaluation is iterative O(V+E) plus bounded
 Workflow/Session/lock/evidence scans, never recursion or model calls.
 
-Graph nodes are actual same-scope Tasks. Node creation and Task insertion share
+Graph nodes are actual same-scope Tasks. Generic put_task cannot insert into a
+managed Goal or change any Task Project/Goal scope. Only the typed graph/accepted-
+proposal port creates such Tasks and nodes atomically, preserving existing
+Workflow-owned field fences for updates. Node creation and Task insertion share
 one transaction; existing unlisted same-scope legacy Tasks are explicitly reported
 and may be reconciled by controller adding that exact identity, after checks.
 Reject missing/foreign/duplicate nodes, self edges and duplicate ordered
@@ -179,7 +182,18 @@ Current code admits Created/Analyzing in Workflow and excludes only four Goal
 states in native owners; all those consumers must migrate. A later hold increments
 Goal.version and conflicts with captured scope. Preserve independent own-Session
 DENY/terminal observations: the new predicate grants no reason to block a denial
-with a parent fence. Goal/project-scoped Consultant planning may run outside
+with a parent fence. Extend it for protected Task admission with exact listed DAG
+membership and verified WorkflowSuccessProof for every hard prerequisite, from
+the same bounded transaction snapshot; a cached ready report is insufficient.
+Apply this at all enumerated initial-start and fresh-phase/retry/NativeCAS
+consumers, including direct adapter/Workflow calls that bypass the scheduler.
+For continuation, revalidate current prerequisite success and declared input
+artifact pins; permanent terminal success survives unrelated later repository
+commits, while actual prerequisite certificate/ownership invalidation blocks new
+side effects. An existing exact own PhaseAttempt reservation is continuation
+ownership, not a reason to reject its own admission as another live Task.
+Initial starts reject any conflicting ownership; terminal recovery and factual
+observation remain separate. Goal/project-scoped Consultant planning may run outside
 protected Task dispatch, with separately reviewed scope rules; it cannot mutate
 accepted definition, mint a Task permit or bypass native owner checks.
 
@@ -205,7 +219,14 @@ records and absent producer support instead of fabricating success.
 
 Proof also checks complete Session/lock/recovery ownership from the coherent
 snapshot: no Starting/live/Lost/native uncertainty or unreconciled active lock,
-including Session-less dispatch reservations. #19 consumed phase owners and #9/#13
+including Session-less dispatch reservations. For allocated protected owners,
+terminal Session labels alone cannot certify native cleanup: consume #19 private
+settlement authority produced by actual owned adapter no-dispatch/cleanup/outcome
+callbacks, with exact attempt/Session/version/prepared-or-admitted pins. Unknown/
+Lost or generic/operator terminal JSON cannot manufacture that receipt. Engine
+replacement/release currently reads DB labels; it must migrate with #19/#41/#14
+actual ownership consumers before success acceptance. Failed receipt publication
+retains owned claims; it grants no NativeCAS/dispatch authority. #19 consumed phase owners and #9/#13
 real review/merge/cleanup producer certificates must resolve when configured.
 Actual #8 controlled Workflow completion is the initial non-Human evaluator
 consumer; synthetic provider fixtures establish model wiring only. Final native/
@@ -270,7 +291,8 @@ refuse live/uncertain old ownership under #19 rules. Preserve old Goal bytes and
 classify unverified rather than relabel origin/evaluator. New binaries reject
 unsupported future formats; migration failure leaves original DB intact.
 
-Inventory current main put_goal callers (45 including tests): native currency
+Inventory current main put_goal callers (45 including tests) AND put_task
+creation/scope callers: native currency
 controls edit objective/constraints today; replace those with authorized lifecycle
 or additive graph writes so their actual stale-version consumer remains tested.
 Workflow fixtures set Paused/Running/Cancelled through generic put_goal today;
@@ -290,13 +312,15 @@ Human attest-under-WaitingHuman then resume+complete, pack refresh with and with
 declared pack input, and followup graph drift staling attestation,
 terminal reopening and observation writes invalidating sibling native currency.
 Include a generic DAG-write mutant making a formerly blocked dependent ready,
-an omitted managed-Goal hold/proof predicate at actual native wire, and ignored
+an omitted managed-Goal hold/proof predicate at actual native wire, omitted
+hard-prerequisite/listed-membership admission at actual native/Workflow consumers,
+forged generic managed Task insertion (no row/version/audit), and ignored
 attestation DAG-drift mutant. Mutants must reach the intended consumer, compile
 and fail an assertion; setup
 refusal, timeout or unrelated safety guards provide no causal credit. Restore
 source and passing controls after each isolated mutation.
 
-Requirements passed independently; Design2 now needs delta review before source.
+Requirements passed independently; Design3 now needs delta review before source.
 Source updates Goal master design/README to actual behavior, runs full appropriate
 shared-state/native/Workflow regressions plus fmt/clippy/build and exact Linux/
 macOS CI, independently reviews the immutable source/security scope, and composes
