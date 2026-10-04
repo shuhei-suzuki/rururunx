@@ -188,3 +188,22 @@ parking. Remaining pseudo-code/audit expectation wording is aligned; lock-only n
 are controlled external-writer injection after genuine prerequisites, never owner proof.
 Required actual controls/mutations/source/native/recovery remain unimplemented/pending;
 Requirements9 unchanged and Design7 independent reviews remain required.
+
+
+Design7 at64867fb: TWO independent native APPROVE, A2Low/B3Low, no Critical/High/
+Medium or unresolved blocker; actual v3 owned cleanup/reap verified before edits.
+Public outcome hashes are in issue-43-design7-review-outcomes.json; raw resumed metrics
+remain attribution-unverified. Verified Lows corrected in Design8: deterministic SQL/
+encoding refusals park instead of transient-looping, normal-start storage deferral is
+typed/non-failure and owned, and variant-specific Session identity wording is aligned.
+
+NEW verified dependency composition defect from #19 Design32 review: legitimate binding/
+diagnostic W revisions made original-W closure comparison stale. Proposed Design8
+aligns public #19 Design33 cac5618: existing ONE reserved audit carries bounded complete
+body/version factual successor links, immutable marker/native pins unchanged. Required
+gate/closure capacity is reserved before effects, optional diagnostic exhaustion cannot
+strand closure; actual #19/#8 managed gate claim/observation is record-only before final
+atomic closure. This replaces the earlier insufficient ordinary current-W CAS/no-lineage
+statement. All actual producer controls, mutation kills, source/native/recovery and
+co-integration remain required/unimplemented. Requirements9 normative clauses unchanged;
+Design8 independent review pending. No documentation CI is native source acceptance.

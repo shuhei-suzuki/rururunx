@@ -447,7 +447,7 @@ mutants are required. This port/source is unimplemented, not part of merged #41;
 terminal/authorized lifecycle/unknown recovery transitions retain their own gates.
 
 
-Issue43 proposed Design7 additionally carries one immutable resulting marker frame
+Issue43 proposed Design8 additionally carries one immutable resulting marker frame
 through actual native preparation/consumption/AllowCurrent, derives binding readiness
 from marked/unbound/phase-open private operations, reserves per-Project operation
 capacity atomically inside41reserve and parks only definitive Held observations without repeated binder
@@ -458,5 +458,20 @@ merged41observer behavior and normal lifecycle authority are unchanged.
 Capacity derives from active marked/unmarked native claims UNION actual open operations,
 so41owned pre-marker release/invalidation naturally retires capacity and orphan claims
 remain counted. Transient rollback-confirmed storage failures retry the same factual
-binder fairly; definitive predicate mismatch parks. Uncertain commit reconciles only
+binder fairly on BOTH normal and late routes; deterministic constraint/encoding/trigger
+refusals park with attention. NormalReturned deferred binding is explicitly a non-failure
+while the genuine invocation retains the same returned identity/frame and owned launch. Uncertain commit reconciles only
 durable facts. No added native dispatch, owner refresh or new binder write is allowed.
+
+
+Binding and bound-live diagnostics advance Workflow W but never original native grant
+currency. Proposed #43 Design8 aligns #19 Design33's bounded sealed factual successor
+proof: each existing ONE reserved audit contains exact predecessor/successor W versions
+and complete canonical Workflow-body hashes anchored at the immutable marker. Only
+Store-derived genuine private links can qualify a later closure; current-row self-match
+or old original-W equality cannot substitute.256 links×4096 bytes,1 MiB total, with
+mandatory gate/closure headroom reserved before effects and optional diagnostics
+coalesced at exhaustion. No extra binder operation-row/table write or P/G/T/Session/
+lock/source/input refresh. Separate #19/#8 record-only gate claim/observation requires
+its own real gate/result/effect-owner authority and adds no Task bump before closure.
+These source/native/recovery producers remain unimplemented mandatory gates.

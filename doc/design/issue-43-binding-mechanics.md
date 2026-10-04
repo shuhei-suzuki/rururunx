@@ -75,13 +75,17 @@ original active attempt's absent Session ID inside the binder. Call private
 NormalReturned identity (or the private ClosedSettlement variant). The transaction
 reads its sole expected tuple from the immutable Store-derived marker frame; caller
 values only cross-check this tuple and cannot replace it. Do not
-refresh owners, recapture a newer Task version or retry this call on CAS failure:
+refresh owners, recapture a newer Task version or retry native/phase admission on CAS failure:
 that would silently accept revocation during native start. On success update only
 the caller's Workflow record to the committed version and return Started. Keep
 the caller's Task byte-for-byte at its pre-start snapshot/version.
 
-On any binding failure propagate an explicit error. Leave the already committed
-unbound dispatch claim and any durable Session intact. Do not call `fail`, retry
+A definitive binding refusal propagates a typed binding/refusal result, never a native
+failure. NormalReturned Transient or CommitUncertain returns StartedBindingDeferred;
+the genuine managed invocation retains the returned identity, immutable original frame
+and actual owned launch independently of the caller future. It retries/reconciles only
+that factual binding under the policy below. Leave the already committed unbound
+dispatch claim and any durable Session intact. Do not call `fail`, retry
 start, stop/adopt a Session, release the claim, or publish completion in that error
 path. Observer polling remains passive under #41; #13/#14 own reconciliation.
 
@@ -566,15 +570,25 @@ across timer/notification/evaluation wakes. Relevant changes invalidate the hint
 recheck actual proof; restart performs a bounded cold read then parks unsupported
 entries. Private outcomes distinguish Bound, AlreadyBound(same operation), DefinitiveRefusal,
 Transient and CommitUncertain. Definitive means an actually read frame/version/
-lifecycle/identity/private-proof mismatch. SQLITE_BUSY, temporary I/O or record/audit
-failure with confirmed full rollback is Transient: do not park it under an unchanged
-predicate key. Retry the SAME private binder/frame on later fair100ms–5s timer wakes,
+lifecycle/identity/private-proof mismatch. Deterministic encoding/size bounds,
+SQLITE_CONSTRAINT (including trigger RAISE(ABORT)), schema mismatch and writer-fence
+refusals are DefinitiveRefusal/integrity attention, parked without unchanged repeated
+Immediate attempts. Only SQLITE_BUSY/LOCKED or classified transient IOERR with confirmed
+complete rollback is Transient: do not park it under an unchanged predicate key.
+A record/audit INSERT failure is not automatically transient. Retry the SAME private binder/frame on later fair100ms–5s timer wakes,
 without owner refresh, native redispatch or phase failure. Persistent storage trouble
 reports attention with bounded backoff; it never converts to a terminal outcome.
 CommitUncertain performs bounded read-only reconciliation of exact Workflow/operation/
 audit facts before deciding Bound/AlreadyBound or confirmed unchanged rollback/retry;
 unknown never assumes either commit or rollback and cannot publish/retry native work.
-This is distinct from proof/lifecycle refusal and remains owned during caller Drop.
+These typed outcomes apply to BOTH NormalReturned and ClosedSettlement. On the normal
+route the owning invocation retains the exact returned identity/frame and reports
+StartedBindingDeferred, never Failed, while the native turn continues. Fair same-frame
+storage retry does not renew admission. If the original return delivery is lost, only
+a later genuine current successful receipt/full cleanup may qualify ClosedSettlement;
+unknown/current failure retains its separately reviewed closure/hold route. Definitive
+refusal does not redispatch. CommitUncertain reconciles actual exact durable facts and
+never equates an error with rollback. This remains owned during caller Drop.
 Hints grant nothing and persistence is unnecessary. Per-Project fair cursors
 prevent parked A entries consuming all B work. The genuine runtime driver and wait-
 register/recheck sequence recover lost notifications without a busy loop; numbers are
@@ -597,7 +611,7 @@ success. Restart requires authentic durable frame/current-success evidence AND a
 Actual #19/#23/#43/#14 producer ancestry co-integration is the merge vehicle; no
 completed-merge cycle or SQL-seeded/direct-binder-only acceptance.
 
-## Design7: separate record-only bound-live diagnostics
+## Design8: separate record-only bound-live diagnostics
 
 Current d87faec bound `poll` writes Task through refresh_owners + ordinary persist on
 adapter.status error and validate_persisted_status mismatch. Replace ONLY those arms
@@ -620,9 +634,10 @@ under Store. Stale Workflow or missing exact private proof holds/refuses unchang
 
 An accepted bound-live diagnostic is a Workflow factual revision only. It never
 updates the immutable marker frame or native currency. #19/#23 terminal/PhaseGates
-consumers use ordinary current Workflow Record CAS plus unchanged private native
-pins and genuine receipts. No diagnostic lineage journal/replay or frame refresh is
-needed. They still check actual current source/owners and settlement/outcomes, cannot
+consumers use exact current Workflow Record CAS PLUS the sealed factual Workflow
+successor proof below, unchanged private native pins and genuine receipts. This bounded
+factual ledger is essential to distinguish legitimate W revisions from drift; it never
+updates the marker frame or renews a native grant. They still check actual current source/owners and settlement/outcomes, cannot
 renew admission authority or discard existing evidence. Diagnostic replay/races do not bind
 or close anything. Inventory every actual Workflow persist/refresh_owners call at the
 source revision: marker pre-admission; binding sole private ID writer; these diagnostic
@@ -683,7 +698,8 @@ and binder runtime-instance checks independently and kill each at its real consu
 Both public audit APIs refuse EACH reserved private name; Workflow saved/bound count
 consumers use the exact private binding constant. Same-operation late bind then normal
 return yields Started, exactly one audit and no retry/fail/release. Diagnostics retain
-the full original frame and ordinary current-Record CAS, not durable lineage replay.
+the full original frame and current-Record CAS plus the bounded genuine factual
+successor ledger, never current-row self-adoption or refreshed native authority.
 All controls require actual co-integrated19/23/43/14 producers; isolated SQL/direct
 binder tests and this proposed design do not qualify production/native acceptance.
 
@@ -697,8 +713,8 @@ remain counted once. Independent connections/runtimes cannot over-admit. Kill a 
 which counts only marked operations or omits pre-marker active claims; exact restored
 consumer must pass. Capacity is derived, so there is no synthetic retirement-row test.
 
-After genuine late success, inject one actual SQLITE_BUSY or rolled-back audit INSERT
-failure: same versions/frame remain, then a real timer wake binds exactly once without
+After genuine late success, inject one actual SQLITE_BUSY/LOCKED or classified
+transient IOERR with confirmed full rollback: same versions/frame remain, then a real timer wake binds exactly once without
 restart, authority refresh or redispatch. A Transient-parking mutant must strand this
 actual-driver control. Definitive held controls still observe ZERO unchanged repeated
 Immediate binder transactions. Unknown-commit controls cannot infer success/retry.
@@ -710,3 +726,74 @@ one lock row with P/G/T unchanged. No production generic lock bypass is added. T
 is corruption/race injection, never private producer or positive cleanup evidence;
 the authentic operation/binder/native consumer supplies all positive prerequisites.
 Kill lock-check omission at that consumer; public SQL seeding is still not an owner.
+
+
+## Design8: bounded factual Workflow successor proof
+
+Co-integrate the proposed #19 Design33 contract at public cac5618. That dependency
+is itself under review, not implemented or source approved. The immutable marker
+anchors complete canonical Workflow body SHA256, planned post-marker W version,
+full P/G/T/context/source/actor/lock frame and operation identity. An unbound first
+binder compares that exact original W/body. Binding legitimately increments W;
+bound diagnostics and subsequent #19 phase closure must distinguish those genuine
+factual revisions from arbitrary current-row writes. Original P/G/T/full locks,
+context/source/input/actor/native-grant pins remain mandatory and NEVER refresh.
+
+The existing ONE reserved audit in the SAME binding/diagnostic Immediate transaction
+is also an append-only factual ledger link: exact scope/operation/attempt, original
+marker-frame digest, predecessor/successor W versions, COMPLETE predecessor/successor
+Workflow body SHA256 and prior ledger-link digest. First binding starts at the exact
+immutable marker W/hash. Checked consecutive W versions and the complete allowed
+projection are verified before writing; then re-read stored W/body/hash before commit.
+Binding changes only absent active.session_id to the variant-specific exact private
+allocated identity; diagnostic changes only the allowlisted bounded detail. No extra
+operation/table/count-row update, Task/Session write or default workflow.saved audit.
+
+Canonical body encoding is a versioned rrx.workflow-body-sha256/v1 recipe: recursively
+lexicographic UTF-8 object keys, original array order, compact serde_json string/number
+encoding of the COMPLETE stored Workflow data, including every field. SHA256 domain
+bytes are b"rrx.workflow-body-sha256/v1\0" followed by that encoded body. A private
+link digest uses b"rrx.workflow-ledger-sha256/v1\0" followed by the same canonical
+encoding of the complete immutable private link payload (it does not contain its
+own digest). First prior_ledger_digest is the exact immutable marker anchor hash.
+Unknown or
+unsupported fields reject; no projection/ignored-field hashing. The encoder, exact
+hash domain bytes and typed stored-body round trip need golden fixtures shared by
+marker, binding, diagnostics, gate links and closure. Record version/updated_at are
+checked separately as the prescribed metadata delta. Never hash caller-claimed values.
+
+Generated/indexed audit operation/frame/predecessor/successor keys plus uniqueness
+constraints identify exact consecutive genuine private links. Store alone derives the
+sealed CurrentWorkflowSuccessor from marker through latest link and exact current
+W/body. A reserved string/public audit/Session receipt/current-row self-match cannot
+mint it. Both public audit APIs refuse every compiled reserved private kind. Derivation
+is bounded to256 compact links per operation,4096 UTF-8 encoded bytes each,1 MiB total,
+charged to #19's existing128-MiB Workflow quota. Reserve binding and ALL required gate/
+closure links before effects; optional diagnostic budget exhaustion coalesces/no-writes
+with attention and cannot consume mandatory closure capacity or strand closure.
+
+#19/#8 managed gate-claim and outcome observation are separate record-only consumers,
+with rrx.private.workflow.gate_claim and rrx.private.workflow.gate_observed links.
+They may not bump Task before final atomic native phase closure. Those ports require
+their own genuine current gate/result authority; effectful gates also require actual
+#12/#60 owned jobs before effects. Pure evaluators require genuine typed input/results,
+not an invented external job. They preserve original grant/source/lock currency and
+the exact W factual chain. A native receipt alone cannot certify ReviewPassed or
+TestPassed. These are dependency integrations, not extra #43 binder/diagnostic writes.
+
+Required actual producer controls: genuine bind→diagnostic→successful gate/phase
+closure and genuine bind→diagnostic→current failure/explicit-retry hold; exhausted
+optional diagnostics still permit mandatory closure; rollback leaves zero link/write.
+Foreign W version/body drift, missing/different link, ordinary forged audit, altered
+marker anchor, illegal bind projection and cross-operation replay hold without new
+input. Kill omitted chain/hash/current-self-match mutants at real closure, then exact
+restored controls. No private SQL seeding or direct binder-only fixture qualifies.
+
+NormalReturned BUSY control must keep one actual native turn current, return typed
+StartedBindingDeferred and later bind once with zero Failed/redispatch/owner refresh.
+NormalReturned CommitUncertain must reconcile only exact durable bind/link facts;
+inconsistent/unknown results retain ownership. Deterministic trigger ABORT, over-bound
+encoding and writer-fence controls park with zero repeated unchanged Immediate calls;
+classifying a constraint as Transient must fail that consumer. Existing late-success
+storage retry controls remain mandatory. These contracts require independent review,
+actual #19/#23/#41/#43/#14 integration and native/source gates; none exists in main.

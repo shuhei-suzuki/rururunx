@@ -1,6 +1,6 @@
 # Issue 43 Design: Preserve native authority during Workflow Session binding
 
-**Status:** Design7 proposed from Requirements9 approved at91d4f34; independent
+**Status:** Design8 proposed from Requirements9 approved at91d4f34; independent
 design/source reviews and actual producer/native/recovery gates pending
 **Workflow:** STRICT  
 **Scope:** factual native binding, managed settled-success route and two bounded live diagnostics
@@ -89,7 +89,7 @@ The transaction may change only:
 
 ```
 Workflow.history[active_attempt].session_id:
-    None → exact returned SessionId
+    None → exact NormalReturned identity or private ClosedSettlement allocated SessionId
 
 Workflow.version:
     n → n + 1
@@ -129,7 +129,7 @@ Inside the same transaction:
 5. verify active attempt is Running and has no bound Session
 6. verify committed dispatch marker is the expected marker
 7. verify context pointer/identity remains current
-8. load the exact persisted returned Session
+8. load the exact Session from NormalReturned identity or private ClosedSettlement allocation
 9. validate immutable Session identity
 10. validate native identity uniqueness within the owning scope
 11. derive and validate mandatory private prepared-input allocation/input-pair owner
@@ -263,7 +263,9 @@ A held launch must demonstrate:
 
 Binding failure preserves the original reservation and any still-running Session.
 
-It never calls retry/release/recovery automatically.
+It never calls native/phase retry, release or recovery automatically. Rollback-confirmed
+transient storage binding may retry the SAME private identity/frame; NormalReturned
+returns StartedBindingDeferred while its genuine managed invocation retains ownership.
 
 ## 9. StateOnly semantics
 
@@ -347,6 +349,11 @@ context_version
 proof_source = normal_return | closed_settlement
 private_operation_ref
 private_receipt_ref = absent for normal_return, exact genuine receipt for closed_settlement
+original_marker_frame_sha256
+workflow_body_sha256_before
+workflow_body_sha256_after
+prior_ledger_digest = marker anchor for first binding, preceding private link digest otherwise
+canonical_body_recipe = rrx.workflow-body-sha256/v1
 timestamp = existing AuditEvent.at
 ```
 
@@ -416,8 +423,12 @@ On any failure:
 - do not send native input
 - do not send approval reply
 - do not claim completion
-- do not retry
+- do not retry native/phase admission or refresh the original frame
 - do not transfer ownership
+
+Rollback-confirmed transient storage retries and bounded uncertain-commit factual
+reconciliation use the SAME private frame/identity, with the typed non-failure normal
+return and retention rules in the mechanics. Deterministic refusals park with attention.
 
 ## 14. Verification plan
 
@@ -655,14 +666,14 @@ Protected Tasks reject Interactive/PTY startup and terminal input before any
 reservation, Starting row, spawn or terminal bytes; NonInteractive Workflow
 configuration alone does not protect the direct native adapter entry points.
 
-Design4 publication alignment was approved; Design7 actual #19/#23/#14 composition and independent review remain pending;
+Design4 and Design7 proposal reviews were approved; Design8 actual #19/#23/#14 composition and independent review remain pending;
 source remains absent. Positive post-binding decision and later typed closure
 must retain the exact consumed UUID/pair. A new Journal name is not itself proof
 of correctness; actual reply/closure controls and causal mutants are required.
 
-## 22. Design7 composition and diagnostic contract
+## 22. Design8 composition and diagnostic contract
 
-[Binding mechanics](issue-43-binding-mechanics.md) contains the detailed Design7
+[Binding mechanics](issue-43-binding-mechanics.md) contains the detailed Design8
 transaction, managed driver, diagnostic and extended control/mutation contracts.
 Requirements9 approved at91d4f34 governs both documents. Normal return and authentic
 settled-success registration use the SAME immutable full frame captured atomically
@@ -675,8 +686,9 @@ notification is recovered by bounded fair active-driver wake, never passive poll
 
 The separate record-only bound-live diagnostic port changes only bounded active detail,
 Workflow version/updated_at and a reserved audit; no P/G/T/Session/lock or native pin
-write. Consumers use ordinary current-Record CAS with unchanged private pins and genuine
-receipts, without diagnostic lineage replay or renewed grant authority. Actual held-native status-error and persisted/status mismatch controls
+write. Consumers use current-Record CAS PLUS the bounded sealed factual W-successor
+ledger anchored at the immutable marker, unchanged private pins and genuine receipts.
+Original P/G/T/source/context/full-lock/native grant pins never refresh. Actual held-native status-error and persisted/status mismatch controls
 and EACH branch's Task-rewrite mutant are required. No diagnostic binds, fails/retries,
 releases or grants. Known actual current failure uses #19 non-success closure without
 absent Session-ID binding; actual #14 restore/fencing gates restart. All private source,
