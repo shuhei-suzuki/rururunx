@@ -237,3 +237,10 @@ Integrated native Workflow acceptance also requires Issue43's reviewed record-on
 actor binding to preserve the admitted caller's Task currency while retaining
 exact scope/lifecycle/claim/private-slot CAS. Independent context core validation
 does not claim that pending cross-provider integration already works.
+
+
+A native actor allocation cannot certify a different historical input after
+prewire restoration: binding matches the exact current prepared frame, and success
+requires that input's admitted/consumed proof plus authoritative terminal outcome.
+Future instruction-authority changes require incompatible-writer exclusion as
+well as new semantic versioning, including already-open older runtimes.

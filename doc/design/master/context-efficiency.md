@@ -493,3 +493,10 @@ sends no new model input. Variant-cap exhaustion supports explicit idle consecut
 republish without discarding history. Idle unfinished Workflow hot-upgrade is not
 supported; compatible-runtime completion or explicit terminal cancellation is
 required, with remaining external effects reconciled.
+
+
+An allocated native owner is tied to its exact prepared input, not merely Session
+identity. Historical prewire restoration cannot certify a fresh phase. Pending
+preparation can bind actor identity; success also needs that input's private
+admission/consumption and Exited outcome. Semantic authority changes require both
+projection and persistence/writer-fence version changes.

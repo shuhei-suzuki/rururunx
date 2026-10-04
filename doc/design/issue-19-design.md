@@ -315,7 +315,20 @@ check any attempt.session_id binding or closure against the private allocation
 in the same transaction. Whenever an allocation exists, closing/replacing the
 active attempt requires that exact allocated Session to be persisted terminal,
 regardless of whether attempt.session_id has been bound; Succeeded additionally
-requires Exited. Bind or verify session_id to that owner atomically. A Running
+requires Exited AND current-attempt admitted/consumed input proof. Owner UUID and
+terminal state alone never identify the input. Any session_id bind/verify must
+match that Session's exact input version == attempt.context_version, payload SHA
+and byte count == immutable ContextVersion.data.payload, revision and complete
+source_versions == context authority, plus a matching private validated preparation
+or admitted pair. Pending Starting preparation may bind an actor without asserting
+delivery (Grok start returns before inference); Succeeded requires a matching
+private ADMITTED pair or actual consumed intent for those exact input pins.
+A Session restored to its older terminal snapshot after fresh prewire failure may
+close this allocation only as Failed/Interrupted with explicit not-admitted owner
+provenance. It cannot bind as the fresh input actor or satisfy Succeeded; retain
+session_id=None when no current input binding exists. The private preparation row
+for a failed pending input alone cannot certify delivery. Compare this proof under
+the same Workflow transaction, including the unbound-owner case. A Running
 Reviewer is operational ownership even though it is not an Executor reservation.
 An unbound claim cannot close around it, and another terminal Session is never
 release proof. Binding may update only the Workflow Record while retaining exact
@@ -346,8 +359,14 @@ paths are exact UTF-8 strings, Options encode explicit null, enums retain their
 serde spelling. Reject nonrepresentable paths; never normalize a scoped identity
 into another path. Exhaustively destructure domain structs when forming the
 projection, so adding a field fails to compile until its authority classification
-is reviewed. Authority changes require a projection version change and a reviewed
-persistence/drain policy; they cannot silently redefine an existing source key.
+is reviewed. EVERY projection-authority change requires BOTH a projection version change AND
+an ordered schema/writer-fence version change with reviewed drain policy. A
+same-schema concurrent older projection writer must never continue admitting its
+weaker view. Schema6 pairs exactly with projection2; a compile/test golden maps
+that supported pair and fails when the projection changes without the corresponding
+persistence/fence bump. Future versions install a new all-table required function,
+so actual older open writers fail; changing only a key or reclassifying an existing
+field is insufficient. They cannot silently redefine an existing source key.
 New durable Task packs record `instruction_projection_version=2` (historical
 packs decode a missing value as unknown, preserved without asserting v2 authority).
 This marker makes migration-only consecutive republish eligibility observable;
@@ -681,3 +700,49 @@ native-only phase context ownership. Integrated native acceptance requires the
 reviewed binding port and combined caller regression; a synthetic Store proof
 cannot substitute for that integration. Issue41 observer/release policy remains
 independent and unchanged by this context authority.
+
+
+Boundary proof binds allocation to the exact input, not UUID alone: reuse an owned
+Session UUID at a fresh native phase, fail prewire and restore its older Exited
+snapshot. Binding/Succeeded for the fresh phase must reject, while explicit
+not-admitted Failed/Interrupted closure remains possible with allocated-owner
+provenance. A legitimate exact private preparation can bind pending Starting,
+but not claim delivery. Verify both with actual caller ordering and mutation
+controls; the record-only binding port retains the same proof.
+
+Enable serde_json float_roundtrip for the shared checksum contract and use explicit
+sorted nested Value encoding. Golden fractional/large-integer diagnostics must
+survive serialize→Store read→checksum identically; payload hashes still use exact
+bytes and old checkpoint-v1 hashes remain unchanged. Any future JSON encoding or
+feature change affecting authority needs a reviewed persistence/fence change.
+Native consumers compute the pure shared helper on their exact prior Session
+snapshot, never on independently assembled recovery JSON.
+
+Private phase allocations additionally have no-update/no-delete/no-replace SQL
+triggers, preserving immutable scope/context/Session identity. Admission SQL
+constraints enforce pair nullability, lowerhex SHA, immutable owner scope and
+nondecreasing admitted version (an admitted pair cannot be cleared). Equal-version
+digest change remains the narrow private BoundHistorical code path with old-digest
+proof and permitted monotonic actor binding; SQL version constraints do not pretend
+to independently infer those typed actor fields from a hash.
+
+Variant cap recovery is bounded per context, not a global retention quota: each
+explicit idle cap-exhaustion republish appends one historical pack and at most128
+new variants. Repeated intentional preparations can grow audited history; no
+automatic force loop is permitted. Runtime retention/quota remains separate,
+without deleting authoritative history to manufacture availability. The earlier
+claim about unused force calls applies only when the cap has not been reached.
+
+Standalone re-admission by a new Session UUID is explicitly allowed after prior
+ownership is genuinely terminal, with fresh lifecycle/lock/Git/source/private-frame
+validation. One delivery per input attempt means (Session UUID,input version),
+not globally one delivery per Task/context. Same-UUID continuation needs a higher
+version; Workflow native phase slots retain single-owner context allocation.
+This permits explicit standalone retry without pretending that source freshness
+or persisted Task history is native wire proof.
+
+Store::open performs migration only, without application reconciliation/audit or
+native effects after the migration transaction. A runtime that invokes additional
+startup reconciliation closes the manual backup window immediately. The manual
+rollback precondition remains operator-attested; no automatic restore method or
+private safe-rollback certificate is introduced by this context contract.
