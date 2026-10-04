@@ -283,9 +283,12 @@ managed frame/operation port; Issue6 owns its native consumer and actual cleanup
 minimum unsupported boundary is an interim safety gate, not acceptance of required
 native consultation or interactive attachment.
 
-Decision roles also require genuine retained native lifetime ownership. Formal
-Workflow DecisionReview uses the actual Issue19 typed managed phase and private
-operation/settlement authority. Cross-agent ApprovalReviewer requires Issues9/10's
+Decision roles also require genuine retained native lifetime ownership. Existing
+formal Workflow Reviewer phases (RequirementsReview, DesignReview,
+ImplementationReview and SecurityReview) use the actual Issue19 typed managed
+phase and private operation/settlement authority. DecisionReview is only conceptual
+future decision-only terminology, not an existing Phase enum or callable port.
+Cross-agent ApprovalReviewer requires Issues9/10's
 separately reviewed retained decision-member/slot authority bound to the original
 pending operation, request, input and sources, with its own native settlement.
 A leased DecisionTask is only a pending design candidate, not an approved callable
