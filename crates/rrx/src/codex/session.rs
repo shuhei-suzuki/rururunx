@@ -3755,6 +3755,84 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn empty_approval_decisions_preserve_actual_consumed_fixture() {
+        for decision in [
+            OperationDecision::Approve,
+            OperationDecision::Deny,
+            OperationDecision::Cancel,
+        ] {
+            let mut fixture = ApprovalFixture::new(true).await;
+            // Actual component admission/CAS, not an injected consumed flag or
+            // a managed-operation certificate. No native input is sent here.
+            fixture
+                .reservation
+                .admit_dispatch(&fixture.authority.snapshot, &fixture.authority.request)
+                .unwrap();
+            let scope = fixture.reservation.session.scope.clone();
+            let store = fixture.reservation.store.clone();
+            let snapshot = || {
+                let store = store.lock().unwrap();
+                json!({"sessions":store.records(&scope,crate::domain::RecordKind::Session).unwrap(),"events":store.events(&scope,0,1000).unwrap()})
+            };
+            let before = snapshot();
+            let session_before = json!(fixture.reservation.session);
+            let version_before = fixture.reservation.version;
+            let pending_before = json!(
+                fixture
+                    .evidence
+                    .lock()
+                    .unwrap()
+                    .pending
+                    .as_ref()
+                    .unwrap()
+                    .pending()
+            );
+            let (mut rpc, mut frames, peer) = rpc_peer().await;
+            rpc.availability().set_fixture_inputs(false, false);
+            let sites_before = rpc.availability().sites();
+            let (reply, response) = reply(decision, "turn");
+            let answered = fixture.answer(&mut rpc, reply).await;
+            let response = response.await;
+            let sites_after = rpc.availability().sites();
+            drop(rpc);
+            bounded(peer).await.unwrap();
+            assert!(
+                frames.try_recv().is_err(),
+                "empty consumed approval sent native frame"
+            );
+            assert_eq!(
+                snapshot(),
+                before,
+                "empty consumed approval changed Session/audit"
+            );
+            assert_eq!(json!(fixture.reservation.session), session_before);
+            assert_eq!(fixture.reservation.version, version_before);
+            assert_eq!(
+                json!(
+                    fixture
+                        .evidence
+                        .lock()
+                        .unwrap()
+                        .pending
+                        .as_ref()
+                        .unwrap()
+                        .pending()
+                ),
+                pending_before
+            );
+            assert_eq!(
+                sites_after, sites_before,
+                "empty consumed approval changed Grant/Frame sites"
+            );
+            assert!(
+                !answered.unwrap(),
+                "empty consumed approval terminated pending turn"
+            );
+            assert_unavailable(response.unwrap());
+        }
+    }
+
+    #[tokio::test]
     async fn actual_supervisor_drains_stop_cancel_and_declines_without_inventing_terminal_proof() {
         for case in ["stop", "cancel", "decline", "ack_only", "foreign"] {
             let mut fixture = ApprovalFixture::new(true).await;
