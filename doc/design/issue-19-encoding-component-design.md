@@ -25,8 +25,10 @@ Keep the existing private `bounded(&impl Serialize)` consumer. Use a private
 counting `Write` sink with checked arithmetic and a delegating serde_json Formatter.
 The sink accepts an entire write chunk or returns an error, never partial/zero
 success. Before accepting, bound actual complete encoded bytes to1 MiB. Formatter
-begin_object/begin_array bounds nested containers to120 BEFORE their children are
-serialized; remaining methods retain CompactFormatter's exact encoding. Quoted
+begin_object/begin_array computes checked depth+1; above120 latches Depth BEFORE
+writing a delimiter or visiting children; otherwise increments then delegates the
+write. end_object/end_array delegates the closing write then checked-decrements
+after success. All other Formatter methods retain CompactFormatter's exact encoding. Quoted
 strings, escaped quotes/backslashes and UTF-8 are handled by serde_json rather than
 reparsed by an independent byte scanner. No output buffer or depth-sized stack is
 retained. There is no redundant token-count acceptance claim.
@@ -49,7 +51,10 @@ Store parser in the consistent-corruption negative fixture.
 
 Guard the persisted checkpoint Value BEFORE digest serialization/typed decode.
 Guard plain recognized TaskPack/GoalPack data in load_context BEFORE digest and clone/
-decode; reject unknown pack formats there without treating them as valid artifacts.
+decode. Opaque/legacy/general formats pass through load_context EXACTLY as today:
+no artifact guard and no new rejection; validate_task_reference/Goal descriptors
+retain their supported opaque provenance path. Typed loaders keep their own shape
+rejection. This is not a1-MiB limit on every historical/general ContextVersion.
 For a recognized Workflow phase ContextVersion, guard ONLY its nested task_pack
 artifact before its clone/decode (also validate_capture/context_artifact direct
 consumers), not the whole ContextVersion. Keep the post-typed artifact check too:
@@ -59,7 +64,12 @@ scope/kind/version/digest, shape and semantic checks remain mandatory. The whole
 ContextVersion digest necessarily retains its separate existing serialization;
 this component makes no allocation-cap claim for that full row/native payload.
 No publication, pointer, DB schema, transaction, native operation, migration or
-public API authority changes. Input Values/custom Serialize code may already own
+public API authority changes. The new120-depth guard and persisted-Value byte
+check intentionally refuse malformed/legacy shapes previously fitting only a
+shorter typed re-encoding or depth121–125: explicit bounded-artifact errors, no
+silently rewritten head or claim of lossless arbitrary legacy acceptance. Normal
+current typed writers emit the same Value/typed representation and much shallower
+fixed artifact shape; opaque contexts are unaffected. Input Values/custom Serialize code may already own
 memory; this guard bounds emitted validation, not arbitrary user code allocations.
 
 ## Actual impact inventory
@@ -76,7 +86,7 @@ Value guards above. No native or whole-row budget is silently changed.
 | context_pack.rs710/1039/1048 recent-history encoded accounting | IN: streaming exact encoded lengths, checked aggregate; no Vec just to count |
 | context_pack.rs515/530/614/1393 and context_pack/workflow.rs315/359 loaders | IN: matching artifact Value guard before digest/clone/typed decode |
 | adapter/grok/schema.rs24 schema16-KiB check | OUT: separately owned provider schema contract, not context artifacts |
-| context_pack/workflow.rs141/157/285/330/462/472 rendered payload and native-input cap | OUT: actual payload bytes are retained for delivery;1-MiB native frame unchanged |
+| context_pack.rs890 prepare header; context_pack/workflow.rs141/157/285/330/462/472 rendered payload and native-input cap | OUT: actual payload bytes are retained for delivery;1-MiB native frame unchanged |
 | context_pack.rs1562 digest,1575 projection; context.rs inventory/source encoding; workflow.rs1036 Context input | OUT: required hashes/materialization/general native contexts; broader allocation/source ownership pending their gates |
 
 ## Verification and acceptance
@@ -93,8 +103,29 @@ corrupted oversize/deep stored artifact negative. Recompute its reference digest
 retain all other valid identity/semantic/history pins, and assert the EXACT byte/depth
 error; the size/depth-omitted mutant must reach later acceptance rather than fail
 on digest/parser/shape. Corruption is a negative fixture, never positive ownership.
-Publish/reload a maximum-depth bounded synthetic artifact through the actual Store
-codec and loader, with a valid checkpoint producer/control separately retained. All original digest/semantic checks must still run for a fitting artifact.
+Publish/reload a maximum-depth bounded synthetic general artifact through the actual
+Store codec (nongating, no checkpoint/native authority), with a valid checkpoint
+producer/control separately retained. Existing embedding is Record.data or
+ContextVersion.data, phase artifact at ContextVersion.data.task_pack; source Engine
+retains only refs/contextVersion in Workflow history, not a full duplicated artifact.
+Pin these actual envelope paths/depths in tests; no future uninspected embedding is
+assumed safe. All original digest/semantic checks must still run for a fitting artifact.
+Allocation-observable tests scope a test-only thread-local counting System allocator
+to the validation call, after constructing its8-MiB input. Assert total Rust allocation
+requests during streamed validation≤64 KiB; report the measured value, not an OS/RSS
+claim. A compiled revert-to-to_vec-before-count mutant MUST fail this check. For EACH
+new loader pre-guard branch, compare allocation requests to the actual Store parser-
+only baseline for the SAME oversized fixture, allowing at most64-KiB extra guard/
+error overhead; removing/moving that guard after digest/clone/decode must exceed it.
+Use fitting genuine artifact controls, exact recomputed digest and otherwise-valid
+pins, and assert the named byte/depth error. Include direct context_artifact/
+validate_capture input guards, excluding whole-context digest costs from that
+particular comparison. Opaque Task context in publish_goal/validate_goal must remain
+accepted with typed_context=false; an unknown-format-rejection mutant must fail it.
+A10,000-sibling shallow array must pass; omitted end-decrement must fail it. Cheap
+kind/scope/version checks precede the raw checkpoint guard, which precedes digest;
+foreign-kind/scope oversized data still yields the original identity refusal.
+
 Existing context artifact integration tests must pass. Compile independent mutants
 omitting the byte limit and depth limit, with passing controls reaching the intended
 actual-consumer assertions. Controlled fixture Git/provenance is component evidence,
