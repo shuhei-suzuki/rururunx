@@ -2370,6 +2370,7 @@ async fn supervise(
             Some(Cause::Failed(error.kind, error.message))
         }
     };
+    sender.send_replace(status.clone());
     // Drop's conservative publication, if required, is part of this attempt's
     // last act and precedes its own level-triggered Finished signal.
     drop(reservation);
