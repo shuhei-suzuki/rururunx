@@ -258,7 +258,7 @@ The command examples above describe the MVP target. Currently implemented:
   usage remains null. Provider adapters and execution/workflow CLI commands are
   still being implemented. See [adapter design](doc/design/issue-4-design.md).
 
-- Issue55 [cleanup provenance design](doc/design/issue-55-design.md) is proposed;
+- Issue55 [cleanup provenance design](doc/design/issue-55-design.md) is approved; its source candidate records bounded terminal facts, with independent source/CI gates pending;
   no process/PID/Lost safety change or native acceptance is claimed.
 
 ## License
