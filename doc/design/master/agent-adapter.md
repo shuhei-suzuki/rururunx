@@ -462,16 +462,20 @@ published as current. All native/runtime parties need real continuous both-side
 compatibility and already-live peer→Lost protection, preserving four-plus product
 concurrency. These are pending consumer contracts, not available ports.
 
-The proposed Design4 separates freshly revalidated non-executing pre-reservation
+The proposed Design5 separates freshly revalidated non-executing pre-reservation
 readiness from attempt-bound permits. Flags also require the actual callable route
 producer/hold consumers; managed-only readiness cannot advertise legacy start. The
 managed operation/claim/control handoff is synchronous before the observation future
-or any await; synchronous handoff performs no filesystem I/O, only in-memory epoch/
+or any await; synchronous handoff is strictly I/O-free, only in-memory epoch/
 claim/exclusion checks. Metadata/env identity checks are bounded async before reserve
 and inside the retained task. Remove the executing codex --version probe; conformance-
 bound nonexec metadata supplies that identity. One runtime table across adapter aliases
 stores physical extents separately from actual exclusion edges, with fixed activation
-caps and guaranteed owner-partition quotas; unknown cleanup retains anchors. Genuine complete cleanup may
+caps and per-attempt pools reserved also for approval members; unknown cleanup
+retains original preallocated slots. Anchor-free partitions deactivate and refreeze
+on activation; refusal-only durable holds consume no active partition. Complete forwarded
+native/tool/Git environment and discovery-derived provider references are bound
+privately before reservation; executing discovery cannot add code selectors. Genuine complete cleanup may
 retire a resource anchor while the durable absorbing Lost hold remains. Session-less
 owners retain an operation-keyed private observation/cleanup route, never PID adoption.
 Refusal-only held entries survive retirement/restart without reconstructing owners.
@@ -483,10 +487,15 @@ precedes adoption through pending14/58/60, never record/PID reconstruction.
 Adapter Git/helper execution is explicitly the pending #60 route with sealed job
 enrollment, non-transferable parent/epoch child bindings, bound executable/config
 closure and its own actual job settlement feeding a native cleanup conjunct
-at native completion. Checkpoint-success needs separately composed #19 input-update
-publication plus #60 workload cleanup; refusal/terminal labels cannot mint it.
+at native completion. Required fresh input maps to a NEW actual19 managed Continue
+operation/preparation/admission; prior receipt is provenance only. Legacy protected
+checkpoint/resume refuses. Pure artifact staging cannot rewrite old Session pins;
+a standalone checkpoint-success route is optional pending obligation, not a required
+receipt invented for managed continuation.
 Preparation/discovery/grant/inspection spawning requires genuine enrollment and a
-mechanical spawn-inventory guard. Private cfg(test) route/native/job issuers preserve
+mechanical spawn/exec/fork/PTY/transitive Drop-inspector inventory guard. Coordinator
+never spans Store/I-O; no blocking/reentrant claim Drop or SQLite in handoff.
+Private cfg(test) route/native/job issuers preserve
 actual F4 consumer coverage without production bypass; ordinary library emptiness
 and diagnostic-pinned privacy plus production-refusal mutants are separate gates. Current
 source authority is `cab665d56f7032f086946c1acfce448f5b9d076d`, unchanged by these docs.
