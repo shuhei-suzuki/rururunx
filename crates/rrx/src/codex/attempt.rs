@@ -128,7 +128,7 @@ impl Control {
         self.phase.send_replace(Phase::Supervised);
     }
     pub fn finished(&self, outcome: Outcome) {
-        let _ = self.phase.send(Phase::Finished(Arc::new(outcome)));
+        self.phase.send_replace(Phase::Finished(Arc::new(outcome)));
     }
     pub fn spawn(
         self: &Arc<Self>,
