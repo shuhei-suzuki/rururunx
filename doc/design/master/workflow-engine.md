@@ -207,7 +207,8 @@ Expected behavior:
 - Task creation establishes Context Pack v1
 - requirements/design/implementation milestones update the Context Pack
 - commit/revision changes invalidate stale diff/review slices
-- review launch freezes a deterministic Review Bundle for that Review Set
+- proposed Issue9 review launch freezes a deterministic Review Bundle/core per round;
+  later deltas use an eligible full-coverage baseline and complete current impact scope
 - re-review prefers a delta bundle from the previous reviewed revision
 - dynamic workflow escalation may add required rules/artifacts and therefore creates a new Context Pack version
 - context expansion requested by an agent is recorded but does not silently rewrite authoritative artifacts

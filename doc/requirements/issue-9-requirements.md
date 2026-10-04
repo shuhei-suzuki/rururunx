@@ -125,6 +125,14 @@ two policy-designated slots each excluded from all recorded authors.
 Each confirmer must differ from every recorded delta author in registered agent
 identity and native provider family, and a two-confirmer pair must also differ from
 each other in both registered agent identity and native provider family; alias/allow-duplicate-agent permission cannot create dismissal independence.
+Confirmer designation is frozen in activated policy before round admission; no
+post-opinion Workflow selection can pick favourable confirmers. Any eligible
+non-author still-present or equivalent non-clearing disposition contradicting a
+proposed clearance for that same finding/current target is disputed verification:
+it holds for trusted Human, including an original finder dissent against two diverse
+confirmed-fixed opinions. Earlier unresolved contradictory evidence remains retained
+and requires explicit adjudication, not erasure by majority. Trusted Human resolution
+can adjudicate the conflict but never replace the independent certificate floor.
 Inputs separate original finding and actual repository evidence from the labelled
 executor dismissal claim, never presenting that claim as fact. Disputed evidence holds for Human.
 A fix candidate records actual commit/delta/check artifacts and the author's
@@ -231,10 +239,19 @@ Policy bounds: 1–32 slots, 1–32 local parallel launches, 64 cumulative round
 findings per result, 8192 UTF-8 bytes per finding and 1 MiB per factual bundle/result
 envelope. Limits are simultaneous ceilings: maximum count does not promise every
 maximum-size text fits the envelope. No semantic truncation occurs. A 128 MiB
-cumulative Task/phase-lineage artifact quota prevents unbounded retained output.
+cumulative Task/phase-lineage artifact quota bounds ACTUAL RETAINED rrx evidence,
+not repeated delivery bytes. This clarifies/revises the earlier ambiguous expansion-
+delivery charge: charge owned copied blobs once by exact content/owner identity plus
+EVERY distinct persisted frame/manifest/reference/row; a shared identical blob may
+deduplicate, but two actual copies cannot be hidden by equal hashes. Git-object-backed
+external immutable source references charge their retained manifests and any actual
+rrx copy, with explicit external owner/availability/bounds. References never make
+retained storage free or permit unbounded source delivery. Missing/unavailable exact
+source evidence holds rather than reconstructing invented bytes.
 Before any round input, reserve sufficient worst-case retained charge for every
 roster slot: actual frozen core/frame bytes plus each bounded result, diagnostic,
-expansion allowance, retained native Session/private owner/pair/operation/receipt/
+the worst-case RETAINED expansion representation (copied bytes or exact immutable
+reference/manifest with known owner bounds), retained native Session/private owner/pair/operation/receipt/
 usage/audit row overhead from the actual reviewed producer contract, and shared
 verification/journal allowances. Missing/noncomputable profile bounds refuse before
 input. Stable source metadata can be charged by its known bytes; dynamic fields use
@@ -243,7 +260,7 @@ their frozen upper bound. Numeric bounds are
 per slot, 8 MiB verification/check artifacts and 4 MiB bounded control/adjudication/
 attention/manifests per round, plus core and member-frame bytes and the existing
 expansion ceilings. These are simultaneous bounds, not a promise every maximum
-configuration fits128 MiB. If remaining quota cannot cover the complete reservation,
+configuration fits 128 MiB. If remaining quota cannot cover the complete reservation,
 reject before input. In-flight admitted results/prefixes/diagnostics always fit the
 reservation; overflow records its bounded evidence and never counts as approval.
 Actual retained bytes consume quota; unused reservation can be released only after
@@ -262,14 +279,27 @@ Native-admission startup timeout is 1–3600 seconds, default 60, beginning at
 permit acquisition before spawn/handshake/auth/capability checks. The separate
 review timeout is 1–3600 seconds after native admission, default 600. A separate
 settlement deadline of 1–3600 seconds (default 30) starts at any cancellation,
-startup/review expiry or terminal cleanup request. All three are frozen in policy. A profile
+startup/review expiry or terminal cleanup request. For normal completion it starts
+at the earliest owned supervisor acceptance of a COMPLETE terminal review result,
+owned native terminal event or explicit cleanup request; natural exit does not wait
+for a close request. Streaming/partial opinion tokens are not a complete terminal
+result. Store the monotonic start/cause once and never restart/extend it on subsequent
+cleanup stages. All three deadlines are frozen in policy. A profile
 requires reviewed normal post-result cleanup shape and observed/declared latency
-envelope from its actual production caller contract. The configured settlement
-deadline must exceed that envelope; if unavailable or too short, the preset refuses
-before member input. With default30, a known envelope strictly below30 seconds is
-accepted; an envelope at/above30 or unknown refuses. Default30 is provisional, not
+envelope from its actual production caller contract: a reviewed upper bound of the
+supported NORMAL cleanup path through actual owned settlement, including required
+native/tool/server shutdown stages and bounded dispatch/scheduling overhead. A p95,
+typical latency or single observation is not that contract bound. Unknown tails or
+unbounded required stages make the profile unsupported; exceptional OS/ownership
+uncertainty remains the explicit held outcome. Durations use integer milliseconds;
+strict deadline>envelope gives at least 1 ms normal-bound margin, without claiming a
+universal timing guarantee. This conservative minimum is provisional and actual 16
+measures its practical sufficiency; no statistical percentile substitutes for proof.
+The configured settlement deadline must exceed that envelope; if unavailable or too short, the preset refuses
+before member input. With default 30, a known envelope strictly below 30 seconds is
+accepted; an envelope at/above 30 or unknown refuses. Default 30 is provisional, not
 an asserted native guarantee.
-A supported explicit non-default deadline remains within1–3600. OS/uncertain cases
+A supported explicit non-default deadline remains within 1–3600. OS/uncertain cases
 still yield the declared held outcome; a contract bound is not a universal deadline
 guarantee or real-model timing proof.
 Terminal cleanup includes normal completion after a valid APPROVE: slow cleanup
@@ -397,14 +427,14 @@ budget and authorship set; the old uncertified history stays explicitly unaccept
 and cannot acquire a certificate or disappear. No certificate-floor override exists.
 
 Actual Lost/uncertain native/resource holds retain their full reviewed effect scope
-until trusted14 recovery. Root/common-Git overlap can still fence the whole Project
+until trusted 14 recovery. Root/common-Git overlap can still fence the whole Project
 or physically overlapping Projects regardless of disjoint review obligations;
 new labels, merge, Human opinion or separate worktrees never release those holds.
 Lineage states are uncertified-open, certified-pending-merge, certified-and-merged,
 held, exhausted and terminated-without-certificate. A certified target handed to
 the registered base by an actual scoped merge artifact proving that same reviewed/
 accepted target contribution is certified-and-merged and becomes legitimate upstream
-attribution for a new unrelated Task under10.a without inheriting its review budget/
+attribution for a new unrelated Task under 10.a without inheriting its review budget/
 author exclusions. Its original locks/operations still retain their actual scope.
 The accepted certificate and actual merge artifact bind exact reviewed target/
 contribution; generic Merged/Completed labels, names, claimed merge or Git reachability
@@ -441,7 +471,9 @@ slot has a potential/verified blocker or nonapproval. Mixed transient failure an
 REQUEST_CHANGES/ESCALATE cannot resample that dissent: cause(a) concern-linked
 inspection or explicit Human adjudication is required. At most two such
 full-roster retry rounds per lineage
-and at most one per provider-family/error-kind cause. They consume the same 64-round
+and at most one per (lineage, exact target tree, provider-family/error-kind) cause.
+The same cause on a changed target can consume the remaining lineage-wide allowance;
+changing tree never resets the separate two-retry ceiling or 64-round quota. They consume the same 64-round
 and artifact limits. A repeated proof/cause, exhausted retry allowance, unresolved
 partial result or Lost requires Human/recovery rather than another automatic sample.
 Repeated blind same-target sampling is not authorized by the lineage ceiling.
@@ -708,8 +740,9 @@ runtime plumbing, not real native-model acceptance reserved for #16.
 
 **14.a — Expansion bounds.** Expansion has frozen per-(round, slot) request limit 1–64 (default 8) and cumulative byte
 budget 1–8 MiB (default 1 MiB), with at most 1 MiB per returned artifact and 32 MiB
-aggregate expansion bytes per round. Every expansion artifact/manifest counts
-against the 128-MiB lineage quota. Exhaustion holds NeedsContext with recorded
+aggregate expansion bytes per round. Every actual retained expansion blob/manifest/reference counts
+against the 128-MiB RETENTION quota by 14.c. Every delivery, including repeated identical
+content, separately consumes frozen per-slot/round actual-byte budgets and telemetry. Exhaustion holds NeedsContext with recorded
 count/bytes; no semantic truncation or context-pointer update hides it. Independent
 expansion input retains the same guarded core/target/provenance exclusions.
 
@@ -732,7 +765,10 @@ requires safe round settlement plus a verified committed target before new revie
   blockers. It preserves diagnostics/partial output and holds on partial findings
   until independent resolution. STRICT/security rejects enabling it.
 - **17.c** New concern-linked inspected verification authorizes only one autonomous confirmation round per lineage/tree. Sequential fresh inspections of different Low findings after nonblocking dissent reject a second automatic same-tree round; unrelated inspections and repeated rationale without new evidence reject. Two safely settled transient retry rounds consume
-  lineage budgets; repeated causes/exhaustion/partial/Lost do not automatically retry.
+  lineage budgets; repeated cause on the same tree/exhaustion/partial/Lost do not
+  automatically retry. Test the same cause on a changed tree accepts only with the
+  remaining lineage-wide allowance, and a third transient retry requires Human.
+  Criterion 21/#16 reports both repeated-same-tree and lineage-wide-ceiling interruptions.
   Mixed diagnostic-only transient failure plus nonblocking REQUEST_CHANGES rejects
   cause(b) autonomous retry; all-other-APPROVE diagnostic-only failure may permit it.
 - **17.d** Missing/unresolvable/undeliverable required review/security instructions or skills
@@ -781,7 +817,7 @@ explicit eligible custom roster. Human authorship remains separately attributed.
     separately in the input/certificate; author or same-family alias cannot clear it.
     Under any/all/supersession no unresolved prior blocker disappears.
 20. Default QUICK Triple with a document-drafting family and a different code-author
-    family rejects self slots before input; explicit allow-self can collect their
+    family rejects the roster before input, naming excluded self slots; explicit allow-self can collect their
     opinions, while only eligible non-author approvals meet the floor. A distinct
     agent alias of an author family follows the same rule. STRICT with one eligible
     slot rejects; a permitted custom non-author roster remains usable. After every
@@ -807,7 +843,9 @@ explicit eligible custom roster. Human authorship remains separately attributed.
     including accumulated claims), 20.a/20.b (two-author STRICT and zero-eligible
     roster availability), 21.b (partial-output early-stop/Human attention), and
     21.c/21.d (normal/cancel/timeout settlement holds, capacity and Task-time).
-    It additionally requires 9.f Human-only blocker clearance impact,
+    It additionally requires 8.h claim exposure/verdict-input exclusion, 11.e narrow/
+    widened native effect scope, 14.c retention versus finite actual-delivery/provider
+    metrics (actual #21 telemetry), and 9.f Human-only blocker clearance impact,
     18.g normal cleanup bound/profile readiness, 11.d scoped applicability/resource impact and
     round/artifact-quota exhaustion frequency, retained
     Task-time and decomposition/termination impact (14.e below). Branch blob URLs
@@ -817,10 +855,10 @@ explicit eligible custom roster. Human authorship remains separately attributed.
     requires traceability, not completion of #20 or a cyclic merge dependency.
     Status/Human attention must state that no in-runtime Human action can release
     a Lost hold before trusted #14 recovery. This canonical handoff additionally
-    covers21.e trusted15/24 Human ingress,21.f actual5/6/7 producer contract ownership,
-    and21.g actual14/27 fairness/resource recovery and12 verification evidence.
+    covers 21.e trusted 15/24 Human ingress,21.f actual 5/6/7 producer contract ownership,
+    and 21.g actual 14/27 fairness/resource recovery and 12 verification evidence.
     Public tracking, rather than those downstream implementations, is required
-    before9 closure; no cyclic merge dependency is introduced.
+    before 9 closure; no cyclic merge dependency is introduced.
 
 **21.b — Default measurement handoff.** Safe retry/timeout defaults are retained until real #16 measurements justify a
 separately reviewed policy change. Native dogfood reports how often partial-output
@@ -958,10 +996,26 @@ terminal-only exits.
 permanently hold a Task and its capacity even after late owned cleanup; this accepted
 Core availability risk must be stated in the public Issue and #16 handoff.
 
-**14.c — Retained artifact accounting.** Shared core stored once per round is
+**14.c — Retained artifact accounting.** The 128-MiB quota bounds actual retained
+rrx evidence, separate from cumulative actual delivery. Shared core stored once per round is
 charged once to lineage artifact quota; distinct member frames, results, expansions
 and manifests are charged by actual retained bytes, including duplicated core bytes
 when a member frame stores them. Actual native input bytes remain measured.
+Identical source blobs can be deduplicated by actual ownership/content identity;
+separate copies/rows/manifests all charge their actual retained bytes. Immutable
+external Git source references charge their persisted metadata and any rrx copies,
+with declared external owner/availability/bounds. Repeated delivery of that source
+still counts every actual UTF-8 byte against the frozen expansion ceiling. Across
+shared 64 rounds,32 slots and 1-MiB complete prepared frames plus 32-MiB aggregate
+expansion per round, rrx-controlled prepared-frame+expansion delivery is finitely
+bounded by 4 GiB per obligation lineage (including descendants/successor Sets),
+not an unlimited reference exemption. Native added prefixes/wire envelopes have
+separate actual producer bounds and nullable native telemetry;4 GiB never claims
+native auto-loaded context or token/cost measurement. Test deduplicated/reference-
+backed repeated large coverage with every delivery charged and distinct metadata
+retained, plus copied-content reservation/quota exhaustion before round 64. #16
+reports retained versus delivered bytes, amplification and quota-before-round-limit
+frequency separately under 21; actual 21 provider token/cost counters remain nullable.
 All retained ReviewSet evidence consumes the same 128 MiB lineage quota, including
 transport diagnostics, verification/check logs, adjudication, attention records,
 manifests, result/expanded/member frames and claim/exposure records. No uncharged
@@ -1036,7 +1090,7 @@ the declared NeedsContext/termination availability outcome, measured by #16.
 activated explicit allow-duplicate-agent or production-registered aliases of the
 MVP adapters, with that permission visible. Fixture-only registrations cannot pass.
 
-**10.d — Delta coverage scope.** Round1 requires complete Task-base→target
+**10.d — Delta coverage scope.** Round 1 requires complete Task-base→target
 review coverage delivered to each slot. A later certificate-capable delta round
 may use an exact settled full-coverage baseline with the same frozen roster,
 policy, governing instructions and obligation scope. Current relevant source/rule
@@ -1045,7 +1099,14 @@ unrecorded source/rule drift invalidates baseline eligibility. Every baseline sl
 complete delivered coverage and a structured complete opinion, with actual native
 settlement and no Lost/partial/failure. No prior approval is carried into counts.
 The new required coverage is cumulative baseline→current target delta plus all
-unresolved claim locations/evidence and current mandatory core; there may be no
+unresolved claim locations/evidence and current mandatory core, PLUS all affected
+consumers of changed symbols/APIs/constants/thresholds/environment names/input sets/
+paths/dependencies. Exact current-target impact evidence under the typed consumer
+contract identifies those required unchanged callers/consumers and inspected scope;
+missing/stale/unknown impact closure invalidates delta eligibility and forces full
+Task-base→target coverage. A full fallback still preserves explicit impact-analysis
+verification obligations; broad diff delivery alone is not semantic impact proof.
+There may be no
 unresolved finding outside that required scope. The certificate explicitly binds
 baseline round/tree/coverage and new delta coverage, rather than claiming each fresh
 Session reread unchanged files. Intermediate delta rounds never become a new full
@@ -1053,7 +1114,10 @@ baseline just by producing APPROVE. Missing/nonqualifying baseline, changed rost
 policy/instructions/scope or unresolved outside required coverage forces full
 Task-base→target delivery before certification. Test qualifying delta continuation,
 rejected delta-only without baseline, unchanged-file coverage provenance, cumulative
-multi-fix delta and full fallback. All actual deliveries charge frozen quotas.
+multi-fix delta, a changed contract with unchanged callers requiring their delivered
+coverage, stale/missing impact evidence and full fallback. Actual delivery counts
+against frozen slot/round byte ceilings even when referenced source is deduplicated;
+retention follows 14.c, not a second charge per delivery.
 
 **8.g — Consumer contract ownership.** Actual Git-backed bundle, revision/identity
 delta and expansion fixtures conform to the typed consumer contract owned by #9.
@@ -1073,8 +1137,8 @@ and actual native/resource-scope blocking. Human opinion cannot release Lost or
 waive the certificate floor. The prior unconditional Project-wide ancestry veto was
 an availability defect and is replaced by this evidence-bound scope rule.
 
-**14.f — Queue attention bounds.** Queue threshold0/3601 rejects;1/3600 is accepted
-within the remaining policy, default600 is recorded. Queue expiry never invents a
+**14.f — Queue attention bounds.** Queue threshold 0/3601 rejects;1/3600 is accepted
+within the remaining policy, default 600 is recorded. Queue expiry never invents a
 native timeout or releases an owned operation.
 
 **9.e — Original finder identity.** A non-finder duplicate slot sharing an agent
@@ -1112,21 +1176,24 @@ reserved capacity; safe closure releases only unspent reserve, never actual hist
 **13.a — Post-certificate veto.** Later actual evidence raising a certificate-bound
 Low into the effective blocking set makes that original certificate stale/non-
 consumable while preserving it. A downstream actual review-gate consumer rejects
-it; already irreversible merge/PR outcomes stay factual for13 reconciliation, never
+it; already irreversible merge/PR outcomes stay factual for 13 reconciliation, never
 fabricated rollback. A new certificate requires applicable current review authority.
 
 **9.f — Clearance availability.** If neither an eligible original finder nor a
 pair of diverse non-author confirmers exists, blocker clearance is trusted Human-
 only and holds until that adjudication or termination; quorum/allow-self cannot
 clear it. #16 measures this Human-interruption frequency/Task impact, distinct
-from independent approval-floor availability, under criterion21's canonical handoff.
+from independent approval-floor availability, under criterion 21's canonical handoff.
 
-**18.g — Normal cleanup bound.** Actual5/6/7 caller conformance identifies normal
-post-result cleanup shape/envelope. At default30, a known envelope strictly below30
-seconds accepts; at/above30 or unknown refuses before input. Test29.9/30/unknown and
-a supported configured deadline strictly greater than its known envelope, within1–3600. Repeat
+**18.g — Normal cleanup bound.** Actual 5/6/7 caller conformance identifies normal
+post-result cleanup shape/envelope. At default 30, a known envelope strictly below 30
+seconds accepts; at/above 30 or unknown refuses before input. Test 29.9/30/unknown and
+a supported configured deadline strictly greater than its known reviewed upper bound,
+within 1–3600. Test the one-time normal-result timer start for natural exit and
+runtime-requested close, duplicate terminal events without extension, and rejection
+of a percentile/typical-only envelope. Repeat
 normal-completion expiry through actual owned supervision and expose held ownership.
-Before actual14 recovery and required production native proof, these library/synthetic
+Before actual 14 recovery and required production native proof, these library/synthetic
 certificates are integration evidence, not production merge gate readiness. The MVP
 still requires actual native acceptance; synthetic timing does not validate defaults.
 
@@ -1136,36 +1203,59 @@ prior-finding dispositions through the typed production consumer contract. Prove
 eligible finder’s confirmed-fixed with exact inspected locations/check evidence clears
 its prior High after a new full round, while general APPROVE, unknown hash, stale target,
 wrong slot/family, malformed disposition or executor-only claim keeps the veto.
+Finder still-present versus two diverse confirmed-fixed holds for trusted Human;
+post-opinion confirmer redesignation rejects.
 Retain every original finding/opinion and disposition independently.
 
 **21.e — Trusted product Human ingress.** Issue9 owns the library authority/ingress
-contract and negative native/Workflow/Broker JSON/API/IPC tests. Actual15 TUI and24
+contract and negative native/Workflow/Broker JSON/API/IPC tests. Actual #15 TUI and #24
 Goal/controller handlers must publicly own their composition for every Human-only
 adjudication, policy/scope/supersession and termination exit, including exact scoped
 reason/evidence and principal provenance. No such handler is claimed implemented.
 Until available, status exposes integration-pending/nonactionable attention rather
-than a fictitious button/CLI escape. Public acceptance quotes this stable ID before9
+than a fictitious button/CLI escape. Public acceptance quotes this stable ID before 9
 closes; product handler completion remains a separate MVP gate, not a9→15 merge cycle.
 
 **21.f — Native contract producer ownership.** Issue9 owns consumer conformance and
-runtime declaration checks; actual5/6/7 adapters or explicitly linked reviewed follow-up
-Issues own producer obligations for8.c fresh no-resume native identity,16.b/18.g normal
+runtime declaration checks; actual 5/6/7 adapters or explicitly linked reviewed follow-up
+Issues own producer obligations for 8.c fresh no-resume native identity,16.b/18.g normal
 cleanup shape/bounds,18.c requested/effective configuration,16.b/16.c runtime read-only
-permission construction and8.a available access traces. Public owner entries identify
-exact supported profiles and refusal limits before9 closes. Existing declarations or
+permission construction and 8.a available access traces. Public owner entries identify
+exact supported profiles and refusal limits before 9 closes. Existing declarations or
 synthetic fixtures do not assert these producers or real native acceptance complete.
 
 **21.g — Fairness with held shares.** ReviewSet retains exact global/Project/provider
 shares under Lost; its local parallelism/per-Project cap never releases them or invents
 extra capacity. Prove remaining actual capacity progresses a disjoint Project and
 report zero-eligible-capacity as held-resource starvation, not runnable scheduling
-success. Actual27 fair admission and14 trusted recovery must publicly own cross-Project
-progress with real held shares, using12 verification evidence and16 scoped metrics.
+success. Actual #27 fair admission and #14 trusted recovery must publicly own cross-Project
+progress with real held shares, using 12 verification evidence and 16 scoped metrics.
 If a Project can consume all global/provider capacity in retained uncertainty, that
 cross-Project availability gap is explicit until the reviewed scheduler/recovery
 composition;9 library tests/measurements alone cannot satisfy MVP fairness. Tests keep
 root-scoped holds while allowing truly disjoint progress when limits permit. Status
-and16 distinguish actionable Human attention from recovery-pending/nonactionable holds.
+and 16 distinguish actionable Human attention from recovery-pending/nonactionable holds.
+
+**8.h — Prior verdict input exclusion.** Runtime member input/expansion excludes
+separate prior-round verdict/approval-tally/non-finding peer-opinion fields, including
+a same-tree transient retry after other prior slots APPROVEd. Mandatory finding
+resolution-status metadata is about finding applicability/adjudication, not vote
+counts. Preserve exact original finding claim text/hash and recorded prior delivery:
+that prose can incidentally state an opinion and remains labelled attributed claim,
+not a promise of semantic blindness. Private retained outcomes/certificates keep
+prior verdicts for provenance, never feed them back as vote hints. Actual 16 reports
+claim exposure/residual native memory separately; no history/state deletion bypass.
+
+**11.e — Native hold effect scope.** A supported formal read-only member’s declared
+normal hold covers its exact Task worktree/round lock and actual global/Project/
+provider resource shares. Widen physical scope to the actual root/common-Git overlap
+when the reviewed producer declares those effects or actual evidence leaves them
+unbounded/uncertain; never narrow by Reviewer label alone. An unsupported unbounded
+profile refuses before admission; unexpected already-dispatched escaped/unknown
+effects retain the full conservative affected physical scope until 14 recovery.
+Test narrow supported hold permitting a disjoint Task when permits allow, and
+widened root/common-Git uncertainty blocking physically affected Tasks/Projects.
+This profile/evidence basis is not an OS sandbox or generic terminal death proof.
 
 Every criterion and bold subcriterion ID above is a stable closure-evidence key.
 Absent suffixes are intentional reserved IDs; reordered subcriteria retain their
