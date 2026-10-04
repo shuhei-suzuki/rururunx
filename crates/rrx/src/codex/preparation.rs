@@ -91,13 +91,6 @@ impl Preparation {
         }
     }
     pub fn failed(&self, error: AdapterError) -> AdapterError {
-        if error.kind == ErrorKind::SessionLost
-            && error.message.starts_with("owned cleanup unverified:")
-            && let Ok(mut detail) = self.cleanup_failure.lock()
-            && detail.is_none()
-        {
-            *detail = Some(error.message.chars().take(1024).collect());
-        }
         match self.admission.lock() {
             Ok(mut admission) => match &*admission {
                 Admission::Preparing => {
