@@ -13,8 +13,12 @@ the open Issue60 Git follow-up must enforce later-artifact execution/publication
 Issues 5/7 supply their supported native profiles' mixed-workload enforcement.
 [Issue60](https://github.com/shuhei-suzuki/rururunx/issues/60) owns the unfinished
 runtime Git/helper and Generic lifecycle/enforcement follow-up to merged Issues3/4,
-and the actual Issues12/13 job/evidence reservation/settlement composition. Those
-foundations stay closed; no new workload proof is inferred from their merged status.
+and the actual Issues12/13 job/evidence reservation/settlement composition. Its
+runtime Git/helper scope covers every caller: Issues18–20 source/context capture,
+Issue19 pre-marker and gate-claim physical/admission capture, Issue15 status/TUI,
+Issue26 registry validation and Issue14 recovery inspection, as well as native
+adapter attempts and job/evidence consumers. Those foundations stay closed; no new
+workload proof is inferred from their merged status.
 Issue 16 consumes the completed adapter in aggregate native dogfooding, rather
 than being a
 prerequisite for publishing an adapter implementation checkpoint.
@@ -89,8 +93,9 @@ product requirements and master Agent Adapter design.
 
 The Rust runtime implements protocol/session supervision rather than coding-agent
 reasoning. The native CLI owns inference, authentication, tool behavior and native
-conversation history. Prepared context selection is owned by Issues 18–20; review
-aggregation and approval policy remain Issues 9–10. CLI factory/TUI orchestration
+conversation history. Prepared context selection is owned by Issues18–20, with
+the pre-marker execution/observation boundary below; review aggregation and
+approval policy remain Issues9–10. CLI factory/TUI orchestration
 is integrated later. Native Goal support is optional and does not block this issue.
 
 Each session has one Project/Goal/Task scope and private owned process/IPC state.
@@ -251,6 +256,42 @@ exercises fresh/current admission and owned cohort at that consumer. Required
 target/dogfood surfaces whose closure or compatible enforcement is unresolved
 remain MVP blockers, not a silent general Executor support claim.
 
+All runtime Git/helper execution is subject to Issue60's pending owner, current
+conflict reservation and default-deny contract, even outside a native attempt.
+This includes Issues18–20 SourcePort/context/source capture, Issue19 pre-marker
+physical hashing/admission validation, Workflow gate-claim/AllowCurrent source
+capture, Issue15 status/TUI observation, Issue26 registration/reconciliation and
+validation, and Issue14 recovery inspection. A read-only purpose or running before
+the native marker does not exempt an external Git process or configured helper.
+Every such capture must either use strictly non-executing in-process scoped reads
+that cannot invoke fsmonitor, hooks, filters, textconv or external helpers, or
+acquire its own actual Issue60 runtime workload owner and durable current conflict
+reservation before its first execution. Bind the exact command/control and
+effective inputs to the same completeness/default-deny inventory; explicit
+no-ext-diff/no-textconv arguments cover only those bound paths, not all Git routes.
+A pre-marker runtime capture is an independent runtime workload, not an early
+native Issue19 phase lease or permission to move the native marker before context
+exists. Retain its actual owner and reservation until its own known current outcome
+AND complete enabled-profile cleanup are settled; an error, valid source digest or
+successful ContextVersion/gate publication cannot release it. Its held/unknown
+cleanup must prevent conflicting subsequent capture, native admission and release.
+Unsupported capture readiness executes no Git/helper and cannot be bypassed by
+retrying under a read-only label. No source producer or consumer is claimed here.
+
+Under an unresolved hold, bounded scoped in-process Store/filesystem observation
+may report factual state without execution, mutation, cleanup claims or hold
+release. Existing data must remain identified as historical/held; an observation
+alone cannot attest current input/admission eligibility. Any observation invoking
+Git/helpers needs its own genuine current owner/reservation and actual continuously
+enforced compatibility with the held workload, even in the primary root. A
+read-only argv/role is not proof of nonconflicting execution. Missing compatibility
+refuses that observation with an explicit held/unsupported reason, while safe
+non-executing state reporting remains available. Fresh source publication still
+requires its actual source currency and consumer fences; observation cannot mint
+native operation authority or certify cleanup. These callers are runtime matrix
+parties with the same already-live peer→Lost obligations, not passive agent-proof
+consumers.
+
 Every adapter-executed attempt process belongs to that attempt's actual workload,
 including runtime Git/helper preflight, admission/grant rechecks, status/inventory
 observation and cleanup checks. Enroll these under the same genuinely owned bound
@@ -277,7 +318,9 @@ admitted or settled by an adapter-local JSON/state substitute. Unsupported/synth
 controls are allowed development evidence, not a managed-operation grant.
 
 Managed ordering distinguishes profile readiness, operation reservation and model
-input consumption. Implementation-owned unsupported profiles refuse before
+input consumption. Any pre-marker source/context execution obeys the independent
+runtime capture contract above; acquiring the later native attempt owner cannot
+retroactively cover it. Implementation-owned unsupported profiles refuse before
 clear_hold/reserve/context/dispatch_started and never fall back to legacy start.
 For a supported profile, the successful exact reservation precedes Issue19's
 atomic dispatch_started plus operation-lease transaction. That marker is not model
@@ -422,6 +465,9 @@ Runtime-owned workloads are also matrix parties, not merely consumers of agent
 proof: Issue60 owns the actual runtime Git/helper/Generic resource and current
 conflict reservation/settlement contract; Issues12/13 supply their actual test,
 regression/mutation/browser/staging and PR/CI/merge/cleanup job/evidence consumers.
+Issues18–20/19 pre-marker/gate-claim capture, Issue15 status/TUI, Issue26 registry
+and Issue14 recovery execution are also actual runtime matrix parties and Issue60
+composition consumers; their non-executing reads are distinguished above.
 These producers must supply continuous enforcement, durable held/Lost uncertainty,
 known current outcome AND complete enabled-profile resource cleanup, and both-side
 protection/settlement through caller Drop, cancellation and failed publication.
@@ -524,6 +570,16 @@ permission for privileged installation or silently change the required hosts.
   fsmonitor/hook/service before native startup cannot permit Preparing rollback,
   NoCurrentDispatch or native completion to release the attempt from direct-child
   death; same/composed owner cleanup is required. Mutate the real caller guard.
+- Actual pre-marker context/source/admission and gate-claim capture, status/TUI,
+  registry and recovery callers exercise configured fsmonitor plus filter/textconv
+  fixtures. Pure in-process reads cannot trigger them; executing consumers must
+  refuse before execution or prove genuine ownership, complete enabled cleanup and
+  retained holds before release. A native attempt owner acquired later cannot
+  certify earlier capture cleanup. Mutating each real execution/readiness or
+  settlement guard must expose the bypass. Separately prove bounded non-executing
+  held-state reporting remains available and cannot claim freshness/cleanup, while
+  unproved conflicting Git observation is refused; no blanket primary-root status
+  denial substitutes for the compatibility classification.
 - Runtime Issues12/13/60 immediate-daemon and deferred file-mediated delegation
   consumers prove routes genuinely owned or denied before execution; absent actual
   contract or bound denial stays Unsupported, not an omitted enabled resource class.
