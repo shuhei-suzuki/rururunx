@@ -1,7 +1,7 @@
 # Issue 58: Retained ownership of Task-free native Consultant work
 
 Workflow: STRICT (native ownership, durable authority and Project exclusion).
-Status: Requirements5; verified independent Req1–Req4 gaps corrected below;
+Status: Requirements6; verified independent Req1–Req5 gaps corrected below;
 requirements/design/source gates pending.
 Baseline: main80452f4/schema3. MVP follow-up from #6 F1 and #19; see
 [Issue58](https://github.com/shuhei-suzuki/rururunx/issues/58).
@@ -128,6 +128,10 @@ results do not prove Workflow transport success. Preserve that scope.
   Safe bounded in-process held-state reporting stays available without a Git
   freshness or cleanup claim; executing held-scope observation requires the actual
   continuously enforced compatible profile or returns held/Unsupported.
+  Bootstrap physical identity with strictly non-executing bounded in-process
+  canonical path/common-dir resolution before reservation. Unknown/changing or
+  unsupported layouts refuse explicitly; no external Git-first identity probe or
+  candidate reservation that guesses an unbounded/shared physical effect scope.
   Reverse reservations and every lock used as one require an actual nonserializable
   effect-owner capability acquired atomically before effects. Creation, factual
   observation and release use only the private exclusion protocol. Release needs
@@ -186,6 +190,20 @@ results do not prove Workflow transport success. Preserve that scope.
   unknown ownership until separately reviewed #14 recovery proves actual cleanup
   or safely fenced no-effect and excludes the former owner. Human labels/boot hints
   cannot fabricate death or unlock replay. Lost remains absorbing in ordinary APIs.
+  Reviewed #14 recovery is a separate EXCLUSIVE successor protocol, not an ordinary
+  competing observer required to treat Lost as compatible. Before any recovery
+  effect, genuinely fence/exclude the exact former supervisor/workload through the
+  actual #6/#60 resource profile and private runtime-instance/epoch CAS. Epoch/row/
+  boot/PID labels alone cannot prove the former native/helper effects fenced.
+  Atomically adopt that exact uncertain hold/reservation into a private recovery
+  successor capability WITHOUT releasing it; check every other physical hold and
+  lock. Inspection/reconciliation runs under the actual #60 recovery effect owner
+  and adopted scope, with no new native input or authority from historical rows.
+  Release only after known current recovery outcome AND complete required cleanup/
+  reconciliation. Unknown former-owner fence, failed adoption or missing reviewed
+  port keeps the hold and strictly non-executing attention/status; no ordinary
+  Lost-compatible exemption. Actual #14 recovery conformance remains a production
+  profile readiness gate, rather than accepting permanently Unsupported MVP recovery.
 - Migration coordinates one schema/writer-epoch history with #19, fences ALL generic
   and private writers including old open connections, and refuses unresolved legacy
   workload. Preserve actual old bytes/history; no legacy terminal-label ratification.
@@ -286,6 +304,11 @@ later native owner/cleanup for that runtime job, and omitted executing-observati
 reservation checks at actual status/registry/capture and Consultant acquisition.
 Restore real positives, including configured helper cleanup and transformed-content
 capture, without changing native/user hooks or defaults for production acceptance.
+Recovery controls use an actual partially failed worktree removal: genuine former-
+owner fencing, atomic retained-hold adoption, owned inspection/reconciliation and
+verified settlement. Mutate missing physical fencing, release-before-adoption and
+Lost-as-compatible at actual recovery/admission consumers; restored positives prove
+the exact former owner excluded, not merely a new epoch or inactive row label.
 
 Run shared-state/native/Git/registry/Workflow regressions, fmt/clippy/build, exact
 Linux/macOS CI and independent immutable source reviews. Update README/master

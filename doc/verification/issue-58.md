@@ -74,3 +74,18 @@ held in-process status remains available without Git freshness/death claims.
 Configured fsmonitor/filter/textconv controls and actual-consumer mutants cover
 pre-acquisition and both conflict directions. Req5 review pending; no runtime port,
 kernel profile or capture implementation claimed.
+
+Req5 c451b6d exact CI37204516805 passed Linux/macOS fmt/clippy/tests/debug and
+release builds (individual steps inspected). Both independent native reviews
+completed with actual v3 owned cleanup verified; B approved with no findings, A
+requested one Medium and one Low. Verified gap: ordinary conflict refusal cannot
+be the only #14 route to resolve its own uncertain hold. Req6 defines separately
+reviewed exclusive recovery successor, actual former-resource fencing plus private
+epoch CAS, atomic adoption WITHOUT release, and real #60 recovery cleanup; no
+row/epoch-only physical fence or Lost-compatible exemption. Bootstrap identity
+uses bounded non-executing scope resolution or explicit Unsupported. Real partial-
+removal recovery controls/mutants remain mandatory. Req4 CI37204053605 was RED:
+unchanged inspection442 stderr258.545166ms TimedOut, mac86pass/1fail/1ignored;
+Ubuntu fmt/clippy/tests/debug passed, release cancelled; macbuilds skipped. Original
+failed log retained, no rerun/cause claim; latergreen docs do not erase it. Req6
+review pending; no private successor/profile/runtime implementation is claimed.
