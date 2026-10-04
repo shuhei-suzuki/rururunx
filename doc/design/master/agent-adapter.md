@@ -299,6 +299,50 @@ Blocked Project native ownership metadata. Preflight/cancelled Lost may lack
 native PID evidence; generic reconnection is unsupported and explicit recovery
 remains necessary.
 
+### Grok terminal supervision receipts
+
+The existing scoped `grok.turn_observed` event carries `cleanup_receipt` after
+reconciliation. Its exact eleven keys are `owned_process_group_created`,
+`cleanup_ok`, `cleanup_state`, `reap_io_kind`, `output_verified`,
+`stderr_drain_state`, `stderr_read_error`, `ownership_uncertain`,
+`uncertainty_by_stage`, `dispatched`, and `native_outcome`. Values are measured
+facts; no receipt field feeds process ownership, PID clearing, Session state,
+reservation release or transport completion.
+
+`cleanup_state` is one of `not_attempted`,
+`group_cleanup_failed_unclassified`, `reap_timeout`, `reap_error`, or `succeeded`.
+`reap_io_kind` is null except on `reap_error`, where the finite crate-owned vocabulary
+is `not_found`, `permission_denied`, `interrupted`, `invalid_input`, `invalid_data`,
+`timed_out`, `would_block`, `unexpected_eof`, `broken_pipe`, `out_of_memory`,
+`write_zero`, or `other`. No error body/debug rendering is copied. Group-cleanup
+failure cause is unclassified because the shared helper erases its structured cause;
+message parsing cannot recover authority.
+
+`stderr_drain_state` is `not_started`, `joined_returned`, `joined_panic`,
+`joined_cancelled`, or `budget_elapsed_abort_requested`. `stderr_read_error` is
+always `unavailable`: a joined drain, including a panic/cancellation join result,
+does not prove successful reads. The original output verification bit becomes false
+only when the existing250ms join budget elapses and abort is requested. No receipt
+claims verified drain completion from that abort. `not_attempted` cleanup and
+`not_started` drain on a pre-spawn stop are vacuous facts, not agent execution proof.
+
+`uncertainty_by_stage` has exactly `native_child`, `pre_spawn`,
+`in_session_binding`, and `reconciliation` booleans. Each retained flag is loaded
+once after reconciliation; the all-flags total determines the original clean
+operand independently of labels. A stage false means no retained uncertain entry
+in that stage, not that the stage ran or was verified. Checkpoint verification
+uses a separate ownership object that is never sampled into a receipt or clean
+operand; a Checkpoint-labelled flag would still count if present in sampled
+ownership. This sampler behavior has unit-only coverage and grants no checkpoint
+runtime total or supervise-stage projection. Native dispatch/outcome are provisional
+facts; matching native completion still needs every original terminal gate.
+
+These measurements preserve the existing native250ms reap/drain budgets, group
+inspection limits, error priority and unknown-dispatch rewrite. Synthetic tests cover
+clean receipt/attempt windows on both OSes; forcedUnknown and stage-creation trace
+proof are macOS-only. The bounded test-only projection and creation trace are excluded
+from runtime authority. Historical cleanup uncertainty is not explained by receipts.
+
 ### Provider transport completion (Issue #8 integration)
 
 `AgentAdapter::transport_succeeded(&SessionStatus)` defaults to Exited, no failure,

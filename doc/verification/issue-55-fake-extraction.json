@@ -1,0 +1,15 @@
+{
+  "old_sha256": "34b20f9a990ba31817bfc8017ea17d1727c3ba4f4b8935129db706d4664ffb55",
+  "new_sha256": "3f4fd29eb7300b29bce61862e4347ad3ae9817d22392c5571b5e0c9facef8e1d",
+  "diff": [
+    "--- prior_literal\n",
+    "+++ shared_fake\n",
+    "@@ -1,5 +1,6 @@\n",
+    " #!/usr/bin/env python3",
+    " import json,os,sys,uuid,sqlite3,time,pathlib",
+    "+if os.getenv('RRX_PYTHON_OBSERVED'):pathlib.Path(os.environ['RRX_PYTHON_OBSERVED']).write_text(json.dumps({'executable':sys.executable,'version_info':list(sys.version_info)}))",
+    " mode=os.getenv('RRX_MODE','good');sid=None;prompt=None;calls=0;model='native-default';effort='high'",
+    " if os.getenv('RRX_SPAWN_OBSERVED'):pathlib.Path(os.environ['RRX_SPAWN_OBSERVED']).write_text('native process started')",
+    " profile=pathlib.Path(sys.argv[sys.argv.index('--agent-profile')+1]).read_text();decision='name: rururunx-decision' in profile"
+  ]
+}
