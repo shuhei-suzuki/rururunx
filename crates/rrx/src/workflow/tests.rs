@@ -4428,18 +4428,12 @@ async fn preparation_release_cas_and_executor_lost_fences_do_not_retry() {
         }
         fixture.sources.capture_error.store(true, Ordering::SeqCst);
         pause.release();
-        assert!(
-            owner
-                .await
-                .unwrap()
-                .unwrap_err()
-                .to_string()
-                .contains("reservation retained")
-        );
+        let error = owner.await.unwrap().unwrap_err();
         let snapshot = fixture.engine.snapshot(fixture.task.id).unwrap();
         let index = snapshot.active.unwrap();
         assert_eq!(snapshot.history[index].state, AttemptState::Running);
         assert!(snapshot.retries.is_empty());
+        assert!(error.to_string().contains("reservation retained"));
         if fence == "cas" {
             assert_eq!(
                 fixture
