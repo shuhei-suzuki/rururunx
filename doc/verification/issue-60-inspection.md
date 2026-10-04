@@ -1,6 +1,6 @@
 # Issue 60 inspection/reader component verification
 
-Requirements4 narrowed diagnostic candidate; no design/source approval or implementation. Isolated main054
+Requirements5 narrowed diagnostic source-correction candidate; no design/source approval or implementation. Isolated main054
 baseline, no production edits or new process tests. Frozen Issue51 final18c CI remains
 red; first bounded native inspection timeout and derived latch failures retained, cause
 unknown. No rerun, deadline/latch/permission/Unknown relaxation.
@@ -53,9 +53,8 @@ flag reset. Those behavior changes are not diagnostic implementation or approval
 Requirements3 formal scope is inspector diagnostic facts/safe error rendering ONLY,
 with exact stage/refusal, EOF/counters/finite exit, cleanup-vs-relinquishment and original
 kind/priority constraints. Existing reader behavior/flags/admission/driver/Drop and all
-resource equations stay unchanged. Two narrowed independent requirement gates remain
-Requirements3 gates completed as recorded below; Requirements4 is pending before
-diagnostic design/source. Full60/shared availability/native16 are open.
+resource equations stay unchanged. Requirements3/4 results are recorded below;
+Requirements5 source-correction gate remains pending before diagnostic design/source. Full60/shared availability/native16 are open.
 
 Requirements-only CI37219380561 passes bothOS on unchanged production; source/reader/
 availability acceptance is not inferred. Public actual-checkout provenance will be
@@ -72,9 +71,9 @@ shared availability or failed Issue51 final-context acceptance credit follows.
 At820a29e observation requested changes (1Medium+3Low); lifetime approved with3Low.
 Both actual owned review cleanups verified. [All7 verified findings](issue-60-requirements3-findings.json)
 are preserved with raw digests. Requirements4 adds the real inspector→resolver→Context
-causal route: private per-operation executable/site seam only, existing fabricated
-plan results earn pass-through credit only; construction/attachment mutant must fail
-that actual consumer. It enumerates reconciliation_error/unknown-dispatch/native-group
+causal route: private per-operation executable/site seam and attachment mutant at
+that actual consumer. The claim that the existing plan fabricates results is corrected
+below after reading the complete source omitted from the prior packets. It enumerates reconciliation_error/unknown-dispatch/native-group
 sinks, exact session.saved fields, actual try_wait counts and discarded Drop/retry
 facts unavailable with no new log. Every baseline lifetime gap stays open.
 Requirements4 independent narrowed delta gates pending; no design/source approval.
@@ -82,3 +81,20 @@ Requirements4 independent narrowed delta gates pending; no design/source approva
 Req3 documentation-only CI37221599113 all individual required steps bothOS success.
 Actual both checkoutc706885a7097b5d0de21918a9499dbad11285f97 parents054aefd/820a29e,
 tested tree equals trigger. Unchanged production has no diagnostics/availability credit.
+
+## Requirements4 approvals and source qualification
+
+At26de8da both independent narrowed requirement reviewers approved, each2Low, with
+actual cleanup verified. [Findings/digests](issue-60-requirements4-findings.json) preserve
+the scope: no design/source/availability/full60 credit. Low fixes enumerate native
+agent cleanup routes, exact gate status and labelled PERM injection.
+
+Reading complete existing inspection.rs800–914 found a factual premise error shared
+by reviewers and author: TestPlan::inspect returns the REAL inspect_with_prefix result,
+not a fabricated ioError/observation. KillAndUnknown first sends actual KILL to the
+owned group, then injects PERM; controlled shell feeds the real production selected
+argv/env/framing/cleanup. Prior packets omitted this definition. Existing Context plan
+therefore can reach real inspector fact construction; attachment assertion/mutant is
+still required. Req3 findings are qualified rather than falsely credited as verified
+bypass. Requirements5 corrects the statement and includes full TestPlan in independent
+source-correction packets before design. No production edit or completed fixture claim.

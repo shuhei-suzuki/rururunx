@@ -14,8 +14,8 @@
       "review": "observation",
       "id": "R3-CHAIN-1",
       "severity": "Medium",
-      "verified": true,
-      "disposition": "Requirements4 narrow clarification; independent delta review pending"
+      "verified": "qualified",
+      "disposition": "Causal real-inspector fact-attachment criterion retained; premise of existing TestPlan fabricated result rejected after reading full public TestPlan872-914. Existing controlled prefix already executes actual inspector."
     },
     {
       "review": "observation",
@@ -56,9 +56,9 @@
       "review": "lifetime",
       "id": "R60I3-03",
       "severity": "Low",
-      "verified": true,
-      "disposition": "Requirements4 narrow clarification; independent delta review pending"
+      "verified": "qualified",
+      "disposition": "Causal real-inspector fact-attachment criterion retained; premise of existing TestPlan fabricated result rejected after reading full public TestPlan872-914. Existing controlled prefix already executes actual inspector."
     }
   ],
-  "source_verification": "adapter389-394 syntheticplan skips actualinspection; context588-599 consumesplan. Grok1251/1261-1273 persists reconciliation_error and unknownwrapper. state1242 exactsavedprojection. ProcessGroupDrop451-452 discards result. Inspector46 actualstatuspoll."
+  "source_verification": "Complete TestPlan872-914 calls actual inspect_with_prefix, contrary to prior incomplete packet inference; signal856-870 KILLs ownedgroup then injectsPERM. Grok1251/1261-1273 persists reconciliation_error/unknownwrapper. state1242 exactsavedprojection. ProcessGroupDrop discards result; actualtry_waitcounter source."
 }

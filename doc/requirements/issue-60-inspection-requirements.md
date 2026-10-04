@@ -1,7 +1,8 @@
 # Issue60 component requirements: bounded inspector failure diagnostics
 
 Risk: STRICT for shared native process observation/error and uncertainty boundaries.
-Status: requirements candidate; no design/source approval or implementation claimed.
+Status: Requirements4 diagnostic-only approvals recorded; verified source correction
+Requirements5 candidate pending delta gate. No design/source approval or implementation.
 Parent [Issue60](https://github.com/shuhei-suzuki/rururunx/issues/60) retains its full
 runtime workload/effect/delegation/settlement acceptance. This component does not close it.
 
@@ -135,8 +136,10 @@ not proof they caused any CI timeout or that an escaped workload existed.
    separately reviewed typed consumer adopts the facts. Native audit schemas/ownership,
    auth/hooks/defaults/permission/environment, scheduler and Store are unchanged.
 10. Inventory every actual inspector route: resolve_macos_signal_result EPERM handling,
-    ordinary cleanup_group and ProcessGroup Drop; Generic, Grok ownership/index and
-    Context bounded Git error propagation. New fixed facts can decorate existing
+    ordinary cleanup_group and ProcessGroup Drop; Generic post-spawn Running-write
+    failure cleanup (adapter668), Generic terminal supervision cleanup (1512), Grok
+    native terminal supervision cleanup (grok/mod.rs1138), and Generic/Grok ownership/
+    index/Context bounded Git error propagation. Drop-route errors stay discarded. New fixed facts can decorate existing
     bounded failure messages, not change their authority. Linux native semantics remain
     unchanged; macOS-only fact collection must not add a Linux inspector. Synchronous
     git.rs and future provider copies remain separate composition/inventory work.
@@ -164,9 +167,15 @@ not proof they caused any CI timeout or that an escaped workload existed.
   executed through kill_group→resolve_macos_signal_result EPERM handling. A private
   per-operation labelled seam may substitute only controlled executable/prefix or
   failure/clock site; preserve the production selected argv/env/framing/cleanup code.
-  Existing ProcessInspectionPlan::inspect fabricated observations bypass inspection
-  and earn pass-through rendering credit only, never inspector-to-Context reach. No
-  hand-built fact error satisfies this gate. A compiled omission of fact construction
+  Existing TestPlan::inspect (inspection.rs872–914) ALREADY invokes the actual
+  inspect_with_prefix→inspect_command through a controlled /bin/sh prefix, preserving
+  selected argv/env/stdio/guards/cleanup; it does not fabricate an observation result.
+  KillAndUnknown plan.signal performs actual KILL on the owned group, then injects
+  PERM to reach the resolver: label that injected signal result and shim frame, never
+  claim actual OS permission failure or installed /bin/ps acceptance. That existing
+  real-inspector route is eligible; no new executable seam is required merely to reach
+  it. Only a future hand-built fact/error/result bypass would earn pass-through credit.
+  No hand-built fact error satisfies this gate. A compiled omission of fact construction
   or attachment at inspector→resolver must fail the actual Context consumer assertion.
   Derived latch refusal has no fresh sample.
   Reach actual Generic/Grok propagation where accessible and disclose any test-only
