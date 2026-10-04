@@ -1,0 +1,31 @@
+{
+  "scope": "Issue41 post-46 integration; reader-boundary unit-only guard evidence, not ProcessGroup/native death proof",
+  "base": "3d3039932159400017fb1562b9df8484edd5da05",
+  "mutant": "31a5f7c1d18f7bb29a261ee48b28b8fe6a6bb5f3",
+  "restored": "bffe512b40bed315ee3c6204bce5052bbe5fdf48",
+  "operator": "omit shared Stream.drain post-read byte-cap rejection",
+  "compiled": true,
+  "test": "adapter::inspection::tests::prepared_stream_cap_rejects_complete_zombie_prefix_before_hidden_live_row",
+  "credit": "unit_guard_only",
+  "actual_assertion": "reader accepted a truncated all-Z prefix: true (true is reader progress; validate(prefix) separately passed)",
+  "first_case": "stdout; no separate stderr mutant kill claimed",
+  "control": "both stdout and stderr cases passed after exact source restoration",
+  "fixture": "prepared in-memory prefix LIMIT bytes; actual owned TempDir File read adds newline at LIMIT+1 before remaining live row; no native child or numeric signal authority",
+  "patch": "diff --git a/crates/rrx/src/adapter/inspection.rs b/crates/rrx/src/adapter/inspection.rs\nindex cca26e8..96d44ee 100644\n--- a/crates/rrx/src/adapter/inspection.rs\n+++ b/crates/rrx/src/adapter/inspection.rs\n@@ -121,11 +121,7 @@ impl Stream {\n                     .map_err(|_| io::Error::other(\"native inspection allocation failed\"))?;\n                 self.bytes.extend_from_slice(&chunk[..count]);\n                 current(deadline)?;\n-                if self.bytes.len() > LIMIT {\n-                    Err(framing(self.overflow))\n-                } else {\n-                    Ok(true)\n-                }\n+                Ok(true)\n             }\n             Err(error) if error.kind() == io::ErrorKind::WouldBlock => Ok(false),\n             Err(error) if error.kind() == io::ErrorKind::Interrupted => Ok(true),\n",
+  "patch_sha256": "f984f3515cbc2049ec5503a99ba1aa112299f881c75e18be779e44fde70a7505",
+  "mutant_log_sha256": "18912c991e9bd72f69f181d0e5e188e76e671b9656e39ea82b4e8d5cfeeaad3f",
+  "restored_log_sha256": "6b5aed97e4e1318edb0b06a9cebd7f515f987660722d6a2ecdb870b44d884eab",
+  "production_prefix_sha256": "f65a450568427116167fc7f003c091ff9fa68db0f3d50b0965776d237cd371cb",
+  "production_prefix_comparison": "byte-identical to6982708 before cfg(test) mod tests",
+  "cleanup": "regular Files/TempDir dropped; no child/process group in unit; exact-restored clean detached worktree normally removed",
+  "masked_or_limited": [
+    "stderr second loop is not reached in failed mutant run",
+    "wrapper producer Unknown(size or deadline) supplies no causal size guard credit",
+    "historical46 size operators remain masked/no-credit"
+  ],
+  "mutant_exit_code": 101,
+  "mutant_test_seconds": 0.08,
+  "mutant_compile_seconds": 20.68,
+  "verbatim_panic_excerpt": "thread 'adapter::inspection::tests::prepared_stream_cap_rejects_complete_zombie_prefix_before_hidden_live_row' (224175593) panicked at crates/rrx/src/adapter/inspection.rs:474:32:\nreader accepted a truncated all-Z prefix: true",
+  "source_reasoning_only": "following zero-length read could set EOF and hide remaining live row; not executed by this failed mutant"
+}
