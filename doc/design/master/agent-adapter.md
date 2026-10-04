@@ -364,3 +364,31 @@ traverses/allocates against global processes. This contract does not explain pri
 CI timeouts or contain detached native descendants. Non-atomic fork/exit sampling and existing partial-success
 KILL with non-signalable survivors remain residual limits; Linux cleanup semantics
 remain unchanged.
+
+### Proposed retained Consultant lifetime (#58; not implemented)
+
+Approved [Requirements8](../../requirements/issue-58-requirements.md) and proposed
+[Design1](../issue-58-design.md) require a genuine nonserializable lifetime owner
+before Task-free native startup/probe/input. Session-less setup, a live server after
+a turn and Lost/unknown cleanup retain physical root/common-Git exclusion. Public
+Session/Record/PID labels and generic CAS cannot mint/admit/release that authority.
+Every generic nonterminal Task-free Session write and owner-bound factual overwrite
+is fenced in the composed #19/#23/#43/#58/#60 writer epoch, including old connections.
+
+All executing runtime Git/helper/Evidence/verification and observation/capture paths
+require their actual #60 effect owner BEFORE execution, checked symmetrically against
+Consultant/Task/runtime holds. A later native owner does not cover pre-acquisition
+Git; native cleanup cannot settle helper jobs. Pure bounded held-state reporting is
+available without executing Git or claiming transformed-content freshness. Actual
+continuous profile compatibility is required for intersecting parallel work and for
+already-admitted peers when one becomes Lost; labels/separate worktrees are insufficient.
+
+Current input/ALLOW/input-capable attach/continuation revalidate lifecycle and full
+original source/Session/lock frame; owner factual observation, historic DENY and
+cleanup have separate nongrant predicates. Reuse #6's single-actor Project-only TUI
+submission gateway. Required Task attach and native4+Task parallelism remain open.
+Only actual #14 exclusive owned/fenced full-union successor recovery can adopt
+uncertain former-instance and prior-recovery effects without release. A pending
+replacement cannot revoke a still-live prior owner's settlement CAS. Real native
+F1/#60/recovery producers, bounded actual consumer controls/mutants and independent
+source gates remain required; no row-based cleanup or permanent Unsupported waiver.

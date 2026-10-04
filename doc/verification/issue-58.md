@@ -134,3 +134,15 @@ source identity. Actual checkout SHA/parents and source-blob comparison must acc
 future implementation gates. Requirements7 triggerCI37206735920 was green both OS,
 without repairing this newer failure. Requirements approval is not source/CI/MVP
 acceptance; actual supported native/recovery/job/epoch producers remain required.
+
+Design1 prepared from approved Requirements8 and integrated main55/41 source.
+It names private Consultant/native/runtime exclusion ports, all-state physical scope,
+finite complete scans/serialization limits, original action frames, generic live and
+owner-bound factual fences, one coordinated writer epoch, distinct current-grant and
+historic fact/DENY/cleanup predicates, plus actual #60 pre-acquisition observations.
+Recovery-of-recovery adopts complete genuinely fenced multi-instance unions without
+release. Shared Low replacement ordering explicitly preserves a live prior owner's
+settlement CAS and uses the claimant's genuine no-effect withdrawal. Actual producer
+migration inventory and causal control/mutant families cover each side/consumer;
+source, native profiles, required compatible parallelism/Task attach and #14 recovery
+remain pending. Main Rust/schema bytes unchanged; Design1 review pending.
