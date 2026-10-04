@@ -299,6 +299,16 @@ Blocked Project native ownership metadata. Preflight/cancelled Lost may lack
 native PID evidence; generic reconnection is unsupported and explicit recovery
 remains necessary.
 
+### Pending inspector failure diagnostics
+
+[Issue60 diagnostic requirements](../../requirements/issue-60-inspection-requirements.md)
+have two narrowed approvals; [component design](../issue-60-inspection-design.md) is
+pending independent gates. It proposes finite value-free site/stream/EOF/status/cleanup
+facts in existing failure rendering, preserving selected argv/env,250ms observation,
+Unknown and original authority. No implementation or availability acceptance yet.
+Reader/driver retention and every existing Drop/reap gap remain separate/open. The
+Grok receipt below stays unclassified; facts cannot grant cleanup or alter clean.
+
 ### Grok terminal supervision receipts
 
 The existing scoped `grok.turn_observed` event carries `cleanup_receipt` after

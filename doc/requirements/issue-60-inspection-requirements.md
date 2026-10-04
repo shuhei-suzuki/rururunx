@@ -1,8 +1,9 @@
 # Issue60 component requirements: bounded inspector failure diagnostics
 
 Risk: STRICT for shared native process observation/error and uncertainty boundaries.
-Status: Requirements4 diagnostic-only approvals recorded; verified source correction
-Requirements5 candidate pending delta gate. No design/source approval or implementation.
+Status: Requirements4 diagnostic-only approvals at26de8da; source-aside correction
+verified without changing its normative real-inspector criterion. Design1 candidate;
+no design/source approval or implementation.
 Parent [Issue60](https://github.com/shuhei-suzuki/rururunx/issues/60) retains its full
 runtime workload/effect/delegation/settlement acceptance. This component does not close it.
 

@@ -1,6 +1,6 @@
 # Issue 60 inspection/reader component verification
 
-Requirements5 narrowed diagnostic source-correction candidate; no design/source approval or implementation. Isolated main054
+Requirements4 normative diagnostic approvals, corrected source provenance; Design1 candidate; no design/source approval or implementation. Isolated main054
 baseline, no production edits or new process tests. Frozen Issue51 final18c CI remains
 red; first bounded native inspection timeout and derived latch failures retained, cause
 unknown. No rerun, deadline/latch/permission/Unknown relaxation.
@@ -54,7 +54,8 @@ Requirements3 formal scope is inspector diagnostic facts/safe error rendering ON
 with exact stage/refusal, EOF/counters/finite exit, cleanup-vs-relinquishment and original
 kind/priority constraints. Existing reader behavior/flags/admission/driver/Drop and all
 resource equations stay unchanged. Requirements3/4 results are recorded below;
-Requirements5 source-correction gate remains pending before diagnostic design/source. Full60/shared availability/native16 are open.
+source-aside correction does not change the approved real-inspector criterion;
+Design1 independent gates remain pending before source. Full60/shared availability/native16 are open.
 
 Requirements-only CI37219380561 passes bothOS on unchanged production; source/reader/
 availability acceptance is not inferred. Public actual-checkout provenance will be
@@ -96,5 +97,10 @@ owned group, then injects PERM; controlled shell feeds the real production selec
 argv/env/framing/cleanup. Prior packets omitted this definition. Existing Context plan
 therefore can reach real inspector fact construction; attachment assertion/mutant is
 still required. Req3 findings are qualified rather than falsely credited as verified
-bypass. Requirements5 corrects the statement and includes full TestPlan in independent
-source-correction packets before design. No production edit or completed fixture claim.
+bypass. The finite source-aside correction withdraws that false factual premise; the normative
+real-inspector criterion is unchanged, so no new requirements round is inferred. Full
+TestPlan source is included in Design1 packets. No production or completed-fixture claim.
+
+Design1 proposes only typed bounded inspector facts and existing safe error rendering.
+Requirements4 two approvals/noC/H/M and corrected source provenance are preserved;
+no reader/flag/ProcessGroup behavior enters this design. Native design gates pending.

@@ -389,3 +389,8 @@ uncertainty guards. Verification and independent review results are recorded in
 [Issue46 evidence](doc/verification/issue-46.md). Non-atomic
 sampling and partial-success KILL with non-signalable survivors remain explicit
 limitations.
+
+Inspector timeout diagnostics are a pending STRICT [Issue60 component design](doc/design/issue-60-inspection-design.md).
+The proposed finite failure facts preserve existing cleanup/Unknown authority and do
+not claim a timeout cause, backend availability fix or owned-reader/workload settlement.
+Requirements have two narrowed approvals; design/source gates remain pending.
