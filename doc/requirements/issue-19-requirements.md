@@ -1,5 +1,37 @@
 # Issue 19 requirements: durable context packs and checkpoints
 
+Current authority status: merged production baseline is schema3; this unmerged
+component source is schema5. Candidate6 below is proposed/test-only, not implemented
+or production-ready. ALL native writer/admission/continuation/ACK/Lost examples from
+component5 are HISTORICAL ONLY unless the canonical matrix below explicitly permits
+the actual managed private producer. Earlier artifact/encoding/provenance requirements
+still apply; they never create a generic managed writer. No Test paragraph asserts a
+passed fixture. The matrix is the single current native acceptance inventory.
+
+| Stable acceptance | Canonical writer / actual consumer | Required causal proof (source/native PENDING) |
+| --- | --- | --- |
+| S6-01 | Epoch/all-table writer fence + explicit drained migration | Native v1–5, alive/prepared old writers, original bytes on refusal, old domain guards; RRXC candidate≠RRX1 production |
+| S6-02 | Marker→operation + actual23 admission + implementation profile | Atomic rollback; accepted Running/nohold/DAG/hardproof at marker, missing producer refusal before effects |
+| S6-03 | Managed preparation/allocator (all5 actual callers) | Original frame/actor/locks, no prior terminal adoption, actual handle, allocation/factual-insert race |
+| S6-04 | First/new NativeCAS consumption before model bytes | Actual complete frame/payload SHA, CPP/head/sources+23 predicate, one UUID/delivery, stale wire zero |
+| S6-05 | Owned historical ACK/private observations | Exact admitted pair/intent, allowed native initial binding, original binding-frame pin remains immutable |
+| S6-06 | AllowCurrent + actual grant versus private DenyHistorical | Current23/head/fullscope/locks forALLOW; provider-specific factual DENY/activity, separate journals |
+| S6-07 | Owned Lost observation / no generic transition | Universal absorbing hold, remembered pins, no receipt/release or caller JSON cleanup |
+| S6-08 | Actual supervisor settlement + atomic restoration | KnownCurrentTerminal/eligible NoCurrentDispatch, complete cohort proof; consumedzeroWire held14 |
+| S6-09 | Receipt freeze + all closure/replacement consumers | Exact body/version/claim; allocated-unbound Cancelled failure release without SessionID, no success |
+| S6-10 | Sole active43 record-only binding/reconcile | Actual original frame+private owner/current or sealed successful receipt; noTask/P/G/Session/lock bump; passivepoll read-only |
+| S6-11 | Sealed Fresh/Continue selector | Latest closed delivery/predecessor+registry, exhaustive typed family/reference checks, failedprewireContinue→Fresh |
+| S6-12 | All checkpoint/pack render and publication consumers | EVERY own/promoted event caller-classified; immutable snapshots/current head vs admitted historical closure |
+| S6-13 | Counters/history/body and irreversible claim |64observations/8MiBbody/64KiBheadroom +256context/history, exact reserved tail before external effect, actual disposal terminal persists |
+| S6-14 | Operation-aware locks/idle/Git/removal/context/Goal consumer | Symmetric durable physical reservations; actual60/58/23 ports pending; fixture-only actual producer is nongating |
+| S6-15 | Unsupported legacy Task/NoTask/interactive roles | All fresh generic nonterminal native writers refuse before effects; terminal historical facts unverified |
+| S6-16 | Exact composed projection/schema/caller readiness | Actual5/6/7/Generic/Fake and23/43/58/60 integration; synthetic producer mechanics≠production native acceptance |
+
+Each stable key requires named exact consumer tests AND meaningful causal mutants
+in final source evidence; it is not an invented available API or a checkmark. Design16–25
+and the canonical writer table define the required private predicates. Source evidence
+must map each key to actual fixture/result SHA and list unready production ports.
+
 Implement typed, Project/Goal/Task-scoped durable working context on existing
 append-only ContextVersion and Checkpoint records. Rust remains provider independent;
 no supervisor model or transcript summarization model is introduced.
@@ -192,10 +224,10 @@ all subsequent application writes, including private metadata/audit, without
 changing state. Existing domain/immutability triggers remain effective. Native
 compiled old-writer evidence must cover a live connection, not only fresh opens.
 
-Consultant checkpoint history is supported; live role-specific consultation needs
-its own exact prepared-frame port. ApprovalReviewer uses a separate action-decision-only
-decision Task with actual native ownership/settlement through the Approval Broker, never an Executor-writable Task's native
-rules/config/hooks. Arbitrary role changes cannot bypass frame authority.
+Factual Consultant checkpoint history is supported. Live Task Consultant remains
+Unsupported. Future ApprovalReviewer action-decision Task/member needs actual9/10
+owned slot/native settlement; no currently available DecisionTask port is implied,
+and Executor-writable rules/config/hooks never become its trusted authority. Arbitrary role changes cannot bypass frame authority.
 
 Migration must refuse before mutation while any live/Lost Session, active lock or
 active/nonterminal unfinished Workflow ownership remains. Terminal non-owning
@@ -560,3 +592,15 @@ claims/JSON scans. Restoration and NoCurrentDispatch receipt are one settlement 
 private emitted events use exact rrx.private.* constants. A prewire failed Continue
 forces Fresh until a new admitted/settled Fresh, preserving lineage history/budgets.
 These are proposed pre-code predicates and acceptance controls, not production proof.
+
+
+Design25 reserves exact remaining configured irreversible tail publications/attempts
+before its first effect, in addition to Record closure byte headroom; caps cannot strand
+post-disposal terminal persistence. Candidate6 uses durable RRXC application identity,
+never a production migration origin. Positive mechanics require an actual reviewed
+fixture-only runtime-job/reservation producer using real private ports (no SQL seeding);
+production60 remains a gate. Continue checks every produced key family and typed
+reference manifest, own head/facts may advance while promoted/reference changes force
+Fresh. Original43 marker-time binding frame is immutable despite ordinary observation
+refresh; actual authoritative driver/reconcile/recovery routing remains coordinated43/14.
+The stable S6 matrix is current native acceptance; component5 positives are historical.

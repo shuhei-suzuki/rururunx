@@ -3,7 +3,7 @@
 Status: actual main80452f4 is schema3; this unmerged component source is5. Proposed
 schema6 remains fixture-only/pre-code until its independent gate and actual composed
 source/native production release. No Phase::DecisionReview or native producer is
-created by prose. The schema6 canonical writer table below plus Design16–24 private
+created by prose. The schema6 canonical writer table below plus Design16–25 private
 port/bounds define proposed native authority. Earlier schema5 protocol examples are
 historical component context ONLY and cannot authorize a managed/public writer;
 artifact/encoding contracts continue where this table does not supersede them.
@@ -1377,9 +1377,10 @@ credential for model-input admission, phase allocation, native ACK or recovery.
 ALLOW retains the actual Broker operation authority plus full current NativeCAS
 P/G/T/lock/own-Session checks immediately before wire. It may record a separate
 operation intent while the input outcome is Acked, but no historical exemption may
-grant ALLOW. DENY does not grant authority: the generic ObservationOnly write uses
-Acked only when the exact new admitted actor/input tuple and consumed UUID remain
-unchanged. Existing Project activity/Blocked, worktree and own-Session CAS/write
+grant ALLOW. Managed DENY does not grant authority: actual private DenyHistorical
+observation through observe_managed_native requires the exact admitted actor/input
+tuple and consumed UUID unchanged. Generic ObservationOnly here is historical
+component5/unallocated factual context ONLY and cannot update a managed Session. Existing Project activity/Blocked, worktree and own-Session CAS/write
 constraints remain; a Task metadata/version revocation can still permit the existing
 owned denial path. Preserve the real provider distinction: Claude's prewire
 WaitingApproval→Running publication rejects ProjectBlocked and sends no reply;
@@ -2029,7 +2030,13 @@ private continuation selector: Fresh, or Continue with a transaction-validated
 prior Session/closed-operation identity. Public LaunchRequest JSON cannot set it.
 The Engine selects Continue only from the exact closed prior native attempt of
 this Task/Workflow, not from a user-provided UUID/native_ref or an adapter registry
-search by loosely matching scope. Fresh mints a new privately owned UUID. Continue
+search by loosely matching scope. Fresh chooses a private unexposed UUID immediately before the first preparation
+transaction; Session INSERT, allocator and operation Session binding commit together.
+No Session UUID is reserved/exposed in marker/audit/descriptor before that transaction.
+Any existing factual collision makes private allocation fail before Session/native
+input and requires actual tracked setup settlement, never adopts the factual body.
+After allocation every generic INSERT/UPDATE of that UUID is fenced; test concurrent
+factual INSERT versus allocation commits exactly one, never false managed provenance. Continue
 is optional per actual production profile; unsupported continuation rejects before
 new marker/operation, while its supported Fresh path remains available.
 
@@ -2426,7 +2433,9 @@ Bound new post-epoch Workflow history to256 entries and64 generations, including
 native and EvidencePort attempts and failed/refused entries. This bounds SQL history
 scans, but history/generation caps alone DO NOT bound context publications. The separate
 canonical context counter below charges EVERY Workflow-owned ContextVersion, including
-escalation/invalidation/Cleanup publications without a new history entry. Legacy
+escalation/invalidation/Cleanup publications without a new history entry. Ordinary
+publication/history growth cannot consume the Design25 irreversible-tail reservation;
+terminal frozen publication spends its exact dedicated reserved capacity. Legacy
 pre-epoch terminal history stays read-only, never adopts managed authority. Overflow
 holds with exact prior owners/evidence intact; reorganization never launders review9
 obligations/shared exhaustion or physical holds. Controls at255/256/257 history and
@@ -2453,7 +2462,8 @@ Add a private fenced workflow_context_counters row keyed by exact Workflow Recor
 Project/Goal/Task, initialized at0 for post-epoch ownership. It counts EVERY new
 Workflow-owned ContextVersion publication, including escalation, invalidation-only,
 retry, Cleanup/frozen terminal pack and source-change-before-dispatch replacements;
-no dependency on history append or generation rise. Cap256 and increment with the
+no dependency on history append or generation rise. Cap256 with the private
+Design25 reserved tail capacity; increment/spend reservation with the
 ContextVersion/Task pointer/Workflow/audit in the same Immediate transaction; rollback
 restores all. Include the table in candidate/composed all-table writer enumeration,
 FK/scope/immutability triggers and fresh/migrated schema goldens. Generic context/
@@ -2603,3 +2613,104 @@ attempt but did not deliver, so the next invocation must Fresh; later successful
 admitted/settled Fresh can establish a new eligible chain. This declared availability
 limit avoids skipping to an older receipt/UUID and never resets budgets/authorship.
 Consumed-known-zero-wire remains held14, never this restoration alternative.
+
+
+### Design25: irreversible tail reservation, candidate identity and exhaustive continuation
+
+BEFORE the FIRST configured irreversible external claim (Pr, or any earlier producer-
+declared irreversible/disposal effect), the same gate-claim transaction reserves the
+EXACT remaining mandatory configured Workflow tail: every remaining ContextVersion,
+remaining phase/history entry, final frozen terminal pack and required Record closure
+headroom. Reservation includes exact/worst-case serialized tail attempts, bounded
+gate observations/source maps and terminal metadata from the actual producer contract,
+not only the64-KiB fixed final diagnostic margin. Used body+reserved tail bytes must
+fit8 MiB before effect; an unbounded future representation refuses. Revalidate each
+next-effect reservation against its captured source/observation contract, and final
+Cleanup freezes its exact pre-disposal snapshot plus bounded outcome, so no post-disposal
+recapture can spend unreserved bytes. Derive from the actual frozen effective phase plan, not a public count or
+fixed PR-only assumption; unknown effect/plan class refuses before external execution.
+The private workflow_context_counters authority also records this immutable tail-plan
+identity and remaining reserved publication/history counts. Checked used+reserved<=256
+must hold for BOTH counters/history; ordinary retry/escalation/invalidation cannot spend
+this reservation. Capacity is charged/consumed atomically with each exact planned tail
+transition and terminal publication; failed tx restores it. New source/policy/risk plans
+must acquire their additional capacity before any next effect, otherwise hold with prior
+outcomes intact; no promise of automated post-PR reconciliation or mandatory-history drop.
+Unused reservation is retained through uncertainty and only exact safe terminal closure/
+authorized reconciliation can release it; history/used counters never reset. The reserved
+64-KiB Record metadata margin remains separate from context/history capacity.
+
+Current STANDARD example reserves the remaining MergeGate/Cleanup/frozen-terminal
+publications and any missing phase entries before Pr. With used254 and3 mandatory
+remaining publications, Pr refuses before bytes; a fitting253+3 sequence reaches256
+and actual Cleanup disposal THEN persists terminal from its reserved last publication.
+Test253/254/255/256, configured earlier effect/tail counts, both context/history saturation,
+source drift/newplan before-next-effect and rollback. A mutant removing either reservation
+check must reproduce post-disposal persistence failure, not merely a counter unit mismatch.
+Cleanup's already-admitted claim still finalizes its exact frozen evidence after disposal;
+a later checkpoint append never changes the admitted reservation/provenance.
+
+Candidate6 fixture DB identity is APPLICATION_ID=0x52525843 (ASCII RRXC) AND version6,
+distinct from production RRX1=0x52525831. Only explicit internal candidate fixture creation/
+upgrade accepts this identity; every candidate open verifies it before reads/writes.
+The genuine older-version target may be upgraded to RRXC only in the same isolated
+fixture migration transaction, never on real user state. Every ordinary/composed runtime
+rejects RRXC BEFORE version/migration dispatch even if its composed user_version is6
+or greater; RRXC is NEVER an ordered production predecessor. Candidate scopes/epochs/
+receipts are not retagged/imported into RRX1. This identity is durable and independent
+of table names/user_version/CLI flags. Test composed open of candidate refuses unchanged
+DB hash; candidate refuses RRX1 default state except the explicit isolated-fixture
+migration entry. Native historical live-writer trigger/function tests still apply.
+
+Actual production maintenance/runtime Git authority belongs60 and is a real deployment/
+consumer prerequisite. Candidate mechanics positives additionally require a REVIEWED
+fixture-only runtime-job producer, compiled solely under test: it acquires the SAME
+real durable maintenance/effect reservation and exact version/physical conflict gates,
+executes only controlled scoped synthetic jobs with actual tracked ownership and
+settles their known cohort through the same private close predicate. It cannot accept
+arbitrary external commands/profile, forge receipt JSON or seed private SQL. Production
+callers never select it. Worktree provisioning/capture/disposal in positives occurs under
+that fixture's actual reservation BEFORE each effect, not pre-created operation-less
+candidate exemptions. Controlled cohort proof is mechanics only; nativeGit hooks/helpers/
+fsmonitor/escaped services and production60 conformance remain pending. Tests prove marker
+race, symmetric overlap/disjoint scope, pre-effect refusal, unknown-held cleanup and
+actual producer-close without terminal labels. If this real fixture producer is absent,
+those positives are unreachable/PENDING and cannot earn source acceptance; missing60
+production always refuses affected real profiles. Source acceptance must inventory each
+fixture versus actual production consumer honestly, with no cyclic claim of completed60.
+
+Continue compares the immutable original delivered frame's typed key-family inventory,
+not only string-prefix subsets. Native6/16 memory exposure remains labelled; Continue
+never claims the previous native history forgot facts. Exhaustive classification:
+
+| Produced authority family | Continue condition / Fresh rule |
+| --- | --- |
+| Scope/actor/provider/profile/role/worktree/repository:identity, generation | EXACT unchanged; mismatch Fresh, foreign identity rejects |
+| instruction:project.v2 / goal.v2 / task.v2, governing policy/evaluator/constraints, config:* / rule:* / rules:* and environment-name/ref declarations | EXACT unchanged complete key set/digests; missing/added/changed authority Fresh |
+| checkpoint:head + own historical checkpoint; instruction:pack_facts.v2 / legacy spelling under explicit projection version | Own consecutive factual head advance/new decisions/findings/completed facts may be new input; full fresh frame/head checks still required; separate references below are not hidden inside pack_facts |
+| promoted_consultation and artifact/reference scope/path/identity/digest manifest (typed pack fields, even if represented only inside pack_facts) | ANY revoked/removed/replaced reference Fresh; addition also Fresh unless separately reviewed monotonic reference rule; identical immutable referenced snapshot may Continue |
+| actual captured HEAD/tree, repository:inventory/map manifest, worktree:* source content/missing/dirty hashes and declared Task revision | New source facts may Continue only within unchanged semantic/ref authority and exact same accepted scope/phase chain; source movement into governing/reference category uses that stricter row |
+| workflow:* or raw bookkeeping versions | Not accepted semantic keys in the phase source map; malformed producer rejects, never grant Continue |
+| Any other key/typed field or projection inventory change | Unclassified Fresh-only/refusal, no default semantic exclusion |
+
+Compile producer key-family and typed referenced-field inventory with the projection2
+schema golden; cross-check EVERY emitted family from18/19/Engine mandatory rules.
+Comparison includes promoted/reference typed fields independently of aggregate pack_facts
+hash, so dropping S1 cannot be treated as harmless checkpoint advance. Tests actual own-
+head/facts advance positive, promoted S1 removal/replacement Fresh, unchanged immutable
+S1 Continue, source hash/revision advance positive under same authority, config/rule/
+environment/constraints/generation Fresh and unknown family refusal; each causal selector
+mutant must reach pre-marker routing and actual no-Continue wire outcome.
+
+43 reconciliation requires the original marker-time binding frame, retained immutably
+separate from any later ordinary owned-observation bookkeeping CAS refresh. It includes
+captured P/G/T, post-marker Workflow Record version, exact attempt/context/source/frame,
+actor/native selection and full lock set. Store never builds it by matching current rows
+with themselves. The active-only record binder uses those original/current exact pins;
+mismatch holds for14, not an ack-induced silent refresh. Actual authoritative Task-driver/
+settled notification and original managed start-error path may invoke the private
+reconcile port after exact known-current success settlement; passive41step/poll remain
+read-only. Restart cannot reconstruct live owner from rows and needs actual14 authentic
+recovery. Non-success/NoCurrentDispatch uses its separate19 closure, never fake success.
+The composed43 requirement/design gate owns this additional routing; no producer/driver
+is claimed available by this paragraph.

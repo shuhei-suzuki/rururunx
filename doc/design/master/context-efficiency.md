@@ -467,3 +467,10 @@ repeats actual23 Running/accepted-DAG admission at marker/prep/consumption/ALLOW
 marks ALL rendered checkpoint events as unverified caller classification. Bounded
 observations/body/headroom, exact private event names and atomic restore+receipt remain
 pre-code/native integration gates; schema3 main and unmerged component5 stay factual.
+
+
+[Design25](../issue-19-design.md#design25-irreversible-tail-reservation-candidate-identity-and-exhaustive-continuation)
+adds exact irreversible-tail capacity reservation before effects, distinct RRXC candidate
+identity and exhaustive reference-aware Continue selection. S6-01–16 is the pending
+native acceptance inventory; actual60 production ownership and43 original-frame/driver
+composition remain required, not supplied by candidate fixture or public receipt JSON.
