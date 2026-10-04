@@ -41,7 +41,8 @@ after success. All other Formatter methods retain CompactFormatter's exact encod
 strings, escaped quotes/backslashes and UTF-8 are handled by serde_json rather than
 reparsed by an independent byte scanner. No output buffer or depth-sized stack is
 retained. There is no redundant token-count acceptance claim. Actual artifacts use
-no RawValue, and current resolved serde_json features omit raw_value/arbitrary_precision.
+no RawValue, and current resolved serde_json features omit raw_value/arbitrary_precision (actual cargo tree --locked -e features -i serde_json
+--offline reports only default/std; Cargo.lock alone does not prove features).
 Override write_raw_fragment with a sticky fixed unsupported-raw-JSON refusal rather
 than permit a future raw container to bypass depth. Current accepted artifact
 bytes remain unchanged; any future raw/arbitrary-precision artifact requires a
@@ -51,7 +52,9 @@ First Bytes/Depth/Raw refusal is latched in shared private validation state. Eve
 nonempty write refuses; empty writes do not clear the latch. After Serialize returns, inspect that state even if custom Serialize
 swallowed errors: Bytes produces the existing “mandatory pack/checkpoint exceeds
 1 MiB; narrow explicitly” error, Depth a distinct fixed artifact-nesting error,
-Raw a distinct fixed unsupported-raw-JSON error.
+Raw a distinct fixed unsupported-raw-JSON error. Sink/Formatter share one private
+Cell-based state. All refusals use io::ErrorKind::Other, NEVER Interrupted (which
+write_all retries); first refusal is the only source of truth for later writes.
 With no latched refusal, propagate the original Serialize error unchanged. Valid
 encoded-length measurement is reused for existing small HistoryEvent accounting
 with the SAME1-MiB/depth/raw guard and fixed root-cause errors. MAX_TEXT8192 plus
@@ -75,7 +78,9 @@ task_pack if phase, before digest/clone/decode even if format is unrecognized.
 TypedGoal always guards whole data before digest/decode even if its format is
 unrecognized. Those malformed typed loads already fail today; only their error
 priority changes. TaskProvenance preserves EXACTLY today's opaque classification:
-phase OR format==FORMAT is typed, every other Task context is opaque (including
+Cheap phase OR format==FORMAT classification happens BEFORE digest: typed uses
+EXACTLY the TypedTask raw guard, opaque has no new guard. Every other Task context
+is opaque (including
 GOAL_FORMAT in Task scope) and receives no new guard. Actual call inventory:
 task_pack515, validate_task_map's phase probe726 and source recheck756, and physical
 manifest recheck1198 use TypedTask; goal_pack1393 and validate_goal1406 use TypedGoal;
@@ -130,8 +135,12 @@ Require exact complete encoded-byte boundary and+1 refusal, including a boundary
 crossing multi-byte UTF-8/escape chunk, and120/121-container boundary. Differentially
 compare measured bytes/refusal with serde_json::to_vec on fitting actual checkpoint,
 TaskPack/GoalPack fixtures and escaped/control/UTF-8 corpus; preserve exact digests.
-Exercise a custom serializer that ignores a size/depth error and continues: refusal
-stays latched, and a separate early-stop serializer proves later children are not
+Exercise a custom serializer that ignores a size/depth error then replaces it with a DISTINCT
+custom Serialize error: the EXACT fixed bound root cause must win, so omitting
+post-return latch inspection fails (not merely is_err()). Separately exercise the
+real sink + common finalization path with swallowed refusal and Ok(()); reject
+Bytes/Depth/Raw despite Ok. No unsafe construction of generic Serializer::Ok. Also
+pin refusal kind != Interrupted. Refusal stays latched, and a separate early-stop serializer proves later children are not
 visited after the first normal propagated error. Exercise a real existing
 checkpoint loader with a genuinely published fixture checkpoint, then an explicitly
 corrupted oversize/deep stored artifact negative. Use the following branch-specific
@@ -171,7 +180,8 @@ scalar counters/refusal state, never an encoded output buffer. This is observed
 serialization progress plus source evidence, not a quantified allocation theorem.
 For EACH loader pre-guard branch, traces start at the named load_checkpoint,
 task_pack/goal_pack Typed loader or context_artifact/validate_capture entry, AFTER
-any caller-side reference(c) whole-row digest. Test-only bounded stage traces at the ACTUAL digest/
+any caller-side reference(c) whole-row digest. Include TaskProvenance1182/1456
+typed guards and opaque GOAL_FORMAT positive in these ordering controls. Test-only bounded stage traces at the ACTUAL digest/
 clone/typed-decode entry record ordering. Oversize/deep refusal must occur before
 any such later stage; removing/moving that guard must reach the forbidden stage and
 fail the assertion even if a post-typed guard also returns the same error. No authority
@@ -184,7 +194,10 @@ publish_goal/validate_goal must remain accepted with typed_context=false; a
 shape-only GOAL_FORMAT rejection mutant must fail. TypedTask/TypedGoal attempted
 unrecognized-format oversized data must hit the guard before digest/clone/decode,
 then retain normal shape errors for fitting data.
-A10,000-sibling shallow array must pass; omitted end-decrement must fail it. Cheap
+Separate120/121 pure-array and pure-object nesting controls pin both opening
+overrides.10,000 sibling empty/nonempty ARRAYS and OBJECTS pin both closing
+overrides including len==0 fast paths. Independently omit each of four begin-limit/
+end-decrement overrides: its corresponding actual consumer test must fail. Cheap
 kind/scope/version checks precede the raw checkpoint guard, which precedes digest;
 foreign-kind/scope/version/version!=1 oversized checkpoint data still yields the
 original stale/foreign identity refusal. Correct identity with a stale/wrong digest
@@ -193,8 +206,13 @@ fitting wrong-digest data retains the original digest refusal. The TypedTask pha
 probe intentionally yields artifact-bound refusal before the existing Engine-only
 phase refusal. Pin all these priority cases. Wrapped checkpoint-capacity errors
 assert the fixed root cause through error.chain(), not a top-level capacity label.
-Include one actual checkpoint-admission depth control where a Checkpoint fits120
-but its derived Task/phase embedding exceeds120: refuse before append_pack_checkpoint.
+Actual checkpoint-admission negative uses a digest-consistent corrupted PREVIOUS
+plain TaskPack with historical_consultation at total artifact depth120; task_pack
+loader fits but derived PhasePackArtifact adds1 and refuses121. Drive checkpoint()
+and pin typed-phase-capacity context + exact depth root cause, with no
+append_pack_checkpoint entry. The Checkpoint domain projection itself is shallow;
+do not claim it can naturally produce depth120. A depth121 previous TaskPack is
+covered by the loader refusal, not a fabricated admission success.
 Also test empty writes, root-inclusive depth and direct raw-fragment refusal/latch.
 A custom serializer nests119 outer arrays then serialize_bytes(&[1]) as its120th
 container: accepts;120 outer arrays plus byte array is121: refuses. A compiled
