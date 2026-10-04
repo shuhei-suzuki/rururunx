@@ -1,7 +1,7 @@
 # Issue 58: Retained ownership of Task-free native Consultant work
 
 Workflow: STRICT (native ownership, durable authority and Project exclusion).
-Status: Requirements3; verified independent Req1–Req2 gaps corrected below;
+Status: Requirements4; verified independent Req1–Req3 gaps corrected below;
 requirements/design/source gates pending.
 Baseline: main80452f4/schema3. MVP follow-up from #6 F1 and #19; see
 [Issue58](https://github.com/shuhei-suzuki/rururunx/issues/58).
@@ -99,6 +99,14 @@ results do not prove Workflow transport success. Preserve that scope.
   through cleanup/settlement/conflict; a prior idle read or version pin alone is
   insufficient. Every side uses the shared exclusion protocol; unsupported missing
   consumer producers block that scope/profile's production readiness.
+  This includes runtime #12/#13/#60 Evidence/verification jobs (Tests,
+  ExpandedRegression, Mutation, Browser, Staging) and their Git, hook, helper and
+  delegation routes. Each job acquires its actual retained effect reservation before
+  execution and refuses intersecting Consultant holds, including Lost/uncertain holds.
+  Consultant acquisition, fresh admission and continuation check live/Lost/uncertain
+  runtime-job reservations in that same Immediate transaction. Missing actual
+  producers or unknown compatibility mean Unsupported/scoped conflict, never
+  assumed disjointness or an invented #19 EvidencePort native operation.
   Reverse reservations and every lock used as one require an actual nonserializable
   effect-owner capability acquired atomically before effects. Creation, factual
   observation and release use only the private exclusion protocol. Release needs
@@ -112,16 +120,20 @@ results do not prove Workflow transport success. Preserve that scope.
   producers, consuming #6 F1 profiles and composing #12/#13/#19/#58; merged #3/#4
   foundations are not whole-resource settlement proof or newly reopened issues.
   Same-Project concurrency follows actual reviewed compatibility: live Consult vs
-  Task native phases in other worktrees or another Consult may coexist only with
+  Task native phases in other worktrees, another Consult, or runtime Git/Evidence/
+  verification jobs may coexist only with
   continuously enforced disjoint/compatible effects; separate paths/role labels alone
   are insufficient. Task worktree create/adopt/remove and Project-root/shared-Git
   mutation require their conflict reservation and refuse intersecting Consult work.
   Unknown compatibility is a scoped conflict. Status names the blocking owner and
   supported stop/close drives real settlement; idle TUI retains its actual lifetime.
+  Either side becoming Lost must protect already-admitted peers through actual
+  continuous enforcement or settlement; checking only new admission is insufficient.
   This conservative fallback does not satisfy mandatory native4+parallel acceptance:
   #6/#19 and actual Git consumers must establish supported compatible profiles.
 - Every actual consumer reads retained ownership under its current authority/CAS:
-  Project removal/mutation, root/common-dir Git/worktree operations, native and
+  Project removal/mutation, root/common-dir Git/worktree operations, runtime
+  Evidence/verification/helper job execution, native and
   input admission, applicable Goal completion/pack publication, capacity and restart
   reconciliation. Include every Goal terminal/cancel/fail surface. Enumerate exact
   call sites before source. Do not rely solely on
@@ -158,6 +170,11 @@ results do not prove Workflow transport success. Preserve that scope.
   #19's generic Task-scope live-Session fence, managed operations and complete
   locks/Workflow claims are mandatory in the same or an earlier composed epoch;
   #58 cannot ship first with Executor-only or unmanaged Task exclusion.
+  Include #60 reverse reservation/settlement authority and applicable #23/#43
+  authority in this single linear composed epoch and all-table writer fence. Actual
+  reverse producers must ship in the same or an earlier epoch; an epoch lacking
+  them keeps every affected Consultant/job combination Unsupported before effects.
+  No parallel migration history or permissive temporary production profile.
   Whole-schema upgrade deliberately drains every actual older owner and requires
   reviewed #14 recovery for uncertainty, under #19's atomic migration preflight.
   Failure leaves original schema/bytes/history unchanged; retagging legacy labels
@@ -208,6 +225,11 @@ Use two physically disjoint Projects plus nested/shared-scope negative controls;
 never modify unrelated user repositories. Add same-Project compatible/conflicting
 profiles, already-running peer→Lost enforcement, stop/close, Blocked Project and
 terminal Goal controls; no blanket conflict fallback receives parallelism credit.
+Runtime job controls include a live test runner/hook job blocking intersecting
+Consultant acquisition/input/continuation, live Consult blocking job admission,
+Lost job retaining its hold, physically disjoint positives, and protection of an
+already-running native/job peer when either side becomes Lost. Exercise actual
+reservations/consumers on both sides, not native-only labels or seeded job SQL.
 
 Compiled causal mutants must reach the actual removal/admission/settlement/TUI
 consumers: omit hold lookup, release on terminal label/PID absence, forge owner from
@@ -226,6 +248,10 @@ into admission without continuous enforcement. Restore actual positives and prov
 independent prerequisites before each intended consumer assertion. Setup
 refusal, timeout or helper-only checks are not consumer
 kills. Restore exact source and passing controls after each mutation.
+Mutate omitted #60 job-reservation lookup at actual Consultant acquisition/input/
+continuation, omitted Consultant lookup at runtime-job admission, and missing
+already-live peer→Lost enforcement. A live hook/test job must reach the intended
+consumer assertion; setup failure or blanket serialization is not causal credit.
 
 Run shared-state/native/Git/registry/Workflow regressions, fmt/clippy/build, exact
 Linux/macOS CI and independent immutable source reviews. Update README/master

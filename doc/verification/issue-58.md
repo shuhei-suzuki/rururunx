@@ -50,3 +50,15 @@ per-grant lifecycle/inactive-owner/compatibility consumer mutants. Physical scan
 cover every state retaining ownership. Private factual/denial/cleanup ports retain
 own inactive-owner recognition without routing through current-input admission.
 Requirements3 review pending; no effect owner, port, migration or profile implemented.
+
+Req3 6348a56 exact CI37203461118 passed Linux/macOS fmt, clippy, tests and debug/
+release builds (individual steps inspected). Both independent native reviews
+completed request_changes with actual v3 owned cleanup verified; both confirmed
+Req2 causal gaps corrected. Their shared remaining Medium is verified: explicit
+reverse reservations/consumer controls named Git effects but did not enumerate
+runtime Evidence/verification jobs as both Consultant exclusion parties. Req4
+includes actual #12/#13/#60 test/browser/staging/hook/helper jobs, live/Lost holds,
+both admission directions and already-live peer protection, plus actual-consumer
+mutants. It also adopts Low single composed epoch/all-table fencing for #60 and
+applicable #23/#43 authority. Req4 review pending; no producer, port, native profile,
+schema or runtime implementation is claimed.
