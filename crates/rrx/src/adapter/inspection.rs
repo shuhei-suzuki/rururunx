@@ -135,6 +135,8 @@ impl Stream {
 }
 
 struct Frame {
+    #[cfg(test)]
+    command: Option<(String, Vec<String>, usize)>,
     stdout: Vec<u8>,
     stderr: Vec<u8>,
     exit: ExitStatus,
@@ -158,6 +160,8 @@ fn complete(
             && let Some(exit) = inspector.exit
         {
             return Ok(Frame {
+                #[cfg(test)]
+                command: None,
                 stdout: stdout.bytes,
                 stderr: stderr.bytes,
                 exit,
@@ -223,8 +227,17 @@ fn observe_command(
     mut command: std::process::Command,
     observed: impl FnOnce(u32),
 ) -> io::Result<(Frame, Instant)> {
+    command.env_clear();
+    #[cfg(test)]
+    let command_metadata = (
+        command.get_program().to_string_lossy().into_owned(),
+        command
+            .get_args()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect(),
+        command.get_envs().count(),
+    );
     let child = command
-        .env_clear()
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -255,7 +268,15 @@ fn observe_command(
         )
     })();
     match result {
-        Ok(frame) => Ok((frame, deadline)),
+        Ok(frame) => {
+            #[cfg(test)]
+            let frame = {
+                let mut frame = frame;
+                frame.command = Some(command_metadata);
+                frame
+            };
+            Ok((frame, deadline))
+        }
         Err(original) => {
             // Endpoints were dropped before mandatory wait, outside the observation
             // budget. Preserve the original bounded category on reap uncertainty.
@@ -413,7 +434,7 @@ mod tests {
             ),
         ] {
             let started = Instant::now();
-            let error = builtin(&body).unwrap_err();
+            let error = builtin(body).unwrap_err();
             eprintln!(
                 "isolated {name} overflow observation elapsed={:?} category={error}",
                 started.elapsed()
@@ -572,10 +593,22 @@ mod tests {
         assert_eq!(pids(&selected_rows), expected);
         assert_eq!(pids(&global_owned), expected);
         validate(&selected.stdout, leader).unwrap();
+        let command = selected.command.as_ref().unwrap();
+        assert_eq!(command.0, "/bin/ps");
+        assert_eq!(
+            command.1,
+            [
+                "-g".to_owned(),
+                leader.to_string(),
+                "-o".to_owned(),
+                "pid=,pgid=,stat=".to_owned()
+            ]
+        );
+        assert_eq!(command.2, 0);
         // Print only the fixture-owned rows; never dump unrelated global metadata.
         eprintln!(
             "owned_ps_observation={}",
-            serde_json::json!({"label":label,"environment":"env_clear; COMMAND_MODE absent","argv":["-g",leader.to_string(),"-o","pid=,pgid=,stat="],"exit_code":selected.exit.code(),"stderr_bytes":selected.stderr.len(),"selected_rows":selected_rows,"global_filtered_pids":pids(&global_owned)})
+            serde_json::json!({"label":label,"environment":"env_clear; COMMAND_MODE absent","argv":command.1,"program":command.0,"explicit_environment_entries":command.2,"exit_code":selected.exit.code(),"stderr_bytes":selected.stderr.len(),"selected_rows":selected_rows,"global_filtered_pids":pids(&global_owned)})
         );
     }
     struct OwnedBoundary {
@@ -695,7 +728,7 @@ mod tests {
         assert!(!sample.stderr.is_empty());
         eprintln!(
             "owned_ps_observation={}",
-            serde_json::json!({"label":"legacy-rejected","environment":"only COMMAND_MODE=legacy","argv":["-g",pid.to_string(),"-o","pid=,pgid=,stat="],"exit_code":sample.exit.code(),"stderr_bytes":sample.stderr.len()})
+            serde_json::json!({"label":"legacy-rejected","environment":"only COMMAND_MODE=legacy","argv":["-g",pid.to_string(),"-o","pid=,pgid=,stat="],"outer_command":sample.command,"exit_code":sample.exit.code(),"stderr_bytes":sample.stderr.len()})
         );
     }
     #[tokio::test]
