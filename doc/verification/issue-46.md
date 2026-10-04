@@ -292,3 +292,8 @@ retained at `/private/tmp/rururunx-issue23-design1-ci-failed.log`. No rerun, att
 to the local producer diagnostic or claim that #46 reproduces/closes this exact
 historical failure is made. Actual consumer coverage and later integration must be
 assessed independently on their own meaningful published heads.
+
+
+### Later Issue41 test-evidence precision
+
+Issue41 test-only3d30399 renamed the historical `each_output_stream_has_a_causal_size_failure` wrapper to `oversized_child_streams_remain_unknown_when_size_or_deadline_wins`: oversized OS producers may reach the unchanged250ms deadline before the size category, so only size-or-actual-timeout Unknown/no accepted frame is required. This wrapper supplies neither causal size-cap credit nor incidental throughput/idle-only-sleep liveness coverage; cleanup is unchanged source behavior, not a separate wrapper assertion. The earlier round2 test name and timing records remain historical. Deterministic prepared reader-boundary cap evidence is separately unit-only in [Issue41](issue-41.md) and its [cap mutation ledger](issue-41-cap-mutation.json); neither former masked size operator gains retrospective credit. Production Issue46 bounds and safety contract are unchanged.
