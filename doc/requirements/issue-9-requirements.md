@@ -423,7 +423,13 @@ cannot label themselves Human or obtain that authority. Broker decisions never
 substitute for Human adjudication/activation. This covers blocker dispositions,
 post-opinion relaxation, supersession/decomposition, authorship/unknown-delta
 disposition and governing-policy activation. Direct same-UID machine/CLI/DB action
-outside these runtime APIs is an explicit trust limit, consistent with Issue 23;
+outside these runtime APIs is an explicit trust limit, consistent with Issue 23.
+This includes a native shell directly invoking the same-UID local rrx binary: CLI
+UID/origin records application provenance, not evidence that a biological Human
+initiated it. No ancestry/environment authentication or OS containment is claimed.
+Such direct machine action is outside the runtime API guarantee; supervised runtime
+JSON/API/IPC calls still cannot acquire or relabel Human authority. Certificates and
+status disclose this limit and record the actual accepted UID/ingress origin;
 this is not biological identity proof or an OS sandbox. Trusted Rust composition
 is not authenticated against malicious linked code. No extra authentication
 infrastructure is implied or claimed here. The principal/origin follows the SAME
@@ -711,7 +717,7 @@ Issue #9 checkboxes; items 9–21 add integrity/availability and their explicit 
 needs actual consumer evidence; proposed tests and independent development reviews
 are not runtime proof.
 
-1. First-class two-reviewer and four-plus rosters run through real Store/Workflow
+1. First-class two-reviewer rosters run through real Store/Workflow
    delegation, using one fixed Task context, exact locked revision and
    independent member ownership. Reject 0/33 slots, invalid parallelism and duplicate
    Session ownership. M=2/parallelism8 accepts with effective at most2; lower actual
@@ -1239,7 +1245,13 @@ common-Git effects or escaped-work scope uncertain, hold conservatively widens t
 that full physical scope, potentially fencing the Project and physically overlapping
 Projects until actual Issue 14 recovery. A timer expiration neither proves a larger effect
 occurred nor erases an already proven bound. Public Issue and I9-AC-21.c/#16 report the
-true scope, including Project/overlapping-Project fences separately from Task holds.
+true scope, including Project/overlapping-Project fences separately from Task holds. The absorbing choice also applies when the original supervisor
+remains continuous and observes complete settlement after the declared deadline: it
+missed the qualified profile envelope, so that late observation is factual evidence,
+not timely completion/release authority. It retains ownership until authentic14 recovery.
+This is an intentional availability limit, not an assertion that every late process
+is physically alive. #16 separately reports deadline-expired continuous-owner late
+settlement versus broken supervision/restart, escapes and other uncertain causes.
 
 **14.c — Retained artifact accounting.** The 128-MiB quota bounds actual retained
 rrx evidence, separate from cumulative actual delivery. Shared core stored once per round is
@@ -1625,16 +1637,16 @@ Applicability-dependent fresh budget additionally needs I9-AC-21.h actual #12 pr
 inherit/refuse does not require pretending it exists. Readiness comes from actual
 implementation composition, never public JSON capability. Test actual downstream
 consumer returns distinct typed basis refusal and readiness-unavailable reasons.
-Its no-effect preflight first validates bounded certificate provenance/basis, then
-checks actual production readiness, both BEFORE claim/reservation/dispatch. This
+Both certificate provenance/basis and actual production readiness are required
+before claim/reservation/dispatch; bad-basis refusal must remain observable while
+readiness is absent. This
 makes nongating/synthetic/foreign-basis refusal reachable even when readiness is
-unavailable; global-unready cannot mask the basis check. Tests through this same
-real consumer remove each predicate independently and must causally fail: bad basis
-with absent readiness reports basis refusal, while a genuinely valid actual basis
-with each missing prerequisite reports readiness unavailable. Genuine readiness/
-basis positives require their actual producers, never a fixture override or fabricated
-ready flag. If those positive producers are still absent, mark that integration test
-pending rather than count a short-circuited negative as completed proof. Shared checker
+unavailable; global-unready cannot mask the basis check. For #9 closure, tests through this same real consumer prove bad basis with absent
+readiness reports basis refusal, and a nongating conformance basis cannot certify;
+typed basis refusal and readiness-unavailable remain distinct. The genuinely valid
+formal-basis/readiness matrix is the separately numbered post-closure MVP obligation
+I9-AC-21.n. Its pending positive cannot be counted as completed #9 evidence or become
+an unnamed #9 closure dependency. Shared checker
 mechanics and interim-refusal evidence cannot claim production acceptance. When #9/#23 compose, #23 owns the ONE canonical trusted-ingress derivation/type
 implementation; #9 imports it and owns actual convergence caller tests. #15/#24
 construct genuine production capabilities through actual scoped CLI/TUI ingress.
@@ -1684,6 +1696,8 @@ is claimed merely because this table names an Issue; it must actually be quoted 
 | I9-AC-13.a | #13 actual post-certificate irreversible reconciliation; no fabricated rollback or later certificate washing |
 | I9-AC-1, I9-AC-1.a, I9-AC-16, I9-AC-18.a, I9-AC-18.h, I9-AC-20.d, I9-AC-12.j, I9-AC-21.j | PRE-CLOSURE: #19/#43 actual member/phase input, original-frame binding and full owned closure; #5/#6/#7 actual supported native ports; #9 fixed conformance ingress + refusing formal consumer. POST-CLOSURE: #16 representative dogfood; #14 restart/uncertain recovery; #27 fair admission |
 | I9-AC-21.g, I9-AC-18.h | #14 actual retained-share recovery, #27 admission, #12 relevant verification evidence, #16 scoped recovery/fairness metrics |
+| I9-AC-21.n | POST-CLOSURE MVP: #9 real formal consumer; #14/#15/#24/#27 actual readiness composers; #16 representative positive/removal matrix |
+| I9-AC-1.b, I9-AC-8.k, I9-AC-18.i | #9 frozen roster/schedule/rerun consumer; #5/#6/#7 actual qualified native profiles; #27 permits; #16 observed qualification and rerun metrics |
 | I9-AC-21.k | #8/#19/#43 real legacy Workflow upgrade/ownership consumer; #9 unavailable formal-gate regression; #12 actual impact evidence; #16 withdrawal/Task availability measurements |
 | I9-AC-18.c, I9-AC-14.j, I9-AC-14.h, I9-AC-21.l, I9-AC-13 | #5/#6/#7 actual requested/effective configuration; #60 actual between-round/source-capture effect ownership; #14/#27 retained-share recovery/admission; #15/#24 actual attention/termination ingress; #43 record-only boundary; #16 profile-availability and quota impact |
 
@@ -1838,19 +1852,29 @@ input exclusion, finding/evidence obligations and byte reservation until whole-r
 safe closure. Lost/uncertain shares remain held for #14. Test two healthy Sets each
 with two slots competing for ONE provider permit: settled slot releases its permit,
 queued slot progresses, no healthy hold-and-wait or context bump. Real #9/#19/#43 member
-closure producer remains an integration gate. Queue behind unrelated retained Lost
-capacity has a controller liveness exit: if a fully queued proposal or a partially
-admitted round's queued member cannot proceed because the actual conflicting share is retained Lost/unknown,
-safely cancel its never-started slots and settle/cancel its genuine started owners,
-then close that proposal/round without certificate. An entirely queued proposal has
-no native/round lock and consumes no round/retry allowance; actual retained proposal
-metadata stays charged. No new retry or Human decision is
-needed for this frozen-policy safe termination. Keep consumed round/history charges
-and all unrelated Lost shares; release the round lock ONLY after its own full safe
-closure. If one of its own owners is uncertain, its lock stays held for #14. Ordinary
-healthy capacity wait retains the configured optional expiry/attention behavior.
-This is no fictitious runnable success or uncertain ownership release. #16 measures this wait separately from healthy scheduling and actual Lost
-recovery; public #14/#27 own its real recovery/admission.
+closure producer remains an integration gate. Queue behind unrelated retained Lost capacity has a controller liveness exit. At
+every relevant global/Project/provider scope, non-Lost-reachable capacity equals the
+configured limit minus genuinely retained Lost/unknown shares at that scope. Healthy
+busy ownership does not reduce this reachable capacity: capacity2 with one Lost and
+one healthy-busy share leaves one reachable share, so a one-permit slot waits normally.
+Only a queued slot (or its qualified simultaneous-start cohort, I9-AC-8.k) needing
+more than that reachable capacity is blocked by retained Lost. Before first round
+admission, every frozen roster slot and its qualified schedule must be non-Lost-
+reachable; otherwise close the entirely queued proposal without round/retry spend,
+retaining charged proposal metadata and unrelated holds. This avoids burning a
+healthy lineage's budget against a known foreign Lost.
+
+If reachable capacity becomes insufficient AFTER first input, safely cancel never-
+started slots and settle/cancel genuine started owners, then close without certificate.
+Consumed round/history charges remain; an uncertain own owner keeps its lock for14.
+Controller safe termination needs no new Human decision, and never releases foreign
+Lost shares. Repeated unchanged capacity causes park without new admission or round
+charge. Capacity restoration alone is not retry authority: a later full-roster round
+still requires an existing finite frozen-policy retry authorization or trusted Human
+action under9.i/18.a; it cannot bypass dissent, allowances or lineage budgets. Test
+mixed occupancy, wholly queued no-spend, partial charged closure, and repeated foreign
+Lost with no silent64-round exhaustion. Actual #14/#27 production admission/recovery
+and #16 scoped wait/availability measurements remain mandatory.
 
 **21.j — Interim formal refusal and real fixed conformance ingress.** Until actual
 I9-AC-21.i readiness composes, production Workflow formal-review consumers return
@@ -1992,8 +2016,10 @@ does not discard unknown fixture workload/process bookkeeping at test exit.
 
 Public checkboxes 1–8 close individually on their exact I9-AC-1–8 actual component
 consumer/production-port conformance evidence AND required registered native-profile
-proof, with a recorded annotation: `component conformance; native_execution=synthetic`
-for deterministic transport peers, or `native_execution=real` for actual native runs.
+proof, with separate annotations: `orchestration_transport=synthetic|real` and
+`profile_qualification=real-native(<exact evidence reference>)|pending`. Only actual
+qualified native-profile evidence permits a check mark; pending qualification cannot
+close it. Synthetic transport mechanics never imply synthetic profile qualification.
 No checkbox is ticked solely by a proposed test, synthetic profile declaration or
 unready port. The annotation explicitly names representative real-model/formal
 acceptance as mandatory #16/MVP PENDING when not yet proved; component check marks do
@@ -2003,3 +2029,54 @@ I9-AC predicates/positive configurations genuinely pass; #16 evidence remains a 
 whole-MVP gate. The public Issue must retain these exact evidence annotations when
 checks are eventually ticked, rather than letting an unqualified 'works' imply native
 formal certification. Original scope and checks stay unchanged and currently unchecked.
+
+
+**1.b — Four-plus independent closing obligation.** First-class four-plus rosters
+retain the actual Store/Workflow delegation, slot-count and independence controls of1
+and18.f/20.c, including the required real registered repeated-family profile proof.
+Public checkbox1 closes on its two-reviewer evidence alone; Issue9 closure still
+requires this separate four-plus positive, with no unsupported-profile waiver.
+
+**8.k — Frozen qualified admission schedule.** The actual registered native channel
+qualification binds the frozen roster, source/key scope, load/write timing basis and
+a finite permitted admission envelope (including queue delay, start skew and allowed
+parallelism/permit schedules). It must cover every reachable schedule under the frozen
+queue/expiry policy, or constrain actual admission to its proven envelope. Best-effort
+resource concurrency never weakens this independent-input condition. A concurrent-
+only profile requires its complete qualified cohort capacity before ANY member model
+input; it cannot silently become serialized when permits change.
+
+Every queued member's actual pre-input admission revalidates the elapsed schedule,
+current permits and exact original channel qualification. Outside the qualified
+envelope, no further member input is delivered and the WHOLE round is non-certifying;
+already admitted owners settle normally with retained evidence. A new full-roster
+round needs existing genuine retry authority, never a refreshed basis assertion. An
+unbounded queue policy cannot qualify a profile with only a finite start window. Test
+concurrent-only qualified starts followed by a permit drop and a late serialized
+second slot: zero certificate, explicit schedule-basis refusal, first owner's genuine
+settlement retained. A mutant omitting this real queued-member check must fail.
+Actual default-preserving native producer evidence remains required, not a synthetic
+clock or channel label positive.
+
+**21.n — Post-closure production readiness matrix.** Actual #14 recovery, #15/#24
+trusted product ingress/policy and #27 fair admission composers, with #9's real formal
+consumer, own the valid-formal-basis/readiness-positive matrix. After genuine producers
+exist, independently remove each required readiness predicate and prove the real
+consumer refuses a genuinely valid formal basis before effects; restored readiness
+and current basis permit the actual positive. A previously genuinely minted certificate
+may be retained while a readiness capability becomes unavailable, but fixture overrides,
+conformance certificates and fabricated ready flags cannot substitute. This matrix is
+mandatory MVP/#16 integration and explicitly pending until actual production composition;
+it is not an extra #9 merge/closure prerequisite.21.i closes only its stated reachable
+interim refusing path, never claims this positive completed.
+
+**18.i — Nonblocking rerun limitation.** Concern-linked nonempty committed bytes plus
+a truthful unverified fix claim authorize bounded independent reruns under18.a, not
+semantic correctness of the fix. Semantically neutral edits can therefore lead to
+new opinions on prior nonblocking dissent without a mandatory9.h blocker disposition.
+This is a disclosed limitation, never clearance of an unresolved blocker. #16 reports
+approvals after k reruns following nonblocking dissent, linked delta/fix claims and
+actual charges. A frozen stricter policy may require the original dissenting slot's
+disposition; the Core does not impose a new per-fix Human gate or deterministic
+semantic proof producer. Existing64-round/shared allowances and anti-cosmetic controls
+remain in force.
