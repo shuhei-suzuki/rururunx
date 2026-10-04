@@ -10,25 +10,25 @@ passed fixture. The matrix is the single current native acceptance inventory.
 
 | Stable acceptance | Canonical writer / actual consumer | Required causal proof (source/native PENDING) |
 | --- | --- | --- |
-| S6-01 | Explicit epoch/all-table writer fence and drained migration | Actual v1–5 binaries plus already-open/prepared old writers; unchanged original DB bytes/version on refusal; RRXC candidate distinct from RRX1 production (Design20/24/31) |
-| S6-02 | Atomic marker/operation and actual managed Goal admission | Exact accepted Running Goal, no governing hold, listed DAG Task and genuine bounded hard-prerequisite proof; missing production profile/producer refuses before effects (Design24/31/32) |
-| S6-03 | All five actual managed preparation/allocator callers | Immutable original frame/actor/full locks and genuine private operation; no prior-terminal adoption; actual allocation/factual-insert race (Design16/31) |
-| S6-04 | First/new input consumption before bytes | Complete rendered-frame hash/bytes, current CPP/head/source and actual Goal predicate; exactly one consumed UUID/model delivery; stale input emits zero bytes (Design18/24) |
-| S6-05 | Owned historical ACK/observations | Exact current admitted pair/consumed UUID; monotonic initial native binding only; original marker frame immutable (Design29) |
-| S6-06 | Current ALLOW/host effects versus provider-specific historical DENY | Genuine grant, complete scope/locks, immutable sources and declared Executor outputs; Project bookkeeping held; at most256 host admissions PER OPERATION,257th before IO; exact outcome bytes/quota and unknown-worker refusal (Design26/29/30/32) |
-| S6-07 | Genuine monotonic Lost diagnostics | Absorbing hold in ALL scopes; remembered actor/input/intent pins; no generic terminal rewrite, receipt or release (Design20/29) |
-| S6-08 | Actual owned supervisor settlement/restoration | Genuine current native outcome or eligible pre-input NoCurrentDispatch plus complete owned cohort/worker cleanup; consumed input with zero wire remains held for14; exact restoration atomic (Design16/31) |
-| S6-09 | Receipt freeze and exact closure/replacement consumers | Body/version/claim and actual failure/TerminalRecovery proof; closed awaiting-explicit-retry hold before later RetryEvent; no automatic redispatch; legitimate bounded Workflow successor, never raw version refresh (Design32/33/34) |
-| S6-10 | Sole active record-only binder/reconcile/diagnostic | Original marker and private actual owner or sealed successful receipt; factual W-version/body successor ledger only; no P/G/T/Session/lock write; passive observer cannot settle (Design26/30/33) |
-| S6-11 | Sealed Fresh/Continue selector | Latest closed delivery/predecessor, actual registry proof, exhaustive typed family/reference checks; immutable refusal attribution persists after later pristine no-Session attempt (Design21/32) |
-| S6-12 | All checkpoint/pack publication/render consumers | Every own/promoted event caller classified; immutable snapshots; live latest-head preparation distinct from exact historical admitted closure (Design29) |
-| S6-13 | Whole-body/history/quota and irreversible tail | At most64 unique observation/material authorities and256 history/context entries; complete Workflow AND ContextVersion bodies≤8 MiB; charged128 MiB PER WORKFLOW plus reserved64-KiB closure headroom; ALL source-map/evidence fields compact; exact tail before effects (Design25/31/33) |
-| S6-14 | Operation-aware locks/idle/Git/removal/context/Goal writers | Symmetric physical reservations include overlapping roots/common Git; actual producers required; closed synthetic producer tests prove mechanics only (Design25/31) |
-| S6-15 | Unsupported legacy Task/NoTask/interactive roles | Every fresh generic nonterminal native writer refuses before reservation/process/bytes; terminal historical records never verified ownership (Design20/21) |
-| S6-16 | Actual composed caller/projection/schema readiness | All actual native/Generic/Fake and Goal/binding/effect/recovery ports; phase-closed pending-Goal drain; bounded prerequisite transaction≤128 rows,4096 bytes each/512 KiB aggregate; capacity in same claim transaction; synthetic proof never production readiness (Design31/32/33/34) |
+| S6-01 | Explicit epoch/all-table writer fence and drained migration | Actual v1–5 binaries plus already-open/prepared old writers; unchanged original DB bytes/version on refusal; RRXC candidate distinct from RRX1 production (Design20/22/24/25/31/35) |
+| S6-02 | Atomic marker/operation and actual managed Goal admission | Exact accepted Running Goal, no governing hold, listed DAG Task and genuine bounded hard-prerequisite proof; missing production profile/producer refuses before effects (Design24/31/32/35) |
+| S6-03 | All five actual managed preparation/allocator callers | Immutable original frame/actor/full locks and genuine private operation; no prior-terminal adoption; actual allocation/factual-insert race (Design16/18/31/35) |
+| S6-04 | First/new input consumption before bytes | Complete rendered-frame hash/bytes, current CPP/head/source and actual Goal predicate; exactly one consumed UUID/model delivery; stale input emits zero bytes (Design18/24/31/35) |
+| S6-05 | Owned historical ACK/observations | Exact current admitted pair/consumed UUID; monotonic initial native binding only; original marker frame immutable (Design29/35) |
+| S6-06 | Current ALLOW/host effects versus provider-specific historical DENY | Genuine grant, complete scope/locks, immutable sources and declared Executor outputs; Project bookkeeping held; at most256 host admissions PER OPERATION,257th before IO; exact outcome bytes/quota and unknown-worker refusal (Design26/29/30/32/34/35) |
+| S6-07 | Genuine monotonic Lost diagnostics | Absorbing hold in ALL scopes; remembered actor/input/intent pins; no generic terminal rewrite, receipt or release (Design20/29/35) |
+| S6-08 | Actual owned supervisor settlement/restoration | Genuine current native outcome or eligible pre-input NoCurrentDispatch plus complete owned cohort/worker cleanup; consumed input with zero wire remains held for14; exact restoration atomic (Design16/18/31/35) |
+| S6-09 | Receipt freeze and exact closure/replacement consumers | Body/version/claim and actual failure/TerminalRecovery proof; closed awaiting-explicit-retry hold before later RetryEvent; no automatic redispatch; legitimate bounded Workflow successor, never raw version refresh (Design32/33/34/35) |
+| S6-10 | Sole active record-only binder/reconcile/diagnostic | Original marker and private actual owner or sealed successful receipt; factual W-version/body successor ledger only; no P/G/T/Session/lock write; passive observer cannot settle (Design26/30/33/34/35) |
+| S6-11 | Sealed Fresh/Continue selector | Latest closed delivery/predecessor, actual registry proof, exhaustive typed family/reference checks; immutable refusal attribution persists after later pristine no-Session attempt (Design21/22/24/32/35) |
+| S6-12 | All checkpoint/pack publication/render consumers | Every own/promoted event caller classified; immutable snapshots; live latest-head preparation distinct from exact historical admitted closure (Design29/34/35) |
+| S6-13 | Whole-body/history/quota and irreversible tail | At most64 unique observation/material authorities and256 history/context entries; complete Workflow AND ContextVersion bodies≤8 MiB; charged128 MiB PER WORKFLOW plus reserved64-KiB closure headroom; ALL source-map/evidence fields compact; exact tail before effects (Design24/25/26/29/30/31/33/35) |
+| S6-14 | Operation-aware locks/idle/Git/removal/context/Goal writers | Symmetric physical reservations include overlapping roots/common Git; actual producers required; closed synthetic producer tests prove mechanics only (Design23/25/31/35) |
+| S6-15 | Unsupported legacy Task/NoTask/interactive roles | Every fresh generic nonterminal native writer refuses before reservation/process/bytes; terminal historical records never verified ownership (Design20/21/35) |
+| S6-16 | Actual composed caller/projection/schema readiness | All actual native/Generic/Fake and Goal/binding/effect/recovery ports; phase-closed pending-Goal drain; bounded prerequisite transaction≤128 rows,4096 bytes each/512 KiB aggregate; capacity in same claim transaction; synthetic proof never production readiness (Design31/32/33/34/35) |
 
 Each stable key requires named exact consumer tests AND meaningful causal mutants
-in final source evidence; it is not an invented available API or a checkmark. The named Design16 and Design18–33 contracts
+in final source evidence; it is not an invented available API or a checkmark. The named Design16 and Design18–35 contracts
 and the canonical writer table define the required private predicates. Source evidence
 must map each key to actual fixture/result SHA and list unready production ports.
 
@@ -738,8 +738,9 @@ mandatory closure. Receipt/transport/native JSON alone never means a Passed phas
 
 
 Design34 makes the complete factual Workflow ledger outside-lock derived and sealed;
-ALL inside-transaction authority reads together remain≤128 compact rows/512 KiB,
-including prerequisite rows, ledger endpoints, locks and current CAS guards. Concurrent
+Design35 supersedes the earlier ALL-reads bound: compact proof rows≤128×4096
+bytes/512 KiB; explicitly bounded mandatory owner/body/lock/physical rows and SQL
+validation/write costs are a separate class, never a total512-KiB mutex promise. Concurrent
 link/W changes refuse rather than refresh an original frame. Every open-phase writer
 is inventoried, including fused gate Waiting/held outcome and separately authorized
 Task terminal decision; unknown/raw successors never permit closure. The256-link
@@ -758,3 +759,20 @@ cannot stand in for candidate6 Continue→NCD→NEW-UUID Fresh controls. Whole l
 drain/refusal is unchanged; pending58 legacy recovery/barrier ideas confer no migration
 or cleanup authority. Actual production ports, source tests, mutants and native
 conformance remain mandatory and unimplemented, not earned by this document review.
+
+
+Design35's normative finite transaction manifest separates compact proof≤128rows/
+512 KiB from actual full P/G/T/W/Context≤8-MiB bodies, ownSession≤4 MiB, private
+operation/receipt≤4 MiB, authority tuples≤2 MiB, full256locks≤4 MiB and complete
+physical4096-scope-row lookup≤64 MiB. Actual endpoint/duplicate indices never
+replace native registry proof or truncate a conflict scan. Full body-write/SQL
+JSON cost is reported, not silently exempted; actual contention tests remain required.
+S6-13 byte-guards ALL CHECK surfaces including4-MiB generic audit/1-MiB Usage before
+JSON; S6-01 actual opaque fixture birth authority refuses arbitrary user RRX1 retag.
+S6-09/10/13/16 exhaustively covers every new private writer,99/100 gate cycles,8/9
+hold limit, reserved genuine closure/cancel-only exit and BEFORE-INSERT REPLACE guards.
+S6-05/06/16 rejects idle generic managed definition edits; only actual trusted typed
+policy/barrier writes may change admitted instruction definitions. S6-06 uses sealed
+declared outputs as the ONLY mutable own-Task AllowCurrent set. All are proposed
+unimplemented acceptance, with actual ports/native production and legacy migration
+readiness still pending, never schema6 deployment proof.
