@@ -253,30 +253,51 @@ async fn checkpoint_reader_guards_after_identity_before_digest_and_decode() {
         record.data["mandatory_goal"] = value;
         let r = f.corrupt_checkpoint(&record);
         reset();
-        refused(f.packs().load_checkpoint(&r).unwrap_err(), message);
+        refused(
+            f.packs()
+                .load_checkpoint(&r)
+                .err()
+                .expect("expected bounded consumer refusal"),
+            message,
+        );
         let mut stale = r.clone();
         stale.digest = "wrong".into();
         reset();
-        refused(f.packs().load_checkpoint(&stale).unwrap_err(), message);
+        refused(
+            f.packs()
+                .load_checkpoint(&stale)
+                .err()
+                .expect("expected bounded consumer refusal"),
+            message,
+        );
         let mut foreign = r;
         foreign.scope.task_id = Some(TaskId::new());
         reset();
         refused(
-            f.packs().load_checkpoint(&foreign).unwrap_err(),
+            f.packs()
+                .load_checkpoint(&foreign)
+                .err()
+                .expect("expected bounded consumer refusal"),
             "stale/foreign checkpoint reference",
         );
         let mut version = f.corrupt_checkpoint(&record);
         version.version = 2;
         reset();
         refused(
-            f.packs().load_checkpoint(&version).unwrap_err(),
+            f.packs()
+                .load_checkpoint(&version)
+                .err()
+                .expect("expected bounded consumer refusal"),
             "stale/foreign checkpoint reference",
         );
         record.kind = RecordKind::Verification;
         let wrong_kind = f.corrupt_checkpoint(&record);
         reset();
         refused(
-            f.packs().load_checkpoint(&wrong_kind).unwrap_err(),
+            f.packs()
+                .load_checkpoint(&wrong_kind)
+                .err()
+                .expect("expected bounded consumer refusal"),
             "stale/foreign checkpoint reference",
         );
     }
@@ -287,7 +308,8 @@ async fn checkpoint_reader_guards_after_identity_before_digest_and_decode() {
     assert_eq!(
         f.packs()
             .load_checkpoint(&stale)
-            .unwrap_err()
+            .err()
+            .expect("expected bounded consumer refusal")
             .root_cause()
             .to_string(),
         "stale/foreign checkpoint reference"
@@ -321,7 +343,8 @@ async fn checkpoint_admission_rejects_extra_artifact_envelope_before_append() {
             },
         )
         .await
-        .unwrap_err();
+        .err()
+        .expect("expected bounded consumer refusal");
     assert_eq!(error.root_cause().to_string(), DEPTH);
     assert_eq!(
         encoding::take_read_stages() & encoding::CHECKPOINT_APPEND,
@@ -350,17 +373,35 @@ async fn typed_task_and_provenance_readers_guard_before_digest_and_decode() {
         let r = f.corrupt(&c);
         for intent in [ContextRead::TypedTask, ContextRead::TaskProvenance] {
             reset();
-            refused(f.packs().load_context(&r, intent).unwrap_err(), message);
+            refused(
+                f.packs()
+                    .load_context(&r, intent)
+                    .err()
+                    .expect("expected bounded consumer refusal"),
+                message,
+            );
         }
         reset();
-        refused(f.packs().task_pack(&r).unwrap_err(), message);
+        refused(
+            f.packs()
+                .task_pack(&r)
+                .err()
+                .expect("expected bounded consumer refusal"),
+            message,
+        );
     }
     let mut c = control;
     c.data["format"] = json!("unknown.format");
     c.data["decisions"] = json!(["x".repeat(MAX_BYTES)]);
     let r = f.corrupt(&c);
     reset();
-    refused(f.packs().task_pack(&r).unwrap_err(), BYTES);
+    refused(
+        f.packs()
+            .task_pack(&r)
+            .err()
+            .expect("expected bounded consumer refusal"),
+        BYTES,
+    );
     let opaque = f
         .packs()
         .load_context(&r, ContextRead::TaskProvenance)
@@ -396,14 +437,26 @@ async fn typed_goal_reader_guards_before_digest_and_decode() {
         c.data[field] = value;
         let r = f.corrupt(&c);
         reset();
-        refused(f.packs().goal_pack(&r).unwrap_err(), message);
+        refused(
+            f.packs()
+                .goal_pack(&r)
+                .err()
+                .expect("expected bounded consumer refusal"),
+            message,
+        );
     }
     let mut c = control;
     c.data["format"] = json!("unknown.format");
     c.data["cross_task_decisions"] = json!(["x".repeat(MAX_BYTES)]);
     let r = f.corrupt(&c);
     reset();
-    refused(f.packs().goal_pack(&r).unwrap_err(), BYTES);
+    refused(
+        f.packs()
+            .goal_pack(&r)
+            .err()
+            .expect("expected bounded consumer refusal"),
+        BYTES,
+    );
 }
 
 #[tokio::test]
@@ -456,7 +509,8 @@ async fn phase_reader_and_capture_guard_before_artifact_clone() {
         f.packs()
             .validate_task_map(&phase_reference)
             .await
-            .unwrap_err()
+            .err()
+            .expect("expected bounded consumer refusal")
             .root_cause()
             .to_string(),
         "workflow phase pack is prepared only by its Engine"
@@ -470,14 +524,20 @@ async fn phase_reader_and_capture_guard_before_artifact_clone() {
     altered_source.source_versions = c.source_hashes.clone();
     assert!(serde_json::to_vec(&c).unwrap().len() < 8 * MAX_BYTES);
     reset();
-    refused(workflow::context_artifact(&c).unwrap_err(), BYTES);
+    refused(
+        workflow::context_artifact(&c)
+            .err()
+            .expect("expected bounded consumer refusal"),
+        BYTES,
+    );
     let phase_reference = f.corrupt(&c);
     reset();
     refused(
         f.packs()
             .validate_task_map(&phase_reference)
             .await
-            .unwrap_err(),
+            .err()
+            .expect("expected bounded consumer refusal"),
         BYTES,
     );
     reset();
@@ -488,7 +548,8 @@ async fn phase_reader_and_capture_guard_before_artifact_clone() {
             Phase::Implement,
             &budget,
         )
-        .unwrap_err(),
+        .err()
+        .expect("expected bounded consumer refusal"),
         BYTES,
     );
     c = control;
@@ -532,7 +593,12 @@ async fn phase_reader_and_capture_guard_before_artifact_clone() {
     c.data["payload"] = json!(depth_source.payload);
     assert!(depth_source.payload.len() < MAX_BYTES);
     reset();
-    refused(workflow::context_artifact(&c).unwrap_err(), DEPTH);
+    refused(
+        workflow::context_artifact(&c)
+            .err()
+            .expect("expected bounded consumer refusal"),
+        DEPTH,
+    );
     reset();
     refused(
         workflow::validate_capture(
@@ -541,7 +607,8 @@ async fn phase_reader_and_capture_guard_before_artifact_clone() {
             Phase::Implement,
             &budget,
         )
-        .unwrap_err(),
+        .err()
+        .expect("expected bounded consumer refusal"),
         DEPTH,
     );
 }
