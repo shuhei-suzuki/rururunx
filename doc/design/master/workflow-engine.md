@@ -380,19 +380,6 @@ PhaseAttempt.session_id. A parallel ReviewSet roster and certificates are not ye
 implemented. Current context ownership does not permit per-member Session cloning
 or arbitrary role-based delegation.
 
-Issue #9's proposed ReviewSet requirements define additional floors, policy authority,
-fresh native Sessions and potential-blocker holds. They are not implemented current
-behavior; see [Issue 9 requirements](../../requirements/issue-9-requirements.md).
-Existing example rosters are proposed configuration, not actual parallel-review
-acceptance. Real native isolation/efficiency acceptance remains Issue #16.
-
-The proposed ReviewSet contract freezes activated review rubric/policy provenance,
-labels prior-round exposure under current-round input independence and retains
-unreleased native holds across successor Sets/descendants. Stable acceptance IDs
-require linked actual consumer evidence; these remain requirements, not current
-Workflow implementation claims.
-The proposed no-show window includes all roster slots, while narrative claims and
-activated specialization/rubric authority remain distinct. Human-origin authority
-uses the approved Issue23 application trust boundary; same-UID direct machine
-actions are not an invented OS sandbox guarantee. Required large-diff coverage is
-bounded and delivered through an actual reviewed slot/provider port before certification.
+The proposed configurable ReviewSet contract is tracked in
+[Issue9 requirements](../../requirements/issue-9-requirements.md).
+This master describes the current single-Reviewer implementation only.

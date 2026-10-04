@@ -59,7 +59,9 @@ scope and residual filesystem visibility; native #16 acceptance checks the actua
 input/storage paths and observed independence. After prior independent rounds finish, later rounds may include verified
 defects and actual commit/delta/check artifacts as facts, plus attributed fix-
 resolution claims and structured prior findings as attributed unverified
-claims with original author slot, severity and exact text hash. Whole raw peer
+claims with original author slot, severity and exact text hash. Prior history uses
+the bounded mandatory manifest and required unresolved-text delivery of 14.e;
+resolved/dismissed full texts may remain exact-referenced expandable history. Whole raw peer
 outputs/transcripts are never injected. Dismissal adjudication history retains
 actor identity. Dismissal claims/rationales remain labelled claims,
 not verified facts; re-raising a dismissed finding remains possible.
@@ -240,7 +242,14 @@ attention threshold, default 600; exceeding it holds for Human without pretendin
 a model timed out. Existing Runtime,
 Project and agent resource limits can lower local parallelism, never be bypassed.
 
-Default formal policy forbids self-review slots and duplicate agent identities.
+Default formal policy forbids self-review slots and duplicate registered agent IDs.
+Duplicate identity means the same activated registered agent ID, not merely the
+same native provider family. Distinct production aliases of one family are separate
+IDs only when registered by activated Runtime/Project policy and explicitly named
+in the frozen formal roster. They need no duplicate-ID flag; their activated alias
+permission and shared family remain visible in the result/certificate. Repeating
+one ID requires explicit allow-duplicate-agent. Author-family exclusion and optional
+provider-diversity policy apply independently to both cases.
 A self-review slot is the current Task executor agent OR any registered identity
 or native family in the cumulative delta-author set (including document drafting
 and former executors). It requires explicit allow-self before input, including a
@@ -279,8 +288,12 @@ ownership. Competing coordinators cannot duplicate a slot or publish stale round
 State/slot/audit updates are atomically visible. Format upgrade rejects incompatible
 fresh or already-open old writers without changing evidence; generic history or
 caller JSON cannot create a slot, certificate or native admission.
-Human-authority actions use the same application boundary as approved Issue23:
-only trusted ingress/controller composition can mint nonserializable authority,
+Issue9 owns ReviewSet-specific private authority constructors and the trusted
+library ingress/controller composition, tested at that boundary without a CLI.
+It reuses the approved Issue23 application trust rule, not an absent implementation
+or a dependency on merging Issue23. A future CLI/controller caller must compose
+this actual port; native/Workflow/Broker runtime channels cannot expose it.
+Only that trusted ingress/controller composition can mint nonserializable authority,
 with actual principal/origin and exact policy/target/evidence identity. Native,
 Workflow, agent output/proposal and Approval Broker runtime JSON/API/IPC channels
 cannot label themselves Human or obtain that authority. Broker decisions never
@@ -678,11 +691,22 @@ explicit eligible custom roster. Human authorship remains separately attributed.
     currency have not changed per member; all share one context/core, and an attempted
     per-member context clone/bump rejects.
 21. Before closing this Issue, closure evidence must quote/link the public acceptance
-    entries (Issue bodies or linked requirements) that own the specific inherited
+    entries (Issue bodies or immutable commit-pinned requirements permalinks) that own the specific inherited
     obligations: #14 exact ReviewSet Lost/uncertain member ownership/locks/permits;
     #20 production deterministic two/Triple bundle/delta/expansion; #16 real native
     two/Triple isolation/results/efficiency plus timeout/retry/partial-output and settlement-expiry Lost hold
-    frequencies, retained capacity/Task-time and Human-interruption impact. If a public owner does not carry
+    frequencies, retained capacity/Task-time and Human-interruption impact. Criterion
+    21 is the canonical handoff: EVERY subcriterion attributing a measurement to
+    #16 must be quoted by stable ID from public #16 acceptance before closure,
+    including 8.c (native auto-injection versus passive visibility), 8.d (blind
+    versus prior-claim-exposed rounds), 14.d (large required coverage/over-cap core,
+    including accumulated claims), 20.a/20.b (two-author STRICT and zero-eligible
+    roster availability), 21.b (partial-output early-stop/Human attention), and
+    21.c/21.d (normal/cancel/timeout settlement holds, capacity and Task-time).
+    It additionally requires round/artifact-quota exhaustion frequency, retained
+    Task-time and decomposition/termination impact (14.e below). Branch blob URLs
+    are not stable obligation owners; a permalink retains the gated SHA after
+    branch deletion. If a public owner does not carry
     its obligation, this Issue cannot close until that tracking is concrete. This
     requires traceability, not completion of #20 or a cyclic merge dependency.
     Status/Human attention must state that no in-runtime Human action can release
@@ -865,6 +889,8 @@ authorship disposition, relaxation or policy activation; actor=Human is rejected
 with retained evidence. Actual trusted ingress/controller succeeds with exact
 principal/origin/digest/evidence. Direct same-UID local binary/DB/machine action
 outside these APIs is explicitly outside the application guarantee, as in Issue23.
+The positive authority is the actual Issue9-owned library ingress/controller port,
+not a mock actor field or an assumed future Issue23 implementation.
 
 **8.e — All-slot no-show window.** With an allow-self author slot or a queued/
 duplicate slot still active after eligible peers finish, current-round findings
@@ -895,6 +921,19 @@ the declared NeedsContext/termination availability outcome, measured by #16.
 **18.f — Four-plus policy.** Four-plus production-adapter consumer evidence uses
 activated explicit allow-duplicate-agent or production-registered aliases of the
 MVP adapters, with that permission visible. Fixture-only registrations cannot pass.
+
+**14.e — Claim history and lineage exhaustion.** The mandatory core includes a
+bounded exact manifest of prior round/slot/finding artifact hashes and current
+resolution-status provenance. Full resolved/dismissed/superseded texts remain
+immutable exact-referenced history; unresolved potential/verified blocking claims
+must be delivered to every member as inline text or required hash-bound expansion
+before certification. All delivery charges the frozen slot/round/lineage budgets;
+no hidden unbounded history or silent omission is allowed. Record which claim
+texts each slot received and label its exposure accordingly. Test accumulated
+claims near the 1 MiB core cap: a bounded manifest/required delivery can continue,
+while mandatory metadata or required texts beyond capacity holds NeedsContext or
+terminates without certificate. #16 measures this availability outcome plus round/
+artifact-quota exhaustion frequency and its Task/decomposition/termination impact.
 
 Every criterion and bold subcriterion ID above is a stable closure-evidence key.
 
