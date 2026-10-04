@@ -1,4 +1,6 @@
 //! Transactional SQLite snapshots + append-only logical events, scoped by Project.
+#[cfg(test)]
+mod native_dispatch_tests;
 use std::{path::Path, time::Duration};
 
 use anyhow::{Context, Result, bail, ensure};
@@ -679,6 +681,113 @@ impl Store {
         Ok(record.version)
     }
 
+    /// Provider dispatch write-ahead boundary. Scope and lock authority are checked
+    /// in the same Immediate transaction as the Session CAS, including other writers.
+    pub(crate) fn put_session_if_current(
+        &mut self,
+        session: &Session,
+        expected_session: u64,
+        expected: [u64; 3],
+        expected_locks: &[(RecordId, u64)],
+    ) -> Result<u64> {
+        let scope = &session.scope;
+        validate_scope(scope)?;
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        for ((table, id), version) in [
+            ("projects", Some(scope.project_id.to_string())),
+            ("goals", scope.goal_id.map(|id| id.to_string())),
+            ("tasks", scope.task_id.map(|id| id.to_string())),
+        ]
+        .into_iter()
+        .zip(expected)
+        {
+            let Some(id) = id else {
+                ensure!(version == 0, "absent parent version must be zero");
+                continue;
+            };
+            let actual: Option<u64> = tx
+                .query_row(
+                    &format!("SELECT version FROM {table} WHERE id=?1"),
+                    [&id],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            if actual != Some(version) {
+                bail!(StateGuardError::SnapshotChanged {
+                    table: table.into(),
+                    id,
+                    expected: version
+                });
+            }
+        }
+        if let Some(id) = scope.goal_id {
+            let goal: Goal = read_tx(&tx, "goals", &id.to_string())?.context("native Goal lost")?;
+            ensure!(
+                goal.project_id == scope.project_id,
+                "native Goal ownership mismatch"
+            );
+            ensure!(
+                !matches!(
+                    goal.state,
+                    GoalState::Paused
+                        | GoalState::Completed
+                        | GoalState::Cancelled
+                        | GoalState::Failed
+                ),
+                "native Goal inactive"
+            );
+        }
+        if let Some(id) = scope.task_id {
+            let task: Task = read_tx(&tx, "tasks", &id.to_string())?.context("native Task lost")?;
+            ensure!(task.scope() == *scope, "native Task ownership mismatch");
+            ensure!(
+                !task_terminal(task.state)
+                    && (session.role != SessionRole::Executor
+                        || !matches!(task.state, TaskState::ReadyForPr | TaskState::PrCreated)),
+                "native Task inactive"
+            );
+        }
+        let mut statement=tx.prepare("SELECT body FROM records WHERE project_id=?1 AND goal_id IS ?2 AND task_id IS ?3 AND kind='worktree_lock'")?;
+        let mut actual = vec![];
+        for body in statement.query_map(
+            params![
+                scope.project_id.to_string(),
+                scope.goal_id.map(|id| id.to_string()),
+                scope.task_id.map(|id| id.to_string())
+            ],
+            |row| row.get::<_, String>(0),
+        )? {
+            let record: Record = decode(body?)?;
+            actual.push((record.id, record.version));
+        }
+        drop(statement);
+        actual.sort();
+        let mut expected_locks = expected_locks.to_vec();
+        expected_locks.sort();
+        if actual != expected_locks {
+            bail!(StateGuardError::SnapshotChanged {
+                table: "worktree_lock".into(),
+                id: session.id.to_string(),
+                expected: 0
+            });
+        }
+        let mut record = Record::new(
+            scope.clone(),
+            RecordKind::Session,
+            serde_json::to_value(session)?,
+        );
+        record.id = RecordId(session.id.0);
+        record.version = expected_session;
+        if let Some(previous) = read_tx::<Record>(&tx, "records", &record.id.to_string())? {
+            record.created_at = previous.created_at;
+        }
+        let next = put_record_tx(&tx, &record)?;
+        tx.commit()?;
+        Ok(next.version)
+    }
+
     pub fn session(&self, id: SessionId) -> Result<Option<(Session, u64)>> {
         match self.record(RecordId(id.0))? {
             Some(record) => {
@@ -1113,7 +1222,7 @@ fn put_record_tx(tx: &Transaction<'_>, record: &Record) -> Result<Record> {
         json!({"id":next.id,"version":next.version,"evidence": match next.kind {
             RecordKind::Review | RecordKind::Approval | RecordKind::WorktreeLock => next.data.clone(),
             RecordKind::Workflow => json!({"generation":next.data["generation"],"context_version":next.data["context_version"],"active":next.data["active"],"finished":next.data["finished"],"attempt":next.data["history"].as_array().and_then(|a|a.last()),"escalation":next.data["escalations"].as_array().and_then(|a|a.last()),"retry":next.data["retries"].as_array().and_then(|a|a.last()),"invalidation":next.data["invalidations"].as_array().and_then(|a|a.last())}),
-            RecordKind::Session => json!({"state":next.data["state"],"agent":next.data["agent"],"provider":next.data["provider"],"role":next.data["role"],"native_ref":next.data["native_ref"]}),
+            RecordKind::Session => json!({"state":next.data["state"],"agent":next.data["agent"],"provider":next.data["provider"],"role":next.data["role"],"native_ref":next.data["native_ref"],"dispatch_intent":next.data["recovery"]["dispatch_intent"]}),
             _ => Value::Null,
         }}),
     )?;

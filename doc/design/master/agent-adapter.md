@@ -234,6 +234,23 @@ Workflow Engine decides whether to retry, choose a fallback agent, or escalate.
 
 ## 15. Implemented Rust baseline (Issue #4)
 
+Native Grok Issue 7's scoped ACP file-executor and zero-tool decision modes are specified
+in [its design](../issue-7-grok-adapter.md) and [requirements](../../requirements/issue-7-requirements.md).
+The explicit GrokAdapter implements a private bounded ACP actor with two scoped file
+tools and zero-tool decisions. Installed Grok 1.0.46 acceptance performed owned edits,
+fresh-input same-UUID continuation and a locally schema-validated DENY. Native sandbox
+labels alone do not prove Task-only filesystem scope; descriptor-based ACP FS checks,
+exact owner/lock/Session dispatch CAS and post-turn inventory enforce this baseline.
+Prepared text is enclosed beneath a non-command first line, never sent as native control
+metadata. Unknown dispatched outcomes remain Lost even after verified process death.
+Only private exact native completion plus cleanup/persistence authorizes transport success;
+actual OS exit code is preserved. Native aggregate usage is collected per owned prompt.
+Executor writes require one unfinished owned search_replace before any syscall; a failed
+host write with possible effects denies transport success even after native end_turn and
+matching inventory.
+Shell/PTY, ApprovalReviewer, universal permission interception and restart recovery remain
+unsupported. See [verification](../../verification/issue-7.md) for final review/CI status.
+
 `adapter::AgentAdapter` supplies an object-safe async contract and extensible
 `AgentRegistry`. Generic registrations load runtime argv unchanged; model/effort
 settings require a native implementation and fail explicitly in the generic
