@@ -1,8 +1,8 @@
 # Issue 21: Attributable telemetry and Context Efficiency comparison
 
 Workflow: STRICT (shared durable metrics, provider normalization and Project isolation).
-Status: Requirements7; independent Req1–Req6 findings verified and refined below.
-Requirements7/design/source reviews pending.
+Status: Requirements8; independent Req1–Req7 findings verified and refined below.
+Requirements8/design/source reviews pending.
 Baseline: main80452f4, schema3. Depends on merged #2 and #4; part of #17.
 
 ## Purpose and existing gap
@@ -229,7 +229,8 @@ producer or benchmark conditions needed for #21 closure below.
   claim under the ANY-required-repetition rule; a successor cannot replace them.
   Unmeasured efficiency-layer calls are enabled coverage failures, not a rerun reason.
   Crash/timeout environment labels need independent evidence (actual provider status
-  or both lanes affected); otherwise retain the actual lane's execution failure.
+  or both lanes affected by an independently evidenced cause outside runtime-owned
+  code); a shared runtime defect remains an execution failure.
   The latest/most favorable plan never drives the claim alone. Changed source or
   configuration has its own claim scope and cannot pool with or replace old results.
   Registry/history is append-only under the shared writer epoch and survives fixture
@@ -324,7 +325,15 @@ producer or benchmark conditions needed for #21 closure below.
   assertions, exit zero or cheaper tokens alone never certify equivalent quality.
   Failed/timeout/unsupported lanes stay in the report rather than being discarded.
   Every credited reduction feature needs predeclared verified oracle items sensitive
-  to the content it can omit: an out-of-slice caller/dependency or triggered rule,
+  to the content it can omit. For EVERY certifying plan, including the first plan,
+  the items come from a creator independent of the authors of the features they
+  test and are registered before that plan's first run. Record creator identity
+  and feature-author exposure per item. Selection/expansion/condensation/delta
+  heuristics must not be tuned against these certifying items; author-overlapping
+  or known tuning-exposed items may be regression checks only. Missing independent
+  sensitive items leaves feature/whole-lane quality unverified without savings
+  credit. This is the supplied-input/producer boundary, not OS secrecy.
+  Sensitive items include an out-of-slice caller/dependency or triggered rule,
   a decision/failure predating condensation, or an unresolved prior-round finding
   and impact outside a round>1 delta. Record per-feature oracle coverage/detection;
   exercised features without sensitive oracle items have unverified quality and
@@ -489,6 +498,8 @@ Reject attempts-until-valid pooling, missing held-out coverage after a known-ite
 tuned fix, or acceptance of a feature-disabled plan while the shipped default still
 enables its regressing feature. Invalid attempts remain in the actual whole-run
 claim denominator; no fixture/default edit silently waives required MVP features.
+Reject initial-plan feature/whole-lane certification using author-overlapping or
+known heuristic-tuning items while retaining them as disclosed regression evidence.
 
 Run relevant state/provider/context/workflow regressions, fmt/clippy/build, exact
 Linux/macOS CI and independent source reviews. Update master design/README only to

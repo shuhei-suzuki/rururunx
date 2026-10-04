@@ -108,3 +108,15 @@ preserves unknown/failure denominators, separates independently evidenced enviro
 reasons, requires independent held-out checks and actual default-configuration pins.
 Default-off never waives required MVP producer acceptance. Requirements7 review
 pending; no runtime/source or native benchmark acceptance is claimed.
+
+Req7 3bceca6 CI37199271288 passed both Linux/macOS fmt, clippy, tests and debug/
+release builds (individual steps inspected). Independent native Req7A returned one
+Medium on initial certifying oracle authorship; Req7B approved with no findings.
+Both completed with actual owned cleanup verified using the hardened private v3
+runner. Root synthetic startup-record/thread-start failures had already proved
+owned selected-group cleanup/reap before error return; this is harness evidence,
+not production detached-descendant conformance. Req8 applies independent creator,
+pre-run registration and feature-author exposure rules to ALL certifying plans;
+known tuning-exposed items remain regression evidence only. Shared runtime defects
+are not environment exclusions merely because both lanes fail. Requirements8 review
+pending; no implementation, native benchmark or MVP acceptance is claimed.
