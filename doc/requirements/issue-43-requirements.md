@@ -91,21 +91,37 @@ compiled failing mutant at the actual listed native protocol consumer:
 | Provider/role | Required held-turn consumer after Workflow binding |
 | --- | --- |
 | Claude Reviewer | Decision completion through `Reservation::commit_current` |
+| Claude Executor | Broker ALLOW publication through `Reservation::commit_current`, before the exact permission reply wire write |
 | Grok | Each exercised ownership stage: startup, native callback and final result through `Actor::owner` |
 | Codex Executor | `answer_approval` current-scope and Session guard before its exact native operation reply |
+
+Hold the Claude Executor native permission request across binding, then prove its
+exact ALLOW response survives binding and fails under the Task-rewrite mutant.
+Its DENY response is a required control: it grants no operation authority and
+uses own-Session-only publication, so parent-currency revocation must not prevent
+denial. Preserve the adapter's existing explicit Broker opt-in/native policy;
+the test must not relax automatic native review. If an integrated Workflow caller
+cannot expose this path, record the concrete caller limitation rather than silently
+omitting the row. Initial input admission before `start` returns does not earn
+post-binding coverage. Grok returns Starting before its owned actor task runs;
+its startup, callback and result stages require held-task controls after binding.
 
 Record distinct behavior and unavailable guarantees; do not invent a common final
 decision fence or infer a kill from an unfenced Executor completion. These rows are
 required composition checks, not interchangeable alternatives. Also compile a binding
 mutant for each preserved class: Task, Project, Goal, Session and scoped WorktreeLock.
 Each must meet a named real currency consumer; Claude `put_session_if_current` is
-one known consumer of all five classes, including the exact full scoped lock set.
+one known consumer of all five classes, including its own Session CAS and the exact
+full scoped lock set. Sibling Session preservation also needs direct before/after
+body/version assertions; an own-Session CAS cannot prove a sibling was unchanged.
 Include an own-Session CAS race and a lock-only version change so neither can be
 masked by a concurrent Task change. Restore exact source bytes and pass controls.
 If a specific role/provider has no consumer for a class, record that unavailable
 guarantee explicitly while preserving the class and testing its known consumer.
-Read
-other live Reviewer and Lost/reserved Session facts without changing or adopting
+Codex/Grok `recheck_scope` also recaptures the complete Project against the original
+request; include that `capture` comparison when identifying the Project consumer,
+rather than inferring a missing Project fence from the later Goal/Task/lock comparison.
+Read other live Reviewer and Lost/reserved Session facts without changing or adopting
 them, and verify this factual binding cannot serve as new-operation admission.
 
 Second SQLite writers change Task, Project, Goal and Workflow versions; invalid actor,
