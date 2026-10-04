@@ -1,6 +1,6 @@
 # Issue 43 Design: Preserve native authority during Workflow Session binding
 
-**Status:** Design draft; implementation pending  
+**Status:** Design2 draft; independent delta review and implementation pending
 **Workflow:** STRICT  
 **Scope:** Workflow native Session binding only
 
@@ -71,7 +71,13 @@ The caller supplies the authority captured before launch:
 - dispatch marker identity
 - context pointer/version identity where applicable
 - expected native Session ID returned by the registered adapter
-- expected private prepared-input owner/allocation identity when #19 integration is available
+- optional cross-check of the Store-derived private owner; no optional authority or predicate selector
+
+Every fresh Workflow Executor/Reviewer binding must obtain #19's actual private
+allocation/input-pair proof inside the transaction. There is no untyped fresh
+binding path; historical untyped records remain readable history. Missing or
+inconsistent private proof rejects regardless of caller expectations. Availability
+of the compiled #19 port is an integration gate, never a runtime bypass.
 
 ### 3.2 Allowed write set
 
@@ -85,7 +91,7 @@ Workflow.version:
     n → n + 1
 
 Audit:
-    append one factual workflow_native_session_bound event
+    append one factual workflow.session_bound event
 ```
 
 It must not change:
@@ -122,7 +128,7 @@ Inside the same transaction:
 8. load the exact persisted returned Session
 9. validate immutable Session identity
 10. validate native identity uniqueness within the owning scope
-11. validate private prepared-input allocation owner when available
+11. derive and validate mandatory private prepared-input allocation/input-pair owner
 12. apply only the allowed Workflow delta
 13. append one factual audit entry
 14. commit
@@ -141,7 +147,7 @@ Require exact equality for immutable identity:
 - actor
 - role
 - worktree / repository ownership
-- rururunx Session ownership identity
+- Store-derived private phase allocation and current prepared/admitted input-pair identity
 
 If the adapter already returned a native UUID/reference, require it unchanged when present.
 
@@ -219,7 +225,7 @@ This design composes with it as follows:
 
 - public Workflow `session_id` is only a factual reference
 - it is never sufficient to prove private prepared-input ownership
-- when typed allocation is available, binding validates the exact allocated private Session owner in the same transaction
+- every fresh native binding validates the exact private allocated Session owner and input pair in the same transaction
 - binding does not rewrite Context Pack authority or its native-fenced record
 - binding does not change the expected Session CAS/admission pins used by #19
 - closure still validates its private owner independently
@@ -313,16 +319,17 @@ Tests compare sibling Session body and version before/after directly; own-Sessio
 
 Append one bounded factual event on success.
 
-Suggested fields:
+Exact bounded fields (Scope is serialized as its three owning IDs):
 
 ```text
-kind = workflow_native_session_bound
+kind = workflow.session_bound
 project_id
 goal_id
 task_id
 workflow_id
 generation
-attempt_id
+attempt_index
+phase
 session_id
 provider
 actor
@@ -330,14 +337,18 @@ role
 workflow_version_before
 workflow_version_after
 task_version_preserved
-dispatch_marker
+dispatch_started = true
+marker_identity = scope / workflow ID / captured Workflow version / generation / active index / context version
 context_version
-timestamp
+timestamp = existing AuditEvent.at
 ```
 
 Do not copy prompts, transcripts, credentials or native protocol payloads.
 
 A failed binding emits no success audit. Diagnostic failure logging may use existing bounded non-authoritative channels.
+Public audit/audit_if_current refuse this reserved kind. The mechanics' bounded
+payload additionally includes workflow_version_before and task_version_preserved;
+there is no separate marker UUID beyond the exact versioned tuple above.
 
 ## 12. Workflow Engine integration
 
@@ -359,7 +370,7 @@ bind_workflow_native_session(expected, returned_session)
 
 After successful bind:
 
-- reload canonical Workflow state
+- use the committed Workflow Record returned by the binding transaction, without a newer owner refresh
 - continue polling using the bound Session
 - preserve captured Task authority for the already-running native turn
 
@@ -467,7 +478,7 @@ Compile causal mutants for:
 - omitting Goal CAS
 - omitting Task CAS
 - omitting Workflow CAS
-- omitting own Session identity/CAS
+- omitting latest own Session identity/lifecycle checks, plus a distinct native-consumer own-Session CAS mutant
 - omitting scoped WorktreeLock fence
 - accepting wrong actor/role/worktree/provider
 - accepting duplicate native UUID ambiguity
@@ -538,3 +549,43 @@ exemption; any future exception requires verified private resume lineage.
 
 Both documents remain draft pending independent STRICT design review. The
 requirements gate approved d8c5266; no production implementation is present.
+
+The narrow binding primitive is the only writer of existing PhaseAttempt Session
+IDs. All ordinary WorkflowAccess modes refuse an existing ID delta; new native
+attempts still begin unbound. The latest durable UUID, including a Some published
+after a None return, is the key for same-scope ambiguity checks. Sibling live
+Reviewer/Lost/executor-reserved facts are positive unchanged-binding controls;
+separate operation admission still refuses the same unsafe condition before and
+after binding. See the mechanics for the causal control/mutant matrix.
+
+## 19. Impact analysis at the design baseline
+
+Primary locations at public12f545f unless explicitly pinned otherwise:
+
+- workflow.rs:879 reserves a native attempt with None; :1016 is the sole production
+  assignment. validate_transition:2139 currently permits active None-to-Some;
+  :2256 requires new attempts to begin unbound. Change the former ordinary writer
+  permission, retain the latter, and check every WorkflowAccess caller.
+- state/mod.rs:355 put_workflow_transition, :516 ordinary validator and :522–570
+  closure guard compose separately with #19. The new binder owns registration;
+  ordinary transitions retain closure proof and Task writes.
+- state/mod.rs:1166–1236 shared record writer affects Session/Review/Approval/
+  WorktreeLock/Workflow audit formatting. Its default callers and payloads stay
+  exact. reserved_audit_kind:1575 must include the selected new binding kind.
+- workflow/tests.rs:574 is the only current reader that counts workflow.saved;
+  change its per-Workflow-write invariant to count saved plus session_bound, and
+  preserve separate gate_observed evidence counts. :3267 public reserved-audit
+  tests gain the new kind. Other event queries preserve names and provenance.
+- adapter.rs:259–301 registry/from_config only validates names, so the new probe
+  gate is observable. GenericCliAdapter probe:576 uses generic-cli, matching its
+  Session provider; FakeAgent probe/start in workflow/tests.rs use fake. Native
+  Grok public65aa940 probe:353 uses grok; Claude publicf9b671f probe:936 and Codex
+  public08979bd probe:1106 use their own provider strings. Check the exact provider
+  writers and positive generic/fake/native controls in the implementation revision.
+- Native5/6/7 currency and permission consumers retain the requirements matrix.
+  Their current locks are captured/validated rather than written by native start;
+  any changed private signature or prebinding lock writer in the combined source
+  requires a new impact check, not an assumed compatible stale snapshot.
+- Schema6 allocation/pairs are #19's source dependency. Use co-integration with
+  both commit ancestries, combined source/native acceptance and exact CI before
+  ready PR(s) merge; neither issue depends on the other's completed merge.

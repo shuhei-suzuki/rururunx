@@ -1,6 +1,6 @@
 # Issue 43 design: record-only native Session binding
 
-Status: proposed; independent STRICT design review pending. No implementation.
+Status: proposed Design2; independent STRICT delta review pending. No implementation.
 Requirements: [issue-43-requirements.md](../requirements/issue-43-requirements.md).
 This supplements [the shared Issue43 design](issue-43-design.md). Both describe
 the same proposed gate; neither is implemented. The exact transaction mechanics
@@ -20,6 +20,15 @@ Keep the dispatch-marker reservation and every other phase, context, risk,
 observation and terminal transition on the ordinary transaction. This does not
 make an unchanged Task write generally optional. No new native operation or
 permission is admitted by binding, and transport exit never becomes gate evidence.
+
+The dedicated transaction is the sole writer of an existing attempt's Session ID.
+Every ordinary `put_workflow_transition` access mode and its `validate_transition`
+reject any existing history entry's session_id change. Newly appended attempts
+still require session_id=None. Keep closure guards on the ordinary path; move
+binding validation to the narrow path. A future recovery binder needs its own
+reviewed private port. Current production has one assignment (workflow.rs:1016)
+and one native reservation initializer with None (workflow.rs:879); Evidence's
+separate session_id is an outcome reference, not a PhaseAttempt writer.
 
 ## Engine call and trusted identity
 
@@ -81,8 +90,11 @@ caller's mutable Record only after successful commit.
 3. Clone the complete previous JSON data and replace exactly
    `history[active].session_id` with the returned ID. Require this Value to equal
    the supplied candidate data, including every other known or unknown field.
-   Run existing `validate_transition` as an additional check. Do not validate
-   only a selected subset or round-trip away unknown fields before comparison.
+   Run the ordinary structural validator on the unchanged previous Workflow and
+   explicit private binding validation on the candidate. The ordinary validator
+   must reject this ID change, so do not introduce a caller-supplied bypass flag.
+   The private validator requires the complete one-field delta and every binding
+   predicate. Do not validate only a subset or round-trip away unknown fields.
 4. Read every scoped WorktreeLock ID/version, sort and compare the complete set
    to the captured set, rejecting additions, removal and version change. Read
    the latest ContextVersion in the exact Task scope. Require it to be the
@@ -103,15 +115,19 @@ caller's mutable Record only after successful commit.
    identity-checked while Immediate excludes writers. An own-Session CAS race at
    the provider's currency consumer remains separately required; binding may not
    invalidate that consumer by rewriting its Session record.
-6. Inspect scoped Session identities for ambiguity of the exact returned native
-   UUID, when known. Reject another scoped Session with the same provider and
-   UUID. Do not use a cross-project UUID search, PID hint, public recovery JSON
+6. Inspect scoped Session identities using the latest durable native_ref read in
+   step5 whenever it is Some, including when start returned None. A returned Some
+   must equal that value. Reject another scoped Session with the same provider
+   and UUID, including a live or Lost sibling. Do not use a cross-project UUID
+   search, PID hint, public recovery JSON
    or UUID equality to acquire ownership. The current Workflow calls fresh
    `start`, not `resume`; if a future caller reuses a native UUID through a
    different predecessor Session, a reviewed private resume-lineage port is
    required before exempting that predecessor. No generic JSON exception.
-7. Apply #19's private allocation/input-pair binding predicate in this same
-   transaction for typed input. It must match the allocated owner, exact context
+7. Every fresh Workflow native Executor/Reviewer binding requires #19's private
+   allocation/input-pair predicate in this same transaction. Store derives this
+   obligation from durable native phase/scope/context; no caller Option or public
+   discriminator can skip it. It must match the allocated owner, exact context
    version, payload SHA/size, revision and complete sources and current native
    actor pins. A private validated Starting preparation may bind before ACK;
    it cannot assert delivery. An old terminal snapshot restored after failed new
@@ -140,9 +156,17 @@ selects `workflow.session_bound`. It replaces the default workflow.saved audit
 for this call, rather than adding a second event. Preserve every other caller's
 existing event name/payload and write behavior.
 
+Reserve the exact `workflow.session_bound` event name in `reserved_audit_kind`:
+public `audit` and `audit_if_current` must refuse it. Primary inspection found
+the current reserved list includes .saved and workflow.gate_observed, but would
+allow this new name unless extended. Test both APIs and kill the omitted-guard
+mutant; public caller facts cannot impersonate the private binding journal.
+
 The factual binding event records owning Scope, Workflow ID/new version,
 generation, active attempt index/phase, context version, returned Session ID,
-agent/provider/role. It contains no prompt, environment value, config, permission,
+agent/provider/role, captured/new Workflow versions, preserved Task version,
+dispatch_started=true and the versioned marker tuple. Timestamp is AuditEvent.at.
+It contains no prompt, environment value, config, permission,
 native response, native outcome or assertion of delivery. The complete Workflow
 delta is durably present in its own record. The private audit choice is not a
 public arbitrary-event API and cannot substitute for required Store guards.
@@ -154,12 +178,20 @@ one phase_session_owners row per scoped native context_version; every typed
 Starting/first-consumed write allocates it atomically. The binding predicate must
 read that row and the private validated-preparation/admitted input pair using
 the existing Transaction, never a preceding unlocked lookup or public fields.
-There is no permissive typed-input fallback if the private row is absent or
-inconsistent. Untyped legacy history cannot fabricate this credential.
+There is no permissive fallback if the private row is absent or inconsistent.
+Historical untyped Workflow is readable history, never eligible for a fresh native
+binding. Every fresh native phase must obtain the actual #19 private owner/pair.
+The Engine supplies no optional allocation authority; an expectation can only
+cross-check Store-derived proof. An omitted caller expectation never skips it.
 
 Implement and review the narrow record-only path in isolation, then compose the
 actual #19 predicate before claiming typed-native acceptance or merging this
-issue. Coordinate the private helper signature with the #19 owner; do not create
+issue. Use a co-integration branch preserving both source commit ancestries for
+the #19 predicate and #43 binding port. Run their approved combined source review,
+native integration and exact-head CI before the ready PR(s) merge. This avoids
+making either completed merge a prerequisite for the other's acceptance. Neither
+independent staged branch claims integrated native acceptance. Coordinate the
+private helper signature with the #19 owner; do not create
 a second competing allocator or copy private authority into Workflow JSON.
 Typed closure must still check the allocated owner even while public Session ID
 is None, and still require actual current-input consumption for Succeeded.
@@ -184,11 +216,28 @@ observers during held start and binding failure, retaining #41 behavior.
 Use second SQLite writers for P/G/T/Workflow revocation and own Session deletion,
 Lost or identity drift. Exercise context-pointer/source mismatch, duplicate UUID,
 missing/wrong actor/provider/role/worktree, invalid marker, stale generation,
-extra candidate JSON/Record metadata delta, two Workflows, audit/write failure,
-and sibling live Reviewer/Lost records. Each failure preserves the durable claim,
+extra candidate JSON/Record metadata delta, two Workflows and audit/write failure.
+Each failure preserves the durable claim,
 all unaffected rows and the audit count. Test typed allocated-owner mismatches,
 absent/foreign pair, pre-ACK preparation, restored old terminal snapshot and
 unbound closure after actual #19 integration.
+
+Sibling live Reviewer, Lost and executor-reserved records are success controls
+when their UUID does not conflict: binding succeeds and changes none of their
+bodies/versions. Immediately before/after binding compare the same ReadOnly or
+Mutating reserve attempt: its existing refusal/StateGuardError must stay exact.
+No sibling gains currency/completion, and binding returns only the committed
+Workflow record, no value accepted as an admission credential. Actual validators
+still require their private owner/pair. Kill a reserve-sweep-in-binding mutant and
+a bound-ID-as-admission-proof mutant at those causal consumers.
+
+Add ordinary-transition controls for every WorkflowAccess rejecting an existing
+None-to-Some Session ID and new-history injected IDs. A caller omitting allocation
+expectation must still fail on absent/restored old private ownership. For UUID
+uniqueness, hold a None return, publish a duplicate durable Some before binding,
+and reject without write/audit; kill the returned-value-only lookup mutant.
+Preservation assertions surround only the binding transaction: independent native
+startup can legitimately advance its own records outside that interval.
 
 At the exact combined revision exercise every requirements matrix row: Claude
 Reviewer final commit_current; Claude Executor Broker ALLOW before wire with its

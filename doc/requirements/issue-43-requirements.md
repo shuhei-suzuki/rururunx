@@ -48,11 +48,17 @@ retain their own acceptance criteria.
    allowed Workflow delta. It cannot change other history, Task fields, context, actor,
    marker, completion, terminal decision or native outcome. Ordinary phase/context/
    state transitions retain their existing Task-write transaction.
-6. For typed prepared input #19, bind only the exact allocated private Session owner
+6. Every fresh Workflow native Executor/Reviewer binding requires prepared input
+   #19: bind only the exact allocated private Session owner
    for that scoped native attempt in the same transaction. A visible Workflow Session
    ID is not an allocation credential. Closure still checks that owner even when the
    public attempt's Session ID is absent. Issue 19 provides these typed-slot guards;
    this issue must retain and compose with them, without claiming unmerged coverage.
+   Derive the obligation from durable native phase/scope/context, never a caller
+   Option. Missing private allocation/pair rejects. Historical untyped Workflow
+   remains readable history and cannot authorize a fresh native binding. The narrow
+   binding port is the sole existing-attempt Session-ID writer; every ordinary
+   WorkflowAccess mode refuses that delta. New attempts still start unbound.
 7. Native caller completion/callback eligibility remains unchanged by a valid binding.
    A real Task/Project/Goal/lock/currency change must retain its current refusal. No
    provider scope fence or native auth/hook/trust/permission control is weakened.
