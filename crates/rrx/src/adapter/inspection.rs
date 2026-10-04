@@ -465,6 +465,39 @@ mod tests {
         eprintln!("retained output endpoint observation elapsed={elapsed:?}");
         assert_eq!(result.unwrap_err().kind(), io::ErrorKind::TimedOut);
     }
+    #[test]
+    fn actual_read_error_reaps_the_owned_inspector_without_accepting_a_frame() {
+        let directory = tempfile::tempdir().unwrap();
+        let child = std::process::Command::new("/bin/sh")
+            .args(["-c", ":"])
+            .env_clear()
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let mut inspector = Inspector {
+            child,
+            unreaped: true,
+            exit: None,
+        };
+        let stderr = inspector.child.stderr.take().unwrap();
+        // A safe owned directory FD exercises the actual read syscall's error
+        // path. It does not fake a successful fcntl/read or signal another PID.
+        let result = complete(
+            &mut inspector,
+            File::open(directory.path()).unwrap(),
+            File::from(OwnedFd::from(stderr)),
+            Instant::now() + BUDGET,
+        );
+        inspector.cleanup().unwrap();
+        assert!(!inspector.unreaped);
+        assert!(inspector.exit.is_some());
+        assert_eq!(
+            result.err().unwrap().raw_os_error(),
+            Some(rustix::io::Errno::ISDIR.raw_os_error())
+        );
+    }
     struct OwnedBoundary {
         leader: Option<super::super::ProcessGroup>,
         member: std::process::Child,
