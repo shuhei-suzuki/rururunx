@@ -69,6 +69,18 @@
     "crates/rrx/src/context.rs": {
       "incoming_reviewed_main_blob": "ec4a0aebc495ef0780c90b32558dee6f93974e3d",
       "composed_blob": "ec4a0aebc495ef0780c90b32558dee6f93974e3d"
+    },
+    "crates/rrx/src/adapter/grok/receipt_tests.rs": {
+      "old18c_blob": "f53ed5bcfb56198c184058a13ba53348b0ed07a2",
+      "incoming_reviewed_main_blob": "ca48de3bb2a47a59052ca795cfc8c2176bb7c701",
+      "composed_blob": "d0dd5baa208c5a9beb9a41bd5b36ee49be042953",
+      "join": "receipt: unchanged51 sidecar helper plus appended61 diagnostic child/parent; adapter: Generic production unchanged51 plus additive61 status/audit controls; all Rust automatic merge"
+    },
+    "crates/rrx/src/adapter.rs": {
+      "old18c_blob": "3a95dba39ad1d5cbdfe70fc16e26f16b3a2d5c80",
+      "incoming_reviewed_main_blob": "b960a247f359fcf8da7ad2c768caa0e87479ed55",
+      "composed_blob": "748e71bbf3cd088c2861588e3d9172353ed7e97b",
+      "join": "receipt: unchanged51 sidecar helper plus appended61 diagnostic child/parent; adapter: Generic production unchanged51 plus additive61 status/audit controls; all Rust automatic merge"
     }
   },
   "composition_detail": "Incoming61 new Grok completed-turn diagnostics fixture uses51 unchanged synthetic_fixture helper: RRX metadata remains sibling synthetic values, not rejected ordinary caller keys; actual full debug/release parent passes. Generic production remains51 code; incoming61 actual status/audit controls additive.",
@@ -367,5 +379,120 @@
     "Actual native credentials/config/model inference not exercised",
     "Independent finite composition reviews and final new metadata-head CI pending",
     "Full60/readerEOF/workload ownership/F1/native16 and19writer migration/43nativephase completion/14recovery/11runtime handoff remainOPEN"
-  ]
+  ],
+  "changed_path_inventory_18c_to_068": [
+    {
+      "status": "M",
+      "path": "README.md"
+    },
+    {
+      "status": "M",
+      "path": "crates/rrx/src/adapter.rs"
+    },
+    {
+      "status": "M",
+      "path": "crates/rrx/src/adapter/grok/receipt_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "crates/rrx/src/adapter/inspection.rs"
+    },
+    {
+      "status": "A",
+      "path": "crates/rrx/src/adapter/inspection/diagnostic_tests.rs"
+    },
+    {
+      "status": "A",
+      "path": "crates/rrx/src/adapter/inspection/diagnostics.rs"
+    },
+    {
+      "status": "M",
+      "path": "crates/rrx/src/context.rs"
+    },
+    {
+      "status": "A",
+      "path": "doc/design/issue-60-inspection-design.md"
+    },
+    {
+      "status": "M",
+      "path": "doc/design/master/agent-adapter.md"
+    },
+    {
+      "status": "A",
+      "path": "doc/requirements/issue-60-git-reader-contract-draft.md"
+    },
+    {
+      "status": "A",
+      "path": "doc/requirements/issue-60-inspection-requirements.md"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-60-design1-findings.json"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-60-design2-findings.json"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-60-inspection-delta-mutations.json"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-60-inspection-mutations.json"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-60-inspection-source-ci.json"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-60-inspection-source1-ci.json"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-60-inspection-source1-findings.json"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-60-inspection-source2-ci.json"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-60-inspection-source2-findings.json"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-60-inspection-source3-ci.json"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-60-inspection-source3-findings.json"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-60-inspection-source555-tests.json"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-60-inspection.md"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-60-requirements1-findings.json"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-60-requirements2-findings.json"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-60-requirements3-findings.json"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-60-requirements4-findings.json"
+    }
+  ],
+  "receipt_join_f7_to_068_diff": "diff --git a/crates/rrx/src/adapter/grok/receipt_tests.rs b/crates/rrx/src/adapter/grok/receipt_tests.rs\nindex ca48de3..d0dd5ba 100644\n--- a/crates/rrx/src/adapter/grok/receipt_tests.rs\n+++ b/crates/rrx/src/adapter/grok/receipt_tests.rs\n@@ -122,8 +122,8 @@ fn synthetic_fixture(mode: &str) -> Fixture {\n         (\"RRX_PROMPT_OBSERVED\", \"prompt-observed\"),\n         (\"RRX_PYTHON_OBSERVED\", \"python-observed\"),\n     ] {\n-        fixture.request.environment.insert(\n-            name.into(),\n+        fixture.synthetic(\n+            name,\n             fixture.directory.path().join(file).to_str().unwrap().into(),\n         );\n     }\n@@ -133,7 +133,7 @@ fn synthetic_fixture(mode: &str) -> Fixture {\n         \"RRX_PROMPT_OBSERVED\",\n         \"RRX_PYTHON_OBSERVED\",\n     ] {\n-        let path = PathBuf::from(&fixture.request.environment[name]);\n+        let path = PathBuf::from(fixture.synthetic_value(name));\n         let path = path\n             .parent()\n             .unwrap()\n"
 }

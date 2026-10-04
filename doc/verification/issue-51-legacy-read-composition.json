@@ -47,6 +47,30 @@
     "crates/rrx/src/context.rs": {
       "prior068_blob": "ec4a0aebc495ef0780c90b32558dee6f93974e3d",
       "current9bb_blob": "ec4a0aebc495ef0780c90b32558dee6f93974e3d"
+    },
+    "crates/rrx/src/adapter/grok/ownership.rs": {
+      "prior068_blob": "08613bb14f890ab4d5535be152269608893b7367",
+      "current9bb_blob": "08613bb14f890ab4d5535be152269608893b7367"
+    },
+    "crates/rrx/src/adapter/inspection/diagnostic_tests.rs": {
+      "prior068_blob": "cb923bd7784726bd1ae6e60e83981cac64119c77",
+      "current9bb_blob": "cb923bd7784726bd1ae6e60e83981cac64119c77"
+    },
+    "crates/rrx/tests/support/grok_fixture.rs": {
+      "prior068_blob": "fe7b2a185585f900352da60fd41415856951009a",
+      "current9bb_blob": "fe7b2a185585f900352da60fd41415856951009a"
+    },
+    "crates/rrx/tests/support/grok_fake.py": {
+      "prior068_blob": "38bb794dc14eee7957573c9ff12bd18156295b57",
+      "current9bb_blob": "38bb794dc14eee7957573c9ff12bd18156295b57"
+    },
+    "crates/rrx/tests/support/grok_receipt.rs": {
+      "prior068_blob": "be44dba15627e18ba4ccd1dcbc0c2164e8fe4a14",
+      "current9bb_blob": "be44dba15627e18ba4ccd1dcbc0c2164e8fe4a14"
+    },
+    "crates/rrx/tests/grok.rs": {
+      "prior068_blob": "3ac35be73a03a44566c91e9c3c26f24588dabb72",
+      "current9bb_blob": "3ac35be73a03a44566c91e9c3c26f24588dabb72"
     }
   },
   "affected_tests": {
@@ -57,6 +81,138 @@
   },
   "source_read_only_reach": "Store::usage has no production caller in crates/rrx/src beyond declaration; Adapter.usage is a separate trait/provider method. No native environment/Session writer calls it.",
   "prior_full_gates": "068 source debug+release260Rust+2docs/24ignored PASS separately; not reexecuted or claimed full9bb local count",
-  "reviews": "Finite own-session composition1 reviewers start after publication; current9bb/sourceReview metadata CI pending",
-  "open_limits": "All historical18/b90/555 failures/cause AND regression UNKNOWN; no native availability/full60/F1/native16 claims"
+  "reviews": "Composition1 policy and lifecycle BOTH approve/noCHM at8f560f2, actual owned cleanup verified; findings/outcomes separately published",
+  "open_limits": "All historical18/b90/555 failures/cause AND regression UNKNOWN; no native availability/full60/F1/native16 claims",
+  "changed_path_inventory_068_to_9bb": [
+    {
+      "status": "M",
+      "path": "crates/rrx/src/state/mod.rs"
+    },
+    {
+      "status": "M",
+      "path": "crates/rrx/tests/state.rs"
+    },
+    {
+      "status": "A",
+      "path": "doc/design/issue-21-legacy-scope.md"
+    },
+    {
+      "status": "M",
+      "path": "doc/design/master/context-efficiency.md"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-21-legacy-scope-checks.json"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-21-legacy-scope-mutations.json"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-21-legacy-scope-mutations/omit_goal_identity.patch"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-21-legacy-scope-mutations/omit_project_identity.patch"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-21-legacy-scope-mutations/omit_scope_shape.patch"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-21-legacy-scope-mutations/omit_session_identity.patch"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-21-legacy-scope-mutations/omit_task_identity.patch"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-21-legacy-scope-nullable-checks.json"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-21-legacy-scope-nullable-mutations.json"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-21-legacy-scope-nullable-mutations/nonoptional_goal_column.patch"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-21-legacy-scope-nullable-mutations/nonoptional_task_column.patch"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-21-legacy-scope-nullable-mutations/null_goal_wildcard.patch"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-21-legacy-scope-nullable-mutations/null_task_wildcard.patch"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-21-legacy-scope-nullable-mutations/omit_goal_identity.patch"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-21-legacy-scope-nullable-mutations/omit_project_identity.patch"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-21-legacy-scope-nullable-mutations/omit_scope_shape.patch"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-21-legacy-scope-nullable-mutations/omit_session_identity.patch"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-21-legacy-scope-nullable-mutations/omit_task_identity.patch"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-21-legacy-scope-public-access.json"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-21-legacy-scope-source1-reviews.json"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-21-legacy-scope-source2-ci.json"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-21-legacy-scope-source2-reviews.json"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-21-legacy-scope-withdrawn-body-shape.json"
+    },
+    {
+      "status": "M",
+      "path": "doc/verification/issue-21.md"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-51-diagnostic-composition.json"
+    },
+    {
+      "status": "M",
+      "path": "doc/verification/issue-51.md"
+    }
+  ],
+  "changed_path_inventory_9bb_to_8f": [
+    {
+      "status": "A",
+      "path": "doc/verification/issue-51-legacy-read-composition.json"
+    },
+    {
+      "status": "M",
+      "path": "doc/verification/issue-51.md"
+    }
+  ]
 }

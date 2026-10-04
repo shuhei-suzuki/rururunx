@@ -408,3 +408,32 @@ separately scoped, no full9bb local count invented. Public current-source CI and
 finite two-reviewer composition review remain required. Old failure/cause/regression
 limits are unchanged. Future independent legacy decode projection is not part of
 this immutable review; no waiting for unrelated uncommitted source.
+
+
+## Finite composition review outcome
+
+At immutable public8f560f2 both own-session independent native composition reviewers
+approve with no Critical/High/Medium scoped findings and actual cleanup verified.
+[Public findings/outcomes](issue-51-composition1-reviews.json) preserve both raw-result
+hashes and exact public-input hashes. Both attribution-only Low findings were verified
+against Git objects: complete path inventories per hop, composed adapter/receipt blob
+triplets and f7-to068 sidecar helper hunk now recorded. No requirements/source/tests
+change; no further full native round solely for these outcome/precision docs.
+
+Reviewed8f publicCI37233836203 every required step BOTHOS SUCCESS. [Actual source proof]
+(issue-51-composition1-ci.json): BOTH checkout5ee8128abc504cc9b2f0260f3fd7e3ce8bee27be,
+parentsb8/8f, tested tree equals trigger. CI is full default DEBUG TEST plus release
+BUILD. Mac262Rust+2doctests/24ignored and Linux227Rust+2doctests/17ignored PASS.
+Full local default DEBUG/RELEASE260Rust+2docs remain specifically068; new read-only
+legacy usage path additionally passes current8f State16/16 in both modes (debug9bb,
+release8f). No full8f local RELEASE TEST was run or claimed. Scope-proportional normal
+readonly composition coverage is explicitly approved by root on2026-10-05JST:
+same51 consumers068 fullbothmodes plus independent62 readonly approvals/current
+State16bothmodes and currentpublicCI qualify this delta. Final metadata-head CI/source
+identity and emptyClosingReferences remain required before scoped merge. Whole51
+acceptance remains OPEN where fullcriteria are not ready; no auto-close claim.
+
+All old RED/FAILED outcomes and cause AND regression UNKNOWN remain unchanged.
+This source review/CI does not establish native availability, actual auth/model or
+multi-Project/native3 #16 acceptance, full60/Git reader retention/EOF/F1 or whole
+release readiness. No historical red-head rerun or timing/Unknown/latch relaxation.
