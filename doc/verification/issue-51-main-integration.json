@@ -1,0 +1,71 @@
+{
+  "merge_head": "8bd772bf86298efed1a2ab6e441db1359ce96173",
+  "parents": [
+    "9c4dbdb0cbf89d58f40bd015d0cd36ca6a1ec489",
+    "054aefd3a22a02951fa72b9fa397bed58d156bbf"
+  ],
+  "reviewed_issue51_head": "9c4dbdb0cbf89d58f40bd015d0cd36ca6a1ec489",
+  "integrated_main": "054aefd3a22a02951fa72b9fa397bed58d156bbf",
+  "incoming_production": "17 additions only inside Store::put_usage integer range guard",
+  "incoming_test": "83 additions crates/rrx/tests/state.rs",
+  "native_admission_authority_and_consumers_identical": {
+    "crates/rrx/src/state/environment.rs": {
+      "reviewed_final_blob": "8f7f937b90751540a5f5bcbbaffa8befb5af257c",
+      "integrated_blob": "8f7f937b90751540a5f5bcbbaffa8befb5af257c"
+    },
+    "crates/rrx/src/state/native_dispatch_tests.rs": {
+      "reviewed_final_blob": "235ce98943278f7a31f8c9baa42f1ddc426c1b03",
+      "integrated_blob": "235ce98943278f7a31f8c9baa42f1ddc426c1b03"
+    },
+    "crates/rrx/src/adapter/grok/mod.rs": {
+      "reviewed_final_blob": "c4c241dbc81db2e2ab4073633005481205ef7312",
+      "integrated_blob": "c4c241dbc81db2e2ab4073633005481205ef7312"
+    },
+    "crates/rrx/src/adapter/grok/environment.rs": {
+      "reviewed_final_blob": "1382f391407cb739a805f62b1f816845d0ae1c1d",
+      "integrated_blob": "1382f391407cb739a805f62b1f816845d0ae1c1d"
+    },
+    "crates/rrx/src/adapter/grok/environment_tests.rs": {
+      "reviewed_final_blob": "35a96977f47241f332b5d536bb786f3391db39ed",
+      "integrated_blob": "35a96977f47241f332b5d536bb786f3391db39ed"
+    },
+    "crates/rrx/tests/grok.rs": {
+      "reviewed_final_blob": "3ac35be73a03a44566c91e9c3c26f24588dabb72",
+      "integrated_blob": "3ac35be73a03a44566c91e9c3c26f24588dabb72"
+    },
+    "crates/rrx/tests/support/grok_fixture.rs": {
+      "reviewed_final_blob": "fe7b2a185585f900352da60fd41415856951009a",
+      "integrated_blob": "fe7b2a185585f900352da60fd41415856951009a"
+    },
+    "crates/rrx/tests/support/grok_fake.py": {
+      "reviewed_final_blob": "38bb794dc14eee7957573c9ff12bd18156295b57",
+      "integrated_blob": "38bb794dc14eee7957573c9ff12bd18156295b57"
+    }
+  },
+  "state_diff_sha256": "ea0a4166c5b287e00852333607446e312636484679a32bd38385649b873beaec",
+  "separate_main_failure": {
+    "run": 37215060533,
+    "trigger_head": "054aefd3a22a02951fa72b9fa397bed58d156bbf",
+    "os": "macOS",
+    "test": "native_stop_permissions_foreign_refs_and_environment_guards_are_explicit",
+    "assertion": "tests/grok.rs:410 ownership_uncertain expected false",
+    "observed_receipt": {
+      "cleanup_ok": true,
+      "native_outcome": true,
+      "output_verified": true,
+      "ownership_uncertain": true,
+      "reconciliation": true,
+      "stderr_read_error": "unavailable"
+    },
+    "grok_target": {
+      "passed": 12,
+      "failed": 1,
+      "ignored": 2
+    },
+    "linux": "all steps success",
+    "mac_debug_release_builds": "skipped",
+    "log_sha256": "e885d0988714622979ff707be5ca44e7e1c72f2187e6a728afe15dd6f5cb10b6",
+    "cause": "unknown; no Issue51/main usage attribution or underlying error inferred"
+  },
+  "integrated_validation": "pending new combined-source local checks and public both-OS actual-checkout CI"
+}
