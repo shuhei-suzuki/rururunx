@@ -543,3 +543,13 @@ evidence. All complete typed native frames share a 1 MiB cap before selection or
 publication. Protected Session restore hashing is byte/depth/node bounded. The
 single-delivery count concerns PreparedInput frames; fixed protocol replies remain
 separate, and live free-text instruction shortcuts are unsupported.
+
+
+Exact prewire restoration precedes intent novelty checks. An older restored owner
+is frozen while its allocated attempt is open, keeping failure closure possible;
+separate diagnostic records remain allowed. Historical binding skips live head
+comparison while existing active-owner/lock CAS fences remain. All fresh Workflow
+native phases require actual typed authority, including generic/Fake/native caller
+migration and default-absent admission capability. Allocation applies only to
+Workflow native phases; standalone frames allow separately guarded new Sessions,
+and evidence/opaque history is never no-admission proof.

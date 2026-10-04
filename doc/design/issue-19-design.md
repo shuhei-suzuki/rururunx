@@ -266,7 +266,14 @@ can establish prior admission; a caller cannot install an ack by selecting field
 that match an unrelated row.
 
 The launch guard returns a typed outcome: `Validated`, `ConsumedHistorical`,
-`Acked`, `BoundHistorical`, or `NotAdmission`. A changed/new actually consumed dispatch_intent ALWAYS
+`Acked`, `BoundHistorical`, `RestoredPrior`, or `NotAdmission`. Classify an exact
+`RestoredPrior` before any new-intent or actor-binding classification. It requires
+old pending Starting, new terminal non-Lost, exact new complete-body canonical
+checksum == both stored old restore proof and private frozen preparation checksum,
+no admitted pair/consumed UUID for the pending version, and no old/new uncertainty.
+A restored prior intent is historical body content, never a new consumption; when
+a retained prior admitted pair/UUID exists it must match those restored pins. This
+branch changes no private pair/allocation. Outside this branch, a changed/new actually consumed dispatch_intent ALWAYS
 validates the latest frame/head first, even if the same input has an ack. For other
 admissions, the privately indexed matching consumed dispatch or a matching private row permits historical
 observation of the same pinned input. Otherwise Starting/Running validates current
@@ -318,7 +325,8 @@ an operation-free decision Task through the Approval Broker.
 The single-actor Workflow port also allocates one private `phase_session_owners`
 row per (Project, Goal, Task, context_version), containing Session ID. Context
 version uniquely identifies the immutable native phase attempt. Every first private native CAS-validated
-typed preparation/admission write allocates it atomically with Record/audit:
+preparation/admission write for a typed Workflow native phase (not standalone or
+EvidencePort) allocates it atomically with Record/audit:
 INSERT or UPDATE to Starting/Running, or first/new consumed dispatch. This includes a terminal
 legacy Session updated to a fresh typed Starting. Later writes
 must be by that same Session. Another Session cannot reserve or consume the frame
@@ -373,12 +381,15 @@ Task/Project/Goal/Record CAS; this check does not require a Task version bump. E
 allocation reader for explicit recovery. The recovery port must resolve an unbound
 claim using this private owner, actual persisted terminal Session and verified
 native cleanup; it must not invent another actor or clear Lost/uncertain ownership.
-An absent allocation is factual proof that no schema6 typed Session/input was
-admitted through Store for that exact context, because every such write allocates
+For a proven typed Workflow native-phase context only, an absent allocation is
+factual proof that no schema6 typed Workflow Session/input was admitted through
+Store for that exact context, because every such private write allocates
 atomically and older writers are fenced. It does not by itself invoke or broaden
 Workflow release policy: ordinary observer polling remains read-only, and owner
 release still requires its own exact claim token and applicable pre/post-marker
-rules. Explicit recovery can use this absence to prove no typed admission, while
+rules. The reader requires typed native-phase ancestry before reporting absence;
+standalone/evidence/opaque history returns NotApplicable rather than no-admission
+proof. Explicit recovery can use applicable absence to prove no typed admission, while
 an allocated Starting/Running/Lost or uncertain owner remains held until genuine
 terminal/cleanup evidence. Current unbound post-marker failure may remain held
 until the explicit recovery port is integrated; this is an availability limit,
@@ -549,8 +560,9 @@ SQLite schema editing is outside the Store contract. Future migrations must reta
 required earlier functions and install their own exact-version write fence.
 
 The actual old5 native fixture is compiled from immutable public source
-`e6cf75dc61d0c9c9a6a225c64c8f9aaf7d6ffd26`, plus the latest schema5 production
-source `79af00a603149729fe26bd1079aa4d49c1932cad` after the reviewed Grok/CAS merge,
+`e6cf75dc61d0c9c9a6a225c64c8f9aaf7d6ffd26` and, separately, the latest schema5
+production source `79af00a603149729fe26bd1079aa4d49c1932cad` after the reviewed
+Grok/CAS merge (two distinct unchanged-source binaries, never one patched build),
 never by patching the version constant in new schema6 source. This feature has
 no deployed schema5 release; record exact source/binary identities rather than
 inventing a deployment claim.
@@ -1013,9 +1025,10 @@ Project/Goal/Task versions, active ownership and the complete scoped lock ID/ver
 set. It alone constructs a private `NativeAdmission` write mode for the internal
 record helper. The mode is never a public enum/JSON parameter and carries the
 already-checked current version tuple into the admission helper. A new consumed
-DTO must have authority_versions exactly equal to that tuple. The helper also
-checks latest full frame/head, actor, lifecycle and phase allocation before it
-writes Session/preparation/admitted/consumed/owner rows plus audit atomically.
+DTO must have authority_versions exactly equal to that tuple. Outcome-specific checks below distinguish current admission from historical
+observation. Fresh `Validated` checks latest full frame/head, actor, lifecycle and
+phase allocation before it writes Session/preparation/admitted/consumed/owner rows
+plus audit atomically.
 No Git or external I/O occurs inside this transaction. Native callers use this
 port for initial/fresh Starting, pending binding refresh, first Running admission,
 first consumption and private BoundHistorical digest changes. This is a trusted
@@ -1023,7 +1036,7 @@ runtime boundary, not authentication against malicious code inside the crate.
 
 Generic `put_record`/`put_session`, including other transactions that use the
 ordinary record helper, use private `ObservationOnly` mode. For protected input
-they reject new or changed consumed intent, first/new preparation or admission,
+they reject new or changed consumed intent outside `RestoredPrior`, first/new preparation or admission,
 phase allocation and BoundHistorical row mutation, including the frozen prior
 terminal restore checksum. They may retain exact privately
 indexed historical observations, monotonic conservative Lost diagnostics,
@@ -1072,3 +1085,87 @@ a protected continuation requiring its exact checksum fails explicitly rather
 than hashing an unbounded object or truncating diagnostics. No automatic rewrite
 or forged terminal settlement is provided. Boundary fixtures prove limits, nested
 overflow, no pair/audit writes, and preserve-order fractional checksum compatibility.
+
+
+### Restoration ordering, historical CAS and typed Workflow scope
+
+Exact `RestoredPrior` classification precedes ObservationOnly novelty rejection,
+new dispatch detection, initial actor-binding classification and live-head checks.
+It may reinstate the exact prior terminal's old consumed intent without consuming
+it anew. Session version CAS and immutable scope/owner checks still apply; the
+private current-input preparation and frozen prior checksum remain unchanged.
+Mutate this ordering and require an actual prior-consumed terminal→fresh Starting→
+exact prewire rollback fixture to fail, with no second wire or admission row.
+
+Once an older restored terminal owns an open allocated Workflow attempt, its exact
+body is frozen until that attempt closes. Reject ALL Session body changes (including
+terminal state/PID/diagnostics/new Starting) even if ordinarily allowed by terminal
+observation; exact no-change reads are allowed. Active allocated attempt identity
+is derived from the current scoped Workflow Record/phase owner inside the same
+transaction; malformed/contradictory references refuse. Diagnostics/timings/usage
+can be recorded separately with attribution, never altering the restore body.
+Closure can therefore compare the frozen checksum without a new restoration
+marker or overwritten provenance. Once Failed/Interrupted closes that exact
+attempt, ordinary permitted terminal observations resume. Standalone frames have
+no phase allocation and are not subject to this allocated-attempt freeze. Test a
+post-restoration diagnostic attempt is rejected, separate Usage/audit is retained,
+Failed closure succeeds, and the terminal diagnostic is permitted after closure;
+mutate the freeze predicate to demonstrate the checksum wedge.
+
+The private native CAS port has this per-outcome check table. Every outcome checks
+actual scope/Session version, current P/G/T versions and complete lock-set CAS;
+ordinary actor ownership and universal Lost rules remain global.
+
+| Outcome | Head/frame and lifecycle | Private writes |
+| --- | --- | --- |
+| Validated fresh Starting/pending binding/first Running/first consumed | Latest complete frame, live checkpoint head; active Project/Goal, nonterminal admissible Task; Executor ReadyForPr/PrCreated refused | Preparation/admission/consumed ID as applicable; typed Workflow owner allocation |
+| BoundHistorical | Exact old admitted digest, same pinned input/intent, old nonterminal non-Lost; no live head/frame comparison. Existing CAS active Goal/nonterminal Task/Executor ReadyForPr fences remain | Only permitted monotonic initial binding digest update, no new consumption |
+| Acked/ConsumedHistorical | Exact existing pair/UUID and unchanged actor/input/intent; no current head comparison, no fresh input | None |
+| RestoredPrior | Exact frozen canonical prior checksum and no current admission/consumption/uncertainty; no live head comparison | None |
+| NotAdmission | Applicable ordinary history predicates, never fresh protected Starting/Running | None |
+
+Paused/inactive Goal or Executor ReadyForPr may hold private BoundHistorical
+publication even when its checkpoint is historical; report that as passive binding
+publication held, not native outcome failure or permission to dispatch. Existing
+fully settled factual observations/audit/usage remain separately possible with
+pinned actors. Do not relax those lifecycle checks to hide a binding conflict.
+The latest-head exemption is only for history; a new consumed UUID always follows
+Validated and requires current active ownership. Mutate the per-outcome selector
+and cover late Waiting binding after checkpoint append plus paused/ReadyForPr
+rejection with no new model input.
+
+After schema6, every fresh Workflow native Executor/Reviewer phase requires actual
+typed19 frame publication, explicit own checkpoint head (including none), complete
+mandatory task_pack plus rule/frame source authority, and its private native CAS
+preparation/allocation. A new opaque native-phase context/launch is rejected before
+process or dispatch marker even for a Task with no typed ancestry. Existing opaque
+historical records and separately validated EvidencePort phases remain readable,
+not new native launch authority. Standalone typed frames NEVER allocate a
+phase_session_owners row: a new Session UUID may re-admit their current frame under
+its independent latest-frame/owner/lock guards. Tests cover opaque fresh native
+phase refusal, evidence/history reading, and standalone new-UUID retry without
+allocation. No guarantee is broadened to unprotected legacy history.
+
+Native caller migration inventory includes GenericCliAdapter, Claude5, Codex6,
+Grok7 and positive Workflow FakeAgent fixtures. Generic first Starting/Running
+save_session currently calls the generic writer and must migrate to the actual
+private prep/admit CAS; FakeAgent must use real typed producer/private pair too,
+never bare recoveryNull, seeded private SQL or a test exemption. All production
+adapters require complete pins/current tuple/lock CAS and causal before-wire proof.
+The runtime's implementation-owned PreparedInputAdmission capability defaults
+absent and is checked before dispatch claim/process; unmigrated adapters reject.
+A misadvertising adapter that returns an owner without private current proof still
+fails the narrow binder and retains uncertain ownership. Capability declaration
+alone is not proof. Co-integration with #43 preserves both reviewed ancestries and
+requires combined source review/exact-head CI; standalone helpers are not actual
+native acceptance.
+
+Two old5 writer artifacts are required independently: record each exact source
+commit/tree, executable SHA and absence of writer-v6 registration, then fresh-open
+refusal and held-open owner/Session/metadata/audit/prepared-statement refusal. Do
+not substitute the earlier binary's result for the later merged-CAS binary.
+Before checkpoint-v1 digest verification, reject any non-integer JSON number in
+actual typed checkpoint bodies with distinct actionable migration refusal; this
+is malformed legacy authority outside the typed old producer, not permission to
+rewrite its chain. Preserve DB bytes/marker on refusal and compare valid native
+old5 checkpoint bytes/digests under both JSON feature configurations.

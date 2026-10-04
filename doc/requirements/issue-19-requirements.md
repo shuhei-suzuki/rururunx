@@ -307,3 +307,21 @@ operation authority; no free-text Human/operator live reply shortcut is supporte
 for protected input. New model-visible instructions require terminal settlement
 and a fresh higher-input prepared frame with attributed facts. Real provider
 fixtures must prove these entry-point distinctions and exact one-frame consumption.
+
+
+Exact prior-terminal restoration is classified before new consumed-intent checks;
+its old intent remains historical content. A restored older terminal bound to an
+open allocated attempt is frozen until failure closure, while separate diagnostics
+and usage remain attributable. Historical initial binding skips live head currency
+but retains current owner/lock CAS and existing lifecycle fences; Paused/ReadyForPr
+publication holds are explicit and never new dispatch permission.
+
+All fresh post-upgrade Workflow native phases require typed19 authority; opaque
+native contexts cannot launch. Phase allocation applies only to typed Workflow
+native actors, never standalone inputs or EvidencePort/history. The allocation
+reader distinguishes NotApplicable from proven typed-phase absence. Generic CLI,
+Claude5, Codex6, Grok7 and positive FakeAgent fixtures must migrate to actual
+private prep/admit ports; implementation-owned admission capability defaults absent
+and prevents preclaim/process launch before reviewed integration. Two separately
+identified old5 binaries prove writer exclusion; malformed non-integer legacy
+checkpoint authority refuses migration with unchanged state.
