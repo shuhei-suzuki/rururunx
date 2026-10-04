@@ -38,7 +38,8 @@ Source of truth: Issue23, Product Requirements sections4–7, and
   coherent durable snapshot and records the versions used; it grants no dispatch
   permit. Admission rechecks current authority in scheduler/Workflow consumers.
 - Define finite serialized-size, node, edge, criterion, proposal, reference and
-  individual-text bounds in design. Enforce them before costly parsing/traversal
+  individual-text bounds in design, including all Goal-scoped Tasks scanned even
+  when absent from dag.nodes. Enforce them before costly parsing/traversal
   and before publication. Checked versions never wrap; oversized/malformed input
   rejects without writes. Evaluation is iterative and bounded by graph size.
 
@@ -55,13 +56,18 @@ Source of truth: Issue23, Product Requirements sections4–7, and
   Tasks are reported as unresolved membership and need explicit validated
   reconciliation, never automatic adoption or success. MVP has no implicit
   descoping: node removal, edge removal and hard-to-soft weakening are unsupported
-  explicit errors. Failed/cancelled required Tasks keep the Goal incomplete.
+  explicit errors. Failed/cancelled required Tasks keep the Goal incomplete with
+  a reason requiring controller/Human action. Retry through the owning port of
+  the same Task identity may produce fresh verified success; a replacement Task
+  does not supersede the old requirement. Otherwise explicit authorized Goal
+  failure/cancellation is required. The same applies to unreconciled legacy Tasks.
 - Adding a hard dependency requires its dependent to be unstarted: Created, no
   Workflow attempt/history, Session launch or dispatch/recovery ownership. Reject
   retroactive prerequisites for running, preparing, Lost or terminal dependents;
   neither a Human label nor an audit alone makes prior execution meet a new gate.
-  Edge identity is the endpoint pair, independent of the hard flag; parallel
-  hard/soft duplicates reject. Soft preferences cannot remove a required Task.
+  Edge identity is the ordered (prerequisite, dependent) pair, independent of the
+  hard flag; soft-to-hard strengthening uses the same unstarted-dependent rule.
+  Parallel hard/soft duplicates reject. Soft preferences cannot remove a required Task.
 - Hard edges require the prerequisite's verified success. Reject every hard-edge
   cycle on creation or modification, including through existing paths. Soft edges
   are explicitly advisory preferences; soft-only or mixed advisory cycles cannot
@@ -84,13 +90,30 @@ Source of truth: Issue23, Product Requirements sections4–7, and
 
 ## Explicit completion and lifecycle
 
+- Goal definition is authority: objective/title, the complete criterion set and
+  each criterion ID/description/evaluator, constraints, non-goals and source-of-
+  truth references. Initial accepted creation requires the Human-authority ingress
+  or trusted controller acting under an explicitly Human-approved creation policy,
+  with current scoped transaction checks and recorded origin/policy. Agent, native,
+  Workflow and generic persistence cannot create an accepted definition from their
+  own labels or change one; they may submit requiring-Human proposals only.
+- An accepted Goal definition is immutable in MVP. Adding/removing/replacing
+  criteria, changing an evaluator or Human-attestation path, reusing criterion IDs,
+  or editing objective/constraints/non-goals/source references rejects explicitly,
+  including through a controller/Human edit request. There is no silent reduction
+  of scope or conversion of a Human criterion to Task-only success. Proposed
+  definition changes are not applied and grant no readiness/completion authority;
+  a distinct explicitly accepted Goal does not settle the original Goal. Referenced
+  source contents may change, invalidating evidence, without rewriting the fixed
+  reference set or original definition.
 - Human criterion attestation and material/requiring-Human proposal disposition
   require a dedicated Human-authority ingress, distinct from agent/native/Workflow
   writers. Design must name the principal source and process/API boundary; record
   origin class/principal and exact criterion/proposal identity plus version. Labels,
   Git comments/trailers, agent output and generic persistence cannot mint Human
   authority. Target changes invalidate the attestation. Automatic lifecycle policy
-  uses a separate trusted runtime-controller port, never fabricated Human origin.
+  uses a separate trusted runtime-controller port, unreachable from agent, native
+  and Workflow writers, never fabricated Human origin.
   Specify trust limits, including same-user machine/DB tampering; do not claim an
   OS sandbox or biological identity proof from an in-process typed port.
 - Criteria have stable unique IDs, a nonempty description and a defined evaluator
@@ -132,7 +155,8 @@ Source of truth: Issue23, Product Requirements sections4–7, and
   recording/evaluating evidence and proposals does not mutate native currency.
 - Restart recomputes readiness/completion from durable facts. A stored ready list,
   stale criterion bit or native session hint does not substitute for evaluation.
-  Source/criterion/DAG changes invalidate affected evaluation results. Agent
+  Referenced source-content, evidence-target and permitted additive DAG changes
+  invalidate affected evaluation results; the accepted criteria remain fixed. Agent
   replacement/native session loss cannot erase objective, graph or evidence.
 
 ## Follow-ups and native currency
@@ -151,8 +175,10 @@ Source of truth: Issue23, Product Requirements sections4–7, and
   completion must not rewrite a native-fenced Goal/Task just to publish facts,
   invalidate a sibling's unchanged input, or relax native scope checks. Design
   must provide a coherent persistence boundary for these observations versus
-  explicit authority changes. Do not duplicate competing authoritative DAGs or
-  smuggle input/permission authority into a progress record. Inventory actual
+  explicit authority changes. Proposal acceptance and node/dependency additions
+  are explicit authority changes; design must specify their native-currency and
+  sibling re-admission consequences without laundering changes as observations.
+  Do not duplicate competing authoritative DAGs or smuggle input/permission authority into a progress record. Inventory actual
   Claude/Codex/Grok consumers and #19 frames before source integration.
 
 ## Verification and delivery
@@ -170,7 +196,9 @@ Refuse agent-originated Human attestation/disposition and lifecycle changes;
 exercise target-version invalidation, retroactive hard edges, removal/weakening,
 legacy unlisted/terminal-unverified records, and Lost-prerequisite resolution
 restoring readiness without changing a Running Goal. Display-only blockers
-cannot change completion/eligibility.
+cannot change completion/eligibility. Refuse generic/agent criterion removal,
+replacement or evaluator substitution and edits to constraints/non-goals/source
+references; verify initial definition origin and immutable accepted definitions.
 
 Meaningful compiled mutants must reach actual graph/evaluation/Store consumers:
 remove cycle/scope/current-evidence checks; count Task completion as Goal
@@ -178,7 +206,9 @@ completion; treat failed/Lost ownership as ready/success; duplicate an accepted
 proposal; accept an agent-originated Human decision; permit retroactive
 prerequisites/removal; treat display blockers as authority; publish observations
 by rewriting native-fenced Goal authority. Include
-passing controls and restored source, with no setup/compilation failure credit.
+a compiled criterion-replacement mutant that makes Task-only completion reachable
+through generic persistence. Include passing controls and restored source, with no
+setup/compilation failure credit.
 
 Review requirements, then design, then immutable implementation/security scope.
 Run appropriate shared-state/native/Workflow regressions, fmt/clippy/build and

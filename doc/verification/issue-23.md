@@ -26,3 +26,16 @@ Goal-scoped required Tasks, and leaves derived readiness independent of persiste
 holds. Legacy completion bits remain unverified. Numeric/storage/evaluator details
 remain design work. Exact Req1 CI37185979164 succeeded; this covers main's existing
 runtime at a documentation head, not Goal model implementation acceptance.
+
+Requirements2 8a1e3f8 review completed with owned cleanup verified. Prior ingress,
+graph membership/mutation and lifecycle findings were verified resolved. One High
+remained: generic Goal definition/criterion replacement could weaken the evaluator's
+completion target. Requirements3 classifies initial definition creation as trusted
+authority and makes accepted definitions immutable in MVP. Generic/agent definition
+changes are unapplied requiring-Human proposals; even Human/controller edits reject
+rather than silently settle the original Goal. Tests and an actual completion-
+consumer criterion-replacement mutant are required. Bounds include unlisted scoped
+Tasks, edge identity is ordered, and explicit graph authority changes must have
+designed sibling-currency consequences. Requirements3 review remains pending; no
+source or evaluator acceptance is claimed. Raw resumed native usage has unverified
+per-round attribution and is not an incremental cost measurement.
