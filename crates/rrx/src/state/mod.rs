@@ -922,6 +922,7 @@ impl Store {
                     && usage.session_id.to_string() == session,
                 "usage row/body identity mismatch"
             );
+            validate_scope(&usage.scope)?;
             Ok(usage)
         })
         .collect()

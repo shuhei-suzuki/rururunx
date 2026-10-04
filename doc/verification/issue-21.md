@@ -309,3 +309,17 @@ consumer. Exact full tree and source restored, focused control PASS; public patc
 commit/tree/source/test/log hashes and observed assertion failures retained. No
 compiler/setup failure counted. Full regression/builds/CI and two independent source
 reviews remain pending; no qualified telemetry/native/whole21 acceptance claim.
+
+
+Initial b1b643b source (artifact5b7d36e/source equal) also passed full DEFAULT host
+workspace regression:222 Rust tests plus2 doctests,8 explicitly ignored. Debug and
+release builds passed. Earlier Source2 #43 sandbox PS EPERM failures are a different
+branch/environment, not these tests. Public zero-context patches reproduce identical
+executed mutant hashes and retain original private patch hashes; apply with
+`git apply --unidiff-zero`.
+
+Further read review found agreeing corrupted row/body can both omit Goal while
+retaining Task. The component now validates decoded Scope shape after identity
+matching, with a real Project query control and complete row-column snapshot. This
+preserves old identity-mismatch priority and valid NoTask shape. New-source regression,
+mutation and review remain pending; previous checks are not claimed for changed bytes.

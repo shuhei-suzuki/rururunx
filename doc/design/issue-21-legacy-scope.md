@@ -15,7 +15,8 @@ Project/Goal/Task/Session identity columns plus body, under unchanged SQL filter
 sequence order. Before returning each decoded Usage, require exact equality of all
 four body identities with that SAME row. collect returns an error for the complete
 query if any row is inconsistent; it never returns an earlier partial vector. Optional
-Goal/Task identity must preserve None exactly. Error messages contain only static
+Goal/Task identity must preserve None exactly. The decoded body must also obey the
+existing Task-requires-Goal Scope shape, even when corrupted columns and body agree. Error messages contain only static
 codes/text, not the foreign body. No repair, audit, schema, owner or historical write.
 Valid Task, Goal, Project and NoTask history retain existing representation/order.
 
