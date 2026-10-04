@@ -445,6 +445,7 @@ struct AgentPreparation {
 #[derive(Default)]
 struct EngineHooks {
     before_release: std::sync::Mutex<Option<Box<dyn FnOnce() + Send>>>,
+    before_reserve: std::sync::Mutex<Option<Pin<Box<dyn Future<Output = ()> + Send>>>>,
     attempt_started_at: std::sync::Mutex<Option<i64>>,
 }
 
@@ -933,6 +934,11 @@ impl WorkflowEngine {
             detail: None,
         });
         snapshot.workflow.active = Some(index);
+        #[cfg(test)]
+        {
+            let hook = self.hooks.before_reserve.lock().expect("reserve hook").take();
+            if let Some(hook) = hook { hook.await; }
+        }
         self.reserve(&mut snapshot, &context, phase)?;
         if phase.actor() == Actor::EvidencePort {
             return self.evaluate(snapshot, index, None).await;

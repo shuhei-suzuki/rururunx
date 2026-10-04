@@ -31,6 +31,7 @@ struct FakeAgent {
     launches: Mutex<Vec<LaunchRequest>>,
     statuses: Mutex<BTreeMap<SessionId, SessionStatus>>,
     start_pause: Mutex<Option<Arc<Pause>>>,
+    start_error: AtomicBool,
 }
 impl FakeAgent {
     fn new(name: &str, store: SharedStore, review: bool) -> Self {
@@ -44,6 +45,7 @@ impl FakeAgent {
             launches: Mutex::new(vec![]),
             statuses: Mutex::new(BTreeMap::new()),
             start_pause: Mutex::new(None),
+            start_error: AtomicBool::new(false),
         }
     }
 }
@@ -75,6 +77,7 @@ impl AgentAdapter for FakeAgent {
             self.launches.lock().unwrap().push(request.clone());
             let pause = self.start_pause.lock().unwrap().take();
             if let Some(pause) = pause { pause.hold().await; }
+            if self.start_error.load(Ordering::SeqCst) { return Err(adapter_error("fake start outcome unknown")); }
             let session = Session {
                 id: SessionId::new(),
                 scope: request.scope,
@@ -4036,7 +4039,12 @@ async fn preparation_dispatched_observation_and_direct_store_terminal_fence() {
         snapshot.project.version,snapshot.goal.version,WorkflowAccess::TerminalRecovery).unwrap_err().to_string().contains("unbound dispatch"));
     assert_eq!(fixture.durable(),before);
     pause.release(); assert!(owner.await.unwrap().is_err());
-    assert_eq!(fixture.durable(),before,"terminal and stale CAS overlap; no unique fence credit");
+    let after = fixture.durable();
+    for key in ["task","workflow","context"] { assert_eq!(after[key],before[key],"terminal and stale CAS overlap; no unique fence credit"); }
+    let prior = before["audit"].as_array().unwrap(); let events=after["audit"].as_array().unwrap();
+    assert!(events.starts_with(prior)); assert_eq!(events.len(),prior.len()+1);
+    assert_eq!(events.last().unwrap()["kind"],"session.saved");
+    assert_eq!(fixture.store.lock().unwrap().records(&fixture.task.scope(),RecordKind::Session).unwrap().len(),1);
     assert_eq!(fixture.executor.launches.lock().unwrap().len(),1);
 }
 
@@ -4171,4 +4179,145 @@ fn preparation_marker_classifier_requires_exact_table_and_owning_task_id() {
         assert_eq!(super::own_task_marker_rollback(&error,id),expected);
     }
     assert!(!super::own_task_marker_rollback(&anyhow::anyhow!("SnapshotChanged tasks fabricated"),id));
+}
+
+#[tokio::test]
+async fn preparation_reserve_loser_cannot_release_identical_winner_claim() {
+    let fixture=Fixture::ready_agent(false).await;
+    let other=fixture.fresh_engine();
+    *fixture.engine.hooks.attempt_started_at.lock().unwrap()=Some(42);
+    *other.hooks.attempt_started_at.lock().unwrap()=Some(42);
+    let first=Arc::new(Pause::default()); let second=Arc::new(Pause::default());
+    let hold=first.clone(); *fixture.engine.hooks.before_reserve.lock().unwrap()=Some(Box::pin(async move {hold.hold().await;}));
+    let hold=second.clone(); *other.hooks.before_reserve.lock().unwrap()=Some(Box::pin(async move {hold.hold().await;}));
+    let a=fixture.spawn_step(); first.wait().await;
+    let id=fixture.task.id; let b=tokio::spawn(async move { other.step(id,BTreeMap::new()).await }); second.wait().await;
+    // Both prepared the same next context before either reservation committed.
+    let after_reserve=fixture.capture_pause(1); first.release(); after_reserve.wait().await;
+    let before=fixture.durable(); second.release(); assert!(b.await.unwrap().is_err());
+    assert_eq!(fixture.durable(),before,"loser cannot adopt the winner's committed token");
+    fixture.passive_observers(false).await;
+    after_reserve.release(); assert!(matches!(a.await.unwrap().unwrap(),StepResult::Started{..}));
+    assert_eq!(fixture.executor.launches.lock().unwrap().len(),1);
+}
+
+#[tokio::test]
+async fn preparation_actor_override_uses_new_claim_before_launch_and_binding_is_immutable() {
+    for review in [false,true] { for offset in [3,4] {
+        let mut fixture=Fixture::ready_agent(review).await;
+        let alternate=Arc::new(FakeAgent::new("alternate",fixture.store.clone(),review));
+        let mut registry=AgentRegistry::default();
+        registry.register("executor".into(),fixture.executor.clone()).unwrap();
+        registry.register("reviewer".into(),fixture.reviewer.clone()).unwrap();
+        registry.register("alternate".into(),alternate.clone()).unwrap();
+        fixture.engine=Arc::new(WorkflowEngine::new(fixture.store.clone(),Arc::new(registry),fixture.config.clone(),fixture.sources.clone(),fixture.gates.clone()).unwrap());
+        let pause=fixture.capture_pause(offset); let owner=fixture.spawn_step(); pause.wait().await;
+        let reserved=fixture.engine.snapshot(fixture.task.id).unwrap();
+        let mut store=fixture.second_writer(); let mut task=store.task(fixture.task.id).unwrap().unwrap();
+        if review { task.reviewers=vec!["alternate".into()]; } else {task.executor="alternate".into();}
+        store.put_task(&mut task).unwrap();
+        let mut invalid=task.clone(); invalid.worktree=Some(fixture.project.worktree_root.join("different"));
+        assert!(store.put_task(&mut invalid).is_err());
+        let mut invalid=task.clone(); invalid.branch=Some("feature/different".into()); assert!(store.put_task(&mut invalid).is_err());
+        pause.release(); assert!(owner.await.unwrap().is_err()); fixture.assert_owned_release(&reserved);
+        assert!(alternate.launches.lock().unwrap().is_empty());
+        assert!(matches!(fixture.engine.step(fixture.task.id,BTreeMap::new()).await.unwrap(),StepResult::Started{..}));
+        assert_eq!(alternate.launches.lock().unwrap().len(),1);
+        let snapshot=fixture.engine.snapshot(fixture.task.id).unwrap();
+        assert_eq!(snapshot.history[snapshot.active.unwrap()].agent.as_deref(),Some("alternate"));
+    }}
+}
+
+#[tokio::test]
+async fn preparation_invalidation_internal_errors_release_before_publication_only() {
+    // Fresh-source branch constructs its pack in capture 4. Observed-source
+    // branch validates in capture 5 and constructs its pack in capture 6.
+    for (changed,internal) in [(3,4),(4,5),(4,6)] { for pause_owner in [false,true] {
+        let fixture=Fixture::ready_agent(false).await;
+        let initial=fixture.capture_pause(changed); let nested=fixture.capture_pause(internal);
+        let owner=fixture.spawn_step(); initial.wait().await;
+        let reserved=fixture.engine.snapshot(fixture.task.id).unwrap();
+        fixture.sources.snapshot.lock().unwrap().source_versions.insert("requirements".into(),"changed".into());
+        initial.release(); nested.wait().await;
+        if pause_owner { fixture.set_goal(GoalState::Paused); }
+        fixture.sources.capture_error.store(true,Ordering::SeqCst);
+        let before=fixture.durable(); nested.release(); assert!(owner.await.unwrap().is_err());
+        if pause_owner { assert_eq!(fixture.durable(),before); }
+        else { fixture.assert_owned_release(&reserved); }
+        assert!(fixture.executor.launches.lock().unwrap().is_empty());
+    }}
+    let fixture=Fixture::ready_agent(false).await;
+    let initial=fixture.capture_pause(4); let nested=fixture.capture_pause(5);
+    let owner=fixture.spawn_step(); initial.wait().await;
+    let reserved=fixture.engine.snapshot(fixture.task.id).unwrap();
+    fixture.sources.snapshot.lock().unwrap().revision="changed-first".into(); initial.release(); nested.wait().await;
+    fixture.sources.snapshot.lock().unwrap().revision="changed-second".into(); nested.release();
+    assert!(owner.await.unwrap().is_err()); fixture.assert_owned_release(&reserved);
+}
+
+#[tokio::test]
+async fn preparation_definitive_fail_and_both_invalidation_publication_conflicts_retain() {
+    for changed in [0,3,4] {
+        let fixture=Fixture::ready_agent(false).await;
+        if changed==0 {
+            let mut store=fixture.second_writer(); let mut task=store.task(fixture.task.id).unwrap().unwrap();
+            task.executor="missing-adapter".into(); store.put_task(&mut task).unwrap();
+        }
+        let publication=if changed==4 {6} else {4};
+        let nested=fixture.capture_pause(publication);
+        let initial=if changed>0 {Some(fixture.capture_pause(changed))} else {None};
+        let owner=fixture.spawn_step();
+        if let Some(initial)=initial {
+            initial.wait().await; fixture.sources.snapshot.lock().unwrap().source_versions.insert("requirements".into(),"changed".into()); initial.release();
+        }
+        nested.wait().await;
+        fixture.metadata_edit("definitive publication conflict"); let before=fixture.durable(); nested.release();
+        assert!(owner.await.unwrap().is_err()); assert_eq!(fixture.durable(),before,"definitive intent must not become automatic retry");
+        assert!(fixture.engine.snapshot(fixture.task.id).unwrap().active.is_some());
+        assert!(fixture.executor.launches.lock().unwrap().is_empty()); fixture.passive_observers(false).await;
+    }
+}
+
+#[tokio::test]
+async fn preparation_untyped_marker_failure_keeps_claim_even_when_start_never_called() {
+    let fixture=Fixture::ready_agent(false).await;
+    let pause=fixture.capture_pause(4); let owner=fixture.spawn_step(); pause.wait().await;
+    let db=rusqlite::Connection::open(fixture.dir.path().join("state.db")).unwrap();
+    db.execute_batch("CREATE TRIGGER abort_owned_marker BEFORE UPDATE ON records
+        WHEN OLD.kind='workflow' AND
+        json_extract(OLD.body,'$.data.history[' || json_extract(OLD.body,'$.data.active') || '].dispatch_started')=0 AND
+        json_extract(NEW.body,'$.data.history[' || json_extract(NEW.body,'$.data.active') || '].dispatch_started')=1
+        BEGIN SELECT RAISE(ABORT,'fixture_marker_only_abort'); END;").unwrap();
+    let before=fixture.durable(); pause.release();
+    let error=owner.await.unwrap().unwrap_err(); assert!(format!("{error:#}").contains("fixture_marker_only_abort"));
+    assert_eq!(fixture.durable(),before,"unknown error classification cannot authorize release");
+    assert!(fixture.executor.launches.lock().unwrap().is_empty());
+    db.execute_batch("DROP TRIGGER abort_owned_marker").unwrap(); fixture.passive_observers(false).await;
+}
+
+#[tokio::test]
+async fn preparation_post_dispatch_binding_cas_conflict_preserves_factual_session_and_claim() {
+    let fixture=Fixture::ready_agent(false).await;
+    let pause=Arc::new(Pause::default()); *fixture.executor.start_pause.lock().unwrap()=Some(pause.clone());
+    let owner=fixture.spawn_step(); pause.wait().await; fixture.metadata_edit("post-dispatch user update");
+    let before=fixture.durable(); pause.release(); assert!(owner.await.unwrap().is_err());
+    let after=fixture.durable(); for key in ["task","workflow","context"] {assert_eq!(after[key],before[key]);}
+    let events=after["audit"].as_array().unwrap(); let prior=before["audit"].as_array().unwrap();
+    assert!(events.starts_with(prior)); assert_eq!(events.len(),prior.len()+1); assert_eq!(events.last().unwrap()["kind"],"session.saved");
+    fixture.passive_observers(true).await; assert_eq!(fixture.executor.launches.lock().unwrap().len(),1);
+}
+
+#[tokio::test]
+async fn preparation_existing_explicit_retry_gap_is_characterized_not_recovery_proof() {
+    let fixture=Fixture::ready_agent(false).await;
+    fixture.executor.start_error.store(true,Ordering::SeqCst);
+    assert!(matches!(fixture.engine.step(fixture.task.id,BTreeMap::new()).await.unwrap(),StepResult::Failed{..}));
+    let before=fixture.engine.snapshot(fixture.task.id).unwrap(); let attempt=&before.history[before.active.unwrap()];
+    assert!(attempt.dispatch_started); assert!(attempt.session_id.is_none()); assert_eq!(fixture.executor.launches.lock().unwrap().len(),1);
+    assert!(matches!(fixture.engine.step(fixture.task.id,BTreeMap::new()).await.unwrap(),StepResult::Failed{..}));
+    assert_eq!(fixture.executor.launches.lock().unwrap().len(),1,"ordinary observation does not replay");
+    // Existing explicit API admits this; Issue14 must close it with trusted
+    // outcome evidence. This characterization claims neither safety nor closure.
+    fixture.engine.retry(fixture.task.id,"existing explicit retry".into()).unwrap();
+    assert!(fixture.engine.snapshot(fixture.task.id).unwrap().active.is_none());
 }
