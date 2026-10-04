@@ -375,8 +375,8 @@ remain unchanged.
 
 ## 16. Native Codex implementation in progress (Issue #6)
 
-The following records the earlier selected-group component baseline. F1 section 17
-supersedes executable readiness/completion eligibility: the current source remains
+The following records the earlier selected-group component baseline. Section17
+records the unresolved whole-workload eligibility limit: the current source remains
 unfixed for whole-workload ownership until its design/source/consumer gates finish.
 These implemented protocol pieces do not advertise a genuinely supported native
 production workload profile or satisfy mandatory both-host/native acceptance.
@@ -437,74 +437,18 @@ from advancement without treating Store version increments as different attempts
 This implementation is under independent source review and does not resolve native
 descendant containment, decision CWD or configuration-provenance prerequisites.
 
-## 17. Proposed native/runtime workload correction (Issue6 F1)
+## 17. Native workload ownership limit
 
-[Issue6 F1 requirements](../../requirements/issue-6-requirements.md) passed two
-independent requirements reviews at `a79850c`; the corresponding
-[proposed design](../issue-6-design.md#f1-correction-owned-workload-and-real-consumer-gates-proposed)
-remains a STRICT design gate, not implemented shared authority or platform acceptance.
-One selected parent process group cannot certify complete workload cleanup when
-native tools/helpers/hooks/frontend paths can start other groups, sessions or
-persistent delegated jobs. An actual private profile-bound owner must precede
-all enabled runtime/native execution; exact current outcome and complete enabled
-resource cleanup are separate settlement predicates. Unknown retains ownership
-and Lost/reservations; telemetry PID/JSON, terminal/interrupt ACK and empty native
-inventories never create death/adoption authority. No native defaults/hooks/auth
-are disabled to fit a smaller profile.
+Section16 records the selected-process-group component baseline. Current native
+whole-workload readiness and cleanup remain unproven: tools/helpers/hooks/frontend
+routes can create other groups/sessions or delegated work. Native terminal/interrupt
+ACK, empty native inventory and one selected group's death do not prove all such
+resources complete. Existing source capability flags are component claims, not
+whole-workload eligibility or a supported-platform release certificate.
 
-[Issue60](https://github.com/shuhei-suzuki/rururunx/issues/60) is a pending producer
-for runtime Git/helper/Generic and12/13 jobs, including pre-marker source/context/
-admission/gate capture, status/TUI, registry and recovery outside native attempts.
-Those callers need strictly non-executing faithful scoped reads or actual own
-runtime reservation/settlement before first external execution; later native
-ownership cannot cover prior capture. Unknown filter/content identity cannot be
-published as current. All native/runtime parties need real continuous both-side
-compatibility and already-live peer→Lost protection, preserving four-plus product
-concurrency. These are pending consumer contracts, not available ports.
-
-The proposed Design5 separates freshly revalidated non-executing pre-reservation
-readiness from attempt-bound permits. Flags also require the actual callable route
-producer/hold consumers; managed-only readiness cannot advertise legacy start. The
-managed operation/claim/control handoff is synchronous before the observation future
-or any await; synchronous handoff is strictly I/O-free, only in-memory epoch/
-claim/exclusion checks. Metadata/env identity checks are bounded async before reserve
-and inside the retained task. Remove the executing codex --version probe; conformance-
-bound nonexec metadata supplies that identity. One runtime table across adapter aliases
-stores physical extents separately from actual exclusion edges, with fixed activation
-caps and per-attempt pools reserved also for approval members; unknown cleanup
-retains original preallocated slots. Anchor-free partitions deactivate and refreeze
-on activation; refusal-only durable holds consume no active partition. Complete forwarded
-native/tool/Git environment and discovery-derived provider references are bound
-privately before reservation; executing discovery cannot add code selectors. Genuine complete cleanup may
-retire a resource anchor while the durable absorbing Lost hold remains. Session-less
-owners retain an operation-keyed private observation/cleanup route, never PID adoption.
-Refusal-only held entries survive retirement/restart without reconstructing owners.
-Admission rejects actual exclusion/unknown edges before marker, not every physical
-common-dir/HOME overlap. Proven compatible live peers retain their own quota. Actual
-old-instance exclusion+epoch permits an owned fence while holds remain; full proof
-precedes adoption through pending14/58/60, never record/PID reconstruction.
-
-Adapter Git/helper execution is explicitly the pending #60 route with sealed job
-enrollment, non-transferable parent/epoch child bindings, bound executable/config
-closure and its own actual job settlement feeding a native cleanup conjunct
-at native completion. Required fresh input maps to a NEW actual19 managed Continue
-operation/preparation/admission; prior receipt is provenance only. Legacy protected
-checkpoint/resume refuses. Pure artifact staging cannot rewrite old Session pins;
-a standalone checkpoint-success route is optional pending obligation, not a required
-receipt invented for managed continuation.
-Preparation/discovery/grant/inspection spawning requires genuine enrollment and a
-mechanical spawn/exec/fork/PTY/transitive Drop-inspector inventory guard. Coordinator
-never spans Store/I-O; no blocking/reentrant claim Drop or SQLite in handoff.
-Private cfg(test) route/native/job issuers preserve
-actual F4 consumer coverage without production bypass; ordinary library emptiness
-and diagnostic-pinned privacy plus production-refusal mutants are separate gates. Current
-source authority is `cab665d56f7032f086946c1acfce448f5b9d076d`, unchanged by these docs.
-Existing generic terminal-label and Executor-only role filters still bypass
-Reviewer/Consultant Lost until actual19/58/60/14 shared hold consumers compose.
-This design claims no implemented legacy or role-independent durable hold.
-
-Initial no-backend Unsupported is a safety checkpoint only. Required both-host
-native Executor/Reviewer/Consult/resume/stop/Task attach remains open, with actual
-#19 managed lifetime/input, #58 non-Task Consult, #9/#10 approval slot, #14 recovery,
-#15 callers and #16 aggregate acceptance separately composed. Metadata-only or
-synthetic selected-group proof cannot replace genuine native/platform acceptance.
+The [strict ownership requirements](../../requirements/issue-6-requirements.md) and
+[proposed correction](../issue-6-design.md#f1-correction-owned-workload-and-real-consumer-gates-proposed)
+retain the implementation/backend/shared-consumer gates. The correction is
+unimplemented; existing generic terminal-label and Executor-only exclusion limits
+remain. No native defaults/hooks/auth are disabled, and required both-host native
+roles, continuation/stop/Task attachment and four-plus concurrency remain open.
