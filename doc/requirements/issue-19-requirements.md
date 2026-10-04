@@ -36,7 +36,7 @@ no supervisor model or transcript summarization model is introduced.
   Standalone byte/estimated-token budgets cap the fully rendered payload. Workflow
   discretionary budgets cap optional repository slices; mandatory Task/Goal/
   checkpoint metadata and Engine-owned rules are separate overhead, counted in
-  total UTF-8 estimates. A 1 MiB absolute rendered phase-input cap still rejects
+  total UTF-8 estimates. One 1 MiB absolute rendered native-input cap for standalone and Workflow rejects
   oversized mandatory state. Provider metrics stay nullable; no fact is dropped
   to fit a budget.
 - Native I/O stays outside SharedStore. Publication rechecks current versions and
@@ -277,3 +277,33 @@ a second delivery at that version rejects, while identical intent means observat
 only. Every actual wire delivery goes through its provider's fresh private intent.
 Session fields are exhaustively classified, preparation/publication bounds match
 admission, and every provider uses the shared canonical restore checksum helper.
+
+
+Private native admission is an explicit entry-point contract: only the crate-private
+atomic Session+Project/Goal/Task+complete-lock CAS port may create preparation,
+first admission/consumption or phase owner allocation. The consumed DTO's versions
+must equal that current checked authority. Generic Session/Record writers cannot
+manufacture these rows or a fresh consumed marker; they preserve historical pins,
+permitted terminal/diagnostic observations or verified no-dispatch restoration only.
+The Store proves input currency/allocation, not a native outcome from JSON. Actual
+Workflow success separately requires the adapter-owned completion evidence.
+
+Prewire restoration after a legitimate pending actor bind must remain closable as
+Failed/Interrupted: preserve the immutable allocated/bound Session ID and require
+its exact frozen preparation for that attempt, persisted non-Lost/non-uncertain
+terminal owner, and no admitted/consumed proof for that input. An older restored
+terminal must match the private prior-terminal checksum captured and verified
+at fresh preparation; current-input failed terminal matches its preparation tuple. The restored older
+terminal cannot fresh-bind or certify Succeeded. Test both bound and unbound cases.
+
+One 1 MiB cap applies before standalone selection, phase publication and admission;
+older schema5 oversized variants remain non-launchable history without rewriting.
+Protected Session/restore inputs are explicitly bounded in bytes, depth and nodes
+before hashing; overflow rejects without authority publication or truncation.
+
+The one-delivery guarantee concerns PreparedInput-bearing native wire frames.
+Fixed typed approval/protocol responses are distinct and keep their separate
+operation authority; no free-text Human/operator live reply shortcut is supported
+for protected input. New model-visible instructions require terminal settlement
+and a fresh higher-input prepared frame with attributed facts. Real provider
+fixtures must prove these entry-point distinctions and exact one-frame consumption.

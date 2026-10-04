@@ -238,7 +238,10 @@ consumed-dispatch protocol.
 A private `session_input_acks` table holds one indexed row per protected, Task-scoped
 Session: Session ID, Project/Goal/Task IDs, optional admitted input_version/metadata
 SHA256, optional consumed dispatch UUID for that admitted input, and private
-validated-preparation input_version/metadata SHA256. Each pair
+validated-preparation input_version/metadata SHA256, and optional frozen
+preparation_restore_sha256 for a fresh terminal continuation. That checksum is
+verified against the previous persisted terminal Session at private preparation;
+initial creation has None. Each pair
 is both null or both present; present hashes are length64 lowerhex. Initial terminal
 history does not create a row. A validated Starting may register the preparation
 pair without asserting admission. A freshly validated consumed-dispatch publication
@@ -270,8 +273,10 @@ observation of the same pinned input. Otherwise Starting/Running validates curre
 frame/head for an admissible previous state. Lost remains absorbing under the
 generic transition predicate below, including when an old input has an ack.
 Waiting/Lost never writes
-an ack. A first consumed dispatch or new Running input writes its admitted pair only after
-`Validated` or privately proved `ConsumedHistorical`; `Acked` requires the NEW exact Session digest to equal the admitted pair and
+an ack. Only the private native CAS port may create an admitted pair or consumed UUID,
+after `Validated`. `ConsumedHistorical` is read-only proof requiring an existing
+exact indexed pair/UUID; it cannot seed or replace a row. A new Running input
+without consumption is admitted only by the same private port after `Validated`; `Acked` requires the NEW exact Session digest to equal the admitted pair and
 preserves the existing row. `BoundHistorical` is
 the sole equal-version digest update: the persisted old digest must match the
 private admission row, every input/scope/actor pin remains exact, and only the
@@ -312,9 +317,9 @@ an operation-free decision Task through the Approval Broker.
 
 The single-actor Workflow port also allocates one private `phase_session_owners`
 row per (Project, Goal, Task, context_version), containing Session ID. Context
-version uniquely identifies the immutable native phase attempt. Every first valid
-typed admission write allocates it atomically with Record/audit: INSERT or UPDATE
-to Starting/Running, or first/new consumed dispatch. This includes a terminal
+version uniquely identifies the immutable native phase attempt. Every first private native CAS-validated
+typed preparation/admission write allocates it atomically with Record/audit:
+INSERT or UPDATE to Starting/Running, or first/new consumed dispatch. This includes a terminal
 legacy Session updated to a fresh typed Starting. Later writes
 must be by that same Session. Another Session cannot reserve or consume the frame
 even before Engine binds attempt.session_id. Allocation is immutable across
@@ -324,27 +329,43 @@ an owned context_version strictly greater than every prior native Executor/Revie
 attempt when appending a new native attempt; a None-context transition cannot
 reuse an old version for a new native attempt. EvidencePort phases retain their
 existing separately validated context contract. The same Workflow transition must
-check any attempt.session_id binding or closure against the private allocation
-in the same transaction. Whenever an allocation exists, closing/replacing the
+check fresh attempt.session_id binding against the private allocation in the
+same transaction; closure uses the separately defined current-input or restored
+not-admitted predicate below. Whenever an allocation exists, closing/replacing the
 active attempt requires that exact allocated Session to be persisted terminal,
 regardless of whether attempt.session_id has been bound; Succeeded additionally
-requires authoritative Exited AND the exact current admitted pair with a
+requires Store-persisted non-uncertain Exited AND the exact current admitted pair with a
 privately committed consumed dispatch UUID for that input. Owner UUID and
-terminal state alone never identify the input. Any session_id bind/verify must
+terminal state alone never identify the input. Any fresh session_id binding must
 match that Session's exact input version == attempt.context_version, payload SHA
 and byte count == immutable ContextVersion.data.payload, revision and complete
 source_versions == context authority, plus a matching private validated preparation
 or admitted pair. Pending Starting preparation may bind an actor without asserting
 delivery (Grok start returns before inference); Succeeded requires the matching
 private ADMITTED pair AND privately indexed consumed intent for those exact input
-pins, plus authoritative terminal outcome; neither preparation nor plain Running
+pins, plus the adapter-owned terminal outcome; neither preparation nor plain Running
 admission certifies native delivery.
-A Session restored to its older terminal snapshot after fresh prewire failure may
-close this allocation only as Failed/Interrupted with explicit not-admitted owner
-provenance. It cannot bind as the fresh input actor or satisfy Succeeded; retain
-session_id=None when no current input binding exists. The private preparation row
-for a failed pending input alone cannot certify delivery. Compare this proof under
-the same Workflow transaction, including the unbound-owner case. A Running
+A Session restored to its older terminal snapshot after fresh prewire failure uses
+an explicit closure-only `RestoredPriorNotAdmitted` predicate. In the same Workflow
+transaction require: allocation owner == the immutable already-bound session_id
+(if any); current persisted owner is terminal, non-Lost and non-uncertain; private
+preparation version == the attempt context version with the private immutable
+preparation digest; and neither an admitted pair nor consumed UUID exists for
+that attempt version. If the current terminal has that same input version, its
+exact tuple must match the preparation pair. For the older restored input, require
+a present private preparation_restore_sha256 equal to the canonical checksum of
+the current entire terminal Session. This checksum was derived/checked against
+the prior persisted terminal during private fresh preparation, not copied as an
+unverified caller claim. Successful prewire restoration was separately checked
+at its Session update; retaining this frozen checksum permits causal closure
+verification after the pending Session body has been replaced.
+The current older terminal digest/version need NOT match the fresh attempt; this
+exception applies only to Failed/Interrupted closure, never fresh binding or
+Succeeded. Retain an already bound session_id unchanged; leave None when no binding
+occurred. Do not clear/rebind the ID to make the predicate pass. The failed pending
+preparation alone is not delivery proof. Test restoration both before and after
+legitimate PreparedPending binding, using independent Store connections and a
+mutant removing the no-current-admission check. A Running
 Reviewer is operational ownership even though it is not an Executor reservation.
 An unbound claim cannot close around it, and another terminal Session is never
 release proof. Binding may update only the Workflow Record while retaining exact
@@ -559,8 +580,8 @@ Typed Workflow-owned contexts cannot silently downgrade to opaque legacy payload
 Important guards receive caller-level mutation proof and immutable source review.
 
 The private ack row additionally stores input_version and checks SHA length64.
-Its ADMITTED pair may be replaced only by Validated/ConsumedHistorical with a
-strictly higher input_version; equal matching metadata is idempotent, unequal
+Its ADMITTED pair may be created/replaced only by private `Validated` with a
+strictly higher input_version when replacing a present pair; equal matching metadata is idempotent, unequal
 equal-version admitted metadata is rejected, except the explicit initial native
 binding transition below. The preparation pair follows only a
 freshly validated Starting/Running input. It may be refreshed for a legitimate
@@ -684,10 +705,20 @@ terminal actor is introduced here.
 
 ### Dispatch cardinality and irreversible typed claims
 
-A consumed dispatch_intent denotes one model-input delivery for one PreparedInput
-attempt, not each native progress/response event. Historical acknowledgements,
-stream chunks, approvals, usage and per-turn response IDs do not create a new
-intent or send new input. An actual new input/turn dispatch must take latest
+A consumed dispatch_intent denotes one PreparedInput-frame delivery for one
+attempt, not every native protocol frame. Historical acknowledgements, stream
+chunks, usage and per-turn response IDs do not create a new PreparedInput intent.
+Structured protocol replies (an exact pending operation's fixed Approve/Deny/Cancel
+choice or native-owned tool results) are a separate protocol class, not another
+PreparedInput frame. Runtime free-text Human/operator replies or new instructions
+are not supported on protected live Sessions: settle terminal ownership and
+publish a higher-input frame that embeds the typed attributed reply fact. They
+cannot be routed as a diagnostic or protocol choice. Broker operation approval
+retains its own exact operation/turn/permission/lifecycle gates; this input index
+does not grant an operation or attest arbitrary native tool-result text. The actual
+Codex Reply request exposes only typed IDs/hash plus OperationDecision, not a
+free-text reply channel. Test all actual public provider input entry points and
+reject a model-visible free-text shortcut before wire. An actual new input/turn dispatch must take latest
 frame/head admission, even on an already admitted Session. If that Session has
 appended a checkpoint, its old pinned frame is stale: supported continuation is
 authoritative terminal settlement, idle consecutive pack publication and a fresh
@@ -924,13 +955,15 @@ and checkpoint are unchanged. A strictly higher owned continuation can install
 its new pair/UUID; a new validated Running input without consumption has a null
 consumed UUID. SQL/typed helpers reject same-version consumed UUID substitution
 or clearing. Historical observation requires exact intent identity and matching
-private row, not merely equality of arbitrary recovery Values.
+private row, not merely equality of arbitrary recovery Values. DTO authority_versions
+must equal the private CAS port's expected tuple AND the current Project/Goal/Task
+rows; generic writes cannot turn a self-declared tuple into consumption.
 
 Identical intent is observation only, never permission for another wire delivery.
 Every actual provider delivery generates a fresh private runtime UUID and invokes
 consumption immediately before the wire; provider dispatch is the private causal
-port, not a generic Session writer. The native fixture proves exactly one wire
-frame and rejects the second same-version dispatch, including unchanged-source
+port, not a generic Session writer. The native fixture proves exactly one PreparedInput-bearing wire
+frame (separately from protocol replies) and rejects the second same-version dispatch, including unchanged-source
 and after-checkpoint cases. Nonidentity metadata does not live inside this DTO,
 so a diagnostic update cannot masquerade as novelty or wedge a historical ack.
 Preserved legacy terminal intents are historical compatibility data, never
@@ -970,3 +1003,72 @@ Stopped to continue. Initial legitimate terminal Consultant history remains
 recordable and may contribute factual history; it was never a persisted Lost
 owner and does not manufacture native completion. These availability changes
 are explicit, not an assertion that old source already enforced the rule.
+
+
+### Native CAS entry-point authority and complete input bounds
+
+`Store::put_session_if_current` is the crate-private native Session publication
+port. Its existing Immediate transaction checks expected Session version, exact
+Project/Goal/Task versions, active ownership and the complete scoped lock ID/version
+set. It alone constructs a private `NativeAdmission` write mode for the internal
+record helper. The mode is never a public enum/JSON parameter and carries the
+already-checked current version tuple into the admission helper. A new consumed
+DTO must have authority_versions exactly equal to that tuple. The helper also
+checks latest full frame/head, actor, lifecycle and phase allocation before it
+writes Session/preparation/admitted/consumed/owner rows plus audit atomically.
+No Git or external I/O occurs inside this transaction. Native callers use this
+port for initial/fresh Starting, pending binding refresh, first Running admission,
+first consumption and private BoundHistorical digest changes. This is a trusted
+runtime boundary, not authentication against malicious code inside the crate.
+
+Generic `put_record`/`put_session`, including other transactions that use the
+ordinary record helper, use private `ObservationOnly` mode. For protected input
+they reject new or changed consumed intent, first/new preparation or admission,
+phase allocation and BoundHistorical row mutation, including the frozen prior
+terminal restore checksum. They may retain exact privately
+indexed historical observations, monotonic conservative Lost diagnostics,
+permitted terminal observations, or exact no-dispatch prewire restoration without
+changing any private pair/allocation. Initial legitimate terminal history remains
+recordable without private rows, never binding a fresh Workflow owner. Generic
+fresh typed Starting/Running is rejected rather than implicitly reserving a frame.
+A real provider's generic terminal observation does not require live head currency;
+it cannot grant another PreparedInput dispatch. Test initial creation and UPDATE
+paths with independent connections, stale DTO versions and unchanged-head variants;
+assert Session/rows/allocation/audit unchanged on rejection. Mutate only the mode
+selection at the generic caller and require those tests to fail.
+
+The Store predicates certify input currency and exclusive allocation. Even a
+Store-persisted Exited plus private consumed UUID is not native completion proof:
+ordinary non-uncertain terminal observations remain a trusted provider-integration
+contract. Actual Workflow completion additionally consumes the adapter's owned
+native outcome; native fixture proves that outcome causally. Caller-authored JSON
+alone is not advertised as an authoritative native terminal transcript. Lost and
+uncertainty remain absorbing regardless of this distinction.
+
+One `MAX_TYPED_INPUT_BYTES = 1 MiB` applies to every launchable standalone and
+Workflow complete PreparedInput frame, including mandatory facts/rules. Standalone
+Budget values above that cap reject before selection or variant counting; estimated
+budget caps remain distinct estimates and cannot raise the byte cap. Private
+publication independently checks rendered bytes before indexing, and admission
+checks the same cap. Schema6 adds an input-byte BEFORE INSERT/UPDATE trigger to the
+unchanged prepared_pack_inputs table, so migrated and fresh table definitions
+remain equal. Previously persisted schema5 variants over 1 MiB are readable
+non-launchable history; migration does not invent admission or silently rewrite
+them. They cannot be reused for protected launch. Explicit idle consecutive
+republish under the bounded current producer is allowed under the existing owner
+and variant-exhaustion rules. Test oversized Budget and actual rendered bytes
+reject before any pack/pointer/variant/audit publication, plus historical old5
+oversized-variant preservation and denied launch.
+
+Before any protected Session write or restore hashing, enforce at most 4 MiB exact
+serialized Session bytes, at most 3 MiB recovery JSON bytes, depth 32 and 32768 JSON
+nodes. Walk JSON with checked byte/node/depth accounting before serialization;
+combine these with the stricter actor/source-map/2-MiB tuple bounds already stated.
+These simultaneous caps do not promise every maximum fits. The shared pure restore
+helper rejects overflow before hashing; private and generic protected writers
+apply the same check before transaction work and again at the actual record boundary.
+Existing oversized idle legacy terminal history is readable, not new admission;
+a protected continuation requiring its exact checksum fails explicitly rather
+than hashing an unbounded object or truncating diagnostics. No automatic rewrite
+or forged terminal settlement is provided. Boundary fixtures prove limits, nested
+overflow, no pair/audit writes, and preserve-order fractional checksum compatibility.

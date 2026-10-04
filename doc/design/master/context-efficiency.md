@@ -531,3 +531,15 @@ A second delivery at that version rejects; identical intent is observation only.
 Exhaustive Session field classification and common preparation/admission bounds
 prevent silent authority drift. Native callers share canonical restore hashing
 and compare exact private registry snapshots before continuation.
+
+
+Schema6 reserves private preparation/admission/allocation mutations to the native
+Session owner/version/complete-lock CAS port; generic history cannot seed them.
+Consumed DTO versions must equal current checked owner versions. Current-input
+binding and restored-not-admitted failure closure use distinct predicates, keeping
+an already bound owner immutable while refusing historical success. Input indices
+prove currency, not native terminal truth; Workflow retains adapter-owned outcome
+evidence. All complete typed native frames share a 1 MiB cap before selection or
+publication. Protected Session restore hashing is byte/depth/node bounded. The
+single-delivery count concerns PreparedInput frames; fixed protocol replies remain
+separate, and live free-text instruction shortcuts are unsupported.
