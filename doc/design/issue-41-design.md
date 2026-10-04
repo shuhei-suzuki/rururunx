@@ -26,6 +26,11 @@ Session binding must compare the returned actor with the reserved attempt actor,
 never only with a refreshed Task field. Assigned worktree/branch changes are
 already rejected by Store::put_task; retain that immutable binding guard. An
 unbound-to-bound update, where allowed, must also start with a fresh reservation.
+Release accepts fresh binding metadata only when the original token was unbound;
+originally assigned paths/branches remain exact. A pre-refresh assignment causes
+eligible pin rejection and fresh reservation. An assignment after refresh may
+instead conflict with a definitive missing-worktree publication after eligibility
+was disabled; that conservative conflict remains #14 rather than becoming a retry.
 A reservation CAS loser or unknown commit outcome never creates a token. The
 committed Record version distinguishes owners even if their proposed attempt
 fields and timestamps coincide. No new persisted nonce or lease is introduced.
@@ -67,7 +72,8 @@ through existing `put_workflow_transition` StateOnly transaction, which fences
 Project/Goal versions, Task/Workflow CAS, context and all executor/Lost Sessions.
 A second writer between re-read and release still wins its CAS; no overwrite or
 retry of the release. Return the original preparation error, augmented with a
-retained-reservation diagnostic if release fails. The next ordinary step may
+release-not-performed diagnostic if release fails. An already terminal-recovered
+claim is not described as retained; only unresolved claims require recovery. The next ordinary step may
 reserve again only after this successful owner-local no-dispatch release.
 
 Issue #14 must reconcile orphaned undispatched attempts, dropped futures/crashes,
@@ -184,43 +190,35 @@ inferred from earlier checks or constrained-concurrency diagnostics.
 
 ## Impact
 
-Inspected nine reservation entrypoints: step/poll (workflow.rs 753/1020), retry
-(1819), resume_gate (1409), request_finalization (1254), cancel/fail_task via
-terminate (1177–1183), release_terminal_reservation (1226), and escalate (656).
-Only step/poll acquire new preparation/release behavior. retry refuses Running;
-resume_gate requires Waiting or irreversible Failed; finalization and escalation
-require no active claim. cancel/fail commit a terminal decision without closing
-the reservation. TerminalRecovery requires that decision and both Engine/Store
+Inspected step/poll, retry, resume_gate, request_finalization, cancel/fail_task
+through terminate, release_terminal_reservation and escalate. Only step/poll
+acquire new preparation/release behavior. retry refuses Running; resume_gate
+requires Waiting or irreversible Failed; finalization and escalation require no
+active claim. cancel/fail commit a terminal decision without closing the
+reservation. TerminalRecovery requires that decision and both Engine/Store
 dispatch fences. No nonterminal entrypoint releases on a missing Session alone.
-Recovery reason references distinguish reversible owner recovery14 from
-irreversible outcome reconciliation13 without changing their fences.
+The explicit retry API's Failed+dispatch_started+unbound case remains an
+unresolved #14 gap characterized by the preparation regression, not safe replay.
 
-Search of README/docs/source found old reset/retry strings only in workflow.rs
-1073–1087 and the old Evaluating reason at1054. No production string-parsing
-consumer was found. dispatch_started test consumers are workflow/tests.rs590
-(preset marker),999/2188 (synthetic histories), and3186 (final-claim regression).
-The first three keep their assertions; final-claim changes only its agent path to
-immediate owner release then next Started, preserving the EvidencePort path.
-Existing Issue8 verification remains historical; README/master describe current
-behavior rather than rewriting old evidence. New tests cover entrypoint refusals.
-
-Recovery reference audit in workflow.rs: the post-start acknowledgement comment
-(1018) and unbound dispatch guard (1244) are native/owner recovery #14. Evaluating
-wait (1054), terminal-recovery unknown-outcome guard (1240), and resume_gate comment
-(1408) distinguish reversible owner claims (#14) from PrGate/MergeGate/Cleanup
-irreversible outcomes (#13), using durable phase/state. Native no-Session waits
-(1073–1087) use #14 without asserting interruption. Actual observed external-effect
-drift paths (793/1351/1532/1704/1759) remain #13. No tests parse the unbound-dispatch
-or interrupted-evaluation messages; tests 3463/3624 match only the preserved
-`unknown external outcome` fragment. The existing final-claim test at3186 has an
-agent observer-Invalidated expectation at3217, already explicitly replaced above;
-the other Invalidated expectations refer to policy/source/approval drift and retain
-their behavior.
+Recovery references use function and test names rather than stale base line
+numbers. The post-start acknowledgement comment and unbound dispatch guard in
+release_terminal_reservation refer to native/owner recovery #14. Running
+EvidencePort observation, resume_gate and terminal-recovery unknown-outcome
+checks classify reversible claims as #14 and PrGate/MergeGate/Cleanup as #13
+from durable phase/state. Native no-Session observations do not assert
+interruption. Actual external-effect drift retains #13. No production consumer
+parses these diagnostics. `known_irreversible_drift_holds_single_operation_and_cleanup_reuses_frozen_authority`
+and the terminal-recovery regressions test explicit recovery rather than the old
+`unknown external outcome` fragment. The existing
+`final_claim_cas_loss_recovers_only_proven_undispatched_reservations` now releases
+only the eligible agent claim, preserving the same EvidencePort attempt/history.
+Other Invalidated expectations continue testing policy/source/approval drift.
+Existing Issue8 evidence remains historical.
 
 Project/Goal writer audit: ProjectRegistry::add writes initial registration,
 explicit validated recovery and changed name/config/rules/environment/namespace/
-capacity metadata (project.rs144); reconcile writes Registered-to-Blocked for
-invalid inputs (160); remove soft-removes when Store permits it (265).
+capacity metadata ; reconcile writes Registered-to-Blocked for
+invalid inputs ; remove soft-removes when Store permits it .
 ProjectRegistry::list and resolve/status invoke reconcile, so they can persist
 Blocked transitions and are not unconditional read-only paths. Store::project,
 projects, goal, goals and WorkflowEngine::read snapshot access are pure reads.

@@ -19,7 +19,9 @@
       "seconds": 11.45,
       "compiled": true,
       "assertion_killed": true,
-      "passed": false
+      "passed": false,
+      "operator_id": "M01",
+      "patch_sha256": "2441fdf29f752997a087e6a6cf88b70a787322038524adf52f921086e0c86a76"
     },
     {
       "id": "M02",
@@ -31,7 +33,9 @@
       "seconds": 2.585,
       "compiled": true,
       "assertion_killed": true,
-      "passed": false
+      "passed": false,
+      "operator_id": "M02",
+      "patch_sha256": "cea681946bc0608c7d55e3b71c9cfc633cbb0e805160837ea7e123c5bbd4786f"
     },
     {
       "id": "M03",
@@ -43,7 +47,9 @@
       "seconds": 2.68,
       "compiled": true,
       "assertion_killed": true,
-      "passed": false
+      "passed": false,
+      "operator_id": "M03",
+      "patch_sha256": "d4e619d843c018db3c0367c1c1730c4a4e4ebde7ae18edc7641a857643c69986"
     },
     {
       "id": "M04",
@@ -55,7 +61,9 @@
       "seconds": 2.725,
       "compiled": true,
       "assertion_killed": true,
-      "passed": false
+      "passed": false,
+      "operator_id": "M04",
+      "patch_sha256": "edcfe7791d7407724470b4c596692eb18ea9543379c856409b469876a3b66401"
     },
     {
       "id": "M05",
@@ -67,7 +75,9 @@
       "seconds": 2.879,
       "compiled": true,
       "assertion_killed": true,
-      "passed": false
+      "passed": false,
+      "operator_id": "M05",
+      "patch_sha256": "e84bee5c7b56e0b60e8312bebb150b547b4470f0e7742a6ff52a9d3601ca88b2"
     },
     {
       "id": "M06",
@@ -79,7 +89,9 @@
       "seconds": 2.838,
       "compiled": true,
       "assertion_killed": true,
-      "passed": false
+      "passed": false,
+      "operator_id": "M06",
+      "patch_sha256": "fed8eaa928da34c01625e22ba70573d18f51400b5d22f3963696f742283af8ca"
     },
     {
       "id": "M07",
@@ -91,7 +103,9 @@
       "seconds": 2.826,
       "compiled": true,
       "assertion_killed": true,
-      "passed": false
+      "passed": false,
+      "operator_id": "M07",
+      "patch_sha256": "be1dac3bb1172f63e2c8263b3e20f871978eae53652b191ccf2aa3e011f725cb"
     },
     {
       "id": "M08",
@@ -103,7 +117,9 @@
       "seconds": 2.483,
       "compiled": true,
       "assertion_killed": true,
-      "passed": false
+      "passed": false,
+      "operator_id": "M08",
+      "patch_sha256": "0b9b01e6d7da494324484ec19a0121e55d17016499b447859f39a8e65569d125"
     },
     {
       "id": "M09",
@@ -115,7 +131,9 @@
       "seconds": 2.797,
       "compiled": true,
       "assertion_killed": true,
-      "passed": false
+      "passed": false,
+      "operator_id": "M09",
+      "patch_sha256": "a6d5ea4d092cd794cbb9aca1832cbe47adc44483548e1c1551f4daacff63eca4"
     },
     {
       "id": "M10",
@@ -127,7 +145,9 @@
       "seconds": 3.058,
       "compiled": true,
       "assertion_killed": true,
-      "passed": false
+      "passed": false,
+      "operator_id": "M10",
+      "patch_sha256": "f1be3f65acd2a03e340eb15476e5b128f713d8313df144e04c7d97f370049da8"
     },
     {
       "id": "M11",
@@ -139,7 +159,9 @@
       "seconds": 2.98,
       "compiled": true,
       "assertion_killed": true,
-      "passed": false
+      "passed": false,
+      "operator_id": "M11",
+      "patch_sha256": "259c01c649e1373719c1e3c4c489c79cf00529c6a5056e44a4dbed067115582e"
     },
     {
       "id": "M12",
@@ -151,7 +173,9 @@
       "seconds": 3.21,
       "compiled": true,
       "assertion_killed": true,
-      "passed": false
+      "passed": false,
+      "operator_id": "M12",
+      "patch_sha256": "7309a5a3c8a0b09663b005c34d2a1da4cf518a2919b4ff5d3e71fc3880747810"
     },
     {
       "id": "M13",
@@ -163,7 +187,9 @@
       "seconds": 2.631,
       "compiled": true,
       "assertion_killed": true,
-      "passed": false
+      "passed": false,
+      "operator_id": "M13",
+      "patch_sha256": "ef5b6f00707b4ebec1ab332ac76d62d8a3cd1745dd81b35b721a80b3506e318a"
     },
     {
       "id": "M14",
@@ -175,7 +201,9 @@
       "seconds": 2.584,
       "compiled": true,
       "assertion_killed": true,
-      "passed": false
+      "passed": false,
+      "operator_id": "M14",
+      "patch_sha256": "fae286362d5274373f8c5af2245d67d89900d031fda1c5a89212be5e29cc3aa0"
     },
     {
       "id": "M15",
@@ -187,7 +215,9 @@
       "seconds": 2.066,
       "compiled": true,
       "assertion_killed": true,
-      "passed": false
+      "passed": false,
+      "operator_id": "M15",
+      "patch_sha256": "dc5148fdd6988ba3b9e20d430b82d8f767e47df18ea0d997ce98e527798cc1a5"
     },
     {
       "id": "M16",
@@ -199,7 +229,9 @@
       "seconds": 2.694,
       "compiled": true,
       "assertion_killed": true,
-      "passed": false
+      "passed": false,
+      "operator_id": "M16",
+      "patch_sha256": "e3a14cfc7a41b0cc6658e4ab99dcf17d77188a610a06051f12fcfcd41d03f801"
     },
     {
       "id": "M17",
@@ -211,7 +243,9 @@
       "seconds": 3.907,
       "compiled": true,
       "assertion_killed": false,
-      "passed": true
+      "passed": true,
+      "operator_id": "M17",
+      "patch_sha256": "ca9467cbf260e051a9105b5a8edd311e36c94eb892442eb27bfcd70e350e2d66"
     },
     {
       "id": "M18",
@@ -223,7 +257,9 @@
       "seconds": 2.742,
       "compiled": true,
       "assertion_killed": false,
-      "passed": true
+      "passed": true,
+      "operator_id": "M18",
+      "patch_sha256": "21b40c03fad7e093e59a3b1e7981f0dae5e6de6e4b17baa8cd4807befeb5a028"
     },
     {
       "id": "M19",
@@ -235,7 +271,12 @@
       "seconds": 5.478,
       "compiled": true,
       "assertion_killed": true,
-      "passed": false
+      "passed": false,
+      "operator_id": "M04",
+      "patch_sha256": "edcfe7791d7407724470b4c596692eb18ea9543379c856409b469876a3b66401"
     }
-  ]
+  ],
+  "compiled_runs": 19,
+  "distinct_operators": 18,
+  "patch_artifact": "issue-41-mutant-patches.diff"
 }

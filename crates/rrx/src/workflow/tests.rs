@@ -386,6 +386,9 @@ struct Fixture {
 }
 impl Fixture {
     fn new(class: WorkflowClass) -> Self {
+        Self::with_binding(class, true)
+    }
+    fn with_binding(class: WorkflowClass, bound: bool) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().canonicalize().unwrap();
         let mut store = Store::open(&dir.path().join("state.db")).unwrap();
@@ -416,8 +419,10 @@ impl Fixture {
         task.workflow = class;
         task.risk = RiskClass::R0;
         task.reviewers = vec!["reviewer".into()];
-        task.worktree = Some(project.worktree_root.join("task"));
-        task.branch = Some("feature/task".into());
+        if bound {
+            task.worktree = Some(project.worktree_root.join("task"));
+            task.branch = Some("feature/task".into());
+        }
         store.put_task(&mut task).unwrap();
         let store = Arc::new(Mutex::new(store));
         let executor = Arc::new(FakeAgent::new("executor", store.clone(), false));
@@ -4123,6 +4128,14 @@ async fn preparation_dispatched_observation_and_direct_store_terminal_fence() {
     *fixture.executor.start_pause.lock().unwrap() = Some(pause.clone());
     let owner = fixture.spawn_step();
     pause.wait().await;
+    let launched = fixture.engine.snapshot(fixture.task.id).unwrap();
+    let attempt = &launched.history[launched.active.unwrap()];
+    assert!(
+        attempt.dispatch_started,
+        "durable marker must precede the actual adapter start await"
+    );
+    assert!(attempt.session_id.is_none());
+    assert_eq!(fixture.executor.launches.lock().unwrap().len(), 1);
     fixture.passive_observers(true).await;
     assert!(
         fixture
@@ -4227,7 +4240,7 @@ async fn preparation_capture_errors_release_only_current_owned_claim_and_preserv
         fixture.sources.capture_error.store(true, Ordering::SeqCst);
         pause.release();
         let error = owner.await.unwrap().unwrap_err();
-        assert!(!error.to_string().contains("reservation retained"));
+        assert!(!error.to_string().contains("release not performed"));
         fixture.assert_owned_release(&reserved);
         let task = fixture
             .store
@@ -4311,7 +4324,9 @@ async fn preparation_pause_cancel_and_terminal_recovery_keep_owner_fenced() {
             .unwrap();
         let before = fixture.durable();
         pause.release();
-        assert!(owner.await.unwrap().is_err());
+        let error = owner.await.unwrap().unwrap_err();
+        assert!(error.to_string().contains("release not performed"));
+        assert!(!error.to_string().contains("reservation retained"));
         assert_eq!(fixture.durable(), before);
         assert!(fixture.executor.launches.lock().unwrap().is_empty());
     }
@@ -4433,7 +4448,7 @@ async fn preparation_release_cas_and_executor_lost_fences_do_not_retry() {
         let index = snapshot.active.unwrap();
         assert_eq!(snapshot.history[index].state, AttemptState::Running);
         assert!(snapshot.retries.is_empty());
-        assert!(error.to_string().contains("reservation retained"));
+        assert!(error.to_string().contains("release not performed"));
         if fence == "cas" {
             assert_eq!(
                 fixture
@@ -4814,4 +4829,49 @@ async fn preparation_post_refresh_record_replacement_rejects_release_after_typed
     );
     fixture.passive_observers(false).await;
     assert!(fixture.executor.launches.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn preparation_unbound_to_bound_before_refresh_releases_for_new_reservation() {
+    for offset in [3, 4] {
+        let fixture = Fixture::with_binding(WorkflowClass::Quick, false);
+        fixture
+            .engine
+            .initialize(fixture.task.id, None)
+            .await
+            .unwrap();
+        fixture.through(Phase::Worktree).await;
+        let pause = fixture.capture_pause(offset);
+        let owner = fixture.spawn_step();
+        pause.wait().await;
+        let reserved = fixture.engine.snapshot(fixture.task.id).unwrap();
+        let mut store = fixture.second_writer();
+        let mut task = store.task(fixture.task.id).unwrap().unwrap();
+        task.worktree = Some(fixture.project.worktree_root.join("late-bound"));
+        task.branch = Some("feature/late-bound".into());
+        store.put_task(&mut task).unwrap();
+        let before = fixture.durable();
+        pause.release();
+        assert!(owner.await.unwrap().is_err());
+        assert!(fixture.executor.launches.lock().unwrap().is_empty());
+        if offset == 3 {
+            fixture.assert_owned_release(&reserved);
+            assert!(matches!(
+                fixture
+                    .engine
+                    .step(fixture.task.id, BTreeMap::new())
+                    .await
+                    .unwrap(),
+                StepResult::Started { .. }
+            ));
+            let requests = fixture.executor.launches.lock().unwrap();
+            assert_eq!(requests.len(), 1);
+            assert_eq!(requests[0].worktree, task.worktree.unwrap());
+        } else {
+            // The post-refresh snapshot is still unbound. Its definitive missing-
+            // worktree fail publication loses Task CAS and cannot become a retry.
+            assert_eq!(fixture.durable(), before);
+            fixture.passive_observers(false).await;
+        }
+    }
 }

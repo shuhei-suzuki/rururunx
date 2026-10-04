@@ -44,7 +44,12 @@ existing concurrent-step regression; macOS was cancelled through matrix failfast
    The generation/index/context/agent tuple alone is insufficient.
    Before returning a preparation error, re-read and CAS-release only that exact
    still-Running attempt, with no Session or dispatch marker, recording Failed
-   and a factual RetryEvent while preserving concurrent user metadata. Project,
+   and a factual RetryEvent while preserving concurrent user metadata. Original unbound worktree/branch
+   values permit fresh assignment during release; originally assigned bindings
+   remain exact. A pre-refresh assignment starts with a new reservation. A
+   post-refresh definitive missing-worktree publication conflict remains #14.
+   Failed release diagnostics state release was not performed, without asserting
+   an already terminal-recovered claim is still retained. Project,
    Goal and Task must still be active. Inactive/terminal owners retain the
    reservation without owner-local changes to Task, decision, context or history;
    explicit TerminalRecovery remains available as described in requirement 4. Pause

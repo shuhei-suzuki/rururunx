@@ -1,0 +1,350 @@
+Mutation M01; operator M01; sha256 2441fdf29f752997a087e6a6cf88b70a787322038524adf52f921086e0c86a76
+diff --git a/crates/rrx/src/workflow.rs b/crates/rrx/src/workflow.rs
+index 3a75edf..3adb32e 100644
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -1237,14 +1237,18 @@ impl WorkflowEngine {
+             if phase.actor() == Actor::EvidencePort {
+                 return self.evaluate(snapshot, index, None).await;
+             }
+-            return Ok(StepResult::Waiting {
+-                phase,
+-                reason: if attempt.dispatch_started {
+-                    "native launch may still be active; unreconciled ownership requires recovery (#14)"
+-                } else {
+-                    "native preparation may still be active; abandoned ownership requires recovery (#14)"
+-                }.into(),
+-            });
++            if !attempt.dispatch_started {
++                let mut snapshot = snapshot;
++                self.refresh_owners(&mut snapshot)?;
++                snapshot.workflow.history[index].state = AttemptState::Failed;
++                snapshot.workflow.history[index].completed_at = Some(now_ms());
++                snapshot.workflow.history[index].detail = Some("premature reset".into());
++                snapshot.workflow.retries.push(RetryEvent { prior_attempt: index, reason: "premature reset".into(), at: now_ms() });
++                snapshot.workflow.active = None;
++                self.persist(&mut snapshot, None)?;
++                return Ok(StepResult::Invalidated { reason: "premature reset".into() });
++            }
++            return Ok(StepResult::Waiting { phase, reason: "native launch may still be active (#14)".into() });
+         };
+         let agent = attempt
+             .agent
+
+Mutation M02; operator M02; sha256 cea681946bc0608c7d55e3b71c9cfc633cbb0e805160837ea7e123c5bbd4786f
+diff --git a/crates/rrx/src/workflow.rs b/crates/rrx/src/workflow.rs
+index 3a75edf..9df0995 100644
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -1237,14 +1237,11 @@ impl WorkflowEngine {
+             if phase.actor() == Actor::EvidencePort {
+                 return self.evaluate(snapshot, index, None).await;
+             }
+-            return Ok(StepResult::Waiting {
+-                phase,
+-                reason: if attempt.dispatch_started {
+-                    "native launch may still be active; unreconciled ownership requires recovery (#14)"
+-                } else {
+-                    "native preparation may still be active; abandoned ownership requires recovery (#14)"
+-                }.into(),
+-            });
++            let dispatched = attempt.dispatch_started;
++            let mut snapshot = snapshot;
++            self.refresh_owners(&mut snapshot)?;
++            self.persist(&mut snapshot, None)?;
++            return Ok(StepResult::Waiting { phase, reason: if dispatched { "native launch may still be active (#14)" } else { "native preparation may still be active (#14)" }.into() });
+         };
+         let agent = attempt
+             .agent
+
+Mutation M03; operator M03; sha256 d4e619d843c018db3c0367c1c1730c4a4e4ebde7ae18edc7641a857643c69986
+diff --git a/crates/rrx/src/workflow.rs b/crates/rrx/src/workflow.rs
+index 3a75edf..b9d4c65 100644
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -965,7 +965,7 @@ impl WorkflowEngine {
+             )
+             .await;
+         match result {
+-            Err(error) if eligible => match self.release_preparation(&claim) {
++            Err(error) if eligible => match Ok::<(),anyhow::Error>(()) {
+                 Ok(()) => Err(error),
+                 Err(release) => Err(error.context(format!(
+                     "preparation reservation retained for recovery (#14): {release:#}"
+
+Mutation M04; operator M04; sha256 edcfe7791d7407724470b4c596692eb18ea9543379c856409b469876a3b66401
+diff --git a/crates/rrx/src/workflow.rs b/crates/rrx/src/workflow.rs
+index 3a75edf..b6b3390 100644
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -987,7 +987,6 @@ impl WorkflowEngine {
+         ensure!(
+             snapshot.task.scope() == claim.scope
+                 && snapshot.record.id == claim.record_id
+-                && snapshot.record.version == claim.record_version
+                 && snapshot.workflow.generation == claim.generation
+                 && snapshot.workflow.active == Some(claim.index)
+                 && snapshot.workflow.context_version == claim.context_version
+
+Mutation M05; operator M05; sha256 e84bee5c7b56e0b60e8312bebb150b547b4470f0e7742a6ff52a9d3601ca88b2
+diff --git a/crates/rrx/src/workflow.rs b/crates/rrx/src/workflow.rs
+index 3a75edf..f3148c9 100644
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -948,7 +948,10 @@ impl WorkflowEngine {
+         }
+         self.reserve(&mut snapshot, &context, phase)?;
+         if phase.actor() == Actor::EvidencePort {
+-            return self.evaluate(snapshot, index, None).await;
++            let claim = PreparationClaim::committed(&snapshot,index);
++            let result = self.evaluate(snapshot,index,None).await;
++            if result.is_err() { self.release_preparation(&claim)?; }
++            return result;
+         }
+         let claim = PreparationClaim::committed(&snapshot, index);
+         let mut eligible = true;
+
+Mutation M06; operator M06; sha256 fed8eaa928da34c01625e22ba70573d18f51400b5d22f3963696f742283af8ca
+diff --git a/crates/rrx/src/workflow.rs b/crates/rrx/src/workflow.rs
+index 3a75edf..add80c9 100644
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -1150,10 +1150,6 @@ impl WorkflowEngine {
+         };
+         snapshot.workflow.history[index].dispatch_started = true;
+         *eligible = false;
+-        if let Err(error) = self.persist(&mut snapshot, None) {
+-            *eligible = own_task_marker_rollback(&error, snapshot.task.id);
+-            return Err(error);
+-        }
+         let request = LaunchRequest {
+             project: snapshot.project.clone(),
+             scope: snapshot.task.scope(),
+
+Mutation M07; operator M07; sha256 be1dac3bb1172f63e2c8263b3e20f871978eae53652b191ccf2aa3e011f725cb
+diff --git a/crates/rrx/src/state/mod.rs b/crates/rrx/src/state/mod.rs
+index 0501ce3..378d818 100644
+--- a/crates/rrx/src/state/mod.rs
++++ b/crates/rrx/src/state/mod.rs
+@@ -485,10 +485,7 @@ impl Store {
+                         || crate::workflow::known_gate_observation(attempt).is_some(),
+                     "unknown external outcome requires explicit recovery"
+                 );
+-                ensure!(
+-                    attempt.session_id.is_some() || !attempt.dispatch_started,
+-                    "unbound dispatch requires explicit recovery"
+-                );
++
+                 expected.active = None;
+                 expected.history[index].state = crate::workflow::AttemptState::Interrupted;
+                 expected.history[index].completed_at = after.history[index].completed_at;
+
+Mutation M08; operator M08; sha256 0b9b01e6d7da494324484ec19a0121e55d17016499b447859f39a8e65569d125
+diff --git a/crates/rrx/src/state/mod.rs b/crates/rrx/src/state/mod.rs
+index 0501ce3..378d818 100644
+--- a/crates/rrx/src/state/mod.rs
++++ b/crates/rrx/src/state/mod.rs
+@@ -485,10 +485,7 @@ impl Store {
+                         || crate::workflow::known_gate_observation(attempt).is_some(),
+                     "unknown external outcome requires explicit recovery"
+                 );
+-                ensure!(
+-                    attempt.session_id.is_some() || !attempt.dispatch_started,
+-                    "unbound dispatch requires explicit recovery"
+-                );
++
+                 expected.active = None;
+                 expected.history[index].state = crate::workflow::AttemptState::Interrupted;
+                 expected.history[index].completed_at = after.history[index].completed_at;
+diff --git a/crates/rrx/src/workflow.rs b/crates/rrx/src/workflow.rs
+index 3a75edf..57e3787 100644
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -1404,10 +1404,7 @@ impl WorkflowEngine {
+             },
+             recovery_issue(attempt.phase)
+         );
+-        ensure!(
+-            attempt.session_id.is_some() || !attempt.dispatch_started,
+-            "unbound native dispatch requires explicit recovery (#14)"
+-        );
++
+         attempt.state = AttemptState::Interrupted;
+         attempt.completed_at.get_or_insert_with(now_ms);
+         attempt.detail = Some(format!("terminal reservation reconciled: {reason}"));
+
+Mutation M09; operator M09; sha256 a6d5ea4d092cd794cbb9aca1832cbe47adc44483548e1c1551f4daacff63eca4
+diff --git a/crates/rrx/src/workflow.rs b/crates/rrx/src/workflow.rs
+index 3a75edf..90b635c 100644
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -1029,7 +1029,7 @@ impl WorkflowEngine {
+         }
+         // Fresh metadata is preserved; the existing immediate transaction checks
+         // owners, Task/Record CAS and all native executor/Lost closing fences.
+-        self.persist(&mut snapshot, None)
++        self.persist(&mut snapshot, None).or_else(|_| self.release_preparation(claim))
+     }
+     async fn prepare_agent(
+         &self,
+
+Mutation M10; operator M10; sha256 f1be3f65acd2a03e340eb15476e5b128f713d8313df144e04c7d97f370049da8
+diff --git a/crates/rrx/src/workflow.rs b/crates/rrx/src/workflow.rs
+index 3a75edf..da874c6 100644
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -1114,7 +1114,6 @@ impl WorkflowEngine {
+         let adapter = match self.registry.get(&agent) {
+             Ok(adapter) => adapter,
+             Err(error) => {
+-                *eligible = false;
+                 return self.fail(snapshot, index, error.to_string());
+             }
+         };
+
+Mutation M11; operator M11; sha256 259c01c649e1373719c1e3c4c489c79cf00529c6a5056e44a4dbed067115582e
+diff --git a/crates/rrx/src/workflow.rs b/crates/rrx/src/workflow.rs
+index 3a75edf..17b5949 100644
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -1075,7 +1075,6 @@ impl WorkflowEngine {
+                 )
+                 .await?;
+             set_context(&mut snapshot, &context);
+-            *eligible = false;
+             self.persist(&mut snapshot, Some(&context))?;
+             return Ok(StepResult::Invalidated {
+                 reason: "sources changed before native dispatch".into(),
+
+Mutation M12; operator M12; sha256 7309a5a3c8a0b09663b005c34d2a1da4cf518a2919b4ff5d3e71fc3880747810
+diff --git a/crates/rrx/src/workflow.rs b/crates/rrx/src/workflow.rs
+index 3a75edf..1eac4b4 100644
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -1578,9 +1578,6 @@ impl WorkflowEngine {
+             )
+             .await?;
+         set_context(&mut snapshot, &context);
+-        if let Some(eligible) = eligible {
+-            *eligible = false;
+-        }
+         self.persist(&mut snapshot, Some(&context))?;
+         Ok(StepResult::Invalidated {
+             reason: reason.into(),
+
+Mutation M13; operator M13; sha256 ef5b6f00707b4ebec1ab332ac76d62d8a3cd1745dd81b35b721a80b3506e318a
+diff --git a/crates/rrx/src/workflow.rs b/crates/rrx/src/workflow.rs
+index 3a75edf..99c0c1e 100644
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -1151,7 +1151,7 @@ impl WorkflowEngine {
+         snapshot.workflow.history[index].dispatch_started = true;
+         *eligible = false;
+         if let Err(error) = self.persist(&mut snapshot, None) {
+-            *eligible = own_task_marker_rollback(&error, snapshot.task.id);
++            *eligible = true;
+             return Err(error);
+         }
+         let request = LaunchRequest {
+
+Mutation M14; operator M14; sha256 fae286362d5274373f8c5af2245d67d89900d031fda1c5a89212be5e29cc3aa0
+diff --git a/crates/rrx/src/workflow.rs b/crates/rrx/src/workflow.rs
+index 3a75edf..8603cad 100644
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -2597,7 +2597,7 @@ fn own_task_marker_rollback(error: &anyhow::Error, task_id: TaskId) -> bool {
+     matches!(
+         error.downcast_ref::<StateGuardError>(),
+         Some(StateGuardError::SnapshotChanged { table, id, .. })
+-            if table == "tasks" && *id == task_id.to_string()
++            if (table == "tasks" && *id == task_id.to_string()) || table == "goals" || table == "projects"
+     )
+ }
+ fn recovery_issue(phase: Phase) -> &'static str {
+
+Mutation M15; operator M15; sha256 dc5148fdd6988ba3b9e20d430b82d8f767e47df18ea0d997ce98e527798cc1a5
+diff --git a/crates/rrx/src/workflow.rs b/crates/rrx/src/workflow.rs
+index 3a75edf..5e37667 100644
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -2597,7 +2597,7 @@ fn own_task_marker_rollback(error: &anyhow::Error, task_id: TaskId) -> bool {
+     matches!(
+         error.downcast_ref::<StateGuardError>(),
+         Some(StateGuardError::SnapshotChanged { table, id, .. })
+-            if table == "tasks" && *id == task_id.to_string()
++            if table == "tasks"
+     )
+ }
+ fn recovery_issue(phase: Phase) -> &'static str {
+
+Mutation M16; operator M16; sha256 e3a14cfc7a41b0cc6658e4ab99dcf17d77188a610a06051f12fcfcd41d03f801
+diff --git a/crates/rrx/src/workflow.rs b/crates/rrx/src/workflow.rs
+index 3a75edf..958b886 100644
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -946,7 +946,12 @@ impl WorkflowEngine {
+                 hook.await;
+             }
+         }
+-        self.reserve(&mut snapshot, &context, phase)?;
++        if let Err(error) = self.reserve(&mut snapshot,&context,phase) {
++            let winner=self.read(snapshot.task.id)?;
++            let claim=PreparationClaim::committed(&winner,winner.workflow.active.context("winner")?);
++            self.release_preparation(&claim)?;
++            return Err(error);
++        }
+         if phase.actor() == Actor::EvidencePort {
+             return self.evaluate(snapshot, index, None).await;
+         }
+
+Mutation M17; operator M17; sha256 ca9467cbf260e051a9105b5a8edd311e36c94eb892442eb27bfcd70e350e2d66
+diff --git a/crates/rrx/src/workflow.rs b/crates/rrx/src/workflow.rs
+index 3a75edf..7b0590a 100644
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -946,7 +946,11 @@ impl WorkflowEngine {
+                 hook.await;
+             }
+         }
+-        self.reserve(&mut snapshot, &context, phase)?;
++        let premature=PreparationClaim::committed(&snapshot,index);
++        if let Err(error)=self.reserve(&mut snapshot,&context,phase) {
++            let _=self.release_preparation(&premature);
++            return Err(error);
++        }
+         if phase.actor() == Actor::EvidencePort {
+             return self.evaluate(snapshot, index, None).await;
+         }
+
+Mutation M18; operator M18; sha256 21b40c03fad7e093e59a3b1e7981f0dae5e6de6e4b17baa8cd4807befeb5a028
+diff --git a/crates/rrx/src/workflow.rs b/crates/rrx/src/workflow.rs
+index 3a75edf..57e3787 100644
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -1404,10 +1404,7 @@ impl WorkflowEngine {
+             },
+             recovery_issue(attempt.phase)
+         );
+-        ensure!(
+-            attempt.session_id.is_some() || !attempt.dispatch_started,
+-            "unbound native dispatch requires explicit recovery (#14)"
+-        );
++
+         attempt.state = AttemptState::Interrupted;
+         attempt.completed_at.get_or_insert_with(now_ms);
+         attempt.detail = Some(format!("terminal reservation reconciled: {reason}"));
+
+Mutation M19; operator M04; sha256 edcfe7791d7407724470b4c596692eb18ea9543379c856409b469876a3b66401
+diff --git a/crates/rrx/src/workflow.rs b/crates/rrx/src/workflow.rs
+index 3a75edf..b6b3390 100644
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -987,7 +987,6 @@ impl WorkflowEngine {
+         ensure!(
+             snapshot.task.scope() == claim.scope
+                 && snapshot.record.id == claim.record_id
+-                && snapshot.record.version == claim.record_version
+                 && snapshot.workflow.generation == claim.generation
+                 && snapshot.workflow.active == Some(claim.index)
+                 && snapshot.workflow.context_version == claim.context_version
+

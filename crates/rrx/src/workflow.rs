@@ -968,7 +968,7 @@ impl WorkflowEngine {
             Err(error) if eligible => match self.release_preparation(&claim) {
                 Ok(()) => Err(error),
                 Err(release) => Err(error.context(format!(
-                    "preparation reservation retained for recovery (#14): {release:#}"
+                    "owner-local preparation release not performed; unresolved claims require recovery (#14): {release:#}"
                 ))),
             },
             other => other,
@@ -991,8 +991,14 @@ impl WorkflowEngine {
                 && snapshot.workflow.generation == claim.generation
                 && snapshot.workflow.active == Some(claim.index)
                 && snapshot.workflow.context_version == claim.context_version
-                && snapshot.task.worktree == claim.worktree
-                && snapshot.task.branch == claim.branch,
+                && claim
+                    .worktree
+                    .as_ref()
+                    .is_none_or(|path| snapshot.task.worktree.as_ref() == Some(path))
+                && claim
+                    .branch
+                    .as_ref()
+                    .is_none_or(|branch| snapshot.task.branch.as_ref() == Some(branch)),
             "preparation claim changed"
         );
         let attempt = snapshot

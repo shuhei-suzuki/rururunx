@@ -2,7 +2,9 @@
 
 Risk: STRICT for shared Workflow reservation ownership and release authority.
 The owned preparation implementation is committed. Documentation review is not
-runtime verification; final independent source review and exact-head CI are pending.
+runtime verification. Both first independent source reviews approved with Low
+refinements; their fixes and delta re-review remain pending. Exact-head CI failed
+as recorded below and is not counted as success.
 
 ## Provenance and formal gates
 
@@ -119,13 +121,44 @@ test pins its actual typed owning Task-row marker error, so token-version credit
 can be verified independently at both capture timings.
 
 
-Final targeted head `5835702` passed all 17 preparation controls and all-target
+Test/docs head `5835702` added the separate post-refresh Record consumer. Its
+commit title did not distinguish the new test from documentation. That targeted head passed all 17 preparation controls and all-target
 Clippy. M19 independently removed the Record-token-version check for the
 post-refresh consumer: it compiled and failed the durable state equality,
 confirming actual typed owning Task-marker rollback does not waive the changed
 Record token. The earlier M04 independently killed the pre-refresh consumer.
-Across 19 compiled candidates: 16 actual consumer kills, 1 defense-in-depth unit
-kill and 2 documented masked survivors. Exact final restored source was clean,
+Across 19 compiled runs of 18 distinct operators: 16 actual consumer kills from
+15 distinct operators, 1 defense-in-depth unit kill and 2 documented masked
+survivors. M19 repeats M04 against a separate post-refresh consumer; it is not a
+second operator. Exact final restored source was clean,
 17 controls passed, and the detached mutation worktree was normally removed.
 The machine-readable [mutation ledger](issue-41-mutants.json) preserves local
 committed heads and outcomes. No compile error is counted as a kill.
+
+
+## Independent source review and exact CI
+
+Both immutable public `888d86d` SourceReview1 reviews approved with no Critical,
+High or Medium findings. Owner session `2e78ed32-c15e-40b6-8009-349b5d013f1f` and
+observer session `b8c5653e-49e2-4a30-9492-2a345b3752b3` completed; owned cleanup was
+verified. Their inputs were the verified public thirteen-file source bundle and
+immutable diff. A later attempt to add adapter/Git excerpts failed before replacing
+that bundle; those excerpts were not silently claimed as reviewed inputs.
+
+Verified Low fixes accept unbound-to-bound metadata only for release of an
+originally unbound token, preserve strict dispatch pins and definitive-publication
+conflict recovery, report release-not-performed truthfully after terminal recovery,
+remove stale line references and distinguish mutation runs from operators. A new
+actual caller fixture covers assignment before and after refresh. The held-start
+fixture now asserts durable dispatch intent before observation or diagnostics;
+its marker-order mutant must be rechecked against that causal assertion.
+
+Exact `888d86d` CI run `37169413513` failed on macOS. fmt and Clippy passed;
+all 92 library tests, 19 adapter tests and 5 CLI tests passed. Context ran 5 passing
+and 11 failing tests; the primary bounded-Git diagnostic reported
+`native process inspection timed out`, followed by uncertainty-latch cascades.
+Linux tests and debug build passed, but the release job was cancelled by matrix
+failfast, so neither the cancelled matrix nor macOS is a green final gate.
+No deadline, uncertainty latch or test concurrency was relaxed and no historical
+root cause is inferred. STRICT shared inspection follow-up #46 is required before
+fresh exact-head CI readiness; #43 native binding and #14 recovery remain explicit.
