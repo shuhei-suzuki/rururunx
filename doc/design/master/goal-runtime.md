@@ -338,3 +338,9 @@ The incompatible managed native/Goal authority remains the pending
 Actual main is schema3; unmerged component5 pack publication is not accepted managed
 Goal/native settlement. Real23 typed Goal writers must preserve the latest pack pointer
 separately from semantic version; actual source composition/production gates are pending.
+
+The pending composed typed Goal-writer inventory explicitly includes19 non-launchable
+context-pointer publication (context_version/updated_at only, unchanged semantic
+version), preserving accepted definitions and separate consecutive head CAS; see the
+[proposed composition contract](../issue-19-design.md#design34-complete-factual-workflow-succession-and-scoped-authority-exits).
+It is not an implemented23 authority exception or native launch grant.

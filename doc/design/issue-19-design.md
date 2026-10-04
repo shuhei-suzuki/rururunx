@@ -3,7 +3,7 @@
 Status: actual merged main is schema3; this unmerged component source is5. Proposed
 schema6 remains fixture-only/pre-code until its independent gate and actual composed
 source/native production release. No Phase::DecisionReview or native producer is
-created by prose. The schema6 canonical writer table below plus named Design16 and Design18–33 private
+created by prose. The schema6 canonical writer table below plus named Design16 and Design18–34 private
 port/bounds define proposed native authority. Earlier schema5 protocol examples are
 historical component context ONLY and cannot authorize a managed/public writer;
 artifact/encoding contracts continue where this table does not supersede them.
@@ -35,7 +35,10 @@ is separately permitted under authorized lifecycle holds, never launch/ALLOW.
 | Any Lost→non-Lost or consumed-uncertain release | None here | Actual14 recovery required; generic terminal labels and late diagnostics cannot release |
 | Workflow native SessionID None→Some binding | Sole private43 record-only binder | Exact allocation/private prep/admit OR sealed known-current closed-receipt proof; Store-derived ORIGINAL resulting marker P/G/T/postmarker Workflow/full-lock frame, never refreshed expectations; full active-owner CAS; ordinary Workflow Record version/updated_at increment + one bounded reserved audit only, no Session/Task/P/G/lock write |
 | Bound-live native diagnostic observation | Sole private43 record-only observe_native_diagnostic | Exact actual private operation/attempt/Workflow CAS; bounded diagnostic + Workflow version/updated_at + audit ONLY, duplicate no-write; no P/G/T/Session/full-lock/native-pin change, authority refresh, fail/retry or input |
-| Workflow closure/escalate/invalidate/release; later closed-attempt retry | Exact private receipt predicate; retry additionally exact awaiting_explicit_retry hold | Every allocated marked owner settled by required class; non-success TerminalRecovery may leave session_id None with exact allocated receipt proof, never success/binding; no label-only reset; #41 unmarked invocation-owner policy stays separate |
+| Engine stop request for invalidation/escalation | Actual owned supervisor request, bounded request metadata only | No Task/Workflow authority rewrite or fabricated outcome; ACK alone is not settlement; actual NCD or current terminal+full cleanup required before closure |
+| Managed terminal decision | Separate private19/8 terminal-decision port + actual23 lifecycle authority | Exact original operation/frame and complete legitimate predecessor proof; authorized Task terminal delta plus terminal_decision-only W projection and one reserved link; no grant, success or release |
+| Workflow non-success/TerminalRecovery closure | Exact private receipt + legitimate complete successor predicate | Required actual settlement; separately authorized terminal decision may be retained without raw marker refresh; unbound ID stays None; unknown/revoked consumed failure held14 |
+| Later closed-attempt retry/escalation/invalidation | Genuine trusted Human ingress OR recorded finite frozen-policy authority | Exact already closed awaiting_explicit_retry attempt, current lifecycle/source and shared lineage budget; NEW admission only; no bare reason/RetryEvent JSON credential; #41 unmarked invocation-owner policy separate |
 
 The dispatch-marker transaction also invokes the SAME private composed23 admission
 predicate as preparation, first/new consumption and AllowCurrent in its Immediate
@@ -1544,8 +1547,14 @@ feature unification. Pin preserve_order and float_roundtrip feature fixtures,
 source-map and publication-CAS hashes. Legacy stored hashes remain historical;
 new schema6 launch authority must be version2 or explicitly republished.
 
-Restoration-chain controls include admitted v1→unadmitted failed preparation v2→
-fresh v3→exact rollback to Failed-v2, both bound/unbound allocated owners. Retained
+Historical component5 restoration-chain controls include admitted v1→unadmitted
+failed preparation v2→fresh v3→exact rollback to Failed-v2, both bound/unbound
+allocated owners. This same-UUID chain is NOT a candidate6 managed acceptance path.
+Canonical candidate6 proves admitted/settled v1→v2 Continue prewire failure→exact
+restoration to v1 with genuine NoCurrentDispatch/full cleanup→v3 Fresh on a NEW private
+UUID. Retain v1 admitted pins/checksum, never make the non-delivering v2 a Continue
+predecessor. Separately, a v2 published as current failed preparation may non-success
+close with genuine NCD, but likewise forces the next Fresh selector. Retained
 admitted v1 pins must not be confused with current unadmitted v2; if restored body
 contains an actual consumed intent it must match its retained private consumption.
 The exact prior checksum, no current admission/uncertainty and immutable actor
@@ -3520,7 +3529,11 @@ native-diagnostic scope. Reserved ledger constants are
 same genuine predecessor/successor complete-body hashes, original operation/frame and
 exact active index/generation/phase/Session/context. Claim changes only Evaluating and
 its exact claimed_observations index; observation appends only that claim's actual
-compact source/outcome/error entry and bounded detail. The private Store checks each
+compact source/outcome/error entry and bounded detail, AND atomically applies the
+actual typed result decision Evaluating→Waiting or heldFailed when required. This
+fused decision is part of its complete allowed projection; no subsequent ordinary
+Task+Workflow persist changes Waiting/held state. Successful Passed remains evidence
+subject to the separate final phase closure, not transport-based advancement. The private Store checks each
 complete allowed projection; ordinary Workflow writes cannot masquerade as a link.
 
 Claim requires genuine current native receipt/input/result authority and actual gate
@@ -3537,14 +3550,25 @@ Final closure additionally requires every relevant evidence job actually settled
 its genuine outcomes; the earlier native receipt does not settle a later independent
 job. No actor/input/source refresh and no duplicate external call on observation replay.
 
-The finite256-link budget INCLUDES binding, diagnostic, gate claim and outcome records.
-Before effects reserve every mandatory configured gate/observation/final-closure link
-and byte margin; optional diagnostics cannot spend it. If required work cannot fit,
-refuse before effect rather than omit terminal facts. S6-09/10/13 require actual
-bind→gate claim→observed Passed/Failed→closure, Task version unchanged before closure,
+The finite256-link budget includes at most99 gate cycles ×2 links (claim and fused
+observation/decision)=198, binding1, terminal_decision1, final closure1, gate_hold8
+and optional diagnostics47: sum256. Reserve required configured gate and final
+terminal/closure headroom BEFORE any effect; optional facts cannot spend it. An
+unchanged repeated Waiting result coalesces bounded attention instead of needless
+new links, but65 genuine Waiting cycles followed by a66th Passed cycle must fit.
+The100th gate cycle refuses before any gate effect with held attention; a99th
+admitted Passed still has its reserved final closure. Exhaustion never fabricates
+Failed, reruns native input, drops mandatory facts or strands an admitted closure.
+Private gate_hold permits only bounded actual typed gate-policy detail/held_reason
+updates, at most8, with W+one reserved audit and no Task bump. Such policies cannot
+claim native/grant/result authority or overwrite the original input.
+
+S6-09/10/13 require actual bind→gate claim→observed Passed/Failed→closure, genuine
+Waiting→next bounded gate and65-Wait→Passed controls, Task unchanged before closure,
 revoked observation retained without permission, unknown effect/result held, missing
-producer refusal and gate-claim Task-bump/forged-Passed/ledger-removal mutants. Real
-19/8/9/12/43/60 integration remains required; no seeded gate owner proves acceptance.
+producer refusal and claim/Waiting Task-bump, forged-Passed, lost-decision, overflow/
+ledger-removal mutants. Real19/8/9/12/43/60 integration remains required; no seeded
+gate owner proves acceptance.
 
 **Consumed failure under revocation remains held.** No new revocation-tolerant
 KnownCurrentFailure policy is introduced here. Its exact consumed input/native outcome
@@ -3593,3 +3617,150 @@ retry and tail finalization: compact body/128-MiB charging stays bounded; source
 still detect actual change. Each map-reembedding mutant and omitted tail-family mutant
 must fail the real consumer/quota test. This is proposed schema6 storage/Engine work,
 not current component SourceSnapshot or provider API implementation.
+
+
+### Design34: complete factual Workflow succession and scoped authority exits
+
+**Governing source origin verified against the actual reader.** Current component
+`context::scan` creates separate ScopedReader instances for the Task worktree and
+registered PRIMARY Project root. The rule/config loop uses the primary-root reader
+(context.rs773/781,927–966); phase_rule_bytes and context_pack::rules render those
+captured primary bytes. Executor-edited Task copies therefore do not become Engine
+governing rules on recapture. Candidate retains this exact origin, scoped FD/root/
+Git identity and immutable source pins, with Task changes treated as unverified
+output diffs. S6-06/12 proves an Executor rule-copy edit cannot change the next Engine
+Reviewer prefix; a mutant switching to the Task reader must fail. No automatic
+acceptance of a changed primary governing ref is introduced.
+
+Actual native default AGENTS/rule/config loading is a SEPARATE registered-profile
+input channel. Its source/origin and Task-writable exposure must be concretely
+inventoried/proved by the actual provider; unknown exposure is unsupported, not
+qualified by this Engine reader or a CWD/read-only label. Keep native defaults/hooks.
+AllowCurrent action producers and HostCallbackCurrent resolve actual effect targets: a
+genuine grant cannot authorize edits to primary governing/config/accepted-definition
+refs even if a public action name/path claims an output. Executor Task copies may be
+reviewed diffs, never automatically activated governing authority. Actual native
+auto-permit/effect coverage remains a required producer/profile gate, not invented
+containment.
+
+**Complete outside-lock ledger extraction, bounded transaction currency.** The
+256-link/1-MiB complete factual ledger is derived OUTSIDE held SharedStore and SQLite
+Immediate write transactions from an immutable scoped read snapshot. Only Store's
+private derivation constructs the nonserializable sealed proof; a caller digest/head
+is not evidence. It verifies the marker anchor, every exact allowed body projection,
+consecutive checked W versions, body hashes, same operation/frame and indexed
+append-only prefix through the genuine latest link. It records exact last link ID/
+sequence/version/digest, marker identity and current complete canonical W body hash.
+Inside Immediate, the consumer compares these exact bounded compact endpoints and
+actual latest indexed prefix/count against current W and marker; concurrent W/link
+change refuses or triggers genuine outside-lock rederivation. There is no current
+row self-match, unverified skip or full256-row decode under the write mutex.
+
+ALL authority reads together (hard prerequisites, ledger endpoints, current scalar
+CAS/lock/revocation guards) obey128 compact rows ×4096 UTF-8 bytes, aggregate512 KiB
+inside the transaction; thus a full128-prerequisite set plus endpoints cannot fit
+and refuses before effects. The usable prerequisite maximum depends on the other
+required rows, not a separate128 exemption. Full sorted lock body and canonical W
+body hashing are outside-lock captured; indexed scalar identity/version/hash guards
+revalidate the exact observation inside. Every W body change requires a checked
+version successor; same-version body mutation is forbidden, including raw SQL. The
+outside observed complete hash, exact W version and private indexed latest successor
+hash therefore form the inside check; do not recompute an8-MiB W hash inside the
+transaction or treat a caller-provided stored hash as authoritative. Missing/conflicting
+indexed proof refuses. The original resulting marker frame still
+includes the full lock set. Actual native admission instrumentation checks all reads
+and bounded hashes, including source proof derivation, not merely SQL row count.
+S6-16 proves fitting combined limit and129th/512-KiB+1 refusal, concurrent genuine
+link race, raw drift, unchanged grants and a second Project's genuine publication;
+inside-lock full derivation and caller-head mutants must fail.
+
+Ledger indexing uses byte-guarded expression partial indexes on the CLOSED reserved
+event-kind set. Nested CASE first checks length(CAST(data AS BLOB))≤4096, then
+json_valid, then bounded extraction; no JSON function evaluates for an oversized or
+nonreserved generic audit. Do not rely on AND/optimizer order or an AFTER trigger.
+The reserved insert trigger independently performs its byte guard before any JSON
+call. Indexed unique operation/sequence/predecessor/successor keys and append-only
+reserved-prefix update/delete guards cover raw SQL and old writers; generic audit
+cannot mint or alter links. Fresh/migrated databases use the SAME expression-index
+DDL (no generated-column ALTER divergence), pinned in the migration golden. Actual
+SQLite function/call instrumentation verifies oversized generic/reserved audits have
+zero premature JSON parsing. These are proposed source controls, not measured now.
+
+Each record-only port uses a DEDICATED private Workflow writer retaining complete
+domain/CAS/projection guards and emitting exactly ONE reserved ledger audit. It
+does not call generic put_record_tx, whose actual workflow.saved audit would double
+the write set. No public skip-audit flag. Goldens assert W body/version/updated_at
+plus that one audit only; a shared-helper extra-audit mutant fails. The final phase
+closure remains its separately declared Task/operation/receipt transaction.
+
+**Exhaustive open-phase writers and terminal decisions.** The allowed factual chain
+contains binding, diagnostic, gate_claim, fused gate_observed/decision, bounded
+gate_hold, `rrx.private.workflow.terminal_decision` and the final
+`rrx.private.workflow.phase_closed` link. The final closure uses its separately
+reviewed Task/operation/receipt write set; these are19/8-owned ports, not extra43
+binder/diagnostic writes. Ordinary
+Workflow mutations while phase_open refuse. Current cancel/fail TerminalDecision
+writes Task+W and must migrate: actual23 lifecycle authorization first validates
+the original private operation/frame, complete genuine predecessor and exact current
+write CAS, then commits ONLY its terminal_decision W projection, checked authorized
+Task lifecycle delta and one reserved link. This is NOT a43 binder/diagnostic expansion.
+The Task change is independently authorized; it never refreshes original marker T
+or supplies native input/ALLOW authority. Later factual TerminalRecovery verifies
+this exact authorized successor and complete own settlement, preserving Cancelled/
+Failed and original input without binding an absent ID or granting success. Raw W
+drift followed by cancellation cannot launder drift: chain derivation fails and
+claim remains held. Independently authorized genuine Task/Goal lifecycle revocation
+still works under actual23 policy even if an unproven Workflow bookkeeping successor
+cannot commit; it supplies no chain link and leaves managed closure held14. Bound and
+unbound cancel→actual cleanup→TerminalRecovery, forged
+decision, missing link, Task-delta forgery and consumer-exemption mutants are S6-09/10.
+Known consumed failure under unrelated lifecycle/source revocation remains held14
+as Design33 states; this named terminal-decision route does not broaden it.
+
+**Stop, invalidation, escalation and retry authority inventory.** Actual component
+step polls an active native attempt before source recapture, and Engine::escalate
+requires active None. There is no demonstrated automatic live-source-drift interrupt
+producer. Candidate does not invent one. A genuine owned explicit stop request may
+record bounded request metadata without rewriting Task/W/native authority; interrupt
+ACK alone proves neither native terminal outcome nor cleanup. Before input, genuine
+NCD/full cleanup may non-success close under the existing narrow revocation rules.
+After input, actual current known Interrupted/Failed outcome AND complete required
+cleanup AND original current pins are needed for non-success closure and retry hold.
+Missing terminal, consumed uncertainty or revoked original pins stay held14. No
+invalidation, policy-refresh or escalation API bypasses receipt/chain predicates or
+publishes a replacement generation while its old managed owner is unsettled.
+
+After genuine closure, retry/escalation/new generation is a NEW admission. RetryEvent
+requires actual nonserializable23 trusted Human authority OR a previously trusted
+Human-approved frozen policy with finite per-lineage automatic retry allowance, exact
+cause/current evidence and actual budget charging. Bare Engine::retry(reason='auto'),
+public JSON, driver polling or a recorded enum cannot mint it. Existing9 review
+lineage/author/allowance constraints continue; this adds no per-fix Human requirement
+when genuine finite policy already authorizes autonomous remediation. Duplicate/stale
+authority is no-write. S6-09/16 exercises real driver stop/pre-input/current interrupted
+closure→hold→genuine authorized fresh retry, unknown held, and missing receipt/retry-
+principal mutants; no fake stop or automatic current-row authority recapture.
+
+**Project authority drain and Goal pointer writer composition.** A separately typed
+trusted Project pending-authority request is bounded, scoped and durable, as the Goal
+barrier is. It does not change current Project definitions/source refs/version or grant
+permission. Fresh markers/claims in that Project wait while pending, allowing already
+admitted operations to settle under their ORIGINAL frame. Apply only after EVERY
+Project phase_closed and complete relevant ownership/physical exclusion, with exact
+expected Project version and genuine trusted configuration authority. Unknown/Lost
+owners retain the barrier with attention until14; no timeout release or Block shortcut.
+Requests cannot change accepted Goal definitions. Competing/duplicate requests use
+explicit current request CAS and cannot starve a drain by opening new phases. S6-16
+requires continuous parallel scheduling plus a pending rule/config/name change: no new
+markers, existing genuine turns complete, apply once after close; second disjoint
+Project progresses. Actual23/24/27 producer composition remains pending.
+
+Goal context pointer publication is an EXPLICIT composed typed Goal writer, distinct
+from generic put_goal and native launch. Its only Goal-field changes are context_version
+and updated_at, with semantic Goal.version unchanged and consecutive exact ContextVersion
+head/pointer CAS. It preserves accepted definition/lifecycle/DAG and latest pointer in
+all other typed writes; stale generic/typed snapshots cannot roll it back. S6-12/16
+requires actual19+23 publication, simultaneous head winner, stale rollback refusal,
+raw write-set golden and admitted sibling Task unchanged. It never rewrites a Workflow
+launch context or makes a Goal summary launchable. Root23 writer inventory must include
+this real private port before composed source acceptance.

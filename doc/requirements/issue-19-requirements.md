@@ -18,14 +18,14 @@ passed fixture. The matrix is the single current native acceptance inventory.
 | S6-06 | Current ALLOW/host effects versus provider-specific historical DENY | Genuine grant, complete scope/locks, immutable sources and declared Executor outputs; Project bookkeeping held; at most256 host admissions PER OPERATION,257th before IO; exact outcome bytes/quota and unknown-worker refusal (Design26/29/30/32) |
 | S6-07 | Genuine monotonic Lost diagnostics | Absorbing hold in ALL scopes; remembered actor/input/intent pins; no generic terminal rewrite, receipt or release (Design20/29) |
 | S6-08 | Actual owned supervisor settlement/restoration | Genuine current native outcome or eligible pre-input NoCurrentDispatch plus complete owned cohort/worker cleanup; consumed input with zero wire remains held for14; exact restoration atomic (Design16/31) |
-| S6-09 | Receipt freeze and exact closure/replacement consumers | Body/version/claim and actual failure/TerminalRecovery proof; closed awaiting-explicit-retry hold before later RetryEvent; no automatic redispatch; legitimate bounded Workflow successor, never raw version refresh (Design32/33) |
+| S6-09 | Receipt freeze and exact closure/replacement consumers | Body/version/claim and actual failure/TerminalRecovery proof; closed awaiting-explicit-retry hold before later RetryEvent; no automatic redispatch; legitimate bounded Workflow successor, never raw version refresh (Design32/33/34) |
 | S6-10 | Sole active record-only binder/reconcile/diagnostic | Original marker and private actual owner or sealed successful receipt; factual W-version/body successor ledger only; no P/G/T/Session/lock write; passive observer cannot settle (Design26/30/33) |
 | S6-11 | Sealed Fresh/Continue selector | Latest closed delivery/predecessor, actual registry proof, exhaustive typed family/reference checks; immutable refusal attribution persists after later pristine no-Session attempt (Design21/32) |
 | S6-12 | All checkpoint/pack publication/render consumers | Every own/promoted event caller classified; immutable snapshots; live latest-head preparation distinct from exact historical admitted closure (Design29) |
 | S6-13 | Whole-body/history/quota and irreversible tail | At most64 unique observation/material authorities and256 history/context entries; complete Workflow AND ContextVersion bodies≤8 MiB; charged128 MiB PER WORKFLOW plus reserved64-KiB closure headroom; ALL source-map/evidence fields compact; exact tail before effects (Design25/31/33) |
 | S6-14 | Operation-aware locks/idle/Git/removal/context/Goal writers | Symmetric physical reservations include overlapping roots/common Git; actual producers required; closed synthetic producer tests prove mechanics only (Design25/31) |
 | S6-15 | Unsupported legacy Task/NoTask/interactive roles | Every fresh generic nonterminal native writer refuses before reservation/process/bytes; terminal historical records never verified ownership (Design20/21) |
-| S6-16 | Actual composed caller/projection/schema readiness | All actual native/Generic/Fake and Goal/binding/effect/recovery ports; phase-closed pending-Goal drain; bounded prerequisite transaction≤128 rows,4096 bytes each/512 KiB aggregate; capacity in same claim transaction; synthetic proof never production readiness (Design31/32/33) |
+| S6-16 | Actual composed caller/projection/schema readiness | All actual native/Generic/Fake and Goal/binding/effect/recovery ports; phase-closed pending-Goal drain; bounded prerequisite transaction≤128 rows,4096 bytes each/512 KiB aggregate; capacity in same claim transaction; synthetic proof never production readiness (Design31/32/33/34) |
 
 Each stable key requires named exact consumer tests AND meaningful causal mutants
 in final source evidence; it is not an invented available API or a checkmark. The named Design16 and Design18–33 contracts
@@ -735,3 +735,26 @@ atomic closure. Genuine review/evidence semantics, actual input/result authority
 independent owned gate effects remain required. The finite chain reserves bind/gate/
 observation/final closure capacity before effects, so optional diagnosis cannot strand
 mandatory closure. Receipt/transport/native JSON alone never means a Passed phase gate.
+
+
+Design34 makes the complete factual Workflow ledger outside-lock derived and sealed;
+ALL inside-transaction authority reads together remain≤128 compact rows/512 KiB,
+including prerequisite rows, ledger endpoints, locks and current CAS guards. Concurrent
+link/W changes refuse rather than refresh an original frame. Every open-phase writer
+is inventoried, including fused gate Waiting/held outcome and separately authorized
+Task terminal decision; unknown/raw successors never permit closure. The256-link
+budget reserves99 claim/observed pairs, binding, terminal decision and closure,8 gate
+holds and47 diagnostics;65 genuine Wait then Passed fits,100th gate refuses BEFORE
+effect without spending closure headroom. Actual private ports emit only one reserved
+audit, with guarded partial expression indices and append-only complete-prefix proof.
+
+S6-09/16 retry requires real trusted Human or recorded finite frozen-policy authority;
+owned stop ACK alone is not terminal/cleanup, and consumed revoked failure stays held14.
+S6-06/12 pins actual PRIMARY-root rule/config origin independently from still-pending
+native auto-loaded rule profile proof. S6-12/16 names composed typed Goal pointer-only
+publication, and S6-16 names Project pending-authority drain without rewriting live
+Project versions or accepted Goal definitions. Historical component5 restoration chains
+cannot stand in for candidate6 Continue→NCD→NEW-UUID Fresh controls. Whole legacy-owner
+drain/refusal is unchanged; pending58 legacy recovery/barrier ideas confer no migration
+or cleanup authority. Actual production ports, source tests, mutants and native
+conformance remain mandatory and unimplemented, not earned by this document review.
