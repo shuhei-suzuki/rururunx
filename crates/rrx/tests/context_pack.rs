@@ -4057,6 +4057,39 @@ async fn blocked_project_can_persist_only_monotonic_unobserved_lost_diagnostics(
             .is_err()
     );
 }
+// Read complete immutable authority/audit rows from this owned fixture only.
+// Source observation audits are separate from final frame preparation publication.
+fn frame_publication_snapshot(f: &Fixture) -> serde_json::Value {
+    let raw = rusqlite::Connection::open(f._temp.path().join("state.db")).unwrap();
+    let mut frames = raw.prepare("SELECT project_id,goal_id,task_id,context_version,payload_sha256,revision,input_bytes,source_versions FROM prepared_pack_inputs ORDER BY project_id,goal_id,task_id,context_version,payload_sha256").unwrap();
+    let frames = frames
+        .query_map([], |r| {
+            Ok(serde_json::json!({
+                "project":r.get::<_,String>(0)?, "goal":r.get::<_,String>(1)?,
+                "task":r.get::<_,String>(2)?, "version":r.get::<_,u64>(3)?,
+                "sha256":r.get::<_,String>(4)?, "revision":r.get::<_,String>(5)?,
+                "bytes":r.get::<_,u64>(6)?, "sources_raw":r.get::<_,String>(7)?,
+            }))
+        })
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    let mut audits = raw.prepare("SELECT sequence,project_id,goal_id,task_id,kind,at,data FROM audit WHERE kind='context.pack.prepared' ORDER BY sequence").unwrap();
+    let audits = audits
+        .query_map([], |r| {
+            Ok(serde_json::json!({
+                "sequence":r.get::<_,u64>(0)?, "project":r.get::<_,String>(1)?,
+                "goal":r.get::<_,Option<String>>(2)?, "task":r.get::<_,Option<String>>(3)?,
+                "kind":r.get::<_,String>(4)?, "at":r.get::<_,u64>(5)?,
+                "data_raw":r.get::<_,String>(6)?,
+            }))
+        })
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    serde_json::json!({"frames":frames,"audits":audits})
+}
+
 // Artifact-production proof only: owned synthetic repositories, no model launch
 // or managed native ownership/settlement certificate.
 async fn standalone_complete_frame_rejects_oversize(draft_only: bool) {
@@ -4091,19 +4124,7 @@ async fn standalone_complete_frame_rejects_oversize(draft_only: bool) {
             .unwrap(),
     )
     .unwrap();
-    let raw = rusqlite::Connection::open(f._temp.path().join("state.db")).unwrap();
-    let before_frames: u64 = raw
-        .query_row("SELECT COUNT(*) FROM prepared_pack_inputs", [], |r| {
-            r.get(0)
-        })
-        .unwrap();
-    let before_ready: u64 = raw
-        .query_row(
-            "SELECT COUNT(*) FROM audit WHERE kind='context.pack.prepared'",
-            [],
-            |r| r.get(0),
-        )
-        .unwrap();
+    let before_publication = frame_publication_snapshot(&f);
     let large = Budget {
         bytes: 16 * 1024 * 1024,
         estimated_tokens: 16 * 1024 * 1024,
@@ -4156,21 +4177,7 @@ async fn standalone_complete_frame_rejects_oversize(draft_only: bool) {
         .unwrap(),
         before_context
     );
-    assert_eq!(
-        raw.query_row("SELECT COUNT(*) FROM prepared_pack_inputs", [], |r| r
-            .get::<_, u64>(0))
-            .unwrap(),
-        before_frames
-    );
-    assert_eq!(
-        raw.query_row(
-            "SELECT COUNT(*) FROM audit WHERE kind='context.pack.prepared'",
-            [],
-            |r| r.get::<_, u64>(0)
-        )
-        .unwrap(),
-        before_ready
-    );
+    assert_eq!(frame_publication_snapshot(&f), before_publication);
 }
 #[tokio::test]
 async fn standalone_task_complete_frame_cap_precedes_prepared_authority() {
@@ -4288,19 +4295,7 @@ async fn standalone_complete_frame_exact_boundary(draft_only: bool) {
     } else {
         Some(packs.publish_task(&draft).await.unwrap())
     };
-    let raw = rusqlite::Connection::open(f._temp.path().join("state.db")).unwrap();
-    let before_frames: u64 = raw
-        .query_row("SELECT COUNT(*) FROM prepared_pack_inputs", [], |r| {
-            r.get(0)
-        })
-        .unwrap();
-    let before_audits: u64 = raw
-        .query_row(
-            "SELECT COUNT(*) FROM audit WHERE kind='context.pack.prepared'",
-            [],
-            |r| r.get(0),
-        )
-        .unwrap();
+    let before_publication = frame_publication_snapshot(&f);
     let error = if let Some(reference) = reference {
         match packs
             .prepare_task(&reference, SelectionRequest::default(), large)
@@ -4322,21 +4317,7 @@ async fn standalone_complete_frame_exact_boundary(draft_only: bool) {
         format!("{error:#}").contains("absolute 1 MiB cap"),
         "{error:#}"
     );
-    assert_eq!(
-        raw.query_row("SELECT COUNT(*) FROM prepared_pack_inputs", [], |r| r
-            .get::<_, u64>(0))
-            .unwrap(),
-        before_frames
-    );
-    assert_eq!(
-        raw.query_row(
-            "SELECT COUNT(*) FROM audit WHERE kind='context.pack.prepared'",
-            [],
-            |r| r.get::<_, u64>(0)
-        )
-        .unwrap(),
-        before_audits
-    );
+    assert_eq!(frame_publication_snapshot(&f), before_publication);
 }
 #[tokio::test]
 async fn standalone_task_complete_frame_exact_cap_and_cap_plus_one() {
