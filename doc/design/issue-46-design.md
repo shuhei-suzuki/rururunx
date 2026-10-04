@@ -52,8 +52,11 @@ exit or nonempty stderr are Unknown. No unfinished reader join or detached reade
 can survive the inspection call; dropping read FDs closes this observer's endpoints.
 
 On failure, close both read endpoints; if try_wait already reaped the child, never
-signal that numeric PID. Otherwise kill the exact owned direct Child and wait for
-its mandatory reap, checking errors rather than claiming cleanup succeeded. This
+signal that numeric PID. Otherwise kill the exact owned direct Child and always attempt mandatory wait even
+if kill reports failure; a completed wait can resolve a benign exit-vs-kill race,
+whereas wait failure is explicit cleanup uncertainty. A non-retriable try_wait error
+(including ECHILD) makes reap status unknown: send no numeric signal, attempt wait
+without assuming ownership survived, and report cleanup uncertainty on failure. This
 blocking kill/reap remains outside the 250ms observation budget and can extend total
 call duration; it is an explicit existing residual, not a hard realtime promise.
 Syscall/spawn scheduling likewise has no hard bound. The inspector is trusted ps,
@@ -62,27 +65,37 @@ not recursively group-inspected or a contract for arbitrary forking programs.
 Pinned Rust1.91.1 std unix anon_pipe uses pipe followed by separate FD_CLOEXEC on
 macOS, unlike supported pipe2 targets. A concurrent fork between these operations
 can inherit a pipe writer; ps exit alone consequently cannot prove EOF. Nonblocking
-reads plus the common EOF deadline handle this without unbounded joining. The causal
+reads plus the common EOF deadline handle retained writers without unbounded joining.
+Both read and write endpoints can leak in that inheritance window: exclusive endpoint
+provenance remains an assumption, and foreign injection/read-side theft is not closed
+by EOF/strict parsing. Do not serialize spawns or claim this race is eliminated. The causal
 fixture supplies owned pipe endpoints to the same private completion runner and
 retains a duplicate write endpoint after its direct child exits; it owns that handle
-without descendants. The runner must return Unknown by its observation deadline,
-then the fixture closes its handle and verifies owned child reap. A mutant restoring
-an unconditional read/join is killed by this control, independently of child timeout.
+without descendants. The child emits a valid all-Z expected-leader frame. Run completion on a fixture-owned
+thread; a bounded watchdog (for example1s) receives its result. Whether completion
+returns or the watchdog expires, close the retained writer and join that thread before
+asserting. The control is Unknown by the observation deadline; a mutant discarding EOF
+returns dead and fails, and an unconditional read/join mutant is released by watchdog
+cleanup then fails an assertion rather than hanging the test job. Verify owned child
+reap separately; do not claim a scheduler-hard upper bound.
 
 The validator requires a newline-complete nonempty UTF-8 frame; each nonblank row
 has exactly three fields, positive PID/PGID, the expected group and a recognized
 macOS process-state spelling. Exact PID rows cannot duplicate. Require one exact
 leader PID row. Recognize documented primary states with legitimate suffix flags;
-only primary Z counts as dead. Unknown states are errors. Validate all rows first,
+only primary Z counts as dead. Restrict recognized suffix spelling to the pinned emitter/documented intersection: <, N, X, E, V, L, s and +; E is invalid after Z. Unknown states are errors. Validate all rows first,
 then return false if any primary state is non-Z, otherwise true. An early live
 row must not mask malformed trailing data. State suffix compatibility is verified
 against installed man/source and actual installed fixtures before code.
 
 Any stderr byte rejects observational success; no locale-specific parsing or raw diagnostic audit.
 Errors identify timeout/size/exit/diagnostic/missing-leader/framing categories.
-Primary installed macOS state characters are I/R/S/T/U/Z; documented suffixes
-are +, <, >, A, E, L, N, S, s, V, W and X. Source/installed compatibility must
-be checked before finalizing the validator.
+Primary accepted states are I/R/S/T/U/Z. Pinned mach_state_table is " RUSITH?",
+with no Z; print.c emits Z only for SZOMB. H/blank/? and other unsupported primaries
+remain framing Unknown, including inaccessible cross-credential task information.
+The manual lists additional suffixes not emitted by pinned ps; those remain Unknown
+rather than expanding the accepted grammar. Real installed fixture spellings must
+be recorded against this documented/emitter set; source/binary identity is unverified.
 
 Sticky uncertainty and SessionLost remain unchanged. Unknown returns its bounded
 inspection category, valid live data returns original EPERM; both map to Lost.
@@ -119,6 +132,10 @@ byte-matched to the installed binary. Cached immutable blob provenance:
   and T for SSTOP, otherwise Mach state; documented suffixes follow primary state.
   [keyword.c](https://github.com/apple-oss-distributions/adv_cmds/blob/main/ps/keyword.c),
   blob `aad756d34520c213286959a12615592376f919d7`, binds stat to state.
+- Apple [tasks.c](https://github.com/apple-oss-distributions/adv_cmds/blob/main/ps/tasks.c),
+  blob `d2fcb07b422cfbb12718f048856e0575eb0237d0`: mach_state_table is
+  " RUSITH?" (no Z); get_task_info/task-access failures can produce unsupported
+  state information. Those remain Unknown, not fabricated zombie evidence.
 - Rust [unix pipe.rs at1.91.1](https://github.com/rust-lang/rust/blob/1.91.1/library/std/src/sys/pal/unix/pipe.rs),
   blob `4798acf9dad6b152d158d044e560798417751f1e`: macOS fallback pipe then
   separate close-on-exec configuration; atomic pipe2 is used on other listed targets.
@@ -164,11 +181,17 @@ provides the explicitly limited cross-UID selection argument; any read-only inst
 foreign-UID query adds visibility evidence only and never signals returned PID hints.
 
 The exact argument order is -g <PGID> BEFORE -o pid=,pgid=,stat=. Production env_clear
-removes COMMAND_MODE; a legacy negative control uses this same ordering and must fail
-(exit/diagnostic or invalid frame). Reordering format before -g in legacy mode can
+removes COMMAND_MODE; a legacy negative control uses this same ordering and must
+report actual exit1 with nonempty stderr (exit/diagnostic Unknown). Reordering format before -g in legacy mode can
 interpret the numeric argument as a PID-only selector; a dedicated zombie-leader/live-
 child control kills that defense mutant. This is a mode/order defense fixture, not
 an assertion that production env_clear inherits legacy mode.
+
+Retain the existing bounded5ms sleep-poll contract without an additional poll-module
+change. Overflow fixtures provide otherwise-valid whitespace-padded all-Z stdout
+with the expected leader, and bounded stderr overflow; assert size category before
+wording. If timing or another guard masks a compiled size mutant, record it without
+credit rather than claim a guaranteed overflow kill under load.
 
 Failure fixtures cover exit0 stderr, empty output, timeout, both stream overflows,
 malformed/incomplete rows, foreign groups, duplicate PIDs, absent leader, nonblocking
@@ -183,10 +206,19 @@ override, runtime configuration or public provider option. An individual Process
 can carry an inspection executable plus a signal-result plan. For Unknown-consumer
 cases, the plan performs the actual KILL on its owned group and then feeds PERM into
 the unchanged real resolver; the actual shim inspection returns malformed/missing-
-leader/stderr/timeout evidence. For the live-child selection case only, a separately
-labeled plan feeds PERM without sending KILL, preserving the live child needed to
-expose false death. Fixture cleanup remains separately owned and signals only its
-still-unreaped known group; fake inspection never grants arbitrary PID authority.
+leader/stderr/timeout evidence. Consumer plans must actually kill their owned group
+before it can be consumed/reaped, including Drop retry; they cannot leave a live
+member requiring numeric PGID cleanup after losing their leader handle.
+
+Live-child selection and legacy-reorder safety operators run at the ProcessGroup
+boundary instead: the fixture retains the actual ProcessGroup and unreaped leader,
+feeds PERM without KILL only for that observation, and asserts refusal/group_owned.
+Before any return/reap, remove the injected plan, perform real KILL on the same still-
+owned unreaped group even if a mutant incorrectly cleared group_owned, verify cleanup
+while retaining the leader, then reap. A guard enforces this cleanup on assertion/
+error paths. No bounded Git/Grok consumer is allowed to consume this special plan;
+its credit is real ProcessGroup/resolver safety, not terminal Lost consumer coverage.
+Fake observation never grants arbitrary PID authority.
 Existing fail_cleanup bypasses the resolver and cannot count as this evidence.
 
 A private internal bounded_git_raw core receives the per-invocation test plan; its
@@ -197,12 +229,16 @@ sticky refusal of the next operation; tests do not reset/poison the process-glob
 production latch. Native Grok's private test-only instance/Actor plan installs on its
 native child after ProcessGroup creation, leaving preflight Git unchanged, and the
 real supervise→cleanup_group→terminal persistence path must publish Lost/reservation.
-All plan fields/functions are absent on production and Linux; Linux all-target clippy
-checks catch conditional compilation/dead-code mistakes. No shared schema is added.
+A corresponding generic-launch instance plan covers the same Unknown/Lost consumer,
+with existing fail_cleanup tests retained as narrower worker/cleanup coverage.
+All plan fields/functions are absent on production and Linux. macOS all-target
+clippy lints these seams/tests; macOS non-test debug/release builds validate production
+without them. Linux clippy/build/tests validate cross-platform code without macOS
+references, not the lint cleanliness of compiled-out items. No shared schema is added.
 
 Distinguish selection operators: replacing -g with -p <leader> is the safety mutant:
 unreaped zombie leader plus live child yields a superficially valid leader-only frame,
-so the actual resolver/consumer must refuse death and stay Lost. Removing the selector
+so the actual owned ProcessGroup/resolver must refuse death without clearing group_owned. Separately, Unknown plans assert real consumer Lost/sticky reservations. Removing the selector
 (default UID/TTY narrowing) or replacing it with global -A usually yields rejection;
 positive all-zombie controls kill those as liveness/completeness operators, not false-
 death proof. Removing foreign-row validation may require a shim/pure-validator test

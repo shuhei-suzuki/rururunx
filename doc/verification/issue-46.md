@@ -111,3 +111,38 @@ Issue41 final63bbd1d exact CI37177404219 preserved Linux success/macOS failure: 
 Grok failures reported native process inspection timed out after library, adapter,
 CLI, Context and Git tests passed. Earlier ba70c3f/bab6f54 both-platform successes do
 not supersede this exact failure. No rerun/dummy evidence commit or root-cause claim.
+
+
+## Design2 verified disposition and Design3 delta
+
+At7ce6f01 both native Design2 operations completed, owned cleanup verified. Ownership
+reviewer24c2b45d approved with optional refinements; bounded reviewer a92952cc requested
+changes solely for Medium D2-1. Both identify the same verified fixture ownership gap:
+a consumer reaps/drops its only leader while a PERM-without-KILL live child survives.
+Design3 moves selection/legacy safety mutants to fixture-owned ProcessGroup/resolver,
+retaining the unreaped leader through real cleanup before reap; actual Lost consumer
+plans always perform owned real KILL before injecting observational Unknown. Credit
+is explicitly separated; no unsafe numeric PGID cleanup after consumption/reap.
+
+OWN/BOUND-D2-2/4 retained-writer controls now use an owned completion thread/watchdog,
+close writer and join before assertion; valid all-Z frame also kills missing-EOF.
+OWN-D2-2 and BOUND-D2-5 pin tasks.c d2fcb07.. (table " RUSITH?", no Z), limit suffixes
+to documented/pinned emitter, reject E after Z and unsupported states. OWN-D2-3 adds
+exclusive read/write endpoint provenance as residual: bounded EOF does not close
+foreign-byte injection/theft across the non-atomic macOS CLOEXEC window. OWN-D2-5
+non-retriable try_wait error never authorizes numeric signal. BOUND-D2-4 always attempts
+wait after kill error; wait failure retains explicit cleanup uncertainty. D2 legacy
+control is actual exit1/nonempty stderr; master separates observation from unbounded
+mandatory reap. macOS all-target lint checks compiled seams; Linux verifies no references
+to compiled-out items. Generic Unknown/Lost consumer is explicitly included.
+
+Optional BOUND-D2-3 poll(2) module change is declined to keep the shared5ms polling
+contract/scope; overflow fixtures assert size categories with otherwise-valid frames,
+and any timing/guard masking receives no credit. OWN-D1 read-only foreign-UID query
+remains optional/unrun; pinned source supplies limited cross-UID selection evidence,
+not installed identity/privileged signal proof. Other OWN/BOUND-D1 refinements were
+adopted in Design2/3: owned group selection, exact argv/mode, primary formatter evidence,
+construction obligations, direct Grok use, Drop windows/residual and macOS cfg scope.
+Raw resumed usage/cost/API counters remain unverified per-round attribution. No code
+changed; combined requirements alignment was consistent in both Design2 assessments,
+and this narrowed Design3 delta must approve before implementation.
