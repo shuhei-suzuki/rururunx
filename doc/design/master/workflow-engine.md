@@ -373,13 +373,9 @@ Cleanup freezes the reserved class/phases, independent of later runtime policy c
 Project risk-mapping recommendations can strengthen but cannot weaken runtime mappings.
 
 
-### Proposed Review Set integration (Issue9)
+### Current reviewer ownership
 
-The next ReviewRunner delegates native Reviewer phases to an immutable bounded
-roster with all/quorum/any eligibility, distinct per-slot outcomes and verifier
-records. Eligibility never substitutes for safe settlement or verified-blocker
-resolution. Private slot allocation and the actual Workflow frame/claim CAS must
-be integrated against the reviewed context-pack kernel before this is advertised
-as runtime behavior. Current single PhaseAttempt.session_id cannot represent a
-parallel roster. See Issue9 requirements/design for the formal preparation gates;
-actual two/triple native runtime dogfood remains a separate acceptance proof.
+The implemented Workflow phase owns one native Reviewer Session through
+PhaseAttempt.session_id. A parallel ReviewSet roster and certificates are not yet
+implemented. Current context ownership does not permit per-member Session cloning
+or arbitrary role-based delegation.

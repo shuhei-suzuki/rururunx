@@ -287,7 +287,7 @@ checks; unknown outcomes keep recovery reservations. QUICK PR-created stays nont
 until requested merge/cleanup gates supply evidence. Cancellation preserves native
 reservations until verified termination.
 The generic CLI cannot review. Workflow CLI/TUI, independent review sets (#9),
-approval routing (#12), recovery (#13), and production Context Pack publication (#19)
+approval routing (#10), native recovery (#14), GitHub outcome reconciliation (#13), and production Context Pack publication (#19)
 remain pending. Issue #18 repository-context selection is available independently. See [Workflow Engine](doc/design/master/workflow-engine.md).
 
 The repository pins Rust 1.91.1 (minimum supported Rust 1.91) with rustfmt/clippy.

@@ -43,8 +43,13 @@ The common factual core has one exact digest across slots. Declared specializati
 artifacts have separate immutable per-slot hashes and are structurally additive:
 the byte-identical core remains mandatory and cannot be replaced or omitted.
 Specialization identity/source is visible and attributable; no semantic
-non-contradiction guarantee is invented. Raw peer findings
-and executor conversation are hidden during an independent round. Later rounds
+non-contradiction guarantee is invented. rrx never injects raw peer findings
+or executor conversation into a member input during an independent round. Peer
+outputs/runtime state stay outside the reviewed source and bundle paths. Native
+read-only permissions are retained: the runtime does not claim OS isolation from
+same-user-readable runtime files. Certificates state this runtime-input independence
+scope and residual filesystem visibility; native16 acceptance checks the actual
+input/storage paths and observed independence. Later rounds
 may include verified defects/fixes as factual evidence and dismissal adjudication
 history with actor identity. Dismissal claims/rationales remain labelled claims,
 not core facts; re-raising a dismissed finding remains possible.
@@ -59,15 +64,16 @@ visible human-attention hold. An approval containing a potential blocking findin
 cannot satisfy the round until that finding is resolved independently.
 
 Severity is Critical/High/Medium/Low. The immutable policy's blocking set always
-includes Critical and High and defaults to Critical/High/Medium; configuration
-may add severities but cannot exempt Critical/High. Findings are proposals until
+includes Critical/High/Medium; configuration may add Low but cannot exempt that
+Core floor. Findings are proposals until
 verification supplies actor identity (agent/Session or Human), exact target,
 inspected/changed locations and actual evidence. No supervisor LLM invents facts.
 An executor-only dismissal cannot erase a formal blocker: false-positive dismissal
 requires explicit Human judgment OR later-round confirmation by the original
 finder when non-executor, or by at least two policy-designated non-executor slots.
-A confirmer must differ from the executor in registered agent identity and native
-provider family; alias/same-agent permission cannot create dismissal independence.
+Each confirmer must differ from every recorded delta author in registered agent
+identity and native provider family, and a two-confirmer pair must also differ from
+each other in both registered agent identity and native provider family; alias/same-agent permission cannot create dismissal independence.
 Inputs separate original finding and actual repository evidence from the labelled
 executor dismissal claim, never presenting that claim as fact. Disputed evidence holds for Human.
 A verified fix is recorded with commit/check evidence and requires a new round.
@@ -84,7 +90,7 @@ outcomes and verification/evidence references. It is evidence, not merge authori
 
 | Slot result | Counting and round consequence |
 | --- | --- |
-| APPROVE, no unresolved or verified blocker | Counts once after safe settlement |
+| APPROVE, no unresolved or verified blocker (including unverified Low) | Counts once after safe settlement; Low remains recorded |
 | APPROVE with potential blocker | Holds until independent resolution; verified blocker vetoes |
 | REQUEST_CHANGES, all findings independently dismissed | Does not count; another round is needed for this slot to approve |
 | ESCALATE or disputed verification | Visible Human hold; no certificate |
@@ -118,11 +124,11 @@ recovery and lossless hot upgrade are not claimed by this Core.
 
 ## Constraints and non-scope
 
-Policy bounds: 1–32 slots, 1–32 local parallel launches, 64 rounds per Set, 256
+Policy bounds: 1–32 slots, 1–32 local parallel launches, 64 cumulative rounds per Task/phase lineage, 256
 findings per result, 8192 UTF-8 bytes per finding and 1 MiB per factual bundle/result
 envelope. Limits are simultaneous ceilings: maximum count does not promise every
 maximum-size text fits the envelope. No semantic truncation occurs. A 128 MiB
-aggregate Set artifact quota prevents unbounded retained output; exhaustion holds
+cumulative Task/phase-lineage artifact quota prevents unbounded retained output; exhaustion holds
 with recorded byte/hash provenance and Human attention. Transport output is
 bounded at acquisition, retaining the observed bounded prefix, exact byte count/
 rolling hash and overflow reason; unseen suffix content is never treated as safe.
@@ -137,9 +143,13 @@ Project and agent resource limits can lower local parallelism, never be bypassed
 Default formal policy forbids the Task executor agent as reviewer and duplicate
 agent identities. Explicit policy may allow same-agent independent Sessions;
 that permission and provider/model diversity are visible in the result. A single
-Session cannot occupy two slots. Triple preset must not silently override a
-self-review prohibition; incompatibility fails before input or requires explicit
-policy selection. Formal policies and the triple preset default require explicit
+Session cannot occupy two slots. The Triple preset ships the Claude/Codex/Grok roster and all-of-three policy,
+without an implicit self-review exception. With an MVP executor in that roster,
+default selection rejects before input. An explicit visible allow-self independent-
+Session policy makes that same preset usable; the author slot is never eligible
+as a dismissal/downgrade confirmer. Acceptance exercises both default rejection
+and actual supported explicit-policy execution, rather than calling the unresolved
+default a working configuration. Formal policies and the triple preset default require explicit
 resolved model/
 effort configuration before input; unresolved None rejects. An explicit advisory
 policy can inherit native defaults but cannot silently replace formal settings.
@@ -165,30 +175,6 @@ State/slot/audit updates are atomically visible. Format upgrade rejects incompat
 fresh or already-open old writers without changing evidence; generic history or
 caller JSON cannot create a slot, certificate or native admission.
 
-Prove one reviewer, all-of-two, two-of-three, triple preset, any and a four-plus
-roster through the real Store/Workflow delegation. Validate 0/32/33 slots, N=0/N>M,
-non-quorum parameter rejection, timeout/quota limits and reopening. Show parallel
-same-context consumption, equivalent core hashes, explicit specialization, hidden
-peer output, self-review policy and exact native configuration. Exercise independent
-coordinators, source/dirty/lock drift, Reviewer mutation and immutable active packs.
-
-Decision-table tests include contradictory approval/blocker, executor-only false
-positive rejection, independent dismissal, non-approving slot preserved, Human
-hold, tolerated empty failure, partial/malformed/overflow blocker retention,
-early safe cancellation and Lost ownership. Exercise verify/false-positive/fix/
-commit/test/re-review history, new-round retry and quota exhaustion without reset.
-
-Round N>1 must consume an actual Git-backed typed delta with baseline/new committed
-targets,
-physical/source hashes, prior verified unresolved facts and fix/check references.
-Preserve provenance; reject stale, foreign or relabeled old bundles. This consumer
-port is required before Issue9 closes; full production20 producer
-readiness remains separately required for the MVP. Meaningful mutation controls, independent native
-requirements/design/source review and exact-head Linux/macOS CI are required.
-Synthetic adapters prove orchestration only. Real two/triple native outputs,
-resource/safety/measurement evidence remain separately mandatory16 Goal proof.
-
-
 At most one nonterminal Review Set owns a Task/Workflow phase lineage. A new
 Set cannot approval-shop by resetting blockers, holds, history, round count or
 artifact quota. Explicit Human/Workflow supersession records authority/reason and
@@ -199,7 +185,12 @@ Lineage exhaustion can terminate without certificate or hold for explicit Task
 scope decomposition; it cannot reset into a new passing Set. Decomposition never
 certifies the old phase and must preserve unresolved obligations in Goal history.
 
-Hold exits are explicit: ESCALATE/dispute requires authorized Human adjudication,
+Hold exits are explicit: persistent nonblocking REQUEST_CHANGES or too few approvals
+requires an authorized Human/Workflow choice of a new full-roster round, explicit
+policy relaxation above the frozen mandatory floor, or termination without a
+certificate. A relaxed policy starts a new round or explicitly superseding Set,
+retaining prior opinions, obligations and lineage limits; it never manufactures an
+APPROVE. ESCALATE/dispute requires authorized Human adjudication,
 then a new full-roster round or termination without certificate; malformed/partial
 output needs independently recorded inspection/resolution and new round; unknown
 suffix requires new successful review rather than pretending it was examined;
@@ -209,15 +200,7 @@ exits counts the prior failed/non-approving slot as approval.
 
 Rule, policy, context/Workflow generation or required instruction change during a
 round invalidates certificate publication. Findings may carry a typed upward risk
-signal to Workflow; no automatic downgrade. Acceptance includes inherited-blocker
-supersession, executor/provider-alias dismissal rejection, same-target full-roster
-identity-delta rounds, cross-phase/generation replay rejection, context/risk drift,
-queue attention and diagnostics-only versus partial-findings timeout/cancellation.
-Real registered native adapter capability negotiation is a closing non-model test:
-generic Execute-only CLI and unsupported read-only reviewers reject before input,
-while verified read-only native declarations are accepted. This capability proof
-does not substitute for actual two/triple native model outputs in16.
-
+signal to Workflow; no automatic downgrade.
 
 Reviewer-assigned severity is immutable in the original finding. Any adjudication
 that lowers a finding out of the effective blocking set uses the same independent
@@ -250,40 +233,15 @@ releases no native ownership/lock; the Task remains WAITING_HUMAN until trusted
 restart/native recovery14 proves cleanup. GitHub irreversible external outcome
 reconciliation13 is distinct. These future ports are not fabricated by this engine.
 
-Acceptance also proves original-severity preservation and executor downgrade
-rejection, weaker-policy supersession rejection, executor-change authorship fencing,
-independent expansion without peer mutation, Human-resolved repeated ESCALATE and
-Lost Set termination retaining its native hold. Registered native capability tests
-cover actual Claude5/Codex6/Grok7 implementations and their reviewed read-only
-capability contracts: the triple preset remains runtime-unresolvable when any required provider
-or read-only declaration is absent, and rejects before any slot receives input.
-Their reviewed native capability availability and exact19/43 prepared-input ports
-are integrated closing prerequisites; actual model-result dogfood is separately16.
-
-APPROVE with only verified nonblocking findings may count; REQUEST_CHANGES with
+APPROVE with only nonblocking Low findings may count even before verification;
+those findings remain recorded and can be raised to a blocker on actual evidence.
+REQUEST_CHANGES with
 empty or nonblocking findings never counts. This preserves the slot's opinion
 while quorum/any tolerate explicit nonapproval; mode never removes blocker checks.
 Independent partial/malformed inspection uses the same non-executor confirmer or
 Human eligibility as dismissal. Mandatory core/specialization overflow rejects
 before model input with actual size/hash/NeedsContext evidence and Human attention;
 no semantic truncation or success through a byte cap is permitted.
-
-Numbered Issue acceptance mapping:
-
-1. First-class two-reviewer roster and concurrent same-context member authority.
-2. Two-of-three quorum and invalid-parameter rejection, preserving nonapprovals.
-3. All-of-two requires both exact-round approvals and resolved blockers.
-4. Triple preset validates actual native registrations/configuration; orchestration
-   proof and runtime-unavailable state are distinct from mandatory16 model dogfood.
-5. Failure/timeout/cancellation/Lost never counts; output channels, safe settlement
-   and held partial findings follow the decision table.
-6. Round, finding, original severity, verifier and lineage history survive reopening,
-   supersession and concurrent coordinators without reset or stale publication.
-7. Formal clean/locked target excludes executor dispatch and invalidates on source,
-   context or generation drift; read-only Reviewer capabilities are preflighted.
-8. Equivalent shared core, additive specialization/expansion and Git-backed changed/
-   identity delta consumer provenance are tested; full20 producer stays MVP-gated.
-
 
 Policy minimums are explicit resolved inputs, frozen before round admission. Core
 baseline requires at least one approval for QUICK/STANDARD and two for STRICT,
@@ -292,3 +250,94 @@ Medium blocking, clean/read-only/lock safeguards and explicit reviewer config.
 Runtime/Project configuration may strengthen this floor; implicit missing policy
 or unsupported configuration rejects. The preset can raise count/diversity but
 cannot weaken class minimums or reset lineage requirements.
+
+All Lost/uncertain member reservations continue to consume their actual provider,
+Project and runtime resource shares and remain visible in status. Unrelated Tasks
+can use remaining permits; exhaustion is reported as held capacity, never silently
+ignored or bypassed. No operator release exists before trusted native14 recovery.
+This engine cannot promise unaffected throughput after every global permit is held.
+
+Source/dirty/lock/rule/context/generation drift invalidates certification and keeps
+any unsafe native ownership held. After safe settlement, authorized Human or
+Workflow records inspected locations/cause and a verified committed target plus
+source/lock/policy evidence before a new full-roster round; no automatic reset or
+discard of reviewer edits is authorized. Otherwise terminate without certificate.
+Resource-queue attention exits by authorized rescheduling with available permits
+and a fresh target/claim check, or termination; it does not reuse expired authority
+or count the waiting slot. NeedsContext can exit by an explicit bounded expansion/
+new factual bundle, or termination. Every exit retains the lineage's obligations,
+round/byte counters and original outcomes.
+
+## Consolidated acceptance
+
+These are the closing criteria. Items1–8 map to the public Issue9 checkboxes;
+items9–16 are explicit added integrity/availability requirements. Every criterion
+needs actual consumer evidence; proposed tests and independent development reviews
+are not runtime proof.
+
+1. First-class two-reviewer and one/four-plus rosters run through real Store/Workflow
+   delegation, concurrently using one fixed Task context, exact locked revision and
+   independent member ownership. Reject0/33 slots, invalid parallelism and duplicate
+   Session ownership.
+2. Two-of-three quorum counts exact-round APPROVE only; rejectN=0/N>M and quorum
+   parameters on all/any. All, quorumM and any/quorum1 have equivalent boundary
+   outcomes and retain every nonapproval/blocker.
+3. All-of-two requires both approvals. Exercise empty/nonblocking REQUEST_CHANGES,
+   persistent nonapproval and audited Human relaxation/new-round or termination
+   without fabricated approval.
+4. All-of-three Triple preset resolves actual registered production Claude5/Codex6/
+   Grok7 read-only declarations and supported explicit model/effort configurations.
+   With each MVP executor-in-roster, prove default self-review rejection and explicit
+   independent-Session permission success. Unsupported/unregistered configurations
+   reject before any member input. Fixture-only registrations do not close this.
+5. Failure/timeout/safe cancellation never counts. Separate diagnostics from partial/
+   malformed/overflow verdict/findings; ambiguous/unknown suffix holds for independent
+   inspection/new successful round. Lost never implies terminal cleanup or release.
+6. Reopen and competing coordinators preserve every member opinion/finding, original
+   severity, actual input/configuration measurements, target and verifier history.
+   They cannot duplicate admission, replace a member or reset evidence.
+7. Formal clean/locked/read-only checks exclude Executor dispatch and detect Reviewer
+   or external dirty/source/lock drift. Restoration/new-round evidence and held
+   ownership survive invalidation; advisory review cannot issue a gate certificate.
+8. Prove identical mandatory core hashes, additive specialization/expansion, no peer
+   output in runtime-controlled inputs and storage outside source/bundle paths.
+   Changed and same-target rounds consume actual Git-backed typed revision/identity
+   deltas with prior unresolved facts and fix/check provenance; stale/foreign/relabelled
+   bundles reject. Production20 producer and representative native16 independence/
+   result/efficiency dogfood remain separate mandatory MVP gates.
+9. APPROVE with a potential blocker holds; verified blockers veto every completion
+   mode. Preserve unverified nonblocking Low and immutable original severity.
+   Executor-only dismissal/downgrade and two same-agent/provider-family confirmers
+   reject. Independent eligible confirmation or explicit Human judgment records
+   evidence; verified fix/commit/checks requires a new full-roster round.
+10. Same-target retry and changed-target remediation rerun the full frozen roster,
+    retain prior outcomes and never carry approvals. Within-round retry is absent.
+    Verify/fix/commit/test/re-review and repeated Human-resolved ESCALATE preserve
+    adjudication as labelled history, not model APPROVE.
+11. Supersession retains unresolved obligations and lineage floors across executor,
+    roster, policy and generation changes. Cumulative64-round/128-MiB limits never
+    reset: supersession at round63 permits only one further round. Scope decomposition
+    preserves Goal obligations and cannot certify the prior phase.
+12. Class/Project policy floors reject missing/weaker policies (including blocking
+    {Critical,High} without Medium), early-stop under STRICT/security and absent
+    required configuration. Pairwise independence/delta-author exclusion and unknown
+    authorship decisions are visible; same-agent permission does not authorize
+    dismissal by an author.
+13. Certificate binds exact phase/generation/claim, target/source/core/member hashes,
+    mandatory instruction/skill/context/checkpoint provenance and settled evidence.
+    Source/rules/policy/risk/context drift and cross-phase replay cannot pass.
+    Certificate is not merge permission.
+14. Bounds0/1/32/33,256 findings,8192-byte text,1-MiB envelopes, mandatory overflow,
+    quota/round exhaustion, timeout1–3600 and queue-attention exits retain evidence
+    and fail visibly without semantic truncation or hidden resource bypass.
+15. Lost retains actual resource shares and native locks even after Set termination
+    without certificate. Remaining permits still serve unrelated Projects/Tasks;
+    exhausted capacity is explicitly reported. Reviewer-mutation, drift, NeedsContext
+    and queue holds require their recorded authorized exits. No fictitious cleanup.
+16. Actual reviewed19/43 shared typed-input/member delegation and native5/6/7 caller
+    contracts compose with the real Workflow consumer. Incompatible old writers,
+    generic history/JSON authority fabrication and stale concurrent updates reject
+    without evidence loss. Meaningful boundary mutants, independent requirements/
+    design/source gates and exact-head Linux/macOS CI complete core verification.
+    Real two/triple model results are separately required by16; actual declarations/
+    supported preset consumer proof are required here.

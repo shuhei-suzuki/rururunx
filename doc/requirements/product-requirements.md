@@ -104,6 +104,11 @@ Full dogfood (#16)
 
 Independent work may proceed in parallel, but MVP Optional/Post-MVP work must not become a dependency of this path.
 
+This priority list is not a hard dependency graph: Review Engine preparation can
+proceed after Workflow, while its closing native integration requires reviewed
+Task/Goal Context Pack prepared-input authority and native binding. Review Bundle
+production follows the Review Engine consumer; it is not a circular merge gate.
+
 ## 5. Core entities
 
 ### Project
@@ -589,9 +594,9 @@ review:
 
 Supported completion policies must include at least:
 
-- `all` — every configured reviewer must complete without an unresolved blocking result
-- `quorum` — configurable N-of-M reviewers
-- `any` — at least one reviewer is sufficient, for lightweight workflows
+- `all` — every configured reviewer must return an exact-round APPROVE with no unresolved blocking result
+- `quorum` — configurable N-of-M exact-round approvals; verified blockers veto completion
+- `any` — at least one exact-round approval, for lightweight workflows; verified blockers still veto
 
 A **two-reviewer setup is a first-class configuration**, not a workaround.
 
