@@ -1,7 +1,9 @@
 # Issue51 verification
 
-Documentation-only proposed change, STRICT; no implementation/tests changed in this
-worktree. Design is now proposed; independent design/source approval remains required.
+STRICT environment-isolation source candidate. Requirements7 and both Design4 reviews
+approved before implementation. Scoped controls below pass; source review, causal
+mutations and full exact-head gates remain pending. Earlier rounds retain their
+historical scope and failures.
 
 The executor reports using actual GrokAdapter source at docs-only d56f2bf, identical
 Grok blob to merged4851fcd; the compiled binary revision remains unattested. Isolated
@@ -284,5 +286,7 @@ Expanded cases retain default internal concurrency/bounds and invented env-clear
 ## Expanded restored controls
 
 Clean9e6e106 default native env target6PASS/7owned-entry ignores48.72s: all three irrelevant boundary matrices complete successfully after the concrete fixture corrections. State/nativeport8PASS includes exact name/count/byte bounds and Blocked/lock/Lost precedence; migrated external Grok13PASS/2installed-native ignores25.35s and prior receipt parents6PASS/5owned-entry ignores2.52s. Original failed/compile artifacts remain retained, not counted as gates. These are scoped synthetic/native-consumer regressions, not full workspace or source/mutation acceptance.
+
+Clean06adffe default native env target8PASS/9owned-entry ignores48.64s verifies separately named actual start admission, resume admission and concurrent stop consumers. Irrelevant foreign start/checkpoint/resume matrices now also have separate owning parent targets so a rejected start cannot mask checkpoint/resume mutation attribution. These test-only splits preserve default internal scheduling and production bounds; restored controls and causal operator results follow below when executed.
 
 The next test-only precision change separates final-admission start, final-admission resume and actual post-admission stop into independently owned parent/child tests. This prevents a start guard mutation from masking the required fresh-resume causal target. Every parent still validates exact1test/1pass/post-final-assert marker after owned cleanup; defaults and deadlines remain unchanged. No production/helper authority change. New scoped controls and mutations must verify this committed separation.

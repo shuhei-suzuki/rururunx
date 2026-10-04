@@ -431,9 +431,15 @@ fn control_and_native_whitelist_are_separate_finite_policies() {
 }
 
 #[tokio::test]
-async fn unrelated_foreign_changes_do_not_revoke_start_checkpoint_or_resume() {
+async fn unrelated_foreign_changes_do_not_revoke_start() {
     isolated("adapter::grok::environment_tests::irrelevant_start_child").await;
+}
+#[tokio::test]
+async fn unrelated_foreign_changes_do_not_revoke_checkpoint() {
     isolated("adapter::grok::environment_tests::irrelevant_checkpoint_child").await;
+}
+#[tokio::test]
+async fn unrelated_foreign_changes_do_not_revoke_resume() {
     isolated("adapter::grok::environment_tests::irrelevant_resume_child").await;
 }
 fn mutation_hook(
