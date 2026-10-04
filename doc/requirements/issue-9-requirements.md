@@ -217,3 +217,78 @@ Real registered native adapter capability negotiation is a closing non-model tes
 generic Execute-only CLI and unsupported read-only reviewers reject before input,
 while verified read-only native declarations are accepted. This capability proof
 does not substitute for actual two/triple native model outputs in16.
+
+
+Reviewer-assigned severity is immutable in the original finding. Any adjudication
+that lowers a finding out of the effective blocking set uses the same independent
+confirmation/Human rule as false-positive dismissal; executor-only downgrade
+cannot remove the veto. Upward risk/severity can conservatively hold immediately.
+Certificates preserve original and adjudicated severity plus actor/evidence.
+
+Every policy meets the effective Project/Workflow/class minimum, including required
+approval count, roster size/provider diversity, blocking severities, read-only/
+clean/lock requirements, early-stop prohibition and verified-configuration policy.
+Supersession cannot fall below that minimum or reset the lineage's required floor.
+Human relaxation above the floor is explicit with authority/reason in the result;
+mandatory rules are never disabled. Self-review and dismissal exclusion includes
+all recorded agents/native provider families that modified the reviewed Task delta,
+not only the current Task.executor. Unknown authorship is surfaced and requires
+explicit policy/Human disposition; a changed executor cannot silently self-confirm
+its own earlier changes.
+
+A Reviewer may request bounded broader context without mutating Task.context_version
+or the shared factual core. Record exact requested/returned source hashes, slot
+attribution, budget outcome and additive artifact provenance. Peers remain unchanged;
+material needed by all slots is offered in a new full-roster round. Expansion can
+never silently inject peer output, alter mandatory facts or weaken live source checks.
+
+Human resolution of ESCALATE is typed adjudication history with actor/reason/evidence
+included in a later full-roster round; it can resolve the escalated decision without
+being counted as a model APPROVE. Repeated ESCALATE remains visible and may terminate
+without certificate. Authorized Set termination on Lost produces no certificate and
+releases no native ownership/lock; the Task remains WAITING_HUMAN until trusted
+restart/native recovery14 proves cleanup. GitHub irreversible external outcome
+reconciliation13 is distinct. These future ports are not fabricated by this engine.
+
+Acceptance also proves original-severity preservation and executor downgrade
+rejection, weaker-policy supersession rejection, executor-change authorship fencing,
+independent expansion without peer mutation, Human-resolved repeated ESCALATE and
+Lost Set termination retaining its native hold. Registered native capability tests
+cover actual Claude5/Codex6/Grok7 implementations and their reviewed read-only
+capability contracts: the triple preset remains runtime-unresolvable when any required provider
+or read-only declaration is absent, and rejects before any slot receives input.
+Their reviewed native capability availability and exact19/43 prepared-input ports
+are integrated closing prerequisites; actual model-result dogfood is separately16.
+
+APPROVE with only verified nonblocking findings may count; REQUEST_CHANGES with
+empty or nonblocking findings never counts. This preserves the slot's opinion
+while quorum/any tolerate explicit nonapproval; mode never removes blocker checks.
+Independent partial/malformed inspection uses the same non-executor confirmer or
+Human eligibility as dismissal. Mandatory core/specialization overflow rejects
+before model input with actual size/hash/NeedsContext evidence and Human attention;
+no semantic truncation or success through a byte cap is permitted.
+
+Numbered Issue acceptance mapping:
+
+1. First-class two-reviewer roster and concurrent same-context member authority.
+2. Two-of-three quorum and invalid-parameter rejection, preserving nonapprovals.
+3. All-of-two requires both exact-round approvals and resolved blockers.
+4. Triple preset validates actual native registrations/configuration; orchestration
+   proof and runtime-unavailable state are distinct from mandatory16 model dogfood.
+5. Failure/timeout/cancellation/Lost never counts; output channels, safe settlement
+   and held partial findings follow the decision table.
+6. Round, finding, original severity, verifier and lineage history survive reopening,
+   supersession and concurrent coordinators without reset or stale publication.
+7. Formal clean/locked target excludes executor dispatch and invalidates on source,
+   context or generation drift; read-only Reviewer capabilities are preflighted.
+8. Equivalent shared core, additive specialization/expansion and Git-backed changed/
+   identity delta consumer provenance are tested; full20 producer stays MVP-gated.
+
+
+Policy minimums are explicit resolved inputs, frozen before round admission. Core
+baseline requires at least one approval for QUICK/STANDARD and two for STRICT,
+with distinct reviewer identities/provider families for those two, Critical/High/
+Medium blocking, clean/read-only/lock safeguards and explicit reviewer config.
+Runtime/Project configuration may strengthen this floor; implicit missing policy
+or unsupported configuration rejects. The preset can raise count/diversity but
+cannot weaken class minimums or reset lineage requirements.

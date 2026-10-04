@@ -135,3 +135,15 @@ lifecycle/lock/CAS checks. A new round cannot change context/source authority un
 all prior native members are safely settled. Record-only single-actor binding43
 is not an implicit N-way roster API; review delegation needs its own approved
 additive transition and integration design against the merged19 kernel.
+
+
+## Integration prerequisites and acceptance staging
+
+Reviewed19/43 prepared-frame and binding ports are closing integration prerequisites,
+not evidence that this draft already names their final APIs. Native registration/
+capability checks use actual5/6/7 implementations and their reviewed read-only
+contracts; absence
+makes the configured triple unresolved before any input, rather than falling back
+to synthetic providers. The engine's Git-backed typed delta consumer fixture proves
+consumption/identity/provenance;20 depends on9 and separately ships the deterministic
+production producer. Real two/triple native outputs remain16 Goal proof.

@@ -307,7 +307,7 @@ revision, source versions and Session, with durable artifact references. Reviews
 require an explicit approved verdict. Missing integration (`PendingGates`) waits;
 no successful exit invents verification, approval, PR, merge or cleanup evidence.
 Ports must use their own Git/Session ownership and transactional guards at actual
-native side effects. #12 approval and #13 recovery remain pending; uncertain phase
+native side effects. #10 approval and #14 recovery remain pending; uncertain phase
 reservations never trigger automatic retry. Explicit retry preserves prior attempt
 and reason history and rejects live/Lost executor reservations.
 
