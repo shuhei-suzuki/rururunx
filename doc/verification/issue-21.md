@@ -167,3 +167,15 @@ Design3 defines those source/cutoff/order/safety distinctions and actual consume
 controls/mutants. Native-configuration digests exclude credential/user-config files;
 missing attestation stays unknown. Design3 review pending; no Rust/producer/profile/
 native benchmark implementation or acceptance is claimed.
+
+Design3 4644afa exact CI37204343866 passed Linux/macOS fmt/clippy/tests/debug and
+release builds (individual steps inspected). Both independent native reviews
+completed with actual v3 owned cleanup verified; B approved with no findings, A
+verified all prior fixes and requested one Medium. Verified gap: PriceSchedule
+thresholds need exact native billing-unit granularity; a per-request tier cannot
+be applied to a multi-call turn aggregate. Design4 requires exact unit or proven
+per-call tier partition, otherwise computed cost unavailable, with real cost/report
+controls and mutants. Optional producer-version snapshot and lane cache-warmth
+precision are adopted. Historical red cap-test evidence remains; merged55 actual
+source integration is distinct. Design4 review pending; no Rust/native producer/
+benchmark implementation or acceptance is claimed.

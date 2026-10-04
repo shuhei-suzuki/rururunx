@@ -1,6 +1,6 @@
 # Issue 21: Qualified telemetry and native comparison
 
-Status: Design3, verified independent Design1–Design2 corrections; design/source gates pending.
+Status: Design4, verified independent Design1–Design3 corrections; design/source gates pending.
 Requirements8 at e001483 received two independent approvals, no findings, and
 verified owned cleanup. This document proposes APIs/storage; none is implemented.
 Baseline main80452f4/schema3; required native/context producers remain pending.
@@ -155,6 +155,17 @@ make computed cost unavailable. A schedule change creates a new ID; queries neve
 reinterpret old results with today's prices. Keep currency groups separate and
 report estimate basis/rounding. Price activation is trusted application ingress,
 not agent JSON; no automatic price lookup or current-price correctness claim.
+Every threshold/rate declares its billing evaluation unit and counter basis (such
+as each native model request, rather than a turn/invocation containing many calls).
+Apply it only where CounterContract scope proves that exact unit, or a complete
+disjoint partition proves every included call's eligible tier. Aggregate tokens
+crossing a request threshold cannot price all calls at that tier; no average-call,
+worst-tier or requested-model substitute. An aggregate may use a uniform tier only
+when actual contract/partition evidence proves ALL included billing units occupy
+that tier, including helper models and category overlap. Otherwise computed cost
+is unavailable, even with qualified turn tokens. A two-call turn whose aggregate
+crosses a per-request threshold but individual calls do not must refuse an aggregate
+tier estimate/comparison until its per-call tier eligibility is actually proven.
 
 ## Durable rows, epoch and source artifacts
 
@@ -230,6 +241,9 @@ snapshot digest and last immutable identity. Pin append-sequence high-water mark
 for producer inventory, finalized observations and coverage versions, so concurrent
 appends do not prevent paging through an immutable view. Changed scope/filter/epoch
 or unavailable pinned history returns StaleCursor; no mixed-snapshot total.
+Pin producer row versions for mutable outcomes as well as append positions; read
+the corresponding immutable outcome facts/versioned projection at that high-water
+snapshot, or refuse unavailable history rather than mixing later status changes.
 Query output contains only safe
 identities, numbers, coverage and reason enums, never prompt/transcript/env values,
 raw native errors or arbitrary metadata. SQL projects only required bounded fields.
@@ -302,6 +316,9 @@ in the shared registry and native sessions. Pin only permitted canonical identit
 substitutions in the plan; all Pack/expansion/query channels enforce that boundary.
 Record known exposure.
 Exposure/confounding refuses causal/equivalence claims rather than claiming secrecy.
+Report known lane-to-lane/repetition provider cache warmth, actual eligible cache-read
+observations and pinned counterbalanced order along with apparatus exposure; distinct
+runtime sessions/Projects do not prove cold provider caches.
 
 Baseline disables evaluated reduction only; preserves mandatory safety/context,
 native defaults, independent reviews and equivalent workflow gates. Exercise actual
@@ -404,6 +421,9 @@ Also mutate absence-of-interval-row into continuity, early apparatus warming int
 an unconfounded report, and simultaneous own re-delivery/record loss into mere
 measurement-invalid. Actual producer prerequisites distinguish safety loss from
 projection failure and prevent helper/timeout-only mutation credit.
+Cost/report controls and compiled mutants apply request-level tiers to a multi-call
+aggregate without proven partition, compare that fabricated cost, or mix mutable
+producer outcome versions across pages. Restore exact actual cost/query positives.
 
 Run relevant native/context/Store/Workflow/registry regressions, fmt/clippy/tests,
 debug/release builds, exact Linux/macOS CI and two independent immutable source/
