@@ -129,3 +129,18 @@ actual caller selection, and master all-lifecycle opaque rejection/Generic versu
 baseline ownership. These verified documentation changes require immutable Requirements6
 clarification approval and two Design2 delta approvals before implementation. No tests,
 native execution or private environment/config reading was performed for these changes.
+
+
+## Requirements6 approval and optional acceptance precision
+
+Independent Requirements6 approved immutable739670ac6e7bf766bea4e4eb686e53ed2e357bc0
+with no Critical/High/Medium finding or unresolved blocker; same natived2936e70 reviewer
+completed with owned cleanup verified, raw resumed round attribution unverified. Optional
+H01/H02 were verified against requirements and the actual checkpoint roster comparison:
+explicit actual start/checkpoint/resume irrelevant-change positives, a raw-roster mutant,
+SSLKEYLOGFILE own/shared/foreign/exact-value/absent controls, and registry-valid protected
+NODE_TLS_REJECT_UNAUTHORIZED control are now required. Normal scoped operation events
+remain expected; no additional A error/audit derived from irrelevant foreign changes.
+The predicate wording now unambiguously says registry-forbidden named baseline keys.
+This acceptance/wording-only delta receives scoped Requirements7 fix rereview before
+Design2; no provider or Store implementation/test execution is claimed.

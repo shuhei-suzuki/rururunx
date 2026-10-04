@@ -77,7 +77,8 @@ contracts, not universal provider safety evidence.
    Caller rejection and baseline protection use the same reviewed set. Include every
    registry-forbidden name that can enter the baseline, including prefix-only
    NODE_EXTRA_CA_CERTS/NODE_PATH. Membership is a predicate, not an exhaustive finite
-   list: named controls, LD_/DYLD_ prefixes, baseline names forbidden by the registry,
+   list: registry-forbidden named baseline keys, LD_/DYLD_ prefixes, baseline names
+   forbidden by the registry,
    and the reviewed finite additions. Registry-forbidden names have control precedence
    because no valid Project can own them. Registry-valid credential-bearing or
    credential-locating names must never be added to, or reclassified into, the protected
@@ -162,7 +163,11 @@ contracts, not universal provider safety evidence.
   retained XAI_ baseline conflicts before spawn; reserved RRX_ and invalid persisted
   foreign records are separate cases. Own TZ, own/shared XAI_API_KEY, undeclared global
   native auth and foreign-declared protected control canaries remain positive controls.
-  Also cover undeclared caller
+  Name the registry-valid protected-control positive: foreign NODE_TLS_REJECT_UNAUTHORIZED
+  declaration does not alter/reject A's intentional baseline, while own/caller control
+  admission is rejected. SSLKEYLOGFILE is separately non-control: foreign retained
+  declaration denies A, own/shared exact baseline value is eligible, differing value
+  or caller introduction absent from baseline is rejected. Also cover undeclared caller
   key rejection, immutable native control replacement denial, GIT_/invalid refs and a
   foreign mixed invalid record containing a valid conflicting baseline reference.
 - Constructor environment must be isolated by sanitized test-binary re-exec or a reviewed
@@ -175,7 +180,11 @@ contracts, not universal provider safety evidence.
   reference authority and separately registers/replaces a foreign reference formerly
   treated as global. Assert no native spawn/dispatch or stale consumed intent from
   rejected admission, before matching error wording. Control proves the same prepared
-  path actually starts when authoritative refs remain unchanged.
+  path actually starts when authoritative refs remain unchanged. Irrelevant foreign
+  registration/deletion/reference/lifecycle/non-reference changes after snapshot must
+  still permit actual start, checkpoint and resume, with normal scoped operation events
+  only and no additional error/event derived from that foreign change. A compiled
+  reintroduced raw-roster-equality mutant must fail this actual-consumer positive.
 - Exercise actual Grok start and continuation consumers, not a copied environment
   helper. Compiled caller-ownership/foreign-baseline-conflict admission mutants must reach that
   consumer and die on spawn/child canary state; restored controls pass. Record exact
