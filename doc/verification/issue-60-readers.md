@@ -74,3 +74,13 @@ not merely moved from the caller runtime. Current seven adapter and one Context
 Unknown fixtures must use private cfg(test) pools through actual consumer paths;
 teardown/production-counter controls remain pending. These are candidate gate
 corrections, not executed tests or an available owner implementation.
+
+Requirements2 corrections were committed fc0ce76, then normally merged with main
+efe977486693a065122d8fc177b0e83d29620bdc at49b434b. Both public ancestries are
+preserved. Incoming source is the independent5-line Store::usage safe read-error
+projection plus105 pure State control lines and supporting documentation; actual
+adapter/common inspection/Grok/Context/Cargo.lock diff against20c is empty. No
+new reader tests/source are implemented or passed. Earlier docs trigger20c CI
+37235601171 finished all steps both OS success; actual checkout/tree was not yet
+captured here, so this is not a claimed reader implementation or checkout proof.
+Current reader requirements/design/source gates remain pending.

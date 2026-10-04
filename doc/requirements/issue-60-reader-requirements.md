@@ -5,7 +5,9 @@ inspection diagnostics slice. Combined Requirements2 was request_changes twice;
 its source findings motivate this contract, not approval. Reader Requirements1
 was also request_changes twice; verified corrections below remain pending
 re-review. Requirements, design and source gates for this component are still required before production edits.
-Base: public main2c6ae9d6f54e68a3bdbead25817c46981d231db0.
+Initial base: public main2c6ae9d6f54e68a3bdbead25817c46981d231db0.
+Current candidate normally composes main efe977486693a065122d8fc177b0e83d29620bdc;
+its independent usage-read error projection changes no native/common source.
 
 ## Problem and verified scope
 
