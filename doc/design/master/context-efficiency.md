@@ -359,6 +359,13 @@ is distinct from semantic/lifecycle version; optional repository budget and mand
 facts are counted separately under the complete1-MiB input cap. Provider measurements
 remain nullable. Git/filesystem observations stay outside SharedStore.
 
+The independently scoped [artifact encoding component](../issue-19-encoding-component-design.md)
+streams the existing compact1-MiB artifact validation and caps container depth at120.
+Typed reader guards run before digest/clone/decode; opaque provenance keeps its prior
+path. Accepted hashes/bytes and publication authority are unchanged. This component
+retains no encoded validation buffer, but it does not bound already-materialized
+Store rows or total heap usage. Its Source gate and full native acceptance are separate.
+
 The sole pending incompatible-writer/managed native contract is the
 [Issue19 design](../issue-19-design.md#canonical-schema6-native-writer-predicate-table)
 and its stable S6 acceptance inventory. It requires actual owned admission/settlement,

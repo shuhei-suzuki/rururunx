@@ -1,9 +1,12 @@
 # Issue 19: bounded artifact encoding component
 
-Status: proposed independent component design gate. Actual merged main is schema3;
+Status: independent component Design6 approved at a3ff963 by native read-only
+review611dd31e-9968-45f1-bb43-90f93e661a07 with no Critical/High/Medium findings.
+Encoding source is implemented; its separate immutable Source gate is pending.
+Actual merged main is schema3;
 the unmerged Issue19 component baseline is schema5. This change neither implements
 nor qualifies schema6, managed native ownership, legacy migration or whole Issue19.
-Its implementation commit will contain only this encoding prerequisite and its
+Its implementation commits contain only this encoding prerequisite and its
 actual existing consumers. Other branch changes retain their separate open gates.
 
 ## Requirement and scope

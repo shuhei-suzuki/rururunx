@@ -254,6 +254,10 @@ The command examples above describe the MVP target. Currently implemented:
   byte estimates and preserves Cleanup provenance after disposal. Provider token
   measurements remain null unless supplied. Automatic native event normalization
   and CLI/TUI transport remain pending; see [Issue 19 design](doc/design/issue-19-design.md).
+  This describes unmerged component source, not deployed main. Its bounded artifact
+  encoding now streams compact JSON validation with a1-MiB byte cap and120-container
+  depth cap; it retains no encoded validation buffer. Independent component Source
+  review and full schema6/native/legacy integration acceptance remain separate gates.
 - Library Git/worktree management with project ownership checks, protected branches,
   dirty-state checks, durable logical review locks and safe merged cleanup. CLI/workflow
   integration and interrupted-operation reconciliation are pending.

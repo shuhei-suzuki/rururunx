@@ -36,6 +36,11 @@ Implement typed, Project/Goal/Task-scoped durable working context on existing
 append-only ContextVersion and Checkpoint records. Rust remains provider independent;
 no supervisor model or transcript summarization model is introduced.
 
+The independent [encoding component](../design/issue-19-encoding-component-design.md)
+implements only existing compact artifact byte bounds,120-container depth and typed
+read-order validation. It introduces no schema/native/publication authority and does
+not satisfy the pending S6 producer matrix by itself.
+
 - Task packs preserve purpose, criteria, workflow/risk/phase, constraints, owned
   repository/worktree/revision, scoped authoritative artifact references, selected
   file/symbol metadata, decisions, completed work, failures, verification/findings,
