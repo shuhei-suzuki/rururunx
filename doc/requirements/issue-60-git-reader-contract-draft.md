@@ -44,8 +44,11 @@ Parent Issue60 full runtime workload/effect/delegation/durable settlement remain
    observed. Spawn failure may clear only on the live caller's proven no-effect return.
    Group binding failure after spawn retains the actual Child as Unknown; original
    LaunchFailure survives and never becomes a pre-effect refusal. Never adopt a PID.
-   Git supplies ProcessGroup an INTERNAL flag, not the caller's published flag. Shared
-   ProcessGroup::new/reap/Drop behavior is unchanged. The caller flag clears once only
+   Git supplies ProcessGroup an INTERNAL flag, not the caller's published flag. Do not silently change shared
+   ProcessGroup::new/reap/Drop semantics. Design must explicitly resolve actual Child
+   retention across binding failure and nonblocking caller cancellation, through a
+   Git-local owner or separately impact-reviewed additive shared port. No such port
+   or implementation is approved by the prior diagnostic gate. The caller flag clears once only
    on the live, in-budget complete-settlement return, never from a late internal reap.
    A caller that observed/dropped Unknown freezes its flag true permanently.
    One supervisor drives the operation, transferring exclusive actual anchors to the
@@ -69,8 +72,9 @@ Parent Issue60 full runtime workload/effect/delegation/durable settlement remain
    No unbounded fallback/hold-join thread/task is allowed. Pending anchors remain held
    on cleanup-worker failure or unavailable executor; runtime shutdown is not proof
    of settlement. Actual driver lifecycle/first-cleanup delivery and retained panic
-   anchors need design/source gates. Common native ProcessGroup Drop changes require
-   separately coordinated impact/source gates and are not silently included here.
+   anchors need design/source gates. Common native ProcessGroup changes require separately coordinated full actual
+   native/Generic impact and source gates; this candidate authorizes no shared source
+   edit before those requirements/design gates.
 10. Abort is cancellation requested, not completion. Join vocabulary for each reader:
     not_started, joined_returned (read outcome separately ok/IO/budget error), joined_panic,
     joined_cancelled, not_observed. Each reader has an independent abort_requested bit,
@@ -159,4 +163,6 @@ source consumer gates. Test ordinary success and resource-settled errors as well
 Unknown. Use independently reached consumer mutants, preserving default concurrency,
 64 actual job capacities and finite existing budgets. No production implementation,
 availability improvement, recovery or full enabled-workload settlement is claimed.
-Shared native Drop/new/reap changes require separately coordinated impact/source gates.
+Shared native Drop/new/reap changes require separately coordinated actual-consumer
+impact/design/source gates; the formal reader candidate resolves the previously
+stated unchanged-common assumption explicitly before implementation.
