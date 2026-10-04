@@ -127,3 +127,31 @@ in the complete managed implementation. Independent source/security reviews and
 exact public-head Linux/macOS CI remain pending.
 
 Full debug regression log SHA256: `db5c3576a449d12657bdfea04bdad9317bd7d838970762bdd4e219ef356beb34`; release graph/Store log SHA256: `e281f267ae34f7c028bc1609e5651aae82925e6322df305630abaa9312c05286`.
+
+Initial graph component independent Source1a/Source1b reviews both approved exact
+7c1fd88 with no Critical/High/Medium and actual V2 owned cleanup verified. Native
+sessions e9c97fa8-8d91-4a2e-bbd9-6ba13a593f5a and
+2bee19c2-fd93-4262-a95e-70d3c743063e received identical public-byte-verified inputs;
+neither received the other's current result. Only the structural graph component
+is approved, not complete23/MVP. Reported tests were reviewed, not independently
+rerun by native reviewers. Raw resumed usage/cost/API duration attribution stays
+unverified and is not added as per-round metrics.
+
+One Low G23-SRC-L1 is verified from the actual unconditional put_goal validator:
+previously accepted legacy cycles/self/duplicate pairs fail an unchanged-graph
+Cancel/Fail save. Current generic code can repair a graph and terminate, but that
+is not the required future authorized preservation of frozen legacy history.
+The composed typed legacy Cancel/Fail port must preserve original invalid graph
+bytes and reconcile without graph edits/ratification or a dispatch grant. Add a
+real legacy fixture control there; no such typed authority acceptance is claimed
+by this structural component. In-memory caps do not cover prior deserialization,
+legacy followup vectors or total scoped Task scans; those remain explicit work.
+
+Exact public7c1fd88 CI37192966866 failed macOS lib86PASS/1FAIL/1IGN; only existing
+inspection::each_output_stream_has_a_causal_size_failure at442 failed with actual
+TimedOut. Ubuntu fmt/clippy passed; tests were cancelled by fail-fast, builds were
+skipped, so no complete Linux success. Original log is preserved externally at
+rururunx-issue23-graph-source1-ci-failed.log. No rerun or cause attribution. The
+reviewed #41 test correction must integrate and pass its own final gates; its
+later Grok cleanup failure is separate and not silently erased. Source review
+approval does not replace failed CI or complete23's missing native producers.
