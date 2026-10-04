@@ -80,3 +80,16 @@ specific blocked DENY ordering, second Fake barrier and reachable terminal-input
 mutant. These details remain source-review obligations; no new production result
 or mutation kill is claimed. #19 source/design and combined native gates remain
 pending. Native resumed usage remains attribution-unverified.
+
+Requirements5 proposes the narrow additional receipt-sourced binding contract
+against public unapproved #19 Design23 at8253788: successful actual allocated/
+consumed operation and known-current settled receipt, with lost start-result delivery,
+can supply its exact allocated Session ID only through a sealed Store-derived proof
+inside the same #43 binder. Current active P/G/T/Workflow/context/marker/full locks
+and Session/input/actor predicates remain mandatory; no inactive recovery exception,
+new live owner, retry, wire bytes or success from binding. Ordinary Workflow metadata
+and one factual audit are the only writes beside history.session_id None→ID.
+Real producer/closure controls and compiled private-proof/currency consumers are
+required; source and kernel/profile/recovery integration remain unimplemented.
+Independent Req5 review precedes the corresponding Design5 update. Earlier approved
+Design4 and old CI evidence are retained; dependency research is not source approval.

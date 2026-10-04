@@ -1,8 +1,9 @@
 # Issue 43: Preserve native authority during Workflow Session binding
 
 Workflow: STRICT. Requirements baseline `d8c5266` approved by native independent
-requirements re-review4. Item6 clarification in Design2 remains subject to joint
-requirements/design delta review; design and implementation gates are outstanding.
+requirements re-review4; joint item6/Design4 approved at `77da799` by two independent
+reviewers. Requirements5 adds narrowly scoped receipt-sourced factual binding;
+independent requirements/design delta and all implementation gates remain pending.
 
 ## Problem and MVP relationship
 
@@ -22,7 +23,8 @@ retain their own acceptance criteria.
 ## Required behavior
 
 1. Binding changes only the active Running native attempt's absent `session_id` to
-   its exact persisted returned Session ID. Persist the Workflow record and scoped
+   its exact persisted returned Session ID, or the exact allocated ID obtained via
+   the private receipt-sourced path below. Persist the Workflow record and scoped
    factual audit in one Immediate transaction. Preserve Task, Project, Goal, every
    Session and every scoped WorktreeLock body and version. The binding writes only
    its Workflow record and audit; #19 private binding must not rewrite a native-fenced
@@ -32,7 +34,8 @@ retain their own acceptance criteria.
    current context pointer and identity. Stale snapshots fail without DB/audit change.
 3. Require exact expected native actor, role, Task worktree and owning scope. Require
    the persisted Session's immutable ID/scope/provider/actor/role/worktree to equal
-   the trusted registered adapter's returned identity. If a native UUID was already
+   the trusted registered adapter's returned identity, or the exact sealed receipt-
+   sourced identity under the additional private contract below. If a native UUID was already
    returned, require it unchanged. A Starting return can legitimately precede PID,
    UUID, Running or terminal publication; binding reads the latest durable lifecycle
    in its transaction without treating mutable startup fields as an identity change.
@@ -71,6 +74,53 @@ retain their own acceptance criteria.
    from this binding; native admission/currency and future closure guards still apply.
 8. Update Workflow master design and verification. Independent immutable source review,
    meaningful controls/mutations, build/test/lint and exact-head CI precede merge.
+
+## Receipt-sourced factual binding delta
+
+Pending #19 Design23 at82537888819a14805f8126d1ee8f23b58ffaad10 describes a case where
+the actual supervisor allocated/consumed/completed a successful native operation
+and published its known-current settlement receipt, but delivery of the start result
+was dropped before Workflow received the Session ID. A public ID remains absent;
+the private current outcome must not be replaced by another dispatch or PID adoption.
+This is proposed dependency research, not merged producer or recovery evidence.
+
+Allow the SAME sole #43 binder to obtain that ID only from a sealed Store-derived
+ClosedSettlementBinding proof, constructed inside its Immediate transaction from
+the exact private phase Session owner/operation/KnownCurrentTerminal successful
+receipt, current Session body/version checksum and complete current allocated/
+admitted/consumed input actor/frame pins. Caller JSON, receipt/session IDs, terminal
+labels and public version matches cannot manufacture this proof or a live owner.
+Require actual current Exited success and verified profile-required settlement;
+NoSession/NoCurrentDispatch, restored prior Exited, unknown outcome/cleanup and Lost
+are nonbinding. A row/hint is not genuine supervisor evidence.
+
+Preserve every normal #43 current captured P/G/T activity/version, Workflow scope/
+generation/active Running attempt/index, context/source, dispatch marker, complete
+scoped locks, actor/role/provider/worktree/native identity and uniqueness predicate.
+No caller can select a weaker predicate. Writes remain exact active session_id
+None→allocated ID, ordinary Workflow Record version/updated_at and one bounded
+reserved factual audit only; no Task/Project/Goal/Session/lock body/version changes.
+The proof grants no input/ALLOW/resume/retry/release/transfer or success. Ordinary
+#19 current-success closure still independently validates actual consumed current
+input, native outcome and complete settlement; factual binding alone cannot pass
+a phase or complete a Goal.
+
+An inactive owner or stale source/authority rejects while preserving the original
+claim/receipt/reservation. There is no inactive/restored recovery exemption; future
+#14 recovery mode requires a separately reviewed #14/#19/#43 contract. Keep the
+combined real #19 producer/all-writer epoch and native-profile source gates before
+deployment, with no generic/public receipt path or temporary permissive port.
+
+Exercise an actual owned supervisor finishing/recording settlement before delivering
+its start result, drop that delivery, then invoke the real binder and ordinary
+current-success closure. Compare exact unchanged Task/P/G/Session/full locks and
+one factual audit/Workflow advance; demonstrate no second dispatch/native bytes.
+Independently reject stale/inactive/foreign/restored/missing private proof and wrong
+operation/input/native identity with no DB/audit mutation. Compiled actual-consumer
+mutants substitute caller receipt/ID, omit current input/receipt/owner checks, accept
+restored-prior or inactive evidence, broaden writes, or infer success from binding;
+each must reach its intended assertion with actual passing producer prerequisites.
+Controlled fixtures must create proof through real private ports, never seed SQL.
 
 ## Impact and verification
 
