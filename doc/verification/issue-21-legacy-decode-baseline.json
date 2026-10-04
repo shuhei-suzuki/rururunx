@@ -1,0 +1,18 @@
+{
+  "head": "17915ed67270d364788204df86285d436a666dd3",
+  "test_exit": 101,
+  "compiled": true,
+  "actual_consumer_leak_failure": true,
+  "log_sha256": "3f1b01591807e3cd4e94964ad8c47a41b0f222dbf3a6add3f933502084c4f287",
+  "observed_assertions": [
+    "thread 'legacy_usage_query_redacts_malformed_body_decode_chain_without_writes' (231688090) panicked at crates/rrx/tests/state.rs:1062:17:",
+    "usage read leaked body via input_tokens: invalid persisted snapshot: invalid type: string \"STATIC_USAGE_BODY_CANARY_DO_NOT_PROJECT\", expected u64 at line 1 column 207",
+    "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 16 filtered out; finished in 0.01s"
+  ],
+  "previous_oracle_order_failure": {
+    "head": "acb5bca",
+    "log_sha256": "7b03cae6e178a4b783966da09c795d6bafcb1715a45fdc2a1c50ee8c081d3959",
+    "disposition": "actual consumer first failed static-text expectation before canary inspection; no leak kill credit. New test-only commit checks leakage first; production unchanged."
+  },
+  "scope": "actual unsafe persisted Usage decode chain only; no native/whole21 acceptance"
+}

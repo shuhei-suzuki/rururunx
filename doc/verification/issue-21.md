@@ -379,3 +379,55 @@ Identical command retried with this evidence was approved; no workaround or priv
 payload used. Public proof retained. Final evidence-only metadata commit is manually
 reviewed with all38 source/test/build blobs unchanged; final current CI still required
 before normal limited merge. Whole21/MVP and native acceptance remain OPEN.
+
+
+Next legacy Usage decode-error component under approved Req8/Design4: actual
+public Store::usage body-type corruption reproduces a synthetic canary in alternate
+Display through the serde source chain at test-only17915ed. The initialacb5 control
+stopped earlier on outer static-text difference and earns no leakage kill credit;
+its log is retained. Only this Usage decode maps failure to a static message with
+no raw source chain. Malformed input-token/cost/Scope fields read through Task/Goal/Project views, exact Display/alternate
+Display and canary-free Debug controls retain schema checks and snapshot all usage/
+audit rows and owners/Sessions. Debug may retain ordinary anyhow backtrace behavior;
+no configuration override or bound on arbitrary backtrace is claimed. Whole21/
+private projection/native/epoch/raw-retirement remain OPEN. Changed-source checks,
+causal mutants, two independent reviews and current CI are pending.
+
+
+Legacy decode projection changed source c44cbc7: full default normal-host workspace
+237 Rust+2doc tests PASS,9explicitignored; fmt/all-target Clippy-Dwarnings and debug/
+release BUILD PASS. Counts derived mechanically from retained11 target summaries.
+Three compiled clean committed mutants revert projection, retain raw cause, or
+format raw cause into text; each ACTUALLY leaks the synthetic canary through public
+Store::usage and the real consumer detects it. Full tree/source restored and focused
+control PASS. Public patches/source/test/tree/log hashes and all38 build inputs
+retained; compiler/setup errors earn no credit. Other shared decode readers, legacy
+valid raw metadata, allocation bounds, SQL error/backtrace details, native and full21
+producer gates remain outside this limited component. Two independent reviews and
+current CI still required before merge. No tracking Issue closure.
+
+
+Normal no-conflict integration775dc7d of merged environment2c6ae9d preserves the
+Usage projection/test and Session/CAS environment guards. New DEFAULT full263 Rust+
+2doc tests PASS,24explicitignored; fmt/alltargetClippy-Dwarnings/debug/release BUILD
+PASS, affected State RELEASE17/17 PASS. No full775 workspace release TEST claimed.
+Three projection/cause/message mutants at this composed source again compile and
+actually leak the canary; all killed by the public read consumer, exact full tree
+and source restored and control PASS. Current input/patch/tree/log hashes retained.
+Earlier237+2/fullsourcec44 results remain separate, not reassigned. Two independent
+immutable Source1 reviews and exact current CI still required; no native/full21 gate
+waiver, historical555 cause/regression UNKNOWN retained, no issue closure.
+
+
+Legacy decode Source1 d774df3: TWO independent native APPROVE, no Critical/High/Medium
+or unresolved component blocker. Both selected review wrappers closed and cleaned;
+this is not F1/all-descendant native cleanup qualification. Verified Low wording
+corrected and master direct component link added. Optional unknown-field-key quoting
+coverage deferred: actual controls cover input_tokens/estimated_cost/scope invalid
+types only; production discards every decode error uniformly. No unknown-key test
+or category-specific mutation credit. Source/test/Cargo/CI unchanged in this final
+evidence-only metadata; all42 current inputs checked against reviewed head.
+CI37235683012 Linux/macOS EVERY step PASS, actual checkout266262c9 parents2c6ae9d/
+d774df3 and complete tree equal reviewed head; debug tests and release BUILD only.
+Final current-head CI/tree and empty closing references remain merge gates. Whole21/
+MVP/native producers OPEN; historical555 cause/regression UNKNOWN retained.
