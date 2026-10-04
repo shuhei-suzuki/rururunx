@@ -418,9 +418,10 @@ strict Project/Goal version equality.
 
 ### Private native input admission
 
-Schema6 adds one private Task-scoped admission digest per Session, atomically with
-validated Running persistence/audit. Pending waiting/Lost input revalidates live
-frame/head; uncertainty is not consumption. New consumed intent always revalidates.
+The reviewed-before-code schema6 contract adds one private Task-scoped admission
+digest per Session, atomically with validated Running persistence/audit. Production
+remains schema5 until that implementation is validated. Pending waiting input
+revalidates live frame/head; Lost is absorbing under generic writes; uncertainty is not consumption. New consumed intent always revalidates.
 Nonterminal admitted input cannot visit Starting to restore an older terminal
 frame. Exact prewire restore is denied after admission/consumption/uncertainty;
 owned higher-version terminal continuation binds fresh authority first. These are
@@ -502,8 +503,8 @@ admission/consumption and Exited outcome. Semantic authority changes require bot
 projection and persistence/writer-fence version changes.
 
 
-Persisted Lost/uncertain ownership cannot become terminal through generic history
-writes; trusted owned recovery remains Issue14. Private admission proves exact
+Persisted Lost is absorbing under generic writes; uncertain ownership cannot
+become terminal through generic history writes; trusted owned recovery remains Issue14. Private admission proves exact
 input, while native adapters retain their separate registry/terminal authority.
 Unregistered historical UUID/native_ref cannot authorize native resume. Pending
 initial actor binding refreshes preparation only after latest full-frame/head and
@@ -512,3 +513,11 @@ caller-classified historical coordination evidence; Consultant facts are preserv
 without representing them as native transcript or completion proof. New claims
 retain live-head checks; already admitted claims retain their frozen provenance.
 Migration verifies every legacy typed checkpoint reference before mutation.
+
+
+Protected actor pins are checked on every Session update, not only launches.
+Historical initial binding requires the exact private admitted digest and updates
+its pair atomically; it cannot recover Lost. Admission encoding has explicit
+entry/string/aggregate bounds. Fresh and migrated schema authority constraints
+must match. Writer compatibility SQL fences state writes; old runtime/native/Git
+activity must be stopped and drained for supported upgrades.

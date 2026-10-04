@@ -157,8 +157,8 @@ strict Project/Goal version equality.
 
 Protected Task input stays pending until an exact consumed dispatch or a private,
 current-frame/head-validated Running publication. WaitingApproval/WaitingHuman/Lost
-and native_dispatch_unobserved do not grant admission. Pending reentry revalidates
-live authority. Already admitted input retains its historical pins. New consumed
+and native_dispatch_unobserved do not grant admission. Admissible pending waiting
+reentry revalidates live authority; Lost has no generic exit. Already admitted input retains its historical pins. New consumed
 intent always revalidates, and admitted nonterminal input cannot visit Starting to
 roll back to an older terminal frame. Exact prewire restoration requires no
 admission, consumption or uncertainty. Higher-input continuation starts only from
@@ -246,8 +246,8 @@ Future instruction-authority changes require incompatible-writer exclusion as
 well as new semantic versioning, including already-open older runtimes.
 
 
-Generic history cannot turn persisted Lost/uncertain ownership into terminal native
-completion; verified owned recovery remains an explicit Issue14 prerequisite.
+Generic writes keep persisted Lost absorbing and cannot turn Lost/uncertain
+ownership into terminal native completion; verified owned recovery remains an explicit Issue14 prerequisite.
 Private preparation/admission proves exact input currency, not native transcript
 truth. Provider private Session ownership must reject unregistered historical
 UUID/native_ref before native resume or wire delivery. Factual Consultant/history
@@ -257,3 +257,12 @@ binding revalidates the latest full frame/head/lifecycle and updates its private
 preparation pair atomically; it never grants delivery. Migration verifies all
 legacy typed checkpoint references before mutation, retaining actual old-producer
 checksums and refusing inconsistent history.
+
+
+Protected actor pins remain exact on every observation/terminal update except
+explicit validated initial binding, owned fresh continuation or exact prewire
+restore. Pending or historical binding never weakens Lost recovery. Admission
+metadata is bounded before hashing. Fresh and migrated schemas preserve identical
+authority constraints. Database writer fencing prevents incompatible state writes,
+not arbitrary old-binary external operations; supported upgrades require all old
+runtimes and owned groups stopped/drained before migration.

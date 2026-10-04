@@ -119,8 +119,9 @@ Existing admitted Running/terminal observations remain valid and preserve immuta
 attempt identity. `Store::validate_checkpoint_source` exposes the pure bounded
 comparison for native adapters; it performs no Git/filesystem work.
 
-Admitted native Sessions keep their immutable launch head through approval/human/
-Lost state reentry. New reservations, new consumed dispatch intents and
+Admitted native Sessions keep their immutable launch head through approval/human
+observations and Lost diagnostics. Under the schema6 transition contract below,
+Lost is absorbing and cannot reenter Running through generic writes. New reservations, new consumed dispatch intents and
 Starting→Running publication compare the current head. Finalized frozen Cleanup binds its original historical head; a
 checkpoint appended during Waiting Cleanup remains durable and cannot prevent
 final persistence after actual disposal. Goal descriptors preserve exact opaque
@@ -263,9 +264,12 @@ The launch guard returns a typed outcome: `Validated`, `ConsumedHistorical`,
 validates the latest frame/head first, even if the same input has an ack. For other
 admissions, actual consumed intent or a matching private row permits historical
 observation of the same pinned input. Otherwise Starting/Running validates current
-frame/head regardless of the previous waiting/Lost state. Waiting/Lost never writes
+frame/head for an admissible previous state. Lost remains absorbing under the
+generic transition predicate below, including when an old input has an ack.
+Waiting/Lost never writes
 an ack. A new or changed Running input writes its admitted pair only after `Validated` or
-`ConsumedHistorical`; `Acked` preserves the existing row. `BoundHistorical` is
+`ConsumedHistorical`; `Acked` requires the NEW exact Session digest to equal the admitted pair and
+preserves the existing row. `BoundHistorical` is
 the sole equal-version digest update: the persisted old digest must match the
 private admission row, every input/scope/actor pin remains exact, and only the
 initial monotonic native binding described below may change. It grants no new
@@ -535,7 +539,8 @@ connections must pass registration and reopening tests.
 
 ### Boundary validation
 
-Tests cover pending Starting-to-each-waiting/Lost-to-Running head rejection, unknown
+Tests cover pending Starting-to-waiting-to-Running head rejection and absorbing
+Lost-to-every-other-state rejection, unknown
 flag forgery, caller JSON ack forgery, successful first Running then historical
 reentry, forbidden Running-to-Starting-to-old-terminal rollback, exact prewire
 restore, higher-version continuation, Session/ack/audit rollback and reopening.
@@ -757,8 +762,10 @@ private safe-rollback certificate is introduced by this context contract.
 
 ### Native ownership, terminal uncertainty and factual checkpoint provenance
 
-For every persisted Lost Session, generic put_session/put_record cannot move it
-to Exited/Stopped or another terminal state. For a protected or allocated Session
+For every persisted Lost Session, generic put_session/put_record permits only
+Lost-to-Lost diagnostic observations. Lost cannot exit to ANY other state,
+including Running, Waiting or terminal, regardless of historical admission. This
+absorbing predicate runs before every launch/outcome classification. For a protected or allocated Session
 with native_dispatch_unobserved=true, generic writes cannot manufacture terminal
 settlement either. Conservative diagnostic updates preserve the monotonic flag,
 input, actor and consumed intent; an ack/preparation row does not prove native
@@ -768,9 +775,11 @@ No such port is advertised in this Issue. Succeeded/allocated closure therefore
 cannot obtain terminal proof by converting Lost/uncertain history through a
 generic write. Normal non-uncertain owned Starting/Running-to-terminal caller
 updates retain their native adapter protocol; Store does not attest arbitrary
-Session JSON as native output. Test allocated admitted Lost-to-Exited rejection
-through independent connections and unchanged Workflow closure, including a
-mutant that removes the transition guard. Legitimate initial terminal Consultant
+Session JSON as native output. Test allocated admitted Lost-to-Exited, Lost-to-Running-to-Exited and
+Lost-to-Waiting-to-Running-to-Exited rejection through independent connections
+and unchanged Workflow closure, including a mutant that removes the absorbing
+transition guard. Lost observations also preserve exact actor pins; late binding
+cannot act as recovery. Legitimate initial terminal Consultant
 history remains recordable; it is not recovery of a persisted Lost owner.
 
 Native_ref preservation is conditional on the provider's private live ownership
@@ -825,3 +834,67 @@ Session restore checksums separately cover fractional diagnostic parse/serialize
 roundtrips; their actual native producer bytes must remain identical. Encoding
 feature tests must distinguish that real restore input from fabricated checkpoint
 number cases.
+
+
+### Complete update predicates and proof limits
+
+Every protected Session update, regardless of target state, first compares its
+actor pins with the old persisted Session: model, effort and native_ref must remain
+exact. The only exceptions are a validated higher-input owned terminal-to-Starting
+continuation, exact private prewire restoration, pending initial binding with
+latest-frame/head/lifecycle validation, or BoundHistorical initial None-to-Some
+binding proved by the old exact admitted pair. BoundHistorical may observe
+Running, WaitingApproval, WaitingHuman or an ordinary terminal outcome; it cannot
+leave or change actor fields of Lost. All other actor fields remain exact on those
+exceptions. Acked requires digest(new)==admitted_digest, not just the old digest.
+A permitted Waiting initial binding after checkpoint append updates the admitted
+and applicable preparation pair atomically using historical input, without new
+wire or revalidating it as a fresh input. Model/effort/native_ref substitution or
+clearing during Waiting/Lost/terminal targets rejects. Source/restore input fields
+retain their existing same-attempt pins. Higher-input model/effort request reset
+never resets the Session UUID's privately owned known native_ref. Tests include
+every target-state actor substitution, late Waiting binding after checkpoint
+append and audit failure rollback; mutate the global actor check and new-digest
+equality separately.
+
+Before hashing a protected admission tuple, enforce explicit limits: at most8192
+source_versions entries; UTF-8 keys at most8192 bytes and values at most256 bytes;
+agent/provider/model strings at most256 bytes each, effort at most128 bytes and
+native_ref at most1024 bytes; exact nonempty UTF-8 worktree at most4096 bytes;
+revision at most128 bytes and payload SHA exactly64 lowerhex bytes. Reject invalid
+IDs, absent Task scope, zero or out-of-range versions, nonrepresentable paths and
+arithmetic overflow. The entire typed encoded admission tuple is at most2 MiB;
+input_bytes remains bounded by the complete typed model-frame 1 MiB cap. Cardinality
+and aggregate string-byte accounting precede digest serialization/hash, so a
+large map cannot force unbounded hashing. These are simultaneous caps, not a
+promise that maximum entries/strings fit together. Actual prepared authority must
+still equal the complete source map without silently dropping keys.
+
+Writer-v6 SQL triggers fence all state writes; they do not sandbox an old binary's
+external filesystem, Git or native RPC operations. The supported migration
+procedure requires every old runtime and its owned groups to be verifiably stopped
+and drained before opening the new runtime. The minimal held-connection fixture
+is an idle Store writer, not permission for an old native supervisor to remain
+live across upgrade. Its post-migration public-write failure proves incompatible
+state-writer exclusion only. Operators check compatible-runtime status/owned
+cleanup and close runtimes before upgrade; no automatic discovery of every
+same-user process or global OS execution fence is claimed by Store. Existing
+provider before-input Session/CAS gates remain mandatory, and native integration
+tests must prove no model input is sent after that publication is rejected.
+Worktree provisioning must not run concurrently with supported migration; SQL
+fences alone cannot undo a Git side effect performed before a rejected write.
+This restriction makes the public drain-only upgrade contract explicit rather
+than asserting a database trigger attests external effects.
+
+Besides per-table writer-fence coverage, compare normalized sqlite_schema tuples
+(type,name,tbl_name,sql) for a fresh schema6 database and every legitimate migrated
+v1–v5 fixture. Private-table definitions, domain/immutability triggers, indexes and
+CHECK constraints must match, ignoring only SQLite internal objects and harmless
+SQL whitespace. Native old-writer fixtures also verify marker refusal and
+unchanged logical authority, not only trigger counts. Checkpoint append callers
+are trusted runtime integrations/operators with explicit fact-classification
+responsibility; the in-process Store API is not an authentication boundary against
+a malicious same-user caller. Such callers can append facts that consume retained
+capacity or hold future claims. Preserve attribution/audit and surface those holds;
+do not claim private admission makes arbitrary event text trustworthy or silently
+drop it to manufacture availability.
