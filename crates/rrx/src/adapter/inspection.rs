@@ -465,4 +465,221 @@ mod tests {
         eprintln!("retained output endpoint observation elapsed={elapsed:?}");
         assert_eq!(result.unwrap_err().kind(), io::ErrorKind::TimedOut);
     }
+    struct OwnedBoundary {
+        leader: Option<super::super::ProcessGroup>,
+        member: std::process::Child,
+    }
+    impl OwnedBoundary {
+        async fn new() -> Self {
+            use std::os::unix::process::CommandExt;
+            let child = tokio::process::Command::new("/bin/cat")
+                .env_clear()
+                .stdin(Stdio::piped())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .kill_on_drop(true)
+                .process_group(0)
+                .spawn()
+                .unwrap();
+            let mut leader = super::super::ProcessGroup::new(
+                child,
+                std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            )
+            .unwrap();
+            let member = std::process::Command::new("/bin/sleep")
+                .arg("30")
+                .env_clear()
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .process_group(leader.pid.as_raw_nonzero().get())
+                .spawn()
+                .unwrap();
+            drop(leader.child.stdin.take());
+            let fixture = Self {
+                leader: Some(leader),
+                member,
+            };
+            tokio::time::timeout(
+                Duration::from_secs(5),
+                fixture.leader.as_ref().unwrap().observe_exit(),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+            fixture
+        }
+        async fn cleanup(&mut self) {
+            let leader = self.leader.as_mut().unwrap();
+            // Independent signal path: mutation of the tested resolver cannot
+            // erase fixture ownership or make us reap the anchor first.
+            leader.inspection_plan = None;
+            let _ = rustix::process::kill_process_group(leader.pid, rustix::process::Signal::KILL);
+            let _ = self.member.kill();
+            self.member.wait().unwrap();
+            leader.group_owned = false;
+            leader.reap().await.unwrap();
+            self.leader.take();
+        }
+    }
+    impl Drop for OwnedBoundary {
+        fn drop(&mut self) {
+            if let Some(leader) = &mut self.leader {
+                leader.inspection_plan = None;
+                let _ =
+                    rustix::process::kill_process_group(leader.pid, rustix::process::Signal::KILL);
+                let _ = self.member.kill();
+                let _ = self.member.wait();
+                // ProcessGroup's ordinary final cleanup retains the unreaped
+                // exact leader until Tokio's child reaper runs.
+            }
+        }
+    }
+    #[tokio::test]
+    async fn actual_owned_zombie_leader_and_live_member_cannot_be_declared_dead() {
+        let mut fixture = OwnedBoundary::new().await;
+        let leader = fixture.leader.as_mut().unwrap();
+        let pid = leader.pid.as_raw_nonzero().get();
+        let selected = inspect(Path::new("/bin/ps"), pid, |_| {});
+        leader.inspection_plan = Some(TestPlan::observe_only(false));
+        let result = leader.kill_group();
+        let retained = leader.group_owned;
+        fixture.cleanup().await;
+        assert!(
+            !selected.unwrap(),
+            "live selected group member must be visible"
+        );
+        assert_eq!(
+            result.unwrap_err().raw_os_error(),
+            Some(rustix::io::Errno::PERM.raw_os_error())
+        );
+        assert!(
+            retained,
+            "a zombie leader alone cannot release group ownership"
+        );
+    }
+    #[tokio::test]
+    async fn actual_legacy_mode_failure_keeps_owned_live_group_unknown() {
+        let mut fixture = OwnedBoundary::new().await;
+        let leader = fixture.leader.as_mut().unwrap();
+        leader.inspection_plan = Some(TestPlan::observe_only(true));
+        let result = leader.kill_group();
+        let retained = leader.group_owned;
+        fixture.cleanup().await;
+        assert!(result.unwrap_err().to_string().contains("exit failed"));
+        assert!(
+            retained,
+            "legacy selection cannot clear live group ownership"
+        );
+    }
+    #[tokio::test]
+    async fn actual_selected_group_excludes_other_owned_group_and_accepts_only_all_zombies() {
+        let mut fixture = OwnedBoundary::new().await;
+        let mut other = OwnedBoundary::new().await;
+        let leader = fixture.leader.as_mut().unwrap();
+        let pid = leader.pid.as_raw_nonzero().get();
+        fixture.member.kill().unwrap();
+        let member_pid = rustix::process::Pid::from_raw(fixture.member.id() as i32).unwrap();
+        loop {
+            if rustix::process::waitid(
+                rustix::process::WaitId::Pid(member_pid),
+                rustix::process::WaitIdOptions::EXITED
+                    | rustix::process::WaitIdOptions::NOWAIT
+                    | rustix::process::WaitIdOptions::NOHANG,
+            )
+            .unwrap()
+            .is_some()
+            {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        let all_zombies = inspect(Path::new("/bin/ps"), pid, |_| {});
+        let other_live = inspect(
+            Path::new("/bin/ps"),
+            other.leader.as_ref().unwrap().pid.as_raw_nonzero().get(),
+            |_| {},
+        );
+        fixture.cleanup().await;
+        other.cleanup().await;
+        assert!(
+            all_zombies.unwrap(),
+            "other owned live group must be excluded"
+        );
+        assert!(!other_live.unwrap());
+    }
+}
+
+/// Per-invocation macOS test evidence. No production/public configuration path.
+#[cfg(test)]
+#[derive(Clone, Copy)]
+pub(crate) enum UnknownObservation {
+    Diagnostics,
+    Empty,
+    MissingLeader,
+    Malformed,
+    Timeout,
+    ExitFailure,
+}
+#[cfg(test)]
+#[derive(Clone)]
+pub(crate) struct TestPlan {
+    mode: TestMode,
+}
+#[cfg(test)]
+#[derive(Clone)]
+enum TestMode {
+    KillAndUnknown(UnknownObservation),
+    ObserveOnly { legacy: bool },
+}
+#[cfg(test)]
+impl TestPlan {
+    pub(crate) fn unknown(observation: UnknownObservation) -> Self {
+        Self {
+            mode: TestMode::KillAndUnknown(observation),
+        }
+    }
+    // Only this module's owned-boundary fixtures may construct a no-KILL plan.
+    fn observe_only(legacy: bool) -> Self {
+        Self {
+            mode: TestMode::ObserveOnly { legacy },
+        }
+    }
+    pub(super) fn signal(&self, pid: rustix::process::Pid) -> Result<(), rustix::io::Errno> {
+        match self.mode {
+            TestMode::ObserveOnly { .. } => Err(rustix::io::Errno::PERM),
+            TestMode::KillAndUnknown(_) => {
+                match rustix::process::kill_process_group(pid, rustix::process::Signal::KILL) {
+                    Ok(()) | Err(rustix::io::Errno::SRCH | rustix::io::Errno::PERM) => {
+                        Err(rustix::io::Errno::PERM)
+                    }
+                    error => error,
+                }
+            }
+        }
+    }
+    pub(super) fn inspect(&self, leader: i32) -> io::Result<bool> {
+        let body = match self.mode {
+            TestMode::ObserveOnly { legacy: false } => "exec /bin/ps \"$0\" \"$@\"",
+            TestMode::ObserveOnly { legacy: true } => {
+                "COMMAND_MODE=legacy exec /bin/ps \"$0\" \"$@\""
+            }
+            TestMode::KillAndUnknown(UnknownObservation::Diagnostics) => {
+                "printf '%s %s Z\\n' \"$1\" \"$1\"; printf 'fixture diagnostic' >&2"
+            }
+            TestMode::KillAndUnknown(UnknownObservation::Empty) => ":",
+            TestMode::KillAndUnknown(UnknownObservation::MissingLeader) => {
+                "printf '%s %s Z\\n' \"$(($1+1))\" \"$1\""
+            }
+            TestMode::KillAndUnknown(UnknownObservation::Malformed) => "printf 'malformed\\n'",
+            TestMode::KillAndUnknown(UnknownObservation::Timeout) => "exec /bin/sleep 2",
+            TestMode::KillAndUnknown(UnknownObservation::ExitFailure) => "exit 1",
+        };
+        inspect_with_prefix(
+            Path::new("/bin/sh"),
+            &["-c".into(), body.into()],
+            leader,
+            |_| {},
+        )
+    }
 }

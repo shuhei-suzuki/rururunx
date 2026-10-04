@@ -2,6 +2,8 @@
 pub mod grok;
 #[cfg(target_os = "macos")]
 mod inspection;
+#[cfg(all(test, target_os = "macos"))]
+pub(crate) use inspection::{TestPlan as ProcessInspectionPlan, UnknownObservation};
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     future::Future,
@@ -311,6 +313,8 @@ struct Reservation {
 /// Owns the unreaped leader so PGID cannot be recycled before group cleanup.
 struct ProcessGroup {
     child: Child,
+    #[cfg(all(test, target_os = "macos"))]
+    inspection_plan: Option<ProcessInspectionPlan>,
     pid: Pid,
     group_owned: bool,
     #[cfg(test)]
@@ -330,6 +334,8 @@ impl ProcessGroup {
         process_uncertain.store(true, Ordering::SeqCst);
         Ok(Self {
             child,
+            #[cfg(all(test, target_os = "macos"))]
+            inspection_plan: None,
             pid,
             group_owned: true,
             #[cfg(test)]
@@ -371,9 +377,21 @@ impl ProcessGroup {
                 "injected native cleanup failure",
             ));
         }
+        #[cfg(all(test, target_os = "macos"))]
+        let result = match &self.inspection_plan {
+            Some(plan) => plan.signal(self.pid),
+            None => kill_process_group(self.pid, Signal::KILL),
+        };
+        #[cfg(not(all(test, target_os = "macos")))]
         let result = kill_process_group(self.pid, Signal::KILL);
         #[cfg(target_os = "macos")]
-        let result = resolve_macos_signal_result(result, || macos_group_is_dead(self.pid));
+        let result = resolve_macos_signal_result(result, || {
+            #[cfg(test)]
+            if let Some(plan) = &self.inspection_plan {
+                return plan.inspect(self.pid.as_raw_nonzero().get());
+            }
+            macos_group_is_dead(self.pid)
+        });
         #[cfg(not(target_os = "macos"))]
         let result = match result {
             Ok(()) | Err(rustix::io::Errno::SRCH) => Ok(()),
@@ -459,6 +477,8 @@ pub struct GenericCliAdapter {
     )>,
     #[cfg(test)]
     fail_executor_cleanup: bool,
+    #[cfg(all(test, target_os = "macos"))]
+    process_inspection: Option<ProcessInspectionPlan>,
     sessions: Mutex<HashMap<SessionId, Entry>>,
 }
 const OUTPUT_LIMIT: usize = 64 * 1024;
@@ -483,6 +503,8 @@ impl GenericCliAdapter {
             before_running_write: None,
             #[cfg(test)]
             fail_executor_cleanup: false,
+            #[cfg(all(test, target_os = "macos"))]
+            process_inspection: None,
             sessions: Mutex::new(HashMap::new()),
         })
     }
@@ -623,6 +645,10 @@ impl AgentAdapter for GenericCliAdapter {
                 }
             };
             session.pid = child.child.id();
+            #[cfg(all(test, target_os = "macos"))]
+            {
+                child.inspection_plan = self.process_inspection.clone();
+            }
             #[cfg(test)]
             {
                 child.fail_cleanup = self.fail_executor_cleanup;
@@ -1252,6 +1278,48 @@ pub(crate) async fn bounded_git_raw(
     deadline: tokio::time::Instant,
     process_uncertain: Arc<AtomicBool>,
 ) -> AdapterResult<Vec<u8>> {
+    bounded_git_raw_inner(
+        executable,
+        cwd,
+        args,
+        environment,
+        deadline,
+        process_uncertain,
+        #[cfg(all(test, target_os = "macos"))]
+        None,
+    )
+    .await
+}
+#[cfg(all(test, target_os = "macos"))]
+pub(crate) async fn bounded_git_raw_with_plan(
+    executable: &Path,
+    cwd: &Path,
+    args: &[String],
+    environment: Vec<(std::ffi::OsString, std::ffi::OsString)>,
+    deadline: tokio::time::Instant,
+    process_uncertain: Arc<AtomicBool>,
+    plan: ProcessInspectionPlan,
+) -> AdapterResult<Vec<u8>> {
+    bounded_git_raw_inner(
+        executable,
+        cwd,
+        args,
+        environment,
+        deadline,
+        process_uncertain,
+        Some(plan),
+    )
+    .await
+}
+async fn bounded_git_raw_inner(
+    executable: &Path,
+    cwd: &Path,
+    args: &[String],
+    environment: Vec<(std::ffi::OsString, std::ffi::OsString)>,
+    deadline: tokio::time::Instant,
+    process_uncertain: Arc<AtomicBool>,
+    #[cfg(all(test, target_os = "macos"))] plan: Option<ProcessInspectionPlan>,
+) -> AdapterResult<Vec<u8>> {
     if tokio::time::Instant::now() >= deadline {
         return Err(error(
             ErrorKind::Timeout,
@@ -1275,6 +1343,10 @@ pub(crate) async fn bounded_git_raw(
             .map_err(|e| error(ErrorKind::ProcessFailure, e.to_string()))?,
         process_uncertain,
     )?;
+    #[cfg(all(test, target_os = "macos"))]
+    {
+        child.inspection_plan = plan;
+    }
     let stdout = child.child.stdout.take().expect("piped Git stdout");
     let stderr = child.child.stderr.take().expect("piped Git stderr");
     let mut stdout = tokio::spawn(read_git_output(stdout));
@@ -1508,6 +1580,112 @@ async fn supervise(
 
 #[cfg(test)]
 mod tests {
+    #[cfg(target_os = "macos")]
+    #[tokio::test]
+    async fn real_git_unknown_observations_keep_cleanup_reservation() {
+        let temp = tempfile::tempdir().unwrap();
+        let executable = resolve_executable("git").unwrap();
+        let deadline = || tokio::time::Instant::now() + Duration::from_secs(5);
+        let args = vec!["--version".to_owned()];
+        let control = Arc::new(AtomicBool::new(false));
+        assert!(
+            bounded_git_raw(
+                &executable,
+                temp.path(),
+                &args,
+                vec![],
+                deadline(),
+                control.clone()
+            )
+            .await
+            .is_ok()
+        );
+        assert!(!control.load(Ordering::SeqCst));
+        for observation in [
+            UnknownObservation::Diagnostics,
+            UnknownObservation::Empty,
+            UnknownObservation::MissingLeader,
+            UnknownObservation::Malformed,
+            UnknownObservation::Timeout,
+            UnknownObservation::ExitFailure,
+        ] {
+            let uncertain = Arc::new(AtomicBool::new(false));
+            let error = bounded_git_raw_with_plan(
+                &executable,
+                temp.path(),
+                &args,
+                vec![],
+                deadline(),
+                uncertain.clone(),
+                ProcessInspectionPlan::unknown(observation),
+            )
+            .await
+            .unwrap_err();
+            assert_eq!(error.kind, ErrorKind::SessionLost);
+            assert!(uncertain.load(Ordering::SeqCst));
+        }
+    }
+    #[cfg(target_os = "macos")]
+    #[tokio::test]
+    async fn generic_real_native_unknown_observation_keeps_durable_executor_reserved() {
+        for unknown in [false, true] {
+            let (_temp, store, project, task, worktree) = preflight_fixture();
+            let mut adapter =
+                GenericCliAdapter::new("fake".into(), vec!["/bin/cat".into()], store.clone())
+                    .unwrap();
+            if unknown {
+                adapter.process_inspection = Some(ProcessInspectionPlan::unknown(
+                    UnknownObservation::Diagnostics,
+                ));
+            }
+            let reference = adapter
+                .start(fixture_request(project, &task, worktree))
+                .await
+                .unwrap();
+            let status = tokio::time::timeout(Duration::from_secs(5), async {
+                loop {
+                    let status = adapter.status(SessionRef::from(&reference)).await.unwrap();
+                    if matches!(
+                        status.session.state,
+                        SessionState::Lost | SessionState::Exited | SessionState::Failed
+                    ) {
+                        break status;
+                    }
+                    tokio::time::sleep(Duration::from_millis(5)).await;
+                }
+            })
+            .await
+            .unwrap();
+            let saved = store
+                .lock()
+                .unwrap()
+                .session(reference.id)
+                .unwrap()
+                .unwrap()
+                .0;
+            assert_eq!(
+                status.session.state,
+                if unknown {
+                    SessionState::Lost
+                } else {
+                    SessionState::Exited
+                }
+            );
+            assert_eq!(saved.state, status.session.state);
+            if unknown {
+                assert!(status.failure.unwrap().contains("SessionLost"));
+                assert!(
+                    crate::git::WorktreeManager::lock_review(
+                        &mut store.lock().unwrap(),
+                        task.id,
+                        &"a".repeat(40),
+                        "fixture"
+                    )
+                    .is_err()
+                );
+            }
+        }
+    }
     use super::*;
     use crate::domain::{CompletionCriterion, Goal, Task};
     use std::os::unix::fs::PermissionsExt;
@@ -1535,7 +1713,7 @@ mod tests {
         assert!(resolve_macos_signal_result(Err(rustix::io::Errno::ACCESS), || Ok(true)).is_err());
     }
 
-    fn preflight_fixture() -> (tempfile::TempDir, SharedStore, Project, Task, PathBuf) {
+    pub(super) fn preflight_fixture() -> (tempfile::TempDir, SharedStore, Project, Task, PathBuf) {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path().join("repo");
         std::fs::create_dir(&root).unwrap();
@@ -1591,7 +1769,11 @@ mod tests {
         (temp, store, project, task, worktree)
     }
 
-    fn fixture_request(project: Project, task: &Task, worktree: PathBuf) -> LaunchRequest {
+    pub(super) fn fixture_request(
+        project: Project,
+        task: &Task,
+        worktree: PathBuf,
+    ) -> LaunchRequest {
         let scope = task.scope();
         LaunchRequest {
             project,

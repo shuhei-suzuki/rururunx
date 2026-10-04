@@ -181,3 +181,9 @@ shell literal, and the owned producer emits the retained endpoint's frame. Retai
 endpoint uses an owned UnixStream FD as stdout through the same File drain completion
 runner, so credit is descriptor EOF/IO causality, not a privileged ps or signal proof.
 Default controls/source review must still verify the correction; original failure stays.
+
+### Consumer fixture boundary (implementation, pending execution)
+
+Per-invocation macOS test-only plans route the existing ProcessGroup signal resolver through the real bounded inspector. Consumer plans first issue actual KILL against their owned unreaped group, then inject PERM and one fixed Unknown observation; production has no plan, environment override, or prefix. Only the inspection module's retained-leader fixtures can create the no-KILL live-group plan. Their cleanup independently signals the still-unreaped group and waits the directly owned member before reaping the leader, so a mutated selection/resolver cannot erase fixture cleanup authority.
+
+Git and Context preserve their existing production entry points and process-wide uncertainty policy; a private core lets Context tests use an isolated latch rather than clearing or poisoning the process-wide production latch. Generic launch and Grok supervision install plans only on the actual native executor child after preflight. The Grok child consumer is entered through an env-cleared re-execution of the test binary and calls the unchanged public constructor with a synthetic HOME/PATH. It exercises failed initialization and cleanup reservation, not installed Grok inference or credential acceptance. Production Grok environment policy is unchanged; Issue 51 remains separate. These fixtures and their causal mutation controls still require committed-head execution and independent source review.
