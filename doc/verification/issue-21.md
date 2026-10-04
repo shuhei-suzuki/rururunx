@@ -337,3 +337,26 @@ pass and debug/release builds apply through this explicit byte equality; no test
 claim applies to b29 itself. Unsupported/corrupted schema and qualified query/epoch
 producers remain beyond this narrow component. Fresh independent source review and
 exact-source CI still required. No new read/write authority or legacy waiver.
+
+
+Legacy read Source1 f7457df: two independent native reviewers both identified a
+verified Medium test gap for NULL Goal/Task columns, plus bounded wording/snapshot
+Lows. Actual production comparison is correct; no new authority/policy proposed.
+Clean follow-up301a885 normally incorporates merged main diagnostic f7baad and adds
+legitimate Project/Goal/Task non-executor history, exact ordered selected rows, both
+NULL-column/body-Some refusal directions, filtered unaffected views, complete usage
+columns/all rows and global audit-row snapshots with unchanged owners/Sessions.
+Withdrawn b29 paragraph is explicitly historical; static errors concern only identity
+and requested-scope refusals; pre-existing serde decode detail remains pending safe
+projection. No production Store byte changed from verified b1b.
+
+At301a885 DEFAULT normal-host workspace235 Rust+2 doctests PASS,9 explicitly ignored;
+fmt/all-target Clippy-Dwarnings/debug and release BUILD PASS. Release TESTS not run:
+merged-main555 release failure remains known, cause/regression UNKNOWN. Nine compiled
+clean committed mutants (four identity removals, request shape removal, two NULL
+wildcards, two non-optional column reads) fail at actual public Store::usage consumers;
+exact full tree/source restored and both controls PASS. Private collector string
+expectation was corrected after retaining the actual nonoptionalGoal consumer failure;
+no retry-to-green or compile/setup kill. Public patches/log/source/tree hashes and
+exact all source/test/build inputs retained. Fresh two-reviewer Source2/current CI
+pending; whole21 and qualified metrics/native/projection producers remain OPEN.
