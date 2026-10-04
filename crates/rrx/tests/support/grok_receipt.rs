@@ -77,14 +77,18 @@ pub(super) fn observe(
         .flatten()
         .map(|(session, _)| session);
     let events = attempt
-        .and_then(|attempt| events_through(&guard, &session.scope, attempt.lower, upper).ok());
+        .map(|attempt| events_through(&guard, &session.scope, attempt.lower, upper))
+        .transpose();
     let receipt = match (&events, attempt) {
-        (Some(events), Some(attempt)) => exact_receipt(events, session, saved.as_ref(), attempt),
-        _ => Err("attempt_or_audit_unavailable"),
+        (Ok(Some(events)), Some(attempt)) => {
+            exact_receipt(events, session, saved.as_ref(), attempt)
+        }
+        (Err(reason), _) => Err(*reason),
+        _ => Err("attempt_unavailable"),
     };
     Observation {
         receipt,
-        events: events.unwrap_or_default(),
+        events: events.ok().flatten().unwrap_or_default(),
         saved,
         attempt,
     }
@@ -211,6 +215,22 @@ pub(super) fn closed_receipt(value: &Value) -> Result<Value, &'static str> {
     } else if !value["reap_io_kind"].is_null() {
         return Err("reap_not_applicable_invalid");
     }
+    let owned = value["owned_process_group_created"].as_bool().unwrap();
+    let cleanup_success_state = matches!(
+        value["cleanup_state"].as_str(),
+        Some("not_attempted" | "succeeded")
+    );
+    if value["cleanup_ok"] != json!(cleanup_success_state)
+        || owned == (value["cleanup_state"] == "not_attempted")
+    {
+        return Err("cleanup_lifecycle_inconsistent");
+    }
+    if (!owned && value["stderr_drain_state"] != "not_started")
+        || value["output_verified"]
+            != json!(value["stderr_drain_state"] != "budget_elapsed_abort_requested")
+    {
+        return Err("drain_lifecycle_inconsistent");
+    }
     let stages = &value["uncertainty_by_stage"];
     let names = [
         "native_child",
@@ -293,6 +313,49 @@ mod tests {
             closed_receipt(&value).unwrap_err(),
             "supervise_total_projection_mismatch"
         );
+    }
+    #[test]
+    fn projection_rejects_impossible_cleanup_and_drain_combinations() {
+        for (key, changed, error) in [
+            ("cleanup_ok", json!(false), "cleanup_lifecycle_inconsistent"),
+            (
+                "cleanup_state",
+                json!("group_cleanup_failed_unclassified"),
+                "cleanup_lifecycle_inconsistent",
+            ),
+            (
+                "owned_process_group_created",
+                json!(false),
+                "cleanup_lifecycle_inconsistent",
+            ),
+            (
+                "output_verified",
+                json!(false),
+                "drain_lifecycle_inconsistent",
+            ),
+            (
+                "stderr_drain_state",
+                json!("budget_elapsed_abort_requested"),
+                "drain_lifecycle_inconsistent",
+            ),
+        ] {
+            let mut value = receipt();
+            value[key] = changed;
+            assert_eq!(closed_receipt(&value).unwrap_err(), error);
+        }
+        let mut absent = receipt();
+        absent["owned_process_group_created"] = json!(false);
+        absent["cleanup_state"] = json!("not_attempted");
+        assert_eq!(
+            closed_receipt(&absent).unwrap_err(),
+            "drain_lifecycle_inconsistent"
+        );
+        absent["stderr_drain_state"] = json!("not_started");
+        assert!(closed_receipt(&absent).is_ok());
+        let mut elapsed = receipt();
+        elapsed["output_verified"] = json!(false);
+        elapsed["stderr_drain_state"] = json!("budget_elapsed_abort_requested");
+        assert!(closed_receipt(&elapsed).is_ok());
     }
     #[test]
     fn exact_attempt_rejects_missing_duplicate_and_current_prompt_mismatch() {

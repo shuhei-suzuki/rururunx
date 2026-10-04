@@ -77,7 +77,12 @@ async fn native_execute_edits_only_owned_files_and_preserves_actual_exit() {
         "{}",
         fixture.receipt_message(&status)
     );
-    assert_ne!(status.exit_code, Some(0));
+    assert_ne!(
+        status.exit_code,
+        Some(0),
+        "{}",
+        fixture.receipt_message(&status)
+    );
     let observation = fixture.observation(&status);
     receipt_support::assert_receipt(&observation.receipt);
     assert_eq!(observation.saved.as_ref().unwrap().id, session.id);
@@ -134,6 +139,9 @@ async fn native_execute_edits_only_owned_files_and_preserves_actual_exit() {
         "{}",
         fixture.receipt_message(&forged)
     );
+    for status in [&replacement, &supplemental, &failed_called] {
+        receipt_support::assert_receipt(&fixture.observation(status).receipt);
+    }
     adapter.release((&session).into()).unwrap();
 }
 #[tokio::test]
@@ -201,6 +209,9 @@ async fn concurrent_native_reviewers_share_exact_lock_and_validate_structured_ve
         serde_json::to_value(registered.status((&three).into()).await.unwrap().session).unwrap(),
         serde_json::to_value(&c.session).unwrap()
     );
+    for status in [&a, &b, &c, &d] {
+        receipt_support::assert_receipt(&fixture.observation(status).receipt);
+    }
     for session in [&one, &two, &three, &four] {
         registered.release(session.into()).unwrap();
     }
@@ -275,22 +286,30 @@ async fn native_auth_inventory_config_parser_and_tool_evidence_fail_closed() {
             fixture.receipt_message(&status)
         );
         if mode == "hook_failure" {
-            let events = fixture
-                .store
-                .lock()
-                .unwrap()
-                .events(&fixture.request.scope, 0, 100)
-                .unwrap();
-            let observation = events
+            let window = fixture.observation(&status);
+            let turns: Vec<_> = window
+                .events
                 .iter()
-                .find(|e| e.kind == "grok.turn_observed")
-                .unwrap();
-            assert_eq!(observation.data["reconciliation_attempted"], true);
+                .filter(|event| {
+                    event["kind"] == "grok.turn_observed"
+                        && event["data"]["session"] == json!(session.id)
+                })
+                .collect();
+            assert_eq!(turns.len(), 1, "{}", fixture.receipt_message(&status));
+            let observation = &turns[0]["data"];
+            assert_eq!(
+                observation["reconciliation_attempted"],
+                true,
+                "{}",
+                fixture.receipt_message(&status)
+            );
             assert!(
-                observation.data["reconciliation_error"]
+                observation["reconciliation_error"]
                     .as_str()
                     .unwrap()
-                    .contains("unexplained native/concurrent worktree effect")
+                    .contains("unexplained native/concurrent worktree effect"),
+                "{}",
+                fixture.receipt_message(&status)
             );
         }
         if mode == "unowned_write" {
@@ -302,14 +321,13 @@ async fn native_auth_inventory_config_parser_and_tool_evidence_fail_closed() {
         if mode == "unknown_fs_method" {
             assert!(
                 !fixture
-                    .store
-                    .lock()
-                    .unwrap()
-                    .events(&fixture.request.scope, 0, 100)
-                    .unwrap()
+                    .observation(&status)
+                    .events
                     .iter()
-                    .any(|e| e.kind == "grok.fs_observed"),
-                "unsupported FS method must never read or write"
+                    .any(|event| event["kind"] == "grok.fs_observed"
+                        && event["data"]["session"] == json!(session.id)),
+                "unsupported FS method must never read or write; {}",
+                fixture.receipt_message(&status)
             );
         }
         assert!(
@@ -340,6 +358,7 @@ async fn native_resume_requires_fresh_checkpoint_preserves_uuid_and_discards_rep
         first.failure,
         fixture.receipt_message(&first)
     );
+    receipt_support::assert_receipt(&fixture.observation(&first).receipt);
     assert_eq!(
         adapter.resume((&session).into()).await.unwrap_err().kind,
         ErrorKind::InvalidInput
@@ -354,7 +373,12 @@ async fn native_resume_requires_fresh_checkpoint_preserves_uuid_and_discards_rep
         .unwrap();
     assert_eq!(resumed.id, session.id);
     let second = finished(&adapter, &resumed, &fixture).await;
-    assert_eq!(second.session.native_ref, first.session.native_ref);
+    assert_eq!(
+        second.session.native_ref,
+        first.session.native_ref,
+        "{}",
+        fixture.receipt_message(&second)
+    );
     assert!(
         adapter.transport_succeeded(&second),
         "{:?}; {}",
@@ -362,13 +386,19 @@ async fn native_resume_requires_fresh_checkpoint_preserves_uuid_and_discards_rep
         fixture.receipt_message(&second)
     );
     assert!(!String::from_utf8_lossy(&second.stdout).contains("REPLAY"));
-    assert_eq!(second.session.recovery["input_version"], 2);
+    assert_eq!(
+        second.session.recovery["input_version"],
+        2,
+        "{}",
+        fixture.receipt_message(&second)
+    );
     let usage = adapter
         .usage((&resumed).into(), "resume".into(), None)
         .await
         .unwrap();
     assert_eq!(usage.input_tokens, Some(202));
     assert_eq!(usage.output_tokens, Some(22));
+    receipt_support::assert_receipt(&fixture.observation(&second).receipt);
 }
 #[tokio::test]
 async fn native_stop_permissions_foreign_refs_and_environment_guards_are_explicit() {
@@ -407,17 +437,15 @@ async fn native_stop_permissions_foreign_refs_and_environment_guards_are_explici
         !spawn_observed.exists(),
         "stop during preflight still spawned native process"
     );
-    let events = fixture
-        .store
-        .lock()
-        .unwrap()
-        .events(&fixture.request.scope, 0, 100)
-        .unwrap();
     assert!(
-        !events
+        !fixture
+            .observation(&stopped)
+            .events
             .iter()
-            .any(|e| e.kind == "grok.process_spawned" && e.data["session"] == json!(session.id)),
-        "stopped native process was spawned but killed before fixture startup"
+            .any(|event| event["kind"] == "grok.process_spawned"
+                && event["data"]["session"] == json!(session.id)),
+        "stopped native process was spawned but killed before fixture startup; {}",
+        fixture.receipt_message(&stopped)
     );
     assert!(
         stopped.session.pid.is_none(),
@@ -516,7 +544,9 @@ async fn unknown_native_dispatch_keeps_clean_dead_executor_reserved() {
             .unwrap()
             .0
             .state,
-        SessionState::Lost
+        SessionState::Lost,
+        "{}",
+        fixture.receipt_message(&status)
     );
     assert_eq!(
         git(&fixture.request.worktree, &["status", "--porcelain"]),
@@ -595,6 +625,7 @@ async fn stop_after_dispatch_preserves_unknown_outcome_until_explicit_recovery()
             .kind,
         ErrorKind::StateConflict
     );
+    receipt_support::assert_receipt(&fixture.observation(&stopped).receipt);
 }
 
 #[tokio::test]
@@ -663,7 +694,12 @@ async fn installed_native_edit_fresh_continuation_and_structured_decision() {
         second.failure,
         fixture.receipt_message(&second)
     );
-    assert_eq!(second.session.native_ref, first.session.native_ref);
+    assert_eq!(
+        second.session.native_ref,
+        first.session.native_ref,
+        "{}",
+        fixture.receipt_message(&second)
+    );
     assert_eq!(
         std::fs::read_to_string(fixture.request.worktree.join("continued.txt")).unwrap(),
         "NATIVE_CONTINUATION_PROVED\n"
@@ -855,4 +891,5 @@ async fn parent_replacement_after_native_preflight_never_reaches_prompt_wire() {
     assert!(saved.recovery.get("prompt_id").is_none());
     assert_ne!(saved.recovery["dispatch_state"], "dispatching");
     assert_eq!(other.task(task.id).unwrap().unwrap().title, task.title);
+    receipt_support::assert_receipt(&fixture.observation(&status).receipt);
 }

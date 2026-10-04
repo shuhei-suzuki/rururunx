@@ -25,8 +25,6 @@ use crate::{
 
 static FILESYSTEM_WORKERS: Semaphore = Semaphore::const_new(16);
 
-/// Abandoned native preflight must never free an executor reservation on a guess.
-/// A separate flag per process prevents another Git child clearing a live server's flag.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum OwnershipStage {
     NativeChild,
@@ -78,6 +76,8 @@ impl OwnershipTrace {
     }
 }
 
+/// Abandoned native preflight must never free an executor reservation on a guess.
+/// A separate flag per process prevents another Git child clearing a live server's flag.
 #[derive(Default)]
 pub(super) struct ProcessOwnership {
     flags: Vec<(Arc<AtomicBool>, OwnershipStage)>,

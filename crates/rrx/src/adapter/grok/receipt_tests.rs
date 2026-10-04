@@ -49,6 +49,7 @@ async fn sanitized(name: &str, expected_failure: bool) {
             exit.success(),
             "owned sanitized fixture failed; {stdout}; {stderr}"
         );
+        assert_child_completed(&stdout, &stderr, name);
     } else {
         assert!(!exit.success(), "expected state assertion did not execute");
         assert!(
@@ -283,13 +284,7 @@ async fn dispatched(unknown: bool) {
         &projection,
     );
     assert!(!adapter.transport_succeeded(&status), "{projection}");
-    assert!(
-        status
-            .failure
-            .as_ref()
-            .is_some_and(|s| s.contains("unowned native file read callback")),
-        "{projection}"
-    );
+
     assert_dispatch_prerequisites(&fixture, &status);
     let observation = fixture.observation(&status);
     receipt_support::assert_receipt(&observation.receipt);
@@ -336,18 +331,28 @@ async fn dispatched(unknown: bool) {
     );
     assert_eq!(
         adapter.release((&session).into()).unwrap_err().kind,
-        ErrorKind::SessionLost
+        ErrorKind::SessionLost,
+        "{projection}"
+    );
+    assert!(
+        status
+            .failure
+            .as_ref()
+            .is_some_and(|s| s.contains("unowned native file read callback")),
+        "{projection}"
     );
 }
 #[tokio::test]
 #[ignore = "only its env-cleared owning parent enters this synthetic case"]
 async fn dispatched_clean_child() {
     dispatched(false).await;
+    child_completed("adapter::grok::receipt_tests::dispatched_clean_child");
 }
 #[tokio::test]
 #[ignore = "only its env-cleared owning parent enters this synthetic case"]
 async fn dispatched_unknown_child() {
     dispatched(true).await;
+    child_completed("adapter::grok::receipt_tests::dispatched_unknown_child");
 }
 #[tokio::test]
 #[ignore = "only its env-cleared owning parent enters this synthetic case"]
@@ -390,6 +395,7 @@ async fn completed_resume_child() {
     assert_full_trace(&adapter, &second, &fixture, 2);
     assert_eq!(second.session.native_ref, first.session.native_ref);
     assert!(!fixture.directory.path().join("foreign.txt").exists());
+    child_completed("adapter::grok::receipt_tests::completed_resume_child");
 }
 #[tokio::test]
 #[ignore = "only its env-cleared owning parent enters this synthetic case"]
@@ -428,6 +434,7 @@ async fn before_spawn_stop_child() {
     let trace = entry.ownership_trace.snapshot(1).expect("trace incomplete");
     assert!(!trace.is_empty());
     assert!(trace.iter().all(|stage| *stage == OwnershipStage::PreSpawn));
+    child_completed("adapter::grok::receipt_tests::before_spawn_stop_child");
 }
 #[tokio::test]
 #[ignore = "expected strict-state failure observed only by its env-cleared owning parent"]
@@ -452,4 +459,10 @@ async fn state_assertion_child() {
         "expected_clean_protocol",
         &projection,
     );
+}
+
+#[tokio::test]
+#[should_panic(expected = "exact positive child did not run one passing test")]
+async fn positive_parent_rejects_zero_matched_child_after_owned_cleanup() {
+    sanitized("adapter::grok::receipt_tests::nonexistent_child", false).await;
 }

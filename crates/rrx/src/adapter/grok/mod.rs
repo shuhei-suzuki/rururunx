@@ -28,6 +28,38 @@ use protocol::{Rpc, TurnEvidence};
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use tokio::sync::Notify;
 
+#[cfg(all(test, target_os = "macos"))]
+pub(super) fn child_completed(name: &str) {
+    eprintln!("grok_cleanup_child_completed {name}");
+}
+#[cfg(all(test, target_os = "macos"))]
+#[track_caller]
+pub(super) fn assert_child_completed(stdout: &str, stderr: &str, name: &str) {
+    assert!(
+        stdout.matches("running 1 test").count() == 1
+            && stdout.matches("1 passed; 0 failed").count() == 1,
+        "exact positive child did not run one passing test; {stdout}"
+    );
+    assert!(
+        stdout.contains(&format!("test {name} ... ok")),
+        "exact positive child name missing; {stdout}"
+    );
+    assert!(
+        stderr
+            .lines()
+            .any(|line| line == format!("grok_cleanup_child_completed {name}")),
+        "child final assertion completion missing; {stderr}"
+    );
+    if name.ends_with("dispatched_clean_child") || name.ends_with("dispatched_unknown_child") {
+        assert!(
+            stderr
+                .lines()
+                .any(|line| line == "independent dispatched prerequisites passed"),
+            "dispatched child prerequisites missing; {stderr}"
+        );
+    }
+}
+
 const NATIVE_VERSION: &str = "1.0.46";
 const SESSIONS_LIMIT: usize = 128;
 const TURN_TIMEOUT: Duration = Duration::from_secs(300);
@@ -1412,6 +1444,11 @@ mod registry_tests {
             String::from_utf8_lossy(&output),
             String::from_utf8_lossy(&diagnostic)
         );
+        assert_child_completed(
+            &String::from_utf8_lossy(&output),
+            &String::from_utf8_lossy(&diagnostic),
+            "adapter::grok::registry_tests::sanitized_grok_cleanup_child",
+        );
     }
     #[cfg(target_os = "macos")]
     #[tokio::test]
@@ -1461,11 +1498,13 @@ mod registry_tests {
             let projection = receipt_support::message(&observation.receipt);
             let state = store.lock().unwrap();
             let saved = state.session(launched.id).unwrap().unwrap().0;
-            let events = state.events(&task.scope(), 0, 100).unwrap();
             assert!(
-                events
+                observation
+                    .events
                     .iter()
-                    .any(|event| event.kind == "grok.process_spawned")
+                    .any(|event| event["kind"] == "grok.process_spawned"
+                        && event["data"]["session"] == json!(launched.id)),
+                "{projection}"
             );
             receipt_support::assert_state(
                 saved.state,
@@ -1487,6 +1526,7 @@ mod registry_tests {
             assert!(!adapter.transport_succeeded(&status), "{projection}");
             receipt_support::assert_receipt(&observation.receipt);
         }
+        child_completed("adapter::grok::registry_tests::sanitized_grok_cleanup_child");
     }
     use super::*;
     #[tokio::test]
