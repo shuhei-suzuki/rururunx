@@ -4,7 +4,8 @@ Requirements3 approved at1463d37 by two independent native reviewers, no
 Critical/High/Medium or blockers. Low precision dispositions accompany Design1.
 Risk STRICT: shared Workflow/Store
 reservation and replay boundary. Base main efe9774, normal composition of63 after
-both Requirements1 reviewers finished/cleaned. No production change.
+both Requirements1 reviewers finished/cleaned. Source candidate verification and
+independent source reviews pending; approved WHAT is unchanged.
 Related open Issue14's "Verified explicit retry gap" acceptance; limited
 prerequisite only, not Scheduler/restart/native recovery completion.
 

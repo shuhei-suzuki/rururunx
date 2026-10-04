@@ -1,9 +1,11 @@
 # Issue14 explicit unbound native retry fence
 
-Design2 candidate NOT APPROVED. STRICT shared Engine/Store reservation boundary.
+Design2 approved at3c3a42f by two independent native reviewers, no CHM/blockers.
+STRICT shared Engine/Store reservation boundary.
 Requirements3 approved1463d37 with two independent native APPROVE/noCHM/blockers;
 precise Low dispositions recorded in requirements3-reviews.json. Base main efe9774.
-No production changes yet. Whole14, Scheduler/restart/native/F1/MVP remain OPEN.
+Source candidate implements the approved two guards; source verification/review
+is pending. Whole14, Scheduler/restart/native/F1/MVP remain OPEN.
 
 ## Two guards and immutable reservation
 
@@ -132,6 +134,13 @@ patch/source/test/tree/log and actual assertion, and restore exact tree/control.
 - Store same-generation-only: direct Running generation refusal.
 - Terminal same-agent/role row as resolution: Store-only direct matching-row,
   BOTH public matching-row. Engine-only remains masked with no kill credit.
+
+Removing the TerminalRecovery exemption is equivalent, with no kill credit: its
+earlier fence already rejects the same original attempt. Re-run both41 causal
+TerminalRecovery mutants to verify the exemption preserves their committed-closure
+oracles. Add ReadOnly and Mutating direct closure refusals on the actual Executor
+held marked Running fixture with complete snapshots, so a StateOnly-only narrowing
+is killed by a real raw Store consumer. These are no public-API claims.
 
 Engine-only removal is masked; actor-conjunct removal is equivalent because port
 marker is forbidden; Engine Failed-only has no public marked Waiting control.
