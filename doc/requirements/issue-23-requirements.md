@@ -2,7 +2,9 @@
 
 Workflow: STRICT (shared persistence, lifecycle and completion authority).
 Status: Requirements3 1fc82b1 independently approved; Design4 f4b4926 approved with
-no Critical/High/Medium. Implementation/source gates remain pending.
+no Critical/High/Medium. Structural validation is implemented; its current
+composition gates and source review are recorded in the verification ledger.
+Complete managed authority/evaluation/source integration remains pending.
 Baseline: main4851fcd. Depends on merged #2, #8 and #26; part of #22.
 
 ## Purpose and current gap
@@ -12,10 +14,11 @@ execution #24 and global multi-project scheduler #27. Goal completion remains
 explicit; completing one Task never implicitly completes its Goal.
 
 The current Goal already persists objective, criteria, constraints/non-goals,
-source references, states, DAG, follow-ups and context_version. Store validates
-unique DAG nodes, declared edge endpoints and Task ownership. It does not detect
-cycles, evaluate readiness/criteria, validate completion evidence, or prevent an
-arbitrary satisfied flag from being treated as completion. Those existing fields
+source references, states, DAG, follow-ups and context_version. The legacy baseline Store validated
+unique DAG nodes, declared edge endpoints and Task ownership. The limited structural
+component now also rejects hard cycles, self/duplicate pairs and bounded graph
+overflow. It does not evaluate readiness/criteria, validate completion evidence, or
+prevent an arbitrary satisfied flag from being treated as completion. Those existing fields
 are foundations, not evidence that this issue is implemented.
 
 Source of truth: Issue23, Product Requirements sections4–7, and

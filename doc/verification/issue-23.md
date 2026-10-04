@@ -1,6 +1,11 @@
 # Issue 23 verification
 
-Requirements draft only at main baseline4851fcd. Current domain.rs:195–287 has
+Current limited component: structural graph validation implemented, with two prior
+source approvals at7c1fd88. Latest maincf8 composition364139d verification is
+recorded below; independent current-composition review remains required.
+Whole23/managed authority/evaluation/native/MVP remain OPEN.
+
+Historical requirements baseline4851fcd (the following chronology is retained). Current domain.rs:195–287 has
 Criterion/Dependency/DAG/Proposal/Goal fields. state/mod.rs:257–312 persists the
 Goal and validates ownership through validate_goal_references:1338–1370, which
 checks unique nodes/declared endpoints/Task ownership but has no cycle/evaluation
@@ -163,3 +168,57 @@ substitute for #41/#55 cleanup diagnostics. The issue design now identifies the
 component's actual reviewed status and preserves the typed legacy Cancel/Fail
 fixture obligation. Managed model, native admission, settlement, completion and
 full Issue23 remain pending.
+
+
+## Current structural-component composition364139d
+
+Normal main478 then maincf8 integration completed without conflicts; all original
+goal.rs and goal_graph.rs bytes equal prior reviewed7c1fd88. Store's validator
+retains the same hard_order call, now at1450, and all current environmental, nullable
+Usage, native and Workflow unbound-retry guards remain. Relative to currentmain,
+production changes are only the64-line structural method, private module inclusion
+and replacement of old node/endpoint checks by hard_order; no schema, Goal lifecycle,
+controller authority, acceptance certificate, native dispatch or readiness producer.
+
+On clean364139d default full debug passes381 top-level Rust tests plus2doctests,
+26ignored; the nested ordinary witness child1 is separate. Fmt, all-target Clippy
+with warnings denied and debug/release all-target builds pass. A full workspace
+release attempt FAILS with269 lib passes,2 failures,23ignored: unrelated Grok env
+checkpoint/resume fixture parents hit their60s synthetic-child watchdog with only
+'running1test' stdout and empty stderr. Cause/regression remains UNKNOWN; no
+rerun, serialization, timeout increase or waiver. No graph/Store release tests were
+reached in that full attempt. Separate affected release verification passes all
+3graph and17Store controls. [Exact gates](issue-23-graph-composed1-gates.json).
+
+All six ORIGINAL compiled operators were re-executed against364139d: four actual
+Store calls and two structural API calls commit/return Ok incorrectly, then fail
+unwrap_err at goal_graph145,61 or84. Restored4bd9c8b has complete364139d tree,
+clean, and all3graph controls pass. These are the same six operators, not twelve
+distinct claims. [Mutants](issue-23-graph-composed1-mutants.json) and
+[exact patches](issue-23-graph-composed1-mutant-patches.json).
+
+CI37244971523 passes every Linux/macOS step on actual current complete source: see
+[commit/tree/all-blob proof](issue-23-graph-composed1-ci.json). This is default debug
+testing and release BUILD, not full release TEST success. Separate main478 and
+maincf8 CI failures and the local release failure are preserved in
+[failure observations](issue-23-graph-composed1-failure-observations.json). Main478
+first Context PS deadline273075us led to latch failures; maincf8 one Codex immutable
+review ownership assertion saw PS332580us. Linux passed both. The current and PR65
+green runs neither explain nor erase these failures. Do not certify the observer,
+reader custody or all-native cleanup.
+
+Current [impact inventory](issue-23-graph-composed1-impact-rg.txt) covers every
+put_goal/validator/TaskDag consumer and actual Goal lifecycle/graph readers. The
+ONLY production put_goal definition is Store261, invoked by existing trusted
+library compositions; native/Workflow raw Goal scope/version checks remain. All
+production changes stay inside structural validation. Previously accepted invalid
+legacy graph Cancel/Fail saves still reject: prior verified Low G23-SRC-L1 remains
+a disclosed limitation of this component, with the typed frozen-history closure
+fixture obligation in the complete managed design. No completion/dispatch is
+exposed and in-memory caps do not certify bounded DB deserialization.
+
+Current independent source/composition review and final metadata-head CI are
+required before any limited merge. Complete23,19 settlement,43 binding,14/27
+scheduling,24CLI and16dogfood remain OPEN. Existing Issue6 historical private
+harness ownership hold is unchanged; selected normal verification closures do not
+certify all native jobs.

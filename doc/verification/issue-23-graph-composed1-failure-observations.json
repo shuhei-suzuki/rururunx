@@ -1,0 +1,73 @@
+{
+  "main_CI": [
+    {
+      "head": "47830b0ab97a095d0c387089bf5442452e060572",
+      "run": 37242029251,
+      "actual_checkouts": [
+        "47830b0ab97a095d0c387089bf5442452e060572",
+        "47830b0ab97a095d0c387089bf5442452e060572"
+      ],
+      "conclusion": "failure",
+      "jobs": [
+        {
+          "name": "check (ubuntu-latest)",
+          "conclusion": "success"
+        },
+        {
+          "name": "check (macos-latest)",
+          "conclusion": "failure"
+        }
+      ],
+      "log_sha256": "330f2774282fd91347f46f5731068c1455f8810b47db658964f2aae4e754eb9f",
+      "public_assertion_excerpts": [
+        "2026-10-04T23:01:55.8207820Z     bounded context Git: AdapterError { kind: SessionLost, message: \"native process group cleanup failed: native process inspection timed out; inspection_facts{site=deadline_loop_entry,stream=none,refusal=deadline,returned_io_kind=timed_out,stdout_reads=1,stdout_bytes=0,stdout_would_block=1,stdout_interrupted=0,stdout_eof=pending,stderr_reads=1,stderr_bytes=0,stderr_would_block=1,stderr_interrupted=0,stderr_eof=pending,status_polls=1,status_pending=1,status_interrupted=0,status_errors=0,exit=unavailable,status_source_io_kind=unavailable,validation=not_reached,cleanup=kill_requested_then_wait_reaped,kill=returned_ok,observation_us=273075,spawn_us=355,cleanup_us=7}\" }",
+        "2026-10-04T23:01:55.8264160Z test result: FAILED. 5 passed; 11 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.36s"
+      ],
+      "cause_and_regression": "UNKNOWN",
+      "rerun": false,
+      "deadline_change": false,
+      "latch_cascade": "478 first context PS273075us then10other failures (including concurrent latch); not11 independent inspector causes"
+    },
+    {
+      "head": "cf8a1e7c4ab74367ad175bedcfb60e28cb6bfc8b",
+      "run": 37244736209,
+      "actual_checkouts": [
+        "cf8a1e7c4ab74367ad175bedcfb60e28cb6bfc8b",
+        "cf8a1e7c4ab74367ad175bedcfb60e28cb6bfc8b"
+      ],
+      "conclusion": "failure",
+      "jobs": [
+        {
+          "name": "check (macos-latest)",
+          "conclusion": "failure"
+        },
+        {
+          "name": "check (ubuntu-latest)",
+          "conclusion": "success"
+        }
+      ],
+      "log_sha256": "7152e584b95c0d9bd0e8e2ef29c8de5403fe2e659bdc62161322805e03124dd8",
+      "public_assertion_excerpts": [
+        "2026-10-04T23:46:13.2955310Z called `Result::unwrap()` on an `Err` value: AdapterError { kind: SessionLost, message: \"owned cleanup unverified: SessionLost: native process group cleanup failed: native process inspection timed out; inspection_facts{site=deadline_loop_entry,stream=none,refusal=deadline,returned_io_kind=timed_out,stdout_reads=1,stdout_bytes=0,stdout_would_block=1,stdout_interrupted=0,stdout_eof=pending,stderr_reads=1,stderr_bytes=0,stderr_would_block=1,stderr_interrupted=0,stderr_eof=pending,status_polls=1,status_pending=1,status_interrupted=0,status_errors=0,exit=unavailable,status_source_io_kind=unavailable,validation=not_reached,cleanup=kill_requested_then_wait_reaped,kill=returned_ok,observation_us=332580,spawn_us=1437,cleanup_us=6}; original failure: SessionLost: Git cleanup failed\" }",
+        "2026-10-04T23:46:13.2959830Z test result: FAILED. 270 passed; 1 failed; 23 ignored; 0 measured; 0 filtered out; finished in 111.82s"
+      ],
+      "cause_and_regression": "UNKNOWN",
+      "rerun": false,
+      "deadline_change": false,
+      "latch_cascade": "cf8 Codex ownership864 PS332580us, stdout/stderr pending/status pending; one lib failure"
+    }
+  ],
+  "local_release": {
+    "head": "364139d5dedf35e154597417efb0c5e9ac7927fd",
+    "log_sha256": "be7b1ad51b986d74562a6dad457b51a2f4e94109569686fe37f056b568e0efa9",
+    "parent_assertion": "environment_tests.rs40: synthetic child failed; stdout running1test only, stderr empty,60s watchdog",
+    "tests": [
+      "unrelated_foreign_changes_do_not_revoke_checkpoint",
+      "unrelated_foreign_changes_do_not_revoke_resume"
+    ],
+    "cause_and_regression": "UNKNOWN",
+    "parent_cleanup": "cleanup_group and reap returned, not proof of all nested or escaped jobs",
+    "rerun": false
+  },
+  "limits": "Later green PR/CI does not erase failures or establish cause. No native/F1/managed lifetime or whole23/MVP qualification."
+}
