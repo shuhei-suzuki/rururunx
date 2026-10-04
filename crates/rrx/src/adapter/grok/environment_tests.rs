@@ -117,8 +117,16 @@ async fn environment_initial_selection_drives_real_canary_and_rejection_consumer
     isolated("adapter::grok::environment_tests::initial_child").await;
 }
 #[tokio::test]
-async fn environment_live_admission_drives_actual_start_resume_and_stop_consumers() {
-    isolated("adapter::grok::environment_tests::admission_child").await;
+async fn live_reference_change_rejects_actual_start_before_spawn() {
+    isolated("adapter::grok::environment_tests::start_admission_child").await;
+}
+#[tokio::test]
+async fn live_reference_change_rejects_actual_resume_before_spawn() {
+    isolated("adapter::grok::environment_tests::resume_admission_child").await;
+}
+#[tokio::test]
+async fn actual_stop_after_admission_never_spawns_and_keeps_snapshots_coherent() {
+    isolated("adapter::grok::environment_tests::stop_admission_child").await;
 }
 
 #[tokio::test]
@@ -245,7 +253,7 @@ async fn initial_child() {
 
 #[tokio::test]
 #[ignore = "only entered by owned env-cleared canary parent"]
-async fn admission_child() {
+async fn start_admission_child() {
     assert_eq!(std::env::var("RRX_INSPECTION_FIXTURE_CHILD").unwrap(), "1");
     // Relevant reference is created through a second SQLite connection only AFTER
     // initial selection and all Git/filesystem/profile preflight, before admission.
@@ -277,6 +285,12 @@ async fn admission_child() {
     assert_not_spawned(&fixture, &status);
     adapter.release((&session).into()).unwrap();
 
+    child_completed("adapter::grok::environment_tests::start_admission_child");
+}
+#[tokio::test]
+#[ignore = "only entered by owned env-cleared canary parent"]
+async fn resume_admission_child() {
+    assert_eq!(std::env::var("RRX_INSPECTION_FIXTURE_CHILD").unwrap(), "1");
     let mut resumed = Fixture::new();
     let (_foreign_dir, mut other) = foreign(&resumed, &[]);
     let mut adapter = resumed.adapter();
@@ -333,6 +347,12 @@ async fn admission_child() {
     assert_eq!(invocations.load(Ordering::SeqCst), 2);
     adapter.release((&second).into()).unwrap();
 
+    child_completed("adapter::grok::environment_tests::resume_admission_child");
+}
+#[tokio::test]
+#[ignore = "only entered by owned env-cleared canary parent"]
+async fn stop_admission_child() {
+    assert_eq!(std::env::var("RRX_INSPECTION_FIXTURE_CHILD").unwrap(), "1");
     let fixture = Fixture::new();
     let mut adapter = fixture.adapter();
     let adapter_slot: Arc<Mutex<Option<std::sync::Weak<GrokAdapter>>>> = Arc::new(Mutex::new(None));
@@ -377,7 +397,7 @@ async fn admission_child() {
         "reservation, admission and terminal publications did not remain coherent"
     );
     adapter.release((&session).into()).unwrap();
-    child_completed("adapter::grok::environment_tests::admission_child");
+    child_completed("adapter::grok::environment_tests::stop_admission_child");
 }
 
 #[test]
