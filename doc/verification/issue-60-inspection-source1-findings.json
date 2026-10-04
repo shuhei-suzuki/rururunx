@@ -1,0 +1,116 @@
+{
+  "scope": "Source1 at03cd688, 2 Medium and11 Low findings across two completed reviews; overlap retained separately",
+  "reviews": [
+    {
+      "review": "facts",
+      "head": "03cd688c86bbee561f51ee53330634f8181830e6",
+      "verdict": "request_changes",
+      "cleanup_verified": true,
+      "raw_result_sha256": "eb24c154e658b1dcc524284052a18403cd8a484124e736229cebec328bc0a138",
+      "findings": [
+        {
+          "id": "I60-SR-01",
+          "severity": "Medium",
+          "claim": "The existing Issue46 retained-writer test lost its owned-inspector reap assertion. The diff replaced `inspector.cleanup().unwrap()` with `cleanup_failure(...)`, which discards the cleanup result.",
+          "repository_verified": true,
+          "disposition": "Narrow source/fixture/documentation correction; affected tests, causal delta mutations and immutable re-review pending"
+        },
+        {
+          "id": "I60-SR-02",
+          "severity": "Medium",
+          "claim": "The Generic and Grok sinks are accessible through existing macOS plan fixtures, but no test asserts fact transport to them, and no supplied artifact discloses them as unexercised.",
+          "repository_verified": true,
+          "disposition": "Narrow source/fixture/documentation correction; affected tests, causal delta mutations and immutable re-review pending",
+          "qualification": "Coverage gap verified; existing Grok predispatch/unowned-read primary result errors mask later cleanup fact text by unchanged priority. New completed-success synthetic turn targets the reachable cleanup-selected diagnostic; reconciliation transport remains source-only."
+        },
+        {
+          "id": "I60-SR-03",
+          "severity": "Low",
+          "claim": "The Allocation injection cases assert KillThenReaped, but scheduling can let observe() reap the child before the injected allocation read. The assertion depends on timing.",
+          "repository_verified": true,
+          "disposition": "Narrow source/fixture/documentation correction; affected tests, causal delta mutations and immutable re-review pending"
+        },
+        {
+          "id": "I60-SR-04",
+          "severity": "Low",
+          "claim": "Clock::Open, and non-target Clock::Expire checks, remove the only bound on the real child/pipe loop. Unit tests can therefore stall indefinitely on the known macOS pipe-inheritance race.",
+          "repository_verified": true,
+          "disposition": "Narrow source/fixture/documentation correction; affected tests, causal delta mutations and immutable re-review pending"
+        },
+        {
+          "id": "I60-SR-05",
+          "severity": "Low",
+          "claim": "An Interrupted read is counted as an invoked read but leaves EOF at not_observed. A WouldBlock read sets pending. This is inconsistent with the design's 'pending after a non-EOF read'.",
+          "repository_verified": true,
+          "disposition": "Narrow source/fixture/documentation correction; affected tests, causal delta mutations and immutable re-review pending"
+        },
+        {
+          "id": "I60-SR-06",
+          "severity": "Low",
+          "claim": "The comment claims the non-framing formatter arms are exercised with maximum numeric fields, but they use a fresh zeroed Collector and only Site::Endpoint.",
+          "repository_verified": true,
+          "disposition": "Narrow source/fixture/documentation correction; affected tests, causal delta mutations and immutable re-review pending"
+        },
+        {
+          "id": "I60-SR-07",
+          "severity": "Low",
+          "claim": "The requirements status line is stale: it still says 'Design1 candidate; no design/source approval or implementation'.",
+          "repository_verified": true,
+          "disposition": "Narrow source/fixture/documentation correction; affected tests, causal delta mutations and immutable re-review pending"
+        },
+        {
+          "id": "I60-SR-08",
+          "severity": "Low",
+          "claim": "The Cleanup, Kill and StreamKind vocabularies omit the 'unavailable' members listed in the requirements and design. Unattached default snapshots render stream=none next to site=unavailable.",
+          "repository_verified": true,
+          "disposition": "Narrow source/fixture/documentation correction; affected tests, causal delta mutations and immutable re-review pending"
+        }
+      ]
+    },
+    {
+      "review": "authority",
+      "head": "03cd688c86bbee561f51ee53330634f8181830e6",
+      "verdict": "approve",
+      "cleanup_verified": true,
+      "raw_result_sha256": "ef723f8ef92b8acef674301bc983d998ef5fde196fc342402154b8c3113a2498",
+      "findings": [
+        {
+          "id": "L1",
+          "severity": "Low",
+          "claim": "The allocation-injection cases assert Cleanup::KillThenReaped and a requested kill, but that outcome depends on scheduling rather than the seam.",
+          "repository_verified": true,
+          "disposition": "Narrow source/fixture/documentation correction; affected tests, causal delta mutations and immutable re-review pending"
+        },
+        {
+          "id": "L2",
+          "severity": "Low",
+          "claim": "Open-clock and single-site Expire-clock unit tests have no real-time bound and busy-spin once 250ms of real time has passed. A delayed child or an inherited pipe writer turns them into CPU-spinning hangs rather than bounded failures.",
+          "repository_verified": true,
+          "disposition": "Narrow source/fixture/documentation correction; affected tests, causal delta mutations and immutable re-review pending"
+        },
+        {
+          "id": "L3",
+          "severity": "Low",
+          "claim": "Fact rendering at the Generic and Grok sinks is executed but neither asserted nor disclosed in the committed verification and docs, although the requirement says to reach those sinks where accessible and disclose what is left unexercised.",
+          "repository_verified": true,
+          "disposition": "Narrow source/fixture/documentation correction; affected tests, causal delta mutations and immutable re-review pending",
+          "qualification": "Coverage gap verified; existing Grok predispatch/unowned-read primary result errors mask later cleanup fact text by unchanged priority. New completed-success synthetic turn targets the reachable cleanup-selected diagnostic; reconciliation transport remains source-only."
+        },
+        {
+          "id": "L4",
+          "severity": "Low",
+          "claim": "The existing 'empty' and 'partial' substring assertions for \"incomplete\" now pass on the appended fact tokens even if the human prefix were wrong.",
+          "repository_verified": true,
+          "disposition": "Narrow source/fixture/documentation correction; affected tests, causal delta mutations and immutable re-review pending"
+        },
+        {
+          "id": "L5",
+          "severity": "Low",
+          "claim": "The requirements status line is stale, and the master doc does not record a caller-visible contract change at wrapped inspect errors.",
+          "repository_verified": true,
+          "disposition": "Narrow source/fixture/documentation correction; affected tests, causal delta mutations and immutable re-review pending"
+        }
+      ]
+    }
+  ]
+}

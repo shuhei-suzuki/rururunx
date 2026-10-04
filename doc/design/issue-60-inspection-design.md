@@ -1,7 +1,8 @@
 # Issue60 diagnostic component design
 
 Risk: STRICT. Design2 approved independently twice at201bd89; six Low source-phase
-clarifications below. Implementation/source gates remain pending.
+clarifications below. Source implemented; verified Source1 corrections/independent
+re-review and final CI remain pending.
 Requirements4 has two independent diagnostic-only approvals at26de8da. The later
 source-aside correction does not change its required real-inspector consumer criterion.
 Full Issue60 workload ownership/effect/delegation/durable settlement, native16 and the
@@ -49,6 +50,14 @@ reconstructed from strings. Facts are not a new persisted record or audit schema
 | elapsed | observation duration at first failure, with spawn and mandatory cleanup durations separately unavailable/observed |
 | cleanup | not_reached, reaped_by_status_observation, kill_requested_then_wait_reaped, wait_failed_uncertain, relinquished_without_cleanup or unavailable |
 | kill | not_requested, returned_ok, returned_error with finite IO kind or unavailable |
+
+The general vocabulary allows unavailable; currently every production attachment has
+an explicit selected site/stream (including known none), a known no-child cleanup/
+kill state at input/spawn, or a known measured/no-op cleanup state at later returns.
+Thus stream/cleanup/kill unavailable are unreachable at every current attached error;
+no enum variant is invented for them. Optional stream/status/timing measurements still
+render unavailable. The unit-only unattached default formatter case is not a runtime
+error sample or a future authority promise.
 
 All counters saturate u64. A stream becomes measurable only after its endpoint is
 available; no endpoint is unavailable rather than zero reads/false EOF. After setup,
@@ -163,7 +172,11 @@ Retain its actual Child handle in the fixture through synthetic relinquishment; 
 rescue by numeric observed-callback PID, waitid/adoption or later PID signals. The
 source error branch then clears unreaped/has no reported exit just as baseline.
 Hold the unit logical deadline open with the private per-invocation clock seam;
-this is deterministic unit injection, not a wider native budget. Shared post-error
+this is deterministic unit injection, not a wider native budget. Open/non-target
+Expire checks have a distinct test-only10s real watchdog and keep5ms idle polling
+past the real250ms timestamp, avoiding a busy-spin. This bounds the fixture loop,
+not existing unbounded spawn/mandatory cleanup or native workloads. Production Real
+clock and idle behavior are unchanged. Shared post-error
 cleanup/fact recording is one helper used by observe_command and the fixture.
 Any cleanup-call omission mutant in this synthetic state uses recorded fixture-only
 kill/wait operations, not a new real syscall on a reaped PID. Assert no calls after
@@ -207,7 +220,14 @@ nonexistent executable through process_group_inspectionâ†’inspect_process_groupâ
 and asserts spawn-site facts survive; injected resolver PERM opens that route without
 any child/signal. Label entry-hop-only credit, not Context/OS-permission acceptance.
 Production-only wrappers stay unchanged; an untested decoration diff is prohibited. Reach Generic/Grok existing sinks where actual
-fixture support permits; disclose remaining sink coverage precisely.
+fixture support permits; disclose remaining sink coverage precisely. Generic terminal
+failure and post-spawn launch-failure audit use the existing native plan and held-start
+barrier. Grok completed-success synthetic ACP exercises the cleanup diagnostic and
+runtime failure with unchanged unclassified/clean=false receipt. Existing Grok
+predispatch/unowned-read errors correctly mask later cleanup text by priority, so they
+do not prove fact transport. Grok reconciliation_error host-Git transport lacks a
+current stage-specific plan seam and has no direct fact-transport assertion in this scope; unchanged forwarding is source-only evidence;
+no production priority or stage port is changed to make the fixture pass.
 
 Real controlled subprocess/owned-pipe tests cover pending stdout/stderr, actual EOF and
 observed child exit, exit/stderr/framing failures, valid_live/dead and cleanup. Keep

@@ -306,7 +306,13 @@ have two narrowed approvals; [component design](../issue-60-inspection-design.md
 two independent Design2 approvals. The diagnostic-only implementation now attaches
 finite value-free site/stream/EOF/status/cleanup facts at common inspector error exits,
 preserving selected argv/env,250ms observation, Unknown and original authority.
-Source verification and independent source gates are pending; no availability claim.
+Source1 corrections and independent source gates are pending; no availability claim.
+Wrapped inspector syscall errors now render static site text plus facts, preserve kind
+and have raw_os_error()=None. Inner Complete/Stream/validate and valid-live resolver
+PERM retain raw values. Fact assertions target actual Context, Generic terminal/
+launch-failure audit, and Grok completed-turn cleanup diagnostic/runtime failure.
+Grok earlier primary errors still mask cleanup text; its reconciliation_error host-Git
+fact transport remains unasserted without a stage seam. No universal sink coverage.
 Reader/driver retention and every existing Drop/reap gap remain separate/open. The
 Grok receipt below stays unclassified; facts cannot grant cleanup or alter clean.
 

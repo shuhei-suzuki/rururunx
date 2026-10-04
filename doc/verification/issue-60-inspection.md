@@ -226,3 +226,42 @@ an explanation/repair of any earlier timeout. CI has no release-test step; local
 RELEASE above is distinct evidence. Independent Source1 and final reviewed-head
 CI remain pending. All earlier reds/Unknown evidence, frozen RED Issue51, shared
 availability, reader/driver draft, recovery14, full60 and native16 limits remain open.
+
+
+## Source1 outcomes and verified narrow corrections (re-review pending)
+
+Both independent public immutable Source1 reviews at03cd688 completed with actual
+owned cleanup verified. Facts reviewer requested changes (2Medium+6Low); authority
+reviewer approved (5Low). [Per-finding disposition](issue-60-inspection-source1-findings.json)
+retains overlap and raw hashes. CI37227213174 was later both-OS successful; actual
+checkout/provenance publication remains pending. Reviewer launch-time CI blockers
+were factual pending gates, not defects ignored after the run completed.
+
+Verified Medium I60-SR-01: retained-writer fixture had replaced cleanup().unwrap with
+a result-discard helper, weakening its separate reap check. Shared cleanup recording
+now returns its existing result; production explicitly discards it preserving the
+original first-error priority, while fixtures unwrap it before send/join/assertions.
+Verified Medium I60-SR-02 and overlapping Low L3: accessible sink transport needed
+assertions/disclosure. Existing Generic terminal-plan test now asserts actual facts;
+a held-start Blocked write fixture targets launch-failure audit reason. A completed
+successful synthetic Grok turn targets cleanup diagnostic and runtime failure while
+requiring Lost/reserved/nontransport/unclassified receipt and clean=false. The older
+predispatch-cat/unowned-read cases do NOT transport later cleanup facts: their earlier
+result errors win by unchanged priority (grok/mod.rs result.err().or_else cleanup).
+The reviewer correctly found coverage missing but its claim those existing cases
+already exposed facts was overbroad. Reconciliation_error host-Git transport has no
+current stage-specific plan injection; explicitly no direct transport assertion (unchanged forwarding is source-only), no new
+production stage port or priority change to manufacture evidence.
+
+Verified Low refinements: allocation-injection writer stays alive through its unit
+failure; Open/non-target unit clocks have distinct10s fixture-loop watchdog and keep
+5ms idle instead of busy-spin after250ms (production unchanged). Interrupted result
+facts now mark pending via a shared fact-only helper, with prepared-result unit credit
+only. Maximum nonframing formatter cases populate maximum counters/timing and all
+site prefixes; incomplete-prefix check is independent of appended fact tokens.
+Requirements status and master wrapped errno/text impact are corrected without new
+normative requirements. Current attachment sites always know selected stream/none,
+cleanup and kill stages, so optional unavailable vocabulary for these three fields
+is unreachable; design documents every current site instead of adding unused states.
+No old red rerun, deadline/Unknown/native authority or reader/driver correction. The
+following commit precedes affected tests/mutants and own-session source re-review.

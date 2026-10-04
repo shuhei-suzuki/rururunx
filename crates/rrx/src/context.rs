@@ -1454,63 +1454,9 @@ mod tests {
             cause.contains("SessionLost") && cause.contains("inspection_facts{"),
             "{cause}"
         );
-        // Independently observe the original IO kind before its text is transported
-        // through the actual resolver/cleanup/Git path; do not select a branch by site.
-        match plan
-            .original_error_kind()
-            .expect("real inspector did not run")
-        {
-            std::io::ErrorKind::InvalidData => {
-                assert!(
-                    cause.contains("site=stderr_guard,stream=stderr,refusal=stderr_nonempty"),
-                    "{cause}"
-                );
-                for fact in [
-                    "stdout_eof=observed",
-                    "stderr_eof=observed",
-                    "stderr_bytes=18,",
-                    "exit=success",
-                    "validation=not_reached",
-                    "cleanup=reaped_by_status_observation",
-                    "kill=not_requested",
-                ] {
-                    assert!(cause.contains(fact), "{fact}: {cause}");
-                }
-            }
-            std::io::ErrorKind::TimedOut => {
-                assert!(
-                    cause.contains("site=deadline_") && cause.contains("refusal=deadline"),
-                    "{cause}"
-                );
-                // A genuine deadline retains uncertainty, without exact-site or cap credit.
-            }
-            kind => panic!("unexpected original inspector kind {kind:?}: {cause}"),
-        }
-        // Only invariant counts, not throughput or a dynamic leader byte length.
-        let count = |key: &str| -> Option<u64> {
-            cause
-                .split_once(&format!("{key}="))?
-                .1
-                .split([',', '}'])
-                .next()?
-                .parse()
-                .ok()
-        };
-        for stream in ["stdout", "stderr"] {
-            if let Some(reads) = count(&format!("{stream}_reads")) {
-                let would_block = count(&format!("{stream}_would_block")).unwrap();
-                let interrupted = count(&format!("{stream}_interrupted")).unwrap();
-                let eof = u64::from(cause.contains(&format!("{stream}_eof=observed")));
-                assert!(reads >= would_block + interrupted + eof, "{cause}");
-            }
-        }
-        if let Some(polls) = count("status_polls") {
-            assert!(polls > 0, "{cause}");
-        }
-        assert!(
-            !cause.contains("fixture diagnostic"),
-            "raw child stderr leaked"
-        );
+        // Shared test assertion independently captures the original IO kind before
+        // real inspector/resolver/Git transport; it never trusts site to select a branch.
+        plan.assert_diagnostics_transport(&cause);
         assert!(latch.load(Ordering::SeqCst));
         let later = git_value_owned(
             &executable,

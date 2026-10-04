@@ -163,7 +163,11 @@ fn setup_read_and_allocation_injections_preserve_reached_measurements() {
     ] {
         let mut facts = open();
         facts.hooks.failure = Some((site, stream, io::ErrorKind::PermissionDenied));
-        let error = run("printf '42 42 Z\\n'; printf x >&2", facts).unwrap_err();
+        let error = run(
+            "printf '42 42 Z\\n'; printf x >&2; exec /bin/sleep 30",
+            facts,
+        )
+        .unwrap_err();
         let sample = observed(&error);
         assert_eq!(sample.site, Some(site));
         assert_eq!(sample.stream, stream);
@@ -221,7 +225,7 @@ fn settled_child_status_error_is_relinquishment_not_cleanup_authority() {
             Ok(()) => std::thread::sleep(Duration::from_millis(1)),
         }
     };
-    cleanup_failure(&mut inspector, &mut facts);
+    cleanup_failure(&mut inspector, &mut facts).unwrap();
     let error = facts.attach(result);
     // Cleanup-before-assertion, including mutations: cfg(test) recorded operations
     // stub any attempted second kill/wait on the already reaped actual Child.
@@ -268,7 +272,7 @@ fn actual_inner_read_errno_is_preserved_and_outer_rendering_is_value_free() {
     )
     .err()
     .unwrap();
-    cleanup_failure(&mut inspector, &mut facts);
+    cleanup_failure(&mut inspector, &mut facts).unwrap();
     assert_eq!(
         original.raw_os_error(),
         Some(rustix::io::Errno::ISDIR.raw_os_error())
@@ -391,10 +395,31 @@ fn maximum_value_formatter_is_finite_and_counters_saturate_without_raw_bodies() 
     }
     // Exercise every non-framing formatter enum arm with maximum numeric fields.
     let mut facts = Collector::new();
+    let endpoint = StreamFacts {
+        calls: u64::MAX,
+        bytes: u64::MAX,
+        would_block: u64::MAX,
+        interrupted: u64::MAX,
+        eof: Eof::Observed,
+    };
+    facts.facts.stdout = Some(endpoint);
+    facts.facts.stderr = Some(endpoint);
+    facts.facts.status = Some(StatusFacts {
+        calls: u64::MAX,
+        pending: u64::MAX,
+        interrupted: u64::MAX,
+        errors: u64::MAX,
+        exit: Exit::Signaled,
+        source_kind: Some(io::ErrorKind::Other),
+    });
+    facts.facts.elapsed_us = Some(u64::MAX);
+    facts.facts.spawn_us = Some(u64::MAX);
+    facts.facts.cleanup_us = Some(u64::MAX);
     for cause in [
         Refusal::Deadline,
         Refusal::Allocation,
         Refusal::MissingEndpoint,
+        Refusal::FixtureWatchdog,
         Refusal::Io(io::ErrorKind::NotFound),
         Refusal::Io(io::ErrorKind::PermissionDenied),
         Refusal::Io(io::ErrorKind::Interrupted),
@@ -409,14 +434,16 @@ fn maximum_value_formatter_is_finite_and_counters_saturate_without_raw_bodies() 
         Refusal::Io(io::ErrorKind::Other),
     ] {
         for stream in [StreamKind::None, StreamKind::Stdout, StreamKind::Stderr] {
-            facts.fail(Site::Endpoint, stream, cause, io::ErrorKind::Other);
-            assert!(
-                facts
-                    .attach(io::Error::other("DO_NOT_RENDER_ERROR_BODY"))
-                    .to_string()
-                    .len()
-                    < 2048
-            );
+            for site in all_sites {
+                facts.fail(site, stream, cause, io::ErrorKind::Other);
+                assert!(
+                    facts
+                        .attach(io::Error::other("DO_NOT_RENDER_ERROR_BODY"))
+                        .to_string()
+                        .len()
+                        < 2048
+                );
+            }
         }
     }
     for (cleanup, kill, validation, exit, eof) in [
@@ -529,4 +556,46 @@ fn invalid_owned_leader_fails_before_any_spawn_and_has_unavailable_observations(
     assert!(sample.stdout.is_none() && sample.stderr.is_none() && sample.status.is_none());
     assert!(sample.spawn_us.is_none() && sample.elapsed_us.is_none());
     assert_eq!(sample.cleanup, Cleanup::NotReached);
+}
+
+#[test]
+fn unit_clock_watchdog_is_distinct_and_open_clock_keeps_idle_polling() {
+    for clock in [
+        Clock::Open,
+        Clock::Expire(Site::AfterValidationDeadline, StreamKind::None),
+    ] {
+        let mut facts = Collector::new();
+        facts.hooks.clock = clock;
+        facts.hooks.watchdog = Some(Instant::now() - Duration::from_secs(1));
+        let error = facts
+            .deadline(
+                Instant::now() + BUDGET,
+                Site::LoopDeadline,
+                StreamKind::None,
+            )
+            .unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::Other);
+        assert_eq!(facts.facts.refusal, Some(Refusal::FixtureWatchdog));
+        assert!(
+            facts
+                .attach(error)
+                .to_string()
+                .contains("unit_fixture_watchdog")
+        );
+        assert_eq!(facts.idle(Instant::now() - Duration::from_secs(1)), IDLE);
+    }
+}
+#[test]
+fn unit_interrupted_read_result_is_pending_and_counter_saturates() {
+    // Prepared result state, no claim of inducing an actual kernel Interrupted read.
+    let mut facts = StreamFacts {
+        calls: 1,
+        ..Default::default()
+    };
+    facts.interrupted_read();
+    assert_eq!(facts.eof, Eof::Pending);
+    assert_eq!(facts.interrupted, 1);
+    facts.interrupted = u64::MAX;
+    facts.interrupted_read();
+    assert_eq!(facts.interrupted, u64::MAX);
 }

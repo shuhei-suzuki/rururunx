@@ -162,10 +162,11 @@ impl Inspector {
 }
 /// Both real observation failure and the settled-child synthetic unit fixture use
 /// this exact helper. Cleanup timing never replaces the frozen observation facts.
-fn cleanup_failure(inspector: &mut Inspector, facts: &mut Collector) {
+fn cleanup_failure(inspector: &mut Inspector, facts: &mut Collector) -> io::Result<()> {
     let started = Instant::now();
-    let _ = inspector.cleanup_recorded(Some(facts));
+    let result = inspector.cleanup_recorded(Some(facts));
     facts.facts.cleanup_us = Some(diagnostics::micros(started.elapsed()));
+    result
 }
 impl Drop for Inspector {
     fn drop(&mut self) {
@@ -265,7 +266,7 @@ impl Stream {
             }
             Err(error) if error.kind() == io::ErrorKind::Interrupted => {
                 if let Some(s) = facts.stream(stream) {
-                    s.interrupted = s.interrupted.saturating_add(1);
+                    s.interrupted_read();
                 }
                 Ok(true)
             }
@@ -331,7 +332,7 @@ fn complete_recorded(
         }
         // No sleep while data flows; keep the unchanged native polling boundary.
         if !stdout_progress && !stderr_progress {
-            std::thread::sleep(IDLE.min(deadline.saturating_duration_since(Instant::now())));
+            std::thread::sleep(facts.idle(deadline));
         }
     }
 }
@@ -536,7 +537,7 @@ fn observe_command_recorded(
         Err(original) => {
             // Endpoints drop before mandatory wait, outside the observation budget.
             // Facts freeze at the first failure and do not promote cleanup authority.
-            cleanup_failure(&mut inspector, &mut facts);
+            let _ = cleanup_failure(&mut inspector, &mut facts);
             Err(facts.attach(original))
         }
     }
@@ -666,6 +667,12 @@ mod tests {
         ] {
             let error = builtin(body).unwrap_err();
             assert!(error.to_string().contains(category), "{name}: {error}");
+            if name == "empty" || name == "partial" {
+                assert!(
+                    error.to_string().starts_with(Framing::Incomplete.message()),
+                    "{name}: {error}"
+                );
+            }
         }
         assert!(builtin("printf '42 42 Z\\n'").unwrap());
     }
@@ -783,7 +790,7 @@ mod tests {
                 &mut facts,
             )
             .and_then(|frame| validate(&frame.stdout, 42));
-            cleanup_failure(&mut inspector, &mut facts);
+            cleanup_failure(&mut inspector, &mut facts).unwrap();
             send.send((result, started.elapsed(), facts.facts)).unwrap();
         });
         let before_release = receive.recv_timeout(Duration::from_secs(5));
@@ -1142,6 +1149,60 @@ impl TestPlan {
     }
     pub(crate) fn original_error_kind(&self) -> Option<io::ErrorKind> {
         self.original_kind.lock().ok().and_then(|kind| *kind)
+    }
+    pub(crate) fn assert_diagnostics_transport(&self, diagnostic: &str) {
+        assert!(diagnostic.contains("inspection_facts{"), "{diagnostic}");
+        match self
+            .original_error_kind()
+            .expect("real inspector did not run")
+        {
+            io::ErrorKind::InvalidData => {
+                assert!(
+                    diagnostic.contains("site=stderr_guard,stream=stderr,refusal=stderr_nonempty"),
+                    "{diagnostic}"
+                );
+                for fact in [
+                    "stdout_eof=observed",
+                    "stderr_eof=observed",
+                    "stderr_bytes=18,",
+                    "exit=success",
+                    "validation=not_reached",
+                    "cleanup=reaped_by_status_observation",
+                    "kill=not_requested",
+                ] {
+                    assert!(diagnostic.contains(fact), "{fact}: {diagnostic}");
+                }
+            }
+            io::ErrorKind::TimedOut => assert!(
+                diagnostic.contains("site=deadline_") && diagnostic.contains("refusal=deadline"),
+                "{diagnostic}"
+            ),
+            kind => panic!("unexpected original inspector kind {kind:?}: {diagnostic}"),
+        }
+        let count = |key: &str| -> Option<u64> {
+            diagnostic
+                .split_once(&format!("{key}="))?
+                .1
+                .split([',', '}'])
+                .next()?
+                .parse()
+                .ok()
+        };
+        for stream in ["stdout", "stderr"] {
+            if let Some(reads) = count(&format!("{stream}_reads")) {
+                let would_block = count(&format!("{stream}_would_block")).unwrap();
+                let interrupted = count(&format!("{stream}_interrupted")).unwrap();
+                let eof = u64::from(diagnostic.contains(&format!("{stream}_eof=observed")));
+                assert!(reads >= would_block + interrupted + eof, "{diagnostic}");
+            }
+        }
+        if let Some(polls) = count("status_polls") {
+            assert!(polls > 0, "{diagnostic}");
+        }
+        assert!(
+            !diagnostic.contains("fixture diagnostic"),
+            "raw child stderr leaked"
+        );
     }
     pub(super) fn signal(&self, pid: rustix::process::Pid) -> Result<(), rustix::io::Errno> {
         match self.mode {

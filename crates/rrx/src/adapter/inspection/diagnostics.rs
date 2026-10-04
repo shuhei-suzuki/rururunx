@@ -170,6 +170,8 @@ pub(super) enum Refusal {
     Deadline,
     Allocation,
     MissingEndpoint,
+    #[cfg(test)]
+    FixtureWatchdog,
 }
 impl Refusal {
     fn name(self) -> &'static str {
@@ -179,6 +181,8 @@ impl Refusal {
             Self::Deadline => "deadline",
             Self::Allocation => "allocation",
             Self::MissingEndpoint => "missing_endpoint",
+            #[cfg(test)]
+            Self::FixtureWatchdog => "unit_fixture_watchdog",
         }
     }
 }
@@ -212,6 +216,12 @@ pub(super) struct StreamFacts {
     pub(super) would_block: u64,
     pub(super) interrupted: u64,
     pub(super) eof: Eof,
+}
+impl StreamFacts {
+    pub(super) fn interrupted_read(&mut self) {
+        self.interrupted = self.interrupted.saturating_add(1);
+        self.eof = Eof::Pending;
+    }
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(super) enum Exit {
@@ -364,6 +374,18 @@ impl Collector {
         stream: StreamKind,
     ) -> io::Result<()> {
         #[cfg(test)]
+        if !matches!(self.hooks.clock, Clock::Real)
+            && Instant::now()
+                >= *self
+                    .hooks
+                    .watchdog
+                    .get_or_insert_with(|| Instant::now() + Duration::from_secs(10))
+        {
+            let error = io::Error::other("native inspection unit fixture watchdog elapsed");
+            self.fail(site, stream, Refusal::FixtureWatchdog, error.kind());
+            return Err(error);
+        }
+        #[cfg(test)]
         let result = match self.hooks.clock {
             Clock::Real => super::current(deadline),
             Clock::Open => Ok(()),
@@ -395,6 +417,13 @@ impl Collector {
         }
         Ok(())
     }
+    pub(super) fn idle(&self, deadline: Instant) -> Duration {
+        #[cfg(test)]
+        if !matches!(self.hooks.clock, Clock::Real) {
+            return super::IDLE;
+        }
+        super::IDLE.min(deadline.saturating_duration_since(Instant::now()))
+    }
     pub(super) fn attach(&self, error: io::Error) -> io::Error {
         io::Error::new(error.kind(), Failure { facts: self.facts })
     }
@@ -411,6 +440,8 @@ impl fmt::Display for Failure {
             Some(Refusal::Frame(c)) => c.message(),
             Some(Refusal::Deadline) => "native process inspection timed out",
             Some(Refusal::Allocation) => "native inspection allocation failed",
+            #[cfg(test)]
+            Some(Refusal::FixtureWatchdog) => "native inspection unit fixture watchdog elapsed",
             Some(Refusal::MissingEndpoint) => match x.stream {
                 StreamKind::Stdout => "missing inspection stdout",
                 StreamKind::Stderr => "missing inspection stderr",
@@ -491,6 +522,7 @@ impl fmt::Display for Failure {
 #[derive(Default)]
 pub(super) struct Hooks {
     pub(super) clock: Clock,
+    pub(super) watchdog: Option<Instant>,
     pub(super) failure: Option<(Site, StreamKind, io::ErrorKind)>,
     pub(super) status_error_after_reap: bool,
     pub(super) actual_reaped: Option<ExitStatus>,
