@@ -3,7 +3,7 @@
 Status: actual main80452f4 is schema3; this unmerged component source is5. Proposed
 schema6 remains fixture-only/pre-code until its independent gate and actual composed
 source/native production release. No Phase::DecisionReview or native producer is
-created by prose. The schema6 canonical writer table below plus Design16–28 private
+created by prose. The schema6 canonical writer table below plus Design16–29 private
 port/bounds define proposed native authority. Earlier schema5 protocol examples are
 historical component context ONLY and cannot authorize a managed/public writer;
 artifact/encoding contracts continue where this table does not supersede them.
@@ -26,6 +26,7 @@ is separately permitted under authorized lifecycle holds, never launch/ALLOW.
 | First/new consumed input (including Starting→Starting) | Actual operation-bound NativeCAS | Same-tx composed23 admission; current full CPP/head/frame/source + P/G/T/own Session/locks/activity; unique consumption committed before bytes |
 | Consumed Starting→Running acknowledgement | Actual owned historical acknowledgement | Exact current admitted tuple/consumed UUID, same attempt; no re-admission or new payload |
 | Admitted Waiting/pending permission or fixed DENY observation | Private Acked/DenyHistorical | Original input/actor pins and provider-specific activity; no prepared consumption or grant |
+| Host-executed native callback effect (ACP filesystem read/write) | Private HostCallbackCurrent with actual registered effect authorization | Current exact method/path/bytes/effect scope, operation/frame/locks, lifecycle/governing/head predicates BEFORE host IO; no native JSON credential, Broker fiction or model consumption |
 | Tool/action ALLOW | Private AllowCurrent + actual trusted grant proof | Same-tx composed23 admission; current immutable CPP/head/governing/reference source authority + P/G/T/own Session/locks/activity before wire; Executor mutable content excluded as Design26 specifies; no historical fallback |
 | Current managed non-Lost terminal / receipt | Actual owned supervisor settlement | Actual current native outcome or eligible NoCurrentDispatch + complete required owned cleanup; immutable exact receipt/body |
 | Exact prior terminal restoration before current dispatch | Actual owned settlement producer | Same Immediate transaction as the new operation's NoCurrentDispatch receipt/body/audit; exact private prior checksum, no current admit/consume/uncertainty; never current success |
@@ -2137,8 +2138,9 @@ boundary; they cannot claim production availability before recovery exists.
 
 Engine poll/evaluate uses the private receipt class/outcome reader to select native
 phase outcome: NoCurrentDispatch/restored prior maps only to Failed/Interrupted;
-KnownCurrentTerminal known success plus current admitted/consumed Exited may map
-to Succeeded. It never selects success solely from a restored Exited label. Missing/
+KnownCurrentTerminal known success plus current admitted/consumed Exited is necessary
+but NOT sufficient for Succeeded. Exact phase PhaseGates Passed evidence and durable
+owned result artifact are additionally required (Design29). It never selects success solely from a restored Exited label. Missing/
 unknown receipt stays held. Test restored-Exited full Engine progression to the
 non-success closure, not merely a Store rejection looping forever.
 
@@ -2408,7 +2410,8 @@ The private permission producer/#10 integration is not claimed present. Unsuppor
 managed ALLOW fails before grant effects until its actual trusted producer composes;
 controlled production-consumer fixtures must call the real private operation/grant
 port, not seed JSON/SQL. Inventory Claude commit_current, Codex Approve, Generic/Grok
-permission surfaces and every mid-turn operation journal consumer. Controls prove
+permission surfaces, Grok ACP fs/read_text_file and fs/write_text_file host callbacks,
+and every mid-turn operation journal consumer. Controls prove
 current ALLOW→wire, Paused Goal/held Task/changed P/G/T/own Session/lock/current head
 or source→zero wire, and a caller-reachable mutant removing the ALLOW-only current
 predicate. Historical DENY keeps the Claude Blocked no-wire and Codex unchanged
@@ -2786,9 +2789,9 @@ Every referenced blob is inserted atomically with its exact observed claim token
 Workflow publication and included in the schema6 all-table writer fence/migration/golden.
 Generic Records/audit cannot replace it. Old embedded pre-epoch history is read-only.
 Per-blob bytes, unique observation count and complete8-MiB Workflow-body cap are simultaneous
-ceilings, not a promise all maximum history metadata fits. Private immutable blobs do not
-assert a total DB-storage cap; actual owned copies/refs and reservations report their bytes,
-and any actual configured storage quota is charged before effects, never bypassed by dedup.
+ceilings, not a promise all maximum history metadata fits. All new private observation/outcome/durable native-result blobs share a128-MiB
+aggregate perWorkflow persisted-byte quota under Design29; exact owned identity dedup
+never hides copies. This is not a total application DB or realtime memory bound.
 
 Irreversible tail reservation uses this real representation: each planned tail attempt
 reserves64*512 bytes for compact entries plus its bounded fixed metadata, required source/
@@ -2943,3 +2946,99 @@ non-success. This avoids a receipt-publication deadlock without inventing generi
 or inactive success binding. Admission-lifecycle-in-settlement mutant must fail this test.
 S6-09 also proves bound restored-prior SessionID retained byte-exact and unbound remains
 None, never clearing/rebinding to satisfy a table. No restored receipt proves current success.
+
+
+### Design29: historical branches, host effects and bounded durable results
+
+The canonical observation port requires genuine prior private admission/preparation
+and the actual owned operation/runtime instance, open+unsettled+effects_started,
+remembered own Session Record version, exact input/actor/native/pair/consumed UUID
+pins and operation-pinned complete scoped lock set. It never obtains expected authority
+by reading current rows and matching them to themselves. Branches are explicit:
+
+| Historical branch | P/G/T and activity currency |
+| --- | --- |
+| Consumed Starting→Running ACK, pending permission observation and any Running-target publication | Full remembered P/G/T CAS from genuine admission/own reviewed CAS, pinned full locks and existing provider-specific activity/target-state guards; semantic sibling/operator version drift may conservatively retain ownership for14, no refreshed expectations |
+| Exact Codex unchanged-Waiting fixed Decline (and its no-grant audit) | Retained P/G/T are provenance ONLY; exact own Session/op/input/actor/pending request and pinned locks plus existing provider/activity/target-state guards; no raw version re-admission, refreshed tuple or grant |
+| Monotonic Lost/uncertainty diagnostic | Retained P/G/T are provenance ONLY; exact own Session/op/scope/input/actor/consumed intent and pinned locks; only conservative Lost/uncertainty additions/PID clearing, never admission/release/success |
+| Actual factual settlement | Separate real settlement producer, exact owner/body/input and complete actual cleanup; factual receipt under lifecycle hold, not an observation or grant |
+
+Preserve actual provider differences: Claude Blocked Waiting→Running DENY cannot wire;
+Codex unchanged Waiting Decline may wire under its existing safe own-Session predicate,
+then postreply Running publication stops on Blocked/current remembered CAS. Task metadata
+version revocation does not turn that fixed Decline into ALLOW. A conservative failed ACK
+leaves the consumed operation owned for cleanup/recovery; it never fabricates lost delivery.
+S6-05/06/07 include sibling Goal version bump, operator Task hold, per-provider Blocked
+and remembered lock changes, exact unchanged-Waiting Decline positive and monotonic Lost
+DB/watch consistency. Mutants swapping AllowCurrent currency into historical exceptions
+or dropping remembered CAS from Running-target ACK must reach these real consumers.
+
+HostCallbackCurrent is DISTINCT from a native permission reply and native-internal tool
+execution. Actual registered policy/effect authorization plus the genuine operation handle
+binds exact callback method, canonical FD-anchored scoped path, read/write byte bound and
+write-content digest. Native ACP JSON alone cannot mint it; no imaginary Broker decision
+or new model-input consumed UUID. Before filesystem IO its transaction admits that exact
+current effect with full AllowCurrent lifecycle/semantic P/G/T/own Session/locks,
+accepted23 Running/nohold/DAG predicates, CPP/checkpoint head and immutable governing/
+reference authority; mutable Executor content uses only the scoped Design26 exemption.
+Admission is uniquely journalled against this operation/current request before the host
+performs IO outside SharedStore. The admitted effect stays owned through its actual outcome;
+revocation before admission emits zero IO, later revocation stops further admissions and
+retains required cleanup, never drops an already admitted effect. No OS-atomic filesystem
+or foreign-writer attribution claim is made. Governing rule/config/reference targets cannot
+be overwritten through this callback. Reviewer reads retain exact snapshot and native
+read-only profile; all runtime-private/current-peer/foreign Project/context paths remain
+ineligible even when OS-readable. Actual in-process FD path/effect ownership and containment
+are prerequisites, not a generic callback label. Grok actual authorize_write+owner callbacks
+must migrate to this real private port; missing producer refuses before host read/write.
+S6-06 actual owned write positive, Blocked/Paused/Cancelled/head/rule/lock stale negatives,
+governing-target write refusal and caller-reachable host-effect admission mutant prove it.
+
+Continue checkpoint projection separates semantic retained events from condensation:
+retained must be an exact prior-list prefix and mandatory_goal/mandatory_task/rules
+snapshots unchanged. Legacy snapshot semantic or otherwise unclassified changes conservatively
+force Fresh; no silent exclusion of a newly added authority field. Recent window, omitted_*
+summary, recent_bytes, previous/chain_version, sequence/input-digest and measured-token
+bookkeeping are compared through exact validated chained provenance/consecutive head;
+normal transient-window pruning does not by itself force Fresh or permit retained-event
+removal. Exact field inventory is projection-versioned. Window overflow+retained Decision
+append may Continue; dropping/replacing a retained Decision while advancing transient
+window routes Fresh. A selector mutant must reach actual routing, not digest-only unit tests.
+
+KnownCurrentTerminal receipt records native lifetime/outcome/cleanup attribution, not a
+review verdict or PhaseGates success. Actual supervisor settlement atomically retains a
+bounded immutable owned result artifact (maximum1 MiB encoded bytes or overflow prefix
+with explicit nonapproval status), exact digest/projection and scope/operation/Session/
+context/admitted input references. Native callback result text is unverified proposed
+content until actual phase gate validation. Success after dropped result/restart needs
+this exact artifact plus actual PhaseGates Passed evidence bound to the same Session/context;
+missing/unavailable/malformed/overflow result stays Waiting/held, never legacy statusNone
+acceptance or receipt-only success. Restart still requires actual14 private authentic
+recovery, not reconstructed live owner. S6-08/10 durable successful result+gate proof,
+missing result, nonapproval Reviewer verdict, receipt-only gate mutant and restart hold
+controls preserve this distinction. No private executor conversation goes into public
+review packets or peer inputs.
+
+Private workflow_context_counters also charges total used/reserved immutable observation-
+source/outcome/native-result blob bytes perWorkflow:128 MiB finite initial policy bound.
+Every admitted effect reserves actual known worst-case source/result/metadata and complete
+irreversible/factual-settlement tail capacity BEFORE IO/model bytes; missing bound refuses.
+Dedup is charged once only for proven exact scoped owned identity, every actual copy costs
+bytes. Optional progress cannot spend reserved final result/receipt/closure/tail capacity.
+The2-MiB source/1-MiB outcome/64unique/256history ceilings are simultaneous, never a promise
+maximum sizes all fit128 MiB. Large generic tail contracts may therefore refuse beforePr;
+required actual supported profiles must provide fitting real bounds, not raise/default-hide
+capacity or call universal Unsupported MVP success. At quota refusal retain prior evidence/
+ownership with explicit NeedsContext/hold attention and zero next effect. Actual used+reserved
+byte CAS, rollback/dedup/copy boundaries, realistic repeated large blobs, protected terminal
+publication after disposal and quota-removal mutants belong S6-13. Application-wide storage
+and OS/runtime memory remain separate bounds; no delete/reset of mandatory blob history.
+
+The ONLY schema6 classification order is bounded bytes/depth/nodes, then universal
+Lost/terminal→Lost refusal using bounded state decode, then private port dispatch,
+strict branch DTO parsing and that branch's currency checks. RestoredPrior is settlement-
+ONLY inside the same atomic receipt transaction, unreachable from NativeCAS or generic
+managed writers. NativeCAS admits only its allowed validated/current or historical outcomes;
+head-validated Running without consumed UUID never admits. S6-01/04/08 raw oversized body,
+Lost before outcome branching and NativeCAS-restoration routing mutants pin this ordering.
+Earlier component5 launch-guard ordering is historical and cannot authorize these branches.

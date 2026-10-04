@@ -28,7 +28,7 @@ passed fixture. The matrix is the single current native acceptance inventory.
 | S6-16 | Exact composed projection/schema/caller readiness | Actual5/6/7/Generic/Fake and23/43/58/60 integration; synthetic producer mechanics≠production native acceptance |
 
 Each stable key requires named exact consumer tests AND meaningful causal mutants
-in final source evidence; it is not an invented available API or a checkmark. Design16–28
+in final source evidence; it is not an invented available API or a checkmark. Design16–29
 and the canonical writer table define the required private predicates. Source evidence
 must map each key to actual fixture/result SHA and list unready production ports.
 
@@ -192,8 +192,9 @@ strict Project/Goal version equality.
 
 ## First admission and compatibility requirements
 
-Protected Task input stays pending until an exact consumed dispatch or a private,
-current-frame/head-validated Running publication. WaitingApproval/WaitingHuman/Lost
+Protected Task input stays pending until private NativeCAS commits exact consumption,
+including a combined consumed first-Running admission. Head-validated Running without
+a consumed UUID grants no admission and rejects. WaitingApproval/WaitingHuman/Lost
 and native_dispatch_unobserved do not grant admission. Under schema6, pending
 unconsumed Starting→Waiting rejects; historical admitted waiting reentry retains
 its exact private pins. Lost has no generic exit. Already admitted input retains its historical pins. New consumed
@@ -231,7 +232,9 @@ owned slot/native settlement; no currently available DecisionTask port is implie
 and Executor-writable rules/config/hooks never become its trusted authority. Arbitrary role changes cannot bypass frame authority.
 
 Migration must refuse before mutation while any live/Lost Session, active lock or
-active/nonterminal unfinished Workflow ownership remains. Terminal non-owning
+ANY Workflow with active.is_some() or owning a nonterminal Task regardless of
+finished (including QUICK PrCreated) remains. Design27 and the canonical migration
+predicate supersede all earlier unfinished-only wording. Terminal non-owning
 cancelled Workflow history remains migratable. Complete or explicitly cancel/drain
 with the compatible old runtime first. New semantic projection definitions
 are versioned and exhaustively classified. Every typed actor, including Reviewer,
@@ -639,3 +642,15 @@ actual existing lifecycle policy and original43 pins. Drop uses bounded in-memor
 ONLY, noSQLite/StoreIO; native Executor tools never self-exempt runtime maintenance.
 Bound/unbound restoration preserves exact prior SessionID. S6-08/09/10/13 include these
 causal consumer controls; no source6 implementation or production acceptance is asserted.
+
+
+Design29 explicitly defines historical observation branch pins, including the exact
+Codex unchanged-Waiting fixed Decline and monotonic Lost exceptions (provenance only,
+no current grant). Host-executed ACP filesystem callbacks require distinct real current
+effect admission before IO; actual Grok callers must migrate. Native phase success needs
+actual Passed gate evidence plus durable owned result, never receipt alone. Checkpoint
+transient-window bookkeeping is separate from retained semantic-prefix comparison.
+Persisted new observation/result blobs have128-MiB aggregate perWorkflow quota, reserved
+before every effect with final factual-settlement/tail capacity protected. Structural
+bounds precede Lost classification and settlement-only restoration dispatch. All are
+S6 source/native controls pending actual composed implementation, not a synthetic proof.
