@@ -1,5 +1,7 @@
 //! Durable compact coordination artifacts. Native source observations stay in context.
 mod encoding;
+#[cfg(test)]
+mod encoding_reads;
 pub mod workflow;
 
 use crate::{
@@ -23,6 +25,28 @@ const MAX_REFS: usize = 128;
 const FORMAT: &str = "rrx.task-pack.v1";
 const CHECKPOINT: &str = "rrx.checkpoint.v1";
 const GOAL_FORMAT: &str = "rrx.goal-pack.v1";
+
+#[derive(Clone, Copy)]
+enum ContextRead {
+    TypedTask,
+    TypedGoal,
+    TaskProvenance,
+}
+impl ContextRead {
+    fn guard(self, data: &Value) -> Result<()> {
+        if matches!(self, Self::TaskProvenance)
+            && !workflow::is_phase_context(data)
+            && data["format"] != FORMAT
+        {
+            return Ok(());
+        }
+        if !matches!(self, Self::TypedGoal) && workflow::is_phase_context(data) {
+            bounded(&data["task_pack"])
+        } else {
+            bounded(data)
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -513,10 +537,12 @@ impl ContextPacks {
         reference(&context)
     }
     pub fn task_pack(&self, reference: &PackRef) -> Result<TaskPack> {
-        let c = self.load_context(reference)?;
+        let c = self.load_context(reference, ContextRead::TypedTask)?;
         let pack: TaskPack = if workflow::is_phase_context(&c.data) {
             workflow::context_artifact(&c)?.pack
         } else {
+            #[cfg(test)]
+            encoding::read_stage(encoding::TYPED_DECODE);
             serde_json::from_value(c.data.clone())?
         };
         ensure!(
@@ -528,7 +554,7 @@ impl ContextPacks {
         bounded(&pack)?;
         Ok(pack)
     }
-    fn load_context(&self, reference: &PackRef) -> Result<ContextVersion> {
+    fn load_context(&self, reference: &PackRef, intent: ContextRead) -> Result<ContextVersion> {
         ensure!(reference.version > 0, "invalid context reference version");
         let store = self
             .store
@@ -537,6 +563,9 @@ impl ContextPacks {
         let c = store
             .context(&reference.scope, Some(reference.version))?
             .context("missing context reference")?;
+        intent.guard(&c.data)?;
+        #[cfg(test)]
+        encoding::read_stage(encoding::CONTEXT_DIGEST);
         ensure!(
             digest(&c)? == reference.digest,
             "context reference digest changed"
@@ -620,10 +649,18 @@ impl ContextPacks {
             r.kind == RecordKind::Checkpoint
                 && r.scope == reference.scope
                 && r.version == reference.version
-                && r.version == 1
-                && digest(&r.data)? == reference.digest,
+                && r.version == 1,
             "stale/foreign checkpoint reference"
         );
+        bounded(&r.data)?;
+        #[cfg(test)]
+        encoding::read_stage(encoding::CHECKPOINT_DIGEST);
+        ensure!(
+            digest(&r.data)? == reference.digest,
+            "stale/foreign checkpoint reference"
+        );
+        #[cfg(test)]
+        encoding::read_stage(encoding::TYPED_DECODE);
         let cp: Checkpoint = serde_json::from_value(r.data)?;
         ensure!(
             cp.format == CHECKPOINT && cp.scope == r.scope,
@@ -716,7 +753,9 @@ impl ContextPacks {
     }
     async fn validate_task_map(&self, reference: &PackRef) -> Result<(TaskPack, RepositoryMap)> {
         ensure!(
-            !workflow::is_phase_context(&self.load_context(reference)?.data),
+            !workflow::is_phase_context(
+                &self.load_context(reference, ContextRead::TypedTask)?.data
+            ),
             "workflow phase pack is prepared only by its Engine"
         );
         let pack = self.task_pack(reference)?;
@@ -746,7 +785,7 @@ impl ContextPacks {
             .source()
             .index(&reference.scope, pack.repository.additional_paths.clone())
             .await?;
-        let c = self.load_context(reference)?;
+        let c = self.load_context(reference, ContextRead::TypedTask)?;
         ensure!(
             RepositoryRef::of(&map, pack.repository.additional_paths.clone())? == pack.repository
                 && c.source_hashes == map.freshness().source_hashes,
@@ -1125,6 +1164,8 @@ impl ContextPacks {
                 .store
                 .lock()
                 .map_err(|_| anyhow::anyhow!("Store poisoned"))?;
+            #[cfg(test)]
+            encoding::read_stage(encoding::CHECKPOINT_APPEND);
             store.append_pack_checkpoint(
                 scope,
                 map_versions(&map),
@@ -1169,7 +1210,7 @@ impl ContextPacks {
                     .is_some_and(|c| c.version == reference.version),
             "foreign/stale Task reference"
         );
-        let context = self.load_context(reference)?;
+        let context = self.load_context(reference, ContextRead::TaskProvenance)?;
         if !workflow::is_phase_context(&context.data) && context.data["format"] != FORMAT {
             ensure!(
                 context.scope == task.scope() && !context.revision.is_empty(),
@@ -1185,7 +1226,9 @@ impl ContextPacks {
                 && pack.task["project_id"] == serde_json::to_value(task.project_id)?
                 && pack.task["goal_id"] == serde_json::to_value(task.goal_id)?
                 && pack.repository.manifest_digest
-                    == workflow::physical_manifest(&self.load_context(reference)?)?
+                    == workflow::physical_manifest(
+                        &self.load_context(reference, ContextRead::TypedTask)?
+                    )?
                 && !pack.repository.revision.is_empty(),
             "invalid historical Task provenance"
         );
@@ -1380,7 +1423,9 @@ impl ContextPacks {
         reference(&context)
     }
     pub fn goal_pack(&self, reference: &PackRef) -> Result<GoalPack> {
-        let c = self.load_context(reference)?;
+        let c = self.load_context(reference, ContextRead::TypedGoal)?;
+        #[cfg(test)]
+        encoding::read_stage(encoding::TYPED_DECODE);
         let pack: GoalPack = serde_json::from_value(c.data)?;
         ensure!(
             pack.format == GOAL_FORMAT
@@ -1393,7 +1438,7 @@ impl ContextPacks {
         Ok(pack)
     }
     pub async fn validate_goal(&self, reference: &PackRef) -> Result<()> {
-        let c = self.load_context(reference)?;
+        let c = self.load_context(reference, ContextRead::TypedGoal)?;
         let pack = self.goal_pack(reference)?;
         let (p, g) = self.goal_snapshot(&pack.scope)?;
         ensure!(
@@ -1443,7 +1488,7 @@ impl ContextPacks {
             );
             task_versions.push((t.id, t.version));
             let typed_context = if let Some(r) = &d.context {
-                let context = self.load_context(r)?;
+                let context = self.load_context(r, ContextRead::TaskProvenance)?;
                 workflow::is_phase_context(&context.data) || context.data["format"] == FORMAT
             } else {
                 false

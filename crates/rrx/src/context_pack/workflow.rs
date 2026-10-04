@@ -317,6 +317,9 @@ pub(crate) fn validate_capture(
     phase: Phase,
     budget: &ContextBudget,
 ) -> Result<()> {
+    bounded(value)?;
+    #[cfg(test)]
+    super::encoding::read_stage(super::encoding::TYPED_DECODE);
     let a: PhasePackArtifact = serde_json::from_value(value.clone())?;
     bounded(&a)?;
     ensure_phase_payload(&source.payload)?;
@@ -357,6 +360,9 @@ pub(crate) fn validate_capture(
 }
 /// Verify durable metadata without re-adopting or reading a finalized worktree.
 pub(crate) fn context_artifact(context: &ContextVersion) -> Result<PhasePackArtifact> {
+    bounded(&context.data["task_pack"])?;
+    #[cfg(test)]
+    super::encoding::read_stage(super::encoding::TYPED_DECODE);
     let a: PhasePackArtifact = serde_json::from_value(context.data["task_pack"].clone())?;
     bounded(&a)?;
     let offset = context.data["source_payload_offset"]

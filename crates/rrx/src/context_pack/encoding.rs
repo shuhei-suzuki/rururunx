@@ -134,6 +134,27 @@ pub(super) fn encoded_len(value: &impl Serialize) -> Result<usize> {
 }
 
 #[cfg(test)]
+pub(super) const CONTEXT_DIGEST: u8 = 1;
+#[cfg(test)]
+pub(super) const CHECKPOINT_DIGEST: u8 = 2;
+#[cfg(test)]
+pub(super) const TYPED_DECODE: u8 = 4;
+#[cfg(test)]
+pub(super) const CHECKPOINT_APPEND: u8 = 8;
+#[cfg(test)]
+thread_local! {
+    static READ_STAGES: Cell<u8> = const { Cell::new(0) };
+}
+#[cfg(test)]
+pub(super) fn read_stage(stage: u8) {
+    READ_STAGES.with(|seen| seen.set(seen.get() | stage));
+}
+#[cfg(test)]
+pub(super) fn take_read_stages() -> u8 {
+    READ_STAGES.with(|seen| seen.replace(0))
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use serde::ser::{Error, SerializeSeq};
