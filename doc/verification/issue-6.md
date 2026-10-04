@@ -460,12 +460,14 @@ mutants are assertion-killed in isolated committed sources: M639 caller-drop
 cancellation, M640 failed-CAS latch, M641 checkpoint terminal admission, M642
 stop receiver transfer, M643 supervision claim release, M644 captured-attempt
 wait, M645 level-triggered completion, M646 mutex order across actual SQLite CAS,
-M647 owned task lifetime, and M648 completion before cleanup/publication. M640/M642 initially survived narrower consumers;
+M647 owned task lifetime, and M648 completion before cleanup/publication.
+M640/M642 initially survived narrower consumers;
 those failures of the test strategy receive no kill credit. Direct CAS-return and
 unsolicited-interrupt assertions distinguish the protection, and the identical
 mutants fail the strengthened consumers. Every mutant's original source bytes
-were restored and committed before further verification. The original held-cleanup control passes at `d8d2ef1`; M648 is also killed.
-Final combined restored controls remain pending.
+were restored and committed before further verification. The original held-cleanup
+control passes at `d8d2ef1`; M648 is also killed. The exact-restored full Codex
+control passes 88 tests (one synthetic child entry ignored) in 36.02 seconds.
 
 Initial compile failures (`d97db98`, `2a67557`), sandbox process-access
 failures (`4c62671`), the incorrect synthetic version assertion and abrupt-close
@@ -485,3 +487,15 @@ Evidence: `/private/tmp/rururunx-issue6-f4-505-workspace-debug-host.log`,
 `/private/tmp/rururunx-issue6-f4-mutation-results2.json`,
 `/private/tmp/rururunx-issue6-f4-mutation-results3.json`,
 `/private/tmp/rururunx-issue6-f4-mutation-results4.json`.
+
+At clean `069fa88c647a14af2c6ffb05f0539f652765b4dc`, default-concurrency full
+workspace debug and release tests each pass **259 Rust tests plus two doctests**;
+formatting, all-target Clippy with denied warnings and debug/release builds pass.
+A final audit then found a task-owner mutex held across Tokio submission. Pinned
+Tokio 1.53.1 synchronously shuts down newly submitted tasks when its scheduler is
+closed ([primary source](https://raw.githubusercontent.com/tokio-rs/tokio/tokio-1.53.1/tokio/src/runtime/task/list.rs)).
+Reentrant TaskGuard release could deadlock that mutex. The next source stage uses
+an Installing/Released owner level without holding the mutex across submission or
+JoinHandle destruction. Closed-runtime, missing-runtime and unpolled-runtime-drop
+consumers and the corresponding original-race mutation remain under verification;
+no claim of final source approval follows from the earlier passing suite.

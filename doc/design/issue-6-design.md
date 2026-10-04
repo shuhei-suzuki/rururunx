@@ -198,6 +198,13 @@ actual consumed turn supervised; it does not silently inject an interrupt.
 Panic/runtime shutdown retains the existing conservative Drop/Lost fallback and
 finishes with a typed uncertain/unpublished outcome, never a fabricated restore.
 No task may be spawned without its registered control/transition ownership.
+The private task owner claims Installing before spawn but holds no owner mutex
+across submission. A closed Tokio runtime can synchronously drop that submitted
+future. TaskGuard releases its own slot to Released; installation observes that
+level and drops the completed handle rather than keeping it or deadlocking on a
+nested release. Missing async runtime returns a typed launch failure and the
+conservative unpublished drop outcome. Handle release also drops JoinHandle outside
+the owner mutex. These private owner states do not alter public Session lifecycle.
 
 Check cancellation before Starting publication, every child spawn, thread/start or
 thread/resume, each inventory page, final binding and checkpoint publication.

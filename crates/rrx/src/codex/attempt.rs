@@ -90,9 +90,15 @@ pub(super) struct Control {
     // A leaf publication channel; updating it while Store is held never takes
     // admission/registry. It cannot be stolen by a later attempt's shared watch.
     published: watch::Sender<Option<SessionStatus>>,
-    task: Mutex<Option<tokio::task::JoinHandle<()>>>,
+    task: Mutex<TaskOwner>,
     #[cfg(test)]
     pub cas_entered: std::sync::atomic::AtomicBool,
+}
+enum TaskOwner {
+    Vacant,
+    Installing,
+    Running(tokio::task::JoinHandle<()>),
+    Released,
 }
 impl Control {
     pub fn new(previous: Option<SessionStatus>) -> (Arc<Self>, mpsc::Receiver<()>) {
@@ -105,7 +111,7 @@ impl Control {
                 stop,
                 phase,
                 published,
-                task: Mutex::new(None),
+                task: Mutex::new(TaskOwner::Vacant),
                 #[cfg(test)]
                 cas_entered: std::sync::atomic::AtomicBool::new(false),
             }),
@@ -134,32 +140,48 @@ impl Control {
         self: &Arc<Self>,
         future: impl std::future::Future<Output = ()> + Send + 'static,
     ) -> AdapterResult<()> {
-        // Holding only the private handle mutex prevents completion-before-
-        // installation. No Store/registry/admission lock or await is involved.
-        let mut task = self.task.lock().map_err(|_| {
+        let runtime = tokio::runtime::Handle::try_current().map_err(|_| {
             self.preparation.failed(failure(
-                ErrorKind::StateFailure,
-                "native attempt task owner poisoned",
+                ErrorKind::LaunchFailure,
+                "native attempt requires an async runtime",
             ))
         })?;
-        if task.is_some() {
-            return Err(self.preparation.failed(failure(
-                ErrorKind::StateConflict,
-                "native attempt task already owned",
-            )));
+        {
+            let mut task = self.task.lock().map_err(|_| {
+                self.preparation.failed(failure(
+                    ErrorKind::StateFailure,
+                    "native attempt task owner poisoned",
+                ))
+            })?;
+            if !matches!(*task, TaskOwner::Vacant) {
+                return Err(self.preparation.failed(failure(
+                    ErrorKind::StateConflict,
+                    "native attempt task already owned",
+                )));
+            }
+            *task = TaskOwner::Installing;
         }
-        *task = Some(tokio::spawn(future));
+        // A closed runtime can synchronously drop the future inside spawn. Its
+        // TaskGuard must release this exact owner without re-locking a mutex
+        // held by spawn. Released also records completion-before-installation.
+        let spawned = runtime.spawn(future);
+        let mut task = self.task.lock().unwrap_or_else(|error| error.into_inner());
+        if matches!(*task, TaskOwner::Installing) {
+            *task = TaskOwner::Running(spawned);
+        } else {
+            drop(task);
+            drop(spawned);
+        }
         Ok(())
     }
     pub fn release_task(&self) {
         // Releasing one's own JoinHandle never aborts it or touches a replacement.
-        match self.task.lock() {
-            Ok(mut task) => {
-                task.take();
-            }
-            Err(poisoned) => {
-                poisoned.into_inner().take();
-            }
+        let previous = {
+            let mut task = self.task.lock().unwrap_or_else(|error| error.into_inner());
+            std::mem::replace(&mut *task, TaskOwner::Released)
+        };
+        if let TaskOwner::Running(task) = previous {
+            drop(task);
         }
     }
     pub async fn wait_finished(&self) -> AdapterResult<Outcome> {
@@ -298,6 +320,84 @@ impl TestGate {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn closed_runtime_releases_unpolled_owned_task_without_installation_deadlock() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let handle = runtime.handle().clone();
+        drop(runtime);
+        let (control, _) = Control::new(None);
+        let owner = control.clone();
+        let (sent, received) = std::sync::mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            let _entered = handle.enter();
+            let guard = TaskGuard(owner.clone());
+            let result = owner.spawn(async move {
+                let _guard = guard;
+                std::future::pending::<()>().await;
+            });
+            sent.send(result).unwrap();
+        });
+        // This synthetic fixture owns no OS child. A deadlock mutant leaves only
+        // this thread, so a bounded assertion can finish without orphaning native
+        // or Git process ownership.
+        let result = received.recv_timeout(std::time::Duration::from_secs(2));
+        if result.is_ok() {
+            worker.join().unwrap();
+        }
+        result
+            .expect("closed scheduler cannot deadlock owned task installation")
+            .unwrap();
+        assert!(matches!(*control.task.lock().unwrap(), TaskOwner::Released));
+        assert!(matches!(
+            &*control.phase.borrow(),
+            Phase::Finished(outcome) if matches!(outcome.as_ref(), Outcome::Lost { publication_result: Err(_), .. })
+        ));
+    }
+
+    #[test]
+    fn runtime_shutdown_and_missing_runtime_keep_owned_task_drop_uncertain() {
+        let (missing, _) = Control::new(None);
+        let guard = TaskGuard(missing.clone());
+        let error = missing
+            .spawn(async move {
+                let _guard = guard;
+            })
+            .unwrap_err();
+        assert_eq!(error.kind, ErrorKind::LaunchFailure);
+        assert!(matches!(*missing.task.lock().unwrap(), TaskOwner::Released));
+        assert!(matches!(
+            &*missing.phase.borrow(),
+            Phase::Finished(outcome) if matches!(outcome.as_ref(), Outcome::Lost { publication_result: Err(_), .. })
+        ));
+
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let (control, _) = Control::new(None);
+        let guard = TaskGuard(control.clone());
+        {
+            let _entered = runtime.enter();
+            control
+                .spawn(async move {
+                    let _guard = guard;
+                    std::future::pending::<()>().await;
+                })
+                .unwrap();
+        }
+        assert!(matches!(
+            *control.task.lock().unwrap(),
+            TaskOwner::Running(_)
+        ));
+        drop(runtime);
+        assert!(matches!(*control.task.lock().unwrap(), TaskOwner::Released));
+        assert!(matches!(
+            &*control.phase.borrow(),
+            Phase::Finished(outcome) if matches!(outcome.as_ref(), Outcome::Lost { publication_result: Err(_), .. })
+        ));
+    }
 
     #[tokio::test]
     async fn finished_is_level_triggered_and_caller_drop_only_cancels_preparing() {
