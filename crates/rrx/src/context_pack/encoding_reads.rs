@@ -265,6 +265,20 @@ async fn checkpoint_reader_guards_after_identity_before_digest_and_decode() {
             f.packs().load_checkpoint(&foreign).unwrap_err(),
             "stale/foreign checkpoint reference",
         );
+        let mut version = f.corrupt_checkpoint(&record);
+        version.version = 2;
+        reset();
+        refused(
+            f.packs().load_checkpoint(&version).unwrap_err(),
+            "stale/foreign checkpoint reference",
+        );
+        record.kind = RecordKind::Verification;
+        let wrong_kind = f.corrupt_checkpoint(&record);
+        reset();
+        refused(
+            f.packs().load_checkpoint(&wrong_kind).unwrap_err(),
+            "stale/foreign checkpoint reference",
+        );
     }
     let r = f.corrupt_checkpoint(&control);
     let mut stale = r.clone();
@@ -435,6 +449,19 @@ async fn phase_reader_and_capture_guard_before_artifact_clone() {
             "payload":source.payload,"source_payload_offset":0}),
     };
     workflow::context_artifact(&control).unwrap();
+    f.task_context().await; // Genuine publication before owned negative corruption.
+    let phase_reference = f.corrupt(&control);
+    reset();
+    assert_eq!(
+        f.packs()
+            .validate_task_map(&phase_reference)
+            .await
+            .unwrap_err()
+            .root_cause()
+            .to_string(),
+        "workflow phase pack is prepared only by its Engine"
+    );
+    assert_eq!(encoding::take_read_stages(), encoding::CONTEXT_DIGEST);
     let mut c = control.clone();
     c.data["task_pack"]["source_versions"]["negative:padding"] = json!("x".repeat(MAX_BYTES));
     c.source_hashes
@@ -444,6 +471,15 @@ async fn phase_reader_and_capture_guard_before_artifact_clone() {
     assert!(serde_json::to_vec(&c).unwrap().len() < 8 * MAX_BYTES);
     reset();
     refused(workflow::context_artifact(&c).unwrap_err(), BYTES);
+    let phase_reference = f.corrupt(&c);
+    reset();
+    refused(
+        f.packs()
+            .validate_task_map(&phase_reference)
+            .await
+            .unwrap_err(),
+        BYTES,
+    );
     reset();
     refused(
         workflow::validate_capture(
