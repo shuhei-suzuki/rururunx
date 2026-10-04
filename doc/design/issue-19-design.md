@@ -280,7 +280,13 @@ continuation may clear historical diagnostics only while installing a strictly
 higher input version, exact prior terminal checksum and freshly validated frame.
 
 A nonterminal Running/Waiting/Lost Session cannot return to Starting. Same pending
-Starting observations retain all pins; only owned terminal-to-Starting is fresh.
+Starting observations retain all input pins; only owned terminal-to-Starting is fresh.
+A pending Starting-to-Starting write that initially binds model, effort or
+native_ref must pass the monotonic None-to-Some predicate, revalidate the latest
+complete private frame/head and owner lifecycle, and atomically replace the
+validated-preparation digest with the digest of the new exact actor fields. It
+never creates an admitted pair. A head/lifecycle change between the observations
+rejects the binding; no unconditional pending digest refresh is allowed.
 Exact prewire terminal restoration requires the stored previous-terminal checksum,
 no consumed intent, no uncertainty, AND no private admission row matching the
 pending input. An input once admitted as Running cannot be restored to an older
@@ -634,10 +640,11 @@ setup, effective binding before dispatch, explicit mismatch rejection with no
 wire input, higher-input same-UUID continuation and exact prewire restoration.
 Issue19 cannot claim this consumer behavior merely from Store synthetic tests.
 
-Claude5 currently keeps requested model/effort unchanged, publishes native_ref
-with Running and consumed input before wire, and clears native_ref in resume
-Starting. Its coordinated compatibility change must retain the known owned UUID
-in fresh Starting instead of clearing it, with actual fresh/resume caller proof.
+Claude5 keeps requested model/effort unchanged and publishes native_ref with
+Running and consumed input before wire. Its coordinated caller now retains the
+privately owned known UUID in fresh resume Starting, with a causal before-update
+fixture and exact failed-prewire rollback. This does not yet prove complete typed
+frame acceptance; that reviewed caller integration remains mandatory.
 Grok7 keeps requested model/effort and must retain its existing native identity
 semantics. Its current generic Starting records do not yet contain the complete
 protected input pins, and its dispatch intent is not the typed consumed contract.
@@ -746,3 +753,75 @@ native effects after the migration transaction. A runtime that invokes additiona
 startup reconciliation closes the manual backup window immediately. The manual
 rollback precondition remains operator-attested; no automatic restore method or
 private safe-rollback certificate is introduced by this context contract.
+
+
+### Native ownership, terminal uncertainty and factual checkpoint provenance
+
+For every persisted Lost Session, generic put_session/put_record cannot move it
+to Exited/Stopped or another terminal state. For a protected or allocated Session
+with native_dispatch_unobserved=true, generic writes cannot manufacture terminal
+settlement either. Conservative diagnostic updates preserve the monotonic flag,
+input, actor and consumed intent; an ack/preparation row does not prove native
+completion. Issue14's future private owned-recovery transaction must verify
+authoritative native terminal or cleanup evidence before settling such ownership.
+No such port is advertised in this Issue. Succeeded/allocated closure therefore
+cannot obtain terminal proof by converting Lost/uncertain history through a
+generic write. Normal non-uncertain owned Starting/Running-to-terminal caller
+updates retain their native adapter protocol; Store does not attest arbitrary
+Session JSON as native output. Test allocated admitted Lost-to-Exited rejection
+through independent connections and unchanged Workflow closure, including a
+mutant that removes the transition guard. Legitimate initial terminal Consultant
+history remains recordable; it is not recovery of a persisted Lost owner.
+
+Native_ref preservation is conditional on the provider's private live ownership
+registry, not permission inferred from a generic terminal Record or a checksum.
+Before fresh continuation reservation, setup or wire input, each native provider
+must resolve the exact Session UUID in its own registry and match Scope, agent,
+provider, role, Task worktree and the exact persisted prior terminal snapshot. An
+unregistered historical UUID cannot attach/resume an arbitrary native_ref, even
+when it names another Project's conversation. Known references remain immutable
+on legitimate same-UUID continuation. The current Codex resume path checks exact
+owner metadata/persisted equality and then registry.get(previous.id) before
+Reservation.persist/native setup; a forged terminal Record has no registry entry.
+Include that actual producer path and causal no-wire caller rejection in the
+acceptance evidence. No global native_ref index is introduced without a verified
+provider-owned admission gap. Generic historical data alone grants no native
+resume authority, and retained model input must still pass the complete typed
+frame/source gates on each genuinely new delivery.
+
+Checkpoint events are explicit caller-classified facts, with exact historical
+Session/Task/HEAD provenance; classification is not a native transcript or model
+completion attestation. Appending validates current scoped Project/Goal/Task and
+Session versions, exact worktree/role, source bytes and consecutive checkpoint
+head atomically. It may retain factual Consultant/earlier-session history. The
+Session ID is historical attribution, not a statement that its event text was
+produced by that native session, or that its private preparation/admission pair
+certifies the truth of a constraint. Consumers must present retained events as
+caller-supplied coordination history, distinct from current authoritative
+Goal/Task/rules and independently verified outcome evidence. Neither a generic
+terminal history record nor an event classified Completed authorizes Workflow
+Succeeded, native launch, merge or lock release. Cross-Task Consultant promotion
+retains this attribution and rederives target instructions. A later factual append
+can fence future fresh claims; an already admitted irreversible claim retains its
+frozen provenance and may finalize without discarding the history. A post-PR
+head drift may still require explicit reconciliation before a new claim; this
+declared hold is not hidden by deleting history or exempting claim freshness.
+Test factual Consultant history and late-after-admitted-Cleanup append retention,
+as well as rejection of foreign Session/worktree/version provenance. Native
+transcript ingestion/provenance certification is a separate owned adapter port,
+not an assertion made by this deterministic condensation API.
+
+Legacy checkpoint format-v1 producers construct mandatory_goal/task only from
+fixed typed Goal/Task projections. Their other fields are strings, booleans,
+integer counters and those projections; Session.recovery floating diagnostics are
+not part of Checkpoint. Initial floating Value examples assembled outside that
+private producer are not proof of a reachable historical checksum change. Before
+5-to-6 mutation, nevertheless verify every persisted typed checkpoint's shape,
+digest and every CheckpointRef/head reference in owned packs/phase contexts,
+including predecessor chains. Any inconsistent legacy reference refuses migration
+without repair or partial schema changes. Native old5 producer fixtures plus
+independent corrupted-reference fixtures establish compatibility and refusal.
+Session restore checksums separately cover fractional diagnostic parse/serialize
+roundtrips; their actual native producer bytes must remain identical. Encoding
+feature tests must distinguish that real restore input from fabricated checkpoint
+number cases.

@@ -244,3 +244,16 @@ prewire restoration: binding matches the exact current prepared frame, and succe
 requires that input's admitted/consumed proof plus authoritative terminal outcome.
 Future instruction-authority changes require incompatible-writer exclusion as
 well as new semantic versioning, including already-open older runtimes.
+
+
+Generic history cannot turn persisted Lost/uncertain ownership into terminal native
+completion; verified owned recovery remains an explicit Issue14 prerequisite.
+Private preparation/admission proves exact input currency, not native transcript
+truth. Provider private Session ownership must reject unregistered historical
+UUID/native_ref before native resume or wire delivery. Factual Consultant/history
+checkpoint append remains supported with caller-classified provenance and cannot
+certify Workflow success or native completion. Pending Starting initial actor
+binding revalidates the latest full frame/head/lifecycle and updates its private
+preparation pair atomically; it never grants delivery. Migration verifies all
+legacy typed checkpoint references before mutation, retaining actual old-producer
+checksums and refusing inconsistent history.

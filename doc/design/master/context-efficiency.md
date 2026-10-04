@@ -500,3 +500,15 @@ identity. Historical prewire restoration cannot certify a fresh phase. Pending
 preparation can bind actor identity; success also needs that input's private
 admission/consumption and Exited outcome. Semantic authority changes require both
 projection and persistence/writer-fence version changes.
+
+
+Persisted Lost/uncertain ownership cannot become terminal through generic history
+writes; trusted owned recovery remains Issue14. Private admission proves exact
+input, while native adapters retain their separate registry/terminal authority.
+Unregistered historical UUID/native_ref cannot authorize native resume. Pending
+initial actor binding refreshes preparation only after latest full-frame/head and
+lifecycle validation in the same transaction. Checkpoint facts remain explicitly
+caller-classified historical coordination evidence; Consultant facts are preserved
+without representing them as native transcript or completion proof. New claims
+retain live-head checks; already admitted claims retain their frozen provenance.
+Migration verifies every legacy typed checkpoint reference before mutation.
