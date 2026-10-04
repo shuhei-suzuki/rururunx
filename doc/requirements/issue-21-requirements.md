@@ -1,8 +1,8 @@
 # Issue 21: Attributable telemetry and Context Efficiency comparison
 
 Workflow: STRICT (shared durable metrics, provider normalization and Project isolation).
-Status: Requirements5; independent Req1–Req4 findings verified and refined below.
-Requirements5/design/source reviews pending.
+Status: Requirements6; independent Req1–Req5 findings verified and refined below.
+Requirements6/design/source reviews pending.
 Baseline: main80452f4, schema3. Depends on merged #2 and #4; part of #17.
 
 ## Purpose and existing gap
@@ -213,12 +213,22 @@ producer or benchmark conditions needed for #21 closure below.
   Resource/budget exhaustion is an explicit failure, not silent mandatory truncation.
   Register EVERY immutable plan and started run durably before its first dispatch;
   acceptance/reporting includes aborted and superseded plans with all results.
-  A successor cites its predecessor and an actual behavior-fixing source revision
-  or a feature predeclared disabled with narrower claims. It cannot shop away a
+  A successor cites its predecessor and an actual runtime/reduction behavior-fixing
+  source revision or a feature predeclared disabled with narrower claims. Verify
+  the prior regressing inputs/oracle items against the fix; an apparatus/fixture edit
+  or revision hash alone is not proof. It cannot shop away a
   regression by reducing oracle sensitivity, representativeness, repetitions or
   roster without separately reviewed justification. Previous observed regressions
-  remain disclosed beside later fixes/results; an unchanged-source clean re-plan
-  never erases them. One favorable plan cannot silently replace unfavorable history.
+  remain disclosed beside later fixes/results. An unchanged-source/configuration
+  successor is allowed only for a registered measurement-invalid or execution-
+  environment reason, never unfavorable quality/savings. Pool ALL valid repetitions
+  of the same source/frozen configuration across registered plans into one claim
+  denominator and dispersion under a stopping rule declared before the first run.
+  The latest/most favorable plan never drives the claim alone. Changed source or
+  configuration has its own claim scope and cannot pool with or replace old results.
+  Registry/history is append-only under the shared writer epoch and survives fixture
+  cleanup; ad-hoc/unregistered runs are inadmissible acceptance evidence. No OS
+  integrity claim extends beyond the stated application trust boundary.
   For EVERY dispatch in both lanes, retain actual producer-backed delivery evidence
   mapping the complete mandatory rules/evidence set computed from that dispatch's
   current authorized inputs to delivered content identities/digests and scope.
@@ -235,6 +245,11 @@ producer or benchmark conditions needed for #21 closure below.
   category under preserved defaults; they cannot substitute for runtime-mandatory
   delivered content or acquire reduction credit. No proof of native internal
   attention/retention after delivery is claimed. Lost context fails required checks.
+  If a runtime-owned condensation, replacement, selection or loader intervenes,
+  skipping mandatory re-delivery is actual delivery loss and an absolute safety
+  failure, never the measurement-invalid "unverified" escape. Only retention tied
+  to unowned native behavior after a recorded earlier delivery to that same session
+  can remain unverified measurement evidence; it cannot certify current delivery.
 - Record immutable workload/revision/acceptance and verification plan, selected
   reduction features, provider/native versions, actual effective model/effort,
   policy/capability configuration, telemetry qualification and cache conditions.
@@ -264,9 +279,14 @@ producer or benchmark conditions needed for #21 closure below.
   measurement-invalid (coverage gap, unknown model/effort, native fallback/compaction
   or unowned attach interval) makes comparison unavailable, never a task-success,
   quality or safety score; execution failure (crash, timeout or budget exhaustion)
-  is that lane's failure under the frozen acceptance tests; safety/quality regression
-  (mandatory delivery loss, gate/freshness bypass, oracle miss or actual safety
-  failure) is scored from its real evidence and prevents acceptance. Measurement
+  is that lane's failure under the frozen acceptance tests. Absolute safety invariants
+  (mandatory delivery loss, gate/freshness bypass or actual safety failure) in EITHER
+  lane prevent acceptance. Quality oracle detection is scored per item and paired
+  repetition under the frozen comparison rule: enabled-only sensitive-item misses
+  or enabled detection worse than baseline beyond predeclared tolerance are quality
+  regressions and prevent acceptance. Equal/baseline-only misses are disclosed
+  detection limits/rates, not Context Efficiency regression or enabled safety credit.
+  Neither oracle counts alone nor equal misses certify equivalent quality. Measurement
   failure is not proof of execution failure or safety loss. Known native provider-
   load fallback can be an environmental confound, not attributed to reduction
   without evidence. Report all axes and invalidations by lane/run order. Baseline
@@ -443,6 +463,9 @@ Also reject replacing/dropping an unfavorable predecessor plan at the actual clo
 report consumer, and scoring a baseline coverage gap as a safety/task failure or
 enabled quality advantage. Restored controls must distinguish measured invalidity,
 actual execution failure and independently verified safety/quality regression.
+Reject real consumer mutants that condense, skip mandatory re-delivery and hide the
+loss as unverified measurement; mark equal/baseline-only oracle misses as a reduction
+regression; or select a favorable unchanged-source plan instead of its pooled history.
 
 Run relevant state/provider/context/workflow regressions, fmt/clippy/build, exact
 Linux/macOS CI and independent source reviews. Update master design/README only to

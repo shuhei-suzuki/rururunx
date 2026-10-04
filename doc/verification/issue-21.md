@@ -84,3 +84,15 @@ Either lane's measurement invalidity blocks whole-run claims without awarding th
 other quality credit. Unknown model/tokenizer cannot satisfy qualified token units;
 unknown effort alone permits honest non-causal reporting. Real closure/report
 mutants cover the new distinctions. Req5 review pending; no source changed.
+
+Req5 3548f08 CI37196835048 passed all Linux/macOS steps. Both independent native
+Req5 reviews completed with actual owned cleanup verified and requested changes.
+Verified remaining Medium classes: own runtime mandatory non-delivery cannot hide
+as measurement unverified; absolute oracle miss in either lane is not automatically
+a relative Context Efficiency quality regression; and unchanged-source plans need
+pooled history under a predeclared stopping rule. Req6 separates actual absolute
+safety from paired oracle detection limits/regression, defines strict own-delivery
+loss, and pools same-source/configuration valid repetitions without deleting invalid
+attempts. Fixing source/configuration creates a separate narrower claim, with prior
+history retained after fixture cleanup; unregistered runs cannot close acceptance.
+Requirements6 review pending. No source/runtime, benchmark or MVP completion claim.
