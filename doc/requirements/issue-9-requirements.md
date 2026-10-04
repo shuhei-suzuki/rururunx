@@ -5,7 +5,11 @@ Workflow. Core production work has not started. Prepared-input integration depen
 on reviewed #19, provider typed-input contracts and the record-only binding port #43.
 Review Bundle/delta construction #20 depends on this engine. Issue #9 must prove
 the typed consumer with actual Git-backed producer fixtures; the full #20 producer and native #16 integration remain explicit MVP gates, avoiding a dependency
-cycle or an invented producer-readiness claim.
+cycle or an invented producer-readiness claim. Issue9 owns and freezes the typed
+consumer contract for bundle/core/specialization, revision and identity deltas,
+expansion/coverage manifests and provenance/currency rejection. Its Git-backed
+fixtures conform to that contract; #20 must produce that same contract, rather
+than a differently shaped production artifact that fixture acceptance never tested.
 
 ## Purpose
 
@@ -104,7 +108,9 @@ verification supplies actor identity (agent/Session or Human), exact target,
 inspected/changed locations and actual evidence. No supervisor LLM invents facts.
 An executor-only dismissal cannot erase a formal blocker: false-positive dismissal
 requires explicit Human judgment OR later-round confirmation by the original
-finder who is not a recorded delta author by identity or family, or by at least
+finder occupying the same frozen roster slot identity (registered agent ID plus
+slot key) in a later round with a fresh Session, whose identity AND family are
+neither recorded delta authors, or by at least
 two policy-designated slots each excluded from all recorded authors.
 Each confirmer must differ from every recorded delta author in registered agent
 identity and native provider family, and a two-confirmer pair must also differ from
@@ -137,9 +143,11 @@ Workflow phase/generation/active claim and required review-instruction/skill
 digest, round/target,
 core/specialization hashes, policy/roster, per-member prior-claim exposure
 (author slot/text hash), context provenance, individual settled
-outcomes and verification/evidence references. Prior-round claims and their original
-hashes/actors are in the byte-identical shared core; per-member exposure entries attest that
-same delivery, never conceal a different prior claim set. Specialization is separately
+outcomes and verification/evidence references. The byte-identical core carries the
+bounded prior-claim manifest/hashes/actors and mandatory status metadata. Required
+unresolved claim texts are identical obligations for every slot, delivered inline
+or as required expansion. Optional resolved/dismissed history delivery may differ;
+per-member exposure records the actual text set delivered, never conceals exposure. Specialization is separately
 declared/hashed and cannot remove this core. It is evidence, not merge authority.
 Every mode-counted opinion obeys the same current-round exclusion, including an
 explicit allow-self author, duplicate-agent and queued/serialized slot. The no-show
@@ -330,10 +338,27 @@ Project/Task/Workflow-phase obligation, retained by every successor Set, generat
 and decomposition descendant. A new Task cannot choose a base behind which known
 held/exhausted obligations disappear. Formal admission requires exact registered-
 base ancestry or the recorded legitimate base-sync operation. A base containing
-recorded contributions from an open/held/exhausted obligation lineage rejects a
+recorded contributions from an uncertified-open/held/exhausted obligation lineage rejects a
 fresh unrelated lineage or requires an explicit linked inheritance of every known
 obligation/hold/budget/author exclusion; it is never an automatic fresh budget.
-Previously attributed Task changes remain known even when later reachable upstream.
+Lineage states are uncertified-open, certified-pending-merge, certified-and-merged,
+held, exhausted and terminated-without-certificate. A certified target handed to
+the registered base by an actual scoped merge artifact proving that same reviewed/
+accepted target contribution is certified-and-merged and becomes
+legitimate upstream attribution for a new unrelated Task under 10.a, without
+inheriting its author exclusions/budgets. Remaining original Task cleanup still
+retains that Task's actual locks/operations; it does not poison new upstream Tasks.
+The accepted ReviewSet certificate and actual merge artifact must bind the exact
+reviewed target/contribution; generic Task Merged/Completed labels, names, a claimed
+merge or Git reachability cannot create this handoff or wash held/exhausted history.
+Held/exhausted/uncertified-open recorded contributions merged out of band do trigger
+linked inheritance/rejection for every descendant base containing them. This can
+hold later Project Tasks until the applicable actual resolution/recovery; it is an
+explicit Project-wide ancestry availability limit, measured by #16 (11.d), not an
+automatic budget reset. Terminated-without-certificate unresolved contributions
+retain their applicable obligations and may not become fresh certified upstream by
+merely terminating. Previously attributed unresolved Task changes remain known
+even when later reachable upstream.
 Untracked semantic copying/re-authoring from main is outside this ancestry/reuse
 identity guarantee; ordinary provenance/unknown-authorship rules still apply and
 no exhaustive semantic copy detection is claimed.
@@ -461,6 +486,9 @@ Required references bind exact content/ranges and remain obligations, not option
 omissions. Each slot must receive its required review coverage through the reviewed
 bounded provider expansion port before its opinion can certify; delivery provenance
 is not proof of semantic reading or correctness. Missing/unsupported delivery holds.
+Under default 1 MiB per-slot expansion limits, required expanded target/claim bytes
+are certifiable only near that limit; larger coverage needs an explicitly activated
+non-default budget (up to the fixed maxima), and measurement records that budget.
 Each reference/artifact obeys 1 MiB and cumulative frozen budgets; exact ranges can
 progressively disclose a larger diff without semantic truncation. A >1 MiB target
 diff is certificate-capable when mandatory core and complete required delivery fit
@@ -698,12 +726,19 @@ explicit eligible custom roster. Human authorship remains separately attributed.
     frequencies, retained capacity/Task-time and Human-interruption impact. Criterion
     21 is the canonical handoff: EVERY subcriterion attributing a measurement to
     #16 must be quoted by stable ID from public #16 acceptance before closure,
-    including 8.c (native auto-injection versus passive visibility), 8.d (blind
+    This includes deferred evidence as well as measurements for ALL IDs referring
+    to #14/#16/#20: 16.b/16.c native read-only enforcement on real transports,
+    8.a trace-observed isolation and 16.a efficiency attribution. #14 must also
+    explicitly consume 11.b lineage/descendant holds and target-mutation taint,
+    not just individual member locks. #20 must quote 8.g consumer-contract
+    conformance, including stale/foreign/relabelled refusal.
+    Including 8.c (native auto-injection versus passive visibility), 8.d (blind
     versus prior-claim-exposed rounds), 14.d (large required coverage/over-cap core,
     including accumulated claims), 20.a/20.b (two-author STRICT and zero-eligible
     roster availability), 21.b (partial-output early-stop/Human attention), and
     21.c/21.d (normal/cancel/timeout settlement holds, capacity and Task-time).
-    It additionally requires round/artifact-quota exhaustion frequency, retained
+    It additionally requires 11.d Project-wide ancestry-taint impact and
+    round/artifact-quota exhaustion frequency, retained
     Task-time and decomposition/termination impact (14.e below). Branch blob URLs
     are not stable obligation owners; a permalink retains the gated SHA after
     branch deletion. If a public owner does not carry
@@ -921,6 +956,47 @@ the declared NeedsContext/termination availability outcome, measured by #16.
 **18.f — Four-plus policy.** Four-plus production-adapter consumer evidence uses
 activated explicit allow-duplicate-agent or production-registered aliases of the
 MVP adapters, with that permission visible. Fixture-only registrations cannot pass.
+
+**10.d — Delta coverage scope.** Round1 requires complete Task-base→target
+review coverage delivered to each slot. A later certificate-capable delta round
+may use an exact settled full-coverage baseline with the same frozen roster,
+policy, governing instructions and obligation scope. Current relevant source/rule
+pins match that baseline except the exact declared cumulative target delta;
+unrecorded source/rule drift invalidates baseline eligibility. Every baseline slot must have
+complete delivered coverage and a structured complete opinion, with actual native
+settlement and no Lost/partial/failure. No prior approval is carried into counts.
+The new required coverage is cumulative baseline→current target delta plus all
+unresolved claim locations/evidence and current mandatory core; there may be no
+unresolved finding outside that required scope. The certificate explicitly binds
+baseline round/tree/coverage and new delta coverage, rather than claiming each fresh
+Session reread unchanged files. Intermediate delta rounds never become a new full
+baseline just by producing APPROVE. Missing/nonqualifying baseline, changed roster/
+policy/instructions/scope or unresolved outside required coverage forces full
+Task-base→target delivery before certification. Test qualifying delta continuation,
+rejected delta-only without baseline, unchanged-file coverage provenance, cumulative
+multi-fix delta and full fallback. All actual deliveries charge frozen quotas.
+
+**8.g — Consumer contract ownership.** Actual Git-backed bundle, revision/identity
+delta and expansion fixtures conform to the typed consumer contract owned by9.
+Foreign/stale/relabelled artifacts refuse through the actual consumer. Public #20
+acceptance must quote this conformance obligation before #9 closes; production
+#20 remains separately unimplemented, with no cyclic merge gate.
+
+**11.d — Certified upstream and tainted base.** A certified-and-actually-merged
+target is legitimate upstream for the next unrelated Task, with no inherited author
+exclusions/budget. An out-of-band merge of a held/exhausted/uncertified lineage into
+the base retains known taint/holds/obligations and can block every descended Project
+Task; Human opinion cannot release Lost. #16 measures that Project-wide availability
+impact and its Task-time, distinct from ordinary original Task cleanup. Test both.
+
+**14.f — Queue attention bounds.** Queue threshold0/3601 rejects;1/3600 is accepted
+within the remaining policy, default600 is recorded. Queue expiry never invents a
+native timeout or releases an owned operation.
+
+**9.e — Original finder identity.** A non-finder duplicate slot sharing an agent
+ID cannot act as the original finder. Only the same frozen slot key+agent in a later
+round's fresh Session can use that disposition, if neither its identity nor family
+is an author; changed rosters use Human or the independent confirmer pair.
 
 **14.e — Claim history and lineage exhaustion.** The mandatory core includes a
 bounded exact manifest of prior round/slot/finding artifact hashes and current
