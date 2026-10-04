@@ -21,3 +21,22 @@ Pending: requirements review, bounded durable/query/normalization design with19
 epoch/producers, actual implementation and causal mutation/regression controls,
 native quality comparison, exact-head CI and independent source review. No token
 savings, billed cost, cache correctness, TUI or final16 dogfood claim.
+
+Req1 two independent native reviews requested changes with V2 actual owned cleanup
+verified. Verified High classes: inventory-based missing-operation coverage and all
+reduction-provider overhead; operator pricing/currency/category provenance; and
+immutable dispatch-derived phase/round attribution (current usage parameters are
+collection-time caller labels). Medium clarifications: model/tokenizer and nested
+measurement units, scope-bound operator query ingress, exact event replay identity,
+retired bounded legacy raw surfaces, genuine artifact sizes, predeclared equivalent
+paired workloads/dispersion/quality oracle and explicit acceptance/KPI closure.
+Req2 incorporates these contracts with real consumer mutations. The review's
+history-free native-state suggestion is narrowed to honest known-channel exposure/
+confounds and owned fixture cleanup, preserving native defaults and user history;
+no OS sandbox or secret-state copying. New per-run approval/spend requirement is
+not adopted: the active user Goal already authorizes native final dogfood. Respect
+requested enforceable budgets and finite time bounds, without inventing a dollar
+cap from unqualified native counters. Req2 review remains pending; no implementation.
+
+Exact Req1 30a994b CI37193793804 succeeded; documentation-only main804 runtime
+coverage, not21 telemetry or native savings acceptance.
