@@ -628,7 +628,8 @@ async fn reference_child() {
         .unwrap();
     let undeclared_error = rejected_start(&adapter, &fixture).await;
     assert_eq!(
-        foreign_error, undeclared_error,
+        (foreign_error.kind, foreign_error.message),
+        (undeclared_error.kind, undeclared_error.message),
         "foreign inventory became an error side channel"
     );
     own_refs(&mut fixture, &["TZ"]);

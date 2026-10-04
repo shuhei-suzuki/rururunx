@@ -58,7 +58,7 @@ async fn native_execute_edits_only_owned_files_and_preserves_actual_exit() {
         "synthetic metadata entered native environment"
     );
     assert_eq!(
-        PathBuf::from(fixture.synthetic_value("RRX_DATABASE")),
+        std::path::PathBuf::from(fixture.synthetic_value("RRX_DATABASE")),
         fixture.directory.path().join("state.db")
     );
     fixture.request.input.payload = "  /always-approve".into();
