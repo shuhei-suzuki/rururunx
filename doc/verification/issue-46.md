@@ -1,7 +1,9 @@
 # Issue 46 verification
 
-STRICT shared owned-process death evidence. Requirements/design proposed; no code,
-formal review, mutation, default-suite or exact-head CI success yet.
+STRICT shared owned-process death evidence. Requirements3 and both Design3 gates
+approved; implementation/local controls exist. Both Source1 reviewers requested
+verified coverage fixes at9a3761e, whose exact CI failed. Source approval and final
+Linux/macOS CI remain pending; no merge readiness is claimed.
 
 Issue41 exact `888d86d` macOS CI37169413513 reported `native process inspection
  timed out` from bounded Context Git, followed by uncertainty cascades. Linux was
@@ -201,3 +203,11 @@ Exact production source restoration at detached `ed69214c75c1b3708416fa5c4cfba0e
 Independent immutable source reviews and exact-head Linux/macOS CI are still pending. Future native5/6 callers require normal integration and their own real consumer gates; no acceptance is inferred from source compatibility.
 
 Latest `749039fa48a3c03b90dd8ab8e272f177d21a8edf` gates: fmt check, macOS all-target clippy with warnings denied, non-test debug build and non-test release build passed (clippy1.32s/debug1.56s/release5.02s). Compared with the full debug/release suite at `bab243a`, only an extra private test and evidence were added; current production source is unchanged. Latest complete workspace execution will be supplied by exact-head CI, not inferred from the earlier suite's 182-test count. Source-review input includes the immutable complete changed helpers/callers, manifests, formal requirements/design and honest failing/restored ledger; no model/auth acceptance or historical cleanup-cause claim is added.
+
+## Source1 verified findings and exact CI failure
+
+Both fresh independent Source1 reviewers completed at immutable public `9a3761e96323a954b46a0ed8ededd3012c8f68be` and requested changes; owned cleanup verified (ownership UUID `0711f83d-3d32-4847-9204-fb37d599932d`, bounded UUID `fa90a4cb-9c58-4f79-b39f-d3c2be3ff837`). They found no production safety defect but verified Medium coverage gaps: the live-member signal seam skipped the production observer; real ps samples lacked actual exit/stderr/raw-state/exact-membership/global-baseline records; exit/timeout negative plans had empty stdout masking the intended guards; compiled framing/foreign/duplicate/exit/size/deadline operators were missing. Existing 12-run ledger retains its narrower claims. Low diagnostics originally replaced the observation category on reap error; stale documentation described code as only proposed.
+
+Fixes now in progress: signal-only live plan falls through to the real absolute production ps construction; only legacy uses a shell, with exec `/usr/bin/env -i COMMAND_MODE=legacy /bin/ps` to remove shell-added environment. The common frame observer preserves identical argv/env/stdio/budget/kill/reap policy and exposes private metadata to tests; production exit/stderr/frame gates remain authoritative. Actual owned rows and independent fixed global query membership are recorded without unrelated global process data. Valid expected-leader frames precede exit1/timeout and a new partial frame, isolating the intended guards. Read-error/mandatory-reap failure preserves original bounded kind plus static cleanup diagnostic. All changes require committed controls, new causal operators and delta re-review; none is accepted by this paragraph.
+
+Exact CI [37186662264](https://github.com/shuhei-suzuki/rururunx/actions/runs/37186662264) on9a: macOS job111389910712 fmt/clippy passed; lib86passed/1failed/1ignored, stopped at shell-loop stdout overflow returning actualTimedOut253.872ms. Ubuntu job111389910849 fmt/clippy/test/debug build passed; release cancelled by fail-fast, so no final Linux success is claimed. Full failed log preserved locally. No rerun/deadline/concurrency change. Isolated synthetic producer diagnostic committed temp `e32d44e`: same env-clear single-process programs observed shell130printf loop27–30ms/~1040read chunks, fixed-width awk stdout8–17ms/~129chunks and stderr14–15ms/~129chunks; all exit0 and cleanup-before-reap verified. This measures local producer shape, not the CI mechanism or any historical ps cause. Test-only overflow generation now execs the single trusted awk producer with bounded constant output, leaving the shared production observation contract unchanged.

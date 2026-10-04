@@ -193,18 +193,37 @@ pub(super) fn inspect_with_prefix(
 
 // Private command seam lets tests start a trusted interpreter directly. Production
 // constructs only /bin/ps with no prefix; exact query/env/stdio remain shared here.
+fn selected_command(mut command: std::process::Command, leader: i32) -> std::process::Command {
+    // Order matters in legacy mode; production env_clear leaves UNIX2003 enabled.
+    command.args(["-g", &leader.to_string(), "-o", "pid=,pgid=,stat="]);
+    command
+}
 fn inspect_command(
-    mut command: std::process::Command,
+    command: std::process::Command,
     leader: i32,
     observed: impl FnOnce(u32),
 ) -> io::Result<bool> {
     if leader <= 1 {
         return Err(framing("invalid owned inspection leader"));
     }
+    let (frame, deadline) = observe_command(selected_command(command, leader), observed)?;
+    if !frame.exit.success() {
+        return Err(framing("native process inspection exit failed"));
+    }
+    if !frame.stderr.is_empty() {
+        return Err(framing("native process inspection emitted diagnostics"));
+    }
+    let result = validate(&frame.stdout, leader);
+    current(deadline)?;
+    result
+}
+// Frame collection owns the identical stdio, environment, budget and cleanup
+// boundary. Test-only callers inspect metadata without weakening production gates.
+fn observe_command(
+    mut command: std::process::Command,
+    observed: impl FnOnce(u32),
+) -> io::Result<(Frame, Instant)> {
     let child = command
-        // Order matters in the legacy negative control; production env_clear
-        // leaves UNIX2003 enabled. -G is a real group, not a process group.
-        .args(["-g", &leader.to_string(), "-o", "pid=,pgid=,stat="])
         .env_clear()
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -228,28 +247,27 @@ fn inspect_command(
             .stderr
             .take()
             .ok_or_else(|| io::Error::other("missing inspection stderr"))?;
-        let frame = complete(
+        complete(
             &mut inspector,
             File::from(OwnedFd::from(stdout)),
             File::from(OwnedFd::from(stderr)),
             deadline,
-        )?;
-        if !frame.exit.success() {
-            return Err(framing("native process inspection exit failed"));
-        }
-        if !frame.stderr.is_empty() {
-            return Err(framing("native process inspection emitted diagnostics"));
-        }
-        let result = validate(&frame.stdout, leader);
-        current(deadline)?;
-        result
+        )
     })();
-    if result.is_err() {
-        // complete drops its nonblocking read endpoints before cleanup. This
-        // mandatory owned wait is outside the observation budget, not hard bounded.
-        inspector.cleanup()?;
+    match result {
+        Ok(frame) => Ok((frame, deadline)),
+        Err(original) => {
+            // Endpoints were dropped before mandatory wait, outside the observation
+            // budget. Preserve the original bounded category on reap uncertainty.
+            if inspector.cleanup().is_err() {
+                return Err(io::Error::new(
+                    original.kind(),
+                    format!("{original}; native inspector cleanup/reap uncertain"),
+                ));
+            }
+            Err(original)
+        }
     }
-    result
 }
 
 fn positive(field: &str) -> io::Result<i32> {
@@ -384,17 +402,14 @@ mod tests {
     }
     #[test]
     fn each_output_stream_has_a_causal_size_failure() {
-        let padding = " ".repeat(8192);
-        let loop_body =
-            format!("i=0; while [ \"$i\" -lt 130 ]; do printf '{padding}'; i=$((i+1)); done");
         for (name, body) in [
             (
                 "stdout",
-                format!("printf '42 42 Z'; {loop_body}; printf '\\n'"),
+                "exec /usr/bin/awk 'BEGIN {printf \"42 42 Z\"; printf \"%1048577s\", \"\"; printf \"\\n\"; exit}'",
             ),
             (
                 "stderr",
-                format!("printf '42 42 Z\\n'; {{ {loop_body}; }} >&2"),
+                "printf '42 42 Z\\n'; exec /usr/bin/awk 'BEGIN {printf \"%1048577s\", \"\"; exit}' >&2",
             ),
         ] {
             let started = Instant::now();
@@ -498,6 +513,71 @@ mod tests {
             Some(rustix::io::Errno::ISDIR.raw_os_error())
         );
     }
+    fn selected_sample(leader: i32, legacy: bool) -> io::Result<Frame> {
+        let mut command = if legacy {
+            let mut command = std::process::Command::new("/bin/sh");
+            command.args([
+                "-c",
+                "exec /usr/bin/env -i COMMAND_MODE=legacy /bin/ps \"$0\" \"$@\"",
+            ]);
+            command
+        } else {
+            std::process::Command::new("/bin/ps")
+        };
+        command = selected_command(command, leader);
+        observe_command(command, |_| {}).map(|(frame, _)| frame)
+    }
+    fn global_sample() -> io::Result<Frame> {
+        let mut command = std::process::Command::new("/bin/ps");
+        // Diagnostic fixed argv is independent of the mutated production selector.
+        command.args(["-A", "-o", "pid=,pgid=,stat="]);
+        observe_command(command, |_| {}).map(|(frame, _)| frame)
+    }
+    fn record_membership(
+        label: &str,
+        selected: io::Result<Frame>,
+        global: io::Result<Frame>,
+        leader: i32,
+        member: u32,
+    ) {
+        let selected = selected.unwrap();
+        let global = global.unwrap();
+        assert_eq!(selected.exit.code(), Some(0));
+        assert!(selected.stderr.is_empty());
+        assert_eq!(global.exit.code(), Some(0));
+        assert!(global.stderr.is_empty());
+        let rows = |frame: &Frame| -> Vec<(i32, i32, String)> {
+            String::from_utf8(frame.stdout.clone())
+                .unwrap()
+                .lines()
+                .map(|line| {
+                    let fields: Vec<_> = line.split_whitespace().collect();
+                    assert_eq!(fields.len(), 3);
+                    (
+                        positive(fields[0]).unwrap(),
+                        positive(fields[1]).unwrap(),
+                        fields[2].to_owned(),
+                    )
+                })
+                .collect()
+        };
+        let selected_rows = rows(&selected);
+        let global_owned: Vec<_> = rows(&global)
+            .into_iter()
+            .filter(|row| row.1 == leader)
+            .collect();
+        let pids =
+            |rows: &[(i32, i32, String)]| rows.iter().map(|row| row.0).collect::<BTreeSet<_>>();
+        let expected = BTreeSet::from([leader, i32::try_from(member).unwrap()]);
+        assert_eq!(pids(&selected_rows), expected);
+        assert_eq!(pids(&global_owned), expected);
+        validate(&selected.stdout, leader).unwrap();
+        // Print only the fixture-owned rows; never dump unrelated global metadata.
+        eprintln!(
+            "owned_ps_observation={}",
+            serde_json::json!({"label":label,"environment":"env_clear; COMMAND_MODE absent","argv":["-g",leader.to_string(),"-o","pid=,pgid=,stat="],"exit_code":selected.exit.code(),"stderr_bytes":selected.stderr.len(),"selected_rows":selected_rows,"global_filtered_pids":pids(&global_owned)})
+        );
+    }
     struct OwnedBoundary {
         leader: Option<super::super::ProcessGroup>,
         member: std::process::Child,
@@ -574,6 +654,9 @@ mod tests {
         let leader = fixture.leader.as_mut().unwrap();
         let pid = leader.pid.as_raw_nonzero().get();
         let selected = inspect(Path::new("/bin/ps"), pid, |_| {});
+        let sample = selected_sample(pid, false);
+        let global = global_sample();
+        let member = fixture.member.id();
         leader.inspection_plan = Some(TestPlan::observe_only(false));
         let result = leader.kill_group();
         let retained = leader.group_owned;
@@ -590,11 +673,14 @@ mod tests {
             !selected.unwrap(),
             "live selected group member must be visible"
         );
+        record_membership("zombie-leader-live-member", sample, global, pid, member);
     }
     #[tokio::test]
     async fn actual_legacy_mode_failure_keeps_owned_live_group_unknown() {
         let mut fixture = OwnedBoundary::new().await;
         let leader = fixture.leader.as_mut().unwrap();
+        let pid = leader.pid.as_raw_nonzero().get();
+        let sample = selected_sample(pid, true);
         leader.inspection_plan = Some(TestPlan::observe_only(true));
         let result = leader.kill_group();
         let retained = leader.group_owned;
@@ -604,6 +690,13 @@ mod tests {
             "legacy selection cannot clear live group ownership"
         );
         assert!(result.unwrap_err().to_string().contains("exit failed"));
+        let sample = sample.unwrap();
+        assert_eq!(sample.exit.code(), Some(1));
+        assert!(!sample.stderr.is_empty());
+        eprintln!(
+            "owned_ps_observation={}",
+            serde_json::json!({"label":"legacy-rejected","environment":"only COMMAND_MODE=legacy","argv":["-g",pid.to_string(),"-o","pid=,pgid=,stat="],"exit_code":sample.exit.code(),"stderr_bytes":sample.stderr.len()})
+        );
     }
     #[tokio::test]
     async fn actual_selected_group_excludes_other_owned_group_and_accepts_only_all_zombies() {
@@ -628,6 +721,13 @@ mod tests {
             tokio::task::yield_now().await;
         }
         let all_zombies = inspect(Path::new("/bin/ps"), pid, |_| {});
+        let sample = selected_sample(pid, false);
+        let global = global_sample();
+        let member = fixture.member.id();
+        let other_pid = other.leader.as_ref().unwrap().pid.as_raw_nonzero().get();
+        let other_member = other.member.id();
+        let other_sample = selected_sample(other_pid, false);
+        let other_global = global_sample();
         let other_live = inspect(
             Path::new("/bin/ps"),
             other.leader.as_ref().unwrap().pid.as_raw_nonzero().get(),
@@ -640,6 +740,14 @@ mod tests {
             "other owned live group must be excluded"
         );
         assert!(!other_live.unwrap());
+        record_membership("all-zombie-members", sample, global, pid, member);
+        record_membership(
+            "excluded-other-live-group",
+            other_sample,
+            other_global,
+            other_pid,
+            other_member,
+        );
     }
 }
 
@@ -653,6 +761,7 @@ pub(crate) enum UnknownObservation {
     Malformed,
     Timeout,
     ExitFailure,
+    Partial,
 }
 #[cfg(test)]
 #[derive(Clone)]
@@ -691,11 +800,11 @@ impl TestPlan {
             }
         }
     }
-    pub(super) fn inspect(&self, leader: i32) -> io::Result<bool> {
+    pub(super) fn inspect(&self, leader: i32) -> Option<io::Result<bool>> {
         let body = match self.mode {
-            TestMode::ObserveOnly { legacy: false } => "exec /bin/ps \"$0\" \"$@\"",
+            TestMode::ObserveOnly { legacy: false } => return None,
             TestMode::ObserveOnly { legacy: true } => {
-                "COMMAND_MODE=legacy exec /bin/ps \"$0\" \"$@\""
+                "exec /usr/bin/env -i COMMAND_MODE=legacy /bin/ps \"$0\" \"$@\""
             }
             TestMode::KillAndUnknown(UnknownObservation::Diagnostics) => {
                 "printf '%s %s Z\\n' \"$1\" \"$1\"; printf 'fixture diagnostic' >&2"
@@ -705,14 +814,21 @@ impl TestPlan {
                 "printf '%s %s Z\\n' \"$(($1+1))\" \"$1\""
             }
             TestMode::KillAndUnknown(UnknownObservation::Malformed) => "printf 'malformed\\n'",
-            TestMode::KillAndUnknown(UnknownObservation::Timeout) => "exec /bin/sleep 2",
-            TestMode::KillAndUnknown(UnknownObservation::ExitFailure) => "exit 1",
+            TestMode::KillAndUnknown(UnknownObservation::Timeout) => {
+                "printf '%s %s Z\\n' \"$1\" \"$1\"; exec /bin/sleep 2"
+            }
+            TestMode::KillAndUnknown(UnknownObservation::ExitFailure) => {
+                "printf '%s %s Z\\n' \"$1\" \"$1\"; exit 1"
+            }
+            TestMode::KillAndUnknown(UnknownObservation::Partial) => {
+                "printf '%s %s Z' \"$1\" \"$1\""
+            }
         };
-        inspect_with_prefix(
+        Some(inspect_with_prefix(
             Path::new("/bin/sh"),
             &["-c".into(), body.into()],
             leader,
             |_| {},
-        )
+        ))
     }
 }

@@ -387,8 +387,10 @@ impl ProcessGroup {
         #[cfg(target_os = "macos")]
         let result = resolve_macos_signal_result(result, || {
             #[cfg(test)]
-            if let Some(plan) = &self.inspection_plan {
-                return plan.inspect(self.pid.as_raw_nonzero().get());
+            if let Some(plan) = &self.inspection_plan
+                && let Some(observation) = plan.inspect(self.pid.as_raw_nonzero().get())
+            {
+                return observation;
             }
             macos_group_is_dead(self.pid)
         });
@@ -1608,6 +1610,7 @@ mod tests {
             UnknownObservation::Malformed,
             UnknownObservation::Timeout,
             UnknownObservation::ExitFailure,
+            UnknownObservation::Partial,
         ] {
             let uncertain = Arc::new(AtomicBool::new(false));
             let error = bounded_git_raw_with_plan(

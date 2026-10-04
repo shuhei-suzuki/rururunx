@@ -308,16 +308,15 @@ without fabricating exit codes or trusting caller recovery JSON. Workflow verifi
 saved SessionId/Scope/actor/role/worktree before consulting this provider method;
 transport completion never replaces review/test/acceptance gate evidence.
 
-### Pending bounded macOS owned-group observation (Issue #46)
+### Bounded macOS owned-group observation (Issue #46)
 
 STRICT [requirements](../../requirements/issue-46-requirements.md) and
-[design](../issue-46-design.md) propose one exact owned process-group query with
+[design](../issue-46-design.md) define the implemented exact owned process-group query with
 bounded stderr and expected unreaped-leader evidence under explicit UNIX2003
 selection semantics. Empty/error/malformed or
 incomplete observations must remain Unknown; exit0 alone is insufficient.
 250ms, uncertainty and kill-before-reap remain authoritative. Published XNU still
-traverses/allocates against global processes. This is pending formal/implementation
-verification and makes no claim to explain prior CI timeouts or contain detached
+traverses/allocates against global processes. Independent source approval and exact final CI remain pending and makes no claim to explain prior CI timeouts or contain detached
 native descendants. Non-atomic fork/exit sampling and existing partial-success
 KILL with non-signalable survivors remain residual limits; Linux cleanup semantics
 remain unchanged.
