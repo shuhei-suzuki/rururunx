@@ -624,7 +624,7 @@ only canonical uncertainty reasons, failure kinds and a detail-retained flag.
 
 Requirements gate: exact `a79850c29dbbc0c43d4ba6fd33143b4f2554212c` passed two
 independent native requirements reviews with no Critical/High/Medium findings.
-Design8 is a proposed STRICT design; it is not source/backend/MVP approval.
+Design9 is a proposed STRICT design; it is not source/backend/MVP approval.
 Production remains the unchanged `cab665d56f7032f086946c1acfce448f5b9d076d`
 selected-group/F4 component. This section supersedes earlier full-cleanup or
 capability eligibility wording, without erasing that component's evidence.
@@ -665,6 +665,17 @@ ready constructor. It cannot be populated by config, environment, Store rows,
 provider aliases, caller flags, telemetry, saved PIDs or a public builder.
 No future ownership or settlement API is invented by this correction.
 
+The low-level surface is part of this same boundary, not an upstream-guard premise:
+seal codex::transport and the effectful protocol surface to the Codex module. Remove
+public NativeServer::launch, rpc field and socket accessor; NativeRpc construction,
+connect handshake, send/call/initialize/dispatch must not be externally callable.
+Every remaining in-module creating/dispatch route requires the single EMPTY gate
+before effects; receive/cleanup of an already-genuine retained owner is narrowly
+separate. Source inventory includes lib.rs/codex/mod.rs exports and every low-level
+symbol, with external ordinary-library rustc-JSON rejection controls. No #11/#15 or
+conformance caller receives an ungoverned socket/client; isolated existing test
+harnesses migrate to the private cfg(test) component seam.
+
 Every own entry to native launch/dispatch, including public/inherent/trait
 start/start_structured, resume, checkpoint, attach and permission submission,
 checks this unavailable boundary before registry insertion/terminal eviction/
@@ -675,9 +686,12 @@ backend/actual callable producer, return typed Unsupported with a fixed reason.
 Repeated calls do not change a previous Session, input, private control or hold,
 and cannot retry/fallback into an executing route.
 
-Synchronous capability descriptors advertise no operational flags while the set
-is EMPTY. Probe returns the same unsupported fact without version/auth/config/Git
-execution or claiming fresh admission from cached metadata. Native discovery,
+Synchronous capabilities() is exactly an empty BTreeSet, including no telemetry,
+structured, permission, resume or checkpoint flags. Probe returns
+Err(UnsupportedCapability) with the fixed reason "native workload ownership and
+dispatch producer unavailable"; it returns no AgentInfo/model/effort support flags,
+and performs no version/auth/config/Git execution or cached-metadata admission.
+Native discovery,
 policy=None and executing native --version cannot bootstrap eligibility. Pure
 construction and descriptor reads do not start jobs or inspect a repository.
 Capabilities require both an actual ready backend AND the actual callable owning
@@ -685,10 +699,14 @@ driver/producer, including source/currency/hold consumers. A fixture-ready backe
 alone cannot enable the legacy callable route. A future managed-only producer
 cannot enable flags on public legacy start that still refuses.
 
-Read-only factual current/historical status remains available from genuinely
-in-process stored/private observations, without helpers or fresh-completion claims.
-Transport success must not promote a historical selected-group completion bit
-into whole-workload success. Missing full owner/settlement returns unavailable,
+Own status/subscribe/usage/pending_approvals retain current private owner checks:
+unowned IDs return SessionLost, never persisted Starting/Running as live status.
+Historical reporting remains on the unchanged in-process Store path; no new history
+API is supplied. Actual retained owners may expose factual private observations,
+without helpers or fresh-completion claims. transport_succeeded is always false
+under EMPTY, including test-simulated component completion; a historical selected-
+group journal cannot become whole-workload success. Missing full owner/settlement
+returns unavailable,
 never an observed server exit, native terminal, stop acknowledgement or public
 cleanup flag as a completion certificate.
 
@@ -696,8 +714,13 @@ The correction must not abandon already-actual retained owners. Existing interna
 component stop/cleanup may assist only its genuine unreaped selected groups and
 retain first cause, uncertainty and actual handles. It cannot publish complete
 workload settlement, evict/release/reuse an unsettled control or erase a hold from
-selected cleanup. No saved PID/Session row reconstructs that owner. In a restarted
-runtime absent genuine ownership, status is observation only and mutations refuse.
+selected cleanup. Public release refuses unsettled entries and eviction never
+removes them. Public submit_approval refuses even Deny/Cancel under EMPTY; internal
+already-owned stop/decline/interrupt cleanup may only reduce the prior workload,
+never ALLOW/new input or publish full settlement. No saved PID/Session row
+reconstructs that owner. In a restarted runtime absent genuine ownership, only
+historical Store reporting is available; adapter status is SessionLost and
+mutations refuse.
 The later actual #14 recovery producer, not a manual label, releases uncertainty.
 
 Stage A can progress independently of missing backend/19/58/60 source because it
@@ -707,7 +730,12 @@ already protected. Workflow must eventually select actual readiness BEFORE
 clear_hold/capture/reserve/marker. Each executing capture needs its OWN actual60
 owner and complete settlement; later native refusal never retroactively covers it.
 Current factory/config still selects Generic; no config-native registration or
-whole-runtime safety is supplied by the Codex boundary alone.
+whole-runtime safety is supplied by the Codex boundary alone. At the frozen current
+source, Workflow inputs/load_rules/resolve_file/git_text can execute before the
+later descriptor check; clear_hold, reserve and failure/WaitingHuman publication
+can also occur despite a late Codex refusal. These remain actual shared-driver
+changes, not fixed or retroactively owned by Stage A. A pending #43 preflight is
+not composed #19/#60 readiness or evidence of safe earlier capture.
 
 ### Source A controls and impact
 
@@ -715,30 +743,71 @@ whole-runtime safety is supplied by the Codex boundary alone.
 | --- | --- |
 | adapter.rs:204–217 trait capabilities/probe/start_structured; AgentRegistry get300/from_config277 | Check own callable Codex route without changing Generic's API or claiming registry integration. EMPTY cannot advertise operational flags. |
 | session.rs:1649 capabilities/probe; start/resume/checkpoint/attach and aliases | Earliest no-effect gate; no registry/history/input/control mutation, native/Git/helper process or frame. |
-| session.rs:1396 native --version; transport.rs:135 launch /153 launch_preparing | No discovery/version/bootstrap path before unavailable guard. Full source traversal includes transitive helpers. |
+| mod.rs exports; transport.rs:135 launch /153 launch_preparing, rpc80/socket272; protocol.rs:182 connect,202 send,286 call,354 initialize | Seal exported effectful routes and gate each remaining own creation/dispatch. Ordinary-library rejection and actual zero-effect oracle cover all symbols, not only adapter aliases. |
+| session.rs:1396 native --version; ownership.rs:369 Git/resolve, filesystem helper | No Git/metadata/version/discovery before gate; per-fixture absolute sentinel and private site oracle expose each actual call. |
 | answer_approval1999–2087 / frontend input | No grant/dispatch expansion without actual ready backend plus original owning input/operation producer. |
 | terminal546 /2346 and transport_succeeded1679; release1819/evict110 | Selected component evidence cannot mint full-cleanup or release authority. Already-consumed unknown remains Lost/no replay. |
 | Reservation::Drop626; TaskGuard attempt.rs:244–274; release_task190; RegisteredTransition::Drop170 | Preserve actual retained owner, first cause and unpublished/Unknown state. No new complete-cleanup or producer proof from Drop. Full later nonexecuting Drop producer remains open below. |
 | workflow.rs capture564/reserve949/capability1132/start1178/evaluate1296 | Earlier executing capture and reservation remain actual19/60 driver integration blockers, not fixed by late Unsupported. |
 | git.rs cleanup283/executor_reserved359/ensure_no_executor370; state ensure_project_idle1300/worktree exclusion1375 | Current terminal-label/Executor-only exclusions are not genuine retained ownership. Shared19/58/60/14 hold consumers remain pending. |
 
-Tests exercise actual production callable consumers on an isolated Store/repository:
-each alias with EMPTY yields zero children/connections/frames, no Session/history/
-consumption/marker/input/control change, no eviction or fallback; capture snapshots
-before and after. Constructor/descriptors/probe get equivalent zero-effect controls.
-Test the legacy route still refuses with a test-only simulated backend availability
-but no owning producer; readiness is a conjunction, not a backend bit. Mutation
-operators remove the entry/conjunction guard, reintroduce discovery-before-gate,
-or promote selected cleanup into completion at the actual consumer. Require each
-compiled mutant assertion-killed and restored controls with owned fixture cleanup.
+The production representation needs no inhabited ready token, variant or constructor:
+EMPTY is an in-process fixed refusal. No broad dead_code allowance or non-test
+factory exists. The ONE private cfg(test) seam supplies backend/owning-producer
+inputs to the SAME gate called by unmodified public entries; neither alone passes.
+Both test inputs permit component regressions only, never production/native/full-
+cleanup readiness. Ordinary construction defaults to EMPTY in test builds too.
+All test fields/factories/site oracles are absent from ordinary library builds;
+stable rustc JSON checks distinguish missing (E0599) from private (E0624), plus
+cfg(test)/export inventory rather than compile_fail,E0599 alone.
 
-Any simulation is private #[cfg(test)] component authority, never a production
-backend/lease constructor, bool/PID-derived cleanup or native conformance claim.
-Mechanically verify ordinary-library builds cannot resolve the test-only factory:
-stable rustc JSON diagnostics distinguish missing from merely private declarations;
-do not rely on stable compile_fail,E0599 alone. Inventory actual cfg(test) items,
-all inherent/dynamic routes and transitive execution paths. Retain earlier component
-positive fixtures as component evidence only; no fake row/frame becomes ready F1.
+Actual callable controls use isolated Store/repositories and per-fixture oracles:
+an absolute sentinel Codex executable records any invocation; private cfg(test)
+per-adapter site counters record entry to Git resolution/preflight, filesystem/
+executable metadata, version, transport creation/connection and frame/grant sites.
+A scoped absolute Git sentinel at the resolve seam detects actual invocation.
+No in-process PATH/HOME/TMPDIR mutation or global process enumeration is an oracle.
+Snapshots cover Session/history/consumption/marker/input, registry/control identity,
+retained entries, watch/channel state and sentinel/site counters. Constructor,
+exact descriptors/probe, observers and all inherent/dynamic/low-level aliases
+must preserve zero children/connections/frames and identical snapshots under EMPTY.
+
+Resume/checkpoint controls first create a genuine private component-owned terminal
+entry through that same test seam, stage higher-version input, then disable only
+the seam inputs before calling the real public route. Approval controls use an
+actual synthetic owned live peer and pending request, then disable the inputs.
+No owner is manufactured from a row/JSON/PID. A removed guard must reach actual
+Starting/Git/native/channel/frame effects observed by these oracles, rather than
+merely change Unsupported to SessionLost. Fixture-owned resources remain tracked
+and explicitly cleaned even when a mutant reaches effects.
+
+Operators remove each actual route/conjunction guard, expose a low-level constructor,
+insert Git preflight or executable metadata/--version before the gate, restore any
+single descriptor flag, promote selected completion to transport success, or allow
+release/eviction of unsettled entries. Each compiled mutant must be assertion-killed
+by the effect/snapshot/descriptor/ordinary-API oracle it actually targets; no error-
+label-only effect credit. Restored controls and owned fixture cleanup are required.
+Existing component positive cancellation/CAS/framing/checkpoint tests migrate to
+this single seam and remain component evidence. Their public transport success is
+false and unsettled release/eviction refuses; private component journal checks may
+still verify old limited observations without a new receipt. Test-scoped retention
+has a fixed bound: saturation refuses BEFORE insertion and never evicts unsettled
+owners. Fixture teardown is cleanup of its actual synthetic handles, not settlement.
+
+At the frozen source, actual external consumers include
+examples/native_codex_protocol.rs (public NativeServer::launch/rpc) and
+examples/native_codex_session.rs (CodexAdapter). Source A makes both ordinary-build
+examples refuse Unsupported BEFORE fixture/files/Store/Git/executable metadata or
+native work, with no opt-in bypass. Historical native proof artifacts remain
+preserved; private component harnesses are not installed native conformance.
+Actual direct constructor/connect consumers otherwise occur in own session/
+transport/protocol test modules. Workflow/state have no direct Codex import at
+this head, but their dynamic AgentAdapter expectations remain impact inventory.
+Source impact still inventories every reference and external integration caller;
+migrate component assumptions explicitly rather than deleting regressions.
+The SAME Source A PR updates master agent-adapter §§16/17, README and this design's
+status to precise EMPTY/Unsupported facts and retained test-only component evidence.
+No current positive executable capability or whole-cleanup support is advertised.
 
 Exact reviewed source, default debug/release suites, fmt/clippy -D warnings, builds
 and both-OS CI are required. CI trigger head and actual checkout merge SHA/parents
@@ -748,7 +817,7 @@ default-concurrency or same-head-rerun waiver. Stage A cannot close Issue6 or MV
 
 ### Stage B: required ready-backend source/conformance gates — OPEN
 
-Design8 does not approve an implementation of ready enrollment/containment or
+Design9 does not approve an implementation of ready enrollment/containment or
 settlement. A backend needs its own concrete requirements/design/source review and
 installed conformance before an availability entry can exist. Proposed private roles
 below describe prerequisites, not callable ports. Missing producers stay Unsupported
@@ -924,7 +993,12 @@ prove physical fencing before adoption; no record-only epoch or helper bypass.
 Stage A's review/tests prove only the own no-effect refusal boundary. Ready-backend
 identity/enrollment/resource bounds, complete all-job custodian/settlement, actual19/58/60/
 14/9/10 producers, F2 decision cwd, IPC02/#51 provenance, native broker, native Task attach,
-both-host execution and Issue16 mixed four-plus acceptance remain OPEN. Adding any ready
+both-host execution and Issue16 mixed four-plus acceptance remain OPEN. The
+required producer/control inventory also includes #5/#7/Generic mixed profiles,
+#11/#15 attach driver/caller, #12/#13 runtime jobs/evidence and later-consumer
+publication guards, #23 managed-completion consumer, delegated-service and shared
+hook/config activation/write-refusal fixtures. No such producer is supplied here.
+Adding any ready
 profile requires new immutable requirements/design/source review, actual consumer controls
 and mutants, exact both-OS gates and installed positive native conformance. No dependency
-is made optional and no production availability can be minted from this Design8 document.
+is made optional and no production availability can be minted from this Design9 document.
