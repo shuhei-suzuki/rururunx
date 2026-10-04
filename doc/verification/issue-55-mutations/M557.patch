@@ -1,0 +1,13 @@
+diff --git a/crates/rrx/src/adapter/inspection.rs b/crates/rrx/src/adapter/inspection.rs
+index cca26e8..81a081a 100644
+--- a/crates/rrx/src/adapter/inspection.rs
++++ b/crates/rrx/src/adapter/inspection.rs
+@@ -121,7 +121,7 @@ impl Stream {
+                     .map_err(|_| io::Error::other("native inspection allocation failed"))?;
+                 self.bytes.extend_from_slice(&chunk[..count]);
+                 current(deadline)?;
+-                if self.bytes.len() > LIMIT {
++                if false {
+                     Err(framing(self.overflow))
+                 } else {
+                     Ok(true)

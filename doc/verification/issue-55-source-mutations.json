@@ -17,7 +17,16 @@
       "killed": true,
       "credit": "actual dispatched error consumer",
       "elapsed_wall_seconds": 16.671,
-      "log": "/private/tmp/rururunx-issue55-M550.log"
+      "log": "/private/tmp/rururunx-issue55-M550.log",
+      "operator_description": "Replace cleanup receipt with null on every outcome",
+      "operator_family": "M550",
+      "public_patch": "issue-55-mutations/M550.patch",
+      "raw_log_durability": "local temporary log only; public patch and bounded assertion excerpt below are durable",
+      "assertion_locations": [
+        "crates/rrx/src/adapter/grok/receipt_tests.rs:48:9:",
+        "crates/rrx/src/adapter/grok/../../../tests/support/grok_receipt.rs:250:5:"
+      ],
+      "bounded_assertion_excerpt": "\nthread 'adapter::grok::receipt_tests::dispatched_clean_receipt_reaches_actual_supervise_stages' (227912166) panicked at crates/rrx/src/adapter/grok/receipt_tests.rs:48:9:\nowned sanitized fixture failed; \nrunning 1 test\ntest adapter::grok::receipt_tests::dispatched_clean_child ... FAILED\n\nfailures:\n\nthread 'adapter::grok::receipt_tests::dispatched_clean_child' (227912168) panicked at crates/rrx/src/adapter/grok/../../../tests/support/grok_receipt.rs:250:5:\ncleanup_receipt_unavailable=receipt_shape_invalid\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\ntest adapter::grok::receipt_tests::dispatched_clean_receipt_reaches_actual_supervise_stages ... FAILED"
     },
     {
       "operator": "M551",
@@ -33,7 +42,16 @@
       "killed": true,
       "credit": "actual dispatched error consumer",
       "elapsed_wall_seconds": 5.544,
-      "log": "/private/tmp/rururunx-issue55-M551.log"
+      "log": "/private/tmp/rururunx-issue55-M551.log",
+      "operator_description": "Emit cleanup receipt only when primary result succeeded",
+      "operator_family": "M551",
+      "public_patch": "issue-55-mutations/M551.patch",
+      "raw_log_durability": "local temporary log only; public patch and bounded assertion excerpt below are durable",
+      "assertion_locations": [
+        "crates/rrx/src/adapter/grok/receipt_tests.rs:48:9:",
+        "crates/rrx/src/adapter/grok/../../../tests/support/grok_receipt.rs:250:5:"
+      ],
+      "bounded_assertion_excerpt": "\nthread 'adapter::grok::receipt_tests::dispatched_clean_receipt_reaches_actual_supervise_stages' (227916095) panicked at crates/rrx/src/adapter/grok/receipt_tests.rs:48:9:\nowned sanitized fixture failed; \nrunning 1 test\ntest adapter::grok::receipt_tests::dispatched_clean_child ... FAILED\n\nfailures:\n\nthread 'adapter::grok::receipt_tests::dispatched_clean_child' (227916097) panicked at crates/rrx/src/adapter/grok/../../../tests/support/grok_receipt.rs:250:5:\ncleanup_receipt_unavailable=receipt_shape_invalid\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\ntest adapter::grok::receipt_tests::dispatched_clean_receipt_reaches_actual_supervise_stages ... FAILED"
     },
     {
       "operator": "M552",
@@ -49,7 +67,16 @@
       "killed": true,
       "credit": "actual dispatched forcedUnknown stage consumer",
       "elapsed_wall_seconds": 4.124,
-      "log": "/private/tmp/rururunx-issue55-M552.log"
+      "log": "/private/tmp/rururunx-issue55-M552.log",
+      "operator_description": "Mislabel actual NativeChild creation PreSpawn",
+      "operator_family": "M552",
+      "public_patch": "issue-55-mutations/M552.patch",
+      "raw_log_durability": "local temporary log only; public patch and bounded assertion excerpt below are durable",
+      "assertion_locations": [
+        "crates/rrx/src/adapter/grok/receipt_tests.rs:48:9:",
+        "crates/rrx/src/adapter/grok/receipt_tests.rs:311:5:"
+      ],
+      "bounded_assertion_excerpt": "\nthread 'adapter::grok::receipt_tests::dispatched_unknown_receipt_retains_result_error_and_reservation' (227918519) panicked at crates/rrx/src/adapter/grok/receipt_tests.rs:48:9:\nowned sanitized fixture failed; \nrunning 1 test\ntest adapter::grok::receipt_tests::dispatched_unknown_child ... FAILED\n\nfailures:\n\nthread 'adapter::grok::receipt_tests::dispatched_unknown_child' (227918521) panicked at crates/rrx/src/adapter/grok/receipt_tests.rs:311:5:\nassertion `left == right` failed: cleanup_receipt={\"cleanup_ok\":false,\"cleanup_state\":\"group_cleanup_failed_unclassified\",\"dispatched\":true,\"native_outcome\":false,\"output_verified\":true,\"owned_process_group_created\":true,\"ownership_uncertain\":true,\"reap_io_kind\":null,\"stderr_drain_state\":\"joined_returned\",\"stderr_read_error\":\"unavailable\",\"uncertainty_by_stage\":{\"in_session_binding\":false,\"native_child\":false,\"pre_spawn\":true,\"reconciliation\":false}}\n  left: Bool(false)\n right: true\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n"
     },
     {
       "operator": "M553",
@@ -67,7 +94,13 @@
       "elapsed_wall_seconds": 4.054,
       "log": null,
       "log_retention": "runner classification mismatch printed at execution; raw path subsequently overwritten by second independently compiled same operator",
-      "runner_correction": "expected actual assertion reconcile-binding actual stage size relation in the next run; production/test source unchanged"
+      "runner_correction": "expected actual assertion reconcile-binding actual stage size relation in the next run; production/test source unchanged",
+      "operator_description": "Mislabel actual post-cleanup verify_binding InSessionBinding instead of Reconciliation",
+      "operator_family": "M553",
+      "public_patch": "issue-55-mutations/M553.patch",
+      "raw_log_durability": "local temporary log only; public patch and bounded assertion excerpt below are durable",
+      "assertion_locations": null,
+      "bounded_assertion_excerpt": null
     },
     {
       "operator": "M553",
@@ -83,7 +116,16 @@
       "killed": true,
       "credit": "actual clean dispatched trace consumer",
       "elapsed_wall_seconds": 2.771,
-      "log": "/private/tmp/rururunx-issue55-M553.log"
+      "log": "/private/tmp/rururunx-issue55-M553.log",
+      "operator_description": "Mislabel actual post-cleanup verify_binding InSessionBinding instead of Reconciliation",
+      "operator_family": "M553",
+      "public_patch": "issue-55-mutations/M553.patch",
+      "raw_log_durability": "local temporary log only; public patch and bounded assertion excerpt below are durable",
+      "assertion_locations": [
+        "crates/rrx/src/adapter/grok/receipt_tests.rs:48:9:",
+        "crates/rrx/src/adapter/grok/receipt_tests.rs:206:5:"
+      ],
+      "bounded_assertion_excerpt": "\nthread 'adapter::grok::receipt_tests::dispatched_clean_receipt_reaches_actual_supervise_stages' (227932447) panicked at crates/rrx/src/adapter/grok/receipt_tests.rs:48:9:\nowned sanitized fixture failed; \nrunning 1 test\ntest adapter::grok::receipt_tests::dispatched_clean_child ... FAILED\n\nfailures:\n\nthread 'adapter::grok::receipt_tests::dispatched_clean_child' (227932449) panicked at crates/rrx/src/adapter/grok/receipt_tests.rs:206:5:\nassertion `left == right` failed: reconcile-binding actual stage size relation\n  left: 10\n right: 1\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n"
     },
     {
       "operator": "M554",
@@ -99,7 +141,15 @@
       "killed": true,
       "credit": "actual expected-state failure message consumer",
       "elapsed_wall_seconds": 2.846,
-      "log": "/private/tmp/rururunx-issue55-M554.log"
+      "log": "/private/tmp/rururunx-issue55-M554.log",
+      "operator_description": "Omit bounded projection from shared primary terminal-state assertion",
+      "operator_family": "M554",
+      "public_patch": "issue-55-mutations/M554.patch",
+      "raw_log_durability": "local temporary log only; public patch and bounded assertion excerpt below are durable",
+      "assertion_locations": [
+        "crates/rrx/src/adapter/grok/receipt_tests.rs:72:9:"
+      ],
+      "bounded_assertion_excerpt": "\nthread 'adapter::grok::receipt_tests::earlier_state_assertion_exposes_bounded_unclean_receipt' (227933175) panicked at crates/rrx/src/adapter/grok/receipt_tests.rs:72:9:\nstate assertion lost bounded cleanup facts: assertion `left == right` failed: grok_terminal_state_assertion expected_clean_protocol\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\ntest adapter::grok::receipt_tests::earlier_state_assertion_exposes_bounded_unclean_receipt ... FAILED\n\nfailures:"
     },
     {
       "operator": "M555",
@@ -115,7 +165,15 @@
       "killed": true,
       "credit": "unit-only all-flags total equivalence",
       "elapsed_wall_seconds": 1.679,
-      "log": "/private/tmp/rururunx-issue55-M555.log"
+      "log": "/private/tmp/rururunx-issue55-M555.log",
+      "operator_description": "Exclude standalone Checkpoint label from authoritative all-flags total",
+      "operator_family": "M555",
+      "public_patch": "issue-55-mutations/M555.patch",
+      "raw_log_durability": "local temporary log only; public patch and bounded assertion excerpt below are durable",
+      "assertion_locations": [
+        "crates/rrx/src/adapter/grok/ownership.rs:666:13:"
+      ],
+      "bounded_assertion_excerpt": "\nthread 'adapter::grok::ownership::process_ownership_tests::sampling_preserves_legacy_total_even_for_unprojected_labels' (227933695) panicked at crates/rrx/src/adapter/grok/ownership.rs:666:13:\nassertion `left == right` failed\n  left: false\n right: true\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\ntest adapter::grok::ownership::process_ownership_tests::sampling_preserves_legacy_total_even_for_unprojected_labels ... FAILED"
     },
     {
       "operator": "M556",
@@ -131,7 +189,15 @@
       "killed": true,
       "credit": "unit-only true flag retention",
       "elapsed_wall_seconds": 1.586,
-      "log": "/private/tmp/rururunx-issue55-M556.log"
+      "log": "/private/tmp/rururunx-issue55-M556.log",
+      "operator_description": "Retain false entries instead of true ownership flags",
+      "operator_family": "M556",
+      "public_patch": "issue-55-mutations/M556.patch",
+      "raw_log_durability": "local temporary log only; public patch and bounded assertion excerpt below are durable",
+      "assertion_locations": [
+        "crates/rrx/src/adapter/grok/ownership.rs:679:9:"
+      ],
+      "bounded_assertion_excerpt": "\nthread 'adapter::grok::ownership::process_ownership_tests::group_drops_false_entries_and_retains_true_arc_with_its_label' (227934141) panicked at crates/rrx/src/adapter/grok/ownership.rs:679:9:\nassertion `left == right` failed\n  left: 2\n right: 1\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\ntest adapter::grok::ownership::process_ownership_tests::group_drops_false_entries_and_retains_true_arc_with_its_label ... FAILED"
     },
     {
       "operator": "M557",
@@ -147,7 +213,15 @@
       "killed": true,
       "credit": "unit-only prepared actual stream cap",
       "elapsed_wall_seconds": 1.748,
-      "log": "/private/tmp/rururunx-issue55-M557.log"
+      "log": "/private/tmp/rururunx-issue55-M557.log",
+      "operator_description": "Omit actual Stream drain byte-cap check",
+      "operator_family": "M557",
+      "public_patch": "issue-55-mutations/M557.patch",
+      "raw_log_durability": "local temporary log only; public patch and bounded assertion excerpt below are durable",
+      "assertion_locations": [
+        "crates/rrx/src/adapter/inspection.rs:478:32:"
+      ],
+      "bounded_assertion_excerpt": "\nthread 'adapter::inspection::tests::prepared_stream_cap_rejects_complete_zombie_prefix_before_hidden_live_row' (227934559) panicked at crates/rrx/src/adapter/inspection.rs:478:32:\nreader accepted a truncated all-Z prefix: true\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\ntest adapter::inspection::tests::prepared_stream_cap_rejects_complete_zombie_prefix_before_hidden_live_row ... FAILED\n\nfailures:"
     }
   ],
   "restored_controls": [
