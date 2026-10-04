@@ -504,3 +504,37 @@ This issue does not implement:
 - new schema
 - cross-project native UUID ownership
 - native completion inference
+
+## 18. Transaction implementation details and gate status
+
+See [binding mechanics](issue-43-binding-mechanics.md) for the same proposed
+design's concrete Engine/Store boundary, complete-JSON delta validation, trusted
+registry probe, exact full scoped lock-set capture/comparison, and audit writer.
+The lock expectation is captured after dispatch-marker commit and before start;
+binding never refreshes revoked owner snapshots to make a CAS pass.
+
+The allowed Record write includes its ordinary updated_at as well as version;
+all other Record metadata and Workflow JSON remain exact. Use one factual binding
+audit instead of also appending workflow.saved. Every other record writer retains
+its existing audit behavior.
+
+The latest durable Session is identity/lifecycle checked inside Immediate. Its
+legitimate startup progress is not rejected by a stale returned-record version.
+The own-Session CAS mutation requirement also exercises the provider's actual
+currency consumer; it does not introduce a contradictory stale-start CAS.
+
+For typed input, #19 private allocation/input-pair checks are mandatory inside
+this transaction. A missing private predicate is an integration/merge blocker,
+never a permissive fallback. Starting preparation is allocation proof, not ACK;
+restored prior terminal snapshots cannot bind as new input owners. No typed
+acceptance is claimed until source integration and the native matrix pass.
+
+Failure prohibitions apply to actions by the binder: it sends no additional
+input, turn or approval and performs no retry, release or transfer. Existing
+owned native supervision and explicit denial keep their provider-native controls;
+this method neither grants their authority nor pretends to suspend already
+dispatched work. Current fresh-start Workflow has no resumed-UUID predecessor
+exemption; any future exception requires verified private resume lineage.
+
+Both documents remain draft pending independent STRICT design review. The
+requirements gate approved d8c5266; no production implementation is present.

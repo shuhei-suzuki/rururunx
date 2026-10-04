@@ -2,6 +2,9 @@
 
 Status: proposed; independent STRICT design review pending. No implementation.
 Requirements: [issue-43-requirements.md](../requirements/issue-43-requirements.md).
+This supplements [the shared Issue43 design](issue-43-design.md). Both describe
+the same proposed gate; neither is implemented. The exact transaction mechanics
+below resolve audit, lock and private-owner details before source work.
 
 ## Cause and scope
 
@@ -37,10 +40,16 @@ Lost Session is rejected even if its durable record subsequently changes. The
 returned Session is an identity observation from the selected adapter, not a
 process handle, native ACK or prepared-input credential.
 
+After the dispatch-marker commit, capture every scoped WorktreeLock ID/version
+under Store before calling start. This is the same complete set used by native
+scope consumers, including inactive historical lock records. Retain it in the
+private binding expectation; no lock is created or adopted by this capture.
+
 After successful start, create the candidate Workflow data by setting only the
 captured active attempt's absent Session ID. Call private
 `Store::bind_workflow_session` with the captured Project/Goal/Task snapshots,
-the expected Workflow record and candidate, and this binding identity. Do not
+the expected Workflow record and candidate, the captured lock set, and this
+binding identity. Do not
 refresh owners, recapture a newer Task version or retry this call on CAS failure:
 that would silently accept revocation during native start. On success update only
 the caller's Workflow record to the committed version and return Started. Keep
@@ -74,7 +83,9 @@ caller's mutable Record only after successful commit.
    the supplied candidate data, including every other known or unknown field.
    Run existing `validate_transition` as an additional check. Do not validate
    only a selected subset or round-trip away unknown fields before comparison.
-4. Read the latest ContextVersion in the exact Task scope. Require it to be the
+4. Read every scoped WorktreeLock ID/version, sort and compare the complete set
+   to the captured set, rejecting additions, removal and version change. Read
+   the latest ContextVersion in the exact Task scope. Require it to be the
    Task/attempt/Workflow context_version and run `validate_context` against the
    candidate. This preserves source hashes, generation, phase and revision. It
    neither inserts ContextVersion nor performs new-operation source admission.
@@ -88,6 +99,10 @@ caller's mutable Record only after successful commit.
    PID, actual model/effort, recovery metadata and Session record version may
    legitimately advance between start return and this read; do not compare them
    to a stale complete returned snapshot or rewrite them.
+   There is no stale returned-Session version CAS: the latest Session is read and
+   identity-checked while Immediate excludes writers. An own-Session CAS race at
+   the provider's currency consumer remains separately required; binding may not
+   invalidate that consumer by rewriting its Session record.
 6. Inspect scoped Session identities for ambiguity of the exact returned native
    UUID, when known. Reject another scoped Session with the same provider and
    UUID. Do not use a cross-project UUID search, PID hint, public recovery JSON

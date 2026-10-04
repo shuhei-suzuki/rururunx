@@ -375,6 +375,10 @@ Project risk-mapping recommendations can strengthen but cannot weaken runtime ma
 
 ## 18. Native Session binding authority
 
+Status: proposed Issue43 contract; implementation and independent design/source
+gates remain outstanding. Current main still uses ordinary persistence for this
+binding. The following specifies the intended corrected behavior.
+
 A successful native launch may return a persisted Session before the Workflow attempt has
 recorded its `session_id`. That factual registration must not invalidate the native
 adapter's already-captured Project/Goal/Task/lock currency.
