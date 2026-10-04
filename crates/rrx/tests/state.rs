@@ -1051,17 +1051,22 @@ fn legacy_usage_query_redacts_malformed_body_decode_chain_without_writes() {
         ] {
             let error = store.usage(&view).unwrap_err();
             assert_eq!(snapshot(), before, "decode refusal wrote state: {field}");
-            for rendered in [
+            let rendered = [
                 error.to_string(),
                 format!("{error:#}"),
                 format!("{error:?}"),
-            ] {
+            ];
+            // Check actual leakage before the separately required static code:
+            // a different outer context alone does not demonstrate a leak.
+            for text in &rendered {
                 assert!(
-                    !rendered.contains(canary),
-                    "usage read leaked body via {field}: {rendered}"
+                    !text.contains(canary),
+                    "usage read leaked body via {field}: {text}"
                 );
+            }
+            for text in rendered {
                 assert_eq!(
-                    rendered, "invalid persisted usage snapshot",
+                    text, "invalid persisted usage snapshot",
                     "decode refusal has only its static projection"
                 );
             }
