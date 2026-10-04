@@ -363,3 +363,35 @@ At the688 outcome record, root held PR53 draft/unmerged pending scoped causal in
 Root reassessed the earlier requirement for an inspection causal fix before this independent environment-boundary merge as too broad. The actual-tree b90 full default public DEBUG CI on bothOS and distinct local full default RELEASE247Rust+2doctests satisfy #51 debug/release coverage. The local b90 DEBUG remains FAILED with cause unknown and retained first-timeout/12derived-latch evidence; it is not relabeled a pass or a verified #51 environment regression. No old-head rerun or deadline/latch/Unknown/serialization change occurred. Shared inspection/runtime/#60 remains an unresolved MVP defect; whole supervisor/native16 acceptance is not claimed.
 
 The finite688 failure/outcome docs are retained, followed only by this explicit scoped reassessment. Final published outcome-head CI must pass both required OS contexts with actual checkout/tree provenance before root may merge #51. A new red final gate cannot be ignored; current PR remains draft pending that check. Source3 environment/admission/consumer authority is unchanged.
+
+
+## New normal composition with observable diagnostics
+
+After PR61 diagnostics-only partial merge, root main normally advanced tof7baad.
+New clean merge068ad6a parents18c+f7 preserves both public ancestries. Sole conflict
+was README; both existing paragraphs retained. Rust automatic merges require no
+manual resolution. [Composition identity/provenance](issue-51-diagnostic-composition.json)
+records unchanged51 native authority/dispatch/environment/fixture consumers and
+incoming reviewed61 inspector/collector/Context blobs. New61 Grok completed-turn
+consumer uses51 unchanged sibling synthetic metadata helper, avoiding ordinary
+reserved RRX caller keys; actual parent passes. Generic production unchanged;61
+actual terminal/audit assertions are additive.
+
+Current068 full DEFAULT DEBUG and distinct RELEASE each PASS260Rust+2doctests,
+24 explicit ignored; compile/fmt/alltargetClippy-Dwarnings/debug+release buildsPASS.
+Internal concurrency/deadlines/Unknown/latches unchanged. Root62 native suite closed
+before own debug; root release build and agent6 scoped fake native host/library
+controls overlapped. This is timing disclosure, no workload-cause attribution.
+Current public CI37232520918 every required step BOTHOS SUCCESS; actual tested
+checkout/parents/tree are recorded separately in the JSON, not assumed trigger.
+Finite immutable two-reviewer composition gates and final metadata-head CI pending.
+
+Old18c finalCI37218568315 remains RED: Mac Context first actual timeout and9derived
+sticky failures (6PASS10FAIL), not10 independent inspections; Linux allstepsPASS.
+Both actual old checkoute9e2bda parents054+18c/tree77a754be=trigger. Old localb90
+DEBUG firsttimeout+12derived failures, main054 Grok reconciliation uncertainty and
+diagnostic555 local RELEASEFAILED/directchild-exit+stdoutEOFpending are retained
+with cause AND regression UNKNOWN. No oldhead rerun, retroactive pass, causal repair
+or native availability claim. New passes concern this composed source only. Full60/
+readerEOF/workload ownership/F1/native16/whole-native readiness stayOPEN;51 acceptance
+remains scoped synthetic environment boundaries, not installedauth/model inference.
