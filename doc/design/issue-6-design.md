@@ -78,7 +78,7 @@ historical Session, including its original turn and consumed-input marker.
 
 ## Preparing continuation cancellation (design pending independent review)
 
-Resume and checkpoint atomically install a new private per-attempt control when
+Fresh start, resume and checkpoint atomically install a private per-attempt control when
 claiming the registry transition, before any await or Starting publication.
 A terminal shared watch does not exclude preparation. Stop captures the current
 control Arc and exact owned scope under the registry lock; its target remains that
@@ -87,13 +87,16 @@ to the retired channel or waits on the shared watch's latest value. Existing
 public SessionRef stays unchanged; the first poll defines this invocation's target.
 
 Use a small synchronous admission mutex with Preparing, CancelledBeforeAdmission
-and Consumed states, plus terminal CheckpointCommitted for a checkpoint, and a
+and Consumed states, plus terminal Failing(kind) before admission and terminal
+CheckpointCommitted for a checkpoint, and a
 separate level-triggered watch<AttemptPhase>.
 AttemptPhase is Preparing, AwaitingTurnAck, Supervised, or Finished(TypedOutcome).
 TypedOutcome is RestoredBeforeAdmission{cause: Cancelled | Failed(kind)},
 CheckpointCommitted{input_version}, Terminal{snapshot}, Lost{cause,publication_result},
 or RestoreUnpublished{cause,error}. A terminal snapshot includes the exact serialized
 Session and native attempt identity, rather than a raw Store record version.
+Every Finished variant also retains its published Session snapshot, or None when
+publication failed, so an idle stop never returns another attempt's current status.
 A captured attempt retains
 its own terminal snapshot and outcome even if a newer preparation replaces the
 shared watch. A waiter subscribes before checking the level and never relies on
@@ -101,8 +104,14 @@ Notify edges. Finished is published only AFTER owned async cleanup and the final
 Session publication or its explicit failure; the Reservation owns this last act.
 Transferred supervision is Supervised, not Finished. The sole supervisor writes
 this same attempt's terminal outcome after cleanup/publication, including errors.
-Fresh start also installs a registered control at the Supervised transfer before
-its supervisor can run. Every observable Session therefore has a captured control.
+Fresh start registers its Preparing entry/control before its first Starting persist,
+under the same registry/control/Store order. It uses the same owned preparation task
+and Preparing-only caller-drop guard as resume. A failed initial persist removes only
+that exact installed Arc and publishes an unpublished outcome; it never adopts another
+entry. A pre-admission cancelled or failed fresh start has no historical Session to
+restore: after verified cleanup it persists Failed with the factual cause; unknown
+cleanup/publication retains Lost/error. The entry is visible for stop/status once the
+Starting record is visible. No Store write precedes registered control ownership.
 
 Stop atomically cancels Preparing, or queues an interrupt to the captured attempt's
 new channel if Consumed/Supervised. Hold the admission mutex through the exact
@@ -121,13 +130,25 @@ Both linear orders distinguish a cancelled unchanged request from a committed ne
 input that a later resume actually consumes; no cancellation classification follows
 a committed checkpoint or a Failed(kind) restore.
 
+Linearize the first pre-admission terminal decision under the control mutex:
+Preparing becomes CancelledBeforeAdmission only when cancellation wins, or Failing(kind)
+when a detected preparation error wins. A later stop joins Failing and cannot relabel
+it cancellation. A won cancellation alone supplies cause=Cancelled. Cancellation-aware
+Git, bootstrap and RPC waits return a distinct private Cancelled result after cleanup;
+they do not map the resulting killed child exit to OwnershipMismatch, LaunchFailure or
+StateConflict. A real ownership/security failure linearized first retains its kind and
+metadata-only audit. Later observations cannot rewrite the first cause; a separately
+observed security failure is recorded without inventing success or allowing dispatch.
+Consumed execution still uses its authoritative native terminal/drain outcome.
+
 Stop awaits only its captured attempt's level-triggered outcome. For restored
 pre-admission cancellation return StateConflict with a factual cancellation/restore
 classification ONLY when this invocation won or joined Preparing cancellation.
 Read phase before admission state: capturing an already Finished attempt is an idle
 terminal stop and returns its matching persisted snapshot, regardless of the cause
 of an earlier restore. A committed checkpoint returns the actual restored terminal
-Session with the committed-input classification, never cancellation. A failure of
+Session as Ok(status), never cancellation; CheckpointCommitted{input_version} remains
+the private factual outcome used to select that snapshot. A failure of
 an attempt that this stop joined returns its actual Failed(kind) classification.
 Usage of that restored Session remains the prior actual turn, with no new turn
 attribution. For a consumed attempt, return its own terminal status only if the
@@ -140,11 +161,16 @@ If Session
 has advanced to attempt B, return StateConflict identifying advancement, with no
 cancellation or interrupt to B. Unpublished restore or cleanup uncertainty returns
 an explicit error; a completion signal alone never establishes successful stop.
+A fresh pre-admission cancellation returns its newly persisted Failed Session as
+Ok(status), with the actual cancellation cause and no native completion/exit claim.
+The advancement error carries the captured attempt's own factual outcome instead
+of losing evidence that A actually stopped before B advanced.
 
 The per-attempt task is owned independently of the caller future. Make the private
 adapter registry Arc-shared so the task can own immutable adapter handles and the
 TransitionClaim. Keep its JoinHandle in the registered attempt, release that handle
-on task completion, and never abort it when a caller disappears. A caller-side
+on task completion through that exact control Arc, never the registry's current
+lookup, and never abort it when a caller disappears. A caller-side
 guard requests cancellation on drop; it cannot claim native completion. The owned
 task continues bounded cleanup and exact restore before completing the attempt.
 The guard only cancels Preparing, never interrupts Consumed/Supervised, and is
@@ -185,7 +211,7 @@ phase and cannot report SessionLost from a retired receiver. Separate phase/stat
 channels prevent a later checkpoint/resume from stealing a stop completion.
 No schema, caller-provided ownership token, native auth/hook/trust change is added.
 
-Tests gate actual resume/checkpoint before Starting, during Git/native bootstrap,
+Tests gate actual fresh start/resume/checkpoint before Starting, during Git/native bootstrap,
 before admission and after consumption/before ack. Assert no later spawn or
 thread/resume after pre-admission cancel, zero input writes/consumption, exact
 restored Session/request/evidence, verified owned cleanup and bounded completion.
@@ -208,6 +234,15 @@ completion or owned task lifetime. Kill each with causal consumer assertions,
 restore exact source and run controls. The installed-native descendant/Decision-CWD/
 config-provenance findings remain separate merge blockers. Independent design
 approval precedes implementation; actual scope additions get shared-helper regression.
+
+Cancel during gated Git and bootstrap must return the private Cancelled cause,
+never an invented ownership/launch failure. Gate actual worktree inode replacement
+and stop in both orders: failure-first retains audited OwnershipMismatch, cancel-first
+retains Cancelled with any later ownership observation separately recorded. Kill
+mutants using generic non-success child-exit mapping or final-state cause inference.
+Timeout/drop fresh start during Git/bootstrap must leave verified cleanup and Failed,
+not unconsumed Lost; stop/status through its persisted Starting reference must observe
+the exact owned preparation. Kill transfer-only registry insertion with that consumer.
 
 ## Decision-only sessions
 
