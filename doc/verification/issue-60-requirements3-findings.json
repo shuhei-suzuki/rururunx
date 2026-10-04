@@ -1,0 +1,64 @@
+{
+  "head": "820a29ecd81d0d8a1ab9b3de40658157c5b5b5bf",
+  "outcomes": {
+    "observation": "request_changes",
+    "lifetime": "approve"
+  },
+  "cleanup_verified": true,
+  "raw_result_sha256": {
+    "observation": "15d171e2c17cfd31bec891a32988a64c5896dbc753d7f7d35f617d0e62f8cdc3",
+    "lifetime": "7ccb40fd6f066a8584c6f479c8b794c6c670133f21468aa4ced9c7bce345c3f9"
+  },
+  "findings": [
+    {
+      "review": "observation",
+      "id": "R3-CHAIN-1",
+      "severity": "Medium",
+      "verified": true,
+      "disposition": "Requirements4 narrow clarification; independent delta review pending"
+    },
+    {
+      "review": "observation",
+      "id": "R3-SINK-2",
+      "severity": "Low",
+      "verified": true,
+      "disposition": "Requirements4 narrow clarification; independent delta review pending"
+    },
+    {
+      "review": "observation",
+      "id": "R3-VOCAB-3",
+      "severity": "Low",
+      "verified": true,
+      "disposition": "Requirements4 narrow clarification; independent delta review pending"
+    },
+    {
+      "review": "observation",
+      "id": "R3-DISCLOSE-4",
+      "severity": "Low",
+      "verified": true,
+      "disposition": "Requirements4 narrow clarification; independent delta review pending"
+    },
+    {
+      "review": "lifetime",
+      "id": "R60I3-01",
+      "severity": "Low",
+      "verified": true,
+      "disposition": "Requirements4 narrow clarification; independent delta review pending"
+    },
+    {
+      "review": "lifetime",
+      "id": "R60I3-02",
+      "severity": "Low",
+      "verified": true,
+      "disposition": "Requirements4 narrow clarification; independent delta review pending"
+    },
+    {
+      "review": "lifetime",
+      "id": "R60I3-03",
+      "severity": "Low",
+      "verified": true,
+      "disposition": "Requirements4 narrow clarification; independent delta review pending"
+    }
+  ],
+  "source_verification": "adapter389-394 syntheticplan skips actualinspection; context588-599 consumesplan. Grok1251/1261-1273 persists reconciliation_error and unknownwrapper. state1242 exactsavedprojection. ProcessGroupDrop451-452 discards result. Inspector46 actualstatuspoll."
+}

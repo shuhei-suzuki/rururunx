@@ -66,7 +66,9 @@ not proof they caused any CI timeout or that an escaped workload existed.
    A timeout during loop/reads retains actual stdout/stderr EOF and exit flags; these
    distinguish pending EOF/status without inferring cause. Keep a separate finite observed
    exit category: unavailable, success, nonzero_exit or signaled/other; no PID or arbitrary
-   status text. Count every invoked read,
+   status text. Count each actually invoked child.try_wait separately, including
+   returned pending, Interrupted or error; cached exit requires no new poll count.
+   Count every invoked read,
    including WouldBlock and Interrupted; also separate successful-byte count and those
    two finite result counts. Saturating integer counters never overflow or grant success.
    If post-validation deadline masks a validation result, return original TimedOut but
@@ -81,8 +83,10 @@ not proof they caused any CI timeout or that an escaped workload existed.
    is NOT verified reap, even when subsequent cleanup returns Ok/no-op. Do not repair
    this ownership loss by cached-PID signals, waits or synthetic cleanup_ok.
 4. The first owned observation is authoritative. A later existing ProcessGroup Drop
-   retry cannot overwrite its facts or count as new cleanup success; at most record
-   a separate unavailable/observed finite retry outcome. Derived Context latch refusals
+   retry cannot overwrite its facts or count as new cleanup success. ProcessGroup Drop
+   discards its result: its retry outcome/facts are always unavailable at caller sinks
+   in this component, including caller Drop before cleanup. No new log/stderr/global
+   sink is added for discarded results. Derived Context latch refusals
    report no fresh inspection. Common native cleanup/Drop policy stays unchanged.
 5. Carry typed/static bounded facts through existing cleanup/AdapterError and first
    Context failure rendering without message-substring classification. Fixed fact
@@ -90,9 +94,12 @@ not proof they caused any CI timeout or that an escaped workload existed.
    cleanup on formatting failure. New bounded fixed fact text may enter EXISTING failure
    messages; their exact bytes are not frozen. Inventory Context first-error rendering,
    Generic adapter.launch_failure.reason audit and runtime SessionStatus.failure, and
-   Grok turn_observed.diagnostic/runtime SessionStatus.failure, including shared
-   kill_group users. Session.saved contains state/ownership/dispatch projection, not
-   these failure facts, and must remain unchanged.
+   Grok turn_observed.diagnostic, turn_observed.reconciliation_error and runtime
+   SessionStatus.failure, including the existing unknown-dispatch diagnostic wrapper.
+   Shared native agent-group kill_group cleanup users can reach these same sinks;
+   enumerate them alongside bounded Git. session.saved projects exactly state, agent,
+   provider, role, native_ref and recovery.dispatch_intent, not failure facts, and
+   must remain unchanged.
    Copied future provider consumers require composition review. No new audit authority
    or event schema follows from these facts. Public AdapterError fields need not change. Existing
    session.saved, generic session failure, and grok.turn_observed scoped event equations
@@ -109,7 +116,9 @@ not proof they caused any CI timeout or that an escaped workload existed.
 7. This component changes only inspector failure observations and their safe existing
    error rendering. Existing Git reader handles, abort/join behavior, ProcessGroup
    new/reap/Drop, caller flags, pool/admission/runtime drivers and primary ordering are
-   UNCHANGED. The verified detached-reader and unreaped-anchor gaps above remain open.
+   UNCHANGED. ALL verified gaps above remain open: detached readers, unreaped anchor
+   loss, pre-cleanup caller Drop blocking kill/inspector on the async poller, cleanup
+   Drop retry on its blocking worker, and uncertain worker JoinError.
    The [Git reader/driver contract draft](issue-60-git-reader-contract-draft.md) is explicitly
    unapproved; no diagnostic acceptance grants it requirements/design/source approval.
 8. Diagnostics cannot change any group_owned/unreaped/exit transition, signal choice,
@@ -151,7 +160,15 @@ not proof they caused any CI timeout or that an escaped workload existed.
 - Tests observe safe counters/EOF/exit/cleanup states at their actual inspector source
   before rendering. Compiled omissions of site, fact or relinquishment guard must fail
   intended assertions; unit facts earn unit credit only. First bounded Git/Context
-  own-failure rendering must carry safe facts; derived latch refusal has no fresh sample.
+  own-failure rendering must carry safe facts from the REAL inspection::inspect_command
+  executed through kill_group→resolve_macos_signal_result EPERM handling. A private
+  per-operation labelled seam may substitute only controlled executable/prefix or
+  failure/clock site; preserve the production selected argv/env/framing/cleanup code.
+  Existing ProcessInspectionPlan::inspect fabricated observations bypass inspection
+  and earn pass-through rendering credit only, never inspector-to-Context reach. No
+  hand-built fact error satisfies this gate. A compiled omission of fact construction
+  or attachment at inspector→resolver must fail the actual Context consumer assertion.
+  Derived latch refusal has no fresh sample.
   Reach actual Generic/Grok propagation where accessible and disclose any test-only
   adapter seam or historical consumer left unexercised. No inventing diagnostic reach.
 - Positive native/fixture valid_live/valid_dead, cleanup and original primary-error
@@ -169,7 +186,8 @@ not proof they caused any CI timeout or that an escaped workload existed.
 
 ## Acceptance limit
 
-This component adds bounded diagnostic observability only. Git reader/driver retention
+This component adds bounded diagnostic observability only. Every baseline Drop/retry/
+reader/unreaped-anchor/JoinError gap remains unchanged and open. Git reader/driver retention
 and published-flag corrections remain an explicitly unapproved separate draft. It does not itself fix the current inspection availability cause or prove a
 new backend faster/complete. Native separate-PGID/SID descendants, partial kill success,
 non-atomic fork/exit samples, actual runtime conflict/effect enforcement, all reachable

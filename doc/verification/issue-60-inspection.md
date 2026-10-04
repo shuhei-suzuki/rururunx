@@ -1,6 +1,6 @@
 # Issue 60 inspection/reader component verification
 
-Requirements3 narrowed diagnostic candidate; no design/source approval or implementation. Isolated main054
+Requirements4 narrowed diagnostic candidate; no design/source approval or implementation. Isolated main054
 baseline, no production edits or new process tests. Frozen Issue51 final18c CI remains
 red; first bounded native inspection timeout and derived latch failures retained, cause
 unknown. No rerun, deadline/latch/permission/Unknown relaxation.
@@ -54,7 +54,8 @@ Requirements3 formal scope is inspector diagnostic facts/safe error rendering ON
 with exact stage/refusal, EOF/counters/finite exit, cleanup-vs-relinquishment and original
 kind/priority constraints. Existing reader behavior/flags/admission/driver/Drop and all
 resource equations stay unchanged. Two narrowed independent requirement gates remain
-pending before diagnostic design/source. Full60/shared availability/native16 are open.
+Requirements3 gates completed as recorded below; Requirements4 is pending before
+diagnostic design/source. Full60/shared availability/native16 are open.
 
 Requirements-only CI37219380561 passes bothOS on unchanged production; source/reader/
 availability acceptance is not inferred. Public actual-checkout provenance will be
@@ -65,3 +66,19 @@ effect/delegation/settlement and native16 remain pending.
 Requirements2-only CI37220390302 also passed bothOS, actual checkout
 709f4aaba3797a2ef21e5513bcea8f30bd0104ea; unchanged production. No implementation,
 shared availability or failed Issue51 final-context acceptance credit follows.
+
+## Requirements3 narrowed results
+
+At820a29e observation requested changes (1Medium+3Low); lifetime approved with3Low.
+Both actual owned review cleanups verified. [All7 verified findings](issue-60-requirements3-findings.json)
+are preserved with raw digests. Requirements4 adds the real inspector→resolver→Context
+causal route: private per-operation executable/site seam only, existing fabricated
+plan results earn pass-through credit only; construction/attachment mutant must fail
+that actual consumer. It enumerates reconciliation_error/unknown-dispatch/native-group
+sinks, exact session.saved fields, actual try_wait counts and discarded Drop/retry
+facts unavailable with no new log. Every baseline lifetime gap stays open.
+Requirements4 independent narrowed delta gates pending; no design/source approval.
+
+Req3 documentation-only CI37221599113 all individual required steps bothOS success.
+Actual both checkoutc706885a7097b5d0de21918a9499dbad11285f97 parents054aefd/820a29e,
+tested tree equals trigger. Unchanged production has no diagnostics/availability credit.
