@@ -83,7 +83,8 @@ until every roster slot settles.
 ## Verdicts, verification and completion
 
 Slots return APPROVE, REQUEST_CHANGES or ESCALATE, plus typed findings and explicit
-per-prior-finding dispositions. Each disposition identifies immutable original finding
+per-prior-finding dispositions assigned under9.h. Not every slot owes every prior
+finding a disposition. Each disposition identifies immutable original finding
 hash/round/slot, exact inspected current target locations and evidence references,
 and one of confirmed-fixed, still-present, false-positive, severity-downgrade,
 not-applicable, duplicate or superseded-by-target-change (9.a). It retains the
@@ -248,7 +249,9 @@ recovery and lossless hot upgrade are not claimed by this Core.
 
 ## Constraints and non-scope
 
-Policy bounds: 1–32 slots, 1–32 local parallel launches, 64 cumulative rounds per immutable obligation-budget lineage,256
+Policy bounds: 1–32 slots, 1–32 configured local parallel launches, effective=min(configured,roster size,actual
+Runtime/Project/provider permits); record requested/effective values rather than
+rejecting policy parallelism above roster size. Reject0/33;64 cumulative rounds per immutable obligation-budget lineage,256
 findings per result,8192 UTF-8 bytes per finding and1 MiB per COMPLETE prepared member
 frame (core+specialization+inline required claims+rules/wrapper) AND per result envelope.
 The core alone is not the combined-frame ceiling; no additional specialization bypass. Limits are simultaneous ceilings: maximum count does not promise every
@@ -320,7 +323,12 @@ Both envelopes are conditional on stated supported producer stages, not a
 universal real-time OS bound. Profile freezes an explicit safety margin in integer
 milliseconds: minimum/default100ms, stronger finite margin required if its reviewed
 producer contract says so. Envelope uses integer milliseconds CEILED from finer
-units (never rounded down); check BOTH normal and forced envelopes. Checked
+units (never rounded down); normal is END-TO-END including its own escalation to
+forced cleanup and cancellation during already-started normal cleanup. The single
+settlement timer never restarts. A producer instead declaring a normal prefix must
+check prefix+remaining forced envelope for every supported escalation/cancel point,
+not just the maximum of two standalone durations. Check BOTH complete normal and
+forced envelopes. Checked
 max(normal_ms,forced_ms)+required_margin_ms<=deadline_ms accepts; insufficient/
 unknown margin refuses. This replaces the former provisional1ms arithmetic minimum;
 100ms is a proposed configured margin, never physical jitter/death proof. Actual16
@@ -705,7 +713,8 @@ are not runtime proof.
 1. First-class two-reviewer and four-plus rosters run through real Store/Workflow
    delegation, using one fixed Task context, exact locked revision and
    independent member ownership. Reject 0/33 slots, invalid parallelism and duplicate
-   Session ownership.
+   Session ownership. M=2/parallelism8 accepts with effective at most2; lower actual
+   resource authority queues remaining slots without policy rewrite.
    One eligible non-author slot can pass QUICK/STANDARD; STRICT with one slot
    rejects before input because F=2, even if its mode would need only one opinion.
 2. Two-of-three quorum counts exact-round APPROVE only; reject N=0/N>M and quorum
@@ -752,7 +761,10 @@ are not runtime proof.
     adjudication as labelled history, not model APPROVE.
 11. Supersession retains unresolved obligations and lineage floors across executor,
     roster, policy and generation changes. Cumulative 64-round/128-MiB limits never
-    reset: every admitted round consumes one count, including held/superseded rounds.
+    reset: every actually admitted round consumes one count at the first member's actual
+    admission, including later held/superseded rounds. A fully queued frozen proposal
+    has not admitted a round or spent autonomous retry/confirmation allowances;14.h
+    defines stale/expired proposal history and retained byte charges.
     After 63 admitted rounds, admission 64 is accepted within all other limits;
     admission 65 rejects. Scope decomposition
     preserves the same obligation-lineage vetoes, author attribution and budgets in descendants; Human authorization is required and no child certifies the prior phase.
@@ -1350,7 +1362,10 @@ normal AND cancel/startup-timeout/review-timeout/early-stop forced hook/tool/nat
 server shutdown, term/kill/reap and owned-settlement stages, with each enforceable
 conditional envelope and required margin. Both must fit, unknown either refuses. At default30s with100ms margin,29.9s accepts;
 29.901/29.999/30s or unknown in EITHER path refuses. Test normal2s+forced35s at30s
-refuses BEFORE input, fitting both accepts, and forced-unknown refuses. Ceil
+refuses BEFORE input, fitting both COMPLETE envelopes accepts, and forced-unknown
+refuses. Normal20s-prefix then forced15s at30s refuses even though both standalone
+durations fit. Cancel during normal cleanup uses the SAME earliest timer and the
+remaining composed bound; never restart/extend to hide35s of actual ownership. Ceil
 29.9004s to29901ms then refuse at30s/100ms; exact29900ms accepts.
 A profile-required stronger margin is enforced;
 configured deadline1–3600 must cover exact envelope+margin using checked arithmetic.
@@ -1364,7 +1379,8 @@ profile/default suitability; library timestamps alone do not validate native sup
 
 
 **9.g — Actual disposition callback.** A later complete opinion must deliver explicit
-prior-finding dispositions through the typed production consumer contract. Prove an
+the required assigned prior-finding dispositions under9.h through the typed
+production consumer contract. Prove an
 eligible finder’s confirmed-fixed with exact inspected locations/check evidence clears
 its prior High after a new full round, while general APPROVE, unknown hash, stale target,
 wrong slot/family, malformed disposition or executor-only claim keeps the veto.
@@ -1387,7 +1403,8 @@ runtime declaration checks; actual 5/6/7 adapters or explicitly linked reviewed 
 Issues own producer obligations for 8.c fresh no-resume native identity,16.b/18.g normal
 cleanup shape/bounds,14.g bounded retained Session/private pair/operation/receipt/usage/
 audit overhead needed for complete pre-input reservation,18.c requested/effective configuration,16.b/16.c runtime read-only
-permission construction and 8.a available access traces. Public owner entries identify
+permission construction,16.d actual read-only permission-request DENY/zero-ALLOW
+and visible typed reason/hold through supported profiles, and 8.a available access traces. Public owner entries identify
 exact supported profiles and refusal limits before 9 closes. Existing declarations or
 synthetic fixtures do not assert these producers or real native acceptance complete.
 Unknown actual overhead bounds refuse admission; tests use the real bounded producer
@@ -1413,7 +1430,12 @@ resolution-status metadata is about finding applicability/adjudication, not vote
 counts. Preserve exact original finding claim text/hash and recorded prior delivery:
 that prose can incidentally state an opinion and remains labelled attributed claim,
 not a promise of semantic blindness. Private retained outcomes/certificates keep
-prior verdicts for provenance, never feed them back as vote hints. Actual 16 reports
+prior verdicts for provenance, never feed them back as vote hints. This exclusion
+applies to runtime-controlled delivery, not a claim about unobserved native memory.
+Each member additionally records prior-round/executor-derived native-memory exposure
+class (observed, documented-capable, unknown or actual supported-controlled basis),
+separate from exact runtime-delivered text hashes. It cannot claim that delivery
+manifest inventories every native auto-injected byte. Actual 16 reports
 claim exposure/residual native memory separately; no history/state deletion bypass.
 
 **11.e — Native hold effect scope.** A supported formal read-only member’s declared
@@ -1485,8 +1507,8 @@ claims it complete or waives actual9 core support prerequisites.
 | 11.b, 11.e, 18.b, 21.a/c/d/g | #14 exact held native/lineage/resource recovery; #27 fair admission; #16 scoped hold/availability measurements |
 | 8.g, 10.d | #20 production typed bundle/delta/coverage; #9 consumer contract; #12 actual complete delta impact-closure producer; #18 captured inputs; #16 actual full-fallback/delta-efficiency |
 | 11.c/d, 21.h | #12 trusted applicability producer, #18/#20 inputs, #9 consumer; #16 actual disjoint/unknown/resource impact and pre12 author-growth/zero-eligible availability |
-| 16.b/c, 18.g, 14.g, 8.a/c, 21.f | #5/#6/#7 actual supported native/config/permission/cleanup and actual bounded retained-overhead declarations or tracked reviewed follow-up; #16 real enforcement/trace/default evidence |
-| 8.d/h, 12.j, 14.f, 16.a, 14.c/d/e, 17.c, 20.a/b, 21.b, 9.c/f, 14.h | #16 actual exposure, efficiency, finite delivered versus retained bytes, quotas/retries/eligibility/Human impact; #21 nullable native telemetry |
+| 16.b/c/d, 18.g, 14.g, 8.a/c, 21.f | #5/#6/#7 actual supported native/config/permission/cleanup and actual bounded retained-overhead declarations or tracked reviewed follow-up; #16 real enforcement/trace/default evidence |
+| 2.b, 8.d/h, 12.j, 14.f, 16.a, 14.c/d/e, 17.c, 20.a/b, 21.b, 9.c/f, 14.h | #16 actual exposure, efficiency, finite delivered versus retained bytes, quotas/retries/eligibility/Human impact; #21 nullable native telemetry |
 | 3.b, 9.d, 21.e/i | #9 typed phase-policy/ingress/readiness consumer; #23 shared principal derivation; #15/#24 actual scoped product policy/Human handlers; #14/#27 actual recovery/admission |
 | 12.k | #60 actual owned deterministic-effect attribution producer; #12 inspected effect/source evidence; #9 checker; LLM/unknown origin refuses/conservative exclusion |
 | 13.a | #13 actual post-certificate irreversible reconciliation; no fabricated rollback or later certificate washing |
@@ -1510,16 +1532,28 @@ An entirely queued roster owns no round/worktree lock or native context slot; it
 prepared frozen bundle may become stale and must be revalidated before admission.
 Once any member starts, retain the round lock through all slots actually settled or
 queued slots safely cancelled; new source drift holds, never permits peer exposure.
-A frozen optional queue-expiry policy is Disabled by default or1–3600seconds per slot
+An entirely queued bundle is a frozen proposal, not an admitted round. Only the first
+actual member admission atomically consumes the shared64-round count and applicable
+autonomous retry/confirmation allowance, with current quota/source/context checks.
+If the proposal goes stale or expires before that, discard it without those count
+charges, preserve exact immutable target/policy/reason provenance and charge ALL
+actually retained proposal/artifact/metadata bytes to lineage128-MiB quota. No
+in-place target rebind or silent history pruning; a new proposal has a new identity.
+Pending proposals hold no native/context/round lock or review-round-count reservation.
+Actual source-capture effects still need60 ownership; storage overflow refuses new
+proposals. A frozen optional queue-expiry policy is Disabled by default or1–3600seconds per slot
 measured from its enqueue;0/3601 reject. Expiry safely cancels an unstarted queued slot,
-terminates that round without certificate, consumes its already admitted round budget,
+terminates an already admitted round without certificate and retains its consumed count;
+if entirely queued it only closes the unadmitted proposal as specified above,
 and starts actual owned cancellation for any started members. It releases no Lost/unknown
 owner or unused reservation before safe whole-round closure. Attention default600 is
 independent notification, not expiry or mandatory Human rescheduling. Status distinguishes
 ordinary queue from queue behind retained uncertain capacity;14/27 recovery/admission
 and15/24 actual trusted handlers remain pending where required. Tests cover entirely
 queued/no lock, one started+queued/lock retained, expiry safe closure versus Lost held,
-permits returned after attention and stale bundle refusal.16 reports these Task-times.
+permits returned after attention and target changes while ALL slots queue: no
+round/retry allowance spent, actual retained bytes remain charged, new identity and
+no silent target rewrite.16 reports these Task-times.
 
 **20.d — Actual remediation handoff.** Two rounds around actual executor fix/commit
 must release only a completely settled round's lock/member delegation, return control
@@ -1536,7 +1570,7 @@ DENY contract and settlement remain mandatory; no label-based privilege or Lost 
 Test reachable native request→zero ALLOW/action wire and visible typed denial/hold through
 the actual provider path, including existing provider-specific lifecycle write failures.
 
-**14.i — Fixed shared reservation arithmetic.** Before each round reserve full8 MiB
+**14.i — Fixed shared reservation arithmetic.** Before each ACTUAL admitted round reserve full8 MiB
 verification plus4 MiB control allowances, including its64-KiB attention margin, alongside
 actual core/member frames, each maximum1-MiB result,64-KiB diagnostic, declared retained
 expansion and actual reviewed producer row overhead. With Triple, three1-MiB frames,
@@ -1548,6 +1582,40 @@ shared identity once. Simultaneous ceilings do not guarantee64 rounds fit128 MiB
 Unused reservation is released only by safe round closure; retained history persists.
 Test this formula with actual producer rows and separate/shared core representations,
 exact remaining-quota boundary and refusal without input; external refs never erase bytes.
+
+**9.h — Bounded required disposition assignment.** Before later-round input freeze
+an exact per-slot required-disposition manifest for EVERY still-unresolved potential
+or verified finding in the effective blocking set. Assign the eligible original
+finder OR the already policy-designated independent confirmer pair; identities obey
+9.e/9.g and the pre-observation designation rule. If no eligible frozen designation
+exists,9.f Human-only resolution/hold applies; never choose an opinion-shopping pair.
+A trusted Human-resolved finding has
+no required new clearance output. All members still receive/inspect all unresolved
+claims under14.e and may report contrary evidence; unassigned opinions do not silently
+clear a blocker. No automatic favourable confirmer selection after results.
+Each result may carry at most256 disposition entries, each at most8192 complete encoded
+UTF-8 bytes (identity, outcome, inspected locations/evidence included), separately from
+its256 NEW finding count; the combined entire result remains1 MiB. Result mandatory
+metadata has a frozen actual DTO upper bound at most64 KiB. Pre-input check each slot's
+required count<=256 AND count*8192+its metadata upper bound<=1 MiB with checked arithmetic;
+otherwise NeedsContext/trusted existing resolution or termination without certificate,
+never send an impossible output obligation or omit a required finding. Maximum count
+never promises maximum bytes fit. Missing assigned dispositions holds; nonassigned
+Low/nonblocking disposition is optional within the same cap, not an approval hint.
+Test exact byte/count boundary,256 count simultaneous refusal when worst-case bytes
+cannot fit, accumulated claims across rounds, frozen eligibility and missing assigned
+output→hold. Required output reservation uses these actual producer DTO bounds.
+
+**2.b — Quorum with retained uncertainty.** Quorum2/3 or any with enough settled
+APPROVEs plus one Lost/uncertain member has NO certificate and remains recovery-pending,
+even with early-stop. Quorum tolerates safely settled failures, never outstanding native
+effects/target-mutation taint. #16 publicly owns this availability frequency/Task-time;
+only actual14 recovery can release that owner, never vote count or trusted Human opinion.
+
+Stable closure quotes use the explicit namespace I9-AC-<key>, for example
+I9-AC-16.a (this document's acceptance) versus GitHub Issue #16 (its public owner).
+Existing short keys remain permanent aliases to preserve historical evidence; every new
+public handoff uses the prefixed form. No renumbering of prior evidence is implied.
 
 Every criterion and bold subcriterion ID above is a stable closure-evidence key.
 Absent suffixes are intentional reserved IDs; reordered subcriteria retain their
