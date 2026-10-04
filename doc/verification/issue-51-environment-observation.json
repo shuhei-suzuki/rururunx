@@ -21,5 +21,11 @@
     "duration_seconds": 1.82
   },
   "initial_compile_failure": "private validate_environment is not exported; removed and committed before execution; no verification credit",
-  "grok_source_blob": "e3939fa8766b335595caf14ceded37207db93391"
+  "grok_source_blob": "e3939fa8766b335595caf14ceded37207db93391",
+  "historical_invalid_reference_correction": {
+    "rrx_reference_registration_valid": false,
+    "inserted_via": "Store.put_project; bypassed ProjectRegistry/environment_names validation",
+    "ordinary_path_scope": "unconditional caller reserved RRX passthrough, not valid registered foreign ownership",
+    "corrected_valid_reference_artifact": "issue-51-valid-environment-observation.json"
+  }
 }

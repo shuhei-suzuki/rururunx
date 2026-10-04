@@ -1,0 +1,32 @@
+{
+  "actual_public_grok_adapter": true,
+  "baseline_head": "d56f2bfb8285fbd588474fe5a9880fa8cfe952d2",
+  "canaries": {
+    "TZ": "synthetic-caller-B",
+    "XAI_GLOBAL_AUTH_CANARY": "synthetic-global-native",
+    "XAI_PROJECT_B_CANARY": "synthetic-baseline-B"
+  },
+  "exit_code": null,
+  "failure": null,
+  "project_a_declares_b_refs": false,
+  "project_b_environment_names_validation": true,
+  "project_b_registered": true,
+  "real_native_cli": false,
+  "scope": "isolated synthetic fake ACP child; no actual environment/config/credentials read",
+  "session_state": "Exited",
+  "provenance_annotations": {
+    "fixture_commit": "7356fa4",
+    "fixture_source_sha256": "e28c70e32f239021bc919a29ff76d518f6353ec7c3831c22d0a8bfc9e587aa57",
+    "probe_test_result": {
+      "passed": 1,
+      "failed": 0,
+      "duration_seconds": 1.88
+    },
+    "not_machine_output": [
+      "fixture_commit",
+      "fixture_source_sha256",
+      "probe_test_result"
+    ],
+    "prior_invalid_record_evidence": "issue-51-environment-observation.json contains original forbidden RRX reference inserted through Store, not registry-valid admission"
+  }
+}

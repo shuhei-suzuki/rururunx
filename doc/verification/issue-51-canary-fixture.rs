@@ -171,7 +171,7 @@ async fn finished(adapter: &dyn AgentAdapter, session: &Session) -> SessionStatu
 const FAKE: &str = r#"#!/usr/bin/env python3
 import json,os,sys,uuid,sqlite3,time,pathlib
 capture=os.getenv('RRX_ENV_CAPTURE')
-if capture:pathlib.Path(capture).write_text(json.dumps({k:os.getenv(k) for k in ['RRX_PROJECT_B_CANARY','XAI_PROJECT_B_CANARY','XAI_GLOBAL_AUTH_CANARY']}))
+if capture:pathlib.Path(capture).write_text(json.dumps({k:os.getenv(k) for k in ['TZ','XAI_PROJECT_B_CANARY','XAI_GLOBAL_AUTH_CANARY']}))
 mode=os.getenv('RRX_MODE','good');sid=None;prompt=None;calls=0;model='native-default';effort='high'
 if os.getenv('RRX_SPAWN_OBSERVED'):pathlib.Path(os.environ['RRX_SPAWN_OBSERVED']).write_text('native process started')
 profile=pathlib.Path(sys.argv[sys.argv.index('--agent-profile')+1]).read_text();decision='name: rururunx-decision' in profile
@@ -267,7 +267,7 @@ for line in sys.stdin:
 
 
 #[tokio::test]
-async fn registered_foreign_project_canaries_reach_owned_fake_acp_child() {
+async fn registry_valid_foreign_project_canaries_reach_owned_fake_acp_child() {
     let mut f = Fixture::new();
     let b_root = f.directory.path().join("project-b");
     std::fs::create_dir(&b_root).unwrap();
@@ -277,19 +277,20 @@ async fn registered_foreign_project_canaries_reach_owned_fake_acp_child() {
     git(&b_root, &["-c","user.name=Fixture","-c","user.email=fixture@example.invalid","commit","-m","fixture"]);
     let b_root = b_root.canonicalize().unwrap();
     let mut b = Project::new("B".into(), b_root.clone(), rrx::git::repository_identity(&b_root,"main").unwrap(), "main".into());
-    b.environment_refs = vec!["RRX_PROJECT_B_CANARY".into(), "XAI_PROJECT_B_CANARY".into()];
+    b.environment_refs = vec!["TZ".into(), "XAI_PROJECT_B_CANARY".into()];
     f.store.lock().unwrap().put_project(&mut b).unwrap();
-    assert!(!f.request.project.environment_refs.iter().any(|n| n.contains("PROJECT_B_CANARY")));
+    assert_eq!(rrx::project::environment_names(&f.store.lock().unwrap(), b.id).unwrap(), b.environment_refs);
+    assert!(!f.request.project.environment_refs.iter().any(|n| n=="TZ" || n=="XAI_PROJECT_B_CANARY"));
     let capture = f.directory.path().join("synthetic-canaries.json");
     f.request.environment.insert("RRX_ENV_CAPTURE".into(), capture.to_str().unwrap().into());
-    f.request.environment.insert("RRX_PROJECT_B_CANARY".into(),"synthetic-caller-B".into());
+    f.request.environment.insert("TZ".into(),"synthetic-caller-B".into());
     let adapter = f.adapter();
     let session = adapter.start(f.request.clone()).await.unwrap();
     let status = finished(&adapter, &session).await;
     assert_eq!(status.session.state, SessionState::Exited, "{status:?}");
     let values: Value = serde_json::from_slice(&std::fs::read(&capture).unwrap()).unwrap();
-    assert_eq!(values["RRX_PROJECT_B_CANARY"], "synthetic-caller-B");
+    assert_eq!(values["TZ"], "synthetic-caller-B");
     assert_eq!(values["XAI_PROJECT_B_CANARY"], "synthetic-baseline-B");
     assert_eq!(values["XAI_GLOBAL_AUTH_CANARY"], "synthetic-global-native");
-    std::fs::write("/private/tmp/rururunx-issue7-environment-result.json", serde_json::to_vec_pretty(&json!({"baseline_head":"d56f2bfb8285fbd588474fe5a9880fa8cfe952d2","actual_public_grok_adapter":true,"real_native_cli":false,"project_b_registered":true,"project_a_declares_b_refs":false,"canaries":values,"session_state":"Exited","exit_code":status.exit_code,"failure":status.failure,"scope":"isolated synthetic fake ACP child; no actual environment/config/credentials read"})).unwrap()).unwrap();
+    std::fs::write("/private/tmp/rururunx-issue51-valid-environment-result.json", serde_json::to_vec_pretty(&json!({"baseline_head":"d56f2bfb8285fbd588474fe5a9880fa8cfe952d2","actual_public_grok_adapter":true,"real_native_cli":false,"project_b_registered":true,"project_b_environment_names_validation":true,"project_a_declares_b_refs":false,"canaries":values,"session_state":"Exited","exit_code":status.exit_code,"failure":status.failure,"scope":"isolated synthetic fake ACP child; no actual environment/config/credentials read"})).unwrap()).unwrap();
 }
