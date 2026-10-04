@@ -4858,4 +4858,372 @@ mod tests {
         // registry bookkeeping; no live native process exists in this checkpoint.
         adapter.registry().unwrap().remove(&reference.id);
     }
+    const SYNTHETIC_THREAD: &str = "01a10085-deba-7831-8b1b-f302ca6c6da8";
+    fn quoted_path(path: &std::path::Path) -> String {
+        format!("'{}'", path.to_str().unwrap().replace('\'', "'\\''"))
+    }
+    fn wire_fixture(owned: &Fixture, mode: &str) -> (PathBuf, PathBuf) {
+        use std::os::unix::fs::PermissionsExt;
+        let directory = owned
+            .request
+            .project
+            .root
+            .parent()
+            .unwrap()
+            .join("native-fixture");
+        std::fs::create_dir(&directory).unwrap();
+        std::fs::write(directory.join("mode"), mode).unwrap();
+        let executable = directory.join("synthetic-codex");
+        let binary = std::env::current_exe().unwrap();
+        let script = format!(
+            "#!/bin/sh\nif [ \"$1\" = '--version' ]; then printf '%s\\n' 'codex-cli 0.160.0'; exit 0; fi\nprintf '%s\\n' \"$@\" > {args}\nexport RRX_SYNTHETIC_NATIVE_DIRECTORY={directory}\nexec {binary} --exact codex::session::tests::synthetic_owned_native_rpc_child --ignored --nocapture\n",
+            args = quoted_path(&directory.join("arguments")),
+            directory = quoted_path(&directory),
+            binary = quoted_path(&binary)
+        );
+        std::fs::write(&executable, script).unwrap();
+        std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o700)).unwrap();
+        (executable, directory)
+    }
+    fn synthetic_merge(target: &mut Value, source: Value) {
+        match (target, source) {
+            (Value::Object(target), Value::Object(source)) => {
+                for (key, value) in source {
+                    synthetic_merge(target.entry(key).or_insert(Value::Null), value);
+                }
+            }
+            (target, source) => *target = source,
+        }
+    }
+    fn journal(directory: &std::path::Path, value: &Value) {
+        use std::io::Write;
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(directory.join("journal"))
+            .unwrap();
+        writeln!(file, "{value}").unwrap();
+    }
+    fn journal_values(directory: &std::path::Path) -> Vec<Value> {
+        std::fs::read_to_string(directory.join("journal"))
+            .unwrap_or_default()
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect()
+    }
+    async fn socket_send(
+        socket: &mut tokio_tungstenite::WebSocketStream<tokio::net::UnixStream>,
+        value: Value,
+    ) {
+        socket
+            .send(tokio_tungstenite::tungstenite::Message::Text(
+                value.to_string().into(),
+            ))
+            .await
+            .unwrap();
+    }
+    async fn synthetic_terminal(
+        socket: &mut tokio_tungstenite::WebSocketStream<tokio::net::UnixStream>,
+        turn: &str,
+        status: &str,
+    ) {
+        socket_send(socket,json!({"method":"turn/completed","params":{"threadId":SYNTHETIC_THREAD,"turn":{"id":turn,"status":status}}})).await;
+    }
+
+    /// Explicitly synthetic, with no model/authentication or native containment
+    /// claim. The real launch path must authenticate this owned child's kernel
+    /// peer and preserve its process group throughout protocol/cleanup tests.
+    #[tokio::test]
+    #[ignore = "owned synthetic subprocess entry; invoked only by private fixture wrapper"]
+    async fn synthetic_owned_native_rpc_child() {
+        use std::os::unix::fs::PermissionsExt;
+        let directory = PathBuf::from(
+            std::env::var_os("RRX_SYNTHETIC_NATIVE_DIRECTORY").expect("private fixture directory"),
+        );
+        let arguments = std::fs::read_to_string(directory.join("arguments")).unwrap();
+        let args: Vec<_> = arguments.lines().collect();
+        let socket = args
+            .iter()
+            .find_map(|arg| arg.strip_prefix("unix://"))
+            .unwrap();
+        let mut config = json!({"sandbox_mode":"workspace-write","approval_policy":"on-request","approvals_reviewer":"user","mcp_servers":{},"web_search":"disabled","features":{},"permissions":{}});
+        for pair in args.windows(2) {
+            if pair[0] == "--disable" {
+                config["features"][pair[1]] = json!(false);
+            }
+            if pair[0] == "-c" {
+                let override_config: toml::Value = toml::from_str(pair[1]).unwrap();
+                synthetic_merge(&mut config, serde_json::to_value(override_config).unwrap());
+            }
+        }
+        let listener = tokio::net::UnixListener::bind(socket).unwrap();
+        std::fs::set_permissions(socket, std::fs::Permissions::from_mode(0o600)).unwrap();
+        let (stream, _) = listener.accept().await.unwrap();
+        let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+        let mut current_turn = String::new();
+        let cwd = std::env::current_dir().unwrap();
+        while let Some(Ok(frame)) = socket.next().await {
+            let Ok(text) = frame.to_text() else {
+                continue;
+            };
+            let value: Value = serde_json::from_str(text).unwrap();
+            journal(&directory, &value);
+            let method = value["method"].as_str().unwrap_or("");
+            let id = value["id"].clone();
+            let response = match method {
+                "initialize" => {
+                    json!({"userAgent":"synthetic-codex","codexHome":directory,"platformFamily":"unix","platformOs":std::env::consts::OS})
+                }
+                "initialized" => continue,
+                "config/read" => json!({"config":config}),
+                "account/read" => json!({"requiresOpenaiAuth":false,"account":null}),
+                "environment/status" => json!({"status":"ready"}),
+                "thread/start" | "thread/resume" => {
+                    assert_eq!(value["params"]["cwd"], json!(cwd));
+                    if method == "thread/resume" {
+                        assert_eq!(value["params"]["threadId"], SYNTHETIC_THREAD);
+                    }
+                    json!({"cwd":cwd,"thread":{"id":SYNTHETIC_THREAD,"cwd":cwd},"activePermissionProfile":{"id":value["params"]["permissions"]},"approvalPolicy":value["params"]["approvalPolicy"],"approvalsReviewer":"user","model":"synthetic-model"})
+                }
+                "mcpServerStatus/list" => json!({"data":[],"nextCursor":null}),
+                "turn/start" => {
+                    let number = std::fs::read_to_string(directory.join("turn-counter"))
+                        .unwrap_or_else(|_| "0".into())
+                        .parse::<u64>()
+                        .unwrap()
+                        + 1;
+                    std::fs::write(directory.join("turn-counter"), number.to_string()).unwrap();
+                    current_turn = format!("synthetic-turn-{number}");
+                    let mode = std::fs::read_to_string(directory.join("mode")).unwrap();
+                    if mode == "ack_lost" {
+                        break;
+                    }
+                    if mode == "ack_hold" {
+                        ready(&directory.join("release-ack")).await;
+                    }
+                    socket_send(
+                        &mut socket,
+                        json!({"id":id,"result":{"turn":{"id":current_turn}}}),
+                    )
+                    .await;
+                    if mode == "approval" {
+                        socket_send(&mut socket,json!({"id":"synthetic-approval","method":"item/commandExecution/requestApproval","params":{"threadId":SYNTHETIC_THREAD,"turnId":current_turn,"itemId":"synthetic-operation","command":"synthetic no-effect operation","cwd":cwd}})).await;
+                    } else if mode == "complete" {
+                        socket_send(&mut socket,json!({"method":"item/completed","params":{"threadId":SYNTHETIC_THREAD,"turnId":current_turn,"item":{"id":"synthetic-message","type":"agentMessage","text":current_turn}}})).await;
+                        synthetic_terminal(&mut socket, &current_turn, "completed").await;
+                    }
+                    continue;
+                }
+                "turn/interrupt" => {
+                    assert_eq!(
+                        value["params"],
+                        json!({"threadId":SYNTHETIC_THREAD,"turnId":current_turn})
+                    );
+                    socket_send(&mut socket, json!({"id":id,"result":{}})).await;
+                    synthetic_terminal(&mut socket, &current_turn, "interrupted").await;
+                    continue;
+                }
+                "" if id == "synthetic-approval" => {
+                    assert_eq!(value["result"]["decision"], "accept");
+                    synthetic_terminal(&mut socket, &current_turn, "completed").await;
+                    continue;
+                }
+                _ => panic!("unexpected synthetic RPC method: {method}"),
+            };
+            socket_send(&mut socket, json!({"id":id,"result":response})).await;
+        }
+    }
+
+    async fn terminal_status(adapter: &CodexAdapter, reference: &SessionRef) -> SessionStatus {
+        let mut status = adapter.subscribe(reference.clone()).unwrap();
+        bounded(async {
+            loop {
+                let snapshot = status.borrow_and_update().clone();
+                if snapshot.terminal() {
+                    return snapshot;
+                }
+                status.changed().await.unwrap();
+            }
+        })
+        .await
+    }
+
+    #[tokio::test]
+    async fn registered_consumption_queues_stop_through_ack_and_native_missing_ack_stays_lost() {
+        for mode in ["ack_hold", "ack_lost"] {
+            let owned = Fixture::new(true);
+            let (executable, directory) = wire_fixture(&owned, mode);
+            let adapter = Arc::new(
+                CodexAdapter::new("codex".into(), executable, owned.store.clone()).unwrap(),
+            );
+            let pre_admission = adapter.gates.install(TestPoint::BeforeDispatch);
+            let actor = adapter.clone();
+            let request = owned.request.clone();
+            let mut caller = tokio::spawn(async move { actor.start(request).await });
+            bounded(pre_admission.reached()).await;
+            let (reference, control) = {
+                let registry = adapter.registry().unwrap();
+                let entry = registry.values().next().unwrap();
+                (
+                    SessionRef::from(&entry.status.borrow().session),
+                    entry.control.clone(),
+                )
+            };
+            let mut status = adapter.subscribe(reference.clone()).unwrap();
+            assert_eq!(status.borrow().session.state, SessionState::Starting);
+            pre_admission.release();
+            if mode == "ack_hold" {
+                bounded(async {
+                    while !journal_values(&directory)
+                        .iter()
+                        .any(|value| value["method"] == "turn/start")
+                    {
+                        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+                    }
+                })
+                .await;
+                assert!(control.consumed());
+                let stop_gate = adapter.gates.install(TestPoint::StopWaiting);
+                let actor = adapter.clone();
+                let target = reference.clone();
+                let stopper = tokio::spawn(async move { actor.stop(target).await });
+                bounded(stop_gate.reached()).await;
+                std::fs::write(directory.join("release-ack"), "").unwrap();
+                stop_gate.release();
+                bounded(&mut caller).await.unwrap().unwrap();
+                let stopped = bounded(stopper).await.unwrap().unwrap();
+                assert_eq!(stopped.session.state, SessionState::Stopped);
+                assert_eq!(stopped.session.pid, None);
+                let final_snapshot = bounded(control.wait_finished())
+                    .await
+                    .unwrap()
+                    .snapshot()
+                    .unwrap()
+                    .clone();
+                assert_eq!(
+                    serde_json::to_value(final_snapshot.session).unwrap(),
+                    serde_json::to_value(stopped.session).unwrap()
+                );
+                assert_eq!(
+                    journal_values(&directory)
+                        .iter()
+                        .filter(|value| value["method"] == "turn/interrupt")
+                        .count(),
+                    1
+                );
+                assert!(status.changed().await.is_ok());
+                assert_eq!(
+                    status.borrow().session.state,
+                    SessionState::Stopped,
+                    "same preparation subscription receives final supervision publication"
+                );
+            } else {
+                let error = bounded(&mut caller).await.unwrap().unwrap_err();
+                assert!(matches!(
+                    error.kind,
+                    ErrorKind::ProcessFailure | ErrorKind::SessionLost
+                ));
+                let outcome = bounded(control.wait_finished()).await.unwrap();
+                assert!(matches!(
+                    outcome,
+                    Outcome::Lost {
+                        publication_result: Ok(_),
+                        ..
+                    }
+                ));
+                let lost = adapter.current(&reference).unwrap();
+                assert_eq!(lost.session.state, SessionState::Lost);
+                assert_eq!(lost.session.pid, None);
+                assert_eq!(lost.session.recovery["native_dispatch_unobserved"], true);
+                assert_eq!(
+                    bounded(adapter.stop(reference.clone()))
+                        .await
+                        .unwrap_err()
+                        .kind,
+                    ErrorKind::SessionLost
+                );
+            }
+            assert_eq!(
+                journal_values(&directory)
+                    .iter()
+                    .filter(|value| value["method"] == "turn/start")
+                    .count(),
+                1
+            );
+            adapter.release(reference).unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn resumed_supervised_transition_allows_actual_approval_usage_and_exact_one_reply() {
+        let owned = Fixture::new(true);
+        let (executable, directory) = wire_fixture(&owned, "complete");
+        let adapter = CodexAdapter::new("codex".into(), executable, owned.store.clone())
+            .unwrap()
+            .with_runtime_broker();
+        let session = bounded(adapter.start(owned.request.clone())).await.unwrap();
+        let reference = SessionRef::from(&session);
+        let first = terminal_status(&adapter, &reference).await;
+        assert_eq!(first.session.state, SessionState::Exited);
+        assert!(adapter.transport_succeeded(&first));
+        std::fs::write(directory.join("mode"), "approval").unwrap();
+        let mut input = owned.request.input.clone();
+        input.version += 1;
+        input.payload = "new explicit continuation".into();
+        adapter
+            .checkpoint(reference.clone(), input.clone())
+            .await
+            .unwrap();
+        let resumed = bounded(adapter.resume(reference.clone())).await.unwrap();
+        let mut status = adapter.subscribe(reference.clone()).unwrap();
+        bounded(async {
+            loop {
+                if status.borrow_and_update().session.state == SessionState::WaitingApproval {
+                    break;
+                }
+                status.changed().await.unwrap();
+            }
+        })
+        .await;
+        assert_eq!(resumed.native_ref, first.session.native_ref);
+        assert!(
+            !adapter
+                .registry()
+                .unwrap()
+                .get(&reference.id)
+                .unwrap()
+                .transition
+                .load(Ordering::SeqCst)
+        );
+        let usage = bounded(adapter.usage(reference.clone(), "execution".into(), None))
+            .await
+            .unwrap();
+        assert_eq!(usage.input_tokens, None);
+        let pending = bounded(adapter.pending_approvals(reference.clone()))
+            .await
+            .unwrap();
+        assert_eq!(pending["requests"].as_array().unwrap().len(), 1);
+        let decision = json!({"native_turn":pending["native_turn"],"request_id":pending["requests"][0]["id"],"decision":"Approve","operation_hash":pending["requests"][0]["operation_hash"]});
+        bounded(adapter.submit_approval(reference.clone(), decision.clone()))
+            .await
+            .unwrap();
+        let second = terminal_status(&adapter, &reference).await;
+        assert_eq!(second.session.state, SessionState::Exited);
+        assert_eq!(second.session.recovery["input_version"], input.version);
+        assert!(adapter.transport_succeeded(&second));
+        assert!(
+            bounded(adapter.submit_approval(reference.clone(), decision))
+                .await
+                .is_err()
+        );
+        let values = journal_values(&directory);
+        assert_eq!(values.iter().filter(|value|value["id"]=="synthetic-approval" && value.get("method").is_none()).count(),1);
+        let starts: Vec<_> = values
+            .iter()
+            .filter(|value| value["method"] == "turn/start")
+            .collect();
+        assert_eq!(starts.len(), 2);
+        assert_eq!(starts[1]["params"]["input"][0]["text"], input.payload);
+        adapter.release(reference).unwrap();
+    }
 }
