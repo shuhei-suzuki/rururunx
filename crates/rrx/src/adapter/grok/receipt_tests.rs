@@ -336,7 +336,7 @@ async fn dispatched(unknown: bool) {
     );
     assert_eq!(
         adapter.release((&session).into()).unwrap_err().kind,
-        ErrorKind::InvalidInput
+        ErrorKind::SessionLost
     );
 }
 #[tokio::test]
