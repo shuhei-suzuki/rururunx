@@ -178,47 +178,24 @@ impl Drop for RegisteredTransition {
         if !matches!(phase, Phase::Finished(_)) {
             let error = failure(
                 ErrorKind::SessionLost,
-                "native preparation ended without final publication",
+                if std::thread::panicking() {
+                    "owned native preparation task panicked"
+                } else {
+                    "owned native preparation task abandoned its final publication"
+                },
             );
-            let cause = if std::thread::panicking() {
-                Cause::Failed(
-                    ErrorKind::SessionLost,
-                    "owned native preparation task panicked".into(),
-                )
-            } else {
-                self.control.preparation.cause(&error)
-            };
-            let published = self.control.published();
-            let outcome = match (self.control.preparation.state(), published) {
-                (
-                    Ok(Admission::CancelledBeforeAdmission | Admission::Failing(_)),
-                    Some(snapshot),
-                ) if !std::thread::panicking()
-                    && snapshot.terminal()
-                    && snapshot.session.state != SessionState::Lost =>
-                {
-                    if self.previous_control.is_some() {
-                        Outcome::RestoredBeforeAdmission { cause, snapshot }
-                    } else {
-                        Outcome::FailedBeforeAdmission { cause, snapshot }
-                    }
-                }
-                (_, Some(snapshot)) if snapshot.session.state == SessionState::Lost => {
-                    Outcome::Lost {
-                        cause,
-                        publication_result: Ok(snapshot),
-                    }
-                }
-                _ if self.previous_control.is_some() => Outcome::RestoreUnpublished {
-                    cause,
-                    error: Cause::Failed(error.kind, error.message),
-                },
-                _ => Outcome::FreshUnpublished {
-                    cause,
-                    error: Cause::Failed(error.kind, error.message),
-                },
-            };
-            self.control.finished(outcome);
+            let cause = self.control.preparation.cause(&error);
+            let publication_result = self
+                .control
+                .published()
+                .filter(|status| status.session.state == SessionState::Lost)
+                .ok_or_else(|| Cause::Failed(error.kind, error.message));
+            // Only explicit normal cleanup/publication can establish restore.
+            // An abandoned frame never classifies its old snapshot as restored.
+            self.control.finished(Outcome::Lost {
+                cause,
+                publication_result,
+            });
         }
         if let Ok(mut sessions) = self.sessions.lock()
             && let Some(entry) = sessions.get_mut(&self.id)
@@ -368,7 +345,7 @@ impl Reservation {
         {
             self.publish(&sender, &mut status)
         } else {
-            self.persist()
+            self.persist_unchecked()
         };
         // A failed exact restore/publication remains explicitly unpublished. Do
         // not let Drop attempt another write or overwrite a second writer.
@@ -498,16 +475,12 @@ impl Reservation {
         self.version = store
             .put_session(&self.session, self.version)
             .map_err(super::ownership::state_error)?;
+        // Preparation carries no new turn output. Its exact prior snapshot is
+        // kept privately for rollback, rather than relabelled as current output.
+        let status = empty_status(self.session.clone());
         if let Some(publication) = &self.resume_publication {
-            let mut status = publication.sender.borrow().clone();
-            status.session = self.session.clone();
-            publication.sender.send_replace(status);
+            publication.sender.send_replace(status.clone());
         }
-        let mut status = self
-            .attempt
-            .published()
-            .unwrap_or_else(|| empty_status(self.session.clone()));
-        status.session = self.session.clone();
         self.attempt.publish(status);
         Ok(())
     }
@@ -650,7 +623,7 @@ impl Drop for Reservation {
                 let sender = publication.sender.clone();
                 let _ = self.publish(&sender, &mut status);
             } else {
-                let _ = self.persist();
+                let _ = self.persist_unchecked();
             }
         }
     }
@@ -4424,7 +4397,7 @@ mod tests {
         let executable = parent.join("synthetic-codex");
         let marker = parent.join("native-bootstrap-ready");
         let quoted = format!("'{}'", marker.to_str().unwrap().replace('\'', "'\\''"));
-        std::fs::write(&executable,format!("#!/bin/sh\nif [ \"$1\" = '--version' ]; then printf '%s\\n' 'codex 0.160.0'; exit 0; fi\nprintf '%s' \"$$\" > {quoted}\nexec /bin/sleep 30\n")).unwrap();
+        std::fs::write(&executable,format!("#!/bin/sh\nif [ \"$1\" = '--version' ]; then printf '%s\\n' 'codex-cli 0.160.0'; exit 0; fi\nprintf '%s' \"$$\" > {quoted}\nexec /bin/sleep 30\n")).unwrap();
         std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o700)).unwrap();
         (executable, marker)
     }
@@ -4497,8 +4470,11 @@ mod tests {
             );
             let actor = adapter.clone();
             let request = owned.request.clone();
-            let caller = tokio::spawn(async move { actor.start(request).await });
-            ready(&marker).await;
+            let mut caller = tokio::spawn(async move { actor.start(request).await });
+            tokio::select! {
+                _=ready(&marker)=>{},
+                early=&mut caller=>panic!("bootstrap fixture ended before readiness: {early:?}"),
+            }
             let (id, reference) = {
                 let registry = adapter.registry().unwrap();
                 let (id, entry) = registry.iter().next().unwrap();
@@ -4738,5 +4714,148 @@ mod tests {
         bounded(caller).await.unwrap().unwrap();
         assert_eq!(idle.unwrap().session.state, SessionState::Exited);
         adapter.release(reference).unwrap();
+    }
+    #[tokio::test]
+    async fn captured_stop_a_cannot_cancel_later_resume_b_or_adopt_its_status() {
+        let mut fixture = ApprovalFixture::new(true).await;
+        let (mut adapter, reference) = fixture.terminal_adapter();
+        let (executable, marker) = bootstrap_fixture(&fixture._owned);
+        Arc::get_mut(&mut adapter).unwrap().executable = executable;
+        let mut input = fixture.authority.request.input.clone();
+        input.version += 1;
+        adapter
+            .checkpoint(reference.clone(), input.clone())
+            .await
+            .unwrap();
+        let preparation_gate = adapter.gates.install(TestPoint::BeforeStarting);
+        let actor = adapter.clone();
+        let target = reference.clone();
+        let caller_a = tokio::spawn(async move { actor.resume(target).await });
+        bounded(preparation_gate.reached()).await;
+        let control_a = preparing_control(&adapter, reference.id);
+        let stop_gate = adapter.gates.install(TestPoint::StopWaiting);
+        let actor = adapter.clone();
+        let target = reference.clone();
+        let stopper_a = tokio::spawn(async move { actor.stop(target).await });
+        bounded(stop_gate.reached()).await;
+        preparation_gate.release();
+        let error_a = bounded(caller_a).await.unwrap().unwrap_err();
+        let outcome_a = bounded(control_a.wait_finished()).await.unwrap();
+        input.version += 1;
+        adapter.checkpoint(reference.clone(), input).await.unwrap();
+        let actor = adapter.clone();
+        let target = reference.clone();
+        let mut caller_b = tokio::spawn(async move { actor.resume(target).await });
+        tokio::select! {_=ready(&marker)=>{},early=&mut caller_b=>panic!("B ended before actual bootstrap: {early:?}")}
+        let control_b = preparing_control(&adapter, reference.id);
+        let own_a = Arc::ptr_eq(&control_a, &control_b);
+        stop_gate.release();
+        let stopped_a = bounded(stopper_a).await.unwrap();
+        let unchanged_b = matches!(control_b.preparation.state().unwrap(), Admission::Preparing);
+        let snapshot_b = adapter.current(&reference).unwrap();
+        let stopper_b = bounded(adapter.stop(reference.clone())).await;
+        let error_b = bounded(caller_b).await.unwrap().unwrap_err();
+        assert!(!own_a);
+        assert_eq!(error_a.kind, ErrorKind::StateConflict);
+        assert!(matches!(
+            outcome_a,
+            Outcome::RestoredBeforeAdmission {
+                cause: Cause::Cancelled,
+                ..
+            }
+        ));
+        let stopped_a = stopped_a.unwrap_err();
+        assert_eq!(stopped_a.kind, ErrorKind::StateConflict);
+        assert!(stopped_a.message.contains("advanced; factual outcome"));
+        assert!(stopped_a.message.contains("cancelled before admission"));
+        assert!(
+            unchanged_b,
+            "captured A never cancels the registry's replacement B"
+        );
+        assert_eq!(snapshot_b.session.state, SessionState::Starting);
+        assert!(
+            stopper_b
+                .unwrap_err()
+                .message
+                .contains("exact prior Session restored")
+        );
+        assert_eq!(error_b.kind, ErrorKind::StateConflict);
+        assert_leader_reaped(&marker);
+        adapter.release(reference).unwrap();
+    }
+
+    #[tokio::test]
+    async fn checkpoint_restore_cas_failure_is_unpublished_and_cannot_adopt_another_writer() {
+        let mut fixture = ApprovalFixture::new(true).await;
+        let (adapter, reference) = fixture.terminal_adapter();
+        let original = adapter.current(&reference).unwrap();
+        let mut input = fixture.authority.request.input.clone();
+        input.version += 1;
+        let gate = adapter.gates.install(TestPoint::BeforeCheckpointCommit);
+        let actor = adapter.clone();
+        let target = reference.clone();
+        let caller = tokio::spawn(async move { actor.checkpoint(target, input).await });
+        bounded(gate.reached()).await;
+        let control = preparing_control(&adapter, reference.id);
+        let db = fixture
+            .authority
+            .request
+            .project
+            .root
+            .parent()
+            .unwrap()
+            .join("state.sqlite3");
+        let mut writer = crate::state::Store::open(&db).unwrap();
+        let (mut changed, version) = writer.session(reference.id).unwrap().unwrap();
+        changed.recovery["synthetic_second_writer"] = json!(true);
+        writer.put_session(&changed, version).unwrap();
+        let stop_gate = adapter.gates.install(TestPoint::StopWaiting);
+        let actor = adapter.clone();
+        let target = reference.clone();
+        let stopper = tokio::spawn(async move { actor.stop(target).await });
+        bounded(stop_gate.reached()).await;
+        gate.release();
+        stop_gate.release();
+        let launch = bounded(caller).await.unwrap().unwrap_err();
+        let stopped = bounded(stopper).await.unwrap().unwrap_err();
+        let outcome = bounded(control.wait_finished()).await.unwrap();
+        assert_eq!(launch.kind, ErrorKind::StateConflict);
+        assert_eq!(stopped.kind, ErrorKind::StateConflict);
+        assert!(matches!(
+            outcome,
+            Outcome::RestoreUnpublished {
+                cause: Cause::Cancelled,
+                ..
+            }
+        ));
+        assert_eq!(
+            serde_json::to_value(writer.session(reference.id).unwrap().unwrap().0).unwrap(),
+            serde_json::to_value(changed).unwrap()
+        );
+        assert_eq!(
+            adapter
+                .registry()
+                .unwrap()
+                .get(&reference.id)
+                .unwrap()
+                .request
+                .input
+                .version,
+            fixture.authority.request.input.version
+        );
+        assert_ne!(
+            serde_json::to_value(writer.session(reference.id).unwrap().unwrap().0).unwrap(),
+            serde_json::to_value(original.session).unwrap()
+        );
+        assert_eq!(
+            bounded(adapter.stop(reference.clone()))
+                .await
+                .unwrap_err()
+                .kind,
+            ErrorKind::StateConflict
+        );
+        // The foreign Session was never adopted. Drop only the fixture's private
+        // registry bookkeeping; no live native process exists in this checkpoint.
+        adapter.registry().unwrap().remove(&reference.id);
     }
 }
