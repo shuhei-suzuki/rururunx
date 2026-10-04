@@ -322,7 +322,8 @@ attempt agent/role/Session fences AND require Session.worktree == Task.worktree
 for every native actor, including Reviewer, on initial Starting and Running. No arbitrary Consultant/ApprovalReviewer role
 can adopt an Executor frame. Existing scoped Consultant history may be condensed;
 live consultation needs a separate prepared-frame port. ApprovalReviewer requires
-an operation-free decision Task through the Approval Broker.
+an action-decision-only Task through the Approval Broker; native ownership still
+requires an actual managed phase/member operation and separate native settlement.
 
 The single-actor Workflow port also allocates one private `phase_session_owners`
 row per (Project, Goal, Task, context_version), containing Session ID. Context
@@ -542,7 +543,8 @@ BEFORE INSERT/UPDATE/DELETE fence triggers to EVERY application table: projects,
 goals, tasks, records, context_versions, usage, audit, checkpoint_heads,
 prepared_pack_inputs, session_input_acks, phase_session_owners,
 context_admission_epochs, native_phase_operations and native_phase_settlements.
-This is the single canonical final table inventory. Each requires this function to return
+This is the candidate6 component table inventory, not the first deployed composed
+schema inventory (Design21 below). Each requires this function to return
 6. Register UTF8|DETERMINISTIC|INNOCUOUS, never DIRECTONLY, and verify
 writes with trusted_schema=OFF. A schema-enumerating regression requires every non-sqlite_ application
 table to have all three compatibility triggers; new tables cannot silently escape.
@@ -573,7 +575,7 @@ connections must pass registration and reopening tests.
 
 ### Boundary validation
 
-Tests cover pending Starting-to-waiting-to-Running head rejection and absorbing
+Tests cover pending protected Starting→Waiting rejection and fresh managed consumed head checks and absorbing
 Lost-to-every-other-state rejection, unknown
 flag forgery, caller JSON ack forgery, successful first Running then historical
 reentry, forbidden Running-to-Starting-to-old-terminal rollback, exact prewire
@@ -2150,3 +2152,123 @@ post-effect reviewer-change availability limit is explicit; do not remove a sour
 fence or infer safe external rollback merely because no instruction text changed.
 The later9 roster/delegation contract must integrate its own reviewed policy rather
 than silently weakening this single-phase source authority.
+
+
+### Design21: pre-marker continuation availability and composed authority
+
+Continue selection is runtime-aware. Before marker commit, the actual adapter's
+non-mutating private registry query returns nonserializable continuation eligibility
+for the exact closed prior Session/native UUID/receipt and current runtime instance.
+No connection, process, Session mutation or model input occurs in this query. Its
+closing operation runtime-instance must equal the current runtime; missing registry,
+restart or unsupported Continue selects Fresh before any Continue marker. The
+transaction rechecks exact prior receipt/body/actor/generation/semantic pins and the
+query's private owner-version token; setup rechecks the actual registry again before
+effects. A late owner loss rejects without dispatch and follows actual pristine/
+setup settlement. A completed Continue refusal is privately recorded as Fresh-only
+selection for that exact preceding operation/chain; subsequent retries cannot blindly
+select it again. This bounded fact is actual producer outcome tied to that operation,
+not a generic string error or caller JSON. Closing receipt attribution carries it
+within the existing64 KiB bound. Test restart→Fresh without Continue marker, valid
+same-runtime Continue, and raced registry loss→NoCurrentDispatch/non-success closure→
+next Fresh, retaining every original attempt and budget. No current registry proof
+is reconstructed from a receipt or Runtime UUID alone.
+
+Marker statement order is operation INSERT first, Workflow marker UPDATE second,
+within one Immediate transaction. Operation insertion requires exact existing active
+unmarked post-epoch native attempt/context/claim and unique open Task operation.
+The Workflow update SQL trigger requires each marked post-epoch native entry's exact
+operation and rejects true→false, reordered/deleted/replaced marked history or a
+new already-marked entry without its exact operation. Rust's private method validates
+the complete final relation before commit. An operation committed by privileged raw
+SQL against an unmarked entry is held corruption, not valid admission; SQL immediate
+triggers cannot enforce two-way deferred commit invariants. No public API can insert
+such an operation; handle possession remains required. A failed second statement
+rolls back both and audit. Raw SQL mutants distinguish this enforced direction from
+the final Rust relation instead of claiming impossible deferred triggers.
+
+Add a Workflow records SQL receipt backstop: a marked managed entry leaving active,
+becoming closed, or entering terminal/evaluating state requires its exact existing
+settlement receipt. Preserve permitted live same-state detail and fact observations;
+terminal Task cancellation can retain the active Running history/operation without
+pretending closure. Existing generation/attempt/history identity checks remain.
+Workflow closure UPDATE precedes operation phase_closed UPDATE, whose trigger matches
+that exact closed history entry/receipt. Both halves plus full Rust closure predicate
+are required; an invalid index, foreign receipt, skipped phase_closed or rollback
+cannot release ownership. Exact JSON paths/state variants are schema goldens and
+all actual closure consumers have causal mutants.
+
+Until actual Issue58's typed retained-ownership port composes, the shared Store also
+rejects ALL generic/non-owned nonterminal Project/optional-Goal Session INSERT/UPDATE,
+including Consultant. Ordinary scoped NativeCAS has no exception. Initial terminal
+factual history remains allowed but is never cleanup authority; old live/Lost owners
+must drain for explicit migration. The only fresh native Task Session path is its
+actual managed operation port. NoTask native profiles remain Unsupported before
+reservation/process/bytes until58, which then supplies its own reviewed private port
+and mutual exclusions. This is a real gate, not a role-name read-only assertion.
+Project.root may CONTAIN worktree_root/root/worktree and the common Git directory;
+canonical path inequality alone never excludes Task mutation. Independent connections
+exercise Project/Goal Consultant refusal against both managed Executor and Reviewer,
+while legitimate terminal facts remain supported. Future58 actual workload leases must
+compose root/common-Git/Task exclusions atomically, not bypass this generic fence.
+Physical conflict scope includes canonical root containment/overlap and shared
+actual common-Git directories across Project IDs; nested primary repositories are
+not assumed forbidden. Out-of-lock Git/filesystem/removal/publication effects need
+symmetric durable conflict reservation before observation/effect, retained until
+actual owned settlement, with atomic version/scope revalidation. A read-then-act
+Store check cannot certify exclusion. Real disjoint roots/common directories remain
+independent. This is a required composed58/19 consumer contract, not an invented
+available private producer or permission to mutate source roots.
+
+Candidate schema6 is never released as standalone production. The first deployable
+persistence version is the explicitly reviewed composed version containing the actual
+19/23/43/58 and recovery authority required by enabled profiles, with one ordered
+linear migration history and final table/schema/projection goldens. Candidate6 fixture
+DBs are isolated mechanics evidence; no routine status/launch or release opens real
+old state with automatic migration. Later composed versions require the same complete
+all-table writer fencing and drain/actual recovery policy; a held candidate operation
+cannot be upgraded by relabeling it. This does not require fictitious tables or final
+version numbers before those actual source ports exist.
+
+The accepted Goal definition's CompletionCriterion evaluator is classified as immutable
+semantic authority (RequiredTasksVerified or Human{goal_pack_input}, legacy Unverified),
+separate from satisfied/evidence bookkeeping. Projection2's reviewed inventory includes
+that classification and default-legacy meaning; actual23 adding its field/table must
+supply the exact exhaustive typed encoder/golden in the composed source gate. A change
+from a previously PUBLISHED projection implementation still requires its encoding and
+writer-version bump together; candidate docs cannot claim a released6/projection2
+pair already contains absent23 source. goal_authority attests exact scoped definition
+acceptance; it does not duplicate mutable criteria. Schema enumeration includes every
+actual component table (including goal_authority and any additional compiled authority),
+not only the candidate6 list. Lost/restart recovery and native containment remain real
+production prerequisites, not solved by the composition label.
+
+Drop never blocks on SharedStore: use try_lock for best-effort bounded abandonment
+audit or omit it, since durable operation status remains attention/held. No mutex
+lock, external IO, process inspection, wait or async cleanup occurs from Drop. Test
+dropping while the same Store guard is held and under poisoning/publication failure.
+The owner retains actual cleanup bookkeeping through supervised cancellation paths.
+
+The complete2 MiB admission tuple bound, including exact/worst-case effective actor
+field allowances, is enforced BEFORE phase ContextVersion publication and again in
+the marker transaction; per-entry source caps alone are insufficient. The1 MiB full
+payload bound remains separate. Overflow produces no ContextVersion, marker, operation
+or admission and leaves previous state unchanged. Caller boundary fixtures cover
+just-below/exact/above aggregate tuples and unknown new keys. No forced retry loop can
+publish an inherently inadmissible authority map.
+
+Early requirement paragraphs describing pending waiting reentry, generic blocked-
+owner Lost or operation-less terminal continuation are schema5 component history only.
+Schema6 pending unconsumed Task Starting→Waiting rejects; all generic Task/NoTask
+nonterminal writes reject; own managed Lost uses actual private observation, stays held.
+Supported continuation is only the sealed managed path with the actual private owner.
+These supersede old standalone/component positives without making native readiness claims.
+
+An ApprovalReviewer is action-decision-only, never native-ownership-free. Actual
+Workflow DecisionReview uses its typed native phase and managed19 operation/receipt.
+Cross-Agent Broker review needs the separately reviewed9/10 decision-member/slot lease
+bound to original request/operation, exact input/source and its own actual native
+settlement; no such DecisionTask port is claimed today. Consultant58 cannot cover it.
+Until the exact owned producer composes, approval-review native launch is Unsupported
+before effects; public role/operation-free wording cannot adopt an Executor frame or
+release native work through a terminal label.

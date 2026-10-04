@@ -157,17 +157,21 @@ strict Project/Goal version equality.
 
 Protected Task input stays pending until an exact consumed dispatch or a private,
 current-frame/head-validated Running publication. WaitingApproval/WaitingHuman/Lost
-and native_dispatch_unobserved do not grant admission. Admissible pending waiting
-reentry revalidates live authority; Lost has no generic exit. Already admitted input retains its historical pins. New consumed
+and native_dispatch_unobserved do not grant admission. Under schema6, pending
+unconsumed Starting→Waiting rejects; historical admitted waiting reentry retains
+its exact private pins. Lost has no generic exit. Already admitted input retains its historical pins. New consumed
 intent always revalidates, and admitted nonterminal input cannot visit Starting to
 roll back to an older terminal frame. Exact prewire restoration requires no
-admission, consumption or uncertainty. Higher-input continuation starts only from
-an owned terminal Session and installs fresh authority before native dispatch.
+current admission, consumption or uncertainty. Higher-input continuation requires
+the sealed managed owner/closed receipt and actual registry eligibility before
+marker commit, and installs fresh authority before native dispatch.
 
 Admission facts are privately indexed, scoped to Task/Session/input/actor, bounded
 to one row per Session and atomic with Session plus audit. JSON or generic APIs
-cannot manufacture them. Unprotected legacy and Project/Goal-only initial history remains supported,
-with the explicitly new universal absorbing-Lost safety rule. Standalone Executor frames cannot be adopted by another
+cannot manufacture them. Initial terminal factual history remains supported, but
+all generic/non-owned nonterminal Task and NoTask native Session writes reject
+until their actual managed19 or retained58 ownership port composes, with the new
+universal absorbing-Lost safety rule. Standalone Executor frames cannot be adopted by another
 agent, role or worktree. Workflow frames preserve their active attempt authority.
 
 Standalone prepared payloads render stable scoped instruction and Task policy
@@ -185,8 +189,8 @@ changing state. Existing domain/immutability triggers remain effective. Native
 compiled old-writer evidence must cover a live connection, not only fresh opens.
 
 Consultant checkpoint history is supported; live role-specific consultation needs
-its own exact prepared-frame port. ApprovalReviewer uses a separate operation-free
-decision Task through the Approval Broker, never an Executor-writable Task's native
+its own exact prepared-frame port. ApprovalReviewer uses a separate action-decision-only
+decision Task with actual native ownership/settlement through the Approval Broker, never an Executor-writable Task's native
 rules/config/hooks. Arbitrary role changes cannot bypass frame authority.
 
 Migration must refuse before mutation while any live/Lost Session, active lock or
@@ -496,3 +500,16 @@ reference authority, else Fresh. Closed managed bodies remain generic immutable.
 Plain current Store open refuses older DBs unchanged; only deliberate migration
 performs ordered drain/fence upgrade. Candidate profiles do not become ready through
 that API. Task-free Consultant ownership is pending58, not this managed producer.
+
+
+Design21 makes Continue pre-marker availability require the current runtime's actual
+private registry query; restart/unavailable or an owned rejected Continue selects
+Fresh. Marker insertion order and Workflow-side receipt SQL checks are explicit,
+without pretending SQLite has deferred bidirectional triggers. Fresh NoTask native
+Session publication also rejects until actual58 ownership; primaryroot can contain
+Task namespaces. Candidate6 is not a standalone production release: the first deployed
+schema/projection is the actual composed reviewed authority. Actual23 criterion evaluator
+is immutable accepted definition. Drop must not block, aggregate authority tuple bounds
+precede phase publication/marker, and decision-only native review still needs actual
+operation/slot ownership. Historical component waiting/Lost/resume positives do not
+assert schema6 launch permission. All require actual source/caller gate evidence.

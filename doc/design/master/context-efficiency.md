@@ -440,3 +440,9 @@ role-classified exact pre-marker lock ownership and makes old-DB migration delib
 Same-generation/unchanged-authority Continue and immutable closed managed bodies
 preserve receipt provenance. Task-free Consultant ownership remains pending58.
 These are design gates, not source5 or production profile readiness.
+
+[Design21](../issue-19-design.md#design21-pre-marker-continuation-availability-and-composed-authority)
+defines runtime-aware Continue, ordered marker/receipt SQL backstops and generic
+NoTask live Session denial pending58. Candidate6 is component-only; first production
+schema/projection must be the actual reviewed composition. Decision-only review still
+owns native operations. Current source5 is unchanged by these proposed gates.
