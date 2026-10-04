@@ -129,6 +129,102 @@ async fn live_reference_change_rejects_actual_resume_before_spawn() {
 async fn actual_stop_after_admission_never_spawns_and_keeps_snapshots_coherent() {
     isolated("adapter::grok::environment_tests::stop_admission_child").await;
 }
+#[tokio::test]
+async fn owning_reference_change_after_snapshot_rejects_start() {
+    isolated("adapter::grok::environment_tests::own_start_change_child").await;
+}
+#[tokio::test]
+async fn owning_reference_change_after_snapshot_rejects_resume() {
+    isolated("adapter::grok::environment_tests::own_resume_change_child").await;
+}
+
+async fn owning_change(resume: bool, name: &str) {
+    assert_eq!(std::env::var("RRX_INSPECTION_FIXTURE_CHILD").unwrap(), "1");
+    let mut fixture = Fixture::new();
+    own_refs(&mut fixture, &["LANG"]);
+    fixture
+        .request
+        .environment
+        .insert("LANG".into(), "synthetic-own-locale".into());
+    let database = fixture.directory.path().join("state.db");
+    let project_id = fixture.request.scope.project_id;
+    let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let counted = calls.clone();
+    let mut adapter = fixture.adapter();
+    adapter.before_environment_admission = Some(Arc::new(move |_entry| {
+        let change = counted.fetch_add(1, Ordering::SeqCst) == usize::from(resume);
+        let database = database.clone();
+        Box::pin(async move {
+            if change {
+                let mut store = Store::open(&database).unwrap();
+                let mut project = store.project(project_id).unwrap().unwrap();
+                project.environment_refs.clear();
+                store.put_project(&mut project).unwrap();
+            }
+            Ok(())
+        })
+    }));
+    let first = fixture.start(&adapter).await.unwrap();
+    let mut status = terminal(&adapter, &fixture, &first).await;
+    let previous = status.session.recovery.clone();
+    if resume {
+        assert!(
+            adapter.transport_succeeded(&status),
+            "{:?}; {}",
+            status.failure,
+            fixture.receipt_message(&status)
+        );
+        let mut input = fixture.request.input.clone();
+        input.version = 2;
+        input.payload = "explicit fresh owning continuation".into();
+        adapter
+            .checkpoint((&first).into(), input.clone())
+            .await
+            .unwrap();
+        fixture.request.input = input;
+        let second = fixture.resume(&adapter, (&first).into(), 2).await.unwrap();
+        status = terminal(&adapter, &fixture, &second).await;
+        for key in [
+            "input_version",
+            "dispatch_intent",
+            "prompt_id",
+            "dispatch_state",
+        ] {
+            assert_eq!(status.session.recovery[key], previous[key]);
+        }
+    }
+    assert_not_spawned(&fixture, &status);
+    assert!(
+        status
+            .failure
+            .as_deref()
+            .unwrap()
+            .starts_with("StateConflict:")
+    );
+    assert_eq!(status.session.state, SessionState::Failed);
+    assert!(status.session.pid.is_none());
+    assert_eq!(calls.load(Ordering::SeqCst), 1 + usize::from(resume));
+    adapter.release((&first).into()).unwrap();
+    child_completed(name);
+}
+#[tokio::test]
+#[ignore = "only entered by owned env-cleared canary parent"]
+async fn own_start_change_child() {
+    owning_change(
+        false,
+        "adapter::grok::environment_tests::own_start_change_child",
+    )
+    .await;
+}
+#[tokio::test]
+#[ignore = "only entered by owned env-cleared canary parent"]
+async fn own_resume_change_child() {
+    owning_change(
+        true,
+        "adapter::grok::environment_tests::own_resume_change_child",
+    )
+    .await;
+}
 
 #[tokio::test]
 #[ignore = "only entered by owned env-cleared canary parent"]
