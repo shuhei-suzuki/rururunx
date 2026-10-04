@@ -319,7 +319,7 @@ terminal Session row, supplies no trusted outcome proof. These attempts block
 Task/Goal progress and Project removal until genuine original-attempt recovery
 exists; there is no operator retry or terminal-release escape. Pre-marker failures,
 resolved bound Sessions and nonirreversible EvidencePort retries remain supported.
-Source qualification and whole #14 recovery remain pending. Native provider integration also needs an atomic Session-binding
+The genuine original-attempt recovery producer and whole #14 recovery remain open. Native provider integration also needs an atomic Session-binding
 publication (#43) that preserves the unchanged Task version; the current coordinated write
 increments it and can invalidate the provider's admitted snapshot.
 

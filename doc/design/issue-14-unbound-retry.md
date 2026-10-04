@@ -4,8 +4,9 @@ Design2 approved at3c3a42f by two independent native reviewers, no CHM/blockers.
 STRICT shared Engine/Store reservation boundary.
 Requirements3 approved1463d37 with two independent native APPROVE/noCHM/blockers;
 precise Low dispositions recorded in requirements3-reviews.json. Base main efe9774.
-Source candidate implements the approved two guards; source verification/review
-is pending. Whole14, Scheduler/restart/native/F1/MVP remain OPEN.
+The implemented two guards passed verification and two independent source
+approvals at6b00918 (zero CHM/blockers). Final metadata CI and limited merge/cleanup
+are recorded in the verification ledger. Whole14, Scheduler/restart/native/F1/MVP remain OPEN.
 
 ## Two guards and immutable reservation
 

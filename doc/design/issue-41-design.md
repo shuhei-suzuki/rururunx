@@ -198,10 +198,10 @@ active claim. cancel/fail commit a terminal decision without closing the
 reservation. TerminalRecovery requires that decision and both Engine/Store
 dispatch fences. No nonterminal entrypoint releases on a missing Session alone.
 The historical explicit retry API gap (Failed+dispatch_started+unbound) is retained
-in Git and #41 evidence. The limited #14 source candidate now refuses it through
+in Git and #41 evidence. The implemented limited #14 component refuses it through
 Engine and Store; preparation_explicit_retry_refuses_unbound_dispatch_without_recovery_proof
-checks refusal. Source qualification and the genuine original-attempt recovery
-producer remain pending; no safe replay certificate is inferred. The new Store
+checks refusal. The genuine original-attempt recovery
+producer and whole #14 remain open; no safe replay certificate is inferred. The new Store
 closure guard excludes TerminalRecovery only because its earlier identical fence
 already protects it, preserving #41's causal TerminalRecovery mutant oracles.
 

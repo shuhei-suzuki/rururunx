@@ -2,7 +2,8 @@
 
 Requirements3 approved at1463d37: TWO independent APPROVE, noCHM/blockers.
 Design2 at3c3a42f approved by TWO independent native reviewers, zeroCHM/blockers.
-Source1 at49844a6 implements the approved scope; independent source review pending.
+Source1 at49844a6 implements the approved scope; after main478 composition, two
+independent source reviews APPROVE exact6b00918, zero CHM/blockers.
 Open Issue14 explicitly requires this follow-up from Issue41. Historical base main efe9774
 allowed explicit Failed+dispatch_started+session_id=None retry when the
 Session loop has nothing to reject. Existing characterization is evidence of the
@@ -181,8 +182,41 @@ ALL tracked blobs equal cbee; [API/log proof](issue-14-unbound-retry-composed1-c
 The [current rg inventory](issue-14-unbound-retry-composed1-impact-rg.txt) adds the
 new production Codex implementation and structured trait forwarding; all prior
 closure/nonclosure/CAS rationales above still hold because actual core bytes match.
-Independent source reviews are next; no whole14/6/Scheduler/recovery/native/F1/MVP
-claim. The historical failed #6 private review wrappers retain uncertain owners
+Independent source reviews subsequently APPROVE exact6b00918; no
+whole14/6/Scheduler/recovery/native/F1/MVP claim. The historical failed #6 private review wrappers retain uncertain owners
 and their original local CWD under a separate harness hold; PR38/main merge does
 not certify physical cleanup of those resources. Our current own verification
 and mutation processes are closed; this is no all-native-jobs cleanup certificate.
+
+
+### Independent Source1 qualification at6b00918
+
+TWO actual independent native reviewers APPROVE exact public6b00918 with zero
+Critical/High/Medium and no blockers; each one Low current-state wording item.
+Both actual selected native wrappers completed with cleanup verified.
+[Sanitized reviews and verified dispositions](issue-14-unbound-retry-source1-reviews.json)
+retain both verdicts without attributing raw resumed-session telemetry incrementally.
+The coordinator verified the duplicated Low against the current README/master/41
+and requirement/design headers, then corrected only current-state documentation.
+No source/test/schema/Cargo/CI change or additional policy was introduced.
+
+CI [37243221999](https://github.com/shuhei-suzuki/rururunx/actions/runs/37243221999)
+passes EVERY Linux/macOS step. Both actual logged checkouts are9f20d077,
+parents47830b0/6b00918; complete tree8a92974 and all238 tracked blobs equal the
+reviewed head via GitHub commit/tree APIs: [proof](issue-14-unbound-retry-source1-reviewed-ci.json).
+All code and build inputs at6b00918 equal testedcbee1247; only factual evidence differs.
+
+[Issue14](https://github.com/shuhei-suzuki/rururunx/issues/14) was updated before
+limited merge using the explicit Goal's Issue-update authorization. Its qualified
+component section publishes the no-escape availability consequence, same-owner and
+valid-retry behavior, exact gate counts and still-OPEN whole parent. Original gap
+characterization and all earlier recovery obligations are retained. A reviewer's
+suggestion that another confirmation is needed is inapplicable to this already
+authorized work. Issue14 is not closed by this PR.
+
+This final metadata delta is directly reviewed by the coordinator: current-state
+wording, sanitized actual verdicts, exact CI proof and factual Issue14 publication
+only. Its final head must pass both-OS CI with actual complete-tree equality before
+pinned normal limited merge; merge/cleanup evidence will be recorded externally
+without creating a recursive documentation-commit gate. Whole14/Scheduler/restart/
+native/F1/MVP remain OPEN. No blanket native-workload cleanup certificate is claimed.
