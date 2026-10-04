@@ -3,7 +3,7 @@
 Status: actual main80452f4 is schema3; this unmerged component source is5. Proposed
 schema6 remains fixture-only/pre-code until its independent gate and actual composed
 source/native production release. No Phase::DecisionReview or native producer is
-created by prose. The schema6 canonical writer table below plus Design16–27 private
+created by prose. The schema6 canonical writer table below plus Design16–28 private
 port/bounds define proposed native authority. Earlier schema5 protocol examples are
 historical component context ONLY and cannot authorize a managed/public writer;
 artifact/encoding contracts continue where this table does not supersede them.
@@ -32,7 +32,7 @@ is separately permitted under authorized lifecycle holds, never launch/ALLOW.
 | Fresh higher-input continuation | Sealed managed Fresh/Continue selector + new operation | Exact latest closed predecessor/receipt; Continue actual registry proof; new context/frame/full current CAS |
 | Managed monotonic Lost diagnostics | Actual private owned observation | Actor/input/intent pinned, conservative flags only; held shares/locks, no receipt or completion |
 | Any Lost→non-Lost or consumed-uncertain release | None here | Actual14 recovery required; generic terminal labels and late diagnostics cannot release |
-| Workflow native SessionID None→Some binding | Sole private43 record-only binder | Exact allocation/private prep/admit OR sealed known-current closed-receipt proof; full active-owner CAS; ordinary Workflow Record version/updated_at increment + one bounded reserved audit only, no Session/Task/P/G/lock write |
+| Workflow native SessionID None→Some binding | Sole private43 record-only binder | Exact allocation/private prep/admit OR sealed known-current closed-receipt proof; Store-derived ORIGINAL resulting marker P/G/T/postmarker Workflow/full-lock frame, never refreshed expectations; full active-owner CAS; ordinary Workflow Record version/updated_at increment + one bounded reserved audit only, no Session/Task/P/G/lock write |
 | Workflow closure/retry/escalate/invalidate/release | Exact private receipt predicate | Every allocated marked owner settled by required class; non-success TerminalRecovery may leave session_id None with exact allocated receipt proof, never success/binding; no label-only reset; #41 unmarked invocation-owner policy stays separate |
 
 The dispatch-marker transaction also invokes the SAME private composed23 admission
@@ -280,6 +280,7 @@ This flag is conservative uncertainty, not a new dispatch admission. New
 checkpoints record their configured transient window; historical checkpoints with
 no recorded policy retain an explicit unknown value.
 
+HISTORICAL UNMERGED COMPONENT5 ONLY (superseded by schema6 original43 frame):
 A successful native actor acknowledgement may refresh only its Project/Goal CAS
 rows after sibling bookkeeping changes. It first verifies the exact unchanged
 Task/Workflow versions, active attempt/context/generation and stable semantic
@@ -1662,11 +1663,12 @@ any Session/process/native connection, a supervisor may certify NoCurrentDispatc
 only from its tracked invocation's actual no-dispatch/settled-setup state. Absence
 of Session, PID or allocation is insufficient. After preparation, this class also
 requires no current private admitted/consumed input and no dispatch uncertainty.
-Dropping the handle before supervisor transfer or while still unsettled emits a
-bounded best-effort rrx.private.operation.abandoned audit/attention record, never a
-receipt or release. Lock poisoning/publication failure cannot erase the operation;
+Dropping the handle before supervisor transfer or while unsettled may enqueue a
+bounded in-memory abandonment hint only; a separate actual runtime worker may later
+emit rrx.private.operation.abandoned. Drop emits no Store/SQLite write, receipt or release. Lock poisoning/publication failure cannot erase the operation;
 status derives durable attention from the outstanding operation even if the Drop
-audit itself fails. A cancelled-before-transfer controlled case proves this path.
+hint/audit fails or the bounded queue is full. A cancelled-before-transfer controlled
+case proves this path.
 
 KnownCurrentTerminal requires the exact privately owned current native outcome,
 known end of Task inference and completed owned resource cleanup/settlement.
@@ -1755,7 +1757,7 @@ new-open-attempt validation never substitutes a historical receipt for current p
 | Post-marker, no Session/allocation, matching NoCurrentDispatch receipt | Failed/Interrupted non-success closure, explicit retry replacement or TerminalRecovery; same-tx exact operation/claim/frame and no owner. Succeeded impossible |
 | Post-marker, no Session/allocation, no receipt | Held for actual supervisor settlement or private Issue14 recovery |
 | Allocated current failed preparation with NoCurrentDispatch receipt | Non-success closure/TerminalRecovery with exact frozen preparation/terminal receipt body; unbound session_id may stay None |
-| Allocated older restored terminal with NoCurrentDispatch receipt | RestoredPriorNotAdmitted failure/interruption/TerminalRecovery only; exact frozen checksum and no current admitted/consumed input; unbound session_id stays None |
+| Allocated older restored terminal with NoCurrentDispatch receipt | RestoredPriorNotAdmitted failure/interruption/TerminalRecovery only; exact frozen checksum and no current admitted/consumed input; bound session_id retained unchanged OR unbound session_id stays None; never clear/rebind |
 | Allocated known current terminal receipt | Exact active current unbound known failure may use separate KnownCurrentFailureClosure without SessionID write (Design27); Cancelled/Failed Task TerminalRecovery remains separate; Succeeded additionally bound Exited + actual successful outcome + exact current admitted/consumed pair |
 | Missing operation for marked/allocated post-epoch native context, stale/foreign receipt, Lost/uncertain owner | Corruption/hold; never generic label fallback |
 
@@ -1914,10 +1916,13 @@ Do not advertise the schema6 production path in README before these gates close.
 
 **Factual cleanup survives lifecycle cancellation without granting input.**
 Private settlement may publish an exact owned NoCurrentDispatch or
-KnownCurrentTerminal receipt under Task Cancelled/Failed, Goal Paused/Blocked/
+KnownCurrentTerminal receipt under Task WaitingHuman or any nonterminal Workflow
+lifecycle hold, Task Cancelled/Failed, Goal Paused/Blocked/
 Cancelled/Failed, or Project Blocked. These states prohibit new launch/admission;
 they do not prevent recording completed owned cleanup. The receipt preserves the
-existing Task/Goal/Project lifecycle and requires the exact operation, Session
+existing Task/Goal/Project lifecycle. Factual settlement does NOT apply launch
+admission lifecycle/P/G/T version currency; it still requires exact retained scoped
+operation/Session/input/actor identity and full factual cleanup proof. It requires exact Session
 Record/version, immutable frame/actor and applicable input pair/checksum. A removed
 Project is rejected (removal must already require no open ownership). Lost remains
 absorbing/held for Issue14. No receipt alone completes accepted Task/Goal criteria,
@@ -2176,8 +2181,11 @@ adds no schema58 table/port or production readiness claim to Issue19.
 
 Operation-aware lease classification is explicit. Open Executor operations (including
 receipt-pending phase closure) exclude review-lock acquisition, competing native
-admission and Mutating access. The Executor's own actual owned tools use the separate
-private operation permission contract, not a generic Mutating bypass. Open read-only
+admission and Mutating access. Executor native tool effects remain INSIDE its actual
+owned supervisor/cohort under that operation lease and applicable AllowCurrent/Broker
+permission. They never self-authorize Store Mutating/maintenance/evidence ports or
+exempt a competing runtime caller. Runtime-native Git/hooks/evidence effects outside
+that owned cohort require the separate actual60 producer/reservation or refuse. Open read-only
 Reviewer operations exclude Mutating access and competing native admission, and may
 coexist only with the exact immutable review lock IDs/versions pinned in their
 operation. Acquire/validate the actual review lock before marker commit; the marker
@@ -2336,11 +2344,13 @@ actual component table (including goal_authority and any additional compiled aut
 not only the candidate6 list. Lost/restart recovery and native containment remain real
 production prerequisites, not solved by the composition label.
 
-Drop never blocks on SharedStore: use try_lock for best-effort bounded abandonment
-audit or omit it, since durable operation status remains attention/held. No mutex
-lock, external IO, process inspection, wait or async cleanup occurs from Drop. Test
-dropping while the same Store guard is held and under poisoning/publication failure.
-The owner retains actual cleanup bookkeeping through supervised cancellation paths.
+Drop has no SharedStore/SQLite call, including try_lock audit inserts that could wait
+on another connection's busy_timeout. It only performs bounded in-memory try_send or
+omits the hint. Durable outstanding operation remains attention/held regardless of
+queue failure. No DB/filesystem IO, process inspection, wait or async cleanup runs in
+Drop; actual supervisor retains cleanup bookkeeping. Test another connection holding
+an Immediate write lock, mutex poisoning and queue saturation: Drop cannot attempt a
+DB write/wait or erase ownership. A later actual owned worker may publish bounded audit.
 
 The complete2 MiB admission tuple bound, including exact/worst-case effective actor
 field allowances, is enforced BEFORE phase ContextVersion publication and again in
@@ -2635,7 +2645,11 @@ not only the64-KiB fixed final diagnostic margin. Used body+reserved tail bytes 
 fit8 MiB before effect; an unbounded future representation refuses. Revalidate each
 next-effect reservation against its captured source/observation contract, and final
 Cleanup freezes its exact pre-disposal snapshot plus bounded outcome, so no post-disposal
-recapture can spend unreserved bytes. Derive from the actual frozen effective phase plan, not a public count or
+recapture can spend unreserved bytes. Derive from the actual frozen effective phase plan INCLUDING every documented normal
+later finalization extension (QUICK MergeGate/Cleanup/frozen terminal), even when the
+currently executed QUICK plan ends at Pr. Requesting that extension later consumes
+its existing reserved tail, never tries to acquire first capacity after PR effects.
+Derive counts from that complete supported plan, not a public count or
 fixed PR-only assumption; unknown effect/plan class refuses before external execution.
 The private workflow_context_counters authority also records this immutable tail-plan
 identity and remaining reserved publication/history counts. Checked used+reserved<=256
@@ -2899,3 +2913,33 @@ JSON-reading marker/receipt/body trigger independently checks encoded length bef
 JSON calls using explicit sequential short-circuit CASE or one ordered trigger body;
 SQLite BEFORE-trigger order is unspecified. S6-13 oversized rawSQL body control and
 length-before-JSON mutant verify bounded rejection without table/audit changes.
+
+
+### Design28: original binding pins, complete QUICK tail and held cleanup facts
+
+Historical component5 acknowledgement refresh is labelled as such in BOTH requirements
+and design. Schema6 normal/receipt43 binding always compares original resulting marker
+P/G/T/postmarker Workflow/full-lock frame; no sibling CAS adoption. S6-10 actual binder
+refresh-expectations mutant after sibling Goal version advance must reject and retain
+claim/receipt. Ordinary historical native acknowledgement is not SessionID binding.
+
+Before QUICK Pr, reserve its documented normal request_finalization tail (MergeGate,
+Cleanup, frozen terminal context/history/closure headroom) even though QUICK execution
+stops at PrCreated. S6-13 QUICK used253+3 fits versus254/255+3 refusal beforePR; actual
+later finalization consumes reserved tail and terminal persists after disposal. A mutant
+reserving only the immediate PR-only plan must reproduce after-effect stranding. All
+supported later extensions and simultaneous body/blob/history/context bounds participate;
+unknown required extension refuses before first irreversible effect.
+
+Actual factual settlement can publish after an operator Task WaitingHuman/lifecycle hold
+without requiring launch admission lifecycle or current P/G/T version expectations. Scope,
+operation, current owned Session body/version/input/actor and actual cleanup proof remain
+exact; no receipt means no cleanup authority. It does not rewrite hold/state, grant input,
+refresh original43 pins or permit active failure closure through stale marker authority.
+S6-08 hold after Starting→consumption refuses→actual cleanup receipt positive must be
+reachable. Closure follows ONLY its separately reviewed23/8/19 policy: stale active frame
+remains held, or actual typed terminal decision plus eligible TerminalRecovery can close
+non-success. This avoids a receipt-publication deadlock without inventing generic unhold
+or inactive success binding. Admission-lifecycle-in-settlement mutant must fail this test.
+S6-09 also proves bound restored-prior SessionID retained byte-exact and unbound remains
+None, never clearing/rebinding to satisfy a table. No restored receipt proves current success.

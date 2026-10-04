@@ -28,7 +28,7 @@ passed fixture. The matrix is the single current native acceptance inventory.
 | S6-16 | Exact composed projection/schema/caller readiness | Actual5/6/7/Generic/Fake and23/43/58/60 integration; synthetic producer mechanics≠production native acceptance |
 
 Each stable key requires named exact consumer tests AND meaningful causal mutants
-in final source evidence; it is not an invented available API or a checkmark. Design16–27
+in final source evidence; it is not an invented available API or a checkmark. Design16–28
 and the canonical writer table define the required private predicates. Source evidence
 must map each key to actual fixture/result SHA and list unready production ports.
 
@@ -180,6 +180,7 @@ This flag is conservative uncertainty, not a new dispatch admission. New
 checkpoints record their configured transient window; historical checkpoints with
 no recorded policy retain an explicit unknown value.
 
+HISTORICAL UNMERGED COMPONENT5 ONLY (superseded by schema6 original43 frame):
 A successful native actor acknowledgement may refresh only its Project/Goal CAS
 rows after sibling bookkeeping changes. It first verifies the exact unchanged
 Task/Workflow versions, active attempt/context/generation and stable semantic
@@ -629,3 +630,12 @@ policy; subsequent retry is separately admitted, missing/stale/unknown proof sta
 S6-01/05/06/09/11/13 cover old QUICK refusal, historical consumed ACK after append, actual
 fixed/native cancellation paths, typed append-only facts orFresh, and every JSON trigger's
 own pre-parse byte bound plus all-table fences. These remain source6-positive pending gates.
+
+
+Design28 labels old component5 acknowledgement refresh historical, reserves QUICK's
+normal later finalization tail beforePr and publishes actual factual cleanup under
+Task WaitingHuman without granting/refreshing current authority. Closure still follows
+actual existing lifecycle policy and original43 pins. Drop uses bounded in-memory hints
+ONLY, noSQLite/StoreIO; native Executor tools never self-exempt runtime maintenance.
+Bound/unbound restoration preserves exact prior SessionID. S6-08/09/10/13 include these
+causal consumer controls; no source6 implementation or production acceptance is asserted.
