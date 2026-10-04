@@ -1505,7 +1505,6 @@ impl CodexAdapter {
         let (thread, turn) = match setup {
             Ok(value) => value,
             Err(error) => {
-                control.finished(Outcome::FailedBeforeAdmission { cause:control.preparation.cause(&error),snapshot:empty_status(reservation.session.clone()) });
                 #[cfg(test)]
                 self.gates.wait(TestPoint::BeforeNativeCleanup).await;
                 return Err(failure_after_cleanup(
