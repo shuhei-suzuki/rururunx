@@ -22,7 +22,14 @@ Session or Workflow body inherits this component's1-MiB artifact limit.
 ## Design
 
 Keep the existing private `bounded(&impl Serialize)` consumer. Use a private
-counting `Write` sink with checked arithmetic and a delegating serde_json Formatter.
+counting `Write` sink with checked arithmetic and a serde_json Formatter using
+the same trait defaults as CompactFormatter, with ONLY five overrides: begin/end
+array, begin/end object and write_raw_fragment. Delimiter overrides write the exact
+compact delimiter to the checked sink; there is NO inner CompactFormatter forwarding.
+In particular write_byte_array keeps its trait DEFAULT, whose self.begin_array/
+end_array dispatch passes through these depth overrides (serde_json ser.rs1804).
+Every future composite method must likewise route container openings through the
+guard; source review inventories every override and delegation target.
 An empty write returns Ok(0) without counting or clearing a latched refusal. Each
 nonempty chunk returns Ok(len) or an error, never partial/zero success. Before
 accepting, bound actual complete encoded bytes to1 MiB. Formatter
@@ -46,7 +53,11 @@ swallowed errors: Bytes produces the existing “mandatory pack/checkpoint excee
 1 MiB; narrow explicitly” error, Depth a distinct fixed artifact-nesting error,
 Raw a distinct fixed unsupported-raw-JSON error.
 With no latched refusal, propagate the original Serialize error unchanged. Valid
-encoded-length measurement is reusable for existing small HistoryEvent accounting.
+encoded-length measurement is reused for existing small HistoryEvent accounting
+with the SAME1-MiB/depth/raw guard and fixed root-cause errors. MAX_TEXT8192 plus
+fixed metadata makes that byte limit unreachable for current valid events; a future
+event contract expansion must review these limits. History aggregate add/subtract
+uses checked arithmetic; fitting RetainedEvent lengths remain exactly to_vec lengths.
 
 Actual Store decode is `serde_json::from_str` (state/mod.rs:1418); installed
 serde_json1.0.151 initializes remaining_depth128 and refuses when decrement reaches
@@ -84,10 +95,16 @@ No publication, pointer, DB schema, transaction, native operation, migration or
 public API authority changes. The new120-depth guard and persisted-Value byte
 check intentionally refuse malformed/legacy shapes previously fitting only a
 shorter typed re-encoding or depth121–125: explicit bounded-artifact errors, no
-silently rewritten head or claim of lossless arbitrary legacy acceptance. Normal
-current typed writers emit the same Value/typed representation and much shallower
-fixed artifact shape; opaque contexts are unaffected. Input Values/custom Serialize code may already own
+silently rewritten head or claim of lossless arbitrary legacy acceptance. Actual
+Project150–171/Goal234–252/Task284–318 domain projection fields are scalar strings,
+paths, IDs/enums/numbers or fixed nonrecursive collections/structs; none is Value or
+a recursive domain type (domain.rs). Fixed projection nesting is well below120.
+Historically persisted artifact Values remain deliberately subject to the new
+raw/depth refusal even if prior typed re-encoding was shallow; opaque contexts are unaffected. Input Values/custom Serialize code may already own
 memory; this guard bounds emitted validation, not arbitrary user code allocations.
+Store has already materialized its body String/Value BEFORE a loader guard: this
+component prevents further encoding/clone/decode stages at the declared entry,
+not prior Store row materialization or a total reload-memory ceiling.
 
 ## Actual impact inventory
 
@@ -104,6 +121,7 @@ Value guards above. No native or whole-row budget is silently changed.
 | context_pack.rs515/530/614/1393 and context_pack/workflow.rs315/359 loaders | IN: matching artifact Value guard before digest/clone/typed decode |
 | adapter/grok/schema.rs24 schema16-KiB check | OUT: separately owned provider schema contract, not context artifacts |
 | context_pack.rs890 prepare header; context_pack/workflow.rs141/157/285/330/462/472 rendered payload and native-input cap | OUT: actual payload bytes are retained for delivery;1-MiB native frame unchanged |
+| context_pack.rs1113 checkpoint previous_pack/reference(c),1293 Goal descriptor reference(c), workflow.rs237 restored_inputs/reference(context) | OUT: caller-side full ContextVersion reference digest precedes loader entry; no artifact-allocation claim |
 | context_pack.rs1562 digest,1575 projection; context.rs inventory/source encoding; workflow.rs1036 Context input | OUT: required hashes/materialization/general native contexts; broader allocation/source ownership pending their gates |
 
 ## Verification and acceptance
@@ -132,7 +150,7 @@ phase bytes in pack itself would hit the separate1-MiB native-frame cap, so do n
 use that masked fixture. Loader acceptance is distinct from live source/projection
 validation. For pre-guard wiring mutants, forbidden-stage traces separately prove
 order even where the retained post-typed guard must still refuse.
- Recompute its reference digest,
+Recompute its reference digest,
 retain all other valid identity/semantic/history pins, and assert the EXACT byte/depth
 error; the size/depth-omitted mutant must reach later acceptance rather than fail
 on digest/parser/shape. Corruption is a negative fixture, never positive ownership.
@@ -151,7 +169,9 @@ child unvisited; a compiled revert-to-to_vec-before-count consumes it before the
 late length error and MUST fail. Source review verifies the real sink retains only
 scalar counters/refusal state, never an encoded output buffer. This is observed
 serialization progress plus source evidence, not a quantified allocation theorem.
-For EACH loader pre-guard branch, test-only bounded stage traces at the ACTUAL digest/
+For EACH loader pre-guard branch, traces start at the named load_checkpoint,
+task_pack/goal_pack Typed loader or context_artifact/validate_capture entry, AFTER
+any caller-side reference(c) whole-row digest. Test-only bounded stage traces at the ACTUAL digest/
 clone/typed-decode entry record ordering. Oversize/deep refusal must occur before
 any such later stage; removing/moving that guard must reach the forbidden stage and
 fail the assertion even if a post-typed guard also returns the same error. No authority
@@ -176,6 +196,10 @@ assert the fixed root cause through error.chain(), not a top-level capacity labe
 Include one actual checkpoint-admission depth control where a Checkpoint fits120
 but its derived Task/phase embedding exceeds120: refuse before append_pack_checkpoint.
 Also test empty writes, root-inclusive depth and direct raw-fragment refusal/latch.
+A custom serializer nests119 outer arrays then serialize_bytes(&[1]) as its120th
+container: accepts;120 outer arrays plus byte array is121: refuses. A compiled
+write_byte_array override forwarding to CompactFormatter MUST fail this boundary
+assertion. Byte/depth refusals are not inferred merely from a later parser failure.
 
 Existing context artifact integration tests must pass. Compile independent mutants
 omitting the byte limit and depth limit, with passing controls reaching the intended
