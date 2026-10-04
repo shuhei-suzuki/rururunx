@@ -5386,6 +5386,8 @@ mod tests {
             admission_gate.release();
             bounded(cleanup_gate.reached()).await;
             let before_cancel = control.preparation.state().unwrap();
+            let finished_before_cleanup =
+                matches!(*control.subscribe().borrow(), Phase::Finished(_));
             caller.abort();
             let _ = caller.await;
             let stop_gate = adapter.gates.install(TestPoint::StopWaiting);
@@ -5399,6 +5401,10 @@ mod tests {
             stop_gate.release();
             let stopped = bounded(stopper).await.unwrap().unwrap_err();
             let outcome = bounded(control.wait_finished()).await.unwrap();
+            assert!(
+                !finished_before_cleanup,
+                "Finished cannot precede owned cleanup/publication"
+            );
             let expected = if database_failure {
                 ErrorKind::StateFailure
             } else {

@@ -40,6 +40,14 @@ product requirements and master Agent Adapter design.
    after verified process death or an interrupt acknowledgement. Never implicitly
    replay the consumed input; fresh continuation metadata belongs to a new
    higher-version Starting attempt and is immutable during that attempt.
+10. Register one private attempt control before any fresh start, resume or
+    checkpoint await/publication. The owned task outlives caller cancellation and
+    completes bounded cleanup plus exact terminal restoration/publication. Stop
+    targets its captured attempt, joins its level-triggered factual outcome and
+    never cancels a later attempt. Consumed-input CAS and checkpoint replacement
+    share their admission mutex with cancellation; failed CAS preserves the actual
+    first cause. Queued consumed-turn stop survives acknowledgement and transfer
+    to the sole supervisor. Unpublished or uncertain completion remains explicit.
 
 ## Boundaries
 

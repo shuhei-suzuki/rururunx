@@ -361,3 +361,15 @@ repeat of the old mutating prompt. Checkpoint can refresh mutable own Project
 metadata but cannot rebind its repository/worktree. Transport completion and
 telemetry compare the private owned turn journal with persisted Session authority;
 caller recovery metadata and a server's OS exit zero are never completion proof.
+
+Native Codex preparations install an exact per-attempt control before their first
+await or Starting write. Its independently owned task survives caller drop, keeps
+owned children through asynchronous cleanup, and publishes a level-triggered
+factual outcome only after final persistence or explicit publication failure.
+Cancellation and consumed-input/checkpoint CAS share one admission order. Stop
+captures that control once; queued interrupts retain the same receiver through
+native acknowledgement and supervision. A later registry attempt cannot steal the
+completion or receive the old stop. Exact Session snapshots distinguish restoration
+from advancement without treating Store version increments as different attempts.
+This implementation is under independent source review and does not resolve native
+descendant containment, decision CWD or configuration-provenance prerequisites.

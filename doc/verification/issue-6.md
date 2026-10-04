@@ -399,7 +399,7 @@ Evidence: /private/tmp/rururunx-issue6-stop-drain-compilefix.log,
 /private/tmp/rururunx-issue6-cb9-fmt.log,
 /private/tmp/rururunx-issue6-cb9-clippy.log,
 /private/tmp/rururunx-issue6-cb9-workspace-serial.log.
-# Preparing cancellation helper stage
+## Preparing cancellation helper stage (historical 543505c)
 
 Private Git and native bootstrap waits retain their actual owned ProcessGroup
 outside the cancellation select, latch the first cause before cleanup, then kill,
@@ -422,7 +422,65 @@ retains SessionLost uncertainty instead of a confirmed cancellation. Every mutan
 was committed before testing in its isolated worktree. Exact source bytes were
 restored after each; initial/restored controls pass. Result ledger:
 `/private/tmp/rururunx-issue6-preparing-mutations-result.json`.
-The helper cancellation trigger is test-only
-at this stage. Registry attempt installation, caller-drop owned task, consumed-input
-linearization, checkpoint commit and captured-attempt stop are not implemented;
-F4 remains unresolved. Helpers are not whole-native descendant containment proof.
+The helper cancellation trigger was test-only at this historical stage. Registry
+attempt installation, caller-drop owned task, consumed-input linearization,
+checkpoint commit and captured-attempt stop had not yet been implemented.
+Helpers are not whole-native descendant containment proof.
+
+## Registered preparation and cancellation implementation (source review pending)
+
+Private controls are installed before fresh-start/resume/checkpoint work. A retained
+owned task finishes cleanup and exact restoration/publication after caller drop.
+Consumption/checkpoint replacement and cancellation are ordered under one mutex;
+failed CAS retains its first actual cause. Stop uses only its captured control's
+level-triggered outcome and exact Session snapshot. The same stop receiver survives
+native acknowledgement and transfer; the transition claim is released with the
+Supervised installation so approval/usage observers can operate on the live turn.
+
+At clean `505ef92993a854c90db5f9318f01d1f28da8c31d`, default-concurrency debug and
+release workspace runs each passed **257 Rust tests plus two doctests** (three
+intentional ignored fixtures). Formatting, all-target Clippy with warnings denied,
+and debug/release builds pass. Exact-head Linux/macOS CI run
+[37185132873](https://github.com/shuhei-suzuki/rururunx/actions/runs/37185132873)
+passes. This CI runs release build, not the separate local release test suite.
+
+Actual consumers use isolated Git repositories, independent SQLite writers and
+owned same-test-binary Unix RPC peers: pre-Starting caller drop, real Git/bootstrap
+cancellation, exact resumed Session/output restoration, checkpoint/stop both linear
+orders, a captured stop A while B prepares, restore publication failure, held
+failed admission cleanup, queued stop before acknowledgement, missing/expired
+acknowledgement and resumed approval/reply observation. The expired RPC test uses
+the unchanged 30-second native deadline; uncertain consumed completion stays Lost
+after verified owned process cleanup. Synthetic peers do not establish installed
+native inference, authentication, detached-child containment or actual Broker use.
+
+At `0f8c5bc`, the actual SQLite mutex-order/failed-write consumer and the
+post-consumption caller-drop idle receiver control both pass. Nine compiled
+mutants are assertion-killed in isolated committed sources: M639 caller-drop
+cancellation, M640 failed-CAS latch, M641 checkpoint terminal admission, M642
+stop receiver transfer, M643 supervision claim release, M644 captured-attempt
+wait, M645 level-triggered completion, M646 mutex order across actual SQLite CAS,
+and M647 owned task lifetime. M640/M642 initially survived narrower consumers;
+those failures of the test strategy receive no kill credit. Direct CAS-return and
+unsolicited-interrupt assertions distinguish the protection, and the identical
+mutants fail the strengthened consumers. Every mutant's original source bytes
+were restored and committed before further verification. Final restored controls
+and the cleanup-before-Finished mutation remain pending.
+
+Initial compile failures (`d97db98`, `2a67557`), sandbox process-access
+failures (`4c62671`), the incorrect synthetic version assertion and abrupt-close
+fixture classification failure (`27d7fe2`) are retained and receive no passing
+credit. Existing historical default inspection failures remain recorded; no
+inspection, Git, native RPC or cleanup deadline was relaxed and no serial test
+policy was substituted. Final immutable implementation review and exact final
+combined-head checks are pending. Native descendant, Decision-CWD, configuration
+provenance and interactive/attach boundaries remain separate open blockers.
+
+Evidence: `/private/tmp/rururunx-issue6-f4-505-workspace-debug-host.log`,
+`/private/tmp/rururunx-issue6-f4-505-workspace-release-host.log`,
+`/private/tmp/rururunx-issue6-f4-stage8-clippy.log`,
+`/private/tmp/rururunx-issue6-f4-505-build-debug.log`,
+`/private/tmp/rururunx-issue6-f4-505-build-release.log`,
+`/private/tmp/rururunx-issue6-f4-mutation-results.json`,
+`/private/tmp/rururunx-issue6-f4-mutation-results2.json`,
+`/private/tmp/rururunx-issue6-f4-mutation-results3.json`.
