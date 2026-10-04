@@ -55,7 +55,8 @@ read-only permissions are retained: the runtime does not claim OS isolation from
 same-user-readable runtime files. Certificates state this runtime-input independence
 scope and residual filesystem visibility; native #16 acceptance checks the actual
 input/storage paths and observed independence. After prior independent rounds finish, later rounds may include verified
-defects/fixes as facts, and structured prior findings as attributed unverified
+defects and actual commit/delta/check artifacts as facts, plus attributed fix-
+resolution claims and structured prior findings as attributed unverified
 claims with original author slot, severity and exact text hash. Whole raw peer
 outputs/transcripts are never injected. Dismissal adjudication history retains
 actor identity. Dismissal claims/rationales remain labelled claims,
@@ -89,7 +90,14 @@ identity and native provider family, and a two-confirmer pair must also differ f
 each other in both registered agent identity and native provider family; alias/same-agent permission cannot create dismissal independence.
 Inputs separate original finding and actual repository evidence from the labelled
 executor dismissal claim, never presenting that claim as fact. Disputed evidence holds for Human.
-A verified fix is recorded with commit/check evidence and requires a new round.
+A fix candidate records actual commit/delta/check artifacts and the author's
+attributed resolution claim; it requires a new round. Clearing a potential or
+verified blocker as fixed uses the SAME independent eligibility as dismissal or
+downward out-of-blocking-set adjudication: explicit Human, original eligible
+non-author finder in a later round, or two eligible pairwise agent/family-distinct
+confirmers. General APPROVE without that explicit finding-resolution evidence is
+insufficient. Finder failure/timeout, quorum/any tolerance or supersession cannot
+erase the blocker or turn an executor fix claim into a fact.
 Original outputs, verdicts and verification history are never rewritten.
 
 Completion modes count well-formed exact-round APPROVE opinions: all (M), quorum
@@ -188,14 +196,19 @@ attention threshold, default 600; exceeding it holds for Human without pretendin
 a model timed out. Existing Runtime,
 Project and agent resource limits can lower local parallelism, never be bypassed.
 
-Default formal policy forbids the Task executor agent as reviewer and duplicate
-agent identities. Explicit policy may allow same-agent independent Sessions;
+Default formal policy forbids self-review slots and duplicate agent identities.
+A self-review slot is the current Task executor agent OR any registered identity
+or native family in the cumulative delta-author set (including document drafting
+and former executors). It requires explicit allow-self before input, including a
+different alias of an author's family; with that permission its opinion never
+satisfies the independent floor or any blocker-resolution confirmation.
+Explicit policy may allow same-agent independent Sessions;
 that permission and provider/model diversity are visible in the result. A single
 Session cannot occupy two slots. The Triple preset ships the Claude/Codex/Grok roster and all-of-three policy,
 without an implicit self-review exception. With an MVP executor in that roster,
 default selection rejects before input. An explicit visible allow-self independent-
 Session policy makes that same preset usable; the author slot is never eligible
-as a dismissal/downgrade confirmer. Acceptance exercises both default rejection
+as a blocker-resolution confirmer. Acceptance exercises both default rejection
 and actual supported explicit-policy execution, rather than calling the unresolved
 default a working configuration. Formal policies and the triple preset default require explicit
 resolved model/
@@ -331,8 +344,8 @@ round/byte counters and original outcomes.
 
 ## Consolidated acceptance
 
-These are the closing criteria. Items 1–8 map to the public Issue #9 checkboxes;
-items 9–16 are explicit added integrity/availability requirements. Every criterion
+Numbered criteria 1–21 are the complete closing set. Items 1–8 map to the public
+Issue #9 checkboxes; items 9–21 add integrity/availability and their explicit cases. Every criterion
 needs actual consumer evidence; proposed tests and independent development reviews
 are not runtime proof.
 
@@ -376,7 +389,8 @@ are not runtime proof.
    mode. Preserve unverified nonblocking Low and immutable original severity.
    Executor-only dismissal/downgrade and two same-agent/provider-family confirmers
    reject. Independent eligible confirmation or explicit Human judgment records
-   evidence; verified fix/commit/checks requires a new full-roster round.
+   evidence; fix candidates/commit/checks require a new full-roster round and explicit
+   eligible resolution before a blocker is cleared.
 10. Same-target retry and changed-target remediation rerun the full frozen roster,
     retain prior outcomes and never carry approvals. Within-round retry is absent.
     Verify/fix/commit/test/re-review and repeated Human-resolved ESCALATE preserve
@@ -469,7 +483,7 @@ confirmation remains #16. Parallel remediation in another worktree is not run by
 this engine: external fixing follows product-requirements §24's separate-worktree rule and
 requires safe round settlement plus a verified committed target before new review.
 
-Additional acceptance clarifications:
+17. Additional mandatory cases mapped to criteria 1–4 and 8–16:
 
 - Two-reviewer matrix: QUICK/STANDARD non-author pair, explicit allow-self author
   plus one non-author, and STRICT non-author pair succeed when their mode settles;
@@ -500,7 +514,7 @@ Claude document drafter plus Codex implementation author therefore leaves only
 one eligible fixed Triple slot for STRICT; reject with named exclusions or use an
 explicit eligible custom roster. Human authorship remains separately attributed.
 
-Closing acceptance also covers these cases:
+18. Additional mandatory cases mapped to criteria 1, 4, 10, 14–16:
 
 - An empty commit with identical tree stays same-target for retry authority;
   unrelated or unexplained whitespace deltas cannot trigger another autonomous
@@ -519,3 +533,39 @@ Closing acceptance also covers these cases:
 - Parallelism below roster size queues slots while preserving identical core
   hashes, Task context and runtime-input exclusions. Document-only plus code author
   families yield the stated named STRICT Triple rejection or custom-roster result.
+
+
+19. Blocker fix-resolution remains independent: in 2-of-3, an executor fix claim
+    plus check artifacts, finder diagnostic-only timeout and two general APPROVEs
+    holds without certificate. Explicit eligible independent fix confirmation plus
+    approvals can pass. Preserve original finding, fix claim and confirmation
+    separately in the input/certificate; author or same-family alias cannot clear it.
+    Under any/all/supersession no unresolved prior blocker disappears.
+20. Default QUICK Triple with a document-drafting family and a different code-author
+    family rejects self slots before input; explicit allow-self can collect their
+    opinions, while only eligible non-author approvals meet the floor. A distinct
+    agent alias of an author family follows the same rule. STRICT with one eligible
+    slot rejects; a permitted custom non-author roster remains usable. After every
+    1/2/4+ member round, including queued slots, Task.context_version and native owner
+    currency have not changed per member; all share one context/core, and an attempted
+    per-member context clone/bump rejects.
+21. Before closing this Issue, closure evidence must quote/link the public acceptance
+    entries (Issue bodies or linked requirements) that own the specific inherited
+    obligations: #14 exact ReviewSet Lost/uncertain member ownership/locks/permits;
+    #20 production deterministic two/Triple bundle/delta/expansion; #16 real native
+    two/Triple isolation/results/efficiency plus timeout/retry/partial-output hold
+    frequencies and Human-interruption impact. If a public owner does not carry
+    its obligation, this Issue cannot close until that tracking is concrete. This
+    requires traceability, not completion of #20 or a cyclic merge dependency.
+    Status/Human attention must state that no in-runtime Human action can release
+    a Lost hold before trusted #14 recovery.
+
+Safe retry/timeout defaults are retained until real #16 measurements justify a
+separately reviewed policy change. Native dogfood reports how often partial-output
+cancellation, retry exhaustion and long reviews require Human attention; early
+stop is expected to hold when cancelled members emitted unexamined content.
+This does not invent an automatic weak-policy fallback to reduce interruptions.
+
+Criterion 2 also rejects outvoting a potential Medium finding: two approvals plus
+that dissent stay held, while safely settled Low-only dissent outside the blocking
+set may be tolerated. Independent resolution is recorded before any certificate.
