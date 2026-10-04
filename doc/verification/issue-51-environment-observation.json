@@ -1,0 +1,31 @@
+{
+  "actual_public_grok_adapter": true,
+  "baseline_head": "d56f2bfb8285fbd588474fe5a9880fa8cfe952d2",
+  "canaries": {
+    "RRX_PROJECT_B_CANARY": "synthetic-caller-B",
+    "XAI_GLOBAL_AUTH_CANARY": "synthetic-global-native",
+    "XAI_PROJECT_B_CANARY": "synthetic-baseline-B"
+  },
+  "exit_code": null,
+  "failure": null,
+  "project_a_declares_b_refs": false,
+  "project_b_registered": true,
+  "real_native_cli": false,
+  "scope": "isolated synthetic fake ACP child; no actual environment/config/credentials read",
+  "session_state": "Exited",
+  "fixture_commit": "9085422",
+  "fixture_source_sha256": "e1e66aa9c1135c9615265a89751ac98f50f539206ec498b1b21ad297bc2f6bbf",
+  "probe_test_result": {
+    "passed": 1,
+    "failed": 0,
+    "duration_seconds": 1.82
+  },
+  "initial_compile_failure": "private validate_environment is not exported; removed and committed before execution; no verification credit",
+  "grok_source_blob": "e3939fa8766b335595caf14ceded37207db93391",
+  "historical_invalid_reference_correction": {
+    "rrx_reference_registration_valid": false,
+    "inserted_via": "Store.put_project; bypassed ProjectRegistry/environment_names validation",
+    "ordinary_path_scope": "unconditional caller reserved RRX passthrough, not valid registered foreign ownership",
+    "corrected_valid_reference_artifact": "issue-51-valid-environment-observation.json"
+  }
+}

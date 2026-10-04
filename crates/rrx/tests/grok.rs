@@ -1,5 +1,6 @@
 use rrx::{
     adapter::{grok::GrokAdapter, *},
+    config::WorkflowClass,
     domain::*,
     state::Store,
 };
@@ -27,11 +28,10 @@ impl Fixture {
     ) -> AdapterResult<Session> {
         let lower = receipt_support::watermark(&self.store, &self.request.scope)
             .expect("before-launch audit unavailable");
-        let mut request = self.request.clone();
-        request
-            .environment
-            .insert("RRX_EXPECT_SCHEMA".into(), schema.to_string());
-        let session = adapter.start_structured(request, schema).await?;
+        self.synthetic("RRX_EXPECT_SCHEMA", schema.to_string());
+        let session = adapter
+            .start_structured(self.request.clone(), schema)
+            .await?;
         self.record_attempt(&session, lower, self.request.input.version);
         Ok(session)
     }
@@ -68,11 +68,16 @@ async fn finished(
 #[tokio::test]
 async fn native_execute_edits_only_owned_files_and_preserves_actual_exit() {
     let mut fixture = Fixture::new();
-    fixture.request.input.payload = "  /always-approve".into();
-    fixture.request.environment.insert(
-        "RRX_EXPECT_INPUT".into(),
-        fixture.request.input.payload.clone(),
+    assert!(
+        fixture.request.environment.is_empty(),
+        "synthetic metadata entered native environment"
     );
+    assert_eq!(
+        std::path::PathBuf::from(fixture.synthetic_value("RRX_DATABASE")),
+        fixture.directory.path().join("state.db")
+    );
+    fixture.request.input.payload = "  /always-approve".into();
+    fixture.synthetic("RRX_EXPECT_INPUT", fixture.request.input.payload.clone());
     let adapter = fixture.adapter();
     let session = fixture.start(&adapter).await.unwrap();
     let status = finished(&adapter, &session, &fixture).await;
@@ -460,8 +465,8 @@ async fn native_stop_permissions_foreign_refs_and_environment_guards_are_explici
     );
     fixture.mode("hang");
     let spawn_observed = fixture.directory.path().join("spawn-observed");
-    fixture.request.environment.insert(
-        "RRX_SPAWN_OBSERVED".into(),
+    fixture.synthetic(
+        "RRX_SPAWN_OBSERVED",
         spawn_observed.to_str().unwrap().into(),
     );
     let session = fixture.start(&adapter).await.unwrap();
@@ -1002,12 +1007,9 @@ async fn parent_replacement_after_native_preflight_never_reaches_prompt_wire() {
     fixture.mode("pause_info");
     let pause = fixture.directory.path().join("pause");
     let prompt_observed = fixture.directory.path().join("prompt-observed");
-    fixture
-        .request
-        .environment
-        .insert("RRX_PAUSE".into(), pause.to_str().unwrap().into());
-    fixture.request.environment.insert(
-        "RRX_PROMPT_OBSERVED".into(),
+    fixture.synthetic("RRX_PAUSE", pause.to_str().unwrap().into());
+    fixture.synthetic(
+        "RRX_PROMPT_OBSERVED",
         prompt_observed.to_str().unwrap().into(),
     );
     let adapter = fixture.adapter();

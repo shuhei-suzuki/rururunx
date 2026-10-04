@@ -27,6 +27,9 @@ pub(super) fn git(root: &Path, args: &[&str]) -> String {
 }
 impl Fixture {
     pub(super) fn new() -> Self {
+        Self::with_workflow(WorkflowClass::default())
+    }
+    pub(super) fn with_workflow(workflow: WorkflowClass) -> Self {
         let directory = tempfile::tempdir().unwrap();
         let root = directory.path().join("project");
         std::fs::create_dir(&root).unwrap();
@@ -75,6 +78,7 @@ impl Fixture {
             }],
         );
         let mut task = Task::new(project.id, goal.id, "native".into(), "grok".into());
+        task.workflow = workflow;
         task.worktree = Some(worktree.clone());
         task.branch = Some("feature/task".into());
         let database = directory.path().join("state.db");
@@ -96,22 +100,12 @@ impl Fixture {
                 source_versions: BTreeMap::from([("fixture".into(), "v1".into())]),
                 payload: "prepared owned fixture".into(),
             },
-            environment: BTreeMap::from([
-                ("RRX_DATABASE".into(), database.to_str().unwrap().into()),
-                (
-                    "RRX_FOREIGN".into(),
-                    directory
-                        .path()
-                        .join("foreign.txt")
-                        .to_str()
-                        .unwrap()
-                        .into(),
-                ),
-            ]),
+            environment: BTreeMap::new(),
             model: Some("requested-model".into()),
             effort: Some("low".into()),
         };
         let executable = directory.path().join("fake-grok");
+        std::fs::write(executable.with_extension("json"), serde_json::to_vec(&json!({"RRX_DATABASE":database,"RRX_FOREIGN":directory.path().join("foreign.txt")})).unwrap()).unwrap();
         std::fs::write(&executable, include_str!("grok_fake.py")).unwrap();
         std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o700)).unwrap();
         Self {
@@ -126,6 +120,19 @@ impl Fixture {
     pub(super) fn adapter(&self) -> GrokAdapter {
         GrokAdapter::new("grok".into(), self.executable.clone(), self.store.clone()).unwrap()
     }
+    pub(super) fn synthetic(&self, key: &str, value: String) {
+        assert!(key.starts_with("RRX_"));
+        let path = self.executable.with_extension("json");
+        let mut metadata: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        metadata[key] = json!(value);
+        std::fs::write(path, serde_json::to_vec(&metadata).unwrap()).unwrap();
+    }
+    pub(super) fn synthetic_value(&self, key: &str) -> String {
+        let metadata: Value =
+            serde_json::from_slice(&std::fs::read(self.executable.with_extension("json")).unwrap())
+                .unwrap();
+        metadata[key].as_str().unwrap().to_owned()
+    }
     pub(super) fn mode(&mut self, mode: &str) {
         if mode == "unowned_read" {
             std::fs::write(
@@ -134,9 +141,7 @@ impl Fixture {
             )
             .unwrap();
         }
-        self.request
-            .environment
-            .insert("RRX_MODE".into(), mode.into());
+        self.synthetic("RRX_MODE", mode.into());
     }
 }
 
@@ -144,14 +149,10 @@ impl Fixture {
     pub(super) async fn start(&self, adapter: &dyn AgentAdapter) -> AdapterResult<Session> {
         let lower = receipt_support::watermark(&self.store, &self.request.scope)
             .expect("before-launch audit unavailable");
-        let mut request = self.request.clone();
-        if request.role == SessionRole::Reviewer {
-            request.environment.insert(
-                "RRX_EXPECT_SCHEMA".into(),
-                json!({"type":"object"}).to_string(),
-            );
+        if self.request.role == SessionRole::Reviewer {
+            self.synthetic("RRX_EXPECT_SCHEMA", json!({"type":"object"}).to_string());
         }
-        let session = adapter.start(request).await?;
+        let session = adapter.start(self.request.clone()).await?;
         self.record_attempt(&session, lower, self.request.input.version);
         Ok(session)
     }
@@ -162,11 +163,10 @@ impl Fixture {
     ) -> AdapterResult<Session> {
         let lower = receipt_support::watermark(&self.store, &self.request.scope)
             .expect("before-launch audit unavailable");
-        let mut request = self.request.clone();
-        request
-            .environment
-            .insert("RRX_EXPECT_SCHEMA".into(), schema.to_string());
-        let session = adapter.start_structured(request, schema).await?;
+        self.synthetic("RRX_EXPECT_SCHEMA", schema.to_string());
+        let session = adapter
+            .start_structured(self.request.clone(), schema)
+            .await?;
         self.record_attempt(&session, lower, self.request.input.version);
         Ok(session)
     }

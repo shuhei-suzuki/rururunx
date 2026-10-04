@@ -1,0 +1,156 @@
+{
+  "base": "f0a6a3060252f61ec0718b3c2043930c5f42f812",
+  "compiled_runs": 6,
+  "distinct_operators": 4,
+  "actual_registry_consumer_kills": 2,
+  "unit_only_kills": 4,
+  "native_grok_consumer_kills": 0,
+  "runs": [
+    {
+      "operator": "M510",
+      "base_source_head": "f0a6a3060252f61ec0718b3c2043930c5f42f812",
+      "head": "412e119ed66e556fcae8bc40ff00d3559a440895",
+      "kind": "unit",
+      "target": "project::environment_policy_tests",
+      "exit": 101,
+      "compiled": true,
+      "killed": true,
+      "expected_diagnostic": "1TOKEN",
+      "seconds": 9.526,
+      "source_sha256": "fc5077141066de856cde6b3f4d3d7709ec05ca6213c7ffcb548e714542ced23f",
+      "patch_sha256": "4ed0d09073ece935de2e0d192b4b8b978cd516e23e2186adb20cd5b9e8d0b0c6",
+      "log_sha256": "377dae013c71419d198f8a874ca677c405ecaf95b6e109ac0496fbe6d85ca19a",
+      "patch": "diff --git a/crates/rrx/src/project.rs b/crates/rrx/src/project.rs\nindex 58e57dd..b525f20 100644\n--- a/crates/rrx/src/project.rs\n+++ b/crates/rrx/src/project.rs\n@@ -384,7 +384,7 @@ pub(crate) fn environment_name_valid(name: &str) -> bool {\n         && name\n             .bytes()\n             .enumerate()\n-            .all(|(i, b)| b.is_ascii_alphabetic() || b == b'_' || (i > 0 && b.is_ascii_digit()))\n+            .all(|(i, b)| b.is_ascii_alphabetic() || b == b'_' || b.is_ascii_digit())\n }\n \n fn environment_routing_forbidden(name: &str) -> bool {\n",
+      "assertion_excerpt": [
+        "thread 'project::environment_policy_tests::names_only_grammar_rejects_assignments_unicode_and_invalid_leading_bytes' (227136063) panicked at crates/rrx/src/project.rs:609:13:"
+      ],
+      "causal_scope": "pure_registry_policy_unit_only",
+      "platform": "macOS",
+      "reproducibility": "exact source/patch and test target captured; temporary detached commits are local, not remote published"
+    },
+    {
+      "operator": "M510",
+      "base_source_head": "f0a6a3060252f61ec0718b3c2043930c5f42f812",
+      "head": "412e119ed66e556fcae8bc40ff00d3559a440895",
+      "kind": "registry",
+      "target": "config_rules_environment_and_symlinks_never_cross_project",
+      "exit": 101,
+      "compiled": true,
+      "killed": true,
+      "expected_diagnostic": "1TOKEN",
+      "seconds": 5.707,
+      "source_sha256": "fc5077141066de856cde6b3f4d3d7709ec05ca6213c7ffcb548e714542ced23f",
+      "patch_sha256": "4ed0d09073ece935de2e0d192b4b8b978cd516e23e2186adb20cd5b9e8d0b0c6",
+      "log_sha256": "7c60d06b43dac1fb66010f4cfdcc539a5eafc318f25b1416dcbfe00107f296f7",
+      "patch": "diff --git a/crates/rrx/src/project.rs b/crates/rrx/src/project.rs\nindex 58e57dd..b525f20 100644\n--- a/crates/rrx/src/project.rs\n+++ b/crates/rrx/src/project.rs\n@@ -384,7 +384,7 @@ pub(crate) fn environment_name_valid(name: &str) -> bool {\n         && name\n             .bytes()\n             .enumerate()\n-            .all(|(i, b)| b.is_ascii_alphabetic() || b == b'_' || (i > 0 && b.is_ascii_digit()))\n+            .all(|(i, b)| b.is_ascii_alphabetic() || b == b'_' || b.is_ascii_digit())\n }\n \n fn environment_routing_forbidden(name: &str) -> bool {\n",
+      "assertion_excerpt": [
+        "thread 'config_rules_environment_and_symlinks_never_cross_project' (227136823) panicked at crates/rrx/tests/project.rs:378:9:",
+        "1TOKEN"
+      ],
+      "causal_scope": "actual_project_registry_environment_validation",
+      "platform": "macOS",
+      "reproducibility": "exact source/patch and test target captured; temporary detached commits are local, not remote published"
+    },
+    {
+      "operator": "M511",
+      "base_source_head": "f0a6a3060252f61ec0718b3c2043930c5f42f812",
+      "head": "799ea5d7675f54c05fc2927af959f9776a7c882d",
+      "kind": "unit",
+      "target": "project::environment_policy_tests",
+      "exit": 101,
+      "compiled": true,
+      "killed": true,
+      "expected_diagnostic": "HTTPS_PROXY",
+      "seconds": 1.594,
+      "source_sha256": "f75b9e89953db398e13f44a02f6124117020e758318307c908c9898bc81d70d1",
+      "patch_sha256": "699239591ded552dcb5daedd86844e44f0bb0d895210bf038a76ad0c41044bbb",
+      "log_sha256": "cd8adefc48580b50a802ae9371125930d21230dc1f6799a3e07955e77c96eca6",
+      "patch": "diff --git a/crates/rrx/src/project.rs b/crates/rrx/src/project.rs\nindex 58e57dd..d097942 100644\n--- a/crates/rrx/src/project.rs\n+++ b/crates/rrx/src/project.rs\n@@ -452,7 +452,7 @@ fn environment_routing_forbidden(name: &str) -> bool {\n /// Registry routing policy shared with native name-only admission. Membership is\n /// independent of syntax; callers validate syntax separately before ownership.\n pub(crate) fn environment_name_forbidden(name: &str) -> bool {\n-    environment_routing_forbidden(name) || name.to_ascii_uppercase().ends_with(\"_PROXY\")\n+    environment_routing_forbidden(name)\n }\n \n /// Pure owning-reference validation, also usable for inactive Project metadata.\n",
+      "assertion_excerpt": [
+        "thread 'project::environment_policy_tests::registry_control_and_proxy_policy_remains_distinct_from_credential_references' (227137618) panicked at crates/rrx/src/project.rs:633:13:",
+        "thread 'project::environment_policy_tests::own_references_validate_every_entry_and_duplicates_without_source_io' (227137617) panicked at crates/rrx/src/project.rs:679:18:",
+        "called `Result::unwrap_err()` on an `Ok` value: [\"https_proxy\"]"
+      ],
+      "causal_scope": "pure_registry_policy_unit_only",
+      "platform": "macOS",
+      "reproducibility": "exact source/patch and test target captured; temporary detached commits are local, not remote published"
+    },
+    {
+      "operator": "M511",
+      "base_source_head": "f0a6a3060252f61ec0718b3c2043930c5f42f812",
+      "head": "799ea5d7675f54c05fc2927af959f9776a7c882d",
+      "kind": "registry",
+      "target": "config_rules_environment_and_symlinks_never_cross_project",
+      "exit": 101,
+      "compiled": true,
+      "killed": true,
+      "expected_diagnostic": "HTTPS_PROXY",
+      "seconds": 3.876,
+      "source_sha256": "f75b9e89953db398e13f44a02f6124117020e758318307c908c9898bc81d70d1",
+      "patch_sha256": "699239591ded552dcb5daedd86844e44f0bb0d895210bf038a76ad0c41044bbb",
+      "log_sha256": "9c61b20250bf52f05a73ece0a9280ddbbc5e2bcf1be9303a464e3bce44a79ed8",
+      "patch": "diff --git a/crates/rrx/src/project.rs b/crates/rrx/src/project.rs\nindex 58e57dd..d097942 100644\n--- a/crates/rrx/src/project.rs\n+++ b/crates/rrx/src/project.rs\n@@ -452,7 +452,7 @@ fn environment_routing_forbidden(name: &str) -> bool {\n /// Registry routing policy shared with native name-only admission. Membership is\n /// independent of syntax; callers validate syntax separately before ownership.\n pub(crate) fn environment_name_forbidden(name: &str) -> bool {\n-    environment_routing_forbidden(name) || name.to_ascii_uppercase().ends_with(\"_PROXY\")\n+    environment_routing_forbidden(name)\n }\n \n /// Pure owning-reference validation, also usable for inactive Project metadata.\n",
+      "assertion_excerpt": [
+        "thread 'config_rules_environment_and_symlinks_never_cross_project' (227138274) panicked at crates/rrx/tests/project.rs:378:9:",
+        "HTTPS_PROXY"
+      ],
+      "causal_scope": "actual_project_registry_environment_validation",
+      "platform": "macOS",
+      "reproducibility": "exact source/patch and test target captured; temporary detached commits are local, not remote published"
+    },
+    {
+      "operator": "M512",
+      "base_source_head": "f0a6a3060252f61ec0718b3c2043930c5f42f812",
+      "head": "012286af51cb69d10aac3be8f690d752a32e2cb3",
+      "kind": "unit",
+      "target": "project::environment_policy_tests",
+      "exit": 101,
+      "compiled": true,
+      "killed": true,
+      "expected_diagnostic": "RRX_MODE",
+      "seconds": 1.683,
+      "source_sha256": "eac489caf195e135ad2e9a28de216c5f6efb4f2ad6981c982e74ad2a46b69b3d",
+      "patch_sha256": "4a60e0c2f629f56413d762447c7dc178e57df108ddcce1a38a6527b2e8d089d0",
+      "log_sha256": "122cadc86002d745afda2d94fa5ed195733c0f9b770aeea1e72d88f9feae8766",
+      "patch": "diff --git a/crates/rrx/src/project.rs b/crates/rrx/src/project.rs\nindex 58e57dd..c72be93 100644\n--- a/crates/rrx/src/project.rs\n+++ b/crates/rrx/src/project.rs\n@@ -439,7 +439,6 @@ fn environment_routing_forbidden(name: &str) -> bool {\n         \"GIT_\",\n         \"LD_\",\n         \"DYLD_\",\n-        \"RRX_\",\n         \"CLAUDE_\",\n         \"CODEX_\",\n         \"ANTHROPIC_AUTH_\",\n",
+      "assertion_excerpt": [
+        "thread 'project::environment_policy_tests::registry_control_and_proxy_policy_remains_distinct_from_credential_references' (227139054) panicked at crates/rrx/src/project.rs:632:13:",
+        "RRX_MODE"
+      ],
+      "causal_scope": "pure_registry_policy_unit_only",
+      "platform": "macOS",
+      "reproducibility": "exact source/patch and test target captured; temporary detached commits are local, not remote published"
+    },
+    {
+      "operator": "M513",
+      "base_source_head": "f0a6a3060252f61ec0718b3c2043930c5f42f812",
+      "head": "7e9af9d96f4193df22a14396648030a6429a1d9f",
+      "kind": "unit",
+      "target": "project::environment_policy_tests",
+      "exit": 101,
+      "compiled": true,
+      "killed": true,
+      "expected_diagnostic": "unwrap_err",
+      "seconds": 1.563,
+      "source_sha256": "b71b70cdcb3ae91bcf1fc9e392aeb32618a5d6120eb50bf6848050d4e9f69f2a",
+      "patch_sha256": "922cf2829cdc2353440ed9fc5d12e03a074a4f6943b7dc294d1e60b189d881f0",
+      "log_sha256": "fcde474381760996aa833c08fe3aa40de8224ec4a7819e16b23eb1a8297a0b72",
+      "patch": "diff --git a/crates/rrx/src/project.rs b/crates/rrx/src/project.rs\nindex 58e57dd..16ec760 100644\n--- a/crates/rrx/src/project.rs\n+++ b/crates/rrx/src/project.rs\n@@ -473,7 +473,7 @@ pub(crate) fn validate_environment_references(names: &[String]) -> Result<Vec<St\n             \"unsafe proxy routing reference {name}\"\n         );\n         ensure!(\n-            unique.insert(name),\n+            { unique.insert(name); true },\n             \"duplicate environment reference {name}\"\n         );\n     }\n",
+      "assertion_excerpt": [
+        "thread 'project::environment_policy_tests::own_references_validate_every_entry_and_duplicates_without_source_io' (227139647) panicked at crates/rrx/src/project.rs:665:18:",
+        "called `Result::unwrap_err()` on an `Ok` value: [\"TZ\", \"TZ\"]"
+      ],
+      "causal_scope": "pure_registry_policy_unit_only",
+      "platform": "macOS",
+      "reproducibility": "exact source/patch and test target captured; temporary detached commits are local, not remote published"
+    }
+  ],
+  "restored": {
+    "head": "0619708a009e02cc94055b8f0c9816917fa5df99",
+    "diff_vs_base": "empty for all repository files",
+    "unit_controls": 3,
+    "registry_controls": 1,
+    "native_agent_acceptance": false,
+    "temporary_worktree": "normally removed after both restored checks passed"
+  }
+}
