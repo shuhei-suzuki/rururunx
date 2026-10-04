@@ -1,6 +1,7 @@
 # Issue 43: Preserve native authority during Workflow Session binding
 
-Workflow: STRICT. Requirements pending independent review; implementation absent.
+Workflow: STRICT. Requirements approved at `d8c5266` by native independent
+requirements re-review4; design and implementation gates remain outstanding.
 
 ## Problem and MVP relationship
 
