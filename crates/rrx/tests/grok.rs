@@ -876,7 +876,18 @@ async fn structured_schema_rejection_precedes_all_session_and_spawn_effects() {
             } else {
                 fixture.start_structured(&adapter, schema).await
             };
-            assert_eq!(result.unwrap_err().kind, ErrorKind::InvalidInput);
+            let error = match result {
+                Err(error) => error,
+                Ok(unexpected) => {
+                    // A compiled guard mutant may launch a finite owned fixture.
+                    // Finish its exact supervisor cleanup before failing the assertion.
+                    let status = finished(&*registered, &unexpected, &fixture).await;
+                    receipt_support::assert_receipt(&fixture.observation(&status).receipt);
+                    registered.release((&unexpected).into()).unwrap();
+                    panic!("unsupported caller schema reached native launch");
+                }
+            };
+            assert_eq!(error.kind, ErrorKind::InvalidInput);
             let store = fixture.store.lock().unwrap();
             assert!(
                 store
