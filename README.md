@@ -390,6 +390,14 @@ uncertainty guards. Verification and independent review results are recorded in
 sampling and partial-success KILL with non-signalable survivors remain explicit
 limitations.
 
+Grok native environment reference isolation has an MVP-blocking follow-up
+[Issue51 requirements](doc/requirements/issue-51-requirements.md): synthetic foreign
+Project references reached an owned fake ACP child. Global native auth/settings/hooks
+remain intentional; requirements/design/source gates precede the environment fix.
+The [approved design](doc/design/issue-51-design.md) specifies actual pre-spawn admission
+and explicit availability limits. The source candidate adds scoped admission; independent
+source/default/CI gates and real native integration remain tracked in verification.
+
 Inspector timeout diagnostics follow the approved STRICT [Issue60 component design](doc/design/issue-60-inspection-design.md).
 The diagnostic-only implementation adds finite failure facts while preserving existing
 cleanup/Unknown authority. Two independent Source2/Source3 approvals cover this

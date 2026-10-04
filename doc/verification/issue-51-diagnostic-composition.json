@@ -1,0 +1,498 @@
+{
+  "merge": "068ad6ad24cb337112cdb2acd53d4cf7fd8bbe41",
+  "parents": [
+    "18c117a14faddc29e220c8b097b7612200220180",
+    "f7baad498bd36691e2bfbf8ba5d05ee1b3ae95ed"
+  ],
+  "conflicts": "README only, both existing sections retained; all Rust automatic merge, no manual source edits",
+  "source_identity": {
+    "crates/rrx/src/state/environment.rs": {
+      "old18c_blob": "8f7f937b90751540a5f5bcbbaffa8befb5af257c",
+      "composed_blob": "8f7f937b90751540a5f5bcbbaffa8befb5af257c"
+    },
+    "crates/rrx/src/state/native_dispatch_tests.rs": {
+      "old18c_blob": "235ce98943278f7a31f8c9baa42f1ddc426c1b03",
+      "composed_blob": "235ce98943278f7a31f8c9baa42f1ddc426c1b03"
+    },
+    "crates/rrx/src/state/mod.rs": {
+      "old18c_blob": "307cd2f477089acbbbaf64b433fe0fb0d82e9677",
+      "composed_blob": "307cd2f477089acbbbaf64b433fe0fb0d82e9677"
+    },
+    "crates/rrx/src/adapter/grok/mod.rs": {
+      "old18c_blob": "c4c241dbc81db2e2ab4073633005481205ef7312",
+      "composed_blob": "c4c241dbc81db2e2ab4073633005481205ef7312"
+    },
+    "crates/rrx/src/adapter/grok/ownership.rs": {
+      "old18c_blob": "08613bb14f890ab4d5535be152269608893b7367",
+      "composed_blob": "08613bb14f890ab4d5535be152269608893b7367"
+    },
+    "crates/rrx/src/adapter/grok/environment.rs": {
+      "old18c_blob": "1382f391407cb739a805f62b1f816845d0ae1c1d",
+      "composed_blob": "1382f391407cb739a805f62b1f816845d0ae1c1d"
+    },
+    "crates/rrx/src/adapter/grok/environment_tests.rs": {
+      "old18c_blob": "35a96977f47241f332b5d536bb786f3391db39ed",
+      "composed_blob": "35a96977f47241f332b5d536bb786f3391db39ed"
+    },
+    "crates/rrx/src/adapter/grok/environment_workflow_tests.rs": {
+      "old18c_blob": "5922ccdbb894e889990941d7e42f2aae23dc26be",
+      "composed_blob": "5922ccdbb894e889990941d7e42f2aae23dc26be"
+    },
+    "crates/rrx/tests/grok.rs": {
+      "old18c_blob": "3ac35be73a03a44566c91e9c3c26f24588dabb72",
+      "composed_blob": "3ac35be73a03a44566c91e9c3c26f24588dabb72"
+    },
+    "crates/rrx/tests/support/grok_fixture.rs": {
+      "old18c_blob": "fe7b2a185585f900352da60fd41415856951009a",
+      "composed_blob": "fe7b2a185585f900352da60fd41415856951009a"
+    },
+    "crates/rrx/tests/support/grok_fake.py": {
+      "old18c_blob": "38bb794dc14eee7957573c9ff12bd18156295b57",
+      "composed_blob": "38bb794dc14eee7957573c9ff12bd18156295b57"
+    },
+    "crates/rrx/tests/support/grok_receipt.rs": {
+      "old18c_blob": "be44dba15627e18ba4ccd1dcbc0c2164e8fe4a14",
+      "composed_blob": "be44dba15627e18ba4ccd1dcbc0c2164e8fe4a14"
+    },
+    "crates/rrx/src/adapter/inspection.rs": {
+      "incoming_reviewed_main_blob": "376b6556758129eaa7c585a452ebe1dd387c40e3",
+      "composed_blob": "376b6556758129eaa7c585a452ebe1dd387c40e3"
+    },
+    "crates/rrx/src/adapter/inspection/diagnostics.rs": {
+      "incoming_reviewed_main_blob": "9b6078660ecf31aaec5f40d2652f0ed6ee9140cf",
+      "composed_blob": "9b6078660ecf31aaec5f40d2652f0ed6ee9140cf"
+    },
+    "crates/rrx/src/adapter/inspection/diagnostic_tests.rs": {
+      "incoming_reviewed_main_blob": "cb923bd7784726bd1ae6e60e83981cac64119c77",
+      "composed_blob": "cb923bd7784726bd1ae6e60e83981cac64119c77"
+    },
+    "crates/rrx/src/context.rs": {
+      "incoming_reviewed_main_blob": "ec4a0aebc495ef0780c90b32558dee6f93974e3d",
+      "composed_blob": "ec4a0aebc495ef0780c90b32558dee6f93974e3d"
+    },
+    "crates/rrx/src/adapter/grok/receipt_tests.rs": {
+      "old18c_blob": "f53ed5bcfb56198c184058a13ba53348b0ed07a2",
+      "incoming_reviewed_main_blob": "ca48de3bb2a47a59052ca795cfc8c2176bb7c701",
+      "composed_blob": "d0dd5baa208c5a9beb9a41bd5b36ee49be042953",
+      "join": "receipt: unchanged51 sidecar helper plus appended61 diagnostic child/parent; adapter: Generic production unchanged51 plus additive61 status/audit controls; all Rust automatic merge"
+    },
+    "crates/rrx/src/adapter.rs": {
+      "old18c_blob": "3a95dba39ad1d5cbdfe70fc16e26f16b3a2d5c80",
+      "incoming_reviewed_main_blob": "b960a247f359fcf8da7ad2c768caa0e87479ed55",
+      "composed_blob": "748e71bbf3cd088c2861588e3d9172353ed7e97b",
+      "join": "receipt: unchanged51 sidecar helper plus appended61 diagnostic child/parent; adapter: Generic production unchanged51 plus additive61 status/audit controls; all Rust automatic merge"
+    }
+  },
+  "composition_detail": "Incoming61 new Grok completed-turn diagnostics fixture uses51 unchanged synthetic_fixture helper: RRX metadata remains sibling synthetic values, not rejected ordinary caller keys; actual full debug/release parent passes. Generic production remains51 code; incoming61 actual status/audit controls additive.",
+  "suites": {
+    "debug": {
+      "exit": 0,
+      "rust_tests": 260,
+      "doctests": 2,
+      "ignored": 24,
+      "default_internal_concurrency": true,
+      "raw_log_sha256": "d04fd6778ec32dd9ad3fa68424a9583ae41741f8d639c96b2e357b5c304d0f72",
+      "target_outcomes": [
+        {
+          "passed": 159,
+          "failed": 0,
+          "ignored": 22
+        },
+        {
+          "passed": 0,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 19,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 5,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 16,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 18,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 13,
+          "failed": 0,
+          "ignored": 2
+        },
+        {
+          "passed": 16,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 14,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 1,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 1,
+          "failed": 0,
+          "ignored": 0
+        }
+      ]
+    },
+    "release": {
+      "exit": 0,
+      "rust_tests": 260,
+      "doctests": 2,
+      "ignored": 24,
+      "default_internal_concurrency": true,
+      "raw_log_sha256": "aae1567fe5e7bbeee27db858db0e67b409d343cf200b1cac95488a647fb83b35",
+      "target_outcomes": [
+        {
+          "passed": 159,
+          "failed": 0,
+          "ignored": 22
+        },
+        {
+          "passed": 0,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 19,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 5,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 16,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 18,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 13,
+          "failed": 0,
+          "ignored": 2
+        },
+        {
+          "passed": 16,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 14,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 1,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "passed": 1,
+          "failed": 0,
+          "ignored": 0
+        }
+      ]
+    }
+  },
+  "build_lint": "No-run fullworkspace/fmt/alltarget Clippy-Dwarnings/debug+release builds all PASS at068",
+  "peer_overlap": "Root62 native suite ended before own debug; root release build and agent6 scoped fake native host/library controls overlapped; actual overlaps recorded, no cause inference, no default scheduling/bound changes",
+  "current_public_ci": {
+    "run": 37232520918,
+    "trigger_head": "068ad6ad24cb337112cdb2acd53d4cf7fd8bbe41",
+    "actual_checkouts": {
+      "check (macos-latest)": "8c343e2c9a257cc892bfb05cf42e3d080bc738ab",
+      "check (ubuntu-latest)": "8c343e2c9a257cc892bfb05cf42e3d080bc738ab"
+    },
+    "parents": [
+      "f7baad498bd36691e2bfbf8ba5d05ee1b3ae95ed",
+      "068ad6ad24cb337112cdb2acd53d4cf7fd8bbe41"
+    ],
+    "tested_tree": "fc4eab4c548cfc103d9b609f3c4914b1c58c9db3",
+    "trigger_tree": "fc4eab4c548cfc103d9b609f3c4914b1c58c9db3",
+    "tested_tree_equals_trigger": true,
+    "jobs": {
+      "check (macos-latest)": {
+        "conclusion": "success",
+        "steps": {
+          "Set up job": "success",
+          "Run actions/checkout@v4": "success",
+          "Run dtolnay/rust-toolchain@1.91.1": "success",
+          "Run cargo fmt --all -- --check": "success",
+          "Run cargo clippy --locked --workspace --all-targets -- -D warnings": "success",
+          "Run cargo test --locked --workspace": "success",
+          "Run cargo build --locked --workspace": "success",
+          "Run cargo build --locked --release --workspace": "success",
+          "Post Run actions/checkout@v4": "success",
+          "Complete job": "success"
+        }
+      },
+      "check (ubuntu-latest)": {
+        "conclusion": "success",
+        "steps": {
+          "Set up job": "success",
+          "Run actions/checkout@v4": "success",
+          "Run dtolnay/rust-toolchain@1.91.1": "success",
+          "Run cargo fmt --all -- --check": "success",
+          "Run cargo clippy --locked --workspace --all-targets -- -D warnings": "success",
+          "Run cargo test --locked --workspace": "success",
+          "Run cargo build --locked --workspace": "success",
+          "Run cargo build --locked --release --workspace": "success",
+          "Post Run actions/checkout@v4": "success",
+          "Complete job": "success"
+        }
+      }
+    },
+    "log_sha256": "699dd598365ebdc51db9cb02d5e12e0b4839ad08d5f95e0f229833a4b0fc9cc4",
+    "scope": "Changed source51+reviewed diagnostics normalcomposition; old18/b90/555 failures and native/full60 readiness remain unknown/open"
+  },
+  "old_final_ci": {
+    "run": 37218568315,
+    "trigger_head": "18c117a14faddc29e220c8b097b7612200220180",
+    "actual_checkouts": {
+      "check (ubuntu-latest)": "e9e2bda63e5699feda2f7dfb978aa6aab2e4f60b",
+      "check (macos-latest)": "e9e2bda63e5699feda2f7dfb978aa6aab2e4f60b"
+    },
+    "parents": [
+      "054aefd3a22a02951fa72b9fa397bed58d156bbf",
+      "18c117a14faddc29e220c8b097b7612200220180"
+    ],
+    "tested_tree": "77a754be85b7b51bc38b0c9f102e5e2f4bac4ae0",
+    "trigger_tree": "77a754be85b7b51bc38b0c9f102e5e2f4bac4ae0",
+    "tested_tree_equals_trigger": true,
+    "conclusion": "failure",
+    "jobs": {
+      "check (macos-latest)": {
+        "result": "failure",
+        "steps": {
+          "Set up job": "success",
+          "Run actions/checkout@v4": "success",
+          "Run dtolnay/rust-toolchain@1.91.1": "success",
+          "Run cargo fmt --all -- --check": "success",
+          "Run cargo clippy --locked --workspace --all-targets -- -D warnings": "success",
+          "Run cargo test --locked --workspace": "failure",
+          "Run cargo build --locked --workspace": "skipped",
+          "Run cargo build --locked --release --workspace": "skipped",
+          "Post Run actions/checkout@v4": "success",
+          "Complete job": "success"
+        }
+      },
+      "check (ubuntu-latest)": {
+        "result": "success",
+        "steps": {
+          "Set up job": "success",
+          "Run actions/checkout@v4": "success",
+          "Run dtolnay/rust-toolchain@1.91.1": "success",
+          "Run cargo fmt --all -- --check": "success",
+          "Run cargo clippy --locked --workspace --all-targets -- -D warnings": "success",
+          "Run cargo test --locked --workspace": "success",
+          "Run cargo build --locked --workspace": "success",
+          "Run cargo build --locked --release --workspace": "success",
+          "Post Run actions/checkout@v4": "success",
+          "Complete job": "success"
+        }
+      }
+    },
+    "failed_context_target": {
+      "passed": 6,
+      "failed": 10,
+      "seconds": 13.39,
+      "actual_error_test": "explicit_file_symbol_callers_and_callees_are_scoped",
+      "line": "context.rs:392:18",
+      "error": "bounded context Git: SessionLost: native process group cleanup failed: native process inspection timed out",
+      "other9": "derived earlier-context-cleanup latch blocked launches, not9 additional independent inspections",
+      "cause": "unknown; no timing/pipe/PID/load/env attribution"
+    },
+    "reviewed_native_source_identity": {
+      "crates/rrx/src/state/environment.rs": {
+        "reviewed": "8f7f937b90751540a5f5bcbbaffa8befb5af257c",
+        "final": "8f7f937b90751540a5f5bcbbaffa8befb5af257c"
+      },
+      "crates/rrx/src/state/native_dispatch_tests.rs": {
+        "reviewed": "235ce98943278f7a31f8c9baa42f1ddc426c1b03",
+        "final": "235ce98943278f7a31f8c9baa42f1ddc426c1b03"
+      },
+      "crates/rrx/src/adapter/grok/mod.rs": {
+        "reviewed": "c4c241dbc81db2e2ab4073633005481205ef7312",
+        "final": "c4c241dbc81db2e2ab4073633005481205ef7312"
+      },
+      "crates/rrx/src/adapter/grok/environment.rs": {
+        "reviewed": "1382f391407cb739a805f62b1f816845d0ae1c1d",
+        "final": "1382f391407cb739a805f62b1f816845d0ae1c1d"
+      },
+      "crates/rrx/src/adapter/grok/environment_tests.rs": {
+        "reviewed": "35a96977f47241f332b5d536bb786f3391db39ed",
+        "final": "35a96977f47241f332b5d536bb786f3391db39ed"
+      },
+      "crates/rrx/tests/grok.rs": {
+        "reviewed": "3ac35be73a03a44566c91e9c3c26f24588dabb72",
+        "final": "3ac35be73a03a44566c91e9c3c26f24588dabb72"
+      },
+      "crates/rrx/tests/support/grok_fixture.rs": {
+        "reviewed": "fe7b2a185585f900352da60fd41415856951009a",
+        "final": "fe7b2a185585f900352da60fd41415856951009a"
+      },
+      "crates/rrx/tests/support/grok_fake.py": {
+        "reviewed": "38bb794dc14eee7957573c9ff12bd18156295b57",
+        "final": "38bb794dc14eee7957573c9ff12bd18156295b57"
+      }
+    },
+    "source_diff_b90": "empty crates/Cargo.toml/Cargo.lock/.github delta; 2outcome docs only",
+    "merge_ready": false,
+    "rerun": false,
+    "PR": "draft/unmerged",
+    "artifacts": {
+      "-all.log": "20fe3df70278d970c4261cd55da945f78a86a9fd7cd1ea6f73df8ae1de7d3994",
+      "-failed.log": "1e93ab006e9bb2e4f0e23669d1454daf7ae8ca3a9e5cbd2cf96c391d4bf28541",
+      "-result.json": "2a73e000a9bfaff9e3ad92079b5c696770a1f92bd4d20004ec0a12e75fcf49a7"
+    }
+  },
+  "old_failures_retained": [
+    "18c final CI37218568315 Mac first Context timeout+9derived sticky failures; Linux every step pass; no oldhead rerun",
+    "b90 local DEBUG first Context timeout+12derived sticky failures; later targets not run, cause unknown",
+    "main054 Grok reconciliation ownership uncertainty, no cause established",
+    "diagnostics555 local RELEASE FAILED Grok pre-spawn inspector child exit success/stdout EOF pending; later targets/docs not run; cause AND regression status unknown"
+  ],
+  "limits": [
+    "These changed-source passes do not retrospectively repair/explain any old failure or prove availability",
+    "Actual native credentials/config/model inference not exercised",
+    "Independent finite composition reviews and final new metadata-head CI pending",
+    "Full60/readerEOF/workload ownership/F1/native16 and19writer migration/43nativephase completion/14recovery/11runtime handoff remainOPEN"
+  ],
+  "changed_path_inventory_18c_to_068": [
+    {
+      "status": "M",
+      "path": "README.md"
+    },
+    {
+      "status": "M",
+      "path": "crates/rrx/src/adapter.rs"
+    },
+    {
+      "status": "M",
+      "path": "crates/rrx/src/adapter/grok/receipt_tests.rs"
+    },
+    {
+      "status": "M",
+      "path": "crates/rrx/src/adapter/inspection.rs"
+    },
+    {
+      "status": "A",
+      "path": "crates/rrx/src/adapter/inspection/diagnostic_tests.rs"
+    },
+    {
+      "status": "A",
+      "path": "crates/rrx/src/adapter/inspection/diagnostics.rs"
+    },
+    {
+      "status": "M",
+      "path": "crates/rrx/src/context.rs"
+    },
+    {
+      "status": "A",
+      "path": "doc/design/issue-60-inspection-design.md"
+    },
+    {
+      "status": "M",
+      "path": "doc/design/master/agent-adapter.md"
+    },
+    {
+      "status": "A",
+      "path": "doc/requirements/issue-60-git-reader-contract-draft.md"
+    },
+    {
+      "status": "A",
+      "path": "doc/requirements/issue-60-inspection-requirements.md"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-60-design1-findings.json"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-60-design2-findings.json"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-60-inspection-delta-mutations.json"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-60-inspection-mutations.json"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-60-inspection-source-ci.json"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-60-inspection-source1-ci.json"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-60-inspection-source1-findings.json"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-60-inspection-source2-ci.json"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-60-inspection-source2-findings.json"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-60-inspection-source3-ci.json"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-60-inspection-source3-findings.json"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-60-inspection-source555-tests.json"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-60-inspection.md"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-60-requirements1-findings.json"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-60-requirements2-findings.json"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-60-requirements3-findings.json"
+    },
+    {
+      "status": "A",
+      "path": "doc/verification/issue-60-requirements4-findings.json"
+    }
+  ],
+  "receipt_join_f7_to_068_diff": "diff --git a/crates/rrx/src/adapter/grok/receipt_tests.rs b/crates/rrx/src/adapter/grok/receipt_tests.rs\nindex ca48de3..d0dd5ba 100644\n--- a/crates/rrx/src/adapter/grok/receipt_tests.rs\n+++ b/crates/rrx/src/adapter/grok/receipt_tests.rs\n@@ -122,8 +122,8 @@ fn synthetic_fixture(mode: &str) -> Fixture {\n         (\"RRX_PROMPT_OBSERVED\", \"prompt-observed\"),\n         (\"RRX_PYTHON_OBSERVED\", \"python-observed\"),\n     ] {\n-        fixture.request.environment.insert(\n-            name.into(),\n+        fixture.synthetic(\n+            name,\n             fixture.directory.path().join(file).to_str().unwrap().into(),\n         );\n     }\n@@ -133,7 +133,7 @@ fn synthetic_fixture(mode: &str) -> Fixture {\n         \"RRX_PROMPT_OBSERVED\",\n         \"RRX_PYTHON_OBSERVED\",\n     ] {\n-        let path = PathBuf::from(&fixture.request.environment[name]);\n+        let path = PathBuf::from(fixture.synthetic_value(name));\n         let path = path\n             .parent()\n             .unwrap()\n"
+}
