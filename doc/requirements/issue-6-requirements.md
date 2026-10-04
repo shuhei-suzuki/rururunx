@@ -67,13 +67,15 @@ product requirements and master Agent Adapter design.
     first cause. Queued consumed-turn stop survives acknowledgement and transfer
     to the sole supervisor. Unpublished or uncertain completion remains explicit.
 11. Acquire a genuine private attempt-bound native workload owner before the
-    first execution of any native process, including launcher/version/auth/policy
-    probes, configuration discovery and server startup. Pre-owner checks are
+    first execution of any attempt runtime or native process, including adapter
+    Git/helper preflight, grant preflight, status/inventory observation and cleanup
+    checks, launcher/version/auth/policy probes, configuration discovery and server
+    startup. Pre-owner checks are
     limited to non-executing filesystem/registry metadata validation.
-    Its supported profile must cover all processes that profile can start: setup,
+    Its supported profile must cover all processes the attempt can start: setup,
     native helpers, preserved hooks/MCP, tool commands and frontend children where
-    enabled. Unsupported ownership fails explicitly before that first native
-    execution and before model-input admission/consumption; no app-server probe
+    enabled. Unsupported ownership fails explicitly before that first runtime/native
+    execution and before model-input admission/consumption; no Git/helper or app-server probe
     may bootstrap the proof it already needs. Native process IDs, parent/group/session hints,
     termination acknowledgements and background-terminal inventories do not
     create ownership or whole-workload cleanup authority. After possible dispatch,
@@ -139,6 +141,10 @@ Identity-set admission requires a published per-host owned conformance artifact
 covering the exact chain/digests, profile controls and delegation inventory. First
 production use, successful metadata startup and caller configuration cannot add
 an identity. A changed build remains typed held/unsupported until re-verified.
+Re-verification of a changed native/runtime/Git/helper identity also requires its
+applicable mixed-combination and B-already-live→A-Lost conformance against every
+already-supported profile. Until then the affected combinations stay unsupported;
+single-profile metadata/native execution proof cannot preserve mixed readiness.
 Coverage/control evidence must come from enforceable native/kernel controls
 or a side-effect-free authoritative source bound to the exact effective inputs
 the native process consumes (user/project/managed/trust/profile/plugin/environment
@@ -245,9 +251,17 @@ exercises fresh/current admission and owned cohort at that consumer. Required
 target/dogfood surfaces whose closure or compatible enforcement is unresolved
 remain MVP blockers, not a silent general Executor support claim.
 
-Before any native process may have executed, registered Preparing cleanup and
-exact historical rollback/factual failure remain authoritative. Once any native
-process may have executed, rollback, terminal restoration and reservation release
+Every adapter-executed attempt process belongs to that attempt's actual workload,
+including runtime Git/helper preflight, admission/grant rechecks, status/inventory
+observation and cleanup checks. Enroll these under the same genuinely owned bound
+profile/inventory, or compose an actual Issue60 runtime Git owner and settlement;
+direct-child/selected-group completion is not their whole-workload cleanup.
+Their configured automatic activation/delegation routes are covered or blocked
+before execution under the same default-deny rule. No current consumer is claimed.
+Before any owned runtime or native process/resource effect may have executed,
+registered Preparing cleanup and exact historical rollback/factual failure remain
+authoritative. Once any such process/effect may have executed, rollback,
+terminal restoration and reservation release
 require current whole-workload cleanup authority, even before input/operation
 admission. Unsupported/incompatible discovery, timeout, stop or caller drop do
 not exempt this window. Unknown cleanup remains Lost/reserved with private
@@ -270,9 +284,9 @@ atomic dispatch_started plus operation-lease transaction. That marker is not mod
 input consumption or cleanup proof. The managed entry point synchronously moves
 the private operation handle into its registered owned attempt before any await
 or caller-cancellable point. The supervisor acquires the attempt's genuine workload
-owner before any native execution,
+owner before any runtime/native process execution,
 and retains both through startup, admission and settlement. Runtime owner-acquisition
-failure after the marker sends no native process or input, but cannot erase the
+failure after the marker sends no runtime/native process or input, but cannot erase the
 operation by adapter rollback. A post-marker failure before possible model-input
 admission/consumption closes only through the
 actual private port's NoCurrentDispatch receipt: tracked pristine no-execution
@@ -421,6 +435,15 @@ and required four-plus concurrency open. Whichever issue enables a new provider
 or runtime profile must prove its mixed combinations against every already-supported
 applicable profile before advertising readiness; closing this component cannot
 pre-authorize a later profile or skip those gates.
+Every runtime matrix party applies the same default-deny delegation inventory
+and completeness basis, bound to its actual executor/helper identity and effective
+inputs. Each reachable immediate-daemon, service or deferred file-mediated execution
+route must have genuine current ownership/cleanup under an actual reviewed service
+contract, or be blocked by bound enforceable controls before the first runtime
+execution. Otherwise that runtime profile is Unsupported. The limit on future
+cloud/deferred-job claims does not exempt any route already reachable from this
+attempt. Actual Issues12/13/60 consumers must exercise immediate and deferred
+delegation fixtures and causal caller/readiness mutants.
 Lost is absorbing under ordinary adapter calls. Escalate to Human and retain the
 reservation; a recorded human judgement, PID clearing or manual state change
 does not certify cleanup, settle the operation or authorize implicit replay.
@@ -490,12 +513,20 @@ permission for privileged installation or silently change the required hosts.
 - Existing workspace checks, immutable independent native review, exact-head
   Linux/macOS CI and factual limitations before component merge. These limits
   cannot replace the required native capability completion gates above.
-- Genuine profile-specific workload authority before the actual first native
+- Genuine profile-specific workload authority before the actual first runtime/native
   execution consumer, including launcher, version, auth, policy, protocol and
-  configuration probes; unsupported readiness executes no native process and
+  configuration and adapter Git/helper probes; unsupported readiness executes no
+  runtime/native process and
   sends no model frame or model-input admission/consumption. A real-consumer
   fixture and compiled mutation moving a native probe before owner acquisition
   must expose this boundary.
+- An actual adapter runtime preflight/helper starting a detached configured
+  fsmonitor/hook/service before native startup cannot permit Preparing rollback,
+  NoCurrentDispatch or native completion to release the attempt from direct-child
+  death; same/composed owner cleanup is required. Mutate the real caller guard.
+- Runtime Issues12/13/60 immediate-daemon and deferred file-mediated delegation
+  consumers prove routes genuinely owned or denied before execution; absent actual
+  contract or bound denial stays Unsupported, not an omitted enabled resource class.
 - Managed unsupported-profile refusal precedes reservation/marker. A separate
   actual post-marker owner-acquisition failure fixture proves that only tracked
   NoCurrentDispatch settlement can close the operation; rollback alone cannot.
