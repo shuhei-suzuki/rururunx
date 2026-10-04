@@ -3,8 +3,7 @@
 Risk: STRICT for shared Workflow reservation ownership and release authority.
 The owned preparation implementation is committed. Documentation review is not
 runtime verification. Both first independent source reviews approved with Low
-refinements; their verified fixes passed Source2 as recorded below. A narrow final optional
-delta review remains pending. Historical failed CI remains failed; exact bab6 CI
+refinements; their verified fixes passed Source2 as recorded below. The narrow final optional delta passed both Source3 reviews. Historical failed CI remains failed; exact bab6 CI
 is separately green and does not establish inspection-timeout causality.
 
 ## Provenance and formal gates
@@ -233,3 +232,25 @@ distinct operators:19 consumer-kill runs from16 operators,1 unit and2 masked.
 This final refinement changes tests/comments/docs only; reviewed production
 workflow.rs remains byte-identical to `7a8c0e5`/`bab6f54`. Broad local runtime gates
 are reused from that actual tested source; final exact CI runs all required checks.
+
+## Final source gates and documentation outcome
+
+Exact immutable public `ba70c3f` Source3 owner session
+`0154607b-2dc1-4b7a-9205-d0238b447aca` and observer session
+`6e7cfdba-a79b-4b78-8474-123d71093e7d` completed approve, with no Critical/High/Medium
+findings and verified owned cleanup. Both inspected the byte-verified public
+optional test/documentation delta and actual causal-consumer excerpts. Their
+merge-gate concerns about unobserved current CI were checked independently:
+exact `ba70c3f` CI37176902117 completed SUCCESS on both
+`check (ubuntu-latest)` job111361302972 and `check (macos-latest)` job111361303146.
+No production/test bytes changed after this reviewed and fully CI-tested head.
+
+Optional final document precision is verified: each mutation now records its
+actual committed parent/base and full production blob identity; restored controls
+name18 preparation tests separately from the final1 terminal consumer. Master
+explicitly says eligible release returns the preparation error and only a later
+ordinary step reserves again, with active-owner/releaseCAS guards unchanged.
+Final evidence/master/ledger-only delta needs independent direct inspection and
+its own exact CI; these outcome updates do not claim a new native source review
+or a self-referential runtime check. The prior888 CI remains failed and #14/#43/#46
+remain limitations. PR-required contexts are the two names above.

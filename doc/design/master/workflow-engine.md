@@ -351,8 +351,10 @@ committed Workflow Record identity/version and original attempt. Reservation CAS
 losers never release. Fresh-read CAS preserves concurrent Task metadata and all
 executor/Lost fences. Preparation pins the reserved actor and Task binding; an
 actor override requires release and a new reservation before any dispatch.
-An originally unbound Task assigned during pre-refresh preparation also releases
-and reserves anew with the fresh binding; assigned bindings remain exact. An
+For an eligible error with active owners and a winning release CAS, an originally
+unbound Task assigned during pre-refresh preparation releases the claim and
+returns the preparation error; the next ordinary step reserves with the fresh
+binding. Assigned bindings remain exact. An
 assignment after refresh can reject a definitive missing-worktree publication
 through Store binding immutability, leaving the claim for #14.
 
