@@ -391,3 +391,8 @@ labels prior-round exposure under current-round input independence and retains
 unreleased native holds across successor Sets/descendants. Stable acceptance IDs
 require linked actual consumer evidence; these remain requirements, not current
 Workflow implementation claims.
+The proposed no-show window includes all roster slots, while narrative claims and
+activated specialization/rubric authority remain distinct. Human-origin authority
+uses the approved Issue23 application trust boundary; same-UID direct machine
+actions are not an invented OS sandbox guarantee. Required large-diff coverage is
+bounded and delivered through an actual reviewed slot/provider port before certification.

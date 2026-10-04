@@ -643,6 +643,12 @@ independence. Certificates expose that history and never claim blind independenc
 Unreleased Lost/uncertain members fence every new formal round/Set/descendant in
 the obligation lineage, including after termination or decomposition. Normal
 completion cleanup expiry can produce this hold even after a valid APPROVE.
+The same-round exclusion covers every roster slot, including allow-self, duplicate
+and queued members, until all settle. Executor/condenser checkpoint narratives
+remain attributed claims; hashes attest captured content, not verification truth.
+Human-authority actions use trusted ingress/controller composition, unreachable
+through native/Workflow/Broker runtime JSON/API/IPC; direct same-UID machine/CLI/DB
+tampering remains the explicit application trust limit shared with Issue23.
 
 ### Parallel review
 

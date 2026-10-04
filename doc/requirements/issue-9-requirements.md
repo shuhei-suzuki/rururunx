@@ -30,8 +30,10 @@ same input exclusions and residual native filesystem visibility caveat. A review
 existing single-actor context ownership cannot be bypassed by role or JSON claims.
 Executor, Consultant and ApprovalReviewer cannot impersonate a formal slot.
 
-Formal reviewers must support verified read-only native operation; unsupported
-capabilities fail before model input. Existing native permissions/auth/hooks/rules
+Formal reviewers need contract-declared read-only operation with actual runtime
+permission construction/denial verified; native enforcement remains unverified
+until real Issue16 evidence. Unsupported capabilities fail before model input.
+Existing native permissions/auth/hooks/rules
 remain authoritative. Reviewer or external mutation invalidates publication;
 attribute it to a slot only when actual evidence establishes that attribution.
 Formal gate review requires a clean committed target and an executor write lock
@@ -46,7 +48,7 @@ the byte-identical core remains mandatory and cannot be replaced or omitted.
 Specialization identity/source is visible and attributable; no semantic
 non-contradiction guarantee is invented. rrx never injects same-round peer findings/current-round output or raw executor
 conversation into any initial/member expansion input, rules/source slices or
-manifests before every independent member finishes. Runtime DB/sidecars, peer
+manifests before every roster slot settles. Runtime DB/sidecars, peer
 outputs and raw executor transcripts are ineligible for RepositoryMap selection
 and expansion, including explicit/symlink references. Mandatory references that
 conflict with this exclusion hold before input rather than silently dropping rules. Peer
@@ -68,7 +70,7 @@ retry slot whose previous invocation had no structured result. Result/certificat
 distinguish no prior-claim exposure from exposed re-review and never label an
 exposed opinion blind. Before any later-round input, every earlier round's native
 ownership must be safely settled; current-round peer findings remain excluded
-until every independent member finishes.
+until every roster slot settles.
 
 ## Verdicts, verification and completion
 
@@ -137,6 +139,18 @@ outcomes and verification/evidence references. Prior-round claims and their orig
 hashes/actors are in the byte-identical shared core; per-member exposure entries attest that
 same delivery, never conceal a different prior claim set. Specialization is separately
 declared/hashed and cannot remove this core. It is evidence, not merge authority.
+Every mode-counted opinion obeys the same current-round exclusion, including an
+explicit allow-self author, duplicate-agent and queued/serialized slot. The no-show
+window lasts until every admitted roster slot has settled, not only floor-eligible
+members. No current-round exposed opinion can count toward mode or independent floor.
+
+Task Context Pack/checkpoint and condenser-authored narratives are attributed claims,
+with source actor/content digest, unless a specific typed runtime-observed artifact
+verifies the particular fact. Their immutable content/hash is a fact about the
+captured bytes, not truth of statements such as tests passed or a blocker was false.
+They cannot replace accepted constraints or independently clear a blocker.
+Formal specialization acting as instructions uses the same activated governing
+rubric provenance; Task-authored specialization is reviewed content/proposal only.
 
 | Slot result | Counting and round consequence |
 | --- | --- |
@@ -265,6 +279,18 @@ ownership. Competing coordinators cannot duplicate a slot or publish stale round
 State/slot/audit updates are atomically visible. Format upgrade rejects incompatible
 fresh or already-open old writers without changing evidence; generic history or
 caller JSON cannot create a slot, certificate or native admission.
+Human-authority actions use the same application boundary as approved Issue23:
+only trusted ingress/controller composition can mint nonserializable authority,
+with actual principal/origin and exact policy/target/evidence identity. Native,
+Workflow, agent output/proposal and Approval Broker runtime JSON/API/IPC channels
+cannot label themselves Human or obtain that authority. Broker decisions never
+substitute for Human adjudication/activation. This covers blocker dispositions,
+post-opinion relaxation, supersession/decomposition, authorship/unknown-delta
+disposition and governing-policy activation. Direct same-UID machine/CLI/DB action
+outside these runtime APIs is an explicit trust limit, consistent with Issue23;
+this is not biological identity proof or an OS sandbox. Trusted Rust composition
+is not authenticated against malicious linked code. No extra authentication
+infrastructure is implied or claimed here.
 
 At most one nonterminal Review Set owns a Task/Workflow phase lineage. A new
 Set cannot approval-shop by resetting blockers, holds, history, round count or
@@ -286,6 +312,18 @@ Set termination or Human decomposition. Descendants inherit the hold and uncerta
 target-mutation taint as well as blocker/authorship/budget obligations. Held shares
 and worktree locks continue to count; an independently allocated worktree does not
 erase the lineage hold. Trusted Issue14 recovery is the only releasable exit.
+Obligation lineage is the runtime-owned stable identity allocated for the initial
+Project/Task/Workflow-phase obligation, retained by every successor Set, generation
+and decomposition descendant. A new Task cannot choose a base behind which known
+held/exhausted obligations disappear. Formal admission requires exact registered-
+base ancestry or the recorded legitimate base-sync operation. A base containing
+recorded contributions from an open/held/exhausted obligation lineage rejects a
+fresh unrelated lineage or requires an explicit linked inheritance of every known
+obligation/hold/budget/author exclusion; it is never an automatic fresh budget.
+Previously attributed Task changes remain known even when later reachable upstream.
+Untracked semantic copying/re-authoring from main is outside this ancestry/reuse
+identity guarantee; ordinary provenance/unknown-authorship rules still apply and
+no exhaustive semantic copy detection is claimed.
 
 Hold exits are explicit: persistent nonblocking REQUEST_CHANGES or too few approvals
 requires an authorized Human/Workflow choice of a new full-roster round under its existing retry authority, explicit
@@ -402,6 +440,22 @@ and a fresh target/claim check, or termination; it does not reuse expired author
 or count the waiting slot. NeedsContext can exit by an explicit bounded expansion/
 new factual bundle, or termination. Every exit retains the lineage's obligations,
 round/byte counters and original outcomes.
+Mandatory core contains exact scope/target/base/delta identities and source hashes,
+accepted constraints, governing rubric, checkpoint/context provenance, labelled
+prior obligations/claims and an exact coverage manifest. Complete large diff/source
+bytes may be mandatory expandable references rather than duplicated in that core.
+Required references bind exact content/ranges and remain obligations, not optional
+omissions. Each slot must receive its required review coverage through the reviewed
+bounded provider expansion port before its opinion can certify; delivery provenance
+is not proof of semantic reading or correctness. Missing/unsupported delivery holds.
+Each reference/artifact obeys 1 MiB and cumulative frozen budgets; exact ranges can
+progressively disclose a larger diff without semantic truncation. A >1 MiB target
+diff is certificate-capable when mandatory core and complete required delivery fit
+all frozen ceilings. Core itself above 1 MiB or required coverage beyond budgets is
+an explicit availability limit: NeedsContext/new permitted policy round or termination,
+never a certificate with omitted material. #16 measures this frequency. No generic
+protected live free-text input is an expansion port; actual slot/provider authority
+and typed source-delivery integration remain prerequisites.
 
 ## Consolidated acceptance
 
@@ -774,6 +828,11 @@ Core availability risk must be stated in the public Issue and #16 handoff.
 charged once to lineage artifact quota; distinct member frames, results, expansions
 and manifests are charged by actual retained bytes, including duplicated core bytes
 when a member frame stores them. Actual native input bytes remain measured.
+All retained ReviewSet evidence consumes the same 128 MiB lineage quota, including
+transport diagnostics, verification/check logs, adjudication, attention records,
+manifests, result/expanded/member frames and claim/exposure records. No uncharged
+evidence kind creates unbounded output; references identify externally retained
+artifacts and their declared separately owned bounds, never hidden copies here.
 
 **16.c — Read-only proof basis.** Certificate basis is reviewed adapter contract
 plus runtime permission construction until #16 real native enforcement evidence;
@@ -784,7 +843,7 @@ non-result slot and completed peer findings delivers only permitted labelled pri
 claims after safe settlement. Its eligible fresh opinions may count F under declared
 current-round input independence; certificate records exposure and never claims
 blind/lifetime independence. A current-round peer finding delivered before every
-independent member finishes rejects certification. #16 reports blind and exposed
+roster slot settles rejects certification. #16 reports blind and exposed
 round results separately.
 
 **12.g — Governing rubric provenance.** A Task-authored weakening/removal of review
@@ -800,7 +859,45 @@ remains in the obligation lineage. Hold/taint/locks/actual resource shares survi
 new worktree/Task identities; unrelated lineages may use remaining resources.
 Trusted #14 recovery is the only releasable exit, never a generic late terminal fact.
 
+**9.d — Human ingress provenance.** Native/Workflow/Broker model JSON, proposal,
+runtime API/IPC and ordinary persistence cannot mint Human dismissal, downgrade,
+authorship disposition, relaxation or policy activation; actor=Human is rejected
+with retained evidence. Actual trusted ingress/controller succeeds with exact
+principal/origin/digest/evidence. Direct same-UID local binary/DB/machine action
+outside these APIs is explicitly outside the application guarantee, as in Issue23.
+
+**8.e — All-slot no-show window.** With an allow-self author slot or a queued/
+duplicate slot still active after eligible peers finish, current-round findings
+remain excluded from every runtime input/expansion. A contaminated opinion cannot
+count toward mode or floor even if the independent floor could otherwise pass.
+
+**8.f — Narrative provenance.** A checkpoint or condenser narrative asserting a
+dismissal/tests pass without matching actual runtime evidence remains a labelled
+actor/hash claim in core; it cannot clear a blocker or certify checks. Genuine scoped
+check artifacts retain distinct runtime provenance, and content hashes attest bytes.
+
+**12.h — Specialization authority.** Task-authored focus/ignore instructions are
+reviewed source/proposals, never activated formal specialization. Activated scoped
+specialization with controller/Human provenance is additive and cannot drop core.
+
+**11.c — New Task lineage base.** A new Task based on a recorded held/exhausted
+lineage head rejects independent fresh admission or explicitly inherits all known
+obligations/holds/exclusions/shared remaining budgets. Registered-base sync retains
+those recorded contributions even after upstream reachability. Semantic copying/
+untracked re-authoring is not claimed detected by this ancestry guarantee.
+
+**14.d — Large target coverage.** A >1 MiB target diff with bounded core and exact
+required expansion references can pass only after each slot's complete required
+coverage is delivered within frozen limits. Missing coverage or unsupported typed
+delivery holds. An over-cap mandatory core or beyond-budget required coverage has
+the declared NeedsContext/termination availability outcome, measured by #16.
+
+**18.f — Four-plus policy.** Four-plus production-adapter consumer evidence uses
+activated explicit allow-duplicate-agent or production-registered aliases of the
+MVP adapters, with that permission visible. Fixture-only registrations cannot pass.
+
 Every criterion and bold subcriterion ID above is a stable closure-evidence key.
+
 Fixture mechanism, private port layout, hashes/transaction algorithms and controlled
 transport barriers belong in Issue9 design; linked evidence must demonstrate these
 observable acceptance outcomes through actual production consumers.
