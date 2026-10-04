@@ -485,3 +485,15 @@ Project registry foundation is implemented by `project::ProjectRegistry` (Issue
 recovery, scoped input APIs and transactional soft removal. Native context/env
 forwarding and global scheduling remain dependent integrations. See
 `../issue-26-design.md`.
+
+
+Existing compact Review policy examples are illustrative, not accepted formal Runtime/
+Project configuration. Proposed Issue9 requires explicit class/model/effort, numeric
+parallelism1–32 and actual registered-profile eligibility; a fixed Triple containing
+an author cannot silently supply its independent floor. The actual persisted schema
+and activation handlers remain #15/#24 acceptance, with examples updated in their
+implementing PR. Proposed #9 formal gating remains unavailable until actual readiness;
+its fixed noncertifying conformance ingress uses the same real native ownership ports
+and cannot certify or replace a gate. Historical #8 single-reviewer Passed evidence
+cannot be grandfathered into that future gate; actual upgrade/drain and downstream
+refusal must satisfy I9-AC-21.k before deployment.
