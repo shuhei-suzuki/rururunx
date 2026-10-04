@@ -158,8 +158,9 @@ grant ownership nor reject this factual binding merely by being present. New
 operation admission and future closure keep their separate existing guards.
 
 The SQL count and Session scans remain bounded by the owning Task's stored scope;
-they do not scan other Projects. This design adds no process inspection deadline
-or native execution timeout and no schema solely for record-only binding.
+they do not scan other Projects. Native inspection/execution/cleanup deadlines are
+unchanged; bounded active-driver wake is scheduling only. The binding/diagnostic
+ports join the composed writer epoch and have no independent schema history.
 
 ## Persistence and audit implementation boundary
 
