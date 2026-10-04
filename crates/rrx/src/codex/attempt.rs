@@ -199,7 +199,7 @@ impl CallerGuard {
 impl Drop for CallerGuard {
     fn drop(&mut self) {
         if self.armed {
-            self.control.preparation.cancel();
+            let _ = self.control.consumed();
         }
     }
 }
