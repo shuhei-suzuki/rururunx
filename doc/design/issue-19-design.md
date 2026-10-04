@@ -312,14 +312,28 @@ attempt when appending a new native attempt; a None-context transition cannot
 reuse an old version for a new native attempt. EvidencePort phases retain their
 existing separately validated context contract. The same Workflow transition must
 check any attempt.session_id binding or closure against the private allocation
-in the same transaction. It cannot bind another terminal Session to close a
-claim while the allocated native owner is still Running/Lost. Unallocated native
-claims remain conservative; an invented terminal actor is never release proof. Expose a pure scoped
+in the same transaction. Whenever an allocation exists, closing/replacing the
+active attempt requires that exact allocated Session to be persisted terminal,
+regardless of whether attempt.session_id has been bound; Succeeded additionally
+requires Exited. Bind or verify session_id to that owner atomically. A Running
+Reviewer is operational ownership even though it is not an Executor reservation.
+An unbound claim cannot close around it, and another terminal Session is never
+release proof. Binding may update only the Workflow Record while retaining exact
+Task/Project/Goal/Record CAS; this check does not require a Task version bump. Expose a pure scoped
 allocation reader for explicit recovery. The recovery port must resolve an unbound
 claim using this private owner, actual persisted terminal Session and verified
 native cleanup; it must not invent another actor or clear Lost/uncertain ownership.
-The current kernel may remain conservatively held until that recovery port is
-integrated; the row is durable evidence, not an automatic release decision.
+An absent allocation is factual proof that no schema6 typed Session/input was
+admitted through Store for that exact context, because every such write allocates
+atomically and older writers are fenced. It does not by itself invoke or broaden
+Workflow release policy: ordinary observer polling remains read-only, and owner
+release still requires its own exact claim token and applicable pre/post-marker
+rules. Explicit recovery can use this absence to prove no typed admission, while
+an allocated Starting/Running/Lost or uncertain owner remains held until genuine
+terminal/cleanup evidence. Current unbound post-marker failure may remain held
+until the explicit recovery port is integrated; this is an availability limit,
+not a claim that absence means unknown model dispatch. No new automatic release
+policy is introduced by the index.
 Future
 multi-reviewer rounds require their own reviewed slot authority; they cannot use
 this single-actor allocation as a blanket role bypass.
@@ -406,7 +420,10 @@ audit, never changes an active launch, and provides a strictly higher context
 version for terminal continuation or migration recovery. Permit forced publication only when the latest context is actually referenced by
 an owned terminal Session whose exact pinned metadata matches its PRIVATE validated
 preparation/admission pair, or lacks the required v2 instruction contract
-for migration. Otherwise identical reuse remains required. Private variants stay
+for migration, OR the private prepared variant count for that current context
+has reached its cap128. The cap-exhaustion branch performs the same idle/source/
+head/owner CAS and starts a fresh bounded variant index without deleting history.
+Otherwise identical reuse remains required. Private variants stay
 bounded per context; unused identical force calls cannot create endless versions. Test recovery from an actual schema5 prepared frame through
 terminal state, forced higher publication, preparation and fresh admission.
 
@@ -430,10 +447,21 @@ terminal/cleanup evidence. Editing Lost to Stopped, relying on a dead PID, or
 manually deleting a lock is not a supported upgrade procedure. Fresh drained
 databases can use schema6 without claiming that recovery integration. An explicitly terminal Task's non-owning Workflow
 history is preserved and nonlaunchable. Existing terminal Goal/project-only Consultant
-history remains readable; live ownership in that scope must also drain. Apply the preflight to every
+history remains readable; live ownership in that scope must also drain. Cancel is a terminal disposition: interrupted Task history cannot be resumed
+as that Task. Idle unfinished and post-effect Workflows are deliberately refused
+too, although they may have no live actor; this upgrade does not reinterpret their
+generation/source authority or move external PR effects to a new runtime. The
+operator must complete them under the compatible runtime or explicitly accept
+terminal cancellation and reconcile remaining external effects. No lossless idle
+Workflow hot-upgrade is claimed. Apply the preflight to every
 older supported schema path (v1 through v5), regardless of whether it contains
 typed authority. Run it before any earlier migration in that same transaction,
-not only before direct5-to-6.
+not only before direct5-to-6. Decode ownership with source-version-aware minimal
+validated JSON fields before the earlier schema migrations: bounded Session scope/
+ID/state, lock scope/active and (v3+) Workflow active/history/finished with its Task
+state. Require well-typed fields and consistent ownership; do not demand later
+optional Project metadata from a v1 body. Golden legitimate v1–v5 drained fixtures
+migrate and live/contradictory equivalents refuse.
 Refusal rolls back without table/marker/audit changes and is tested on real old5
 Running-plus-checkpoint and pending/post-effect Workflow fixtures. This avoids
 both silently accepting old weaker projections and gratuitously invalidating an
@@ -505,7 +533,11 @@ the admitted pair or creates historical-observation authority. There is no plura
 the single row still describes the previous admitted input until replacement.
 Checkpoint format-v1 hashes remain BYTE-IDENTICAL to the existing
 `serde_json::to_vec(Value)` compact UTF-8 encoding with its recursively sorted
-serde_json map keys. Do not apply RFC8785, normalize numbers, reorder arrays or
+serde_json map keys. Use an explicit recursive sorted-key encoder that produces
+those exact bytes independently of serde_json feature unification, retaining
+serde numeric/string encoding and array order; it is not RFC8785. Restore hashing
+keeps typed Session outer serde field order and explicitly sorted nested Value
+keys, producing the existing helper bytes even with preserve_order enabled. Do not apply RFC8785, normalize numbers, reorder arrays or
 change existing hash prefixes. Golden persisted chain/ref fixtures prove old
 checkpoint hashes still validate. New instruction/admission hashes use their own
 versioned typed encoding. Keep the restore Session outer fixed serde field order
@@ -538,7 +570,10 @@ post-upgrade application write, native dispatch, worktree/source mutation or
 external PR/merge effect. It restores the complete consistent pre-upgrade state
 while every writer remains closed. Once such an effect occurs, this document
 authorizes no backup rollback: discarding its state would erase ownership/evidence
-and strand external effects; explicit recovery is required. Automatic database
+and strand external effects; explicit recovery is required. This is an operator-
+attested manual procedure, not an enforced Store rollback API; Store exposes no
+backup restore/downgrade method or assertion that the precondition is known.
+Automatic database
 copying/downgrade is outside this Store contract. Test cancelled terminal historical Workflow with active=None
 as a successful migration, and terminal Task with active claim as refused.
 
@@ -604,5 +639,35 @@ Boundary proofs additionally cover first allocation on terminal-to-Starting UPDA
 second actor rejection, fake terminal Session binding/closure, native-only context
 uniqueness, admitted metadata substitution, allowed initial binding, explicit Some
 mismatch, historical binding after checkpoint append and exact prewire rollback.
-An unbound failed native owner remains durably held for explicit Issue14 recovery;
-no automatic poll release or forged terminal actor is introduced here.
+An allocated unbound failed native owner remains durably held until verified
+terminal/cleanup evidence. An unallocated post-marker failure follows the existing
+release policy and may need explicit recovery; no automatic poll release or forged
+terminal actor is introduced here.
+
+
+### Dispatch cardinality and irreversible typed claims
+
+A consumed dispatch_intent denotes one model-input delivery for one PreparedInput
+attempt, not each native progress/response event. Historical acknowledgements,
+stream chunks, approvals, usage and per-turn response IDs do not create a new
+intent or send new input. An actual new input/turn dispatch must take latest
+frame/head admission, even on an already admitted Session. If that Session has
+appended a checkpoint, its old pinned frame is stale: supported continuation is
+authoritative terminal settlement, idle consecutive pack publication and a fresh
+higher-input Starting. Live multi-turn input against the old checkpoint is not a
+supported Core continuation shortcut. This availability limit applies to standalone
+as well as Workflow Sessions; it cannot be hidden by relabeling a new dispatch as
+an acknowledgement. Test own-checkpoint append then reject a changed consumed
+intent with old pins, and prove explicit higher-input continuation succeeds.
+
+Every new irreversible Pr/MergeGate/Cleanup evaluation on a typed owner requires
+an explicit checkpoint:head key, including the none sentinel, before comparing the
+indexed live head. Missing or malformed keys fail closed; validate(None)'s legacy
+compatibility cannot admit a typed claim. Same historical admitted claim can finish
+after a later append under the existing immutable claim rules. Legacy-only owners
+retain their explicitly separate contract. No typed-to-opaque publication is
+allowed in either generic context writes or the private Workflow transition path.
+Protection derives from the owner's durable typed ancestry (an indexed/latest
+non-downgrade invariant), never a caller-selected JSON flag. Verify both publication
+paths, missing-key irreversible caller boundary and allocation-aware unbound
+Reviewer closure with independent Store connections and meaningful mutants.

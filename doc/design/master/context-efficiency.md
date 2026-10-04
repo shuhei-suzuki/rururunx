@@ -465,8 +465,10 @@ effective model/effort value, explicit Some cannot silently change, and a known
 native_ref remains immutable across the Session UUID. Exact admitted metadata
 pins and private same-attempt binding updates remain atomic. Higher-input fresh
 continuation resets requested model/effort before Starting and keeps exact prior
-terminal rollback proof. Codex6 and Claude5 require the documented coordinated
-caller compatibility changes and causal wire fixtures before integrated acceptance.
+terminal rollback proof. Claude5, Codex6 and Grok7 require reviewed complete prepared-frame preflight,
+input SHA/source pins before Starting, atomic consumed admission before wire,
+native binding compatibility and causal typed-frame caller fixtures before
+integrated acceptance.
 
 Private phase allocation covers initial INSERT and fresh terminal-to-Starting
 UPDATE; Engine binding/closure must use that exact allocated owner. Ordered
@@ -480,3 +482,14 @@ pairs. Starting prepares current input without asserting delivery; only validate
 Running/consumption admits it. Historical actor binding can update an admitted
 pair solely for permitted initial None-to-Some fields, never change its input.
 These facts cannot be synthesized from Session recovery JSON or generic audit.
+
+
+A typed irreversible claim must carry an explicit own checkpoint head; absence
+fails closed. Single-actor ownership survives the gap before Engine Session
+binding: an allocated live Reviewer prevents claim closure. The native dispatch
+intent denotes actual input delivery; an own-checkpoint append requires fresh
+higher-input continuation before another delivery. Historical observation alone
+sends no new model input. Variant-cap exhaustion supports explicit idle consecutive
+republish without discarding history. Idle unfinished Workflow hot-upgrade is not
+supported; compatible-runtime completion or explicit terminal cancellation is
+required, with remaining external effects reconciled.
