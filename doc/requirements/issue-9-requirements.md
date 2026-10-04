@@ -79,3 +79,21 @@ Use meaningful mutation tests for policy, source/slot ownership, history and loc
 boundaries. Independent native review and exact-head Linux/macOS CI are required.
 Synthetic adapters prove orchestration only; actual two/triple native runtime
 review with real output and measurement is separate mandatory dogfood evidence.
+
+
+Core boundedness: 1–32 reviewer slots, at most 32 concurrent local slot launches,
+64 rounds per Review Set, 256 findings per individual result, 8192 UTF-8 bytes per
+finding text and 1 MiB per factual bundle/result envelope. Counts/timeouts are
+validated before native input, and mandatory content overflow is explicit; no
+finding, constraint or required evidence is silently truncated. Runtime/Project/
+agent resource limits may lower local parallelism, never raise global authority.
+These bounds are recorded in the durable policy and enforced on reopen as well
+as new input. Exhausted rounds require explicit decomposition or human judgment.
+
+Completion never publishes early while another owned slot can still produce a
+blocking finding or holds uncertain native ownership. Any/quorum eligibility can
+become true before every reviewer approves, but all slot outcomes must settle and
+all reported potential blockers must be verified before a certificate is issued.
+Failure/timeout tolerated by explicit policy remains visible in the final result.
+Cancellation is an explicit outcome and requires authoritative safe settlement;
+Lost always holds the round for recovery rather than reducing the roster.

@@ -1,6 +1,6 @@
 # Issue 9 design preparation: Review Set authority and rounds
 
-Status: proposed interfaces, not implementation. Base is merged main 1c44316.
+Status: proposed interfaces, not implementation. Base includes merged main 4851fcd (Grok7 and shared Session CAS).
 Integrate the reviewed context-pack/frame authority and native provider contracts
 before production work; do not guess an unmerged kernel signature.
 
@@ -88,3 +88,28 @@ source/lock races. Record all failure categories and mutation controls. Final
 integration must show the real multi-reviewer Workflow path, and later native
 model dogfood must show two/triple reviewer sessions and equivalent factual
 inputs rather than counting independent development reviews as runtime behavior.
+
+
+## Formal preparation boundary
+
+Requirements and this provider-neutral design can be independently reviewed now:
+merged dependencies2/4/8 are available. Production work waits for the reviewed
+Issue19 prepared-frame/private actor authority and its exact shared native caller
+contract. Before implementation, commit and independently review an additive
+integration design against that merged source, including its actual schema marker,
+ReviewSet allocation, transition CAS and Workflow port. Proposed names here are
+not public kernel APIs and this draft does not claim those source ports exist.
+
+Policy bounds are 32 slots/local parallel launches, 64 rounds, 256 findings per
+slot result, 8192 bytes per finding text and 1 MiB per input/result envelope. Record
+validated bounds in the immutable policy; reject overflow before publication or
+model input. Use checked arithmetic and bounded database queries, and preserve
+provider measurements as nullable fields distinct from estimates. Global/Project/
+agent resource authority further constrains scheduling; a local ReviewRunner
+cannot manufacture extra permits while scheduler integration is pending.
+
+Any/quorum policy does not yield an early certificate: settle the entire owned
+roster first and verify every reported potential blocker. Stop remaining work only
+through the adapter's explicit safe cancellation path, retaining cancellation and
+uncertainty as individual outcomes. Lost is a hold, never an implicit roster
+removal. A completed certificate explicitly reports tolerated failures/timeouts.
