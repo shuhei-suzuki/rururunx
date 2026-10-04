@@ -386,7 +386,7 @@ public Store::usage body-type corruption reproduces a synthetic canary in altern
 Display through the serde source chain at test-only17915ed. The initialacb5 control
 stopped earlier on outer static-text difference and earns no leakage kill credit;
 its log is retained. Only this Usage decode maps failure to a static message with
-no raw source chain. Task/Goal/Project corrupt fields, exact Display/alternate
+no raw source chain. Malformed input-token/cost/Scope fields read through Task/Goal/Project views, exact Display/alternate
 Display and canary-free Debug controls retain schema checks and snapshot all usage/
 audit rows and owners/Sessions. Debug may retain ordinary anyhow backtrace behavior;
 no configuration override or bound on arbitrary backtrace is claimed. Whole21/
@@ -417,3 +417,17 @@ and source restored and control PASS. Current input/patch/tree/log hashes retain
 Earlier237+2/fullsourcec44 results remain separate, not reassigned. Two independent
 immutable Source1 reviews and exact current CI still required; no native/full21 gate
 waiver, historical555 cause/regression UNKNOWN retained, no issue closure.
+
+
+Legacy decode Source1 d774df3: TWO independent native APPROVE, no Critical/High/Medium
+or unresolved component blocker. Both selected review wrappers closed and cleaned;
+this is not F1/all-descendant native cleanup qualification. Verified Low wording
+corrected and master direct component link added. Optional unknown-field-key quoting
+coverage deferred: actual controls cover input_tokens/estimated_cost/scope invalid
+types only; production discards every decode error uniformly. No unknown-key test
+or category-specific mutation credit. Source/test/Cargo/CI unchanged in this final
+evidence-only metadata; all42 current inputs checked against reviewed head.
+CI37235683012 Linux/macOS EVERY step PASS, actual checkout266262c9 parents2c6ae9d/
+d774df3 and complete tree equal reviewed head; debug tests and release BUILD only.
+Final current-head CI/tree and empty closing references remain merge gates. Whole21/
+MVP/native producers OPEN; historical555 cause/regression UNKNOWN retained.

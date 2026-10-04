@@ -242,7 +242,7 @@ returning history; any mismatch refuses the whole read without repairing state.
 The legacy Usage reader projects body decode failure to static text without a raw
 serde cause; valid raw metadata and other readers remain unqualified.
 This is an isolation/integrity check, not bounded raw-metadata retirement or a
-qualified measurement/query capability. Details: [legacy scope component](../issue-21-legacy-scope.md).
+qualified measurement/query capability. Details: [legacy scope component](../issue-21-legacy-scope.md), [legacy decode-error component](../issue-21-legacy-decode.md).
 
 
 ## 13. Invalidation and freshness
