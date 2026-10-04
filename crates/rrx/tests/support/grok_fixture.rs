@@ -173,6 +173,9 @@ impl Fixture {
         );
         Ok(session)
     }
+    // Shared with library receipt controls; this route is exercised by the
+    // separate registered structured integration target.
+    #[allow(dead_code)]
     pub(super) async fn start_structured_trait(
         &self,
         adapter: &dyn AgentAdapter,

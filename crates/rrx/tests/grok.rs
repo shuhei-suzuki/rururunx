@@ -151,8 +151,8 @@ async fn concurrent_native_reviewers_share_exact_lock_and_validate_structured_ve
     let adapter = Arc::new(fixture.adapter());
     let schema = json!({"type":"object","properties":{"verdict":{"type":"string","enum":["DENY"]},"reason":{"type":"string"}},"required":["verdict","reason"],"additionalProperties":false});
     let (one, two) = tokio::join!(
-        fixture.start_structured(&*adapter, schema.clone()),
-        fixture.start_structured(&*adapter, schema.clone())
+        fixture.start_structured(&adapter, schema.clone()),
+        fixture.start_structured(&adapter, schema.clone())
     );
     let one = one.unwrap();
     let two = two.unwrap();
@@ -864,7 +864,7 @@ async fn native_structured_consumer_rejects_each_schema_violation_and_live_decis
                     .await
                     .unwrap()
             } else {
-                fixture.start_structured(&*adapter, schema).await.unwrap()
+                fixture.start_structured(&adapter, schema).await.unwrap()
             };
             let status = finished(selected, &session, &fixture).await;
             receipt_support::assert_state(
