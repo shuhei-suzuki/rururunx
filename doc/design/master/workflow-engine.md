@@ -99,6 +99,9 @@ Each phase declares:
 
 ## 6. Review policy
 
+The YAML below is a target contract. Configurable multi-reviewer sets and completion
+policies are not executable in the current single-Reviewer Rust implementation.
+
 Review policy is data, not hard-coded Triple Review logic.
 
 Example:
@@ -207,8 +210,8 @@ Expected behavior:
 - Task creation establishes Context Pack v1
 - requirements/design/implementation milestones update the Context Pack
 - commit/revision changes invalidate stale diff/review slices
-- proposed Issue9 review launch freezes a deterministic Review Bundle/core per round;
-  later deltas use an eligible full-coverage baseline and complete current impact scope
+- current reviewer launch owns one phase ContextVersion; configurable per-round
+  ReviewBundle lifecycle remains [Issue9](../../requirements/issue-9-requirements.md)
 - re-review prefers a delta bundle from the previous reviewed revision
 - dynamic workflow escalation may add required rules/artifacts and therefore creates a new Context Pack version
 - context expansion requested by an agent is recorded but does not silently rewrite authoritative artifacts
@@ -282,14 +285,9 @@ STRICT execute against `AgentAdapter`; formal requirements/design/impact phases
 use executor capability and review phases require explicit Review capability.
 Generic CLI's honest Execute-only contract therefore cannot act as a reviewer.
 The baseline delegates one configured reviewer Session; independent multi-reviewer
-sets, completion policy and remediation reconciliation remain #9 integration. Proposed
-[Issue9 requirements](../../requirements/issue-9-requirements.md) require fresh
-per-round native Sessions, explicit prior-finding dispositions and evidence-bound
-obligation applicability. An exhausted unrelated contribution alone does not veto
-proven disjoint work; applicable/unknown review obligations and all actual native/
-root/common-Git resource holds remain retained. These are unresolved requirements
-and future integration contracts, not behavior of this baseline single-reviewer
-consumer or implemented Human/scheduler/provider ports.
+sets, completion policy and remediation reconciliation remain #9 integration.
+The proposed contract remains in [Issue9 requirements](../../requirements/issue-9-requirements.md),
+not an executable multi-reviewer API or permission of this current implementation.
 
 `WorkflowSources` supplies factual scoped revision/source versions and selected
 payload (#18). Authority versions remain comparable across phases; phase and budget

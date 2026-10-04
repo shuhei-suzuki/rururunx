@@ -109,7 +109,15 @@ Project resolution is separate from this future ReviewSet authority contract.
 REQUEST_CHANGES never
 becomes APPROVE merely because its findings were dismissed. ESCALATE requires a
 visible human-attention hold. An approval containing a potential blocking finding
-cannot satisfy the round until that finding is resolved independently.
+cannot satisfy the round until that finding is resolved independently. Trusted Human
+false-positive/downgrade/non-applicable/duplicate adjudication of an unchanged-target
+finding may let THAT SAME safely settled round certify only when there is no ESCALATE
+or disputed verification, all source/policy/coverage pins remain current and mode+
+independent floor are already met. It changes no original verdict or author eligibility.
+REQUEST_CHANGES never becomes APPROVE. ESCALATE/dispute requires a new full-roster
+round after trusted resolution; a changed-target fix always requires a new round.
+Test same-round quorum after nondisputed Human dismissal versus new-round dispute,
+ESCALATE and actual fix; no carried approval or certificate-floor substitution.
 
 Severity is Critical/High/Medium/Low. The immutable policy's blocking set always
 includes Critical/High/Medium; configuration may add Low but cannot exempt that
@@ -125,8 +133,13 @@ two policy-designated slots each excluded from all recorded authors.
 Each confirmer must differ from every recorded delta author in registered agent
 identity and native provider family, and a two-confirmer pair must also differ from
 each other in both registered agent identity and native provider family; alias/allow-duplicate-agent permission cannot create dismissal independence.
-Confirmer designation is frozen in activated policy before round admission; no
-post-opinion Workflow selection can pick favourable confirmers. Any eligible
+Confirmer designation for inherited findings is frozen at Set/obligation-lineage
+activation BEFORE ITS FIRST admitted round. Before a later round is not sufficient.
+Any later policy/roster designation requires trusted recorded Human/controller
+supersession and is post-observation; a newly designated agent/slot that already
+expressed an opinion on that finding before designation cannot serve as its confirmer
+pair. Inherited finding designation/history cannot reset through successor Set/alias.
+No post-opinion Workflow selection can pick favourable confirmers. Any eligible
 non-author still-present or equivalent non-clearing disposition contradicting a
 proposed clearance for that same finding/current target is disputed verification:
 it holds for trusted Human, including an original finder dissent against two diverse
@@ -289,7 +302,14 @@ requires reviewed normal post-result cleanup shape and observed/declared latency
 envelope from its actual production caller contract: a reviewed upper bound of the
 supported NORMAL cleanup path through actual owned settlement, including required
 native/tool/server shutdown stages and bounded dispatch/scheduling overhead. A p95,
-typical latency or single observation is not that contract bound. Unknown tails or
+typical latency or single observation is not that contract bound. The declaration
+must be backed by actual producer code/profile and bounded shutdown/termination/
+reap/owned-task settlement enforcement, with exact residual-uncertainty conditions;
+an arbitrary timeout constant does not establish supported normal cleanup. Unknown
+or escaped cohort ownership cannot be certified by selected-group death. Core
+criteria4/16.b require these ACTUAL supported5/6/7 declarations before closure;
+21.f public tracking alone cannot satisfy them. Until they exist the affected
+preset/criterion stays open and refuses before effects, including Triple. Unknown tails or
 unbounded required stages make the profile unsupported; exceptional OS/ownership
 uncertainty remains the explicit held outcome. Durations use integer milliseconds;
 strict deadline>envelope gives at least 1 ms normal-bound margin, without claiming a
@@ -381,7 +401,11 @@ disposition and governing-policy activation. Direct same-UID machine/CLI/DB acti
 outside these runtime APIs is an explicit trust limit, consistent with Issue23;
 this is not biological identity proof or an OS sandbox. Trusted Rust composition
 is not authenticated against malicious linked code. No extra authentication
-infrastructure is implied or claimed here.
+infrastructure is implied or claimed here. The principal/origin follows the SAME
+approved23 derivation contract; composing code may not supply an arbitrary principal
+or relabel library-composition as CLI/UID ingress. Preserve actual invocation origin
+and test that native/API/IPC and library-origin relabeling cannot mint CLI authority.
+This reuses the contract/type semantics, not a mandatory23 implementation merge.
 
 At most one nonterminal Review Set owns a Task/Workflow phase lineage. A new
 Set cannot approval-shop by resetting blockers, holds, history, round count or
@@ -411,6 +435,15 @@ applicable held/exhausted obligations disappear. Formal admission retains exact
 registered-base ancestry or the recorded legitimate base-sync operation. Ancestry
 identifies retained contributions; it does not alone prove every later obligation
 is affected by every reachable uncertified contribution.
+
+Issue9 owns the typed applicability consumer/checker and trusted verification boundary.
+Actual12 owns the reviewed impact/applicability producer using18/20 exact source/
+artifact inputs. This ownership and conformance obligation must be publicly tracked
+under21.h before9 closes, without a9→12 merge cycle. Until the actual reviewed producer/
+conformance exists, production applicability is UNKNOWN and inherits or refuses;
+9 Git-backed controlled consumer fixtures do not certify fresh-budget/disjoint
+production admission or close its MVP availability gate. A lexical RepoMap, filename
+intersection, model/Human claim or fixture boolean is not semantic applicability proof.
 
 Applicability is explicitly evidence-bound. A fresh unrelated obligation requires
 trusted recorded impact/applicability evidence covering its changed AND relied-on
@@ -668,7 +701,11 @@ are not runtime proof.
 13. Certificate binds exact phase/generation/claim, target/source/core/member hashes,
     mandatory instruction/skill/context/checkpoint provenance and settled evidence.
     Source/rules/policy/risk/context drift and cross-phase replay cannot pass.
-    Certificate is not merge permission.
+    Certificate binds native_execution and read-only/source/method enforcement basis.
+    The actual review-gate consumer rejects synthetic or otherwise unready basis as
+    production gating evidence; fixture certificates remain explicitly nongating.
+    Test refusal through the actual downstream certificate consumer. Certificate is
+    not merge permission;43 binding remains record-only, never a production-gate override.
 14. Slots and local parallelism each reject 0/33 and accept 1/32 within policy;
     exercise 256 findings,8192-byte text,1-MiB envelopes, mandatory overflow,
     quota/round exhaustion, startup/review timeouts 1–3600 and queue-attention exits retain evidence
@@ -857,8 +894,10 @@ explicit eligible custom roster. Human authorship remains separately attributed.
     a Lost hold before trusted #14 recovery. This canonical handoff additionally
     covers 21.e trusted 15/24 Human ingress,21.f actual 5/6/7 producer contract ownership,
     and 21.g actual 14/27 fairness/resource recovery and 12 verification evidence.
-    Public tracking, rather than those downstream implementations, is required
-    before 9 closure; no cyclic merge dependency is introduced.
+    Public tracking, rather than downstream12/15/24/27 implementations, is required
+    before9 closure; actual core-native declarations/support under4/16.b remain real
+    pre-closure inputs, not tracking exemptions. No cyclic merge dependency is introduced.
+    New21.h tracks12 applicability producer/conformance and9 consumer ownership.
 
 **21.b — Default measurement handoff.** Safe retry/timeout defaults are retained until real #16 measurements justify a
 separately reviewed policy change. Native dogfood reports how often partial-output
@@ -1102,7 +1141,14 @@ The new required coverage is cumulative baseline→current target delta plus all
 unresolved claim locations/evidence and current mandatory core, PLUS all affected
 consumers of changed symbols/APIs/constants/thresholds/environment names/input sets/
 paths/dependencies. Exact current-target impact evidence under the typed consumer
-contract identifies those required unchanged callers/consumers and inspected scope;
+contract identifies those required unchanged callers/consumers and inspected scope,
+with exact method/source/evidence basis and known-incompleteness classes. Certificate
+records that basis and never claims an exhaustive semantics theorem. Method capability
+must cover each changed kind: lexical-only map evidence cannot claim closure for
+unknown dynamic dispatch/config/threshold/environment consumers; unsupported kinds
+are UNKNOWN, even if a producer labels an incomplete list complete. A false completeness
+label without method-supported evidence rejects. Tests exercise lexical-only changed
+threshold/environment consumers falling back to full coverage;
 missing/stale/unknown impact closure invalidates delta eligibility and forces full
 Task-base→target coverage. A full fallback still preserves explicit impact-analysis
 verification obligations; broad diff delivery alone is not semantic impact proof.
@@ -1204,7 +1250,8 @@ eligible finder’s confirmed-fixed with exact inspected locations/check evidenc
 its prior High after a new full round, while general APPROVE, unknown hash, stale target,
 wrong slot/family, malformed disposition or executor-only claim keeps the veto.
 Finder still-present versus two diverse confirmed-fixed holds for trusted Human;
-post-opinion confirmer redesignation rejects.
+post-opinion confirmer redesignation rejects, including an activated designation
+between rounds after that agent/slot already expressed its opinion.
 Retain every original finding/opinion and disposition independently.
 
 **21.e — Trusted product Human ingress.** Issue9 owns the library authority/ingress
@@ -1256,6 +1303,30 @@ effects retain the full conservative affected physical scope until 14 recovery.
 Test narrow supported hold permitting a disjoint Task when permits allow, and
 widened root/common-Git uncertainty blocking physically affected Tasks/Projects.
 This profile/evidence basis is not an OS sandbox or generic terminal death proof.
+
+**21.h — Applicability producer and production enablement.** Public12 acceptance
+must own the reviewed trusted impact/applicability producer using18/20 scoped exact
+inputs and9 typed consumer/checker conformance. Method and known-incompleteness basis
+must be explicit; unknown/incomplete or missing producer inherits/refuses, never
+fresh-budget production certification. Actual9 fixtures prove the consumer/refusal
+boundary only. This is a separately tracked MVP availability/impact gate without
+an implementation dependency cycle. Multi-Project production ReviewSet integration
+also remains DISABLED until actual14 retained-share recovery and27 fair admission
+compose; a synthetic library success or per-Project cap cannot erase held shares.
+Public Issue9 states that gate;21.g/#16 owns its actual cross-Project evidence.
+
+The canonical public handoff table below summarizes criterion21 ownership; individual
+stable subcriteria still retain their exact stated acceptance. Quoting a gate never
+claims it complete or waives actual9 core support prerequisites.
+
+| Stable acceptance keys | Public owner / actual responsibility |
+| --- | --- |
+| 11.b, 11.e, 21.c/d/g | #14 exact held native/lineage/resource recovery; #27 fair admission; #16 scoped hold/availability measurements |
+| 8.g, 10.d | #20 production typed bundle/delta/coverage; #9 consumer contract; #12 impact producer; #18 captured source inputs |
+| 11.c/d, 21.h | #12 trusted applicability producer, #18/#20 inputs, #9 consumer; #16 actual disjoint/unknown/resource impact |
+| 16.b/c, 18.g, 8.a/c | #5/#6/#7 actual supported native/config/permission/cleanup declarations or tracked reviewed follow-up; #16 real enforcement/trace/default evidence |
+| 8.d/h, 16.a, 14.c/d/e, 17.c, 20.a/b, 21.b, 9.f | #16 actual exposure, efficiency, finite delivered versus retained bytes, quotas/retries/eligibility/Human impact; #21 nullable native telemetry |
+| 9.d, 21.e | #9 trusted ingress contract; #15/#24 actual scoped product Human handlers |
 
 Every criterion and bold subcriterion ID above is a stable closure-evidence key.
 Absent suffixes are intentional reserved IDs; reordered subcriteria retain their
