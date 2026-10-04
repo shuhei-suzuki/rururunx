@@ -332,15 +332,24 @@ explicit Acked historical observation outcome (within its Acked/ConsumedHistoric
 classification). It allocates/consumes/binds nothing,
 changes no private digest/owner, and grants no operation authority. Lost stays
 absorbing and malformed/foreign/absent pairs reject. Preserve existing generic
-activity/worktree constraints; historical does not override ProjectBlocked or an
-own-Session/write failure. Existing denial then stops without a reply wire.
+activity/worktree constraints and own-Session/write failures. Preserve the actual
+provider-specific ordering: Claude DENY changes WaitingApproval to Running before
+wire and ProjectBlocked stops that write; Codex Decline prewire persists unchanged
+WaitingApproval, a safe update that can reach wire under ProjectBlocked, then its
+postreply Running publication can fail. Do not add a universal denial parent fence.
 ALLOW's separate full current NativeCAS and actual owned pending-request proof
 remain mandatory. Parent Task metadata/version revocation alone cannot turn
 DENY into an operation grant or require ALLOW's parent-version fence.
 
+Pre-reply Running-to-WaitingApproval with its exact pending request is also the
+Acked historical outcome with unchanged tuple/consumed UUID, before any decision.
+
 Inventory every consumer of the renamed operation/transport journal: Claude
 permission assertions, reserved intent audit payloads, SQL ALLOW-failure trigger
-(current :3005) and control/mutation readers. Preserve event names/order and
+(current :3005) and control/mutation readers. The shared Session.saved projection
+currently selects only dispatch_intent: extend it with bounded operation/transport
+facts so Claude decision audits remain observable. Retarget :2486/:2493/:3005/:3022
+to operation_intent and pair refusals with successful populated-journal controls. Preserve event names/order and
 update the causal field selection; no assertion should begin reading the
 prepared-input UUID as a permission decision. Add post-binding consumed-input
 controls: ALLOW survives and later exact Succeeded closure still resolves that
@@ -434,3 +443,16 @@ workspace regression appropriate to the integrated source, fmt/clippy/build,
 and exact-head Linux/macOS CI. Preserve failed CI and native observations.
 Update Workflow master design in the implementation PR. Issue43 remains open
 until native matrix, typed integration and merge criteria are actually satisfied.
+
+## Approved-design implementation inventory
+
+Both Design4 reviewers approved77da799. The following actual-consumer details
+remain mandatory source work, with independent immutable source review: Fake
+captures before its existing pre-preparation pause and adds a second post-
+preparation/pre-return barrier for binder P/G/T/Workflow/full-lock CAS mutations.
+Injection before preparation earns only start-admission refusal, no binder kill.
+A protected terminal_input guard mutant needs a reachable native entry: an
+unprotected-era Interactive Consultant on a Task later protected by a ReadOnly
+Reviewer frame, or the actual native-entry guard seam with retained owned terminal.
+Startup rejection cannot itself kill an omitted terminal_input guard. The source
+review must resolve the reachable construction rather than count setup failures.

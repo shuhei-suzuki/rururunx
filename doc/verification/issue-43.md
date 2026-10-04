@@ -70,3 +70,13 @@ reject before reservation/Starting/spawn/bytes, including pending Waiting states
 Actual adapter-entry controls and a causal mode-guard mutant are required; no
 terminal journal is treated as typed prepared consumption. Public Design15
 de69e362f0dfec2e17e2d3a3bc9b3f654e230898 remains independently under review.
+
+Design4 public77da799 completed both independent reviews, each APPROVE with no
+findings and verified owned cleanup. Exact CI37188412498 succeeded. This approves
+the proposed design, not absent production/native integration. Optional verified
+source details are recorded: bounded Session.saved operation/transport projection
+and real Claude audit/SQL readers, pre-reply pending Acked publication, provider-
+specific blocked DENY ordering, second Fake barrier and reachable terminal-input
+mutant. These details remain source-review obligations; no new production result
+or mutation kill is claimed. #19 source/design and combined native gates remain
+pending. Native resumed usage remains attribution-unverified.

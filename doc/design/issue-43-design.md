@@ -574,8 +574,9 @@ Primary locations at public12f545f unless explicitly pinned otherwise:
   closure guard compose separately with #19. The new binder owns registration;
   ordinary transitions retain closure proof and Task writes.
 - state/mod.rs:1166–1236 shared record writer affects Session/Review/Approval/
-  WorktreeLock/Workflow audit formatting. Its default callers and payloads stay
-  exact. reserved_audit_kind:1575 must include the selected new binding kind.
+  WorktreeLock/Workflow audit formatting. Its default callers stay
+  exact. Session.saved adds only bounded operation_intent/transport_intent facts
+  beside the canonical consumed DTO; other default payloads stay exact. reserved_audit_kind:1575 must include the selected new binding kind.
 - workflow/tests.rs:574 is the only current reader that counts workflow.saved;
   change its per-Workflow-write invariant to count saved plus session_bound, and
   preserve separate gate_observed evidence counts. :3267 public reserved-audit
