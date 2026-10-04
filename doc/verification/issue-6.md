@@ -455,17 +455,17 @@ after verified owned process cleanup. Synthetic peers do not establish installed
 native inference, authentication, detached-child containment or actual Broker use.
 
 At `0f8c5bc`, the actual SQLite mutex-order/failed-write consumer and the
-post-consumption caller-drop idle receiver control both pass. Nine compiled
+post-consumption caller-drop idle receiver control both pass. Ten compiled
 mutants are assertion-killed in isolated committed sources: M639 caller-drop
 cancellation, M640 failed-CAS latch, M641 checkpoint terminal admission, M642
 stop receiver transfer, M643 supervision claim release, M644 captured-attempt
 wait, M645 level-triggered completion, M646 mutex order across actual SQLite CAS,
-and M647 owned task lifetime. M640/M642 initially survived narrower consumers;
+M647 owned task lifetime, and M648 completion before cleanup/publication. M640/M642 initially survived narrower consumers;
 those failures of the test strategy receive no kill credit. Direct CAS-return and
 unsolicited-interrupt assertions distinguish the protection, and the identical
 mutants fail the strengthened consumers. Every mutant's original source bytes
-were restored and committed before further verification. Final restored controls
-and the cleanup-before-Finished mutation remain pending.
+were restored and committed before further verification. The original held-cleanup control passes at `d8d2ef1`; M648 is also killed.
+Final combined restored controls remain pending.
 
 Initial compile failures (`d97db98`, `2a67557`), sandbox process-access
 failures (`4c62671`), the incorrect synthetic version assertion and abrupt-close
@@ -483,4 +483,5 @@ Evidence: `/private/tmp/rururunx-issue6-f4-505-workspace-debug-host.log`,
 `/private/tmp/rururunx-issue6-f4-505-build-release.log`,
 `/private/tmp/rururunx-issue6-f4-mutation-results.json`,
 `/private/tmp/rururunx-issue6-f4-mutation-results2.json`,
-`/private/tmp/rururunx-issue6-f4-mutation-results3.json`.
+`/private/tmp/rururunx-issue6-f4-mutation-results3.json`,
+`/private/tmp/rururunx-issue6-f4-mutation-results4.json`.
