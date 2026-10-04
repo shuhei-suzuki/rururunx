@@ -1,6 +1,7 @@
 # Issue 58 design: retained Task-free native consultation ownership
 
-Status: Design5 proposed; Requirements8 approved at8facb8d. No source/profile,
+Status: Design6 PARTIAL proposal; verified legacy recovery design blockers remain.
+Requirements8 approved at8facb8d remains normative; no revised legacy policy approved. No source/profile,
 recovery, native TUI or whole-issue acceptance is claimed. STRICT.
 Source baseline: integrated main d87faec/schema3, branch f84c94e; approved
 [requirements](../requirements/issue-58-requirements.md) remain authoritative.
@@ -37,32 +38,44 @@ context writes fail on every protected table; failure blocks readiness. Actual
 rusqlite functions feature/API wiring is part of the composed source, absent today.
 See SQLite [function flags](https://www.sqlite.org/c3ref/c_deterministic.html) and
 [application functions](https://www.sqlite.org/appfunc.html); INNOCUOUS requires review
-of the actual predicate, not an automatic security label. Legacy schema3 runtimes
-never acquired a new instance lease. Upgrade does not claim a universal old-helper
-death proof from SQLite, historical rows or a shutdown assertion. Under actual reviewed
-exclusive connection coordination, drain/recover every DURABLY RECORDED legacy owner
-(nonterminal/Lost Sessions, unsettled locks and active/unbound/evaluating Workflow
-claims) through the genuine #14 controlled legacy handoff. Atomically install the
-composed epoch triggers/current-only writers and user_version rejected by old open
-paths before any new-epoch admission. Actual pre-opened old writer and reopen-race
-controls are required. A failed preflight/schema migration leaves bytes unchanged;
-no preparatory user_version commit is silently reclassified as a failed atomic upgrade.
-Current-source migration must align with #19's stricter old Workflow/irreversible-tail
-inventory, not omit a known owner simply because a generic state label is terminal.
+of the actual predicate, not an automatic security label. Legacy schema3 runtimes never acquired a new instance lease/registry. Requirements8
+requires genuine drain/fencing of EVERY actual older owner, including legacy executing
+readers, unrecorded helpers and recorded Lost/uncertain work, before whole-schema
+upgrade/new admission. The Design5 unrecorded-helper residual narrowed that obligation
+without a requirements revision and is WITHDRAWN. Absence of a row, terminal label,
+idle SQLite connection, shutdown assertion or epoch retag is not proof. Successful
+quiescent historical upgrade and real recorded-uncertainty recovery remain mandatory;
+this unresolved legacy design is not a permanent Unsupported acceptance waiver.
 
-Documented legacy residual: unrecorded helper effects of historical schema3 runs have
-no private provenance/bridge owner and are NOT certified drained, adopted, settled or
-contained by this upgrade. Absence of a row does not prove their death. They remain
-outside new retained-owner authority like independently started user/IDE activity;
-upgrade/readiness makes no complete historical or machine-wide cleanup claim. This
-residual never clears a known live/uncertain recorded hold or permits it to overlap
-new conflicting work. Supported quiescent legacy data with genuine recorded-owner
-drain may upgrade; missing real drain for recorded uncertainty stays unready. Required
-control upgrades schema3 historical data with no actual recorded live workload, and
-refuses unchanged when a genuine recorded hold lacks settlement. Real native ownership,
-restart recovery and supported legacy upgrade are mandatory source/conformance gates;
-the residual is explicit, not a positive resource-cleanup certificate. Failed migration preserves schema/data/history
-bytes. Terminal labels, inactive rows or an epoch retag do not prove physical fencing.
+Actual source shows Store owns a Connection but no continuously held instance/DB
+lease. SQLite transaction exclusivity cannot prove every idle old Connection or
+supervisor ended. Already-open old authority reads can also execute Git after the
+write-trigger fence: ProjectRegistry::reconcile runs Git --version BEFORE projects(),
+and later validates captured Project roots. Add actual old-reader/cached-root/WAL
+snapshot controls alongside old writer/reopen races; all-table write triggers alone
+are insufficient. Current-only authority base tables/views/functions should deny old
+query preparation after schema reload, but a read fence cannot revoke a preexisting
+WAL snapshot, in-memory Project or already-admitted helper. Full old-owner exclusion
+and physical proof are independently mandatory. No epoch transaction may silently
+certify these reads/effects as no-effect or new-profile-owned work.
+
+OPEN DESIGN BLOCKER: no genuine sealed legacy authorization/physical-settlement
+producer is implemented or fully specified by current sources. The new-profile lease,
+live registry and controlled shutdown below cannot retroactively cover schema3 owners.
+A reviewed #14 legacy protocol with genuine non-label proof must supply that producer
+before this legacy design/source gate can pass. A separate successful NO-ADMISSION
+barrier plus genuinely observed kernel boot-session change is only a candidate for
+established locally bounded profiles; it does not prove unknown remote/MCP/hook
+effects or known business outcomes, and conflicts with present atomic drain-before-
+migration policy unless formally revised jointly with #19. No such revision, barrier,
+reboot or cleanup certificate is authorized/claimed by this document. Missing proof
+retains every hold and upgrade refusal, with strictly non-executing attention.
+
+Migration failure preserves original schema/data/history bytes; no preparatory epoch
+commit is relabeled as failed atomic upgrade. Align #19's stricter old Workflow,
+irreversible-tail and historical-binary inventory. Actual legacy producer, supported
+positive history/Lost recovery, read/write/cached-root negatives and profile conformance
+remain mandatory open gates, not implementation evidence.
 #58 cannot precede #19 Task-scope fences or #60 reverse producers in production.
 Candidate component tests can run in isolated stores; missing ports keep affected
 production profiles unready, and do not waive mandatory Consult/attach/recovery.
@@ -355,14 +368,31 @@ retain and observe the COMPLETE structured in-process workload: top supervisor,
 every nested async task, blocking worker, callback mutation and output/drain worker.
 Reserve its private registry slot BEFORE scheduling; the worker cannot perform any
 effect until synchronous handoff stores the returned JoinHandle and opens its genuine
-private start gate. Failed handoff retains the slot and unopened/owned worker; no
-spawn-then-enroll effect gap or queue label can substitute for this handshake.
+private start gate, which has explicit Open and Cancel resolutions. Failed handoff
+or controlled shutdown resolves an unopened worker to Cancel/no-effect and joins it;
+it cannot park a blocking-pool thread indefinitely. Until that join the actual handle
+and slot stay retained. No spawn-then-enroll effect gap or queue label substitutes.
 Supervisor panic/caller Drop cannot detach its children by dropping the only handles.
-Authorization requires all exact owned in-process jobs joined, THEN synchronous
-revocation of every admission capability/queued grant path. Abort request or top-task
-join alone is insufficient; a running spawn_blocking worker is non-abortable and held
-until its actual join. Unregistered/detached/unjoinable work refuses authorization and
-needs actual controlled stop/restart, never a thread/process-number death inference.
+Before joining, atomically CLOSE new registration, worker start gates and every
+admission/queued-grant path for this exact supervisor generation. Then require every
+previously registered exact job actually joined; final witness publication rechecks
+closed-generation/all-slots-joined under the same registry critical section. No late
+registration can race the all-joined observation. Abort request/top-task join alone
+is insufficient; started spawn_blocking work is non-abortable and held until actual
+join. Unopened workers Cancel and join. A wedged effect-bearing worker keeps its hold
+and truthful restart-required attention; runtime shutdown_timeout or process exit may
+bound controller shutdown, but neither certifies that worker/external effects ended.
+Actual structured resource/instance exclusion and physical cleanup remain necessary.
+
+Registry completeness is also a STATIC source gate, because an unregistered worker
+cannot be discovered by querying the registry. Inventory every owned module's raw
+tokio::spawn/spawn_blocking/block_in_place, std::thread::spawn, tokio::fs and transitive
+blocking/helper APIs; allow scheduling only through the genuine reviewed registry
+wrappers. Scoped clippy disallowed methods/types plus compiled source inventory must
+catch direct and aliased/reexported sinks; a library internally scheduling detached
+work must expose actual complete retained ownership or be rejected before effects.
+Raw-spawn and tokio::fs writer mutants must fail the gate, with restored consumers.
+Runtime all-joined checks never imply a whole-code no-detached-work theorem.
 Transfer retained resource handles through one nonserializable single-owner handoff
 to the exact CO-RESIDENT #14 claimant. Authorized CAS pins that claimant's instance,
 identity/generation and genuine received handle extent; a remote instance cannot
@@ -578,3 +608,18 @@ Top-level completion or an abort request cannot certify a detached blocking writ
 Design4 actual reviewers identified these verified design gaps, with owned cleanup
 complete. Proposed Design5 changes no source/requirements/schema/native readiness;
 all actual #14/#19/#23/#60/registry/lease/native conformance gates remain mandatory.
+
+
+## Design6 partial-delta controls
+
+Failed handoff and controlled shutdown cancel/join unopened blocking workers without
+effects or lingering pool threads. A deliberately wedged owned blocking writer keeps
+the hold and fails authorization; finite controller shutdown cannot clear it. Race a
+real capability registration against generation close: it must join the closed set or
+refuse before scheduling/effect; all-joined witness cannot miss it. Kill missing Cancel,
+registration-close and static raw-spawn gates independently, then restored controls.
+These are unimplemented requirements on source, not executed mutation evidence.
+
+Legacy D5-M1 findings remain OPEN as specified in section1. Design6 may not be labeled
+approved/ready on the basis of these Low corrections; no native/source/legacy gate is
+requested or credited until the genuine shared legacy contract is reviewable.

@@ -196,3 +196,21 @@ non-poisoning per-entry integrity, original Pending noninterference and typed ph
 stop/workload-release consumers have actual controls/mutants required. No source/test,
 schema, native backend or cleanup acceptance is claimed. Requirements8 unchanged;
 Design5 independent review/source/native/recovery gates remain pending.
+
+
+Design5 at9756d58 completed two native request_changes with actual v3 owned cleanup:
+A1Medium1Low/B1Medium3Low. Outcome hashes published separately; no resumed incremental
+usage attribution. Root verifies old WRITE-only epoch does not stop executing readers,
+cached Project roots or old WAL snapshots. Actual Store retains a Connection but no
+continuous old-instance lease; idle SQLite connections are not exclusive-owner proof.
+Recorded legacy Lost/uncertain owners have no named genuine producer under the new
+lease/registry/controlled-shutdown set. Both legacy design blockers remain OPEN.
+
+Design6 is a PARTIAL correction: withdraw D5's unreviewed legacy residual narrowing,
+retain unchanged Requirements8 whole-schema drain/refusal, and mark absent legacy
+authorization/physical proof explicitly. Candidate boot/barrier policy is research only,
+not approved migration/reboot/cleanup authority. Correct verified Lows by Cancel/join
+on unopened blocking start gates, close registration before all-joined witness, and
+static owned-module raw spawn/fs/transitive-helper gates plus causal control plans.
+No complete Design6 approval is claimed/requested while legacy contract is unresolved;
+actual producers/source/native/legacy controls remain mandatory unimplemented gates.

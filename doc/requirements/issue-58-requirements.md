@@ -2,7 +2,8 @@
 
 Workflow: STRICT (native ownership, durable authority and Project exclusion).
 Status: Requirements8 approved at8facb8d by two independent native reviewers;
-no Critical/High/Medium remains. Design5 proposed; independent design/source gates pending.
+requirements gate had no Critical/High/Medium remaining. Design6 partial proposal
+has open legacy design blockers; independent complete design/source gates pending.
 Baseline: main80452f4/schema3. MVP follow-up from #6 F1 and #19; see
 [Issue58](https://github.com/shuhei-suzuki/rururunx/issues/58).
 
