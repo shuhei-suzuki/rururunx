@@ -923,7 +923,10 @@ impl ContextPacks {
                 &json!({"kind":"task_context_pack","scope":pack.scope,"version":version,"body":pack})
             )?
         );
-        let available = budget.bytes.min(budget.estimated_tokens);
+        // Repository selection may accept larger source budgets, but this whole
+        // frame is eventually native input. Reserve the mandatory wrapper inside
+        // the independent absolute frame cap before selecting optional slices.
+        let available = budget.bytes.min(budget.estimated_tokens).min(MAX_BYTES);
         let selection = self
             .source()
             .select(
@@ -937,7 +940,14 @@ impl ContextPacks {
             .await?;
         match selection {
             SelectionOutcome::NeedsBudget { evidence } => {
-                let required_bytes = header.len() + evidence.required_bytes;
+                let required_bytes = header
+                    .len()
+                    .checked_add(evidence.required_bytes)
+                    .context("mandatory pack byte count overflow")?;
+                ensure!(
+                    required_bytes <= MAX_BYTES,
+                    "mandatory standalone input exceeds absolute 1 MiB cap; facts retained, explicit blocked budget"
+                );
                 self.audit_preparation(
                     pack,
                     map,

@@ -4057,3 +4057,291 @@ async fn blocked_project_can_persist_only_monotonic_unobserved_lost_diagnostics(
             .is_err()
     );
 }
+// Artifact-production proof only: owned synthetic repositories, no model launch
+// or managed native ownership/settlement certificate.
+async fn standalone_complete_frame_rejects_oversize(draft_only: bool) {
+    let f = Fixture::new();
+    let packs = f.packs();
+    let mut project = f
+        .store
+        .lock()
+        .unwrap()
+        .project(f.project.id)
+        .unwrap()
+        .unwrap();
+    for n in 0..5 {
+        let path = f.root.join(format!("frame-mandatory-{n}.md"));
+        std::fs::write(&path, "X".repeat(220_000)).unwrap();
+        project.rule_refs.push(path);
+    }
+    f.store.lock().unwrap().put_project(&mut project).unwrap();
+    let draft = packs.draft_task(&f.task.scope(), input()).await.unwrap();
+    let reference = if draft_only {
+        None
+    } else {
+        Some(packs.publish_task(&draft).await.unwrap())
+    };
+    let before_task =
+        serde_json::to_value(f.store.lock().unwrap().task(f.task.id).unwrap()).unwrap();
+    let before_context = serde_json::to_value(
+        f.store
+            .lock()
+            .unwrap()
+            .context(&f.task.scope(), None)
+            .unwrap(),
+    )
+    .unwrap();
+    let raw = rusqlite::Connection::open(f._temp.path().join("state.db")).unwrap();
+    let before_frames: u64 = raw
+        .query_row("SELECT COUNT(*) FROM prepared_pack_inputs", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    let before_ready: u64 = raw
+        .query_row(
+            "SELECT COUNT(*) FROM audit WHERE kind='context.pack.prepared'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    let large = Budget {
+        bytes: 16 * 1024 * 1024,
+        estimated_tokens: 16 * 1024 * 1024,
+    };
+    let result = if let Some(reference) = reference {
+        match packs
+            .prepare_task(&reference, SelectionRequest::default(), large)
+            .await
+        {
+            Ok(PreparedPack::Ready(input)) => panic!(
+                "published Task accepted oversized complete frame: {} bytes",
+                input.payload.len()
+            ),
+            Ok(PreparedPack::NeedsBudget { .. }) => panic!(
+                "absolute overflow must report its immutable cap, not request a larger caller budget"
+            ),
+            Err(error) => error,
+        }
+    } else {
+        match packs
+            .prepare_draft(&draft, SelectionRequest::default(), large)
+            .await
+        {
+            Ok(DraftPreparation::Ready(input)) => panic!(
+                "nonlaunch Draft accepted oversized complete frame: {} bytes",
+                input.payload.len()
+            ),
+            Ok(DraftPreparation::NeedsBudget { .. }) => panic!(
+                "absolute overflow must report its immutable cap, not request a larger caller budget"
+            ),
+            Err(error) => error,
+        }
+    };
+    assert!(
+        format!("{result:#}").contains("absolute 1 MiB cap"),
+        "{result:#}"
+    );
+    assert_eq!(
+        serde_json::to_value(f.store.lock().unwrap().task(f.task.id).unwrap()).unwrap(),
+        before_task
+    );
+    assert_eq!(
+        serde_json::to_value(
+            f.store
+                .lock()
+                .unwrap()
+                .context(&f.task.scope(), None)
+                .unwrap()
+        )
+        .unwrap(),
+        before_context
+    );
+    assert_eq!(
+        raw.query_row("SELECT COUNT(*) FROM prepared_pack_inputs", [], |r| r
+            .get::<_, u64>(0))
+            .unwrap(),
+        before_frames
+    );
+    assert_eq!(
+        raw.query_row(
+            "SELECT COUNT(*) FROM audit WHERE kind='context.pack.prepared'",
+            [],
+            |r| r.get::<_, u64>(0)
+        )
+        .unwrap(),
+        before_ready
+    );
+}
+#[tokio::test]
+async fn standalone_task_complete_frame_cap_precedes_prepared_authority() {
+    standalone_complete_frame_rejects_oversize(false).await;
+}
+#[tokio::test]
+async fn standalone_draft_complete_frame_cap_precedes_ready() {
+    standalone_complete_frame_rejects_oversize(true).await;
+}
+
+async fn standalone_complete_frame_exact_boundary(draft_only: bool) {
+    const CAP: usize = 1024 * 1024;
+    let f = Fixture::new();
+    let packs = f.packs();
+    let mut project = f
+        .store
+        .lock()
+        .unwrap()
+        .project(f.project.id)
+        .unwrap()
+        .unwrap();
+    let mut adjustable = PathBuf::new();
+    for n in 0..5 {
+        let path = f.root.join(format!("frame-boundary-{n}.md"));
+        std::fs::write(&path, "X".repeat(200_000)).unwrap();
+        project.rule_refs.push(path.clone());
+        adjustable = path;
+    }
+    f.store.lock().unwrap().put_project(&mut project).unwrap();
+    let large = Budget {
+        bytes: 16 * CAP,
+        estimated_tokens: 16 * CAP,
+    };
+    let mut size = 200_000;
+    let mut exact = false;
+    // All referenced digests have fixed length; only the retained rule text grows.
+    // Calibrate against the ACTUAL public producer's complete frame rather than
+    // duplicating wrapper accounting. The small loop also handles version digits.
+    for _ in 0..3 {
+        let draft = packs.draft_task(&f.task.scope(), input()).await.unwrap();
+        let payload = if draft_only {
+            match packs
+                .prepare_draft(&draft, SelectionRequest::default(), large)
+                .await
+                .unwrap()
+            {
+                DraftPreparation::Ready(input) => input.payload,
+                DraftPreparation::NeedsBudget { .. } => panic!("fitting mandatory draft refused"),
+            }
+        } else {
+            let reference = packs.publish_task(&draft).await.unwrap();
+            match packs
+                .prepare_task(&reference, SelectionRequest::default(), large)
+                .await
+                .unwrap()
+            {
+                PreparedPack::Ready(input) => {
+                    f.store
+                        .lock()
+                        .unwrap()
+                        .validate_context_input(&f.task.scope(), &input)
+                        .unwrap();
+                    input.payload
+                }
+                PreparedPack::NeedsBudget { .. } => panic!("fitting mandatory Task refused"),
+            }
+        };
+        assert!(payload.len() <= CAP);
+        assert!(payload.contains("MANDATORY: preserve Project boundaries"));
+        assert!(payload.contains("Never remove Project safety constraints"));
+        assert!(payload.contains("never omit required evidence"));
+        assert!(payload.contains("Use scoped authoritative references"));
+        assert_eq!(payload.matches("\"kind\":\"project_rule\"").count(), 6);
+        if payload.len() == CAP {
+            exact = true;
+            break;
+        }
+        size += CAP - payload.len();
+        assert!(size <= 256 * 1024, "fixture exceeds actual file bound");
+        std::fs::write(&adjustable, "X".repeat(size)).unwrap();
+    }
+    assert!(exact, "exact complete-frame boundary must remain usable");
+    // Optional selection must fit the remaining complete-frame budget without
+    // dropping this exact-cap mandatory payload or raising the native cap.
+    let draft = packs.draft_task(&f.task.scope(), input()).await.unwrap();
+    let request = SelectionRequest {
+        task_text: "codec".into(),
+        ..Default::default()
+    };
+    let payload = if draft_only {
+        match packs.prepare_draft(&draft, request, large).await.unwrap() {
+            DraftPreparation::Ready(input) => input.payload,
+            DraftPreparation::NeedsBudget { .. } => {
+                panic!("optional source displaced mandatory draft")
+            }
+        }
+    } else {
+        let reference = packs.publish_task(&draft).await.unwrap();
+        match packs
+            .prepare_task(&reference, request, large)
+            .await
+            .unwrap()
+        {
+            PreparedPack::Ready(input) => input.payload,
+            PreparedPack::NeedsBudget { .. } => panic!("optional source displaced mandatory Task"),
+        }
+    };
+    assert_eq!(payload.len(), CAP);
+    assert!(!payload.contains("\"kind\":\"file_map\""));
+    std::fs::write(&adjustable, "X".repeat(size + 1)).unwrap();
+    let draft = packs.draft_task(&f.task.scope(), input()).await.unwrap();
+    let reference = if draft_only {
+        None
+    } else {
+        Some(packs.publish_task(&draft).await.unwrap())
+    };
+    let raw = rusqlite::Connection::open(f._temp.path().join("state.db")).unwrap();
+    let before_frames: u64 = raw
+        .query_row("SELECT COUNT(*) FROM prepared_pack_inputs", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    let before_audits: u64 = raw
+        .query_row(
+            "SELECT COUNT(*) FROM audit WHERE kind='context.pack.prepared'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    let error = if let Some(reference) = reference {
+        match packs
+            .prepare_task(&reference, SelectionRequest::default(), large)
+            .await
+        {
+            Err(error) => error,
+            Ok(_) => panic!("cap+1 mandatory Task frame accepted"),
+        }
+    } else {
+        match packs
+            .prepare_draft(&draft, SelectionRequest::default(), large)
+            .await
+        {
+            Err(error) => error,
+            Ok(_) => panic!("cap+1 mandatory draft frame accepted"),
+        }
+    };
+    assert!(
+        format!("{error:#}").contains("absolute 1 MiB cap"),
+        "{error:#}"
+    );
+    assert_eq!(
+        raw.query_row("SELECT COUNT(*) FROM prepared_pack_inputs", [], |r| r
+            .get::<_, u64>(0))
+            .unwrap(),
+        before_frames
+    );
+    assert_eq!(
+        raw.query_row(
+            "SELECT COUNT(*) FROM audit WHERE kind='context.pack.prepared'",
+            [],
+            |r| r.get::<_, u64>(0)
+        )
+        .unwrap(),
+        before_audits
+    );
+}
+#[tokio::test]
+async fn standalone_task_complete_frame_exact_cap_and_cap_plus_one() {
+    standalone_complete_frame_exact_boundary(false).await;
+}
+#[tokio::test]
+async fn standalone_draft_complete_frame_exact_cap_and_cap_plus_one() {
+    standalone_complete_frame_exact_boundary(true).await;
+}
