@@ -1,0 +1,535 @@
+OPERATOR M01-store-removed
+diff --git a/crates/rrx/src/state/mod.rs b/crates/rrx/src/state/mod.rs
+index 89bf9265..9a4dfe06 100644
+--- a/crates/rrx/src/state/mod.rs
++++ b/crates/rrx/src/state/mod.rs
+@@ -524,14 +524,6 @@ impl Store {
+             let after: crate::workflow::WorkflowSnapshot =
+                 serde_json::from_value(workflow.data.clone())?;
+             if before.active.is_some() && after.active != before.active {
+-                let attempt = &before.history[before.active.unwrap()];
+-                ensure!(
+-                    !(access != WorkflowAccess::TerminalRecovery
+-                        && attempt.phase.actor() != crate::workflow::Actor::EvidencePort
+-                        && attempt.dispatch_started
+-                        && attempt.session_id.is_none()),
+-                    crate::workflow::UNBOUND_NATIVE_RECOVERY_REQUIRED
+-                );
+                 let mut statement = tx.prepare("SELECT body FROM records WHERE project_id=?1 AND goal_id=?2 AND task_id=?3 AND kind='session'")?;
+                 let own_id = before
+                     .active
+
+OPERATOR M02-both-removed
+diff --git a/crates/rrx/src/state/mod.rs b/crates/rrx/src/state/mod.rs
+index 89bf9265..9a4dfe06 100644
+--- a/crates/rrx/src/state/mod.rs
++++ b/crates/rrx/src/state/mod.rs
+@@ -524,14 +524,6 @@ impl Store {
+             let after: crate::workflow::WorkflowSnapshot =
+                 serde_json::from_value(workflow.data.clone())?;
+             if before.active.is_some() && after.active != before.active {
+-                let attempt = &before.history[before.active.unwrap()];
+-                ensure!(
+-                    !(access != WorkflowAccess::TerminalRecovery
+-                        && attempt.phase.actor() != crate::workflow::Actor::EvidencePort
+-                        && attempt.dispatch_started
+-                        && attempt.session_id.is_none()),
+-                    crate::workflow::UNBOUND_NATIVE_RECOVERY_REQUIRED
+-                );
+                 let mut statement = tx.prepare("SELECT body FROM records WHERE project_id=?1 AND goal_id=?2 AND task_id=?3 AND kind='session'")?;
+                 let own_id = before
+                     .active
+diff --git a/crates/rrx/src/workflow.rs b/crates/rrx/src/workflow.rs
+index 99139650..ac748ed4 100644
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -2022,13 +2022,6 @@ impl WorkflowEngine {
+             ),
+             "running/interrupted phase requires recovery"
+         );
+-        let attempt = &snapshot.workflow.history[index];
+-        ensure!(
+-            !(attempt.phase.actor() != Actor::EvidencePort
+-                && attempt.dispatch_started
+-                && attempt.session_id.is_none()),
+-            UNBOUND_NATIVE_RECOVERY_REQUIRED
+-        );
+         ensure!(
+             !irreversible(snapshot.workflow.history[index].phase),
+             "external side effect must resume/reconcile the same attempt, not retry"
+
+OPERATOR M03-both-executor-only
+diff --git a/crates/rrx/src/state/mod.rs b/crates/rrx/src/state/mod.rs
+index 89bf926..b01addd 100644
+--- a/crates/rrx/src/state/mod.rs
++++ b/crates/rrx/src/state/mod.rs
+@@ -527,7 +527,7 @@ impl Store {
+                 let attempt = &before.history[before.active.unwrap()];
+                 ensure!(
+                     !(access != WorkflowAccess::TerminalRecovery
+-                        && attempt.phase.actor() != crate::workflow::Actor::EvidencePort
++                        && attempt.phase.actor() == crate::workflow::Actor::Executor
+                         && attempt.dispatch_started
+                         && attempt.session_id.is_none()),
+                     crate::workflow::UNBOUND_NATIVE_RECOVERY_REQUIRED
+diff --git a/crates/rrx/src/workflow.rs b/crates/rrx/src/workflow.rs
+index 9913965..35b2337 100644
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -2024,7 +2024,7 @@ impl WorkflowEngine {
+         );
+         let attempt = &snapshot.workflow.history[index];
+         ensure!(
+-            !(attempt.phase.actor() != Actor::EvidencePort
++            !(attempt.phase.actor() == Actor::Executor
+                 && attempt.dispatch_started
+                 && attempt.session_id.is_none()),
+             UNBOUND_NATIVE_RECOVERY_REQUIRED
+
+OPERATOR M04-both-reviewer-only
+diff --git a/crates/rrx/src/state/mod.rs b/crates/rrx/src/state/mod.rs
+index 89bf926..9ef9704 100644
+--- a/crates/rrx/src/state/mod.rs
++++ b/crates/rrx/src/state/mod.rs
+@@ -527,7 +527,7 @@ impl Store {
+                 let attempt = &before.history[before.active.unwrap()];
+                 ensure!(
+                     !(access != WorkflowAccess::TerminalRecovery
+-                        && attempt.phase.actor() != crate::workflow::Actor::EvidencePort
++                        && attempt.phase.actor() == crate::workflow::Actor::Reviewer
+                         && attempt.dispatch_started
+                         && attempt.session_id.is_none()),
+                     crate::workflow::UNBOUND_NATIVE_RECOVERY_REQUIRED
+diff --git a/crates/rrx/src/workflow.rs b/crates/rrx/src/workflow.rs
+index 9913965..d0389ca 100644
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -2024,7 +2024,7 @@ impl WorkflowEngine {
+         );
+         let attempt = &snapshot.workflow.history[index];
+         ensure!(
+-            !(attempt.phase.actor() != Actor::EvidencePort
++            !(attempt.phase.actor() == Actor::Reviewer
+                 && attempt.dispatch_started
+                 && attempt.session_id.is_none()),
+             UNBOUND_NATIVE_RECOVERY_REQUIRED
+
+OPERATOR M05-engine-marker-conjunct-removed
+diff --git a/crates/rrx/src/workflow.rs b/crates/rrx/src/workflow.rs
+index 9913965..b9e87a8 100644
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -2025,7 +2025,6 @@ impl WorkflowEngine {
+         let attempt = &snapshot.workflow.history[index];
+         ensure!(
+             !(attempt.phase.actor() != Actor::EvidencePort
+-                && attempt.dispatch_started
+                 && attempt.session_id.is_none()),
+             UNBOUND_NATIVE_RECOVERY_REQUIRED
+         );
+
+OPERATOR M06-store-marker-conjunct-removed
+diff --git a/crates/rrx/src/state/mod.rs b/crates/rrx/src/state/mod.rs
+index 89bf926..89e94e2 100644
+--- a/crates/rrx/src/state/mod.rs
++++ b/crates/rrx/src/state/mod.rs
+@@ -528,7 +528,6 @@ impl Store {
+                 ensure!(
+                     !(access != WorkflowAccess::TerminalRecovery
+                         && attempt.phase.actor() != crate::workflow::Actor::EvidencePort
+-                        && attempt.dispatch_started
+                         && attempt.session_id.is_none()),
+                     crate::workflow::UNBOUND_NATIVE_RECOVERY_REQUIRED
+                 );
+
+OPERATOR M07-all-sessionless-engine
+diff --git a/crates/rrx/src/workflow.rs b/crates/rrx/src/workflow.rs
+index 9913965..92f8806 100644
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -2024,9 +2024,7 @@ impl WorkflowEngine {
+         );
+         let attempt = &snapshot.workflow.history[index];
+         ensure!(
+-            !(attempt.phase.actor() != Actor::EvidencePort
+-                && attempt.dispatch_started
+-                && attempt.session_id.is_none()),
++            !(attempt.session_id.is_none()),
+             UNBOUND_NATIVE_RECOVERY_REQUIRED
+         );
+         ensure!(
+
+OPERATOR M08-all-sessionless-store
+diff --git a/crates/rrx/src/state/mod.rs b/crates/rrx/src/state/mod.rs
+index 89bf926..8f1f9f1 100644
+--- a/crates/rrx/src/state/mod.rs
++++ b/crates/rrx/src/state/mod.rs
+@@ -527,8 +527,6 @@ impl Store {
+                 let attempt = &before.history[before.active.unwrap()];
+                 ensure!(
+                     !(access != WorkflowAccess::TerminalRecovery
+-                        && attempt.phase.actor() != crate::workflow::Actor::EvidencePort
+-                        && attempt.dispatch_started
+                         && attempt.session_id.is_none()),
+                     crate::workflow::UNBOUND_NATIVE_RECOVERY_REQUIRED
+                 );
+
+OPERATOR M09-store-failed-waiting-only
+diff --git a/crates/rrx/src/state/mod.rs b/crates/rrx/src/state/mod.rs
+index 89bf926..5360247 100644
+--- a/crates/rrx/src/state/mod.rs
++++ b/crates/rrx/src/state/mod.rs
+@@ -527,6 +527,7 @@ impl Store {
+                 let attempt = &before.history[before.active.unwrap()];
+                 ensure!(
+                     !(access != WorkflowAccess::TerminalRecovery
++                        && matches!(attempt.state, crate::workflow::AttemptState::Failed | crate::workflow::AttemptState::Waiting)
+                         && attempt.phase.actor() != crate::workflow::Actor::EvidencePort
+                         && attempt.dispatch_started
+                         && attempt.session_id.is_none()),
+
+OPERATOR M10-store-same-generation-only
+diff --git a/crates/rrx/src/state/mod.rs b/crates/rrx/src/state/mod.rs
+index 89bf926..5b5a6df 100644
+--- a/crates/rrx/src/state/mod.rs
++++ b/crates/rrx/src/state/mod.rs
+@@ -527,6 +527,7 @@ impl Store {
+                 let attempt = &before.history[before.active.unwrap()];
+                 ensure!(
+                     !(access != WorkflowAccess::TerminalRecovery
++                        && before.generation == after.generation
+                         && attempt.phase.actor() != crate::workflow::Actor::EvidencePort
+                         && attempt.dispatch_started
+                         && attempt.session_id.is_none()),
+
+OPERATOR M11-store-stateonly-only
+diff --git a/crates/rrx/src/state/mod.rs b/crates/rrx/src/state/mod.rs
+index 89bf926..443adcf 100644
+--- a/crates/rrx/src/state/mod.rs
++++ b/crates/rrx/src/state/mod.rs
+@@ -526,7 +526,7 @@ impl Store {
+             if before.active.is_some() && after.active != before.active {
+                 let attempt = &before.history[before.active.unwrap()];
+                 ensure!(
+-                    !(access != WorkflowAccess::TerminalRecovery
++                    !(access == WorkflowAccess::StateOnly
+                         && attempt.phase.actor() != crate::workflow::Actor::EvidencePort
+                         && attempt.dispatch_started
+                         && attempt.session_id.is_none()),
+
+OPERATOR M12-store-matching-terminal-row-resolves
+diff --git a/crates/rrx/src/state/mod.rs b/crates/rrx/src/state/mod.rs
+index 89bf926..cc163a5 100644
+--- a/crates/rrx/src/state/mod.rs
++++ b/crates/rrx/src/state/mod.rs
+@@ -525,11 +525,22 @@ impl Store {
+                 serde_json::from_value(workflow.data.clone())?;
+             if before.active.is_some() && after.active != before.active {
+                 let attempt = &before.history[before.active.unwrap()];
++                let matching_row = {
++                    let mut rows = tx.prepare("SELECT body FROM records WHERE project_id=?1 AND goal_id=?2 AND task_id=?3 AND kind='session'")?;
++                    let mut matching = false;
++                    for body in rows.query_map(params![task.project_id.to_string(),task.goal_id.to_string(),task.id.to_string()], |row| row.get::<_,String>(0))? {
++                        let row: Record = decode(body?)?;
++                        let session: Session = serde_json::from_value(row.data)?;
++                        matching |= attempt.agent.as_deref() == Some(session.agent.as_str()) && session.role == if attempt.phase.actor() == crate::workflow::Actor::Reviewer { SessionRole::Reviewer } else { SessionRole::Executor } && matches!(session.state, SessionState::Exited | SessionState::Stopped | SessionState::Failed);
++                    }
++                    matching
++                };
+                 ensure!(
+                     !(access != WorkflowAccess::TerminalRecovery
+                         && attempt.phase.actor() != crate::workflow::Actor::EvidencePort
+                         && attempt.dispatch_started
+-                        && attempt.session_id.is_none()),
++                        && attempt.session_id.is_none()
++                        && !matching_row),
+                     crate::workflow::UNBOUND_NATIVE_RECOVERY_REQUIRED
+                 );
+                 let mut statement = tx.prepare("SELECT body FROM records WHERE project_id=?1 AND goal_id=?2 AND task_id=?3 AND kind='session'")?;
+
+OPERATOR M13-both-matching-terminal-row-resolves
+diff --git a/crates/rrx/src/state/mod.rs b/crates/rrx/src/state/mod.rs
+index 89bf926..cc163a5 100644
+--- a/crates/rrx/src/state/mod.rs
++++ b/crates/rrx/src/state/mod.rs
+@@ -525,11 +525,22 @@ impl Store {
+                 serde_json::from_value(workflow.data.clone())?;
+             if before.active.is_some() && after.active != before.active {
+                 let attempt = &before.history[before.active.unwrap()];
++                let matching_row = {
++                    let mut rows = tx.prepare("SELECT body FROM records WHERE project_id=?1 AND goal_id=?2 AND task_id=?3 AND kind='session'")?;
++                    let mut matching = false;
++                    for body in rows.query_map(params![task.project_id.to_string(),task.goal_id.to_string(),task.id.to_string()], |row| row.get::<_,String>(0))? {
++                        let row: Record = decode(body?)?;
++                        let session: Session = serde_json::from_value(row.data)?;
++                        matching |= attempt.agent.as_deref() == Some(session.agent.as_str()) && session.role == if attempt.phase.actor() == crate::workflow::Actor::Reviewer { SessionRole::Reviewer } else { SessionRole::Executor } && matches!(session.state, SessionState::Exited | SessionState::Stopped | SessionState::Failed);
++                    }
++                    matching
++                };
+                 ensure!(
+                     !(access != WorkflowAccess::TerminalRecovery
+                         && attempt.phase.actor() != crate::workflow::Actor::EvidencePort
+                         && attempt.dispatch_started
+-                        && attempt.session_id.is_none()),
++                        && attempt.session_id.is_none()
++                        && !matching_row),
+                     crate::workflow::UNBOUND_NATIVE_RECOVERY_REQUIRED
+                 );
+                 let mut statement = tx.prepare("SELECT body FROM records WHERE project_id=?1 AND goal_id=?2 AND task_id=?3 AND kind='session'")?;
+diff --git a/crates/rrx/src/workflow.rs b/crates/rrx/src/workflow.rs
+index 9913965..33f35ac 100644
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -2023,10 +2023,15 @@ impl WorkflowEngine {
+             "running/interrupted phase requires recovery"
+         );
+         let attempt = &snapshot.workflow.history[index];
++        let matching_row = self.store.lock().unwrap().records(&snapshot.task.scope(), RecordKind::Session)?.into_iter().any(|row| {
++            let session: Session = serde_json::from_value(row.data).unwrap();
++            attempt.agent.as_deref() == Some(session.agent.as_str()) && session.role == if attempt.phase.actor() == crate::workflow::Actor::Reviewer { SessionRole::Reviewer } else { SessionRole::Executor } && matches!(session.state, SessionState::Exited | SessionState::Stopped | SessionState::Failed)
++        });
+         ensure!(
+             !(attempt.phase.actor() != Actor::EvidencePort
+                 && attempt.dispatch_started
+-                && attempt.session_id.is_none()),
++                && attempt.session_id.is_none()
++                && !matching_row),
+             UNBOUND_NATIVE_RECOVERY_REQUIRED
+         );
+         ensure!(
+
+OPERATOR M14-engine-matching-row-masked
+diff --git a/crates/rrx/src/workflow.rs b/crates/rrx/src/workflow.rs
+index 9913965..33f35ac 100644
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -2023,10 +2023,15 @@ impl WorkflowEngine {
+             "running/interrupted phase requires recovery"
+         );
+         let attempt = &snapshot.workflow.history[index];
++        let matching_row = self.store.lock().unwrap().records(&snapshot.task.scope(), RecordKind::Session)?.into_iter().any(|row| {
++            let session: Session = serde_json::from_value(row.data).unwrap();
++            attempt.agent.as_deref() == Some(session.agent.as_str()) && session.role == if attempt.phase.actor() == crate::workflow::Actor::Reviewer { SessionRole::Reviewer } else { SessionRole::Executor } && matches!(session.state, SessionState::Exited | SessionState::Stopped | SessionState::Failed)
++        });
+         ensure!(
+             !(attempt.phase.actor() != Actor::EvidencePort
+                 && attempt.dispatch_started
+-                && attempt.session_id.is_none()),
++                && attempt.session_id.is_none()
++                && !matching_row),
+             UNBOUND_NATIVE_RECOVERY_REQUIRED
+         );
+         ensure!(
+
+OPERATOR M15-engine-removal-masked
+diff --git a/crates/rrx/src/workflow.rs b/crates/rrx/src/workflow.rs
+index 9913965..ac748ed 100644
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -2022,13 +2022,6 @@ impl WorkflowEngine {
+             ),
+             "running/interrupted phase requires recovery"
+         );
+-        let attempt = &snapshot.workflow.history[index];
+-        ensure!(
+-            !(attempt.phase.actor() != Actor::EvidencePort
+-                && attempt.dispatch_started
+-                && attempt.session_id.is_none()),
+-            UNBOUND_NATIVE_RECOVERY_REQUIRED
+-        );
+         ensure!(
+             !irreversible(snapshot.workflow.history[index].phase),
+             "external side effect must resume/reconcile the same attempt, not retry"
+
+OPERATOR M16-both-actor-conjunct-removed-equivalent
+diff --git a/crates/rrx/src/state/mod.rs b/crates/rrx/src/state/mod.rs
+index 89bf926..f11bc6f 100644
+--- a/crates/rrx/src/state/mod.rs
++++ b/crates/rrx/src/state/mod.rs
+@@ -527,7 +527,6 @@ impl Store {
+                 let attempt = &before.history[before.active.unwrap()];
+                 ensure!(
+                     !(access != WorkflowAccess::TerminalRecovery
+-                        && attempt.phase.actor() != crate::workflow::Actor::EvidencePort
+                         && attempt.dispatch_started
+                         && attempt.session_id.is_none()),
+                     crate::workflow::UNBOUND_NATIVE_RECOVERY_REQUIRED
+diff --git a/crates/rrx/src/workflow.rs b/crates/rrx/src/workflow.rs
+index 9913965..e2d3617 100644
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -2024,8 +2024,7 @@ impl WorkflowEngine {
+         );
+         let attempt = &snapshot.workflow.history[index];
+         ensure!(
+-            !(attempt.phase.actor() != Actor::EvidencePort
+-                && attempt.dispatch_started
++            !(attempt.dispatch_started
+                 && attempt.session_id.is_none()),
+             UNBOUND_NATIVE_RECOVERY_REQUIRED
+         );
+
+OPERATOR M17-engine-failed-only-survivor
+diff --git a/crates/rrx/src/workflow.rs b/crates/rrx/src/workflow.rs
+index 9913965..b5bd98e 100644
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -2024,7 +2024,8 @@ impl WorkflowEngine {
+         );
+         let attempt = &snapshot.workflow.history[index];
+         ensure!(
+-            !(attempt.phase.actor() != Actor::EvidencePort
++            !(attempt.state == AttemptState::Failed
++                && attempt.phase.actor() != Actor::EvidencePort
+                 && attempt.dispatch_started
+                 && attempt.session_id.is_none()),
+             UNBOUND_NATIVE_RECOVERY_REQUIRED
+
+OPERATOR M18-store-TR-exemption-removed-equivalent
+diff --git a/crates/rrx/src/state/mod.rs b/crates/rrx/src/state/mod.rs
+index 89bf926..9a63f8e 100644
+--- a/crates/rrx/src/state/mod.rs
++++ b/crates/rrx/src/state/mod.rs
+@@ -526,8 +526,7 @@ impl Store {
+             if before.active.is_some() && after.active != before.active {
+                 let attempt = &before.history[before.active.unwrap()];
+                 ensure!(
+-                    !(access != WorkflowAccess::TerminalRecovery
+-                        && attempt.phase.actor() != crate::workflow::Actor::EvidencePort
++                    !(attempt.phase.actor() != crate::workflow::Actor::EvidencePort
+                         && attempt.dispatch_started
+                         && attempt.session_id.is_none()),
+                     crate::workflow::UNBOUND_NATIVE_RECOVERY_REQUIRED
+
+OPERATOR M19-original41-store-TR-removed
+diff --git a/crates/rrx/src/state/mod.rs b/crates/rrx/src/state/mod.rs
+index 89bf926..9abca73 100644
+--- a/crates/rrx/src/state/mod.rs
++++ b/crates/rrx/src/state/mod.rs
+@@ -489,10 +489,6 @@ impl Store {
+                         || crate::workflow::known_gate_observation(attempt).is_some(),
+                     "unknown external outcome requires explicit recovery"
+                 );
+-                ensure!(
+-                    attempt.session_id.is_some() || !attempt.dispatch_started,
+-                    "unbound dispatch requires explicit recovery"
+-                );
+                 expected.active = None;
+                 expected.history[index].state = crate::workflow::AttemptState::Interrupted;
+                 expected.history[index].completed_at = after.history[index].completed_at;
+
+OPERATOR M20-original41-both-TR-removed
+diff --git a/crates/rrx/src/state/mod.rs b/crates/rrx/src/state/mod.rs
+index 89bf926..9abca73 100644
+--- a/crates/rrx/src/state/mod.rs
++++ b/crates/rrx/src/state/mod.rs
+@@ -489,10 +489,6 @@ impl Store {
+                         || crate::workflow::known_gate_observation(attempt).is_some(),
+                     "unknown external outcome requires explicit recovery"
+                 );
+-                ensure!(
+-                    attempt.session_id.is_some() || !attempt.dispatch_started,
+-                    "unbound dispatch requires explicit recovery"
+-                );
+                 expected.active = None;
+                 expected.history[index].state = crate::workflow::AttemptState::Interrupted;
+                 expected.history[index].completed_at = after.history[index].completed_at;
+diff --git a/crates/rrx/src/workflow.rs b/crates/rrx/src/workflow.rs
+index 9913965..d057968 100644
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -1412,10 +1412,6 @@ impl WorkflowEngine {
+             },
+             recovery_issue(attempt.phase)
+         );
+-        ensure!(
+-            attempt.session_id.is_some() || !attempt.dispatch_started,
+-            "unbound native dispatch requires explicit recovery (#14)"
+-        );
+         attempt.state = AttemptState::Interrupted;
+         attempt.completed_at.get_or_insert_with(now_ms);
+         attempt.detail = Some(format!("terminal reservation reconciled: {reason}"));
+
+OPERATOR M21-engine-session-conjunct-removed
+diff --git a/crates/rrx/src/workflow.rs b/crates/rrx/src/workflow.rs
+index 9913965..4a8492c 100644
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -2025,8 +2025,7 @@ impl WorkflowEngine {
+         let attempt = &snapshot.workflow.history[index];
+         ensure!(
+             !(attempt.phase.actor() != Actor::EvidencePort
+-                && attempt.dispatch_started
+-                && attempt.session_id.is_none()),
++                && attempt.dispatch_started),
+             UNBOUND_NATIVE_RECOVERY_REQUIRED
+         );
+         ensure!(
+
+OPERATOR M22-store-session-conjunct-removed
+diff --git a/crates/rrx/src/state/mod.rs b/crates/rrx/src/state/mod.rs
+index 89bf926..988789a 100644
+--- a/crates/rrx/src/state/mod.rs
++++ b/crates/rrx/src/state/mod.rs
+@@ -528,8 +528,7 @@ impl Store {
+                 ensure!(
+                     !(access != WorkflowAccess::TerminalRecovery
+                         && attempt.phase.actor() != crate::workflow::Actor::EvidencePort
+-                        && attempt.dispatch_started
+-                        && attempt.session_id.is_none()),
++                        && attempt.dispatch_started),
+                     crate::workflow::UNBOUND_NATIVE_RECOVERY_REQUIRED
+                 );
+                 let mut statement = tx.prepare("SELECT body FROM records WHERE project_id=?1 AND goal_id=?2 AND task_id=?3 AND kind='session'")?;
+
+OPERATOR M08b-store-all-sessionless-retry-outcomes
+diff --git a/crates/rrx/src/state/mod.rs b/crates/rrx/src/state/mod.rs
+index 89bf926..bd10683 100644
+--- a/crates/rrx/src/state/mod.rs
++++ b/crates/rrx/src/state/mod.rs
+@@ -527,8 +527,7 @@ impl Store {
+                 let attempt = &before.history[before.active.unwrap()];
+                 ensure!(
+                     !(access != WorkflowAccess::TerminalRecovery
+-                        && attempt.phase.actor() != crate::workflow::Actor::EvidencePort
+-                        && attempt.dispatch_started
++                        && matches!(after.history[before.active.unwrap()].state, crate::workflow::AttemptState::Waiting | crate::workflow::AttemptState::Failed)
+                         && attempt.session_id.is_none()),
+                     crate::workflow::UNBOUND_NATIVE_RECOVERY_REQUIRED
+                 );
+
+OPERATOR M22b-store-missing-session-conjunct-retry-outcomes
+diff --git a/crates/rrx/src/state/mod.rs b/crates/rrx/src/state/mod.rs
+index 89bf926..081f669 100644
+--- a/crates/rrx/src/state/mod.rs
++++ b/crates/rrx/src/state/mod.rs
+@@ -529,7 +529,7 @@ impl Store {
+                     !(access != WorkflowAccess::TerminalRecovery
+                         && attempt.phase.actor() != crate::workflow::Actor::EvidencePort
+                         && attempt.dispatch_started
+-                        && attempt.session_id.is_none()),
++                        && matches!(after.history[before.active.unwrap()].state, crate::workflow::AttemptState::Waiting | crate::workflow::AttemptState::Failed)),
+                     crate::workflow::UNBOUND_NATIVE_RECOVERY_REQUIRED
+                 );
+                 let mut statement = tx.prepare("SELECT body FROM records WHERE project_id=?1 AND goal_id=?2 AND task_id=?3 AND kind='session'")?;
+
+OPERATOR M01f-store-removed-direct-failed
+diff --git a/crates/rrx/src/state/mod.rs b/crates/rrx/src/state/mod.rs
+index 89bf9265..9a4dfe06 100644
+--- a/crates/rrx/src/state/mod.rs
++++ b/crates/rrx/src/state/mod.rs
+@@ -524,14 +524,6 @@ impl Store {
+             let after: crate::workflow::WorkflowSnapshot =
+                 serde_json::from_value(workflow.data.clone())?;
+             if before.active.is_some() && after.active != before.active {
+-                let attempt = &before.history[before.active.unwrap()];
+-                ensure!(
+-                    !(access != WorkflowAccess::TerminalRecovery
+-                        && attempt.phase.actor() != crate::workflow::Actor::EvidencePort
+-                        && attempt.dispatch_started
+-                        && attempt.session_id.is_none()),
+-                    crate::workflow::UNBOUND_NATIVE_RECOVERY_REQUIRED
+-                );
+                 let mut statement = tx.prepare("SELECT body FROM records WHERE project_id=?1 AND goal_id=?2 AND task_id=?3 AND kind='session'")?;
+                 let own_id = before
+                     .active

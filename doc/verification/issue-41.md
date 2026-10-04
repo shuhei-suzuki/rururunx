@@ -88,10 +88,14 @@ verify explicit recovery rather than deriving ownership from human reason text.
 All 65 subsequently passed. Test-only `46dd6f0` orders durable retained-state
 assertions before diagnostics for causal release-CAS mutation attribution.
 
-The existing `retry` API admits Failed+dispatch_started+no-Session with no native
-outcome proof. A direct passing characterization confirms both that ordinary
-observation does not replay and that explicit retry still closes it. This is an
-unresolved #14 acceptance gap, not safe recovery evidence or a #41 API fix.
+At #41's reviewed source, the `retry` API admitted Failed+dispatch_started+no-Session
+with no native outcome proof. Its passing characterization established ordinary
+observation did not replay but explicit retry closed it; this historical gap and
+evidence remain in Git. The later limited #14 source candidate renames that test to
+preparation_explicit_retry_refuses_unbound_dispatch_without_recovery_proof and
+asserts refusal with complete snapshots. Current source qualification is pending,
+and genuine #14 recovery remains open. The new non-TerminalRecovery closure guard
+preserves the earlier #41 TerminalRecovery guards and their causal mutant oracles.
 Independent native #5 integration review also exposed that successful Workflow
 Session binding writes an unchanged Task through `put_task_tx`, incrementing its
 raw version and invalidating provider admission. Source inspection confirms only
