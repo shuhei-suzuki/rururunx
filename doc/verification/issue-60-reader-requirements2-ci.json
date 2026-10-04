@@ -1,0 +1,205 @@
+{
+  "run": {
+    "conclusion": "success",
+    "headSha": "6faf26f8041abd0f51f6aed9fb8fe6c40f33f1a8",
+    "jobs": [
+      {
+        "completedAt": "2026-10-04T22:01:31Z",
+        "conclusion": "success",
+        "databaseId": 111541635604,
+        "name": "check (ubuntu-latest)",
+        "startedAt": "2026-10-04T21:59:30Z",
+        "status": "completed",
+        "steps": [
+          {
+            "completedAt": "2026-10-04T21:59:32Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-10-04T21:59:31Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-04T21:59:33Z",
+            "conclusion": "success",
+            "name": "Run actions/checkout@v4",
+            "number": 2,
+            "startedAt": "2026-10-04T21:59:32Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-04T21:59:41Z",
+            "conclusion": "success",
+            "name": "Run dtolnay/rust-toolchain@1.91.1",
+            "number": 3,
+            "startedAt": "2026-10-04T21:59:33Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-04T21:59:41Z",
+            "conclusion": "success",
+            "name": "Run cargo fmt --all -- --check",
+            "number": 4,
+            "startedAt": "2026-10-04T21:59:41Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-04T21:59:58Z",
+            "conclusion": "success",
+            "name": "Run cargo clippy --locked --workspace --all-targets -- -D warnings",
+            "number": 5,
+            "startedAt": "2026-10-04T21:59:41Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-04T22:00:35Z",
+            "conclusion": "success",
+            "name": "Run cargo test --locked --workspace",
+            "number": 6,
+            "startedAt": "2026-10-04T21:59:58Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-04T22:00:35Z",
+            "conclusion": "success",
+            "name": "Run cargo build --locked --workspace",
+            "number": 7,
+            "startedAt": "2026-10-04T22:00:35Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-04T22:01:29Z",
+            "conclusion": "success",
+            "name": "Run cargo build --locked --release --workspace",
+            "number": 8,
+            "startedAt": "2026-10-04T22:00:35Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-04T22:01:29Z",
+            "conclusion": "success",
+            "name": "Post Run actions/checkout@v4",
+            "number": 16,
+            "startedAt": "2026-10-04T22:01:29Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-04T22:01:29Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 17,
+            "startedAt": "2026-10-04T22:01:29Z",
+            "status": "completed"
+          }
+        ],
+        "url": "https://github.com/shuhei-suzuki/rururunx/actions/runs/37238262914/job/111541635604"
+      },
+      {
+        "completedAt": "2026-10-04T22:03:55Z",
+        "conclusion": "success",
+        "databaseId": 111541635723,
+        "name": "check (macos-latest)",
+        "startedAt": "2026-10-04T21:59:34Z",
+        "status": "completed",
+        "steps": [
+          {
+            "completedAt": "2026-10-04T21:59:35Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-10-04T21:59:34Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-04T21:59:37Z",
+            "conclusion": "success",
+            "name": "Run actions/checkout@v4",
+            "number": 2,
+            "startedAt": "2026-10-04T21:59:35Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-04T21:59:46Z",
+            "conclusion": "success",
+            "name": "Run dtolnay/rust-toolchain@1.91.1",
+            "number": 3,
+            "startedAt": "2026-10-04T21:59:37Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-04T21:59:46Z",
+            "conclusion": "success",
+            "name": "Run cargo fmt --all -- --check",
+            "number": 4,
+            "startedAt": "2026-10-04T21:59:46Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-04T22:00:20Z",
+            "conclusion": "success",
+            "name": "Run cargo clippy --locked --workspace --all-targets -- -D warnings",
+            "number": 5,
+            "startedAt": "2026-10-04T21:59:46Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-04T22:03:04Z",
+            "conclusion": "success",
+            "name": "Run cargo test --locked --workspace",
+            "number": 6,
+            "startedAt": "2026-10-04T22:00:20Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-04T22:03:04Z",
+            "conclusion": "success",
+            "name": "Run cargo build --locked --workspace",
+            "number": 7,
+            "startedAt": "2026-10-04T22:03:04Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-04T22:03:51Z",
+            "conclusion": "success",
+            "name": "Run cargo build --locked --release --workspace",
+            "number": 8,
+            "startedAt": "2026-10-04T22:03:04Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-04T22:03:51Z",
+            "conclusion": "success",
+            "name": "Post Run actions/checkout@v4",
+            "number": 16,
+            "startedAt": "2026-10-04T22:03:51Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-04T22:03:52Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 17,
+            "startedAt": "2026-10-04T22:03:51Z",
+            "status": "completed"
+          }
+        ],
+        "url": "https://github.com/shuhei-suzuki/rururunx/actions/runs/37238262914/job/111541635723"
+      }
+    ],
+    "status": "completed"
+  },
+  "scope": "docs-only reader Requirements2; no component source implementation acceptance",
+  "trigger_head": "6faf26f8041abd0f51f6aed9fb8fe6c40f33f1a8",
+  "actual_checkout_both_os": "160839ef3a8bf18c91c04675e06da73ae8a87a29",
+  "actual_parents": [
+    "efe977486693a065122d8fc177b0e83d29620bdc",
+    "6faf26f8041abd0f51f6aed9fb8fe6c40f33f1a8"
+  ],
+  "actual_complete_tree": "042d21b8f9daa4d52770470bac0283cb7c6749b5",
+  "trigger_complete_tree": "042d21b8f9daa4d52770470bac0283cb7c6749b5",
+  "complete_tree_equal": true,
+  "log_sha256": "6cc91128f644c4b0c081e6440e57bb7fc264ad75d0547de63a0aabf396995896",
+  "release_test_claim": false,
+  "requirements_approved": false,
+  "design_source_gates_pending": true
+}

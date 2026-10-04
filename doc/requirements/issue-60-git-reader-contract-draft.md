@@ -60,17 +60,23 @@ Issue60 full runtime workload/effect/delegation/durable settlement remains open.
    freezes the flag true unless a live in-budget return had already cleared it; driver
    observation or result-ready alone cannot clear it. Mandatory clear points are the
    live in-budget complete-settlement return and the live in-budget genuine native
-   OS-spawn failure return proving no actual Child was produced. Runtime/stdio/signal
+   OS-spawn failure return proving no surviving child remains under the verified
+   native spawn profile. Err/no returned handle alone is not that proof. Runtime/stdio/signal
    wrapping failure AFTER native spawn is not that exception: retain its actual Child
    and original ProcessFailure or LaunchFailure; it is not a pre-effect refusal.
    Unknown remains until actual complete settlement is observed on a live in-budget
-   return; a genuinely settled initialization error may clear the resource flag while
+   return; a genuinely settled initialization error MUST clear the resource flag while
    preserving that original error. Merely returning Err without a Tokio Child never
    proves such settlement. Late no-effect observation cannot clear a dropped/returned
    flag. Group binding failure after spawn retains the actual Child as Unknown;
    original LaunchFailure survives and never becomes a pre-effect refusal. Never adopt
-   a PID. Git supplies ProcessGroup an INTERNAL flag, not the caller's published flag.
-   Do not silently change shared ProcessGroup::new/reap/Drop semantics. Design must
+   a PID. The Git owner uses an INTERNAL flag, not the caller's published flag.
+   Locked Tokio cannot supply a tokio Child without consuming its native std Child
+   through fallible wrapping. The Git anchor therefore stays a std Child; it cannot
+   be the current Tokio-Child-bound ProcessGroup unless a reviewed public ownership-
+   preserving API is established. Preserve the existing selected-group semantics
+   through the independently reviewed port/equivalent below. Do not silently change
+   shared ProcessGroup::new/reap/Drop or group/observation primitives. Design must
    explicitly resolve actual Child retention across binding failure and nonblocking
    caller cancellation, through a Git-local owner or separately impact-reviewed
    additive shared port. No such port or implementation is approved by the prior
@@ -85,15 +91,31 @@ Issue60 full runtime workload/effect/delegation/durable settlement remains open.
    pre-cleanup caller Drop, unreaped anchor loss after reap failure, and both-reader
    detach gaps, with distinct consumer evidence for each actual site.
 9. If first cleanup has not run, cancellation, supervisor failure or caller-runtime
-   shutdown must dispatch the EXISTING first kill_group on the already-reserved,
-   pool-owned non-poller cleanup lane. This is first cleanup, not a retry. Require an
+   shutdown must dispatch the first selected-group cleanup on the already-reserved,
+   pool-owned non-poller cleanup lane. Preserve existing semantics: KILL to the exact
+   group derived from the actual unreaped owned Child; Linux success/SRCH succeeds;
+   macOS PERM succeeds only after valid-dead trusted inspection, otherwise Unknown;
+   group ownership clears only on success; unchanged250ms inspector/query/environment;
+   no implicit Drop retry. This preserves the existing bounded group result, not a
+   new whole-workload death certificate. Use either an impact-gated additive shared
+   primitive separating group signal/exit observation/inspection-plan seam from the
+   Tokio Child, or a reviewed Git-local equivalent with differential controls and
+   parity mutants on both OS. The current7+1 Unknown fixtures must reach the same
+   inspection plan through actual consumer routes. A production Git-local equivalent
+   is an explicitly reviewed implementation choice; the copied-helper exclusion in
+   acceptance bars test substitutes, not that choice. This is first cleanup, not a
+   retry. Require an
    actual shutdown-before-dispatch consumer; mere static-pool retention cannot replace
    the baseline shutdown first kill. When the reserved supervisor remains healthy,
    successful selected-group cleanup proceeds to owning-Child reap and both joins. The
    SAME reserved supervisor continues observing those existing resources after a
    caller-visible timeout/Unknown; no new job is created. Continuing a pending
-   owning-Child wait (cancel-safe if Tokio is used) or existing JoinHandles is
-   observation, not command/signal retry. A returned reap error is terminal retained
+   owning-Child exit observation/settlement or existing JoinHandles is
+   observation, not command/signal retry. Preserve the unreaped leader until group
+   cleanup is established: non-reaping waitid NOWAIT/SIGCHLD observation then the
+   actual std Child try_wait, or owning Child wait on counted reserved capacity, must
+   not introduce early reap, a second deadline, outside-Child reap or a hidden job.
+   Design must choose the mechanism explicitly. A returned reap error is terminal retained
    Unknown: no re-wait/PID rescue after lost wait authority. When the supervisor is
    cancelled/panics, the reserved cleanup lane still performs first cleanup if needed,
    but no replacement observer or reap/join completion is promised: retain all four
@@ -122,16 +144,29 @@ Issue60 full runtime workload/effect/delegation/durable settlement remains open.
     reader errors.
 11. Freeze primary result precedence, with reader settlement a separate diagnostic:
 
-    Pre-effect order: already-expired caller deadline→Timeout; bounded admission expiry
+    Startup order: already-expired caller deadline→Timeout; bounded admission expiry
     →Timeout with capacity facts; unavailable driver before effects→LaunchFailure;
-    genuine native OS-spawn failure/no actual Child→ProcessFailure. Tokio wrapper,
+    genuine native OS-spawn failure/proven no surviving child→ProcessFailure. This
+    proof is specific to the actual Linux/macOS CI toolchain and native command
+    recipe, not general std or Tokio Err. Design must verify exact primary spawn-
+    error paths; Rust1.91.1 optional Linux create_pidfd has a post-spawn Err path,
+    whereas the default command uses create_pidfd=false and no pre_exec callbacks.
+    Unsupported/unverified spawn profiles refuse before effects. No surviving child
+    is a scoped resource fact, not a durable no-effect certificate; std fork/exec
+    error can create then internally wait/reap a child before returning Err.
+    Tokio wrapper,
     stdio/signal or reader initialization failure after an actual Child was produced
     retains that Child and original initialization kind; incomplete settlement remains
-    Unknown. A live in-budget fully observed settlement can clear the resource flag,
+    Unknown. A live in-budget fully observed settlement MUST clear the resource flag,
     but it is never a pre-effect refusal. After spawn, failed group binding retains the
     actual child/Unknown and original LaunchFailure. Cancellation that wins before
     spawn prevents effects; later cancellation is not a successful pre-effect refusal.
-    Once anchored, keep the following original primary priority:
+    For post-spawn initialization error, first attempt the same reserved cleanup and
+    settlement: cleanup/reap failure wins as SessionLost; otherwise preserve the
+    original initialization error with separate settlement facts. A group-binding
+    error with no established signal identity remains original LaunchFailure/Unknown,
+    with no invented group action. Once initialized, keep the following original
+    primary priority:
 
     | Highest to lowest existing primary | Required original kind |
     | --- | --- |
@@ -171,9 +206,13 @@ Issue60 full runtime workload/effect/delegation/durable settlement remains open.
     clear a flag already returned/observed uncertain or that process-wide latch. No
     false latch on fully observed successful settlement/in-budget abort or proven
     pre-effect refusal. A healthy reserved supervisor MUST continue late observation
-    and release the four permits once every actual
-    group/Child/reader/cleanup/supervisor job is observed settled; returning/publishing
-    data alone is not supervisor completion. A terminal group/reap error or lost
+    and release all four permits only after actual group/Child/readers/cleanup jobs
+    have settled and the supervisor itself has completed. The reserved supervisor
+    slot is driver-owned: its bounded execution frame observes completion and destroys
+    the inner supervisor future before the terminal slot-release action. No extra
+    observer/monitor job is created. Driver/core setup and this frame stay within
+    reserved accounting, with no native/blocking work after release; publishing data
+    alone is not completion. Design must verify this exact linearization. A terminal group/reap error or lost
     supervisor/driver retains all four with no late observation guarantee. Healthy late
     settlement cannot clear the already latched flag or mint replay/freshness
     authority. These are selected-group/reader facts only, not whole
@@ -205,7 +244,12 @@ Issue60 full runtime workload/effect/delegation/durable settlement remains open.
     fully owned by this component. Generic native executor
     constructor/abort-without-join and Grok native constructor/stderr abort-
     without-join are also explicitly unchanged/unmigrated; shared-port visibility or a
-    Git-local owner never certifies their lifetime. Global64 capacity couples Projects;
+    Git-local owner never certifies their lifetime. The Tokio spawn-wrapper Err
+    paths at Generic adapter.rs623–625 and Grok mod.rs1154 are also OPEN: an actual
+    native process may exist before its native owner/flag is registered, so the
+    current reservation can be released. The proposed Generic Git-uncertainty Lost
+    predicate does not cover executor spawn. No actual occurrence is claimed.
+    Global64 capacity couples Projects;
     retained holders can reduce/exhaust peer capacity. Project isolation and fairness
     (#50), and actual four-progress under unresolved global holds remain OPEN. Require
     at least four progress with healthy driver and sufficient free capacity, not an

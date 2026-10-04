@@ -1,0 +1,147 @@
+{
+  "component": "Issue60 selected Git reader ownership",
+  "gate": "Reader Requirements2",
+  "status": "request_changes twice; Requirements3 corrections unapproved",
+  "reviews": [
+    {
+      "reviewer": "ownership",
+      "head": "6faf26f8041abd0f51f6aed9fb8fe6c40f33f1a8",
+      "native_session": "e0bdd4dc-5102-4f3e-bc44-0a21c01f9689",
+      "raw_sha256": "0c451b4628d2544ca1f414025fe67bf44104feb493ead6fb9c1a1bcba01350df",
+      "cleanup_verified": true,
+      "verdict": "request_changes",
+      "unresolved_blockers_at_review": [
+        "R60RD2-M1-processgroup-anchor-conflict: anchoring the native Child before Tokio wrapping cannot be combined with using the tokio-Child-bound ProcessGroup (line 72) or its existing kill_group (line 88) unless the contract names and bounds a shared port or a Git-local equivalent"
+      ],
+      "findings": [
+        {
+          "id": "R60RD2-M1-processgroup-anchor-conflict",
+          "severity": "Medium",
+          "file": "doc/requirements/issue-60-git-reader-contract-draft.md",
+          "line": 72,
+          "claim": "Clause 8 requires anchoring the actual native Child before all Tokio wrapping, and accepts a Git-local std Child owner (lines 45-51). The same clause also requires that Git supply ProcessGroup an internal flag (line 72), and clause 9 requires dispatching 'the EXISTING first kill_group' (line 88). ProcessGroup can only wrap a tokio::process::Child. Under locked Tokio, such a Child exists only after build_child, which consumes the std Child and drops it on failure. Read literally, the two requirements cannot both hold. The design is therefore forced into either a shared port or a Git-local reimplementation, and the contract neither names nor bounds that choice.",
+          "evidence": "adapter.rs:26 imports tokio::process::Child. ProcessGroup.child has that type (315), and new() takes it by value (327). observe_exit, kill_group and reap are ProcessGroup methods (348-413), and reap awaits tokio Child::wait (408). The cfg(test) inspection_plan seam is a ProcessGroup field (316-317) consumed by kill_group (380-396). The 7+1 Unknown fixtures (adapter.rs:1617-1627; context.rs:1443-1451) install that seam at adapter.rs:1349-1352. In Tokio 1.53.1, mod.rs:865-866 spawns the std Child and then calls build_child(child), whose imp::build_child(child)? (950-951) consumes it. unix/mod.rs:118-145 can fail during stdio, pidfd or signal setup, and the only kill_on_drop guard is created after that succeeds. No excerpted path returns the std Child on failure or adopts an already-anchored std Child. draft:73 and requirements:90-95 forbid unreviewed changes to the shared helpers.",
+          "fix": "State explicitly that anchoring before wrapping means the Git path cannot hold its process in the tokio-Child-bound ProcessGroup. Replace 'Git supplies ProcessGroup an INTERNAL flag' with owner-agnostic wording. Define 'existing first kill_group' by its enumerated semantics: KILL to the selected group; Linux SRCH treated as success; macOS PERM succeeds only on a valid-dead trusted inspection and otherwise fails with Unknown retained; group ownership released only on success; no implicit Drop retry; the unchanged 250ms inspector. Require those semantics to come either from an impact-gated additive shared port that separates pid/group kill, exit observation and the cfg(test) inspection-plan seam from tokio Child ownership, or from a reviewed Git-local equivalent with differential evidence. Require the 7+1 fixtures to reach that same plan seam through the actual consumer paths.",
+          "verification": "verified",
+          "candidate_disposition": "Verified: owner-agnostic std Child anchor and explicitly bounded current signal/inspection semantics via impact-gated shared primitive OR reviewed Git-local equivalent/parity controls; same actual TestPlan route.",
+          "implementation_accepted": false
+        },
+        {
+          "id": "R60RD2-L1-clear-point-wording-basis",
+          "severity": "Low",
+          "file": "doc/requirements/issue-60-git-reader-contract-draft.md",
+          "line": 67,
+          "claim": "For a genuinely settled initialization error, line 67 says the flag 'may' clear, while lines 61-62 and requirements:59-60 make every live complete-settlement return, including a fully settled error, a mandatory clear point. The evidence basis for the genuine OS-spawn-failure/no-Child clear point is also unspecified.",
+          "evidence": "Under a permissive reading of 'may', a settled initialization error could stay latched in Context (context.rs:624-628, 660-664) or be persisted as Lost by Generic, which contradicts draft:171-173 (no false latch). The cited std excerpt (process.rs:181-200) covers Child Drop, not whether a spawn Err can leave a child. Cargo.toml:8 sets rust-version 1.91 only as a minimum. The ledger marks std as not lock-equal (findings.json:287-288).",
+          "fix": "Make the clear mandatory for a fully observed settled initialization error. Require primary std spawn-error source, verified for the actual CI toolchains on Linux and macOS, showing that a spawn Err leaves no surviving child. Add a real nonexistent-executable consumer control that asserts no child exists, the flag is cleared, there is no Context latch, and Generic persists Failed.",
+          "verification": "verified",
+          "candidate_disposition": "Verified: settled initialization error MUST clear; actual Linux/macOS CI std native spawn error profile proof plus nonexistent-executable real consumer negative control required. No general std Err guarantee.",
+          "implementation_accepted": false
+        },
+        {
+          "id": "R60RD2-L2-nongit-spawn-wrapper-inventory",
+          "severity": "Low",
+          "file": "doc/requirements/issue-60-git-reader-contract-draft.md",
+          "line": 205,
+          "claim": "The unmigrated inventory names only the constructor and abort-without-join gaps for non-Git sites. It omits the newly verified Tokio spawn-wrapper orphan gap at the same sites.",
+          "evidence": "Generic's executor spawn (adapter.rs:610-625) and Grok's native spawn (grok/mod.rs:1145-1154) both use tokio Command::spawn. If spawn fails after the native spawn, the std Child is dropped before any kill_on_drop guard exists. Generic then persists Failed and disarms (631-639), because validate_git already cleared the flag, so the new Lost predicate does not apply. Grok returns before ownership.group runs, keeps process None, and records Failed (1219-1245, 1356-1364). draft:205-207 and requirements:36-37 do not mention this.",
+          "fix": "Add the spawn-wrapper orphan gap at these sites to the explicitly unmigrated inventory. State that the Generic own-flag Lost predicate does not cover executor spawn.",
+          "verification": "verified",
+          "candidate_disposition": "Verified: native Generic/Grok wrapper Err exposure and Git-flag exception not covering executor spawn now explicitly OPEN.",
+          "implementation_accepted": false
+        },
+        {
+          "id": "R60RD2-L3-ledger-std-range",
+          "severity": "Low",
+          "file": "doc/verification/issue-60-reader-requirements1-findings.json",
+          "line": 291,
+          "claim": "The ledger's std evidence range omits the sentence the verification record relies on.",
+          "evidence": "findings.json:288-294 records range [185,220]. verification issue-60-readers.md:59-60 cites lines 181-200, and the decisive statement 'There is no implementation of Drop for child processes' is at process.rs:181-184.",
+          "fix": "Correct the ledger range to 181-200 so it matches the cited excerpt and the verification text.",
+          "verification": "verified",
+          "candidate_disposition": "Verified evidence precision: exact std range181-200 corrected.",
+          "implementation_accepted": false
+        }
+      ]
+    },
+    {
+      "reviewer": "capacity",
+      "head": "6faf26f8041abd0f51f6aed9fb8fe6c40f33f1a8",
+      "native_session": "0f60fea3-8864-40f4-ad83-2c70aceb359a",
+      "raw_sha256": "fea575573520adafb971bd81c501f12aac66aef9988ccf6d3d871c1a9a423bdb",
+      "cleanup_verified": true,
+      "verdict": "request_changes",
+      "unresolved_blockers_at_review": [
+        "N1: the requirement to keep the native Child before every wrapping step contradicts keeping ProcessGroup (a tokio Child holder) and its private kill_group/test seam as the Git anchor and first-cleanup path under locked Tokio 1.53.1"
+      ],
+      "findings": [
+        {
+          "id": "N1",
+          "severity": "Medium",
+          "file": "doc/requirements/issue-60-git-reader-contract-draft.md",
+          "line": 72,
+          "claim": "The new rule to keep the actual native Child before every fallible Tokio wrapping step (draft 45-51, 63-65; requirements gate 2 110-112) contradicts the sentences that keep ProcessGroup as the Git group anchor and first-cleanup path. Those are draft 72 ('Git supplies ProcessGroup an INTERNAL flag'), 73, 88 ('dispatch the EXISTING first kill_group') and 95 ('cancel-safe if Tokio is used'). With the locked Tokio API, both sets of statements cannot be satisfied at once.",
+          "evidence": "Source facts:\n- ProcessGroup.child is a `tokio::process::Child` (adapter.rs:26, 314-325), and ProcessGroup::new takes it by value (327).\n- kill_group is a private ProcessGroup method that uses self.pid and the cfg(test) `inspection_plan` seam (365-406, especially 380-396).\n- The seven adapter fixtures and the Context fixture inject their Unknown plans through `child.inspection_plan` (1349-1352).\n\nTokio facts (locked 1.53.1):\n- The only way to get a tokio Child is Command::spawn, which calls `std.spawn()?` and then the private `build_child` (mod.rs:863-866, 950-962).\n- unix `build_child` consumes the StdChild and drops it on stdio, pidfd or signal failure (unix/mod.rs:119-137).\n- No cited public API returns the StdChild after a wrapper failure.\n\nConsequences:\n- A ProcessGroup or tokio-Child anchor must pass through the consuming, fallible wrapper, which violates draft 45-51.\n- A Git-local std-Child owner (draft 49-50) cannot construct ProcessGroup or call its private kill_group or plan seam. It would need either an extracted shared primitive or a Git-local copy.\n- An extracted primitive is a common-helper edit not covered by the gated new/reap/Drop list (draft 73).\n- A Git-local copy conflicts with 'EXISTING' (draft 88) and with gate 4's 'No caller-only copied helper' (requirements 125).",
+          "fix": "State that under locked Tokio 1.53.1 the Git anchor must stay a std::process::Child and cannot be ProcessGroup or tokio::process::Child, unless a reviewed public API that preserves the StdChild is cited. Then make these edits:\n- Replace draft 72 with the Git owner's internal flag.\n- Require the first kill to keep the existing KILL/ESRCH and macOS PERM-then-inspection semantics and the cfg(test) TestPlan seam, through one of two routes:\n  (a) an impact-gated additive shared primitive, with Generic and Grok unchanged and impact-reviewed;\n  (b) a Git-local equivalent with parity mutants on both OSes.\n- Replace 'cancel-safe if Tokio is used' with the std-Child reap mechanism. Use waitid NOWAIT plus SIGCHLD and then the owning Child's try_wait, or a blocking wait counted on the reserved lane.",
+          "verification": "verified",
+          "candidate_disposition": "Verified: same anchor/group primitive contradiction fixed owner-agnostically; Child-only reap/non-reaping observe and current signal/plan semantics explicitly gated.",
+          "implementation_accepted": false
+        },
+        {
+          "id": "N2",
+          "severity": "Low",
+          "file": "doc/requirements/issue-60-git-reader-contract-draft.md",
+          "line": 205,
+          "claim": "The unmigrated non-Git inventory names constructor and abort sites, but not the newly verified exposure where a Tokio spawn-wrapper Err leaves an unowned native process at the Generic executor and Grok native spawn sites. The new Generic flag predicate does not cover these sites.",
+          "evidence": "Generic:\n- The executor spawn at adapter.rs:610-625 maps any Tokio spawn Err to LaunchFailure.\n- The launch-error path (630-639) persists Failed and disarms the reservation. The flag is false there because preflight has already settled, so the new predicate (draft 181-185) does not fire.\n\nGrok:\n- At grok/mod.rs:1154, `command.spawn()\u2026?` returns before `ownership.group(OwnershipStage::NativeChild)` is evaluated, so `process` stays None.\n- Cleanup is Ok(None), clean is true, and the state becomes Failed (1356-1364).\n\nThe verification document (61-62) states the general no-effect caveat, but no residual for these sites is recorded.",
+          "fix": "List the Tokio spawn-wrapper Err paths at adapter.rs:623-625 and grok/mod.rs:1154 as unchanged OPEN residuals: a reservation may be released while an unowned native process exists. State that neither the Git component nor the Generic Git-flag predicate covers them.",
+          "verification": "verified",
+          "candidate_disposition": "Verified: same non-Git Tokio-wrapper Err residual; no observed occurrence claimed.",
+          "implementation_accepted": false
+        },
+        {
+          "id": "N3",
+          "severity": "Low",
+          "file": "doc/requirements/issue-60-git-reader-contract-draft.md",
+          "line": 67,
+          "claim": "Wording, precedence and evidence citations are inconsistent in a few places.",
+          "evidence": "- A settled initialization error 'may clear' (draft 67) and 'can clear' (draft 130), but it is a mandatory clear point in draft 61-62 and requirements 59-60.\n- Primary precedence is undefined for a post-spawn initialization error that is followed by a cleanup or reap failure: draft 127-134 keeps the 'original initialization kind', while the table applies 'once anchored' (136-146).\n- The consumer list at requirements 34-35 omits the checkpoint caller that draft 198 now includes.\n- The ledger range for Rust std process.rs is [185,220], but the verification document cites 181-200. The 'no Drop' sentence at line 181 falls outside the ledger range.",
+          "fix": "Make it mandatory to clear the flag for a live, in-budget, fully settled initialization error. Define which primary kind wins when an initialization error is followed by a cleanup or reap failure. Add the checkpoint caller to requirements 34-35. Align the ledger's Rust range with the cited lines.",
+          "verification": "verified",
+          "candidate_disposition": "Verified: MUST clear, cleanup/reap precedence before initialization original kind, checkpoint inventory, corrected std range.",
+          "implementation_accepted": false
+        },
+        {
+          "id": "N4",
+          "severity": "Low",
+          "file": "doc/requirements/issue-60-git-reader-contract-draft.md",
+          "line": 173,
+          "claim": "The release condition refers to itself. The same healthy supervisor is the observer (draft 93-94), yet permits are released only once every job, including the supervisor job, is 'observed settled'. Nothing says who observes the supervisor, which makes the exact-64 accounting gate ambiguous.",
+          "evidence": "- Draft 174-176 says 'release the four permits once every actual group/Child/reader/cleanup/supervisor job is observed settled; returning/publishing data alone is not supervisor completion'.\n- If the supervisor releases its own permit, its termination cannot be observed before the release.\n- A separate observer would have to fit 'no \u2026 monitor \u2026 job' (draft 16-18).\n- Gate 3 (requirements 121-122) counts every job's capacity.",
+          "fix": "Define the linearization explicitly. One option: release is the supervisor's final action, taken after all other resources are observed settled and followed by no native or blocking work, with the exiting task accounted for in driver setup. Another option: name the driver core as the bounded observer of supervisor completion, within the reserved capacities.",
+          "verification": "verified",
+          "candidate_disposition": "Verified: driver-owned reserved supervisor execution frame observes inner future completion/destruction before terminal slot release; no extra observer job; exact design/accounting gate.",
+          "implementation_accepted": false
+        }
+      ]
+    }
+  ],
+  "source_modified": false,
+  "historical_failure_cause": "UNKNOWN",
+  "historical_failure_regression": "UNKNOWN",
+  "additional_primary_source": {
+    "repository": "rust-lang/rust",
+    "path": "library/std/src/sys/process/unix/unix.rs",
+    "ref": "1.91.1",
+    "public_blob": "11d48878727b0b2532d3a5b2724aa29898f9adc7",
+    "sha256": "0cc2c8548f3760be01cbde0a1825fe0e5f9a18144fa5703e04cc792175ebfbe9",
+    "url": "https://github.com/rust-lang/rust/blob/1.91.1/library/std/src/sys/process/unix/unix.rs"
+  },
+  "retained_open": [
+    "whole60/F1/durable owner",
+    "non-Git native wrappers and reader sites",
+    "Grok checkpoint resume conflict",
+    "global capacity Project isolation/fairness50",
+    "native16/runtime availability"
+  ]
+}

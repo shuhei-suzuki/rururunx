@@ -1,10 +1,11 @@
-# Issue60 selected Git reader lifetime — Requirements2 candidate
+# Issue60 selected Git reader lifetime — Requirements3 candidate
 
 Risk: STRICT. Status: UNAPPROVED requirements candidate. Separate from the merged
 inspection diagnostics slice. Combined Requirements2 was request_changes twice;
 its source findings motivate this contract, not approval. Reader Requirements1
 was also request_changes twice; verified corrections below remain pending
-re-review. Requirements, design and source gates for this component are still required before production edits.
+re-review. Reader Requirements2 also returned request_changes twice at6faf26f;
+current corrections are not approved. Requirements, design and source gates for this component are still required before production edits.
 Initial base: public main2c6ae9d6f54e68a3bdbead25817c46981d231db0.
 Current candidate normally composes main efe977486693a065122d8fc177b0e83d29620bdc;
 its independent usage-read error projection changes no native/common source.
@@ -32,10 +33,14 @@ reservation/effect/default-deny helper inventory, recovery and F1 remain OPEN.
 Changing this component must not certify those broader profiles as supported.
 
 Actual current consumers: Generic validate_git preflight, Grok initial/refresh
-ownership and index_digest, Context git_value_owned/git_value and scalar bounded_git.
+ownership (initial/refresh AND checkpoint) and index_digest, Context
+git_value_owned/git_value and scalar bounded_git.
 Synchronous git.rs/runtime registry, Generic native constructor/reader abort,
 Grok native constructor/stderr abort and future provider copies remain explicitly
 unmigrated inventory; no consumer obtains full lifetime proof merely by its label.
+Non-Git Generic/Grok Tokio spawn-wrapper Err can precede native owner registration;
+reservation release while an actual process exists remains OPEN. The Git own-flag
+predicate does not cover executor spawn; no actual occurrence is asserted.
 
 ## Proposed normative contract
 
@@ -58,12 +63,16 @@ UNAPPROVED. In particular:
 - Keep internal native uncertainty separate from the caller's publication flag.
   The caller flag becomes uncertain before effects. Mandatory clear points are a
   live in-budget complete-settlement return, including a fully settled error, and
-  a genuine native OS-spawn failure/no actual Child return. A wrapper/registration
+  a genuine native OS-spawn failure with proven no surviving child in the actual
+  verified CI toolchain/command profile. Err/no handle alone does not prove this. A wrapper/registration
   Err is not no-effect. Dropped/returned Unknown is irreversible for that call;
   late settlement never clears Context's existing sticky latch.
 - Preserve primary error priority and original kinds: cleanup/reap, observe,
   stdout then stderr read/join collection, output_open, unsuccessful Git exit,
   success. A peer reader failure must not reorder the first established error.
+  For post-spawn initialization error, cleanup/reap failure wins; otherwise keep
+  the original initialization kind. Binding failure without established signal
+  identity retains LaunchFailure/Unknown without an invented group action.
   Abort is requested cancellation; only observed returned/panicked/cancelled joins
   prove that reader future/endpoint ended, never successful read or native death.
 - Use the single existing250ms output budget for collection/abort/both joins.
@@ -111,20 +120,27 @@ This is not actual native3/runtime mixed-workload MVP acceptance.
    anchor retention before runtime/stdio/signal wrapping, real native-spawned std
    Child then forced initializer Err with retained-Unknown AND fully-settled-error
    controls, pending peer after primary read error, observed cancellation,
-   cleanup/reap failure, healthy reserved-supervisor late observation and mandatory
+   cleanup/reap failure, genuine native nonexistent-executable spawn refusal with
+   profile-specific no-survivor primary proof, clear flag/no Context latch/Generic
+   Failed, healthy reserved-supervisor late observation and mandatory
    permit release with unchanged flag/latch, and lost-supervisor no-observer permanent
    retention. Prove owning-runtime resource survival after caller runtime shutdown;
-   no raw-PID or outside-Child reap. Preserve error priority and
+   no raw-PID or outside-Child reap. The std Child anchor cannot use the current
+   Tokio-Child ProcessGroup; independently gated shared primitives OR Git-local
+   equivalent must preserve existing signal/inspection/TestPlan semantics, with
+   real-route differential controls/parity mutants on both OS. Preserve error
+   priority and
    demonstrate flags/permits/anchors at the actual consuming boundary.
 3. Actual cap admission/wait/no-spawn and four-progress controls, destructive
    private pool isolation, driver panic/poison/shutdown ownership and no native work
    under Store/pool mutex or async poller. Every supervisor/reader/cleanup job capacity
-   is counted before spawn; no hidden fallback or hold-join scheduling.
+   is counted before spawn; no hidden fallback or hold-join scheduling. Bounded
+   driver frame must observe the supervisor future completed/destroyed before its
+   terminal slot release, with no extra observer or native/blocking work after it.
 4. Compiled actual consumer mutants reach the intended missing guard; masked or
    unit-only effects earn corresponding limited attribution. Exact restored
    controls pass. No caller-only copied helper can substitute for real routing.
-   Route current7+1
-   Unknown fixtures and new destructive Generic/Grok consumers through cfg(test)
+   Route current7+1 Unknown fixtures and new destructive Generic/Grok consumers through cfg(test)
    private pools; prove production retained count unchanged and non-poller private
    teardown/retention. Actual Generic returned output_open/peer/Timeout/initialization
    Unknown must persist Lost/reserve, with original non-SessionLost API kind; settled

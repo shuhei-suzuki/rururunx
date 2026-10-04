@@ -84,3 +84,46 @@ new reader tests/source are implemented or passed. Earlier docs trigger20c CI
 37235601171 finished all steps both OS success; actual checkout/tree was not yet
 captured here, so this is not a claimed reader implementation or checkout proof.
 Current reader requirements/design/source gates remain pending.
+
+Reader Requirements2 at6faf26f completed both independent own-session delta
+reviews: ownership and capacity request_changes, each cleanup_verified=true.
+They verify the earlier15 findings addressed in the candidate, but identify the
+same new Medium contradiction: pre-wrapping native std Child retention cannot
+require the current Tokio-Child-only ProcessGroup. Four narrow Low topics also
+need precision. Full8 findings and raw hashes are recorded in
+[Requirements2 findings](issue-60-reader-requirements2-findings.json).
+Requirements3 replaces the hardwired owner with a Git std Child anchor and
+explicit current group-signal/inspection/TestPlan semantics, through an impact-
+gated shared primitive OR a reviewed Git-local equivalent. Actual consumer
+parity controls/mutants remain pending; no native/shared source edit is made.
+
+Other corrections: live fully-settled initialization error MUST clear; cleanup/
+reap error precedence is explicit. A bounded driver-owned supervisor execution
+frame must observe/destroy the supervisor future before the final slot-release
+without a new observer job/native work afterwards. Generic/Grok native Tokio
+spawn-wrapper Err paths remain OPEN outside the Git flag predicate. The old std
+source range is corrected to181–200; previous reviewed heads/findings remain
+unchanged. These are candidate corrections awaiting a new requirements gate.
+
+Exact Rust1.91.1
+[Unix native spawn source](https://github.com/rust-lang/rust/blob/1.91.1/library/std/src/sys/process/unix/unix.rs)
+was read from public blob11d48878727b0b2532d3a5b2724aa29898f9adc7,
+SHA256 `0cc2c8548f3760be01cbde0a1825fe0e5f9a18144fa5703e04cc792175ebfbe9`.
+The fork/exec Err path waits before returning at138–160; optional Linux pidfd
+spawn at773–809 instead has a post-spawn PID-resolution Err. The tagged
+[command defaults](https://github.com/rust-lang/rust/blob/1.91.1/library/std/src/sys/process/unix/common.rs)
+at168–194 disable create_pidfd and have no pre_exec callbacks. Requirements3
+therefore demands profile-specific primary proof for the actual pinned CI
+Linux/macOS command recipe and a real nonexistent-executable consumer control;
+it does not infer no surviving child from every std/Tokio Err. Internal fork/exec
+child settlement is a resource fact, not a durable no-effect certificate. None
+of these code paths is asserted observed in an old CI failure.
+
+Current docs baselineCI37238262914 all steps both OS success. Both actual checkout
+160839ef3a8bf18c91c04675e06da73ae8a87a29 have parents efe9774/6faf26f; complete
+tree042d21b8f9daa4d52770470bac0283cb7c6749b5 equals the triggering candidate.
+[Raw step/provenance ledger](issue-60-reader-requirements2-ci.json) retains the
+log hash and full-tree comparison. This is docs/current-existing-source DEBUG
+test plus release BUILD evidence; no reader source, release TEST, requirements
+approval or native availability acceptance is claimed. Historical failures remain
+FAILED/RED; cause and regression UNKNOWN. Whole60/native16/F1 remain OPEN.
