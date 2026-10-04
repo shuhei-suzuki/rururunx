@@ -1,7 +1,7 @@
 # Issue 58: Retained ownership of Task-free native Consultant work
 
 Workflow: STRICT (native ownership, durable authority and Project exclusion).
-Status: Requirements6; verified independent Req1–Req5 gaps corrected below;
+Status: Requirements7; verified independent Req1–Req6 gaps corrected below;
 requirements/design/source gates pending.
 Baseline: main80452f4/schema3. MVP follow-up from #6 F1 and #19; see
 [Issue58](https://github.com/shuhei-suzuki/rururunx/issues/58).
@@ -111,7 +111,9 @@ results do not prove Workflow transport success. Preserve that scope.
   party irrespective of read-only intent: physical repository/common-dir identity
   resolution, Consultant pre-acquisition context/source capture, per-submission/
   continuation revalidation, #18–20 source/Goal-pack/context and gate-claim capture,
-  #15 status/attach/TUI, #26 add/validate/reconcile and #14 recovery inspection.
+  #15 status/attach/TUI, #26 add/validate/reconcile and #14 unadopted-scope inspection.
+  Inspection/reconciliation inside a genuinely adopted recovery scope follows ONLY
+  the separate exclusive successor protocol below, not ordinary Lost compatibility.
   These callers either use strictly non-executing in-process reads that cannot
   invoke configured fsmonitor/hooks/filters/textconv/external helpers, or obtain
   their ACTUAL #60 runtime owner and retained reservation BEFORE execution, with
@@ -192,12 +194,25 @@ results do not prove Workflow transport success. Preserve that scope.
   cannot fabricate death or unlock replay. Lost remains absorbing in ordinary APIs.
   Reviewed #14 recovery is a separate EXCLUSIVE successor protocol, not an ordinary
   competing observer required to treat Lost as compatible. Before any recovery
-  effect, genuinely fence/exclude the exact former supervisor/workload through the
-  actual #6/#60 resource profile and private runtime-instance/epoch CAS. Epoch/row/
+  effect, first commit exclusive private recovery intent/owner for the exact former
+  runtime instance/epoch and bounded physical closure, retaining EVERY original hold.
+  Actual fencing itself is owned by that intent's #6/#60 recovery effect capability;
+  a crash/partial fence retains its recovery reservation/attention. A still-live
+  legitimate instance is a conflict unless its exact controlled shutdown/fencing
+  is separately authorized by reviewed #14 policy; missing PID/heartbeat or a
+  restart label never authorizes arbitrary killing/adoption. Genuinely fence/exclude
+  the exact former supervisors/workloads through the actual #6/#60 resource profile
+  and private runtime-instance/epoch CAS. Epoch/row/
   boot/PID labels alone cannot prove the former native/helper effects fenced.
-  Atomically adopt that exact uncertain hold/reservation into a private recovery
-  successor capability WITHOUT releasing it; check every other physical hold and
-  lock. Inspection/reconciliation runs under the actual #60 recovery effect owner
+  Atomically adopt the COMPLETE closed set of intersecting uncertain holds and
+  reservations covered by that SAME genuine former-instance/epoch fencing proof
+  into ONE private successor, all-or-nothing WITHOUT releasing any hold. Adopted
+  members are one successor's scope, not mutual competing owners. Prove physical
+  closure/current versions and every other hold/lock; refuse live, unfenced or
+  outside-proof intersections. A partial adoption cannot proceed against a leftover
+  intersecting member. Missing/truncated scope proof keeps the intent and holds,
+  never an implicit global fence/release. Inspection/reconciliation runs under the
+  actual #60 recovery effect owner
   and adopted scope, with no new native input or authority from historical rows.
   Release only after known current recovery outcome AND complete required cleanup/
   reconciliation. Unknown former-owner fence, failed adoption or missing reviewed
@@ -309,6 +324,11 @@ owner fencing, atomic retained-hold adoption, owned inspection/reconciliation an
 verified settlement. Mutate missing physical fencing, release-before-adoption and
 Lost-as-compatible at actual recovery/admission consumers; restored positives prove
 the exact former owner excluded, not merely a new epoch or inactive row label.
+Also recover a crash leaving Consultant lifetime, its #60 revalidation job and
+partial worktree-removal reservations intersecting one root, through actual owned
+recovery intent/fence and atomic full-set adoption. Independently reject live/
+unfenced/outside-proof peers. Mutate partial-set adoption, adoption outside fencing
+proof and unowned pre-intent fence effects; restore real no-release positives.
 
 Run shared-state/native/Git/registry/Workflow regressions, fmt/clippy/build, exact
 Linux/macOS CI and independent immutable source reviews. Update README/master

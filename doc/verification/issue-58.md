@@ -89,3 +89,15 @@ unchanged inspection442 stderr258.545166ms TimedOut, mac86pass/1fail/1ignored;
 Ubuntu fmt/clippy/tests/debug passed, release cancelled; macbuilds skipped. Original
 failed log retained, no rerun/cause claim; latergreen docs do not erase it. Req6
 review pending; no private successor/profile/runtime implementation is claimed.
+
+Req6 2f761cd completed independent native A request_changes (one Medium/one Low)
+and B approve (one Low), both actual v3 owned cleanup verified. Verified residual:
+one-hold adoption could deadlock on multiple intersecting uncertain reservations
+left by the same crash. Req7 requires complete bounded closed-set fencing/adoption
+as one successor, all-or-nothing with no release or outside-proof/live exemption.
+It adopts Low owned pre-fence recovery intent/crash retention and explicit adopted-
+scope cross-reference; no PID/heartbeat label authorizes killing a live instance.
+Actual multi-hold recovery and fence-order consumers/mutants remain required.
+Requirements7 review pending, with no actual successor/runtime/profile implemented.
+Exact Req6 CI37205124028 passed Linux/macOS fmt/clippy/tests/debug and release
+builds (individual steps inspected), without erasing the preserved earlier red.
