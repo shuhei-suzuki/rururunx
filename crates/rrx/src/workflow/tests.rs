@@ -33,6 +33,7 @@ struct FakeAgent {
     before_ack: Mutex<Option<Box<dyn FnOnce() + Send>>>,
     start_pause: Mutex<Option<Arc<Pause>>>,
     start_error: AtomicBool,
+    start_error_session: AtomicBool,
 }
 impl FakeAgent {
     fn new(name: &str, store: SharedStore, review: bool) -> Self {
@@ -48,6 +49,7 @@ impl FakeAgent {
             before_ack: Mutex::new(None),
             start_pause: Mutex::new(None),
             start_error: AtomicBool::new(false),
+            start_error_session: AtomicBool::new(false),
         }
     }
 }
@@ -81,7 +83,8 @@ impl AgentAdapter for FakeAgent {
             if let Some(pause) = pause {
                 pause.hold().await;
             }
-            if self.start_error.load(Ordering::SeqCst) {
+            let start_error = self.start_error.load(Ordering::SeqCst);
+            if start_error && !self.start_error_session.load(Ordering::SeqCst) {
                 return Err(adapter_error("fake start outcome unknown"));
             }
             let session = Session {
@@ -93,7 +96,11 @@ impl AgentAdapter for FakeAgent {
                 native_ref: None,
                 pid: None,
                 worktree: request.worktree,
-                state: SessionState::Running,
+                state: if start_error {
+                    SessionState::Failed
+                } else {
+                    SessionState::Running
+                },
                 model: None,
                 effort: None,
                 recovery: Value::Null,
@@ -104,6 +111,11 @@ impl AgentAdapter for FakeAgent {
                 .unwrap()
                 .put_session(&session, 0)
                 .map_err(|e| adapter_error(&e.to_string()))?;
+            if start_error {
+                // Generic-shaped terminal persistence without Workflow binding.
+                // This synthetic row supplies no native settlement authority.
+                return Err(adapter_error("fake start outcome unknown"));
+            }
             self.statuses.lock().unwrap().insert(
                 session.id,
                 SessionStatus {
@@ -4771,7 +4783,7 @@ async fn preparation_post_dispatch_binding_cas_conflict_preserves_factual_sessio
 }
 
 #[tokio::test]
-async fn preparation_existing_explicit_retry_gap_is_characterized_not_recovery_proof() {
+async fn preparation_explicit_retry_refuses_unbound_dispatch_without_recovery_proof() {
     let fixture = Fixture::ready_agent(false).await;
     fixture.executor.start_error.store(true, Ordering::SeqCst);
     assert!(matches!(
@@ -4800,20 +4812,16 @@ async fn preparation_existing_explicit_retry_gap_is_characterized_not_recovery_p
         1,
         "ordinary observation does not replay"
     );
-    // Existing explicit API admits this; Issue14 must close it with trusted
-    // outcome evidence. This characterization claims neither safety nor closure.
-    fixture
-        .engine
-        .retry(fixture.task.id, "existing explicit retry".into())
-        .unwrap();
-    assert!(
+    let durable = unbound_retry::full_snapshot(&fixture);
+    assert_eq!(
         fixture
             .engine
-            .snapshot(fixture.task.id)
-            .unwrap()
-            .active
-            .is_none()
+            .retry(fixture.task.id, "untrusted retry".into())
+            .unwrap_err()
+            .to_string(),
+        crate::workflow::UNBOUND_NATIVE_RECOVERY_REQUIRED
     );
+    assert_eq!(unbound_retry::full_snapshot(&fixture), durable);
 }
 
 #[tokio::test]
@@ -5165,3 +5173,5 @@ async fn actor_ack_refresh_accepts_only_bookkeeping_and_preserves_changed_author
         }
     }
 }
+#[path = "tests/unbound_retry.rs"]
+mod unbound_retry;

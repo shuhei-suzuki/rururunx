@@ -1,0 +1,67 @@
+{
+  "head": "49844a645412db20322a4ae256049f3b1feae48d",
+  "scope": "synthetic component, not native/F1/whole14/MVP",
+  "debug_workspace": {
+    "rust_pass": 271,
+    "doctest_pass": 2,
+    "ignored": 24,
+    "default_concurrency": true,
+    "log": "/private/tmp/rururunx-issue14-retry-source1-debug.log",
+    "log_sha256": "dc7e564842d5a879aa293ef1ec360782db6dc1ad7be904cf9670177091596369"
+  },
+  "focused_controls": {
+    "tests": 8,
+    "pass": 8
+  },
+  "workflow_release": {
+    "pass": 75,
+    "scope": "affected Workflow only; no full workspace release test claim"
+  },
+  "quality": [
+    {
+      "head": "49844a645412db20322a4ae256049f3b1feae48d",
+      "check": "fmt",
+      "returncode": 0,
+      "log": "/private/tmp/rururunx-issue14-retry-source1-fmt.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "head": "49844a645412db20322a4ae256049f3b1feae48d",
+      "check": "clippy",
+      "returncode": 0,
+      "log": "/private/tmp/rururunx-issue14-retry-source1-clippy.log",
+      "log_sha256": "d1e42225c81c948cde5768403d2577b80f09d045637db30b3529b6d7c6a9cc6c"
+    },
+    {
+      "head": "49844a645412db20322a4ae256049f3b1feae48d",
+      "check": "debug-build",
+      "returncode": 0,
+      "log": "/private/tmp/rururunx-issue14-retry-source1-debug-build.log",
+      "log_sha256": "a5f4c585ee974ca44916ac30a98bbc189e067a7e0a6bc6d2e8d6bc525be724af"
+    },
+    {
+      "head": "49844a645412db20322a4ae256049f3b1feae48d",
+      "check": "release-build",
+      "returncode": 0,
+      "log": "/private/tmp/rururunx-issue14-retry-source1-release-build.log",
+      "log_sha256": "705284908d2a69f78ed728f5f50edd750a38e2956c3b56313063ae0a0400de2b"
+    },
+    {
+      "head": "49844a645412db20322a4ae256049f3b1feae48d",
+      "check": "workflow-release",
+      "returncode": 0,
+      "log": "/private/tmp/rururunx-issue14-retry-source1-workflow-release.log",
+      "log_sha256": "37544dfc6e61c2618ba4698a8a3cf3c76500854b84bceb2d9b53dfab60e4a64a"
+    }
+  ],
+  "restored": {
+    "base": "49844a645412db20322a4ae256049f3b1feae48d",
+    "restored_head": "782fc3f4df1f3e99c3cf393d5b452895c0e66211",
+    "complete_tree_equal": true,
+    "clean": true,
+    "returncode": 0,
+    "log": "/private/tmp/rururunx-issue14-retry-source1-final-restored.log"
+  },
+  "independent_source_reviews": "pending",
+  "retained_historical_failure": "main555 full release failure cause/regression UNKNOWN; neither erased nor repeated as this source result"
+}

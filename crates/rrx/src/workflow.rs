@@ -18,6 +18,8 @@ use crate::{
 
 pub type WorkflowFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 
+pub(crate) const UNBOUND_NATIVE_RECOVERY_REQUIRED: &str = "native launch outcome unknown; launch may or may not have begun; original-attempt recovery required (#14)";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Phase {
@@ -2133,6 +2135,13 @@ impl WorkflowEngine {
                 AttemptState::Waiting | AttemptState::Failed
             ),
             "running/interrupted phase requires recovery"
+        );
+        let attempt = &snapshot.workflow.history[index];
+        ensure!(
+            !(attempt.phase.actor() != Actor::EvidencePort
+                && attempt.dispatch_started
+                && attempt.session_id.is_none()),
+            UNBOUND_NATIVE_RECOVERY_REQUIRED
         );
         ensure!(
             !irreversible(snapshot.workflow.history[index].phase),

@@ -423,9 +423,18 @@ prove launch occurred. #13 remains responsible for irreversible
 Pr/MergeGate/Cleanup outcomes.
 See [Issue #41 design](../issue-41-design.md).
 
-Two existing integration gaps are explicit. `retry` admits Failed unbound
-dispatch markers without native-outcome evidence when no Session is persisted;
-Issue #14 must fence this explicit API, while ordinary observation never replays.
+The implemented limited #14 component fences active native marked-unbound attempts in
+both Engine retry and Store closure, including raw generation changes. An owner
+may still bind its actual Session, publish failure or record a terminal decision
+on the same active attempt. No Session, adapter error label or matching terminal
+row proves no dispatch. Even fixable post-marker configuration failures block
+Task/Goal progress and Project removal until genuine original-attempt recovery;
+retry and terminal release provide no escape. Definitive pre-marker failures,
+resolved bound native outcomes and nonirreversible EvidencePort retries stay valid.
+The earlier TerminalRecovery fence independently protects that access mode. The
+genuine original-attempt recovery producer and whole Issue #14 remain open; ordinary
+observation never replays.
+The native Session-binding integration gap remains explicit.
 The current successful native Session-binding publication writes an unchanged
 Task via the coordinated transition and increments its raw version. Providers
 admitted under that Task version can then reject their own completion/approval.

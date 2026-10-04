@@ -1,0 +1,73 @@
+{
+  "head": "cbee1247e00b940ed9f57217539c83b11747ffc3",
+  "main": "47830b0ab97a095d0c387089bf5442452e060572",
+  "normal_no_conflict_composition": true,
+  "logs": {
+    "debug": {
+      "top_level_rust_pass": 378,
+      "doctest_pass": 2,
+      "nested_ordinary_witness_child_pass": 1,
+      "ignored": 26,
+      "default_concurrency": true,
+      "log": "/private/tmp/rururunx-issue14-retry-composed1-debug.log",
+      "log_sha256": "2f13c63260d9e717b0f838743ee199b9814a67ca4017b62722b60e0e641ba17c"
+    },
+    "workspace-release": {
+      "top_level_rust_pass": 378,
+      "doctest_pass": 2,
+      "nested_ordinary_witness_child_pass": 1,
+      "ignored": 26,
+      "default_concurrency": true,
+      "log": "/private/tmp/rururunx-issue14-retry-composed1-workspace-release.log",
+      "log_sha256": "0dd492090bf77083aa2e7640c001c213db1615d5c7a96becaebe482ca4a44122"
+    }
+  },
+  "checks": [
+    {
+      "head": "cbee1247e00b940ed9f57217539c83b11747ffc3",
+      "check": "fmt",
+      "returncode": 0,
+      "log": "/private/tmp/rururunx-issue14-retry-composed1-fmt.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "head": "cbee1247e00b940ed9f57217539c83b11747ffc3",
+      "check": "clippy",
+      "returncode": 0,
+      "log": "/private/tmp/rururunx-issue14-retry-composed1-clippy.log",
+      "log_sha256": "67efd791d9d83c4f3ffdf40cc3d377a4688e1300475c2d81ebf4ce3f1427f90d"
+    },
+    {
+      "head": "cbee1247e00b940ed9f57217539c83b11747ffc3",
+      "check": "debug-build",
+      "returncode": 0,
+      "log": "/private/tmp/rururunx-issue14-retry-composed1-debug-build.log",
+      "log_sha256": "299f16a2c523be18fef769975d2df00e0505521db047540feea3a74b94666887"
+    },
+    {
+      "head": "cbee1247e00b940ed9f57217539c83b11747ffc3",
+      "check": "release-build",
+      "returncode": 0,
+      "log": "/private/tmp/rururunx-issue14-retry-composed1-release-build.log",
+      "log_sha256": "571a194fdc742096079130bb1ce09f69279834d16aea382c09655891826a0db1"
+    },
+    {
+      "head": "cbee1247e00b940ed9f57217539c83b11747ffc3",
+      "check": "workspace-release",
+      "returncode": 0,
+      "log": "/private/tmp/rururunx-issue14-retry-composed1-workspace-release.log",
+      "log_sha256": "0dd492090bf77083aa2e7640c001c213db1615d5c7a96becaebe482ca4a44122"
+    }
+  ],
+  "workflow_release_included_in_full_release": 75,
+  "restored": {
+    "base": "cbee1247e00b940ed9f57217539c83b11747ffc3",
+    "restored_head": "614344b081c56cab39fb71ee45cb306190f74487",
+    "complete_tree_equal": true,
+    "clean": true,
+    "returncode": 0,
+    "log": "/private/tmp/rururunx-issue14-retry-composed1-restored.log"
+  },
+  "source_reviews": "pending",
+  "scope": "limited unknown retry fence; no native/F1/whole14/MVP acceptance"
+}
