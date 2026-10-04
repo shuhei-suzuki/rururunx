@@ -894,16 +894,37 @@ impl Store {
     }
 
     pub fn usage(&self, scope: &Scope) -> Result<Vec<Usage>> {
-        let mut statement = self.connection.prepare("SELECT body FROM usage WHERE project_id=?1 AND (?2 IS NULL OR goal_id=?2) AND (?3 IS NULL OR task_id=?3) ORDER BY sequence")?;
+        validate_scope(scope)?;
+        let mut statement = self.connection.prepare("SELECT project_id,goal_id,task_id,session_id,body FROM usage WHERE project_id=?1 AND (?2 IS NULL OR goal_id=?2) AND (?3 IS NULL OR task_id=?3) ORDER BY sequence")?;
         let rows = statement.query_map(
             params![
                 scope.project_id.to_string(),
                 str_id(scope.goal_id),
                 str_id(scope.task_id)
             ],
-            |row| row.get::<_, String>(0),
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                ))
+            },
         )?;
-        rows.map(|row| decode(row?)).collect()
+        rows.map(|row| {
+            let (project, goal, task, session, body) = row?;
+            let usage: Usage = decode(body)?;
+            ensure!(
+                usage.scope.project_id.to_string() == project
+                    && str_id(usage.scope.goal_id) == goal
+                    && str_id(usage.scope.task_id) == task
+                    && usage.session_id.to_string() == session,
+                "usage row/body identity mismatch"
+            );
+            Ok(usage)
+        })
+        .collect()
     }
 
     pub fn audit(&mut self, scope: &Scope, kind: &str, data: Value) -> Result<()> {

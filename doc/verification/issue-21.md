@@ -287,3 +287,95 @@ This approves ONLY the legacy six typed integer Store boundary; whole21 stays op
 Qualified provenance/raw retirement/native counters/price/report/benchmark/epoch and
 #16 acceptance are still mandatory. No failed review/cleanup or earlier CI failure
 was relabeled. This scoped component may merge without closing the tracking issue.
+
+
+## Staged legacy usage read identity component
+
+Baseline main054aefd/schema3, under approved Requirements8/Design4. Store::usage
+previously filtered row scope columns but returned decoded body without matching
+Project/Goal/Task/Session identity, and omitted validate_scope. The component adds
+these read-only checks; genuine legacy rows remain unqualified with unchanged values.
+Six controlled body corruptions and invalid-scope checks exercise actual Store::usage,
+Task/Goal/Project reads and unchanged history/owner/Session/audit snapshots. Source
+verification and independent review pending. No native execution/aggregation, private
+writer epoch, raw-metadata retirement, benchmark or whole21 acceptance is claimed.
+
+
+Legacy read component source b1b643bc8ac3b43c4c0affefa6d9e9a29b9debd1:
+all15 state integration tests PASS; fmt and locked all-target workspace Clippy
+-Dwarnings PASS. Five compiled clean isolated mutants remove each row/body identity
+check or the initial scope-shape check, and fail at the actual public Store::usage
+consumer. Exact full tree and source restored, focused control PASS; public patches,
+commit/tree/source/test/log hashes and observed assertion failures retained. No
+compiler/setup failure counted. Full regression/builds/CI and two independent source
+reviews remain pending; no qualified telemetry/native/whole21 acceptance claim.
+
+
+Initial b1b643b source (artifact5b7d36e/source equal) also passed full DEFAULT host
+workspace regression:222 Rust tests plus2 doctests,8 explicitly ignored. Debug and
+release builds passed. Earlier Source2 #43 sandbox PS EPERM failures are a different
+branch/environment, not these tests. Public zero-context patches reproduce identical
+executed mutant hashes and retain original private patch hashes; apply with
+`git apply --unidiff-zero`.
+
+Historical b29aee8 attempt (SUPERSEDED AND WITHDRAWN, see below): read review
+proposed agreeing corrupted row/body could both omit Goal while retaining Task. That
+attempt added decoded Scope shape validation after identity matching, a Project query
+control and complete row-column snapshot. Its checks failed during fixture setup;
+none of that attempt earned consumer, mutation or regression credit.
+
+
+The b29aee8 agreeing-malformed-scope addition is WITHDRAWN. Both its attempted
+focused control and workspace test failed BEFORE the intended read assertion:
+schema3 already has CHECK(task_id IS NULL OR goal_id IS NOT NULL). This is fixture
+setup failure, not consumer/mutation/native credit. Its full run passed every prior
+consumer but14state passed/1fixture failed; no rerun erased it. The extra body guard
+was redundant for supported schema3 columns once all body identities are matched.
+Exact production AND test blobs are restored to the initial b1b643b verified bytes;
+restoration/failed-log hashes are retained. Initial5 compiled mutations,222 Rust+2docs
+pass and debug/release builds apply through this explicit byte equality; no testing
+claim applies to b29 itself. Unsupported/corrupted schema and qualified query/epoch
+producers remain beyond this narrow component. Fresh independent source review and
+exact-source CI still required. No new read/write authority or legacy waiver.
+
+
+Legacy read Source1 f7457df: two independent native reviewers both identified a
+verified Medium test gap for NULL Goal/Task columns, plus bounded wording/snapshot
+Lows. Actual production comparison is correct; no new authority/policy proposed.
+Clean follow-up301a885 normally incorporates merged main diagnostic f7baad and adds
+legitimate Project/Goal/Task non-executor history, exact ordered selected rows, both
+NULL-column/body-Some refusal directions, filtered unaffected views, complete usage
+columns/all rows and global audit-row snapshots with unchanged owners/Sessions.
+Withdrawn b29 paragraph is explicitly historical; static errors concern only identity
+and requested-scope refusals; pre-existing serde decode detail remains pending safe
+projection. No production Store byte changed from verified b1b.
+
+At301a885 DEFAULT normal-host workspace236 Rust+2 doctests PASS,9 explicitly ignored;
+fmt/all-target Clippy-Dwarnings/debug and release BUILD PASS. Release TESTS not run:
+merged-main555 release failure remains known, cause/regression UNKNOWN. Nine compiled
+clean committed mutants (four identity removals, request shape removal, two NULL
+wildcards, two non-optional column reads) fail at actual public Store::usage consumers;
+exact full tree/source restored and both controls PASS. Private collector string
+expectation was corrected after retaining the actual nonoptionalGoal consumer failure;
+no retry-to-green or compile/setup kill. Public patches/log/source/tree hashes and
+exact all source/test/build inputs retained. Fresh two-reviewer Source2/current CI
+pending; whole21 and qualified metrics/native/projection producers remain OPEN.
+
+
+Source2 d937db3: TWO independent native APPROVE, zero Critical/High/Medium and
+no unresolved component blocker. Both actual selected review wrappers cleaned up;
+resumed native counters have unverified operation attribution and are not qualified
+telemetry. Verified Low test-count arithmetic corrected mechanically to236 Rust+2docs
+(238 total),9ignored; logs unchanged. Optional insertion-vs-index-order discriminator
+strengthening deferred: ORDER BY sequence production unchanged and no ordering mutant
+claimed. No source/test change after301a885. CI37232602381 EVERY step Linux/macOS PASS;
+actual logged checkout2ad5aa018c2db51052af5689cdb3f3dd97dbd60c has parentsf7baad/d937
+and complete tree equal triggerhead, including all38 source/test/build inputs.
+
+Automatic review initially rejected native re-review by asserting private repository
+export. Unauthenticated GitHub API proved private:false; all19 source/evidence/previous
+review files downloaded without credentials and compared to exact published bytes.
+Identical command retried with this evidence was approved; no workaround or private
+payload used. Public proof retained. Final evidence-only metadata commit is manually
+reviewed with all38 source/test/build blobs unchanged; final current CI still required
+before normal limited merge. Whole21/MVP and native acceptance remain OPEN.
