@@ -116,7 +116,14 @@ hook, MCP and helper lifecycle are independently covered. Profiles reduce enable
 capability classes, never cleanup strength for an enabled class. A zero model-tool
 count cannot prove startup cleanup. Mandatory hooks and rules stay preserved;
 their absence or supported lifecycle cannot be assumed or achieved by disabling
-them. Reduced-profile evidence must come from enforceable native/kernel controls
+them. Every supported profile must bind its actual executed binary/launcher to an
+installed-conformance-verified identity set, not merely a minimum version. Every
+control relied upon for coverage or delegation blocking, including full Executor
+profiles, has the same exact identity/input and lifetime binding requirements.
+Unverified or changed identities refuse before reservation when detectable by
+non-executing metadata; later detection requires actual private post-marker
+cleanup/settlement and never a retroactive readiness claim.
+Coverage/control evidence must come from enforceable native/kernel controls
 or a side-effect-free authoritative source bound to the exact effective inputs
 the native process consumes (user/project/managed/trust/profile/plugin/environment
 layers), plus the resolved executable and complete launcher/shim path chain,
@@ -129,10 +136,14 @@ require full workload authority or
 fail unsupported before the first native execution. A later native inventory
 mismatch is a failure under the cleanup rules below, never a retroactive owner.
 Before the first model turn or tool grant, authoritative running-native evidence
-or already effective kernel enforcement must confirm the reduced capability.
+or already effective kernel enforcement must confirm each relied-upon capability
+restriction. Startup/hooks/MCP/frontend controls must be effective before the
+first path they constrain executes; later native self-report cannot cover that
+earlier window. If confirmation/binding is unavailable, treat the path as reachable
+and require full applicable ownership or remain unsupported.
 Keep the exact input/executable binding throughout the attempt. Detected changes
 are unknown and invoke the cleanup rules; they never widen the profile. If this
-binding cannot be maintained, the reduced profile is unsupported. Kernel controls
+binding cannot be maintained, the relying profile is unsupported. Kernel controls
 that refuse a required native hook/helper do not establish native compatibility;
 metadata-only success does not prove Review or Executor compatibility.
 
@@ -156,6 +167,12 @@ not claimed as remotely owned process cohorts, and remain native responsibilitie
 they cannot become an untracked persistent Task-execution channel. No narrower
 delegated-job exclusion or whole-workload claim is authorized by this correction.
 No global service kill, broad process adoption or host-policy mutation is implied.
+Publish each profile's delegation inventory and its completeness basis, bound to
+the conformance-verified native identity/effective inputs. Reachability is default
+deny under the actual enforced controls; any unclassified route is unsupported.
+List justified bounded request endpoints separately from persistent execution
+routes, including deferred file-mediated schedulers and autostart entries. A named
+daemon denylist alone is not a completeness proof.
 
 Before any native process may have executed, registered Preparing cleanup and
 exact historical rollback/factual failure remain authoritative. Once any native
@@ -179,21 +196,42 @@ input consumption. Implementation-owned unsupported profiles refuse before
 clear_hold/reserve/context/dispatch_started and never fall back to legacy start.
 For a supported profile, the successful exact reservation precedes Issue19's
 atomic dispatch_started plus operation-lease transaction. That marker is not model
-input consumption or cleanup proof. The supervisor receives the private operation
-handle, acquires the attempt's genuine workload owner before any native execution,
+input consumption or cleanup proof. The managed entry point synchronously moves
+the private operation handle into its registered owned attempt before any await
+or caller-cancellable point. The supervisor acquires the attempt's genuine workload
+owner before any native execution,
 and retains both through startup, admission and settlement. Runtime owner-acquisition
 failure after the marker sends no native process or input, but cannot erase the
-operation by adapter rollback. Every post-marker failure closes only through the
+operation by adapter rollback. A post-marker failure before possible model-input
+admission/consumption closes only through the
 actual private port's NoCurrentDispatch receipt: tracked pristine no-execution
 authority, or tracked setup cleanup with no current admission/consumption/uncertainty.
+Pristine no-effect authority is consumed before the first Session publication,
+external Git/process/native connection or owned resource effect; subsequent failure
+requires that effect's actual tracked cleanup. A durable effects_started flag alone
+is not proof of never executing.
+After possible admission/consumption, only the applicable KnownCurrentTerminal
+non-success receipt can close a known failure/interruption, with exact authoritative
+current native outcome and current whole-workload cleanup. Missing either remains
+Lost/held. Success additionally requires the port's success predicates. Neither
+receipt class substitutes for the other or turns an already Lost attempt releasable.
 Preparing rollback is an adapter-internal historical restoration, never a managed
 lease release. Unavailable proof retains the operation; Error/drop/terminal labels
 are not substitutes. Protected standalone native launch remains unsupported before
 reservation/process until its separately reviewed private authority exists; it
 cannot borrow a Workflow operation lease or silently use a generic legacy path.
+Here protected standalone means Task input with Issue19 typed pack ancestry/private
+prepared-frame authority launched outside the exact managed entry point, including
+start/resume/checkpoint and ReadOnly aliases. It does not mean every unprotected
+Project consultation is such a protected Task. Issue19 owns that private frame/lease
+extension; Issue6 owns its native adapter consumer and actual cleanup. Issue19's
+minimum unsupported boundary is an interim safety gate, not acceptance of required
+native consultation or interactive attachment.
 
 No resume, checkpoint continuation, retry or fresh replacement may execute in the
-same Session/worktree/lock scope until the earlier workload's cleanup is proven.
+same Session/worktree/lock scope until the earlier workload's cleanup is proven
+and, for Lost, Issue14's separately approved audited recovery has released it.
+Proven cleanup is necessary and never sufficient to release Lost.
 Known-alive, pending, incomplete and unknown cleanup all block same-scope execution.
 Lost is absorbing under ordinary adapter calls. Escalate to Human and retain the
 reservation; a recorded human judgement, PID clearing or manual state change
@@ -226,7 +264,9 @@ Clean published implementation checkpoints, and separately reviewed safe compone
 integration, may precede complete native platform acceptance. They must remain
 explicit partial checkpoints with the unaccepted capabilities held/unsupported;
 they do not close Issue 6 or advertise complete Codex Core. Issue 6 capability
-completion requires both-host real native Executor/decision/resume/stop proof and
+completion requires both-host real native Executor/decision/Consult/resume/stop
+and owned native interactive/TUI attachment proof, in the scopes required by the
+product (native Goal support remains optional), and
 actual private Issue 19 composition. Issue 16 then verifies the whole multi-Project
 workflow using these real accepted routes. Neither Issue 6 nor Issue 16 can close
 on unsupported-only, singleton file-only or synthetic no-subprocess results.
@@ -242,7 +282,8 @@ permission for privileged installation or silently change the required hosts.
 - Explicit model/effort and unchanged native defaults are observable.
 - Exact owned resume preserves rrx/native identities and refuses foreign scope.
 - Interactive/native TUI route retains native trust/permission prompts; any
-  unavailable prerequisite has an explicit typed outcome.
+  unavailable prerequisite has an explicit typed outcome and holds capability
+  completion; Unsupported is never native attachment acceptance.
 - Callback correlation rejects foreign/replayed IDs and persistent grants.
 - Two-Project context, environment, Git and native-reference isolation regressions.
 - Bounded framing, failure cleanup, cancellation, stale revision and immutable
@@ -269,10 +310,10 @@ permission for privileged installation or silently change the required hosts.
 - Reduced-profile attach/permission/broker expansion is rejected before native
   side effects; a guard-removal mutation must expose that real caller regression.
 - Actual executable/launcher and effective-input binding mismatch before dispatch
-  or during a reduced attempt cannot grant tools or certify cleanup. Exercise
+  or during any supported attempt cannot grant tools or certify cleanup. Exercise
   the running-native/kernel capability confirmation at the real grant consumer.
-- At least one real-consumer delegation fixture proves an existing external
-  service cannot start persistent Task work outside the profile's owned boundary.
+- Real-consumer immediate-daemon and deferred file-mediated delegation fixtures
+  prove persistent Task work cannot start outside the profile's owned boundary.
   A guard-removal mutant exposes the rejection; enrolled descendants ending
   cannot certify a delegated job's cleanup.
 - Installed real native proof on BOTH required host families for nested child
