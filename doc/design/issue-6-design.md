@@ -624,7 +624,7 @@ only canonical uncertainty reasons, failure kinds and a detail-retained flag.
 
 Requirements gate: exact `a79850c29dbbc0c43d4ba6fd33143b4f2554212c` passed two
 independent native requirements reviews with no Critical/High/Medium findings.
-Design9 is a proposed STRICT design; it is not source/backend/MVP approval.
+Design10 is a proposed STRICT design; it is not source/backend/MVP approval.
 Production remains the unchanged `cab665d56f7032f086946c1acfce448f5b9d076d`
 selected-group/F4 component. This section supersedes earlier full-cleanup or
 capability eligibility wording, without erasing that component's evidence.
@@ -714,10 +714,16 @@ The correction must not abandon already-actual retained owners. Existing interna
 component stop/cleanup may assist only its genuine unreaped selected groups and
 retain first cause, uncertainty and actual handles. It cannot publish complete
 workload settlement, evict/release/reuse an unsettled control or erase a hold from
-selected cleanup. Public release refuses unsettled entries and eviction never
-removes them. Public submit_approval refuses even Deny/Cancel under EMPTY; internal
+selected cleanup. Public release refuses unsettled entries BEFORE claim()/transition
+mutation; eviction never removes them. Public submit_approval refuses even Deny/Cancel
+under EMPTY; internal
 already-owned stop/decline/interrupt cleanup may only reduce the prior workload,
-never ALLOW/new input or publish full settlement. No saved PID/Session row
+never ALLOW/new input or publish full settlement. Public stop is explicitly this
+reducing path for an already-genuine captured attempt; it may cancel/interrupt/
+drain, and Ok(status) is not settlement/transport success. It never looks up a
+later attempt or creates a new owner. For unowned IDs it returns SessionLost with
+zero effects. The zero-frame oracle excludes ONLY this genuine reducing path,
+not public approval submission or any new input/ALLOW. No saved PID/Session row
 reconstructs that owner. In a restarted runtime absent genuine ownership, only
 historical Store reporting is available; adapter status is SessionLost and
 mutations refuse.
@@ -743,23 +749,36 @@ not composed #19/#60 readiness or evidence of safe earlier capture.
 | --- | --- |
 | adapter.rs:204–217 trait capabilities/probe/start_structured; AgentRegistry get300/from_config277 | Check own callable Codex route without changing Generic's API or claiming registry integration. EMPTY cannot advertise operational flags. |
 | session.rs:1649 capabilities/probe; start/resume/checkpoint/attach and aliases | Earliest no-effect gate; no registry/history/input/control mutation, native/Git/helper process or frame. |
-| mod.rs exports; transport.rs:135 launch /153 launch_preparing, rpc80/socket272; protocol.rs:182 connect,202 send,286 call,354 initialize | Seal exported effectful routes and gate each remaining own creation/dispatch. Ordinary-library rejection and actual zero-effect oracle cover all symbols, not only adapter aliases. |
+| mod.rs exports; transport.rs:135 launch /152 launch_preparing, rpc80/socket272; protocol.rs:182 connect,202 send,286 call,354 initialize | Seal exported effectful routes and gate each remaining own creation/dispatch. Ordinary-library rejection and actual zero-effect oracle cover all symbols, not only adapter aliases. |
 | session.rs:1396 native --version; ownership.rs:369 Git/resolve, filesystem helper | No Git/metadata/version/discovery before gate; per-fixture absolute sentinel and private site oracle expose each actual call. |
 | answer_approval1999–2087 / frontend input | No grant/dispatch expansion without actual ready backend plus original owning input/operation producer. |
 | terminal546 /2346 and transport_succeeded1679; release1819/evict110 | Selected component evidence cannot mint full-cleanup or release authority. Already-consumed unknown remains Lost/no replay. |
 | Reservation::Drop626; TaskGuard attempt.rs:244–274; release_task190; RegisteredTransition::Drop170 | Preserve actual retained owner, first cause and unpublished/Unknown state. No new complete-cleanup or producer proof from Drop. Full later nonexecuting Drop producer remains open below. |
-| workflow.rs capture564/reserve949/capability1132/start1178/evaluate1296 | Earlier executing capture and reservation remain actual19/60 driver integration blockers, not fixed by late Unsupported. |
+| workflow.rs capture564/reserve949/capability1132/start1178/poll transport1296; validate_persisted_status1308; resume_gate1598/transport1621; evaluate1672 | Earlier executing capture and reservation remain actual19/60 driver integration blockers, not fixed by late Unsupported. |
 | git.rs cleanup283/executor_reserved359/ensure_no_executor370; state ensure_project_idle1300/worktree exclusion1375 | Current terminal-label/Executor-only exclusions are not genuine retained ownership. Shared19/58/60/14 hold consumers remain pending. |
 
 The production representation needs no inhabited ready token, variant or constructor:
 EMPTY is an in-process fixed refusal. No broad dead_code allowance or non-test
 factory exists. The ONE private cfg(test) seam supplies backend/owning-producer
 inputs to the SAME gate called by unmodified public entries; neither alone passes.
+The refusal path and EVERY public/inherent/trait/dynamic/low-level entry/alias body
+are cfg-unconditional. The sole cfg(test) acceptance branch is inside that gate;
+other cfg(test) instrumentation may observe, never replace routing/refusal bodies.
+Inventory cfg(not(test)), cfg_attr and feature/target conditional aliases too;
+no ordinary-only success/fallback or cfg-selected entry implementation exists.
 Both test inputs permit component regressions only, never production/native/full-
 cleanup readiness. Ordinary construction defaults to EMPTY in test builds too.
 All test fields/factories/site oracles are absent from ordinary library builds;
-stable rustc JSON checks distinguish missing (E0599) from private (E0624), plus
-cfg(test)/export inventory rather than compile_fail,E0599 alone.
+Pinned rustc JSON controls classify EACH symbol kind, not any-error acceptance:
+associated methods missing E0599 versus present-private E0624; fields missing
+E0609 versus private E0616; unresolved free items/types/module/import paths use
+their actual E0425/E0412/E0433/E0432 versus private-path E0603. Struct-literal fields
+use absent E0560 versus private E0451; tests must
+separately prove field absence, not merely a privacy/build error. Run exact
+positive/private comparison snippets on Rust1.91.1 and pin emitted codes at source
+gate; unrelated codes fail. Production sealed exports are privacy controls (E0603),
+not test-item absence proof. Keep cfg(test)/export inventory; compile_fail labels
+alone never suffice.
 
 Actual callable controls use isolated Store/repositories and per-fixture oracles:
 an absolute sentinel Codex executable records any invocation; private cfg(test)
@@ -772,11 +791,17 @@ retained entries, watch/channel state and sentinel/site counters. Constructor,
 exact descriptors/probe, observers and all inherent/dynamic/low-level aliases
 must preserve zero children/connections/frames and identical snapshots under EMPTY.
 
-Resume/checkpoint controls first create a genuine private component-owned terminal
-entry through that same test seam, stage higher-version input, then disable only
-the seam inputs before calling the real public route. Approval controls use an
-actual synthetic owned live peer and pending request, then disable the inputs.
-No owner is manufactured from a row/JSON/PID. A removed guard must reach actual
+Route-guard seeding uses a protocol-speaking fake app-server through the REAL
+public start route with only that single test seam enabled. It produces the actual
+registry/control/Starting/admission/current native terminal (or pending request)
+under synthetic fixture ownership. No direct registry insert or prefinished
+manufactured Entry is allowed in these route controls. Existing terminal_adapter,
+supervisor_fixture and direct Reservation fixtures remain private-function
+component tests ONLY, not real-route guard evidence. Resume/checkpoint controls
+stage higher-version input after this genuine terminal, then disable seam inputs
+before the public call; approval controls disable them after a real synthetic
+owned live pending request. No owner is manufactured from a row/JSON/PID. A removed
+guard must reach actual
 Starting/Git/native/channel/frame effects observed by these oracles, rather than
 merely change Unsupported to SessionLost. Fixture-owned resources remain tracked
 and explicitly cleaned even when a mutant reaches effects.
@@ -786,7 +811,11 @@ insert Git preflight or executable metadata/--version before the gate, restore a
 single descriptor flag, promote selected completion to transport success, or allow
 release/eviction of unsettled entries. Each compiled mutant must be assertion-killed
 by the effect/snapshot/descriptor/ordinary-API oracle it actually targets; no error-
-label-only effect credit. Restored controls and owned fixture cleanup are required.
+label-only effect credit. Already inert attach and trait-default native-goal paths
+have no downstream executing route: guard-removal mutants are equivalent/redundant
+survivors, honestly recorded without effect-kill credit. Their typed refusal and
+zero-effect/descriptor controls remain required. Restored controls and owned
+fixture cleanup are required.
 Existing component positive cancellation/CAS/framing/checkpoint tests migrate to
 this single seam and remain component evidence. Their public transport success is
 false and unsettled release/eviction refuses; private component journal checks may
@@ -805,9 +834,36 @@ transport/protocol test modules. Workflow/state have no direct Codex import at
 this head, but their dynamic AgentAdapter expectations remain impact inventory.
 Source impact still inventories every reference and external integration caller;
 migrate component assumptions explicitly rather than deleting regressions.
-The SAME Source A PR updates master agent-adapter §§16/17, README and this design's
-status to precise EMPTY/Unsupported facts and retained test-only component evidence.
-No current positive executable capability or whole-cleanup support is advertised.
+The SAME Source A PR updates master agent-adapter §§15/16/17 (including caller-schema
+Codex structured/transport claims), every grep hit naming Codex support, README and
+this design's status to EMPTY/Unsupported facts and retained test-only component
+evidence. No current positive executable capability or whole-cleanup support is
+advertised. Dynamic Workflow poll/validate_persisted_status/resume_gate controls
+cover false transport completion and unowned SessionLost without changing shared
+production consumers or claiming current #19/#60 composition.
+
+A REQUIRED executed integration target links the ORDINARY non-cfg(test) library,
+in debug AND release, with no special feature or test authority. It calls every
+CodexAdapter public/inherent/trait and Arc<dyn AgentAdapter> alias, constructor/
+broker descriptor, exact empty capabilities/probe, start/structured/resume/
+checkpoint/attach/approval/release and unknown-ID observers/stop. Assertions match
+each class: dispatch/refused release has the fixed Unsupported reason; unowned
+observers/stop SessionLost; transport_succeeded false; native-goal defaults keep
+exact existing typed Unsupported and are inert. No merely compiled example/test
+or cfg(test) result substitutes for execution of this shipped path.
+
+Its subprocess harness receives explicit scoped PATH/HOME/Git sentinel environment
+at spawn, never mutating parent process environment. Absolute Codex/Git sentinels
+and ordinary public Store snapshots detect actual invocation/Starting/history/
+input effects; observable adapter outcomes check no owner/completion promotion.
+No cfg(test) counter/factory is an oracle there. The harness retains and cleans
+its actual synthetic child/group ownership even for effect-reaching mutants; it
+uses no real native authentication/model/foreign repository. Kill a compiled
+ORDINARY-library gate success/fallthrough mutant with these runtime effect/
+snapshot assertions, not only a changed error label. Also inspect the ordinary
+export/symbol/cfg inventory. Both ordinary execution and private component unit
+controls are required; unit tests, cargo-build or compile-time absence alone
+cannot establish the shipped no-effect claim.
 
 Exact reviewed source, default debug/release suites, fmt/clippy -D warnings, builds
 and both-OS CI are required. CI trigger head and actual checkout merge SHA/parents
@@ -817,7 +873,7 @@ default-concurrency or same-head-rerun waiver. Stage A cannot close Issue6 or MV
 
 ### Stage B: required ready-backend source/conformance gates — OPEN
 
-Design9 does not approve an implementation of ready enrollment/containment or
+Design10 does not approve an implementation of ready enrollment/containment or
 settlement. A backend needs its own concrete requirements/design/source review and
 installed conformance before an availability entry can exist. Proposed private roles
 below describe prerequisites, not callable ports. Missing producers stay Unsupported
@@ -1001,4 +1057,4 @@ hook/config activation/write-refusal fixtures. No such producer is supplied here
 Adding any ready
 profile requires new immutable requirements/design/source review, actual consumer controls
 and mutants, exact both-OS gates and installed positive native conformance. No dependency
-is made optional and no production availability can be minted from this Design9 document.
+is made optional and no production availability can be minted from this Design10 document.
