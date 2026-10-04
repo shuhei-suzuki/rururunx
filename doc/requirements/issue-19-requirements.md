@@ -448,3 +448,25 @@ definition/gates/evidence/receipt completion authority and is unavailable until
 that consumer exists. Cancelled/Failed lifecycle dispositions may revoke admission
 while operations remain owned, but never release their resources or certify native
 death. Actual private factual settlement does not alter the terminal Goal decision.
+
+
+Design18 narrows supported schema6 production authority: protected standalone
+native launch/resume is explicitly Unsupported before reservation/Starting/process,
+while standalone preparation remains a non-launchable artifact. Existing native
+component positives without a retained operation are not production proof. A
+schema6 candidate cannot pass production deployment/automatic migration or MVP
+acceptance with all real required native profiles refused; the actual managed
+producer and required Core configuration proofs remain release gates.
+
+Actual owned factual settlement must remain publishable after authorized Task
+Cancelled/Failed or Goal/Project hold/cancel/fail, without reopening lifecycle or
+certifying acceptance. Pure pre-effect refusal after a committed marker has an
+actual private pristine/no-effect settlement transition, not dropped-handle fiction.
+Every operation column/marker mutation is SQL constrained, including REPLACE and
+already-marked inserted history. Generic managed Goal completion is fenced using
+durable post-epoch Workflow/operation history, not only outstanding operations;
+actual Issue23 accepted definition authority further governs its integrated path.
+Same-Task live checkpoint append preserves admitted history; new context/input
+remains operation/current-head fenced. Receipt freeze permits only exact record-only
+late Workflow binding and closure, never Session mutation. These require actual
+caller/transaction positives and causal mutants in source acceptance.

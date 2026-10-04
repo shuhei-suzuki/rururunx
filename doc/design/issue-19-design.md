@@ -188,7 +188,9 @@ Store::validate_context_input checks actual request bytes; Session admission pin
 input_sha256 and consumed intent must match that hash. Provider-specific RPC
 envelopes/fixed prefixes are a distinct transport digest, never this input hash.
 Older public schema 4 writers refuse schema 5. Existing schema4 standalone packs
-must be prepared again under the new private publication contract before launch.
+needed fresh private preparation under schema5. Under proposed schema6, standalone
+preparation remains an artifact operation; protected standalone native launch is
+Unsupported before reservation or process creation (Design18 below).
 
 Once the same dispatch intent is consumed before wire delivery, its Starting
 status/Running acknowledgement is a historical admitted observation. Later
@@ -803,13 +805,12 @@ automatic force loop is permitted. Runtime retention/quota remains separate,
 without deleting authoritative history to manufacture availability. The earlier
 claim about unused force calls applies only when the cap has not been reached.
 
-Standalone re-admission by a new Session UUID is explicitly allowed after prior
-ownership is genuinely terminal, with fresh lifecycle/lock/Git/source/private-frame
-validation. One delivery per input attempt means (Session UUID,input version),
-not globally one delivery per Task/context. Same-UUID continuation needs a higher
-version; Workflow native phase slots retain single-owner context allocation.
-This permits explicit standalone retry without pretending that source freshness
-or persisted Task history is native wire proof.
+Under schema5, standalone new-UUID re-admission used fresh lifecycle/lock/Git/source
+and private-frame validation. This is historical component behavior, not proposed
+schema6 authority: Design18 rejects protected standalone native launch before any
+reservation or process. One delivery remains per (Session UUID,input version) for
+supported managed input, with higher-version same-UUID continuation and immutable
+Workflow native phase allocation. No terminal label certifies owned cleanup.
 
 Store::open performs migration only, without application reconciliation/audit or
 native effects after the migration transaction. A runtime that invokes additional
@@ -1576,7 +1577,7 @@ All five managed writers migrate every Session publication, not just first admis
 Operation-aware reservation checks are mandatory independently of labels: worktree
 lock acquisition, validate_worktree_exclusion, every executor_reserved/Lost consumer,
 Git worktree create/adopt/remove/ownership validation, Task/Project idle and registry
-remove, context/checkpoint prepare/force/publication, competing native admission,
+remove, context prepare/force/publication, competing native admission,
 Workflow bind/close/replace and Goal terminal/completion surfaces. Native observation
 does not remove an operation lease. A lock cannot be acquired around a managed
 Executor startup merely because someone attempted to restore an Exited body.
@@ -1791,10 +1792,163 @@ not a live directive; its omission from semantic authority cannot authorize stal
 instructions. Sibling-progress tolerance here means Store semantic frame validity;
 actual native adapters' full raw P/G/T version CAS may still hold publication and
 must not be advertised as automatic native liveness. One-delivery is per exact
-(Session UUID,input_version): a genuinely settled standalone frame may be freshly
-admitted by a new UUID under every current fence; Workflow context allocation
-remains single-owner. Every new Project/Goal-only Session uses the exact registered
+(Session UUID,input_version) for supported managed input. Protected standalone
+native launch is Unsupported under schema6; Workflow context allocation remains
+single-owner. Standalone artifact preparation never creates an operation lease.
+Every new Project/Goal-only Session uses the exact registered
 canonical primary Project.root path and cannot name a Task worktree or worktree
 namespace. Compare stored canonical paths and scope under Store; actual FD/Git/
 filesystem ownership checks stay bounded outside SharedStore. Generic updates pin
 that worktree; legacy history remains read-only rather than silently rebound.
+
+
+### Design18: minimum supported launch boundary and settlement precision
+
+These refinements govern the proposed schema6 contract and supersede earlier
+schema5 standalone launch/retry examples. No schema6 source or producer readiness
+is claimed by this design document.
+
+**Protected standalone is an artifact path, not a native operation path.**
+A Task input protected by typed pack ancestry/private prepared-frame authority
+cannot enter standalone native launch/resume/checkpoint dispatch. All actual
+Generic/Claude/Codex/Grok entry points and private admission paths return explicit
+Unsupported before reservation, Starting publication, native connection, process
+creation or model-visible bytes unless invoked through the exact managed operation
+entry point. No caller-selected role, UUID, legacy start, missing operation or
+ReadOnly alias bypasses this check. prepare_task can still publish/return a bounded
+non-launchable draft artifact; it does not acquire a retained native operation.
+Historical component standalone positives from native5/6 remain source evidence
+for those components, not schema6 production admission/cleanup proof. Unprotected
+legacy factual history remains explicitly separate; migration drains old live/Lost
+owners and does not silently re-adopt them. A protected generic Session publication
+cannot create live native authority or relabel a terminal record to release work.
+A future standalone lease producer would require its own approved contract.
+
+Positive managed profiles retain all capability, exact frame, lifecycle, ownership
+and native cleanup requirements. It is not acceptable to pass a production migration
+or MVP gate by rejecting every real native path. Until the required activated Core
+production profiles have real reviewed managed producers and causal positive
+admission/outcome/cleanup/receipt proofs, schema6 is a nondeployable integration
+candidate. Normal production release/automatic DB upgrade remains gated; isolated
+synthetic schema/migration tests prove mechanics only. Release evidence names the
+exact supported profiles and required configurations, including the actual native
+review/Executor paths required by the MVP. Unsupported positives cannot replace
+them. This is a release/deployment gate, not a new config boolean or SQL credential
+that enables an unproven profile. Managed Goal dispatch/completion additionally
+waits for the actual Issue23 accepted-definition/admission/completion consumer;
+component completion or historical terminal labels do not establish that consumer.
+Do not advertise the schema6 production path in README before these gates close.
+
+**Factual cleanup survives lifecycle cancellation without granting input.**
+Private settlement may publish an exact owned NoCurrentDispatch or
+KnownCurrentTerminal receipt under Task Cancelled/Failed, Goal Paused/Blocked/
+Cancelled/Failed, or Project Blocked. These states prohibit new launch/admission;
+they do not prevent recording completed owned cleanup. The receipt preserves the
+existing Task/Goal/Project lifecycle and requires the exact operation, Session
+Record/version, immutable frame/actor and applicable input pair/checksum. A removed
+Project is rejected (removal must already require no open ownership). Lost remains
+absorbing/held for Issue14. No receipt alone completes accepted Task/Goal criteria,
+changes a cancelled Task to success, or grants operation permission. Test actual
+owned Task cancellation followed by cleanup receipt and exact claim release, plus
+rejected native admission and unchanged lifecycle; a lifecycle-predicate mutant
+must reach this factual producer rather than fail earlier setup.
+
+**Pre-effect refusal is an owned transition, not an Err-shaped certificate.**
+All fallible pure Engine validation runs before managed marker/operation commit
+where possible. After that commit, the trusted producer initially owns a private
+Pristine operation handle. Before its first Session publication, process creation,
+native connection or other owned effect, it durably transitions effects_started
+false→true in the operation transaction and consumes Pristine into the supervisor's
+effect-owning state. External Git/process startup is an effect requiring tracked
+cleanup; it is not a pure validation exemption. A private consuming
+settle_refused_before_effect(Pristine, reason) can atomically publish the no-Session
+NoCurrentDispatch receipt only when that exact handle has never crossed the effect
+boundary and the transaction also confirms no Session/allocation/admission or
+consumption. The actual synchronous validation/refusal sites use this port; they
+must not silently drop a committed operation. The durable false flag alone cannot
+mint proof. A stale/foreign handle, public error JSON or dropped future cannot call
+this transition. After effects_started, every failure goes through the actual
+tracked supervisor cleanup/outcome; uncertainty remains held. Drop still records
+attention without release. Exercise pure validation failure immediately after
+marker commit, successful receipt/non-success closure, and effect-started failure
+held until actual cleanup. Marker failure rolls back the lease and needs no receipt.
+
+**Operation SQL constrains each allowed mutation independently of code.**
+All identity/frame/scope/claim/agent/profile/requested fields are immutable.
+Session NULL→Some occurs once, in the private allocator transaction, and requires
+its matching exact phase_session_owners row; it cannot be cleared or changed.
+Operation version strictly increases on each real allowed update. Remembered
+Session Record version is NULL before binding, then present and strictly increases
+when that value changes; an update of another field cannot clear/decrease it.
+effects_started changes only false→true. phase_closed changes only false→true with
+a matching receipt and exact Workflow closure in that same transaction; receipt
+publication alone never closes the phase. No UPDATE can rewrite immutable fields,
+reopen a closed phase or detach its Session. BEFORE INSERT rejects an existing ID
+or natural attempt key, including INSERT OR REPLACE with recursive_triggers OFF;
+DELETE rejects. Equivalent no-replace fences apply to admission/allocation/epoch/
+receipt authority. Canonical fresh/migrated DDL goldens and raw SQL mutants cover
+all columns/transitions, not just immutable identity or ordinary API updates.
+
+Every post-epoch native history entry must have dispatch_started iff it has exactly
+one matching durable operation. Ordinary insertion of a new already-marked entry,
+false→true and true→false are all rejected outside the dedicated transaction.
+Later operation settlement/phase closure preserves marker and immutable history.
+A marked entry without its exact operation, or an operation with an unmarked/
+foreign entry, is corruption and holds. Test all three ordinary writer shapes and
+operation insert/marker/audit rollback; never infer validity just from current active.
+
+**Managed Goal completion has durable classification.**
+The transaction that handles generic Goal terminal publication identifies managed
+native ancestry from owned post-epoch Workflow context/history or retained scoped
+operation history, including settled/closed operations. A Workflow context/history
+reference counts only with its exact owned ContextVersion and Task epoch; malformed
+or contradictory references refuse. Epoch rows alone do not classify legacy Goals,
+since all old Tasks receive a boundary. A Workflow's post-boundary context counts
+before its first native marker; finished history counts after its last operation
+closes. Removing active/outstanding operations cannot make that Goal generic again.
+Generic Goal Completed cannot bypass this predicate by observing a between-phases
+window, adding/removing DAG membership or presenting terminal Task labels.
+
+When Issue23's actual goal_authority table composes, its accepted scoped definition
+row is an additional durable managed-Goal predicate even before Workflow creation.
+That row attests acceptance; it does not duplicate or permit mutation of the Goal
+snapshot definition. Missing accepted authority makes a Goal definition-unverified,
+never managed ready/complete, exactly as approved Issue23 specifies. The integrated
+Issue23 typed Goal ports reject every generic snapshot change and require trusted
+lifecycle authority, while Issue19 never invents a Human/creation authority or
+allows generic Cancel/Fail to evade that contract. A factual native receipt can
+publish after an authorized lifecycle hold/cancel/fail without rewriting that
+accepted definition or terminal decision. Acceptance covers before-first-marker,
+between phases, all-closed history, actual accepted authority before Workflow,
+legacy unverified histories, and malformed references. The completion producer
+requires exact required receipts, no outstanding/open operations and current accepted
+criteria/evidence/policy; durable classification is necessary, not sufficient.
+
+**Publication and observation are distinguished from new dispatch.**
+A bounded same-Task checkpoint append may occur while a managed native operation
+is live: append immutable provenance and advance checkpoint head, without rewriting
+that admitted operation's frame/pair/receipt. Its historical acknowledgement and
+terminal cleanup remain pinned. New prepare/force/context publication and new
+native claims still require operation-aware idle/current-head fences. Test live
+append positive, exact unchanged admitted pins, and rejected stale new admission.
+
+Private historical observation mirrors the existing target-state activity check.
+Registered Project normally permits it. For Blocked Project, only the existing
+safe metadata-preserving WaitingHuman/WaitingApproval or monotonic Lost observation
+is available: exact actor/input/recovery remain pinned, except permitted PID clearing
+and conservative native_dispatch_unobserved addition. A Running target is not a
+safe update. Thus Codex Decline's unchanged Waiting publication can precede its fixed
+wire reply under Blocked, but its later Running write rejects; Claude's prewire
+Running write rejects before reply. Other Goal/Task/worktree/own-Session constraints
+remain in force. No private historical port confers ALLOW or native input authority.
+Terminal factual cleanup uses the separate settlement table above, not this port.
+
+Issue43 late record-only Session binding can succeed after an exact receipt freezes
+the current owner: match the private allocation/frame/pair and receipt's Session
+version/body checksum in the binding transaction, with its existing full P/G/T,
+Workflow Record, lifecycle and lock-set CAS. It changes no Session body/version and
+therefore does not violate receipt freeze. An older restored terminal is still
+NotAdmitted/nonbinding. Current success requires exact admitted/consumed pins and
+actual successful terminal receipt; Pending does not claim delivery. Exercise actual
+start-return/binder-CAS delay while supervisor settles, then fresh record-only
+binding and closure; stale/foreign/restore cases remain held.
