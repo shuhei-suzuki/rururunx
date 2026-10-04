@@ -223,3 +223,13 @@ Exact `bab6f54` CI37175637709 has both required contexts SUCCESS:
 This new head run is separate from failed888 run, no old job rerun. Low fixes do
 not explain/repair ps timeout. #46 is a separate required follow-up, not an
 automatically inferred prerequisite for merging the independently green41 head.
+
+Committed `d124c21` targeted terminal-recovery consumer passed (0.13s), fmt and
+all-target Clippy passed. Its new post-refresh absence-of-wrapper assertion was
+causally tested by compiled M13-r2 (same any-marker-error-eligible operator M13):
+it fails that actual assertion, while restored exact source/control passes. The
+clean detached worktree was normally removed. Total22 compiled runs retain19
+distinct operators:19 consumer-kill runs from16 operators,1 unit and2 masked.
+This final refinement changes tests/comments/docs only; reviewed production
+workflow.rs remains byte-identical to `7a8c0e5`/`bab6f54`. Broad local runtime gates
+are reused from that actual tested source; final exact CI runs all required checks.

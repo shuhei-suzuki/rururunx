@@ -301,9 +301,24 @@
       "assertion_killed": true,
       "patch_sha256": "ccf548fecdbd4adc239a87b55c614a1842b4aae1cd0f872650eedf444a4d31b7",
       "passed": false
+    },
+    {
+      "id": "M13-r2",
+      "operator_id": "M13",
+      "head": "b3bab7436bba0453908851693bd2666b99899057",
+      "base": "d124c213a5d22e7a215cb610feb4d4eac922c46c",
+      "consumer": "preparation_pause_cancel_and_terminal_recovery_keep_owner_fenced",
+      "credit": "consumer",
+      "exit": 101,
+      "seconds": 7.606,
+      "compiled": true,
+      "assertion_killed": true,
+      "patch_sha256": "376b857ca4b0232f9dc8bc37f925e5ad12b6ea72a4e7ecbd975b3b9cadb5063b",
+      "passed": false
     }
   ],
-  "compiled_runs": 21,
+  "compiled_runs": 22,
   "distinct_operators": 19,
-  "patch_artifact": "issue-41-mutant-patches.diff"
+  "patch_artifact": "issue-41-mutant-patches.diff",
+  "final_terminal_restored_head": "d124c213a5d22e7a215cb610feb4d4eac922c46c"
 }

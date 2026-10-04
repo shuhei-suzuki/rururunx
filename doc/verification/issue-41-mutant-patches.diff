@@ -387,3 +387,18 @@ index 294c462..33fe28b 100644
              "preparation claim changed"
          );
          let attempt = snapshot
+
+Mutation M13-r2; operator M13; sha256 376b857ca4b0232f9dc8bc37f925e5ad12b6ea72a4e7ecbd975b3b9cadb5063b
+diff --git a/crates/rrx/src/workflow.rs b/crates/rrx/src/workflow.rs
+index 294c462..6104578 100644
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -1157,7 +1157,7 @@ impl WorkflowEngine {
+         snapshot.workflow.history[index].dispatch_started = true;
+         *eligible = false;
+         if let Err(error) = self.persist(&mut snapshot, None) {
+-            *eligible = own_task_marker_rollback(&error, snapshot.task.id);
++            *eligible = true;
+             return Err(error);
+         }
+         let request = LaunchRequest {
