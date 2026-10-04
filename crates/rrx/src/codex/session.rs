@@ -1609,9 +1609,6 @@ impl CodexAdapter {
                 ));
             }
             entry.evidence = evidence.clone();
-            if let Some(publication) = &mut reservation.resume_publication {
-                publication.evidence = evidence.clone();
-            }
             entry.reply = reply;
             entry.request = request.clone();
             entry.schema = schema;
