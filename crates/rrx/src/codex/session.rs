@@ -418,7 +418,7 @@ impl Reservation {
             })).map_err(|_|())
         });
         }
-        let returned = if false {
+        let returned = if uncertain {
             let publication = outcome
                 .error()
                 .map(|error| format!("; publication: {error}"))
