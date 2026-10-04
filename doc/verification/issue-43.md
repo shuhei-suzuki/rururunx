@@ -121,3 +121,14 @@ locks atomically for BOTH bind paths and names the co-integration/recovery gates
 Prior strict original-frame currency remains; no current-row recapture, source/native
 producer implementation, restart acceptance or automatic held-success release.
 Requirements7 independent review pending.
+
+Requirements7 fb16df6 completed A request_changes (one Medium) and B approve
+(zero findings), both actual v3 owned cleanup verified. Existing durable readiness
+requirement was sound; mandated consumer controls omitted the complementary case
+where launch ends pending BEFORE later success and notification loss. Requirements8
+adds both Err/drop orderings, no-restart convergence and a mutant preserving ordinary
+re-derivation/wakes while removing durable readiness. Scheduling facts cannot mint
+binding proof; readiness commits before/with settlement and wait registration rechecks.
+An actual bounded active-driver timer is permitted where an edge source cannot
+guarantee wake-up, with finite/fair work and no passive/busy poll mutation. No new
+source/private producer or recovery acceptance is claimed. Delta review pending.

@@ -2,7 +2,7 @@
 
 Workflow: STRICT. Requirements baseline `d8c5266` approved by native independent
 requirements re-review4; joint item6/Design4 approved at `77da799` by two independent
-reviewers. Requirements7 corrects durable trigger ordering and shared marker-frame capture;
+reviewers. Requirements8 covers durable readiness before and after lost launch results;
 independent requirements/design delta and all implementation gates remain pending.
 
 ## Problem and MVP relationship
@@ -128,7 +128,15 @@ endings independently of a dropped Engine future; Drop cannot be its only callba
 Register durable pending reconciliation with the actual active-driver readiness
 queue so a closed/full/lost notification cannot strand it; use event-driven readiness
 and restart/resume re-evaluation, not a passive poll side effect or busy loop.
-Driver restart still requires the authentic #14 protocol below. Duplicate hints and
+Readiness is published before or atomically with its sealed settlement and rechecked
+when the driver registers/returns from waiting. It is only a scheduling fact, never
+binding authority; the binder still derives the actual private proof in its transaction.
+If edge delivery cannot guarantee wake-up, the authoritative driver uses one bounded
+runtime timer/readiness recheck with finite work/backoff and fair pending scans, so
+settlement AFTER an Err/drop while pending plus a lost notification still converges
+without restart. This is an active-driver recovery wake, never a passive observer
+mutation or high-frequency busy loop. Driver restart still requires the authentic
+#14 protocol below. Duplicate hints and
 early hints while start is in flight converge on the same durable readiness.
 Both normal returned-Session and late receipt-sourced paths use this SAME atomically
 captured original marker frame, including the complete scoped lock set captured in
@@ -178,7 +186,12 @@ after real supervisor success, plus actual restart protocol where claimed;
 include settlement/notification BEFORE dropping the still-pending start future,
 a lost/full/closed notification channel and duplicate notifications. Drive the actual
 active-driver durable readiness and require exactly one binding/audit, with no
-fail/retry/second dispatch; kill notification-only/no durable re-derivation mutants. Assert
+fail/retry/second dispatch. Also end the launch by BOTH Err and drop while its
+operation remains pending, publish genuine success LATER and lose/full/close the
+notification: the actual durable readiness queue/wake must still bind once WITHOUT
+restart. Kill a mutant retaining launch-end/evaluation re-derivation and notification
+wakes but removing durable readiness registration/wake, in addition to the
+notification-only/no durable re-derivation mutant. Assert
 no Failed closure, retry or second dispatch and passive observers remain unchanged.
 Independently change each P/G/T version and a lock-only frame after marker commit,
 then require rejection with no row/audit mutation and preserved receipt. Kill
