@@ -212,8 +212,8 @@ async fn concurrent_native_reviewers_share_exact_lock_and_validate_structured_ve
     // The workflow receives dyn AgentAdapter from the registry. Caller constraints
     // must reach the same native prompt and local validator through that path.
     let (five, six) = tokio::join!(
-        fixture.start_structured(&*registered, schema.clone()),
-        fixture.start_structured(&*registered, schema)
+        fixture.start_structured_trait(&*registered, schema.clone()),
+        fixture.start_structured_trait(&*registered, schema)
     );
     let five = five.unwrap();
     let six = six.unwrap();
@@ -806,7 +806,10 @@ async fn installed_native_structured_decision_has_exact_response_correlation() {
     let mut registry = AgentRegistry::default();
     registry.register("grok".into(), Arc::new(adapter)).unwrap();
     let adapter = registry.get("grok").unwrap();
-    let session = fixture.start_structured(&*adapter, schema).await.unwrap();
+    let session = fixture
+        .start_structured_trait(&*adapter, schema)
+        .await
+        .unwrap();
     let mut status = adapter.subscribe((&session).into()).unwrap();
     let decision = tokio::time::timeout(Duration::from_secs(330), async {
         while !status.borrow().terminal() {
@@ -855,7 +858,14 @@ async fn native_structured_consumer_rejects_each_schema_violation_and_live_decis
                 &*adapter
             };
             let schema = json!({"type":"object","properties":{"verdict":{"type":"string","enum":["DENY"]},"reason":{"type":"string"}},"required":["verdict","reason"],"additionalProperties":false});
-            let session = fixture.start_structured(selected, schema).await.unwrap();
+            let session = if registered_path {
+                fixture
+                    .start_structured_trait(selected, schema)
+                    .await
+                    .unwrap()
+            } else {
+                fixture.start_structured(&*adapter, schema).await.unwrap()
+            };
             let status = finished(selected, &session, &fixture).await;
             receipt_support::assert_state(
                 status.session.state,

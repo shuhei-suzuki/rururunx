@@ -173,6 +173,25 @@ impl Fixture {
         );
         Ok(session)
     }
+    pub(super) async fn start_structured_trait(
+        &self,
+        adapter: &dyn AgentAdapter,
+        schema: Value,
+    ) -> AdapterResult<Session> {
+        let lower = receipt_support::watermark(&self.store, &self.request.scope)
+            .expect("before-launch audit unavailable");
+        let session = adapter
+            .start_structured(self.request.clone(), schema)
+            .await?;
+        self.attempts.lock().unwrap().insert(
+            session.id,
+            Attempt {
+                lower,
+                input_version: self.request.input.version,
+            },
+        );
+        Ok(session)
+    }
     pub(super) async fn resume(
         &self,
         adapter: &dyn AgentAdapter,
