@@ -1,7 +1,8 @@
 # Issue 58: Retained ownership of Task-free native Consultant work
 
 Workflow: STRICT (native ownership, durable authority and Project exclusion).
-Status: Requirements1; requirements/design/source gates pending.
+Status: Requirements2; verified independent Req1 gaps corrected below;
+requirements/design/source gates pending.
 Baseline: main80452f4/schema3. MVP follow-up from #6 F1 and #19; see
 [Issue58](https://github.com/shuhei-suzuki/rururunx/issues/58).
 
@@ -31,6 +32,11 @@ results do not prove Workflow transport success. Preserve that scope.
   primary Project.root, repository/common-dir identity, registered implementation,
   native profile, actor/role, mode and native session/turn identities. Overlapping
   Issue names, paths or native IDs in another Project grant no authority.
+  Conflict identity is canonical physical scope, not Project ID alone: overlapping
+  ancestor/nested roots or a shared common-dir are checked across all registered
+  Projects. Independent means non-overlapping physical effects and distinct shared
+  Git metadata. Registration/root/identity changes cannot introduce an unobserved
+  overlap around a held effect; include those consumers in the coherent CAS frame.
 - Acquisition requires actual registered Project/current versions and applicable
   Goal authority/lifecycle under #23. A Goal-less consultation does not fabricate
   a Goal or Task. No Task-worktree path/namespace, Executor/Reviewer/ApprovalReviewer
@@ -38,9 +44,10 @@ results do not prove Workflow transport success. Preserve that scope.
 - Actual local runtime composition selects supported profiles; native/model JSON,
   public role names, configuration self-labels or first-use success cannot enroll
   a producer. Every fresh Task-free native entry requires this actual retained-owner
-  port before effects. The shared Store denies generic nonterminal native Session
-  insertion/update, including terminal-to-live and identical-body version bumps,
-  regardless of public role/path; a direct adapter or generic record wrapper cannot
+  port before effects. The shared Store denies EVERY generic nonterminal Task-free
+  Session insertion/update, including terminal-to-live and identical-body version
+  bumps, regardless of provider/agent/model/profile/role/path labels; controlled or
+  unknown implementations have no generic exemption. A direct adapter or wrapper cannot
   evade this fence. Initial terminal factual history grants no launch/release proof.
   Each implemented profile must have reviewed native conformance for
   its complete required startup/turn/service/cleanup workload under #6 F1.
@@ -56,6 +63,14 @@ results do not prove Workflow transport success. Preserve that scope.
   cannot hide or mutate its owner-bound factual Session, including identical-body
   version bumps; actual supervisor observations have a dedicated private path.
   Metrics and bounded audit remain separate and cannot grant release/admission.
+  ALL current input submissions, consumed-intent publications, operation grants/
+  ALLOW replies and input-capable attach bindings use one private owner-bound port.
+  It requires the actual live opaque capability, exact retained hold and current
+  source/Session/Project/Goal/full-lock versions in the same transaction. Correct
+  public IDs/versions or a scope self-match never grant admission; generic/public
+  scoped CAS refuses. Only that port may distinguish its exact owner from a
+  competing hold. Pending #6 TUI admission must compose this ownership check with
+  its existing planned per-submission CAS, not manufacture an alternate ledger.
 - Retain Session-less setup, pending input, live service, native background work,
   dropped futures, publication conflicts and Lost/unknown outcomes. A completed
   native turn does not release a still-owned server or the consultation lifetime.
@@ -72,15 +87,43 @@ results do not prove Workflow transport success. Preserve that scope.
   The exclusion query also includes actual Task-managed ownership from #19 with
   reachable shared root/common-Git effects, including Lost/uncertain Task work;
   Task identity or separate worktree never proves disjoint shared effects.
+  Conflict exclusion is symmetric and durable: each out-of-lock root/common-dir
+  Git/worktree mutation, removal/root change and effectful pack publication acquires
+  an actual retained conflict reservation atomically against all applicable holds,
+  complete locks and in-flight mutations, before its effects. Consultant acquisition,
+  fresh admission and continuation perform the reverse checks in the same Immediate
+  transaction that acquires/adopts their exact authority. Retain the effect owner
+  through cleanup/settlement/conflict; a prior idle read or version pin alone is
+  insufficient. Every side uses the shared exclusion protocol; unsupported missing
+  consumer producers block that scope/profile's production readiness.
+  Same-Project concurrency follows actual reviewed compatibility: live Consult vs
+  Task native phases in other worktrees or another Consult may coexist only with
+  continuously enforced disjoint/compatible effects; separate paths/role labels alone
+  are insufficient. Task worktree create/adopt/remove and Project-root/shared-Git
+  mutation require their conflict reservation and refuse intersecting Consult work.
+  Unknown compatibility is a scoped conflict. Status names the blocking owner and
+  supported stop/close drives real settlement; idle TUI retains its actual lifetime.
+  This conservative fallback does not satisfy mandatory native4+parallel acceptance:
+  #6/#19 and actual Git consumers must establish supported compatible profiles.
 - Every actual consumer reads retained ownership under its current authority/CAS:
   Project removal/mutation, root/common-dir Git/worktree operations, native and
   input admission, applicable Goal completion/pack publication, capacity and restart
-  reconciliation. Enumerate exact call sites before source. Do not rely solely on
+  reconciliation. Include every Goal terminal/cancel/fail surface. Enumerate exact
+  call sites before source. Do not rely solely on
   Session state, executor_reserved or a cached ready/status result.
 - An exact owner may perform its separately allowed factual observations, denial
   and cleanup without treating its own hold as an unrelated competing owner.
   Native/Source/Git calls remain outside SQLite/SharedStore locks. Inactive-owner
   closure never grants new native work or relaxes native current-input/Broker guards.
+  EVERY fresh submission, ALLOW/operation grant, input-capable attach, continuation
+  and owner publication granting fresh input/operation authority revalidates current
+  Registered Project and
+  applicable accepted nonterminal Goal authority/lifecycle under #23. No broad
+  Blocked/lifecycle exemption. Authorized Goal cancel/fail may conservatively close
+  its logical lifecycle while retaining all native holds and denying new admission;
+  completion still requires actual settled work. Exact factual observations, historic
+  DENY and cleanup (including actual verified settlement/release) keep their separate
+  inactive-owner rules and grant no new input/operation authority or progression.
 - Release is private actual supervisor evidence of no dispatch/settled setup, or
   known exact native outcome AND all profile-required resource cleanup. It pins the
   same immutable operation/scope, input/Session versions and actual owner; publication
@@ -97,13 +140,24 @@ results do not prove Workflow transport success. Preserve that scope.
   and private writers including old open connections, and refuses unresolved legacy
   workload. Preserve actual old bytes/history; no legacy terminal-label ratification.
   Final production profile readiness includes actual #14 recovery, not fake receipts.
+  #19's generic Task-scope live-Session fence, managed operations and complete
+  locks/Workflow claims are mandatory in the same or an earlier composed epoch;
+  #58 cannot ship first with Executor-only or unmanaged Task exclusion.
+  Whole-schema upgrade deliberately drains every actual older owner and requires
+  reviewed #14 recovery for uncertainty, under #19's atomic migration preflight.
+  Failure leaves original schema/bytes/history unchanged; retagging legacy labels
+  as scoped holds cannot prove old native owners fenced. This documented upgrade
+  availability limit is distinct from normal current-epoch scoped exclusion, where
+  genuinely disjoint Projects remain runnable. No silent legacy ratification.
 
 ## Native TUI and continuation
 
 - Reuse #6's Project-only native TUI gateway: one actor/upstream connection, exact
   stored native session, bounded text/decision inputs and one unresolved submission.
-  Every human/native-originated inference submission and operation grant uses the
-  existing actual per-submission source/Session CAS before wire; no second ledger.
+  Every human/native-originated inference submission and operation grant must use
+  the pending composed private-owner and per-submission source/Session CAS before
+  wire; no second ledger. Goal-scoped interactive TUI/attach remains Unsupported
+  until separately reviewed #6 conformance extends its Project-only gateway.
 - Native-originated steer/compact/review/inference either consumes that same genuine
   current admission or is explicitly unsupported before effect. Historical DENY
   keeps its separately applicable exact request/turn authority; it cannot release
@@ -113,6 +167,8 @@ results do not prove Workflow transport success. Preserve that scope.
   exact prior owned outcome/settlement and fresh admission, with existing native
   UUID/input semantics; unknown cleanup blocks it. Preserve native config/auth/
   model/effort/hook/UI defaults and existing unsupported Task interactive conversions.
+  Product34 native `rrx attach <task>` remains mandatory/open under #6/#11/#15/
+  #19/#14 composition. Project-only Consult attach does not satisfy or waive it.
 - General detached-native-command containment stays #6 F1. This issue consumes a
   real supported cleanup contract; it does not introduce privileged infrastructure,
   change platform scope or assert arbitrary descendant death from group cleanup.
@@ -132,13 +188,18 @@ Real controlled/private and required native controls cover startup before Sessio
 retained live server after turn, TUI input/decision ordering, same-scope continuation,
 generic terminal/role/owner forgery, conflicting writer/publication failure, dropped
 owner, Lost, restart, inactive closure, Project remove and common-dir operations.
-Use two isolated Projects; never modify unrelated user repositories.
+Use two physically disjoint Projects plus nested/shared-scope negative controls;
+never modify unrelated user repositories. Add same-Project compatible/conflicting
+profiles, already-running peer→Lost enforcement, stop/close, Blocked Project and
+terminal Goal controls; no blanket conflict fallback receives parallelism credit.
 
 Compiled causal mutants must reach the actual removal/admission/settlement/TUI
 consumers: omit hold lookup, release on terminal label/PID absence, forge owner from
 row identity, treat a turn as lifetime settlement, omit root/common-dir exclusion,
 or bypass a submission CAS. Controls prove exact settled positives and independent
-Project progress. Setup refusal, timeout or helper-only checks are not consumer
+Project progress. Also mutate owner-less version-correct input/ALLOW, unknown-label
+generic live writes, reverse effect reservation and physical overlap lookup. Setup
+refusal, timeout or helper-only checks are not consumer
 kills. Restore exact source and passing controls after each mutation.
 
 Run shared-state/native/Git/registry/Workflow regressions, fmt/clippy/build, exact

@@ -20,3 +20,21 @@ Unsupported gate would miss. Requirements1 now explicitly denies generic fresh/l
 native Session writes until the actual #58 ownership port; it also consumes #19's
 complete Task/root/common-dir holds. This is a requirements correction, not a
 reproduced exploit, implemented denial, approved design or supported native profile.
+
+Req1 25624bc exact CI37199528621 passed Linux/macOS fmt, clippy, tests and debug/
+release builds (individual steps inspected). Both independent fresh native Req1
+reviews requested changes with actual owned cleanup verified. Verified gaps:
+owner-less CAS admission, reverse out-of-lock effect races, physical nested-root
+scope, unknown-label generic Session bypass, same/earlier #19 fence, later lifecycle
+and limited Project-only TUI scope. Req2 makes these explicit with real consumers,
+private capability and symmetric retained reservations; mandatory Task attach and
+native parallelism remain open until supported composition.
+
+The suggested mandatory upgrade of unresolved legacy owners was not adopted:
+#19 Design20/21 explicitly requires actual old-owner drain/private14 recovery before
+whole-schema upgrade. New row labels cannot prove old native effects fenced. Req2
+separates that documented upgrade precondition from ordinary current-epoch scoped
+liveness. Main repository_identity already rejects linked Project worktrees, so the
+review's linked-worktree example is not a reproduced registration; nested primary
+roots remain relevant. Requirements2/design/source review and real acceptance remain
+pending; no live native profile, private port or conflict reservation is implemented.
