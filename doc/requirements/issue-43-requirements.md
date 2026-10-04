@@ -21,7 +21,10 @@ retain their own acceptance criteria.
 
 1. Binding changes only the active Running native attempt's absent `session_id` to
    its exact persisted returned Session ID. Persist the Workflow record and scoped
-   factual audit in one Immediate transaction. Preserve Task bytes and version.
+   factual audit in one Immediate transaction. Preserve Task, Project, Goal, every
+   Session and every scoped WorktreeLock body and version. The binding writes only
+   its Workflow record and audit; #19 private binding must not rewrite a native-fenced
+   record or change its expected Session CAS/admission pins.
 2. Check exact captured Project, Goal, Task and Workflow versions, active Project/
    Goal/Task state, Workflow scope/generation/active attempt, committed dispatch marker,
    current context pointer and identity. Stale snapshots fail without DB/audit change.
@@ -49,6 +52,12 @@ retain their own acceptance criteria.
 7. Native caller completion/callback eligibility remains unchanged by a valid binding.
    A real Task/Project/Goal/lock/currency change must retain its current refusal. No
    provider scope fence or native auth/hook/trust/permission control is weakened.
+   Existing binding uses StateOnly (`WorkflowEngine::persist`); it is factual owner
+   registration after native launch, not reserve-time operation admission. Preserve
+   that distinction: ReadOnly/Mutating reserve-time scope sweeps are not silently
+   repurposed to reject the returned live Executor or legitimate parallel Reviewer.
+   Other scoped Sessions/locks are untouched and never gain ownership or completion
+   from this binding; native admission/currency and future closure guards still apply.
 8. Update Workflow master design and verification. Independent immutable source review,
    meaningful controls/mutations, build/test/lint and exact-head CI precede merge.
 
@@ -64,6 +73,23 @@ registered adapter's native protocol turn across Workflow binding, then observe 
 private completion/callback. Prove unchanged Task/version, one Workflow version advance,
 one factual audit and valid exact binding. Retain observed native failures separately
 from fake-protocol controls and avoid claiming real model acceptance from a fake.
+
+Inventory the exact role/consumer at the immutable integrated source revision:
+Claude `session::supervise` decision final `Reservation::commit_current` uses raw
+Task/P/G/lock and Session CAS; its Executor currency is observational and cannot earn
+decision mutation credit. Grok `Actor::owner`, called before startup/callbacks/final
+native result, checks `ScopeSnapshot::recheck_scope` for every role. Codex
+`answer_approval` checks that scope before an operation reply; current Codex transport
+completion alone does not establish final decision-currency enforcement. The hold
+and Task-rewrite mutant must exercise Claude Reviewer completion, Grok owned native
+result/callback, or a Codex Executor operation reply whose current-scope guard really
+runs. Record distinct behavior and unavailable guarantees; do not invent a common
+final decision fence or infer a kill from an unfenced Executor completion.
+
+Also mutate binding to bump a Session record or scoped lock: the exact expected
+Session/lock currency consumer must fail, with original uncertainty retained. Read
+other live Reviewer and Lost/reserved Session facts without changing or adopting
+them, and verify this factual binding cannot serve as new-operation admission.
 
 Second SQLite writers change Task, Project, Goal and Workflow versions; invalid actor,
 role, worktree, context, marker, Session identity/state and extra record deltas fail
