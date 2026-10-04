@@ -179,3 +179,16 @@ controls and mutants. Optional producer-version snapshot and lane cache-warmth
 precision are adopted. Historical red cap-test evidence remains; merged55 actual
 source integration is distinct. Design4 review pending; no Rust/native producer/
 benchmark implementation or acceptance is claimed.
+
+Design4 8a4016a completed two independent native approvals, zero findings and no
+unresolved blockers; both v3 owned selected-group cleanup/reap checks passed before
+review acceptance. Public delta packets included only each reviewer's own completed
+prior findings, exact public old/new files and verified unchanged-context manifests.
+This proves observed review completion, not native memory/private OS isolation or
+full #9/#16 independent-profile conformance. Raw resumed-session usage/cost/duration
+are attribution-unverified and are neither summed nor labeled per-round measures.
+Exact CI37205121902 passed both Linux/macOS fmt, clippy, tests and debug/release
+builds (all individual steps inspected). Historical reds remain unchanged.
+Approval is design only. Private producer/Store/epoch integrations, coherent
+versioned producer outcomes, actual native counters/benchmark and #16 remain pending.
+No helper, unavailable measurement or fixture can close the whole telemetry issue.

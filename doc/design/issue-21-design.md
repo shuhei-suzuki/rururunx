@@ -1,6 +1,6 @@
 # Issue 21: Qualified telemetry and native comparison
 
-Status: Design4, verified independent Design1–Design3 corrections; design/source gates pending.
+Status: Design4 approved at8a4016a by two independent native reviewers; source gates pending.
 Requirements8 at e001483 received two independent approvals, no findings, and
 verified owned cleanup. This document proposes APIs/storage; none is implemented.
 Baseline main80452f4/schema3; required native/context producers remain pending.
