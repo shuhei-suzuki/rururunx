@@ -64,7 +64,12 @@ not core facts; re-raising a dismissed finding remains possible.
 
 Slots return APPROVE, REQUEST_CHANGES or ESCALATE, plus typed findings. Native
 failure, timeout, malformed output, cancellation and Lost are separate outcomes.
-Only completed, well-formed, exact-target APPROVE counts. REQUEST_CHANGES never
+Only completed, well-formed, exact-target APPROVE counts. Required review
+instructions/skills must resolve and be deliverable to every designated provider
+before any member input; missing, foreign, unresolvable or undeliverable mandatory
+content rejects with Human attention. Record delivery in the bundle separately
+from native-side activation observed or unverifiable; no invented activation.
+REQUEST_CHANGES never
 becomes APPROVE merely because its findings were dismissed. ESCALATE requires a
 visible human-attention hold. An approval containing a potential blocking finding
 cannot satisfy the round until that finding is resolved independently.
@@ -76,7 +81,8 @@ verification supplies actor identity (agent/Session or Human), exact target,
 inspected/changed locations and actual evidence. No supervisor LLM invents facts.
 An executor-only dismissal cannot erase a formal blocker: false-positive dismissal
 requires explicit Human judgment OR later-round confirmation by the original
-finder when non-executor, or by at least two policy-designated non-executor slots.
+finder who is not a recorded delta author by identity or family, or by at least
+two policy-designated slots each excluded from all recorded authors.
 Each confirmer must differ from every recorded delta author in registered agent
 identity and native provider family, and a two-confirmer pair must also differ from
 each other in both registered agent identity and native provider family; alias/same-agent permission cannot create dismissal independence.
@@ -99,12 +105,13 @@ every mode, and unresolved potential blockers prevent a certificate. A
 certificate is the immutable Review-Set-satisfied result binding exact Scope,
 Workflow phase/generation/active claim and required review-instruction/skill
 digest, round/target,
-core/specialization hashes, policy/roster, context provenance, individual settled
+core/specialization hashes, policy/roster, per-member prior-claim exposure
+(author slot/text hash), context provenance, individual settled
 outcomes and verification/evidence references. It is evidence, not merge authority.
 
 | Slot result | Counting and round consequence |
 | --- | --- |
-| APPROVE, no unresolved or verified blocker (including unverified Low) | Counts once after safe settlement; Low remains recorded |
+| APPROVE, no unresolved or verified blocker (including unverified Low only when outside the effective blocking set) | Counts once after safe settlement; Low remains recorded |
 | APPROVE with potential blocker | Holds until independent resolution; verified blocker vetoes |
 | REQUEST_CHANGES, all findings independently dismissed | Does not count; another round is needed for this slot to approve |
 | ESCALATE or disputed verification | Visible Human hold; no certificate |
@@ -119,8 +126,12 @@ verdict/findings. Ambiguous assistant output is potential result content, not
 classified as harmless progress. Numerical modes are equivalent at boundaries:
 any = quorum1, all = quorumM; they differ in required approval count.
 Default completion waits for every slot to settle. An explicit early-stop policy
-may cancel remaining work after numerical eligibility, retaining all partial
-output and applying the same blocker verification and safe cleanup conditions.
+may cancel remaining work only after settled exact-round approvals meet BOTH the
+mode count and independent floor, with no unresolved potential/verified blocker.
+An author-only opinion can never trigger it. It retains all partial output and
+applies the same blocker verification and safe cleanup conditions. Cancelled
+members with partial/ambiguous structured content still hold until independently
+resolved; safe process cleanup alone does not permit a certificate.
 STRICT/security review disables early stop. Other explicitly enabled early stop
 never permits discarding inconvenient findings. Within-round retry is disabled in Core: a retry needs a new immutable
 round, includes prior failure/attempt history and consumes the round limit.
@@ -207,8 +218,17 @@ requires an authorized Human/Workflow choice of a new full-roster round, explici
 policy relaxation above the frozen mandatory floor, or termination without a
 certificate. Same-target Workflow reruns after a nonapproval require a recorded new repository/
 verification fact; without it, only explicit authorized Human adjudication can
-request another round. Repeated blind same-target sampling is not authorized by
-the lineage ceiling. A relaxed policy starts a new round or explicitly superseding Set,
+request another round. Autonomous same-target causes are explicit: (a) one
+confirmation round per finding/lineage for a newly recorded verification inspection
+with exact locations, target and check/observed-source digest not used for that
+finding in any prior round; an executor rationale alone is insufficient and remains
+a labelled claim; (b) a safely settled native failure/timeout/cancellation with only
+verified diagnostic progress, at most two such full-roster retry rounds per lineage
+and at most one per provider-family/error-kind cause. They consume the same 64-round
+and artifact limits. A repeated proof/cause, exhausted retry allowance, unresolved
+partial result or Lost requires Human/recovery rather than another automatic sample.
+Repeated blind same-target sampling is not authorized by the lineage ceiling.
+A relaxed policy starts a new round or explicitly superseding Set,
 retaining prior opinions, obligations and lineage limits; it never manufactures an
 APPROVE. ESCALATE/dispute requires authorized Human adjudication,
 then a new full-roster round or termination without certificate; malformed/partial
@@ -234,7 +254,8 @@ clean/lock requirements, early-stop prohibition and verified-configuration polic
 Supersession cannot fall below that minimum or reset the lineage's required floor.
 Human relaxation above the floor is explicit with authority/reason in the result;
 mandatory rules are never disabled. Self-review and dismissal exclusion includes
-all recorded agents/native provider families that modified the reviewed Task delta,
+all recorded agents/native provider families that modified the cumulative Task
+delta since the frozen Task base revision, including fixes by former executors,
 not only the current Task.executor. Unknown authorship is surfaced and requires
 explicit policy/Human disposition; a changed executor cannot silently self-confirm
 its own earlier changes.
@@ -258,7 +279,7 @@ those findings remain recorded and can be raised to a blocker on actual evidence
 REQUEST_CHANGES with
 empty or nonblocking findings never counts. This preserves the slot's opinion
 while quorum/any tolerate explicit nonapproval; mode never removes blocker checks.
-Independent partial/malformed inspection uses the same non-executor confirmer or
+Independent partial/malformed inspection uses the same non-author confirmer or
 Human eligibility as dismissal. Mandatory core/specialization overflow rejects
 before model input with actual size/hash/NeedsContext evidence and Human attention;
 no semantic truncation or success through a byte cap is permitted.
@@ -391,3 +412,62 @@ requires actual native two/Triple results, isolation and efficiency comparison.
 ReviewSet Lost/uncertain member holds and reconcile exact native ownership, locks
 and resource permits with trusted evidence. Issue #9 never releases them by opinion
 or reset. Core closure reports these still-open MVP obligations explicitly.
+
+
+Authorship is cumulative from the lineage's frozen Task base revision to the
+reviewed target. Later identity/short revision deltas never erase earlier native
+contributors or former executor families. Independent approval counts eligible
+Sessions, not distinct families: two separately owned Sessions from the remaining
+non-author family can meet STRICT when the frozen roster/duplicate-agent/diversity
+policy permits them. A fixed Triple roster with Claude and Codex as recorded
+authors has only one eligible slot and rejects before input, naming excluded
+families and the unmet floor; neither supersession nor relaxation can lower it.
+An explicitly allocated eligible custom roster can satisfy it, without treating
+an author alias as independent. Test both outcomes.
+
+Items 1–4 require actual runtime consumer execution through registered production
+Claude/Codex/Grok capability resolution and provider adapter contracts. Deterministic
+stand-ins may replace only the native process/transport peer, with realistic
+startup/read-only/input/settlement behavior; the production registry, scoped Store,
+private input ports and Workflow consumer remain real. Every such evidence record
+states native_execution=synthetic and the stand-in identity. Declaration-only or
+fixture-only adapter success cannot close these items. This proves deterministic
+runtime plumbing, not real native-model acceptance reserved for #16.
+
+Expansion has frozen per-slot request limit 1–64 (default 8) and cumulative byte
+budget 1–8 MiB (default 1 MiB), with at most 1 MiB per returned artifact and 32 MiB
+aggregate expansion bytes per round. Every expansion artifact/manifest counts
+against the 128-MiB lineage quota. Exhaustion holds NeedsContext with recorded
+count/bytes; no semantic truncation or context-pointer update hides it. Independent
+expansion input retains the same guarded core/target/provenance exclusions.
+
+Where a provider exposes read/tool traces, observed access to current-round peer
+output or runtime-private DB/artifact paths is an independence violation holding
+certification; record exact scoped trace evidence. Missing native read visibility
+is explicitly unverifiable, never a proof that no read occurred. Real isolation
+confirmation remains #16. Parallel remediation in another worktree is not run by
+this engine: external fixing follows product #24's separate-worktree rule and
+requires safe round settlement plus a verified committed target before new review.
+
+Additional acceptance clarifications:
+
+- Two-reviewer matrix: QUICK/STANDARD non-author pair, explicit allow-self author
+  plus one non-author, and STRICT non-author pair succeed when their mode settles;
+  STRICT author plus one eligible slot rejects before input. Ordinary same-family
+  eligible Sessions remain allowed under the frozen policy. Multi-family authorship
+  rejects an insufficient Triple but permits an eligible custom STRICT roster.
+- Early-stop cannot fire on author-only approval, below-floor counts or potential
+  blockers. It preserves diagnostics/partial output and holds on partial findings
+  until independent resolution. STRICT/security rejects enabling it.
+- New inspected verification authorizes one confirmation round; repeated rationale
+  without new evidence rejects. Two safely settled transient retry rounds consume
+  lineage budgets; repeated causes/exhaustion/partial/Lost do not automatically retry.
+- Missing/unresolvable/undeliverable required review/security instructions or skills
+  reject before any member input. Delivery and native activation measurements
+  remain distinct. A policy adding Low treats an unverified Low as a potential
+  blocker rather than using the table's nonblocking-Low exception.
+- Every member certificate lists prior structured claims seen, author/text hashes,
+  trace-observed independence violations or native visibility unavailable. Test
+  expansion request/byte/aggregate and lineage-quota boundaries with unchanged
+  core/ContextVersion and retained evidence. The process stand-in flag accompanies
+  actual registered-adapter two/quorum/Triple consumer fixtures.
