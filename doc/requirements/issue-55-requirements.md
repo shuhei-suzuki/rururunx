@@ -1,7 +1,8 @@
 # Issue 55 requirements: bounded Grok terminal cleanup provenance
 
-Risk: STRICT for native process/state evidence. Requirements-only proposal; no provider,
-Store, process inspector or test source change exists. Dependencies #7 and reviewed #46;
+Risk: STRICT for native process/state evidence. Requirements2 approved at2ebbbfd;
+implementation and independently reviewed source outcomes are recorded in
+[verification](../verification/issue-55.md). Dependencies #7 and reviewed #46;
 #41 default acceptance currently exposes the gap. #16 native integration remains separate.
 
 ## Verified gap and limits

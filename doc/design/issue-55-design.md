@@ -1,13 +1,10 @@
 # Issue 55 design: Grok-local terminal cleanup receipt
 
-Risk: STRICT. Proposed Design4, no Issue55 implementation. Requirements2 approved immutable
-2ebbbfd. Two independent Design1 reviews requested changes at14050d3; Design2 fix reviews at
-b6c39ca verified those corrections and found stage-call-site coverage/assertion-message
-gaps. Design3 receipt review approved; lifecycle review found a block-merge survivor.
-This design corrects that verified Medium plus adopted Low refinements.
+Risk: STRICT. Design4 approved by both independent reviewers atadcb0637. The implemented
+contract and verified correction rounds are recorded in [verification](../verification/issue-55.md).
 Unavailable shared cleanup cause remains explicitly unavailable. No schema/native environment/process-policy
-change. Public main80452f4 code is the baseline; source reviews must include full changed
-consumer/helper/test source after actual implementation, not this proposed design.
+change. Public main80452f4 was the implementation baseline; source reviews included changed
+consumer/helper/test source, with final narrow delta approved at66729b2.
 
 ## Diagnostic snapshot, not ownership authority
 

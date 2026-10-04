@@ -1,13 +1,13 @@
 # Issue 55 verification
 
-Requirements-only STRICT proposal at reviewed main80452f4. No Issue55 Rust/test source,
-shared process changes, credentials/config reads or native fixture execution. The exact
-failed Issue41 CI receipt and source-priority gap are described in the requirements;
-original failure remains preserved. No PS root cause, retained-child resolution or
-native acceptance inferred. Independent Requirements1 requested changes at3ad7f63; Requirements2 approved2ebbbfd
-with no Critical/High/Medium findings. Design/source approval precedes implementation. Diagnostics must not relax strict
-PID/clean/Lost/reservation/deadline authority. No broad suite is needed for proposed docs;
-CI documents any unrelated baseline native/legacy fixture failure without rerun credit.
+STRICT implementation completed through independent Requirements2, Design4 and source
+fix review gates. Final reviewed source is66729b27f460bcd9f54e38b9f190aa2eb5b4e02d;
+current requirements/design headers describe that completed status. The historical
+rounds below retain their original candidate/gate status. The [finite outcome ledger](issue-55-native-review-outcomes.json)
+records exact review heads, findings, cleanup and independently observed CI outcomes.
+Diagnostic receipts preserve PID/clean/Lost/reservation/deadline authority. Original
+Issue41 red evidence remains preserved; no historical cause, retained-child resolution
+or installed-native acceptance is inferred.
 
 
 ## Requirements1 verified correction
@@ -194,3 +194,12 @@ Repository search `rg -n 'grok.turn_observed' crates/rrx/src crates/rrx/tests` f
 Both independent resumed native Source2 reviews approve public95a847d with no Critical/High/Medium findings. Actual owned V3 cleanup verified; each reviewer confirmed all its Source1 findings resolved and unchanged production authority. Raw resumed usage/cost/duration attribution remains unverified and duration_api_ms is not measured wall time. Lifecycle had1Low, receipt2Low: duplicate checkpoint wording nuance plus missing reservation-refusal projection messages. Source confirms checkpoint's separate ownership object is never sampled; master wording now distinguishes hypothetical sampler inclusion (unit-only) from actual runtime totals. The existing bounded projection is appended to durable reservation/start/lock/release/checkpoint refusal and completed=false assertions, preserving all predicates/order. This is test-message/doc precision only; native/state/process source behavior unchanged. Narrow native fix re-review follows targeted committed gates; no new full production authority review is implied.
 
 Exact95a847d CI37202055396 Linux/macOS bothSUCCESS. Local default DEBUG+RELEASE each202Rust+2doctests PASS, same8ignored entrypoint/native cases, both builds/fmt/all-targetClippy PASS. Reviewers' pendingCI wording reflects the earlier author input, not a final failure or a reviewer-verified CI result. Prior red artifacts remain unexplained and unmodified.
+
+
+## Source3 approval and final outcome
+
+Both independent native Source3 delta reviewers approve66729b27f460bcd9f54e38b9f190aa2eb5b4e02d with zero findings, resolving the Source2 Low corrections. Both owned V3 review processes completed with verified cleanup. The delta changes assertion messages and checkpoint documentation only; production authority, shared helpers, limits and parallelism remain unchanged. Reviewers received factual immutable public source; this read-only native review is not Triple Review dogfood. Resumed usage/cost attribution remains unverified and API duration is not measured wall time.
+
+Committed667 targeted default controls pass6macOS receipt parents (5owned child entrypoints ignored outside parents),13external Grok tests (2installed-native tests ignored), and all-target Clippy. Exact CI[37202920433](https://github.com/shuhei-suzuki/rururunx/actions/runs/37202920433) completed SUCCESS on Linux job111438107389 and macOS job111438107232. Prior95a default full debug/release202Rust+2doctests and both builds/fmt/Clippy remain the full local production-equivalent gates. These observed outcomes supersede earlier pending-CI author-input statements, without rewriting prior red artifacts.
+
+The final documentation-only commit publishes this finite outcome ledger and corrects stale proposal headers. It changes no requirements/design semantics or Rust source. Exact final documentation-head CI remains a separate merge gate. Historical41retained-PID/Unknown cause, recovery14, native binding43, environment51 and installed-native integration16 remain separate obligations; receipts do not waive them.
