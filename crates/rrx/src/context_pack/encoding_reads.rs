@@ -1022,7 +1022,9 @@ async fn current_environment_writer_preserves_cpp_frame_guard_after_main_merge()
             store.put_session_if_current(&forged, 0, expected, &locks)
         };
         let Err(error) = result else {
-            panic!("current Session writer bypassed CPP prepared-frame guard; environment={with_environment}")
+            panic!(
+                "current Session writer bypassed CPP prepared-frame guard; environment={with_environment}"
+            )
         };
         assert_eq!(
             error.root_cause().to_string(),
