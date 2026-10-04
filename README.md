@@ -315,9 +315,14 @@ Retaining a failed decision publication prevents turning an intended
 definitive failure/invalidation into automatic retry. Existing explicit terminal
 reservation recovery stays available under its terminal-Task/dispatch fences.
 External GitHub/irreversible gate outcomes are reconciled by #13.
-The existing explicit `retry` API can still close a Failed unbound dispatch marker
-without trusted native-outcome proof; #14 must address this gap. Ordinary observation
-does not replay it. Native provider integration also needs an atomic Session-binding
+The limited #14 retry fence refuses native marked attempts with no bound Session
+through both `retry` and the Store closure transaction. Ordinary observation does
+not replay them. A start error, even a fixable configuration error or a matching
+terminal Session row, supplies no trusted outcome proof. These attempts block
+Task/Goal progress and Project removal until genuine original-attempt recovery
+exists; there is no operator retry or terminal-release escape. Pre-marker failures,
+resolved bound Sessions and nonirreversible EvidencePort retries remain supported.
+The genuine original-attempt recovery producer and whole #14 recovery remain open. Native provider integration also needs an atomic Session-binding
 publication (#43) that preserves the unchanged Task version; the current coordinated write
 increments it and can invalidate the provider's admitted snapshot.
 
