@@ -905,7 +905,7 @@ impl Store {
             |row| {
                 Ok((
                     row.get::<_, String>(0)?,
-                    row.get::<_, Option<String>>(1)?,
+                    Some(row.get::<_, String>(1)?),
                     row.get::<_, Option<String>>(2)?,
                     row.get::<_, String>(3)?,
                     row.get::<_, String>(4)?,
@@ -917,7 +917,7 @@ impl Store {
             let usage: Usage = decode(body)?;
             ensure!(
                 usage.scope.project_id.to_string() == project
-                    && (goal.is_none() || str_id(usage.scope.goal_id) == goal)
+                    && str_id(usage.scope.goal_id) == goal
                     && str_id(usage.scope.task_id) == task
                     && usage.session_id.to_string() == session,
                 "usage row/body identity mismatch"
