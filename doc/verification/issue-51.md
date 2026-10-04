@@ -244,3 +244,20 @@ CAS precedence/factoring in source review. Future #19 schema6 migration must cov
 writer's same-epoch transaction fence, managed-operation admission and own historical
 DENY semantics. Grok has no positive native ALLOW interception capability; no invented
 ALLOW evidence or permission-policy change belongs to this environment follow-up.
+
+
+Initial helper f0a6a3060252f61ec0718b3c2043930c5f42f812 passed three pure unit tests and
+the existing config_rules_environment_and_symlinks_never_cross_project registry
+consumer, fmt and all-target Clippy-Dwarnings. Exact CI37196625842 Linux/macOS both
+SUCCESS is helper-only progress, no actual native admission/isolation claim. Isolated
+causal ledger [policy mutations](issue-51-policy-mutations.json) records6 compiled
+assertion kills from4 distinct operators: leading-digit syntax and proxy-suffix removal
+each killed one pure unit and the actual public Registry::add consumer at project.rs
+378 (1TOKEN/HTTPS_PROXY); RRX_ prefix and duplicate-ref omissions each earned unit-only
+credit. No baseline/conflict/start/resume/Grok-child consumer mutation yet. Exact source
+restored at0619708, three unit+one registry restored controls passed, clean temporary
+mutation worktree normally removed. No compiler error/alternate guard masked credit,
+no source/names/values from real environment or private native configs. The six runs
+are not six distinct operators or native acceptance. Full helper+native consumers
+remain required for independent source review, actual child/caller mutations and final
+combined default/debug/release/build/CI gates.
