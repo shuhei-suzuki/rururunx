@@ -147,8 +147,10 @@ Oversized nested phase artifacts refuse before digest on the provenance branch.
 The prefix/owned SQL corruption fixture is codec input, never an Engine/native
 publication or trusted rule/admission proof.
 
-Both negative SQL fixture UPDATEs assert exactly1 changed row. Fitting Goal,
-context_artifact and validate_capture controls positively observe their decode trace;
+Both negative SQL fixture UPDATEs assert exactly1 changed row. Fitting Goal and
+validate_capture controls positively observe their decode trace; context_artifact
+shares its trace bit with its nested validate_capture, so that positive assertion
+does not isolate its own marker (nonblocking Source3 follow-up).
 checkpoint now genuinely drops1 of2 transient events under its256-byte window and
 checks exact retained encoding/accounting. Actual Store decode is cited by function
 and pinned source-head line. All16 focused tests and clippy passed on committed
@@ -160,3 +162,17 @@ correction; two additional separately committed, compiled consumer mutants were 
 This brings proof to22 causal mutants. Restored16 passed at clean detached
 `5ce3d336081f66f62ba63bf462f116533fd5ec40`. Source3 narrow correction review and
 final pushed-head CI are pending; whole #19 authority/native readiness remains OPEN.
+
+
+Source3 at exact `27e06ecf227dbf3fda61524e396147dea34f1dc5` APPROVED the
+narrow correction with0 Critical/High/Medium/blockers and1 nonblocking test Low.
+Native session `528029d5-17a5-42a1-817a-f01f1729a0a4`, exact public packet
+222767 bytes/SHA256 `f387f1384a225261967b549b695ccc9957f370fec69ed64a08411b7ad5611c9c`.
+Owned native review exited before inspection; no tools/MCP/default override.
+Final committed default-parallel regression at this head passed300 including2
+doctests with9 explicit opt-ins ignored; fmt/clippy/debug/release passed.
+Local output SHA256 `1dfcfd9eddf61942269cb96ecc8193339f4b7acbc09dc22f0690c5ae44835eb6`
+is `/private/tmp/rururunx-issue19-encoding-final-tests.txt`. Linux CI succeeded;
+macOS exact run37234628086 was still pending when this entry was written.
+Only encoder/read-order scope is source-approved. Whole PR39 remains DRAFT and
+UNAPPROVED. A separate proposed checkpoint identity component changes no such gate.
