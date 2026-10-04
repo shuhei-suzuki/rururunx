@@ -217,6 +217,7 @@ async fn selection_child() {
         vec!["INVALID-NAME"],
         vec!["LANG", "LANG"],
         vec!["HOME"],
+        vec!["GIT_DIR"],
         vec!["LANG", "NODE_TLS_REJECT_UNAUTHORIZED"],
     ] {
         let mut fixture = Fixture::new();
@@ -662,10 +663,14 @@ async fn initial_child() {
             .request
             .environment
             .insert(key.into(), "synthetic".into());
-        assert_eq!(
-            rejected_start(&adapter, &denied).await.kind,
-            ErrorKind::InvalidConfiguration
-        );
+        let error = rejected_start(&adapter, &denied).await;
+        assert_eq!(error.kind, ErrorKind::InvalidConfiguration);
+        if key == "UNSUPPORTED_REFERENCE" {
+            assert_eq!(
+                error.message,
+                "native environment value cannot replace intentional runtime authority"
+            );
+        }
         denied.request.environment.clear();
     }
     let mut decision = Fixture::new();
