@@ -1,0 +1,40 @@
+{
+  "scope": "sanitized public CI assertion excerpt; not cleanup-cause or death proof",
+  "head": "3d844d153b1fb9f0d384d1a3be3afdc7ca791cb6",
+  "run": 37192948085,
+  "job": 111408797958,
+  "runner": "macos-latest",
+  "test": "native_auth_inventory_config_parser_and_tool_evidence_fail_closed",
+  "mode": "unowned_read",
+  "assertion": "assert!(status.session.pid.is_none(), \"{mode}\")",
+  "panic_location": "crates/rrx/tests/grok.rs:479:9",
+  "panic_text": "unowned_read",
+  "target_result": "8 passed; 1 failed; 2 ignored; finished in23.87s",
+  "later_mode_not_observed": "unknown_fs_method",
+  "full_failed_log_sha256": "3c61a4b591d7dc335fb7fe8e179a7713a580c060acd04d9edc31a64d730d8f67",
+  "unavailable": [
+    "concrete cleanup cause",
+    "retained native child state after runner teardown"
+  ],
+  "no_inference": [
+    "ps timeout",
+    "native child death",
+    "later mode passed"
+  ],
+  "field_provenance": {
+    "head_run_job_runner_test_mode": "structured transcription of public GH log metadata; runner is job label",
+    "assertion": "public source text, not verbatim panic output",
+    "panic_location_panic_text": "verbatim panic location and payload",
+    "target_result": "paraphrased; see verbatim_test_result",
+    "later_mode_not_observed": "source-derived loop order after panic",
+    "digest": "sha256 exported gh run view --log-failed copy; only verifiable while original GH log or retained copy exists"
+  },
+  "verbatim_panic_line": "thread 'native_auth_inventory_config_parser_and_tool_evidence_fail_closed' (40268) panicked at crates/rrx/tests/grok.rs:479:9:",
+  "verbatim_test_result": "test result: FAILED. 8 passed; 1 failed; 2 ignored; 0 measured; 0 filtered out; finished in 23.87s",
+  "runner_image": {
+    "name": "macos-26-arm64",
+    "version": "20260907.0351.1",
+    "provenance": "verbatim Set up job Runner Image fields from original public macOS job111408797958"
+  },
+  "full_macos_job_export_sha256": "2a3cc70a8699e1e109fd6109b45c51fa798a7cf90b3480218ab12fe9ed3ece2c"
+}

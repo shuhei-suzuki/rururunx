@@ -1,15 +1,64 @@
 //! Native Grok private ACP supervisor. Grok owns inference, authentication and hooks.
+mod cleanup;
 mod files;
+#[cfg(all(test, target_os = "macos"))]
+#[path = "../../../tests/support/grok_fixture.rs"]
+mod fixture_support;
 mod ownership;
 mod protocol;
+#[cfg(all(test, target_os = "macos"))]
+#[path = "../../../tests/support/grok_receipt.rs"]
+mod receipt_support;
+#[cfg(all(test, target_os = "macos"))]
+mod receipt_tests;
+#[cfg(all(test, target_os = "macos"))]
+use crate::{
+    domain::{CompletionCriterion, Goal, Task},
+    git as fixture_git,
+};
+#[cfg(all(test, target_os = "macos"))]
+use std::collections::BTreeMap;
 mod schema;
 
 use super::*;
+use cleanup::{CleanupReceipt, CleanupState, DrainState, ReapKind};
 use files::{Inventory, ScopedFiles, digest};
-use ownership::{ProcessOwnership, ScopeSnapshot, filesystem};
+use ownership::{OwnershipStage, ProcessOwnership, ScopeSnapshot, filesystem};
 use protocol::{Rpc, TurnEvidence};
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use tokio::sync::Notify;
+
+#[cfg(all(test, target_os = "macos"))]
+pub(super) fn child_completed(name: &str) {
+    eprintln!("grok_cleanup_child_completed {name}");
+}
+#[cfg(all(test, target_os = "macos"))]
+#[track_caller]
+pub(super) fn assert_child_completed(stdout: &str, stderr: &str, name: &str) {
+    assert!(
+        stdout.matches("running 1 test").count() == 1
+            && stdout.matches("1 passed; 0 failed").count() == 1,
+        "exact positive child did not run one passing test; {stdout}"
+    );
+    assert!(
+        stdout.contains(&format!("test {name} ... ok")),
+        "exact positive child name missing; {stdout}"
+    );
+    assert!(
+        stderr
+            .lines()
+            .any(|line| line == format!("grok_cleanup_child_completed {name}")),
+        "child final assertion completion missing; {stderr}"
+    );
+    if name.ends_with("dispatched_clean_child") || name.ends_with("dispatched_unknown_child") {
+        assert!(
+            stderr
+                .lines()
+                .any(|line| line == "independent dispatched prerequisites passed"),
+            "dispatched child prerequisites missing; {stderr}"
+        );
+    }
+}
 
 const NATIVE_VERSION: &str = "1.0.46";
 const SESSIONS_LIMIT: usize = 128;
@@ -19,6 +68,10 @@ pub(super) fn failure(kind: ErrorKind, message: impl Into<String>) -> AdapterErr
 }
 
 struct OwnedEntry {
+    #[cfg(all(test, target_os = "macos"))]
+    ownership_trace: Arc<ownership::OwnershipTrace>,
+    #[cfg(all(test, target_os = "macos"))]
+    process_inspection: Option<ProcessInspectionPlan>,
     scope: Scope,
     transition: Mutex<()>,
     status: watch::Receiver<SessionStatus>,
@@ -52,6 +105,8 @@ impl Drop for Busy {
 
 /// Provider selection is explicit; neither agent names nor arbitrary argv select Grok.
 pub struct GrokAdapter {
+    #[cfg(all(test, target_os = "macos"))]
+    process_inspection: Option<ProcessInspectionPlan>,
     agent: String,
     executable: PathBuf,
     store: SharedStore,
@@ -86,6 +141,8 @@ impl GrokAdapter {
             }
         }
         Ok(Self {
+            #[cfg(all(test, target_os = "macos"))]
+            process_inspection: None,
             agent,
             executable,
             store,
@@ -199,6 +256,10 @@ impl GrokAdapter {
         };
         let (events, status) = watch::channel(initial);
         let entry = Arc::new(OwnedEntry {
+            #[cfg(all(test, target_os = "macos"))]
+            ownership_trace: Arc::new(ownership::OwnershipTrace::default()),
+            #[cfg(all(test, target_os = "macos"))]
+            process_inspection: self.process_inspection.clone(),
             scope: session.scope.clone(),
             transition: Mutex::new(()),
             status,
@@ -502,7 +563,9 @@ impl AgentAdapter for GrokAdapter {
             }
             let snapshot = ScopeSnapshot::capture(&self.store, &request, &self.agent)?;
             let mut ownership = ProcessOwnership::default();
-            snapshot.verify_git(&request, &mut ownership).await?;
+            snapshot
+                .verify_git(&request, &mut ownership, OwnershipStage::Checkpoint)
+                .await?;
             snapshot.recheck(&self.store, &request, &self.agent)?;
             let version = assert_saved(&self.store, &current)?;
             let mut next = current;
@@ -978,6 +1041,12 @@ fn append_output(status: &mut SessionStatus, bytes: &[u8]) {
 
 async fn supervise(mut actor: Actor, load: Option<String>) {
     let mut busy_guard = Busy(Some(actor.entry.clone()));
+    #[cfg(all(test, target_os = "macos"))]
+    let mut ownership = ProcessOwnership::with_trace(
+        actor.entry.ownership_trace.clone(),
+        actor.request.input.version,
+    );
+    #[cfg(not(all(test, target_os = "macos")))]
     let mut ownership = ProcessOwnership::default();
     let mut process = None;
     let mut stderr = None;
@@ -987,8 +1056,8 @@ async fn supervise(mut actor: Actor, load: Option<String>) {
     let mut index = None;
     let result=async {
         actor.owner()?;
-        let observed_binding=actor.snapshot.verify_git(&actor.request,&mut ownership).await?;binding=Some(observed_binding);actor.owner()?;
-        index=Some(index_digest(&actor.request.worktree,&mut ownership).await?);
+        let observed_binding=actor.snapshot.verify_git(&actor.request,&mut ownership,OwnershipStage::PreSpawn).await?;binding=Some(observed_binding);actor.owner()?;
+        index=Some(index_digest(&actor.request.worktree,&mut ownership,OwnershipStage::PreSpawn).await?);
         let root=actor.request.worktree.clone();baseline=Some(filesystem(move||Inventory::capture(&root)).await?);
         if actor.request.role==SessionRole::Executor {
             let root=actor.request.worktree.clone();let project=actor.request.project.clone();actor.files=Some(Arc::new(Mutex::new(filesystem(move||ScopedFiles::new(root,&project)).await?)));
@@ -1000,7 +1069,9 @@ async fn supervise(mut actor: Actor, load: Option<String>) {
         command.args(["--disable-web-search","--sandbox",if decision{"read-only"}else{"strict"},"agent","--no-leader","--agent-profile"]).arg(&owned.path).arg("stdio")
             .current_dir(&actor.request.worktree).env_clear().envs(&actor.environment).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true).process_group(0);
         actor.owner()?;if actor.stopped(){return Err(failure(ErrorKind::ProcessFailure,"native stop before spawn"));}
-        let child=ProcessGroup::new(command.spawn().map_err(|e|failure(if e.kind()==std::io::ErrorKind::NotFound {ErrorKind::ExecutableMissing}else{ErrorKind::LaunchFailure},"native Grok could not spawn"))?,ownership.group())?;
+        let child=ProcessGroup::new(command.spawn().map_err(|e|failure(if e.kind()==std::io::ErrorKind::NotFound {ErrorKind::ExecutableMissing}else{ErrorKind::LaunchFailure},"native Grok could not spawn"))?,ownership.group(OwnershipStage::NativeChild))?;
+        #[cfg(all(test,target_os="macos"))]
+        let child = { let mut child = child; child.inspection_plan = actor.entry.process_inspection.clone(); child };
         actor.session.pid=child.child.id();process=Some(child);
         actor.store.lock().map_err(|_|failure(ErrorKind::StateFailure,"state poisoned"))?.audit(&actor.session.scope,"grok.process_spawned",json!({"session":actor.session.id,"pid":actor.session.pid})).map_err(state_error)?;
         actor.publish()?;
@@ -1025,7 +1096,7 @@ async fn supervise(mut actor: Actor, load: Option<String>) {
         for (key,value) in [("model",model.as_ref()),("reasoning_effort",effort.as_ref())]{if let Some(value)=value
             && !options.as_array().is_some_and(|a|a.iter().any(|v|v["id"]==key && v["currentValue"]==*value)){return Err(failure(ErrorKind::InvalidConfiguration,"native model/effort configuration did not match"));}}
         let info=actor.request("_x.ai/session/info",json!({"sessionId":native}),Duration::from_secs(15)).await?;actor.inventory_gate(&info)?;
-        actor.snapshot.verify_binding(&actor.request,&mut ownership,binding.as_ref().expect("preflight binding")).await?;actor.owner()?;profile.as_ref().expect("owned profile").verify()?;
+        actor.snapshot.verify_binding(&actor.request,&mut ownership,binding.as_ref().expect("preflight binding"),OwnershipStage::InSessionBinding).await?;actor.owner()?;profile.as_ref().expect("owned profile").verify()?;
         actor.prompt=uuid::Uuid::new_v4().to_string();
         let mut params=json!({"sessionId":native,"prompt":[{"type":"text","text":format!("Prepared Task input follows:\n\n{}",actor.request.input.payload)}],"_meta":{"promptId":actor.prompt,"screenMode":"headless"}});
         if let Some(schema)=&actor.entry.schema{params["_meta"]["outputSchema"]=schema.clone();}
@@ -1060,27 +1131,56 @@ async fn supervise(mut actor: Actor, load: Option<String>) {
     }.await;
     actor.active = false;
     // Native completion remains provisional until all owned process/host work is done.
+    let owned_process_group_created = process.is_some();
+    let mut cleanup_state = CleanupState::NotAttempted;
+    let mut reap_io_kind = None;
     let cleanup = if let Some(child) = process {
         match cleanup_group(child).await {
-            Ok(mut child) => tokio::time::timeout(Duration::from_millis(250), child.reap())
-                .await
-                .map_err(|_| failure(ErrorKind::SessionLost, "native reap uncertain"))
-                .and_then(|v| v.map_err(|_| failure(ErrorKind::SessionLost, "native reap failed")))
-                .map(|status| status.code()),
-            Err(error) => Err(error),
+            Ok(mut child) => {
+                match tokio::time::timeout(Duration::from_millis(250), child.reap()).await {
+                    Err(_) => {
+                        cleanup_state = CleanupState::ReapTimeout;
+                        Err(failure(ErrorKind::SessionLost, "native reap uncertain"))
+                    }
+                    Ok(Err(error)) => {
+                        cleanup_state = CleanupState::ReapError;
+                        reap_io_kind = Some(ReapKind::from(error.kind()));
+                        Err(failure(ErrorKind::SessionLost, "native reap failed"))
+                    }
+                    Ok(Ok(status)) => {
+                        cleanup_state = CleanupState::Succeeded;
+                        Ok(status.code())
+                    }
+                }
+            }
+            Err(error) => {
+                cleanup_state = CleanupState::GroupCleanupFailedUnclassified;
+                Err(error)
+            }
         }
     } else {
         Ok(None)
     };
     actor.rpc.take();
     let mut output_verified = true;
-    if let Some(mut reader) = stderr
-        && tokio::time::timeout(Duration::from_millis(250), &mut reader)
-            .await
-            .is_err()
-    {
-        reader.abort();
-        output_verified = false;
+    let mut stderr_drain_state = DrainState::NotStarted;
+    if let Some(mut reader) = stderr {
+        stderr_drain_state =
+            match tokio::time::timeout(Duration::from_millis(250), &mut reader).await {
+                Ok(Ok(())) => DrainState::JoinedReturned,
+                Ok(Err(error)) => {
+                    if error.is_panic() {
+                        DrainState::JoinedPanic
+                    } else {
+                        DrainState::JoinedCancelled
+                    }
+                }
+                Err(_) => {
+                    reader.abort();
+                    output_verified = false;
+                    DrainState::BudgetElapsedAbortRequested
+                }
+            };
     }
     drop(profile);
     let reconciliation_attempted = cleanup.is_ok() && (result.is_ok() || actor.dispatched);
@@ -1092,9 +1192,15 @@ async fn supervise(mut actor: Actor, load: Option<String>) {
                     &actor.request,
                     &mut ownership,
                     binding.as_ref().expect("owned binding"),
+                    OwnershipStage::Reconciliation,
                 )
                 .await?;
-            let current_index = index_digest(&actor.request.worktree, &mut ownership).await?;
+            let current_index = index_digest(
+                &actor.request.worktree,
+                &mut ownership,
+                OwnershipStage::Reconciliation,
+            )
+            .await?;
             if index.as_ref() != Some(&current_index) {
                 return Err(failure(
                     ErrorKind::StateConflict,
@@ -1125,8 +1231,23 @@ async fn supervise(mut actor: Actor, load: Option<String>) {
     } else {
         Ok(())
     };
-    let clean = cleanup.is_ok() && !ownership.uncertain() && output_verified;
-    let completed = result.is_ok() && reconciled.is_ok() && clean && !actor.stopped();
+    let ownership_sample = ownership.sample();
+    let cleanup_receipt = CleanupReceipt {
+        owned_process_group_created,
+        cleanup_ok: cleanup.is_ok(),
+        cleanup_state,
+        reap_io_kind,
+        output_verified,
+        stderr_drain_state,
+        stderr_read_error: "unavailable",
+        ownership_uncertain: ownership_sample.uncertain,
+        uncertainty_by_stage: ownership_sample.stages,
+        dispatched: actor.dispatched,
+        native_outcome: actor.native_outcome,
+    };
+    let clean = cleanup.is_ok() && !ownership_sample.uncertain && output_verified;
+    let result_succeeded = result.is_ok();
+    let completed = result_succeeded && reconciled.is_ok() && clean && !actor.stopped();
     let reconciliation_error = reconciled.as_ref().err().map(ToString::to_string);
     let mut diagnostic = result
         .err()
@@ -1149,7 +1270,7 @@ async fn supervise(mut actor: Actor, load: Option<String>) {
             ),
         ));
     }
-    let _=actor.store.lock().map(|mut store|store.audit(&actor.session.scope,"grok.turn_observed",json!({"session":actor.session.id,"native":actor.session.native_ref,"prompt":actor.prompt,"completed":completed,"cleanup_verified":clean,"reconciliation_attempted":reconciliation_attempted,"reconciliation_error":reconciliation_error,"exit_code":cleanup.as_ref().ok().copied().flatten(),"diagnostic":diagnostic.as_ref().map(ToString::to_string)})));
+    let _=actor.store.lock().map(|mut store|store.audit(&actor.session.scope,"grok.turn_observed",json!({"session":actor.session.id,"native":actor.session.native_ref,"prompt":actor.prompt,"completed":completed,"cleanup_verified":clean,"cleanup_receipt":cleanup_receipt,"reconciliation_attempted":reconciliation_attempted,"reconciliation_error":reconciliation_error,"exit_code":cleanup.as_ref().ok().copied().flatten(),"diagnostic":diagnostic.as_ref().map(ToString::to_string)})));
     let state = if !clean || (actor.dispatched && !actor.native_outcome) {
         SessionState::Lost
     } else if actor.stopped() {
@@ -1261,7 +1382,11 @@ impl Profile {
     }
 }
 
-async fn index_digest(root: &Path, ownership: &mut ProcessOwnership) -> AdapterResult<String> {
+async fn index_digest(
+    root: &Path,
+    ownership: &mut ProcessOwnership,
+    stage: OwnershipStage,
+) -> AdapterResult<String> {
     let executable = resolve_executable("git")?;
     let bytes = bounded_git_raw(
         &executable,
@@ -1269,7 +1394,7 @@ async fn index_digest(root: &Path, ownership: &mut ProcessOwnership) -> AdapterR
         &["ls-files".into(), "--stage".into(), "-z".into()],
         crate::git::native_environment(),
         tokio::time::Instant::now() + Duration::from_secs(5),
-        ownership.group(),
+        ownership.group(stage),
     )
     .await?;
     Ok(digest(&bytes))
@@ -1277,6 +1402,132 @@ async fn index_digest(root: &Path, ownership: &mut ProcessOwnership) -> AdapterR
 
 #[cfg(test)]
 mod registry_tests {
+    #[cfg(target_os = "macos")]
+    #[tokio::test]
+    async fn sanitized_native_process_unknown_cleanup_reaches_grok_durable_reservation() {
+        let home = tempfile::tempdir().unwrap();
+        let mut command = tokio::process::Command::new(std::env::current_exe().unwrap());
+        command
+            .args([
+                "--exact",
+                "adapter::grok::registry_tests::sanitized_grok_cleanup_child",
+                "--ignored",
+                "--nocapture",
+            ])
+            .env_clear()
+            .env("HOME", home.path())
+            .env("PATH", "/usr/bin:/bin")
+            .env("RRX_INSPECTION_FIXTURE_CHILD", "1")
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true)
+            .process_group(0);
+        let mut child =
+            ProcessGroup::new(command.spawn().unwrap(), Arc::new(AtomicBool::new(false))).unwrap();
+        let stdout = tokio::spawn(read_git_output(child.child.stdout.take().unwrap()));
+        let stderr = tokio::spawn(read_git_output(child.child.stderr.take().unwrap()));
+        let observed = tokio::time::timeout(Duration::from_secs(60), child.observe_exit()).await;
+        child = cleanup_group(child).await.unwrap();
+        let exit = child.reap().await.unwrap();
+        let output = stdout.await.unwrap().unwrap();
+        let diagnostic = stderr.await.unwrap().unwrap();
+        assert!(
+            observed.is_ok(),
+            "isolated child fixture timed out: {} {}",
+            String::from_utf8_lossy(&output),
+            String::from_utf8_lossy(&diagnostic)
+        );
+        assert!(
+            exit.success(),
+            "sanitized fixture failed: {} {}",
+            String::from_utf8_lossy(&output),
+            String::from_utf8_lossy(&diagnostic)
+        );
+        assert_child_completed(
+            &String::from_utf8_lossy(&output),
+            &String::from_utf8_lossy(&diagnostic),
+            "adapter::grok::registry_tests::sanitized_grok_cleanup_child",
+        );
+    }
+    #[cfg(target_os = "macos")]
+    #[tokio::test]
+    #[ignore = "entered only by the env-cleared parent fixture; no ambient native baseline"]
+    async fn sanitized_grok_cleanup_child() {
+        assert_eq!(std::env::var("RRX_INSPECTION_FIXTURE_CHILD").unwrap(), "1");
+        for unknown in [false, true] {
+            let (_temp, store, project, task, worktree) = super::super::tests::preflight_fixture();
+            let revision = std::process::Command::new("/usr/bin/git")
+                .args(["rev-parse", "HEAD"])
+                .current_dir(&worktree)
+                .env_clear()
+                .output()
+                .unwrap();
+            assert!(revision.status.success());
+            let mut request = super::super::tests::fixture_request(project, &task, worktree);
+            request.input.revision = String::from_utf8(revision.stdout)
+                .unwrap()
+                .trim()
+                .to_owned();
+            request.environment.clear();
+            let mut adapter =
+                GrokAdapter::new("fake".into(), PathBuf::from("/bin/cat"), store.clone()).unwrap();
+            if unknown {
+                adapter.process_inspection = Some(ProcessInspectionPlan::unknown(
+                    UnknownObservation::Diagnostics,
+                ));
+            }
+            let lower = receipt_support::watermark(&store, &request.scope).unwrap();
+            let attempt = receipt_support::Attempt {
+                lower,
+                input_version: request.input.version,
+            };
+            let launched = adapter.start(request).await.unwrap();
+            let status = tokio::time::timeout(Duration::from_secs(10), async {
+                loop {
+                    let status = adapter.status(SessionRef::from(&launched)).await.unwrap();
+                    if status.terminal() {
+                        break status;
+                    }
+                    tokio::time::sleep(Duration::from_millis(5)).await;
+                }
+            })
+            .await
+            .unwrap();
+            let observation = receipt_support::observe(&store, &status.session, Some(attempt));
+            let projection = receipt_support::message(&observation.receipt);
+            let state = store.lock().unwrap();
+            let saved = state.session(launched.id).unwrap().unwrap().0;
+            assert!(
+                observation
+                    .events
+                    .iter()
+                    .any(|event| event["kind"] == "grok.process_spawned"
+                        && event["data"]["session"] == json!(launched.id)),
+                "{projection}"
+            );
+            receipt_support::assert_state(
+                saved.state,
+                if unknown {
+                    SessionState::Lost
+                } else {
+                    SessionState::Failed
+                },
+                "predispatch_cat",
+                &projection,
+            );
+            receipt_support::assert_state(
+                status.session.state,
+                saved.state,
+                "predispatch_cat_watch",
+                &projection,
+            );
+            drop(state);
+            assert!(!adapter.transport_succeeded(&status), "{projection}");
+            receipt_support::assert_receipt(&observation.receipt);
+        }
+        child_completed("adapter::grok::registry_tests::sanitized_grok_cleanup_child");
+    }
     use super::*;
     #[tokio::test]
     async fn actor_journals_failed_write_effect_and_denies_completion() {
@@ -1349,6 +1600,10 @@ mod registry_tests {
             failure: None,
         });
         let entry = Arc::new(OwnedEntry {
+            #[cfg(all(test, target_os = "macos"))]
+            ownership_trace: Arc::new(ownership::OwnershipTrace::default()),
+            #[cfg(all(test, target_os = "macos"))]
+            process_inspection: None,
             scope: session.scope.clone(),
             transition: Mutex::new(()),
             status,
@@ -1471,6 +1726,10 @@ mod registry_tests {
             failure: None,
         });
         let entry = Arc::new(OwnedEntry {
+            #[cfg(all(test, target_os = "macos"))]
+            ownership_trace: Arc::new(ownership::OwnershipTrace::default()),
+            #[cfg(all(test, target_os = "macos"))]
+            process_inspection: None,
             scope: scope.clone(),
             transition: Mutex::new(()),
             status,

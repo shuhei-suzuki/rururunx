@@ -132,3 +132,12 @@ binding proof; readiness commits before/with settlement and wait registration re
 An actual bounded active-driver timer is permitted where an edge source cannot
 guarantee wake-up, with finite/fair work and no passive/busy poll mutation. No new
 source/private producer or recovery acceptance is claimed. Delta review pending.
+
+Before Requirements8 re-review, main d87faec (#46/#55/#41) is normally integrated.
+The only conflict is master Workflow documentation: retain all actual #41 recovery/
+version/error facts and the explicit still-proposed #43 binding section. Rust files
+are byte-identical to main; this merge introduces no #43 private binding/driver.
+The renewed public delta includes current master/Workflow/Store contexts rather than
+assuming the older unchanged-context manifest still describes these source files.
+CI trigger identity is distinguished from its default PR-merge checkout; actual
+checkout source provenance is required for future source acceptance.
