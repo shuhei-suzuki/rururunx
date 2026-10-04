@@ -1,9 +1,10 @@
 # Issue 46 verification
 
 STRICT shared owned-process death evidence. Requirements3 and both Design3 gates
-approved; implementation/local controls exist. Both Source1 reviewers requested
-verified coverage fixes at9a3761e, whose exact CI failed. Source approval and final
-Linux/macOS CI remain pending; no merge readiness is claimed.
+approved. Both Source1 coverage findings were verified fixed; both Source2 reviewers
+approved source7611d65 with no Critical/High/Medium findings. Exact source-head
+Linux/macOS CI passed; final documentation-head CI remains the merge gate. Earlier
+failed runs are preserved and are not superseded as causal explanations.
 
 Issue41 exact `888d86d` macOS CI37169413513 reported `native process inspection
  timed out` from bounded Context Git, followed by uncertainty cascades. Linux was
@@ -24,10 +25,11 @@ public structured evidence will be published with validated formal/implementatio
 rounds. Published Apple blobs are pinned in the design; installed binary/source
 identity is unverified. XNU global traversal/temporary allocation remains explicit.
 
-Existing-source safety gap: Apple ps can emit sysctl stderr yet return0, including
+Historical pre-implementation source safety gap: Apple ps can emit sysctl stderr yet return0, including
 initial/exhausted failures. Retry can sleep1s on non-ENOMEM. Current discarded
-stderr/empty-as-dead is not sufficient death proof. No shared helper changed yet,
-no250ms deadline/latch/serialization relaxation and no historical root-cause claim.
+stderr/empty-as-dead was insufficient death proof. The original read-only observation
+changed no shared helper. The implemented contract below keeps250ms, sticky
+uncertainty and default concurrency; no historical root-cause claim.
 
 ## Requirements review1 and verified refinements
 
@@ -198,7 +200,7 @@ Corrected `900e79d` default `unknown` filter: 10/10 passed (1.65s). Source `bab2
 
 The isolated detached mutation worktree compiled 12 test runs from 11 distinct source operators. Every run failed its intended actual assertion; none earned compile-error or timeout-without-cleanup credit. Exact base-to-mutant patches, heads, log hashes and causal excerpts are checked in [the mutation ledger](issue-46-mutations.json). The stderr-removal source operator ran separately through Generic and the env-cleared synthetic Grok consumer (same committed mutant `c732c89`): Generic changed Lost→Exited, Grok changed Lost→Failed. Missing expected leader exposed successful bounded Git output instead of SessionLost; ignored live members, leader-only selection, and legacy argument reordering cleared actual retained group ownership. Removing EOF accepted a frame while its writer was held; removing NONBLOCK exceeded the independent five-second release watchdog, which released the FD and joined/reaped before asserting. Disconnecting each adapter's private seam changed its expected terminal result, proving caller wiring. Clearing Context uncertainty failed the real core's sticky-latch assertion; this is scoped to that state assertion and the restored later-launch refusal, not a separate compiled proof of every public index caller. Global enumeration earned liveness-only credit: the all-zombie owned group could no longer be accepted because foreign rows were rejected. It does not prove false-death safety.
 
-Exact production source restoration at detached `ed69214c75c1b3708416fa5c4cfba0eb7d924e46` was byte-identical under crates to `bab243a`; restored default controls passed seven inspection tests (0.26s) and ten Unknown-filter tests (1.64s; overlaps the inspection group). The clean mutation worktree was normally removed after completion. Mutation patch metadata was normalized against the fixed original base, including the repeated stderr operator, rather than against the preceding mutant. The original unsuccessful fixture/test runs remain above; no historical CI cause is inferred. At `749039f`, the added safe directory-FD fixture passed with all eight inspection tests at default concurrency (0.26s), covering the actual read-error cleanup/reap path. Fallible fcntl configuration ownership branches remain source-review coverage; no synthetic syscall failure is advertised as real OS proof.
+Exact production source restoration at detached `ed69214c75c1b3708416fa5c4cfba0eb7d924e46` was byte-identical under crates to `bab243a`; restored default controls passed seven inspection tests (0.26s) and ten Unknown-filter tests (1.64s; overlaps the inspection group). The clean mutation worktree was normally removed after completion. Mutation patch metadata was normalized against the fixed original base, including the repeated stderr operator, rather than against the preceding mutant. The original unsuccessful fixture/test runs remain above; no historical CI cause is inferred. At `749039f`, the added safe directory-FD fixture passed with all eight inspection tests at default concurrency (0.26s), covering complete() read-error handling and Inspector::cleanup kill/reap directly. It does not execute observe_command's kind-preserving cleanup-error arm; that arm and fallible fcntl configuration ownership remain source-reviewed only. No synthetic syscall failure is advertised as real OS proof.
 
 Independent immutable source reviews and exact-head Linux/macOS CI are still pending. Future native5/6 callers require normal integration and their own real consumer gates; no acceptance is inferred from source compatibility.
 
@@ -221,3 +223,72 @@ The [second compiled ledger](issue-46-mutations-round2.json) adds eight operator
 Postfix all-target clippy atdbfa rejected one needless borrow in the new literal-string producer fixture (`builtin(&body)`); correction is `builtin(body)` only, not a runtime failure or process-inspection cause. Latest lint/build/metadata controls and source delta reviews remain pending before readiness.
 
 At `30e5e48`, latest metadata controls8/8 passed0.26s; all-target macOS clippy-Dwarnings, fmt check, non-test debug and release builds passed (clippy1.41s/debug1.71s; release5.36s). [Measured owned observations](issue-46-owned-observation.json) parse actual fixture emissions, separating source/binary/argv-environment provenance; historic recon nulls remain untouched. Program/args/explicit-environment count come from actual Command getters before spawn; environment reset is source-enforced, not kernel attested. No unrelated global process rows or native credentials appear. Production safety policy and earlier full default debug/release183Rust+2docs controls remain unchanged; final exact published-head CI and independent scoped Source2 approval still required.
+
+
+## Source2 approval, exact source CI and Low dispositions
+
+Both resumed independent native Source2 operations completed at immutable public
+`7611d656ab15e63ba7a5552c38804c9f214877bb`, approved with no Critical/High/Medium
+finding, and verified owned cleanup. Ownership reviewer
+`0711f83d-3d32-4847-9204-fb37d599932d` and bounded reviewer
+`fa90a4cb-9c58-4f79-b39f-d3c2be3ff837` independently verified the Source1 fixes and
+preservation of Unknown/Lost, kill/reap, exact selector and shared250ms/1MiB policy.
+Their resumed usage/cost/API duration counters have unverified per-round attribution;
+no measured wall time or final reviewer-run test result is inferred. The prompts
+still listed CI pending; separate exact source CI below closes that merge gate.
+
+Exact [source CI37189195160](https://github.com/shuhei-suzuki/rururunx/actions/runs/37189195160)
+passed both required contexts: check (macos-latest), job111397635471, and
+check (ubuntu-latest), job111397635538. Both ran fmt, all-target clippy-Dwarnings,
+full workspace tests with default concurrency, debug build and release build. Local
+full debug/release183Rust+2doctests counts remain scoped to dbfa355, with the three
+explicit ignored entries described above; the exact CI independently verifies the
+latest source without attributing that old count to a newer binary. Final outcome
+text changes no Rust source; its exact published-head CI is still required before merge.
+
+Optional Low dispositions are verified and bounded:
+
+- Diagnostic-only global -A samples still use the shared250ms/strict parsing path.
+  This can fail a fixture on slow or unusual unrelated rows. Current exact source CI
+  passed; no separately relaxed diagnostic budget, parser or test serialization is
+  introduced. Production selected -g observation is unchanged, and global rows never
+  grant signal authority. Preserve any future such failure without attributing it to
+  production unsafety or historical CI causes.
+- Command getter explicit-environment count alone is not a causal env_clear proof.
+  The reset remains source-enforced; no kernel attestation or compiled env_clear-
+  removal operator is claimed. A legacy inheritance failure remains Unknown.
+- The directory-FD fixture covers complete()/Inspector::cleanup directly; mandatory
+  wait-failure kind preservation is source-reviewed only, with no injected syscall
+  execution claim. The broader earlier sentence has been narrowed.
+- Round1 leader-only, legacy-order and ignored-live-member operator credit belongs
+  to bab243a's former shell-shim fixture path. Those three operators were not rerun
+  against the current production-observer fixture. Round2's actual production-death-
+  observer bypass operator supplies current consumer wiring evidence; it does not
+  retroactively move the earlier operators' credit to this head.
+- Both size-detector operators remain masked and earn no causal false-death/bounded-
+  memory credit. The optional valid-row-at-byte-boundary fixture is not implemented.
+  Trusted ps whitespace parsing and the lock-refusal assertion's missing positive
+  control remain optional refinements; Lost assertions supply the documented credit.
+
+The complete two-round ledger is20compiled runs/19distinct operators:15actual-path
+assertion kills (including the scoped Context core state assertion),2validator-only,
+1liveness-only and2masked/no-credit runs. It does not claim every operator is current-
+head false-death safety proof. Both restored detached worktrees were normally removed.
+Native5/6/41 integration and installed native/auth/inference acceptance remain separate.
+Cross-credential visibility/source identity, global kernel allocation/traversal,
+non-atomic sampling, partial KILL/group escapes, FD provenance and mandatory reap/
+async Drop residuals remain explicitly unclosed.
+
+### Separate Issue23 baseline failure
+
+Docs-only Issue23 headD1aad526b [CI37188880032](https://github.com/shuhei-suzuki/rururunx/actions/runs/37188880032)
+passed Ubuntu but failed macOS Context target9passed/7failed. Its first local_map
+failure atline185 reported SessionLost: native process group cleanup failed: native
+process inspection timed out; the following six failures reported the earlier
+Context Git cleanup uncertainty sticky latch. Library75, Codex19 and CLI5 passed
+before that target. These are one observed timeout and six subsequent refusals,
+not seven independent process inspection failures. The original full failed log is
+retained at `/private/tmp/rururunx-issue23-design1-ci-failed.log`. No rerun, attribution
+to the local producer diagnostic or claim that #46 reproduces/closes this exact
+historical failure is made. Actual consumer coverage and later integration must be
+assessed independently on their own meaningful published heads.

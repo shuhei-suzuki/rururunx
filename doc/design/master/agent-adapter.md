@@ -316,7 +316,7 @@ bounded stderr and expected unreaped-leader evidence under explicit UNIX2003
 selection semantics. Empty/error/malformed or
 incomplete observations must remain Unknown; exit0 alone is insufficient.
 250ms, uncertainty and kill-before-reap remain authoritative. Published XNU still
-traverses/allocates against global processes. Independent source approval and exact final CI remain pending and makes no claim to explain prior CI timeouts or contain detached
-native descendants. Non-atomic fork/exit sampling and existing partial-success
+traverses/allocates against global processes. This contract does not explain prior
+CI timeouts or contain detached native descendants. Non-atomic fork/exit sampling and existing partial-success
 KILL with non-signalable survivors remain residual limits; Linux cleanup semantics
 remain unchanged.

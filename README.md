@@ -362,7 +362,8 @@ Removal remains blocked until those reservations are reconciled.
 
 Shared macOS owned-process inspection is under STRICT follow-up
 [Issue 46](doc/requirements/issue-46-requirements.md). The implementation uses exact-group,
-bounded-diagnostic and unreaped-leader observation; independent source approval and
-exact final Linux/macOS CI remain pending; existing timeout/uncertainty guards are preserved. Non-atomic
+bounded-diagnostic and unreaped-leader observation, preserving existing timeout and
+uncertainty guards. Verification and independent review results are recorded in
+[Issue46 evidence](doc/verification/issue-46.md). Non-atomic
 sampling and partial-success KILL with non-signalable survivors remain explicit
 limitations.
