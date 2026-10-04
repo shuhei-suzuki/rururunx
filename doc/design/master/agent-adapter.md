@@ -330,9 +330,11 @@ claims verified drain completion from that abort. `not_attempted` cleanup and
 `in_session_binding`, and `reconciliation` booleans. Each retained flag is loaded
 once after reconciliation; the all-flags total determines the original clean
 operand independently of labels. A stage false means no retained uncertain entry
-in that stage, not that the stage ran or was verified. Standalone checkpoint Git
-has its own ownership object and remains in all-flags totals, without a projected
-supervise stage or a stage-OR equality claim. Native dispatch/outcome are provisional
+in that stage, not that the stage ran or was verified. Checkpoint verification
+uses a separate ownership object that is never sampled into a receipt or clean
+operand; a Checkpoint-labelled flag would still count if present in sampled
+ownership. This sampler behavior has unit-only coverage and grants no checkpoint
+runtime total or supervise-stage projection. Native dispatch/outcome are provisional
 facts; matching native completion still needs every original terminal gate.
 
 These measurements preserve the existing native250ms reap/drain budgets, group

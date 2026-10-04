@@ -559,7 +559,9 @@ async fn unknown_native_dispatch_keeps_clean_dead_executor_reserved() {
             &fixture.request.input.revision,
             "cannot lock Lost executor"
         )
-        .is_err()
+        .is_err(),
+        "{}",
+        fixture.receipt_message(&status)
     );
     assert_eq!(
         adapter
@@ -567,11 +569,15 @@ async fn unknown_native_dispatch_keeps_clean_dead_executor_reserved() {
             .await
             .unwrap_err()
             .kind,
-        ErrorKind::StateConflict
+        ErrorKind::StateConflict,
+        "{}",
+        fixture.receipt_message(&status)
     );
     assert_eq!(
         adapter.release((&session).into()).unwrap_err().kind,
-        ErrorKind::SessionLost
+        ErrorKind::SessionLost,
+        "{}",
+        fixture.receipt_message(&status)
     );
     let mut input = fixture.request.input.clone();
     input.version = 2;
@@ -581,7 +587,9 @@ async fn unknown_native_dispatch_keeps_clean_dead_executor_reserved() {
             .await
             .unwrap_err()
             .kind,
-        ErrorKind::InvalidInput
+        ErrorKind::InvalidInput,
+        "{}",
+        fixture.receipt_message(&status)
     );
 }
 
@@ -623,7 +631,9 @@ async fn stop_after_dispatch_preserves_unknown_outcome_until_explicit_recovery()
             .await
             .unwrap_err()
             .kind,
-        ErrorKind::StateConflict
+        ErrorKind::StateConflict,
+        "{}",
+        fixture.receipt_message(&stopped)
     );
     receipt_support::assert_receipt(&fixture.observation(&stopped).receipt);
 }

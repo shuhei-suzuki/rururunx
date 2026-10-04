@@ -314,20 +314,24 @@ async fn dispatched(unknown: bool) {
             event["kind"] == "grok.turn_observed" && event["data"]["session"] == json!(session.id)
         })
         .unwrap();
-    assert_eq!(turn["data"]["completed"], false);
+    assert_eq!(turn["data"]["completed"], false, "{projection}");
     assert_eq!(turn["data"]["cleanup_verified"], !unknown, "{projection}");
     if !unknown {
         assert_full_trace(&adapter, &status, &fixture, 1);
     }
     assert_eq!(status.session.pid.is_some(), unknown, "{projection}");
-    assert!(crate::git::executor_reserved(&observation.saved.unwrap()));
+    assert!(
+        crate::git::executor_reserved(&observation.saved.unwrap()),
+        "{projection}"
+    );
     assert_eq!(
         adapter
             .start(fixture.request.clone())
             .await
             .unwrap_err()
             .kind,
-        ErrorKind::StateConflict
+        ErrorKind::StateConflict,
+        "{projection}"
     );
     assert_eq!(
         adapter.release((&session).into()).unwrap_err().kind,
