@@ -51,9 +51,9 @@ The common factual core has one exact digest across slots. Declared specializati
 artifacts have separate immutable per-slot hashes and are structurally additive:
 the byte-identical core remains mandatory and cannot be replaced or omitted.
 Specialization identity/source is visible and attributable; no semantic
-non-contradiction guarantee is invented. rrx never injects same-round peer findings/current-round output or raw executor
-conversation into any initial/member expansion input, rules/source slices or
-manifests before every roster slot settles. Runtime DB/sidecars, peer
+non-contradiction guarantee is invented. rrx excludes raw executor conversation from ALL initial/member expansion inputs,
+rules/source slices and manifests in EVERY round unconditionally. Same-round peer
+findings/current-round output remain excluded until every roster slot settles. Runtime DB/sidecars, peer
 outputs and raw executor transcripts are ineligible for RepositoryMap selection
 and expansion, including explicit/symlink references. Mandatory references that
 conflict with this exclusion hold before input rather than silently dropping rules. Peer
@@ -309,15 +309,22 @@ an arbitrary timeout constant does not establish supported normal cleanup. Unkno
 or escaped cohort ownership cannot be certified by selected-group death. Core
 criteria4/16.b require these ACTUAL supported5/6/7 declarations before closure;
 21.f public tracking alone cannot satisfy them. Until they exist the affected
-preset/criterion stays open and refuses before effects, including Triple. Unknown tails or
-unbounded required stages make the profile unsupported; exceptional OS/ownership
-uncertainty remains the explicit held outcome. Durations use integer milliseconds;
-strict deadline>envelope gives at least 1 ms normal-bound margin, without claiming a
-universal timing guarantee. This conservative minimum is provisional and actual 16
-measures its practical sufficiency; no statistical percentile substitutes for proof.
-The configured settlement deadline must exceed that envelope; if unavailable or too short, the preset refuses
-before member input. With default 30, a known envelope strictly below 30 seconds is
-accepted; an envelope at/above 30 or unknown refuses. Default 30 is provisional, not
+preset/criterion stays open and refuses before effects, including Triple. Known unbounded user hooks, tool/MCP shutdown or uncontained cohorts make the profile
+Unsupported BEFORE input. Their actual declared/detected configuration enters the
+profile contract; auth/hooks/rules/defaults are preserved, not silently removed.
+Unexpected late hooks, OS delay or newly escaped/uncertain ownership after dispatch
+remains tracked Unknown/Lost for14, never selected-group death or cleanup fiction.
+The normal envelope is conditional on stated supported producer stages, not a
+universal real-time OS bound. Profile freezes an explicit safety margin in integer
+milliseconds: minimum/default100ms, stronger finite margin required if its reviewed
+producer contract says so. Checked envelope+margin<=deadline accepts; insufficient/
+unknown margin refuses. This replaces the former provisional1ms arithmetic minimum;
+100ms is a proposed configured margin, never physical jitter/death proof. Actual16
+measures hook/tool-stage refusal, jitter-at-margin and residual normal/escaped holds;
+no percentile or arbitrary timeout substitutes for actual native producer conformance.
+The configured settlement deadline must cover that envelope plus required margin; if unavailable or too short, the preset refuses
+before member input. With default30s/100ms margin, known29.9s accepts;
+29.901/29.999/30s or unknown refuses. Default30 is provisional, not
 an asserted native guarantee.
 A supported explicit non-default deadline remains within 1–3600. OS/uncertain cases
 still yield the declared held outcome; a contract bound is not a universal deadline
@@ -336,8 +343,11 @@ Broken-supervisor/restart evidence likewise cannot release the hold. Timely safe
 remains a distinct
 failure/cancellation outcome; startup expiry is a distinct failure only after authoritative
 safe cleanup, otherwise an uncertain/Lost hold. It never counts as approval. Resource-queue wait is a separate visible state with 1–3600-second
-attention threshold, default 600; exceeding it holds for Human without pretending
-a model timed out. Existing Runtime,
+attention threshold, default600; crossing it emits durable attention but the slot
+STAYS queued and automatically admits when actual permits return, after fresh
+source/claim/round/lock/currency checks. It neither requires Human rescheduling nor
+pretends a model timed out. An explicit policy/trusted Human termination still applies.
+Existing Runtime,
 Project and agent resource limits can lower local parallelism, never be bypassed.
 
 Default formal policy forbids self-review slots and duplicate registered agent IDs.
@@ -556,7 +566,11 @@ explicit attributable Human records. Git author/committer strings, trailers and 
 are claims, never attribution authority. Delta content not covered by that evidence is unknown;
 overlapping uncertain ownership cannot silently be assigned to a convenient identity. Unknown
 authorship is surfaced and requires
-explicit policy/Human disposition; a changed executor cannot silently self-confirm
+explicit disposition. Policy may ONLY refuse or conservatively exclude every
+candidate native family; it cannot relabel unknown as Human/unattributed to restore
+eligibility. Specific actor/Human attribution requires trusted ingress with evidence.
+Test a policy attempting a nonconservative unknown-delta disposition rejects;
+a changed executor cannot silently self-confirm
 its own earlier changes.
 
 A Reviewer may request bounded broader context without mutating Task.context_version
@@ -604,8 +618,8 @@ any unsafe native ownership held. After safe settlement, authorized Human or
 Workflow records inspected locations/cause and a verified committed target plus
 source/lock/policy evidence before a new full-roster round; no automatic reset or
 discard of reviewer edits is authorized. Otherwise terminate without certificate.
-Resource-queue attention exits by authorized rescheduling with available permits
-and a fresh target/claim check, or termination; it does not reuse expired authority
+Resource-queue attention continues automatically on actual available permits with
+fresh target/claim/round currency, or explicit policy/trusted termination; it does not reuse expired authority
 or count the waiting slot. NeedsContext can exit by an explicit bounded expansion/
 new factual bundle, or termination. Every exit retains the lineage's obligations,
 round/byte counters and original outcomes.
@@ -866,7 +880,8 @@ explicit eligible custom roster. Human authorship remains separately attributed.
     obligations: #14 exact ReviewSet Lost/uncertain member ownership/locks/permits;
     #20 production deterministic two/Triple bundle/delta/expansion; #16 real native
     two/Triple isolation/results/efficiency plus timeout/retry/partial-output and settlement-expiry Lost hold
-    frequencies, retained capacity/Task-time and Human-interruption impact. Criterion
+    frequencies plus restart/broken-supervisor, native rubric conflicts and queue attention,
+    retained capacity/Task-time and Human-interruption impact. Criterion
     21 is the canonical handoff: EVERY subcriterion attributing a measurement to
     #16 must be quoted by stable ID from public #16 acceptance before closure,
     This includes deferred evidence as well as measurements for ALL IDs referring
@@ -962,7 +977,10 @@ autonomous confirmation.
 **21.c — Settlement availability metrics.** Criterion 21's #16 handoff must include settlement-expiry
 Lost frequency and retained capacity/Task-time, not only inference timeout counts.
 Report successful-result normal-completion cleanup expiry separately from
-cancellation/timeout cleanup expiry; either can leave an absorbing Lost hold.
+cancellation/timeout cleanup expiry, user-hook/tool-stage or jitter/escape conditions,
+and restart/broken-supervisor Lost causes (18.b). Record frequency, held capacity and
+Task-time separately; any may retain an absorbing hold until14. Actual14 owner recovery
+is the product restart-recovery requirement, not a retrospective APPROVE.
 
 **12.e — Human floor preservation.** Human adjudication never substitutes for the mandatory independent approval floor
 and never mints a formal Review-Set certificate below F. It may select an eligible
@@ -987,7 +1005,24 @@ and external history/context channels are distinct residual channels, listed as
 declared-by-adapter or unverifiable in result/certificate. Runtime-controlled input
 independence never certifies those channels; default auth/hooks/rules are preserved.
 Criterion 21's #16 isolation handoff requires observing/testing native auto-injection
-separately from passive filesystem/tool-read visibility.
+separately from passive filesystem/tool-read visibility. This includes serialized and
+concurrent same-family fresh members: family equality/fresh SID/overlapping lifetime
+alone neither proves contamination nor physical secrecy. Known actual current-peer
+injection fails independence; unknown native channels stay explicitly unverifiable,
+never silently labelled current-peer-free. Runtime-controlled exclusions remain
+mandatory and ordinary family-repeat eligibility is unchanged unless actual policy
+requires diversity. Test declared/observed current-peer injection rejection and
+reported unknown channels;16 must verify actual supported native defaults.
+
+Primary documentation, not inspected private user memory, establishes the channel:
+[Claude memory](https://code.claude.com/docs/en/memory) describes repository-shared
+worktree auto-memory loaded into new local conversations; separate linked cwd is
+not isolation. [OpenAI config reference](https://learn.chatgpt.com/docs/config-file/config-reference)
+documents existing-memory injection enabled by default and an idle eligibility
+window for generation. These sources do not prove this project's actual peer finding
+was stored/injected or installed effective policy. Actual installed-profile evidence
+remains required; no memory/history deletion or native default override is implied.
+
 
 **14.b — Expansion renewal accounting.** Expansion request/slot byte allowances reset only for a newly admitted (round,slot);
 per-round aggregate and inherited lineage quota never reset by slot renewal.
@@ -1184,8 +1219,10 @@ waive the certificate floor. The prior unconditional Project-wide ancestry veto 
 an availability defect and is replaced by this evidence-bound scope rule.
 
 **14.f — Queue attention bounds.** Queue threshold 0/3601 rejects;1/3600 is accepted
-within the remaining policy, default 600 is recorded. Queue expiry never invents a
-native timeout or releases an owned operation.
+within the remaining policy, default600 is recorded. Attention crossing stays queued;
+permits returning after the threshold automatically admit with current currency.
+Test that no Human decision is required and stale target still refuses. Queue attention
+frequency/Task-time goes to16; it never invents native timeout or releases ownership.
 
 **9.e — Original finder identity.** A non-finder duplicate slot sharing an agent
 ID cannot act as the original finder. Only the same frozen slot key+agent in a later
@@ -1231,17 +1268,18 @@ only and holds until that adjudication or termination; quorum/allow-self cannot
 clear it. #16 measures this Human-interruption frequency/Task impact, distinct
 from independent approval-floor availability, under criterion 21's canonical handoff.
 
-**18.g — Normal cleanup bound.** Actual 5/6/7 caller conformance identifies normal
-post-result cleanup shape/envelope. At default 30, a known envelope strictly below 30
-seconds accepts; at/above 30 or unknown refuses before input. Test 29.9/30/unknown and
-a supported configured deadline strictly greater than its known reviewed upper bound,
-within 1–3600. Test the one-time normal-result timer start for natural exit and
-runtime-requested close, duplicate terminal events without extension, and rejection
-of a percentile/typical-only envelope. Repeat
-normal-completion expiry through actual owned supervision and expose held ownership.
-Before actual 14 recovery and required production native proof, these library/synthetic
-certificates are integration evidence, not production merge gate readiness. The MVP
-still requires actual native acceptance; synthetic timing does not validate defaults.
+**18.g — Normal cleanup bound.** Actual5/6/7 caller conformance declares supported
+normal hook/tool/native/server shutdown and owned-settlement stages plus enforceable
+conditional envelope and required margin. At default30s with100ms margin,29.9s accepts;
+29.901/29.999/30s or unknown refuses. A profile-required stronger margin is enforced;
+configured deadline1–3600 must cover exact envelope+margin using checked arithmetic.
+Test preserved user hook/MCP configuration with known bound versus unbounded preinput
+Unsupported; afterdispatch unexpected delayed hook/jitter-at-margin/escaped cohort
+retains actual supervision/Unknown ownership for14. No disabling userdefaults and no
+universal real-time claim. One normal-result timer starts at complete owned result/
+native terminal/cleanup request, never partial tokens or repeated terminal extension.
+Percentile/typical/arbitrary-timeout-only declarations refuse. Actual16 owns observed
+profile/default suitability; library timestamps alone do not validate native support.
 
 
 **9.g — Actual disposition callback.** A later complete opinion must deliver explicit
@@ -1304,6 +1342,43 @@ Test narrow supported hold permitting a disjoint Task when permits allow, and
 widened root/common-Git uncertainty blocking physically affected Tasks/Projects.
 This profile/evidence basis is not an OS sandbox or generic terminal death proof.
 
+**12.j — Conflicting native rubric availability.** Task-edited OR legitimate base-sync
+CLAUDE.md/AGENTS/rules that native discovery would activate differently from the
+accepted governing snapshot refuse before input, with exact conflicting paths and
+revision/digests. Supported exit is ONLY an actually reviewed native profile/view
+that delivers reviewed source with activated rubric while preserving required native
+user defaults, or termination without certificate. Such a view is not implemented or
+promised by this requirement; native cwd/worktree ownership requires actual19/profile
+composition. Legitimate base-sync may explicitly activate a new trusted governing
+snapshot retaining floors/obligations, never automatic Task-edit self-activation.
+Test both Task edit and base-sync drift, refusal reason and available verified exit
+versus pending-profile/noexit.16 records frequency/Task availability/Human impact.
+
+**3.b — Per-phase policy and configuration.**9 owns the typed activated Runtime/Project
+per-review-phase roster/completion/policy consumer (existing ProjectOverlay cannot
+add providers). Public handlers/configuration belong15/24. Test STANDARD Requirements,
+Design and Implementation review plus STRICT SecurityReview with distinct activated
+policies/rosters/phase lineages, security flag/floor and exact phase certificates;
+wrongphase/policy replay rejects. Missing activation surface is explicit, not a
+worktree-authored config fallback.
+
+**21.i — Production readiness and principal convergence.** Actual production review-gate
+consumer requires real supported native producer/profile conformance and exact current
+certificate/coverage/independence basis, actual14 recovery, actual trusted policy
+activation and required15/24 Human adjudication ingress; multi-Project additionally
+requires27 fair admission. Until these compose, single AND multi-Project product gating
+remain disabled.9 trusted controller/library ingress can activate initial policy and
+prove component mechanics, but does not claim completed product handlers or production
+ready certificates. Component native/controlled tests may retain nongating evidence;
+accepted pre-recovery risk21.d remains observable there, not an enablement exemption.
+Applicability-dependent fresh budget additionally needs21.h actual12 producer; unknown
+inherit/refuse does not require pretending it exists. Readiness comes from actual
+implementation composition, never public JSON capability. Test actual downstream
+consumer refuses missing prerequisites and nongating basis. When9/23 both exist they
+share principal/origin derivation TYPE AND IMPLEMENTATION;15/24 convergence tests
+reject identical native/API/IPC/library→CLI relabel attempts. No23 merge prerequisite
+is imposed merely to review9's provider-neutral contract.
+
 **21.h — Applicability producer and production enablement.** Public12 acceptance
 must own the reviewed trusted impact/applicability producer using18/20 scoped exact
 inputs and9 typed consumer/checker conformance. Method and known-incompleteness basis
@@ -1311,8 +1386,8 @@ must be explicit; unknown/incomplete or missing producer inherits/refuses, never
 fresh-budget production certification. Actual9 fixtures prove the consumer/refusal
 boundary only. This is a separately tracked MVP availability/impact gate without
 an implementation dependency cycle. Multi-Project production ReviewSet integration
-also remains DISABLED until actual14 retained-share recovery and27 fair admission
-compose; a synthetic library success or per-Project cap cannot erase held shares.
+also remains DISABLED until21.i actual readiness, including14 retained-share recovery
+and27 fair admission, composes; a synthetic library success or per-Project cap cannot erase held shares.
 Public Issue9 states that gate;21.g/#16 owns its actual cross-Project evidence.
 
 The canonical public handoff table below summarizes criterion21 ownership; individual
@@ -1321,12 +1396,12 @@ claims it complete or waives actual9 core support prerequisites.
 
 | Stable acceptance keys | Public owner / actual responsibility |
 | --- | --- |
-| 11.b, 11.e, 21.c/d/g | #14 exact held native/lineage/resource recovery; #27 fair admission; #16 scoped hold/availability measurements |
+| 11.b, 11.e, 18.b, 21.a/c/d/g | #14 exact held native/lineage/resource recovery; #27 fair admission; #16 scoped hold/availability measurements |
 | 8.g, 10.d | #20 production typed bundle/delta/coverage; #9 consumer contract; #12 impact producer; #18 captured source inputs |
 | 11.c/d, 21.h | #12 trusted applicability producer, #18/#20 inputs, #9 consumer; #16 actual disjoint/unknown/resource impact |
-| 16.b/c, 18.g, 8.a/c | #5/#6/#7 actual supported native/config/permission/cleanup declarations or tracked reviewed follow-up; #16 real enforcement/trace/default evidence |
-| 8.d/h, 16.a, 14.c/d/e, 17.c, 20.a/b, 21.b, 9.f | #16 actual exposure, efficiency, finite delivered versus retained bytes, quotas/retries/eligibility/Human impact; #21 nullable native telemetry |
-| 9.d, 21.e | #9 trusted ingress contract; #15/#24 actual scoped product Human handlers |
+| 16.b/c, 18.g, 8.a/c, 21.f | #5/#6/#7 actual supported native/config/permission/cleanup declarations or tracked reviewed follow-up; #16 real enforcement/trace/default evidence |
+| 8.d/h, 12.j, 14.f, 16.a, 14.c/d/e, 17.c, 20.a/b, 21.b, 9.f | #16 actual exposure, efficiency, finite delivered versus retained bytes, quotas/retries/eligibility/Human impact; #21 nullable native telemetry |
+| 3.b, 9.d, 21.e/i | #9 typed phase-policy/ingress/readiness consumer; #23 shared principal derivation; #15/#24 actual scoped product policy/Human handlers; #14/#27 actual recovery/admission |
 
 Every criterion and bold subcriterion ID above is a stable closure-evidence key.
 Absent suffixes are intentional reserved IDs; reordered subcriteria retain their
