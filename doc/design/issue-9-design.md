@@ -1,6 +1,6 @@
 # Issue 9 design: configurable independent Review Sets
 
-Status: Design2 candidate, provider-neutral and not implemented. The controlling
+Status: Design3 candidate, provider-neutral and not implemented. The controlling
 [requirements](../requirements/issue-9-requirements.md) are the Req38-gated revision
 plus its Low wording clarifications at caa4390780f483f2d29f8182a36f65f924caf010,
 SHA256 0af45849f067036815d36b3c43adb74515243c7a220b7a5789f379e6f722fcfb.
@@ -22,12 +22,15 @@ bounded referenced artifact identity. Facts and serialized IDs do not construct
 native ownership, controller authority or recognized Human authority.
 
 9 first owns an actual private provider-neutral library-composition Human-ingress
-port under9.d. Its nonserializable capability derives principal/origin and exact
-scoped event/reason/evidence/digest through trusted composition; it never accepts
+port under9.d. Its nonserializable capability follows the approved23 derivation:
+actual OS caller UID plus the actual invocation origin, with NO composer-supplied
+principal parameter. It derives the exact scoped event/reason/evidence/digest
+through trusted composition; it never accepts
 actor=Human JSON. Record origin=library-composition, always nongating, including
 fixture authorship at creation. Activated accepted-ingress checks reject an
 unaccepted origin; a controller cannot relabel this capability as CLI/UID Human
-provenance. Native/Workflow/Broker API/IPC and output cannot acquire it. Component
+provenance. Native/Workflow/Broker API/IPC and output cannot acquire it. Arbitrary composer principal is unrepresentable/rejected at
+the actual port. Component
 Human-boundary positives use this real port with negative relabel controls, not
 product certificates or an absent23 implementation.
 
@@ -51,6 +54,15 @@ proposals, never governing rubric for their author. Resolving and hashing a sour
 is not trusted activation; base-sync cannot auto-approve new content. Scope-changing
 updates create explicit history through the required authority, never in-place
 reinterpretation of a started round (8/9/12).
+
+12.j's pre-claim/input consumer requires the actual registered native-view producer
+for every discovery-reachable governing instruction/rule/skill in the authorized
+review workspace. Compare that complete path/revision/digest set with the activated
+governing snapshot. Task-edited or base-sync activation divergence refuses BEFORE
+input with exact conflicting paths/digests; missing/unknown view is unavailable,
+not equality-by-empty-list. Unapproved base-sync content refuses until exact trusted
+Human digest approval, never controller activation. Native defaults stay unchanged;
+no invented view producer or arbitrary-natural-language equivalence proof is claimed.
 
 ## Bundle and input consumer
 
@@ -82,8 +94,12 @@ prior-claim manifests and all required unresolved claim text, retain original
 finding identity/severity/text and label prior exposure. Original verdicts stay ONLY
 in retained private outcomes/certificates. Separate prior-round verdicts, approval
 tallies and non-finding peer opinions are excluded from EVERY input/expansion,
-prior-claim manifest, resolved-history expansion and baseline unchanged-region
-coverage basis (8.h/10.d). Finding applicability/adjudication metadata is not a vote
+prior-claim manifest, resolved-history expansion and MEMBER-DELIVERED baseline
+unchanged-region basis (8.h/10.d). The PRIVATE certificate coverage record retains
+each baseline slot's delivered+prior-approving or delivered+prior-nonapproving basis;
+frozen require-approving-baseline reads retained private outcomes before admission.
+Controls show this certificate field exists while delivered member bytes carry
+ZERO verdict/tally hints. Finding applicability/adjudication metadata is not a vote
 hint. Exact referenced resolved finding history remains bounded; unverified actor
 fix claims are never facts or clearance. Same-tree transient retry after peers
 APPROVEd must deliver zero verdict/tally fields; omitting that exclusion must change
@@ -144,6 +160,7 @@ named public owner/proof/scope-decision attention. Required repeated-family/4+,
 | Triple preset | UNKNOWN: actual Claude/Codex/Grok profile declarations, floor eligibility and whole roster channel/settlement proof |
 |4+/repeated-family serialized | UNKNOWN: actual repeated-family default key/load-write properties and enforced finite serialization/queue schedule |
 | Two-author Strict | UNKNOWN: at least two eligible non-author Sessions under actual qualified registered profiles; authors cannot satisfyF2 |
+| Conflicting rule-edit native view | BLOCKED/UNKNOWN:5/6/7 actual complete native-discovery view and19 workspace/input producer; no current certificate-capable exit |
 
 ## Workflow and member ownership
 
@@ -249,8 +266,11 @@ runtime-attributed author identities/families (including drafters), treats unkno
 applicability conservatively inherited before actual12 proof, resolves unknown
 attribution through required authority and refuses named excluded families when
 eligible slots cannot meetF. Default self slots AND duplicate registered agents
-refuse before input; only explicit frozen allowSelf/duplicate permission changes
-those opinion rules, neverF/confirmer independence. Default Triple and separately
+refuse before input. Explicit allowSelf may count an author opinion toward mode,
+NEVERF or confirmation. Separately, explicit allow-duplicate-agent/registered alias
+permission admits distinct fresh NON-AUTHOR qualified Sessions toward mode ANDF,
+subject to8.c and any frozen diversity rule; it does not lowerF. Duplicate/alias
+permission NEVER creates dismissal/downgrade confirmer-pair independence. Default Triple and separately
 labelled author-visible Triple are distinct configurations, not post-hoc aliases.
 
 Persist immutable individual outcomes before evaluation. Findings and assigned
@@ -276,8 +296,9 @@ The typed rerun-authority consumer compares target TREE: same tree/new commit is
 identity-only delta, never changed-byte retry. Cause(a) allows ONE lineage/tree
 confirmation round with new concern-linked exact inspection target/location/check
 or observed-source digest not previously used. Cause(b) requires safely settled
-native failure/timeout/cancel with new verified diagnostic progress, all other
-opinions APPROVE and no blocker/nonapproval/unknown result. Cause(c) requires its
+native failure/timeout/cancel whose failed slot produced ONLY verified diagnostic
+progress, NO partial/ambiguous structured verdict/finding content. Cause(b) identity
+is provider-family/error-kind; all other opinions APPROVE and no blocker/nonapproval/unknown result. Cause(c) requires its
 frozen qualified schedule/resource/failure identity, genuine changed scheduling/
 capacity fact, fully settled lost-free processing failure and every actual opinion
 APPROVE with no partial/unknown suffix or dissent. Shared(b)+(c) ceiling2 per
@@ -364,10 +385,13 @@ is separately typed. A mutant must change THIS actual assessment, not merely the
 already-refused permission.21.i interim controls cannot claim21.n's separately
 mandatory genuine formal-basis/readiness-positive matrix or final16 completion.
 
-Maintain a stable-key acceptance manifest for EVERY requirement: actual consumer,
-positive/negative fixture and meaningful compiled omission control. A named pending
-producer is an additional explicit handoff annotation, NEVER substitute closing
-evidence for a PRE key; only21.n is the requirements' separately POST closing key.
+Maintain a typed stable-key acceptance manifest for EVERY requirement. Behavioral
+keys need actual consumer positive and/or refusal fixtures with meaningful compiled
+omission controls; explicitly refusal-only12.k cannot claim fabricated positive
+RuntimeAuthor. Handoff/traceability keys21.a/21.e/21.f/21.h/21.l and20's8.g conformance
+quote use exact PUBLIC owner acceptance quote/permalink evidence. Pending producer
+is an additional annotation, NEVER substitute closing evidence for a PRE key;
+only21.n is the requirements' separately POST closing key.
 Exercise real temporary Git identity/delta/source races, unchanged-current CPP across
 parallel2/triple members, controller/Human separation, cohort contention/member
 release, uncertainty/timeout clocks, accumulated findings/dispositions, exact encoded
