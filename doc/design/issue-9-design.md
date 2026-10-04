@@ -1,6 +1,6 @@
 # Issue 9 design: configurable independent Review Sets
 
-Status: Design3 candidate, provider-neutral and not implemented. The controlling
+Status: Design4 candidate, provider-neutral and not implemented. The controlling
 [requirements](../requirements/issue-9-requirements.md) are the Req38-gated revision
 plus its Low wording clarifications at caa4390780f483f2d29f8182a36f65f924caf010,
 SHA256 0af45849f067036815d36b3c43adb74515243c7a220b7a5789f379e6f722fcfb.
@@ -298,7 +298,9 @@ confirmation round with new concern-linked exact inspection target/location/chec
 or observed-source digest not previously used. Cause(b) requires safely settled
 native failure/timeout/cancel whose failed slot produced ONLY verified diagnostic
 progress, NO partial/ambiguous structured verdict/finding content. Cause(b) identity
-is provider-family/error-kind; all other opinions APPROVE and no blocker/nonapproval/unknown result. Cause(c) requires its
+is provider-family/error-kind; every OTHER settled SLOT must APPROVE, with no
+blocker/nonapproval/unknown result. Thus one APPROVE plus two failed slots refuses
+cause(b); no missing opinion is an approval or new multi-failure cause identity. Cause(c) requires its
 frozen qualified schedule/resource/failure identity, genuine changed scheduling/
 capacity fact, fully settled lost-free processing failure and every actual opinion
 APPROVE with no partial/unknown suffix or dissent. Shared(b)+(c) ceiling2 per
@@ -385,12 +387,14 @@ is separately typed. A mutant must change THIS actual assessment, not merely the
 already-refused permission.21.i interim controls cannot claim21.n's separately
 mandatory genuine formal-basis/readiness-positive matrix or final16 completion.
 
-Maintain a typed stable-key acceptance manifest for EVERY requirement. Behavioral
-keys need actual consumer positive and/or refusal fixtures with meaningful compiled
-omission controls; explicitly refusal-only12.k cannot claim fabricated positive
-RuntimeAuthor. Handoff/traceability keys21.a/21.e/21.f/21.h/21.l and20's8.g conformance
-quote use exact PUBLIC owner acceptance quote/permalink evidence. Pending producer
-is an additional annotation, NEVER substitute closing evidence for a PRE key;
+Each stable key's acceptance manifest carries BOTH evidence COMPONENTS required
+by its body: actual consumer positive and/or refusal fixtures with meaningful
+compiled omission controls, AND exact PUBLIC acceptance quote/permalink for EVERY
+external owner named there, checked against the complete21 enumeration. Components
+are not exclusive key classes or a fixed handoff shortlist.21.a may be quote-only;
+21.f/21.l required actual profile positives cannot close on quotes, and explicitly
+refusal-only12.k cannot fabricate RuntimeAuthor positive but still needs its60/12
+quotes. Pending producer is annotation, NEVER substitute closing PRE evidence;
 only21.n is the requirements' separately POST closing key.
 Exercise real temporary Git identity/delta/source races, unchanged-current CPP across
 parallel2/triple members, controller/Human separation, cohort contention/member
