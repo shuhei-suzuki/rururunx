@@ -347,4 +347,3 @@ index 3a75edf..b6b3390 100644
                  && snapshot.workflow.generation == claim.generation
                  && snapshot.workflow.active == Some(claim.index)
                  && snapshot.workflow.context_version == claim.context_version
-

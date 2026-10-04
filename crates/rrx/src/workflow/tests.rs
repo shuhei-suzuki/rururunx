@@ -4325,7 +4325,11 @@ async fn preparation_pause_cancel_and_terminal_recovery_keep_owner_fenced() {
         let before = fixture.durable();
         pause.release();
         let error = owner.await.unwrap().unwrap_err();
-        assert!(error.to_string().contains("release not performed"));
+        if offset == 3 {
+            assert!(error.to_string().contains("release not performed"));
+        }
+        // Post-refresh terminal recovery rejects marker publication without
+        // entering owner-local release; neither case invents a retained claim.
         assert!(!error.to_string().contains("reservation retained"));
         assert_eq!(fixture.durable(), before);
         assert!(fixture.executor.launches.lock().unwrap().is_empty());

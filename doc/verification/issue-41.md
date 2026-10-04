@@ -162,3 +162,10 @@ failfast, so neither the cancelled matrix nor macOS is a green final gate.
 No deadline, uncertainty latch or test concurrency was relaxed and no historical
 root cause is inferred. STRICT shared inspection follow-up #46 is required before
 fresh exact-head CI readiness; #43 native binding and #14 recovery remain explicit.
+
+The first Low-fix targeted run at `2b7f480` passed 17/18. Its new diagnostic
+assertion incorrectly expected the owner-local release wrapper at post-refresh
+terminal recovery, where marker publication rejects after eligibility is disabled.
+The fixture now checks the release diagnostic only before refresh and verifies
+unchanged recovered state plus absence of the false retained-claim diagnostic at
+both timings. No production boundary is weakened.
