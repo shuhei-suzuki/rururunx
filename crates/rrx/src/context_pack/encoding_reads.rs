@@ -124,11 +124,71 @@ impl Fixture {
             .task_id
             .map(|id| format!("task:{id}"))
             .unwrap_or_else(|| format!("goal:{}", context.scope.goal_id.unwrap()));
-        rusqlite::Connection::open(&self.db).unwrap().execute(
+        let mut connection = rusqlite::Connection::open(&self.db).unwrap();
+        let trigger: String = connection
+            .query_row(
+                "SELECT sql FROM sqlite_master WHERE type='trigger' AND name='context_no_update'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let tx = connection.transaction().unwrap();
+        // Deliberate negative corruption, confined to this fixture DB. Restore
+        // the actual trigger in the same transaction; no production writer is
+        // allowed to mutate an immutable context.
+        tx.execute_batch("DROP TRIGGER context_no_update").unwrap();
+        tx.execute(
             "UPDATE context_versions SET body=?1 WHERE project_id=?2 AND owner=?3 AND version=?4",
-            rusqlite::params![body, context.scope.project_id.to_string(), owner, context.version],
-        ).unwrap();
+            rusqlite::params![
+                body,
+                context.scope.project_id.to_string(),
+                owner,
+                context.version
+            ],
+        )
+        .unwrap();
+        tx.execute_batch(&trigger).unwrap();
+        tx.commit().unwrap();
         reference(context).unwrap()
+    }
+    fn factual_session(&self) -> SessionId {
+        // Initial terminal history is factual component input only. It proves
+        // neither model execution nor native cleanup/managed ownership.
+        let session = Session {
+            id: SessionId::new(),
+            scope: self.task.scope(),
+            agent: "codec-fixture".into(),
+            provider: "codec-fixture".into(),
+            role: SessionRole::Consultant,
+            native_ref: None,
+            pid: None,
+            worktree: self.task.worktree.clone().unwrap(),
+            state: SessionState::Exited,
+            model: None,
+            effort: None,
+            recovery: Value::Null,
+            started_at: now_ms(),
+        };
+        self.store.lock().unwrap().put_session(&session, 0).unwrap();
+        session.id
+    }
+    fn corrupt_checkpoint(&self, record: &Record) -> CheckpointRef {
+        let body = serde_json::to_string(record).unwrap();
+        assert!(body.len() < 8 * MAX_BYTES);
+        // The SQL mutation is an owned negative fixture, never an append proof.
+        rusqlite::Connection::open(&self.db)
+            .unwrap()
+            .execute(
+                "UPDATE records SET body=?1 WHERE id=?2",
+                rusqlite::params![body, record.id.to_string()],
+            )
+            .unwrap();
+        CheckpointRef {
+            scope: record.scope.clone(),
+            id: record.id,
+            version: record.version,
+            digest: digest(&record.data).unwrap(),
+        }
     }
 }
 fn nested(depth: usize) -> Value {
@@ -147,6 +207,121 @@ fn refused(error: anyhow::Error, message: &str) {
 }
 const BYTES: &str = "mandatory pack/checkpoint exceeds 1 MiB; narrow explicitly";
 const DEPTH: &str = "artifact JSON nesting exceeds 120 containers";
+
+#[tokio::test]
+async fn checkpoint_reader_guards_after_identity_before_digest_and_decode() {
+    let f = Fixture::new();
+    let session = f.factual_session();
+    let reference = f
+        .packs()
+        .checkpoint(
+            &f.task.scope(),
+            session,
+            None,
+            vec![HistoryEvent {
+                sequence: 1,
+                kind: EventKind::Transient,
+                text: "owned history".into(),
+            }],
+            HistoryPolicy {
+                recent_history_bytes: 4096,
+            },
+        )
+        .await
+        .unwrap();
+    let checkpoint = f.packs().load_checkpoint(&reference).unwrap();
+    assert_eq!(
+        checkpoint.recent_bytes,
+        checkpoint
+            .recent
+            .iter()
+            .map(|e| serde_json::to_vec(e).unwrap().len())
+            .sum::<usize>()
+    );
+    let control = f
+        .store
+        .lock()
+        .unwrap()
+        .record(reference.id)
+        .unwrap()
+        .unwrap();
+    for (value, message) in [
+        (json!({"padding":"x".repeat(MAX_BYTES)}), BYTES),
+        (nested(120), DEPTH),
+    ] {
+        let mut record = control.clone();
+        record.data["mandatory_goal"] = value;
+        let r = f.corrupt_checkpoint(&record);
+        reset();
+        refused(f.packs().load_checkpoint(&r).unwrap_err(), message);
+        let mut stale = r.clone();
+        stale.digest = "wrong".into();
+        reset();
+        refused(f.packs().load_checkpoint(&stale).unwrap_err(), message);
+        let mut foreign = r;
+        foreign.scope.task_id = Some(TaskId::new());
+        reset();
+        refused(
+            f.packs().load_checkpoint(&foreign).unwrap_err(),
+            "stale/foreign checkpoint reference",
+        );
+    }
+    let r = f.corrupt_checkpoint(&control);
+    let mut stale = r.clone();
+    stale.digest = "wrong".into();
+    reset();
+    assert_eq!(
+        f.packs()
+            .load_checkpoint(&stale)
+            .unwrap_err()
+            .root_cause()
+            .to_string(),
+        "stale/foreign checkpoint reference"
+    );
+    assert_eq!(encoding::take_read_stages(), encoding::CHECKPOINT_DIGEST);
+    f.packs().load_checkpoint(&r).unwrap();
+}
+
+#[tokio::test]
+async fn checkpoint_admission_rejects_extra_artifact_envelope_before_append() {
+    let f = Fixture::new();
+    let (mut context, _) = f.task_context().await;
+    context.data["historical_consultation"] = nested(119); // Task root +119 =120
+    let r = f.corrupt(&context);
+    f.packs().task_pack(&r).unwrap();
+    let session = f.factual_session();
+    reset();
+    let error = f
+        .packs()
+        .checkpoint(
+            &f.task.scope(),
+            session,
+            None,
+            vec![HistoryEvent {
+                sequence: 1,
+                kind: EventKind::Decision,
+                text: "preserve exact facts".into(),
+            }],
+            HistoryPolicy {
+                recent_history_bytes: 4096,
+            },
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(error.root_cause().to_string(), DEPTH);
+    assert_eq!(
+        encoding::take_read_stages() & encoding::CHECKPOINT_APPEND,
+        0
+    );
+    assert!(
+        f.store
+            .lock()
+            .unwrap()
+            .pack_checkpoint_head(&f.task.scope())
+            .unwrap()
+            .is_none()
+    );
+}
 
 #[tokio::test]
 async fn typed_task_and_provenance_readers_guard_before_digest_and_decode() {
