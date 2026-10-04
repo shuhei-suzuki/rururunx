@@ -66,6 +66,6 @@
   ],
   "blocker_disposition": {
     "current_ci": "CI37230220373 later completed every required step bothOSsuccess, actual3969a84f parents054+d930 tree19f4cf=trigger; launch-time pending CI is closed by actual evidence",
-    "release": "555 full default releaseFAILED retained; no rerun or acceptance-waiver; explicit partial component gate disposition pending, runtime/full60 availability remains open"
+    "release": "2026-10-05 JST: root development coordination owner, acting under the active user Goal, authorized a diagnostic-only partial-gate disposition. Conditions: two independent source approvals with no C/H/M or diagnostic-slice blocker; diff verifies actual read/signal/reader/cleanup/authority/deadline/decision behavior unchanged; actual direct consumer controls/mutants and latest required Linux/macOS CI pass with actual checkout/source equivalence; local555 full DEFAULT RELEASE FAILED stays published with cause/regression unknown and native availability unmet; CI is debug TEST plus release BUILD, never a release TEST pass; PR61 contains no Closes60. Full60, reader/EOF availability, native16 and whole-release readiness remain OPEN. Final required CI red still blocks this merge. This is a partial-gate exception for observable diagnostics, not a fabricated release pass or whole-source/MVP acceptance."
   }
 }

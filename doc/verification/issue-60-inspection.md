@@ -320,5 +320,43 @@ step Linux/macOS SUCCESS; actual3969a84f parents054+d930 tree19f4cf=trigger. Thi
 closes launch-time pending CI only. CI has default debug tests and release build,
 no release-test step.555 local full DEFAULT RELEASE FAILED and later release targets/
 doctests were not executed; no subsequent rerun or cause/availability claim. Review
-source approvals do not turn that failure into pass. Partial diagnostic gate
-disposition remains explicit; full60, frozen RED51 and native16 stay OPEN.
+source approvals do not turn that failure into pass. The root-owner partial diagnostic gate
+disposition below governs this component only; full60, frozen RED51 and native16 stay OPEN.
+
+
+## Source3 precision and explicit partial-gate disposition
+
+Source3 atd2cb1ad: both own-session independent reviewers APPROVED/no C/H/M and
+confirmed Source2 Lows resolved; actual owned cleanup verified.
+[Raw hashes/dispositions](issue-60-inspection-source3-findings.json) retain4 overlapping
+Low records. Verified docs-only corrections: pending gate decision now published,
+cause AND regression status remain unknown, and existing native-child wrapper seam
+is distinguished from missing host-Git stage seams. No Rust/test/requirement change.
+Root directs manual final documentation diff review rather than another native
+Source4 round: these are verified factual/decision records, no normative/code/producer/
+native-success-condition change. Final metadata-head required CI remains pending.
+
+The root development coordination owner, acting under the active user Goal, made
+the following explicit partial-gate disposition on2026-10-05 JST:
+
+> RELEASE555失敗を保持し、原因・回帰有無未確定／native availability未達を明記したうえで、sourceレビュー二名が診断限定sliceをapprove・CHM/同slice blockerなし、実際のread/signal/reader/cleanup/authority/期限・判定は変更なしとdiffで検証、直接consumer controls/mutantsと最新requiredCI両OS/actualcheckoutsource比較がPASSなら、診断限定部分を通常mergeしてよいです。CIはdebugtest+releasebuildであってreleaseTEST合格ではない旨をPRと公開ledgerに明記してください。whole60、reader/EOF可用性、native16/全体release readinessはOPENのまま。追加docs-only disclosure再レビュー完了／最終metadataheadrequiredCI sourceequivalenceも確認後、PR61noClosesでmerge＋通常cleanupを進めてください。Release redを無視して全体source/MVP ready扱いにはしません。
+
+This is a conditional diagnostic-only partial-gate exception, not a RELEASE pass.
+555 full DEFAULT RELEASE remains FAILED/incomplete, cause and regression status
+unknown; no same-head rerun, guard/deadline/default-concurrency relaxation. CI
+measures default debug TEST plus release BUILD, never release TEST. Final required
+CI red blocks this partial merge. No Closes60; full60/readerEOFavailability/native16/
+whole-release readiness remain OPEN. Earlier source approval does not silently
+waive them. The disposition and outcome ledger preserve the failure permanently.
+
+
+Finite final source/provenance check: diagnostic code555098d and both approved
+Source2d930/Source3d2cb crate trees are identical. Final changes are factual
+requirements/README status, Low precision and outcome/decision records only; no
+normative criterion or Rust/test change. [Source3 CI37230809943](issue-60-inspection-source3-ci.json)
+BOTHOS every requiredstep SUCCESS; actualc0fc2dba parents054+d2cb, tested
+tree98f463d=trigger. Local555 RELEASEFAILED remains independent/incomplete, cause
+AND regression unknown. Final published metadata-head required CI and direct root
+documentation diff check are the remaining partial merge gates; their raw public
+Actions/PR artifacts are recorded externally to avoid a self-referential outcome
+commit/re-review loop. No whole60/native16 or release TEST success claim.

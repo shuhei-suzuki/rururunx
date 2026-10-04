@@ -1,0 +1,79 @@
+{
+  "scope": "Source3 documentation-only precision approvals;4 Low overlap records, noC/H/M, no Rust/test changes",
+  "reviews": [
+    {
+      "review": "facts",
+      "head": "d2cb1adcfee6c7095bc7dfd1f6c0473ec5be0a48",
+      "verdict": "approve",
+      "cleanup_verified": true,
+      "raw_result_sha256": "314727bfbf674adbd9917e8fdb0dcf796cb1b38c5ac1244786e7977aee7337fc",
+      "meter_scope": "raw_native_resumed_session_fields_unverified_operation_inventory",
+      "findings": [
+        {
+          "id": "I60-SR3-01",
+          "severity": "Low",
+          "file": "doc/verification/issue-60-inspection.md",
+          "line": 323,
+          "claim": "The new text says the partial diagnostic gate disposition 'remains explicit', but no supplied published artifact records its terms, and the companion JSON still calls it pending.",
+          "evidence": "verification md:323-324 says only 'Partial diagnostic gate disposition remains explicit'. source2-findings.json blocker_disposition.release says 'explicit partial component gate disposition pending'. Requirements:193-196 list default full release among required gates and state 'Any final required red remains a merge blocker'.\nThe owner-authorized conditions given in the review request are not written in any supplied doc: two independent approvals with no C/H/M, unchanged read/signal/reader/cleanup/authority/deadline behavior, direct controls and mutants, latest both-OS CI on equivalent actual source, RELEASE FAILED and unknown cause/regression and unmet native availability stay published, and no Closes #60.\nA later reader therefore sees a retained required red next to a merge, with no recorded exception.",
+          "fix": "Record the disposition verbatim in the verification md and/or PR body: who authorized it, the exact conditions, that it is a partial-gate exception rather than a release pass, and that the PR does not close #60. Then align source2-findings.json from 'pending' to the recorded decision once it is final.",
+          "repository_verified": true,
+          "disposition": "Verified docs-only factual correction; root directs manual final diff review, no additional Source4 mandatory because normative/code/producer/success conditions unchanged"
+        },
+        {
+          "id": "I60-SR3-02",
+          "severity": "Low",
+          "file": "doc/design/master/agent-adapter.md",
+          "line": 310,
+          "claim": "'Shared availability evidence' can be read as attributing the 555 release red to the pre-existing shared inspector-availability defect, but its cause and regression status are unknown.",
+          "evidence": "master:310 says 'Local release555 FAILED remains open shared availability evidence, not repaired'. source2-ci.json scope uses similar wording. The verification record (md:295-298, source555-tests.json inference_limit) says the facts do not identify the endpoint owner, the cause or target death, and the requested disposition says the cause/regression is unknown. No source evidence excludes this component as a contributor, even though its production delta is bookkeeping-only.",
+          "fix": "Reword to: 'Local release555 FAILED (inspector deadline, stdout EOF pending) remains open; cause and regression status unknown; not repaired.'",
+          "repository_verified": true,
+          "disposition": "Verified docs-only factual correction; root directs manual final diff review, no additional Source4 mandatory because normative/code/producer/success conditions unchanged"
+        }
+      ],
+      "launch_time_blockers": [
+        "Final public both-OS CI on the exact current docs head d2cb1ad (or its successor) is pending. CI 37230220373 measured d930b5a, so a red required step on the final head cannot be ignored.",
+        "The local full DEFAULT RELEASE run at 555098d FAILED: grok native_execute_edits_only_owned_files_and_preserves_actual_exit, Lost vs Exited. Later release targets and doctests were not executed. It must stay recorded as FAILED, not passed. Under requirements:196 it is a required red. Merging is governed only by the owner's explicit partial-gate disposition, which should be recorded (see I60-SR3-01); this is a gate status, not a source defect.",
+        "The full Issue60 runtime availability, reader-EOF/pool/driver work, frozen RED51, native16 and whole-release readiness remain OPEN outside this diagnostic-only component."
+      ]
+    },
+    {
+      "review": "authority",
+      "head": "d2cb1adcfee6c7095bc7dfd1f6c0473ec5be0a48",
+      "verdict": "approve",
+      "cleanup_verified": true,
+      "raw_result_sha256": "b1e837e427edc7f6dc83157aacd53b04b01ba665f807926ba898d1f1d612c2f1",
+      "meter_scope": "raw_native_resumed_session_fields_unverified_operation_inventory",
+      "findings": [
+        {
+          "id": "L-D1",
+          "severity": "Low",
+          "file": "doc/design/master/agent-adapter.md",
+          "line": 317,
+          "claim": "Master line 316-318 applies 'without a stage seam' to all four unasserted routes, but that reason does not hold for the unknown-dispatch wrapper's cleanup-selected form.",
+          "evidence": "The three host-Git routes lack a plan seam: the plan installs only on the native child (adapter.rs:650-653), and index_digest/preflight use plain bounded_git_raw. The wrapper's cleanup-selected form instead depends on the existing native-child plan plus a path where result is Ok and dispatched && !native_outcome (grok/mod.rs:1252-1271; the 'stop requested' fallback shows such a path exists). What is missing there is a fixture, not a seam. Design 230-232 states this correctly ('likewise remain source-forwarding only, unasserted routes') without the seam qualifier. Readers of the master could wrongly conclude the wrapper form is unreachable with the current seams.",
+          "fix": "In master 316-318, scope 'without a stage seam' to the three host-Git routes. For the wrapper's cleanup-selected form, say it has no dedicated fixture or assertion.",
+          "repository_verified": true,
+          "disposition": "Verified docs-only factual correction; root directs manual final diff review, no additional Source4 mandatory because normative/code/producer/success conditions unchanged"
+        },
+        {
+          "id": "L-D2",
+          "severity": "Low",
+          "file": "doc/verification/issue-60-inspection-source2-findings.json",
+          "line": 68,
+          "claim": "The repository record of the owner's partial-gate disposition is inconsistent: the JSON says it is pending, while the markdown says it 'remains explicit'. Neither states the decision or its conditions.",
+          "evidence": "blocker_disposition.release reads 'explicit partial component gate disposition pending'. verification/issue-60-inspection.md:323-324 says 'Partial diagnostic gate disposition remains explicit'. Requirements 193-196 say any final required red is a merge blocker, and the local full default release run is one of the required gates and is red. The project owner's decision is what permits merging this diagnostics-only PR anyway, and it is conditional on:\n- two independent approvals with no C/H/M;\n- actual read/signal/reader/cleanup/authority/deadline behavior unchanged;\n- direct controls and mutants passing;\n- the latest both-OS CI passing on the actual source;\n- the release red staying published;\n- no 'Closes #60'.\n\nWithout that text in the repository, the audit trail shows a required red with only a 'pending' disposition.",
+          "fix": "Before merge, record the owner's disposition, with its conditions and the date, in the verification doc and the PR body, and update the JSON 'pending' value. Keep the release FAILED evidence and the open Full60/native16 limits as they are.",
+          "repository_verified": true,
+          "disposition": "Verified docs-only factual correction; root directs manual final diff review, no additional Source4 mandatory because normative/code/producer/success conditions unchanged"
+        }
+      ],
+      "launch_time_blockers": [
+        "GATE (not a doc defect): final both-OS public CI on the exact current/merge head d2cb1ad is pending. CI 37230220373 measured d930b5a. Any red required step on the final head blocks merge.",
+        "GATE STATUS (not a doc defect, not a pass): the local 555098d full default release run FAILED (tests/grok.rs native_execute... Lost vs Exited; later targets and doctests not executed) and remains an unrepaired red with unknown cause. Its effect on merging this diagnostics-only PR rests solely on the project owner's explicit partial-gate disposition, which should be recorded per L-D2. Full60/reader EOF availability, frozen RED51 and native16 remain OPEN; no 'Closes #60'."
+      ]
+    }
+  ],
+  "partial_gate_disposition": "2026-10-05 JST: root development coordination owner, acting under the active user Goal, authorized a diagnostic-only partial-gate disposition. Conditions: two independent source approvals with no C/H/M or diagnostic-slice blocker; diff verifies actual read/signal/reader/cleanup/authority/deadline/decision behavior unchanged; actual direct consumer controls/mutants and latest required Linux/macOS CI pass with actual checkout/source equivalence; local555 full DEFAULT RELEASE FAILED stays published with cause/regression unknown and native availability unmet; CI is debug TEST plus release BUILD, never a release TEST pass; PR61 contains no Closes60. Full60, reader/EOF availability, native16 and whole-release readiness remain OPEN. Final required CI red still blocks this merge. This is a partial-gate exception for observable diagnostics, not a fabricated release pass or whole-source/MVP acceptance."
+}

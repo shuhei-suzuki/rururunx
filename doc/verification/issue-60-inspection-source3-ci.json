@@ -1,16 +1,16 @@
 {
-  "run": 37230220373,
-  "trigger_head": "d930b5abc93f711dd6b6ffa73ef3661a67574941",
+  "run": 37230809943,
+  "trigger_head": "d2cb1adcfee6c7095bc7dfd1f6c0473ec5be0a48",
   "actual_checkouts": {
-    "check (ubuntu-latest)": "3969a84f87943a16dfd55aa2cf643e2adb4e0c61",
-    "check (macos-latest)": "3969a84f87943a16dfd55aa2cf643e2adb4e0c61"
+    "check (ubuntu-latest)": "c0fc2dba4282faaf5bb21dc346a8b7590a994473",
+    "check (macos-latest)": "c0fc2dba4282faaf5bb21dc346a8b7590a994473"
   },
   "parents": [
     "054aefd3a22a02951fa72b9fa397bed58d156bbf",
-    "d930b5abc93f711dd6b6ffa73ef3661a67574941"
+    "d2cb1adcfee6c7095bc7dfd1f6c0473ec5be0a48"
   ],
-  "tested_tree": "19f4cf016a268a122a5ccad52517ae91111eb9ca",
-  "trigger_tree": "19f4cf016a268a122a5ccad52517ae91111eb9ca",
+  "tested_tree": "98f463d596d0d419629238077e81895924750c71",
+  "trigger_tree": "98f463d596d0d419629238077e81895924750c71",
   "tested_tree_equals_trigger": true,
   "jobs": {
     "check (ubuntu-latest)": {
@@ -44,6 +44,6 @@
       }
     }
   },
-  "log_sha256": "713626860d8f8f6649cda0b28e45968ea15d1c5ff220eb1a8bf225bd373cd27d",
-  "scope": "Diagnostic Source1 fixes; local default RELEASE failed, cause and regression status unknown, not repaired; full60/native16/whole release readiness open"
+  "log_sha256": "1d9521f141c00d90d615afeac3a05a01101a3edc5704693bf48192b2582f104c",
+  "scope": "Source3 docs-only diagnostic precision; local release failed, cause and regression unknown, partial-gate disposition only"
 }

@@ -392,5 +392,8 @@ limitations.
 
 Inspector timeout diagnostics follow the approved STRICT [Issue60 component design](doc/design/issue-60-inspection-design.md).
 The diagnostic-only implementation adds finite failure facts while preserving existing
-cleanup/Unknown authority. Source verification/review gates are pending; no timeout
-cause, backend availability fix or owned-reader/workload settlement is claimed.
+cleanup/Unknown authority. Two independent Source2/Source3 approvals cover this
+diagnostic slice; final metadata-head CI remains pending under the recorded partial
+gate disposition. Local full release555 FAILED, cause and regression status unknown.
+No backend availability fix or owned-reader/workload settlement is claimed; full #60
+and native acceptance remain open.

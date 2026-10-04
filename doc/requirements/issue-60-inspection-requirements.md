@@ -3,8 +3,10 @@
 Risk: STRICT for shared native process observation/error and uncertainty boundaries.
 Status: Requirements4 diagnostic-only approvals at26de8da; source-aside correction
 verified without changing its normative real-inspector criterion. Design2 approved
-twice at201bd89; diagnostic source implemented. Source1 corrections/independent
-re-review and final CI pending. This status update changes no normative criterion.
+twice at201bd89; diagnostic source implemented and Source2/Source3 twice approved
+with no C/H/M. Final metadata-head CI pending under the recorded diagnostic-only
+partial-gate disposition; full local release555 FAILED remains published. This
+status update changes no normative criterion.
 Parent [Issue60](https://github.com/shuhei-suzuki/rururunx/issues/60) retains its full
 runtime workload/effect/delegation/settlement acceptance. This component does not close it.
 
