@@ -447,10 +447,16 @@ mutants are required. This port/source is unimplemented, not part of merged #41;
 terminal/authorized lifecycle/unknown recovery transitions retain their own gates.
 
 
-Issue43 proposed Design6 additionally carries one immutable resulting marker frame
+Issue43 proposed Design7 additionally carries one immutable resulting marker frame
 through actual native preparation/consumption/AllowCurrent, derives binding readiness
 from marked/unbound/phase-open private operations, reserves per-Project operation
-capacity before41claim and parks unchanged Held observations without repeated binder
+capacity atomically inside41reserve and parks only definitive Held observations without repeated binder
 transactions. Driver and binder independently require actual runtime-instance match
 or genuine14restore proof. These19/23/43/14 contracts remain unimplemented proposals;
 merged41observer behavior and normal lifecycle authority are unchanged.
+
+Capacity derives from active marked/unmarked native claims UNION actual open operations,
+so41owned pre-marker release/invalidation naturally retires capacity and orphan claims
+remain counted. Transient rollback-confirmed storage failures retry the same factual
+binder fairly; definitive predicate mismatch parks. Uncertain commit reconciles only
+durable facts. No added native dispatch, owner refresh or new binder write is allowed.

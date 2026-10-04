@@ -1,6 +1,6 @@
 # Issue 43 Design: Preserve native authority during Workflow Session binding
 
-**Status:** Design6 proposed from Requirements9 approved at91d4f34; independent
+**Status:** Design7 proposed from Requirements9 approved at91d4f34; independent
 design/source reviews and actual producer/native/recovery gates pending
 **Workflow:** STRICT  
 **Scope:** factual native binding, managed settled-success route and two bounded live diagnostics
@@ -59,7 +59,7 @@ The exact Rust names may differ, but the primitive must not be exposed as a gene
 
 ### 3.1 Expected snapshot
 
-The marker transaction privately captures resulting post-marker authority atomically before launch (see Design6 mechanics):
+The marker transaction privately captures resulting post-marker authority atomically before launch (see Design7 mechanics):
 
 - project_id + expected Project version
 - goal_id + expected Goal version
@@ -372,7 +372,7 @@ New behavior:
 
 ```
 returned_session = adapter.start(...)
-bind_workflow_native_session(expected, returned_session)
+bind_workflow_native_session(private_operation, NormalReturned(returned_identity))
 ```
 
 After successful bind:
@@ -555,7 +555,7 @@ this method neither grants their authority nor pretends to suspend already
 dispatched work. Current fresh-start Workflow has no resumed-UUID predecessor
 exemption; any future exception requires verified private resume lineage.
 
-Design4/item6 was approved at77da799. Requirements9 is approved at91d4f34; both Design6 documents remain proposed pending independent STRICT design/source review. No production implementation is present.
+Design4/item6 was approved at77da799. Requirements9 is approved at91d4f34; both Design7 documents remain proposed pending independent STRICT design/source review. No production implementation is present.
 
 The narrow binding primitive is the only writer of existing PhaseAttempt Session
 IDs. All ordinary WorkflowAccess modes refuse an existing ID delta; new native
@@ -655,21 +655,21 @@ Protected Tasks reject Interactive/PTY startup and terminal input before any
 reservation, Starting row, spawn or terminal bytes; NonInteractive Workflow
 configuration alone does not protect the direct native adapter entry points.
 
-Design4 publication alignment was approved; Design6 actual #19/#23/#14 composition and independent review remain pending;
+Design4 publication alignment was approved; Design7 actual #19/#23/#14 composition and independent review remain pending;
 source remains absent. Positive post-binding decision and later typed closure
 must retain the exact consumed UUID/pair. A new Journal name is not itself proof
 of correctness; actual reply/closure controls and causal mutants are required.
 
-## 22. Design6 composition and diagnostic contract
+## 22. Design7 composition and diagnostic contract
 
-[Binding mechanics](issue-43-binding-mechanics.md) contains the detailed Design6
+[Binding mechanics](issue-43-binding-mechanics.md) contains the detailed Design7
 transaction, managed driver, diagnostic and extended control/mutation contracts.
 Requirements9 approved at91d4f34 governs both documents. Normal return and authentic
 settled-success registration use the SAME immutable full frame captured atomically
 INSIDE marker commit; no later parent/lock recapture. Genuine #19 current successful
 receipt/profile cleanup is required for the late path. Readiness derives from durable
 marked/unbound/phase-open operations, with actual #23 owned launch supervision independent
-of dropped Engine futures, per-Project capacity reserved before #41 claim and parked
+of dropped Engine futures, per-Project durable claim capacity reserved atomically inside #41 reserve and parked
 Held observations. Lost
 notification is recovered by bounded fair active-driver wake, never passive poll.
 

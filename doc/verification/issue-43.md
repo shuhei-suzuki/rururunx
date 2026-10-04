@@ -176,3 +176,15 @@ admission. Private audit prefix/field list, same-operation AlreadyBound Started 
 ordinary diagnostic CAS are aligned. Each verified class has actual controls/mutants
 required, not executed or accepted source. Design6 independent review and all combined
 source/native/recovery gates remain pending. Requirements9 is unchanged.
+
+
+Design6 at11195bd: both owned independent delta reviews request_changes, actual cleanup
+verified; A1M2L/B2M2L. Verified standalone preclaim capacity had no pre-marker retirement
+or cross-connection atomicity, and generic Held parking stranded transient storage
+failures. Proposed Design7 derives capacity inside actual41reserve from complete active
+claims UNION open operations, no new capacity row/writes; fair same-frame rollback-
+confirmed transient retry, uncertain-commit factual reconciliation and definitive-only
+parking. Remaining pseudo-code/audit expectation wording is aligned; lock-only negatives
+are controlled external-writer injection after genuine prerequisites, never owner proof.
+Required actual controls/mutations/source/native/recovery remain unimplemented/pending;
+Requirements9 unchanged and Design7 independent reviews remain required.
