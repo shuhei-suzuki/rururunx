@@ -1,0 +1,138 @@
+{
+  "head": "d1dfb5c00a9de77ebff307edbb06959fd04acbde",
+  "review": "Requirements1",
+  "outcomes": {
+    "observation": "request_changes",
+    "lifetime": "request_changes"
+  },
+  "cleanup_verified": true,
+  "findings": [
+    {
+      "review": "observation",
+      "id": "INSP-STAGE-1",
+      "severity": "Medium",
+      "verified": true,
+      "source_claim": "Verified against main054 actual inspector/ProcessGroup/bounded_git_raw_inner and Tokio1.53.1 JoinHandle docs/harness",
+      "disposition": "Requirements2 clarification; independently re-review pending"
+    },
+    {
+      "review": "observation",
+      "id": "INSP-CLEANUP-2",
+      "severity": "Medium",
+      "verified": true,
+      "source_claim": "Verified against main054 actual inspector/ProcessGroup/bounded_git_raw_inner and Tokio1.53.1 JoinHandle docs/harness",
+      "disposition": "Requirements2 clarification; independently re-review pending"
+    },
+    {
+      "review": "observation",
+      "id": "GIT-PRECEDENCE-3",
+      "severity": "Medium",
+      "verified": true,
+      "source_claim": "Verified against main054 actual inspector/ProcessGroup/bounded_git_raw_inner and Tokio1.53.1 JoinHandle docs/harness",
+      "disposition": "Requirements2 clarification; independently re-review pending"
+    },
+    {
+      "review": "observation",
+      "id": "GIT-OWNER-4",
+      "severity": "Medium",
+      "verified": true,
+      "source_claim": "Verified against main054 actual inspector/ProcessGroup/bounded_git_raw_inner and Tokio1.53.1 JoinHandle docs/harness",
+      "disposition": "Requirements2 clarification; independently re-review pending"
+    },
+    {
+      "review": "observation",
+      "id": "GIT-BUDGET-5",
+      "severity": "Low",
+      "verified": true,
+      "source_claim": "Verified against main054 actual inspector/ProcessGroup/bounded_git_raw_inner and Tokio1.53.1 JoinHandle docs/harness",
+      "disposition": "Requirements2 clarification; independently re-review pending"
+    },
+    {
+      "review": "observation",
+      "id": "INSP-RETRY-6",
+      "severity": "Low",
+      "verified": true,
+      "source_claim": "Verified against main054 actual inspector/ProcessGroup/bounded_git_raw_inner and Tokio1.53.1 JoinHandle docs/harness",
+      "disposition": "Requirements2 clarification; independently re-review pending"
+    },
+    {
+      "review": "observation",
+      "id": "INSP-SINK-7",
+      "severity": "Low",
+      "verified": true,
+      "source_claim": "Verified against main054 actual inspector/ProcessGroup/bounded_git_raw_inner and Tokio1.53.1 JoinHandle docs/harness",
+      "disposition": "Requirements2 clarification; independently re-review pending"
+    },
+    {
+      "review": "lifetime",
+      "id": "R60I-01",
+      "severity": "High",
+      "verified": true,
+      "source_claim": "Verified against main054 actual inspector/ProcessGroup/bounded_git_raw_inner and Tokio1.53.1 JoinHandle docs/harness",
+      "disposition": "Requirements2 clarification; independently re-review pending"
+    },
+    {
+      "review": "lifetime",
+      "id": "R60I-02",
+      "severity": "High",
+      "verified": true,
+      "source_claim": "Verified against main054 actual inspector/ProcessGroup/bounded_git_raw_inner and Tokio1.53.1 JoinHandle docs/harness",
+      "disposition": "Requirements2 clarification; independently re-review pending"
+    },
+    {
+      "review": "lifetime",
+      "id": "R60I-03",
+      "severity": "Medium",
+      "verified": true,
+      "source_claim": "Verified against main054 actual inspector/ProcessGroup/bounded_git_raw_inner and Tokio1.53.1 JoinHandle docs/harness",
+      "disposition": "Requirements2 clarification; independently re-review pending"
+    },
+    {
+      "review": "lifetime",
+      "id": "R60I-04",
+      "severity": "Medium",
+      "verified": true,
+      "source_claim": "Verified against main054 actual inspector/ProcessGroup/bounded_git_raw_inner and Tokio1.53.1 JoinHandle docs/harness",
+      "disposition": "Requirements2 clarification; independently re-review pending"
+    },
+    {
+      "review": "lifetime",
+      "id": "R60I-05",
+      "severity": "Medium",
+      "verified": true,
+      "source_claim": "Verified against main054 actual inspector/ProcessGroup/bounded_git_raw_inner and Tokio1.53.1 JoinHandle docs/harness",
+      "disposition": "Requirements2 clarification; independently re-review pending"
+    },
+    {
+      "review": "lifetime",
+      "id": "R60I-06",
+      "severity": "Low",
+      "verified": true,
+      "source_claim": "Verified against main054 actual inspector/ProcessGroup/bounded_git_raw_inner and Tokio1.53.1 JoinHandle docs/harness",
+      "disposition": "Requirements2 clarification; independently re-review pending"
+    },
+    {
+      "review": "lifetime",
+      "id": "R60I-07",
+      "severity": "Low",
+      "verified": true,
+      "source_claim": "Verified against main054 actual inspector/ProcessGroup/bounded_git_raw_inner and Tokio1.53.1 JoinHandle docs/harness",
+      "disposition": "Requirements2 clarification; independently re-review pending"
+    }
+  ],
+  "raw_result_sha256": {
+    "observation": "a98c1043c87dbce456060c1b83459286d70e674a0db7f1a6728d434c51480b24",
+    "lifetime": "a5701d40f7c816e982be63019a15cb13582c033823f237ec2603f27a8a93fec0"
+  },
+  "CI": {
+    "run": 37219380561,
+    "both_OS": "success",
+    "scope": "unchanged production requirements-only baseline; not diagnostics/reader/source/availability acceptance"
+  },
+  "requirements2_changes": {
+    "inspection": "Exact site/refusal/counter mapping; masked validation independent; relinquished-after-status-error !=reaped; first facts retained and safe failure sink/Grok unclassified rationale",
+    "ownership": "Process-global64 job permits;4reserved perop; supervisor/2readers/cleanup allcounted; max16ops with positive4parallel; no effects on saturation; actual owner pool retains group/readers/worker independently of caller/runtime",
+    "result": "Frozen primary order; one shared250ms output/abortjoin budget; observed Cancelled/Panic joins prove endpoint termination only; unobserved joins retain stickyflag; later resource settlement may release actual jobpermits but not resetflag/latch/replay",
+    "limits": "unbounded cleanup-dispatch/mandatoryreap explicit; Git-specific failed group retained; no silent sharednativeDrop changes; full60/F1/recovery/effect/native16 pending"
+  }
+}
