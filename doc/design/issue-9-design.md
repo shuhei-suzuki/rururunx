@@ -394,8 +394,9 @@ external owner named there, checked against the complete21 enumeration. Componen
 are not exclusive key classes or a fixed handoff shortlist.21.a may be quote-only;
 21.f/21.l required actual profile positives cannot close on quotes, and explicitly
 refusal-only12.k cannot fabricate RuntimeAuthor positive but still needs its60/12
-quotes. Pending producer is annotation, NEVER substitute closing PRE evidence;
-only21.n is the requirements' separately POST closing key.
+quotes. Pending producer is annotation, NEVER substitute closing PRE evidence.
+Only21.n's genuine readiness-positive behavioral matrix is POST. Its named-owner
+public quotes are checked BEFORE #9 closure, like every other owner-naming key.
 Exercise real temporary Git identity/delta/source races, unchanged-current CPP across
 parallel2/triple members, controller/Human separation, cohort contention/member
 release, uncertainty/timeout clocks, accumulated findings/dispositions, exact encoded
