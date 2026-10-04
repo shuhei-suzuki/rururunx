@@ -1,6 +1,7 @@
 # Issue 43 design: record-only native Session binding
 
-Status: proposed Design3; independent STRICT delta review pending. No implementation.
+Status: proposed Design4; joint private-publication alignment and independent
+STRICT delta review pending. No implementation.
 Requirements: [issue-43-requirements.md](../requirements/issue-43-requirements.md).
 This supplements [the shared Issue43 design](issue-43-design.md). Both describe
 the same proposed gate; neither is implemented. The exact transaction mechanics
@@ -36,7 +37,7 @@ For every native Executor/Reviewer phase, resolve the selected adapter and probe
 outside the Store mutex **before reserving any PhaseAttempt**, publishing that
 phase's ContextVersion or committing its dispatch marker. In current step this
 belongs after the source/policy-drift branches and before clear_hold/prepare_pack
-(workflow.rs:860); the capability check currently in prepare_agent at :957 is too
+(workflow.rs:857); the capability check currently in prepare_agent at :957 is too
 late. Keep legitimate prior policy invalidation as its own separate return path.
 Native Git/gate phases do not select an AgentAdapter through this gate.
 
@@ -237,15 +238,16 @@ AgentAdapter occurrences, before implementation review.
 
 | Launch implementation / primary baseline | Current Session write and required migration |
 | --- | --- |
-| GenericCliAdapter, 0665583 adapter.rs:631/:693 | Starting/Running call save_session then generic put_session. Current metadata has input_bytes and lacks payload SHA/current-consumption proof. Move validated Starting and actual input consumption to #19 NativeCAS with exact P/G/T plus complete lock-set expectations, all five prepared-input pins and runtime-created unique intent. Consume atomically before the real stdin write; no invented native ACK. Keep existing Execute-only role and unsupported model/effort behavior. Advertise PreparedInputAdmission only after these writes are wired. |
+| GenericCliAdapter, 0665583 adapter.rs:628/:695 | Starting/Running call save_session then generic put_session. Current metadata has input_bytes and lacks payload SHA/current-consumption proof. Move validated Starting and actual input consumption to #19 NativeCAS with exact P/G/T plus complete lock-set expectations, all five prepared-input pins and runtime-created unique intent. Consume atomically before the real stdin write; no invented native ACK. Keep existing Execute-only role and unsupported model/effort behavior. Advertise PreparedInputAdmission only after these writes are wired. |
 | Workflow FakeAgent, 0665583 workflow/tests.rs:48/:86-96 | Bare put_session and recovery Null currently provide no pair. Migrate the shared fixture to real #19 NativeCAS preparation/admission under the actual owner/lock snapshots, full payload pins and unique intent before start returns. Its controlled successful wire boundary represents fixture consumption only. No allocator stub or generic Session write may create a positive owner. Fake execution is synthetic evidence. |
-| Claude, f9b671f claude/session.rs:186-194 and :140-163 | Fresh persist uses generic put_session; commit_current uses put_session_if_current. Fresh preparation must use #19 NativeCAS, and the existing current admission must supply its full protected preparation/input pair and actual pre-wire consumed intent. Terminal observations and validated rollback remain their distinct modes. Preserve ALLOW-only current fences and independent DENY own-Session publication. |
-| Codex, 6749505 codex/session.rs persist_unchecked/private rollback and admit_dispatch | Generic fresh/checkpoint preparation and rollback are distinct from current admit_dispatch. Wire fresh/committed checkpoint through #19 NativeCAS, keep private exact restore provenance, and preserve F4 admission-mutex/first-cause ordering around the consumed CAS and first wire. Stop/caller-drop cannot relabel failed admission. |
+| Claude, f9b671f claude/session.rs:186-194 and :140-163 | Fresh persist uses generic put_session; commit_current uses put_session_if_current. Fresh preparation must use #19 NativeCAS, and the existing current admission must supply its full protected preparation/input pair and actual pre-wire consumed intent. Move every operation/terminal journal out of that canonical consumed key as specified below. Terminal observations and validated rollback remain their distinct modes. Preserve ALLOW-only current fences and independent DENY own-Session publication. |
+| Codex, 6749505 codex/session.rs persist_unchecked/private rollback and admit_dispatch | Generic fresh/checkpoint preparation and rollback are distinct from current admit_dispatch. Wire fresh/committed checkpoint through #19 NativeCAS, include missing revision/source_versions in the consumed DTO, keep private exact restore provenance, and preserve F4 admission-mutex/first-cause ordering around the consumed CAS and first wire. Stop/caller-drop cannot relabel failed admission. |
 | Grok, 65aa940 adapter/grok/mod.rs:225/:322 | save_current already uses put_session_if_current, but initial Starting lacks the five prepared-input pins. Supply #19 protected preparation/actor pins plus unique intent at actual consumption before callback/startup wire. Terminal save_session is factual observation, never allocation or consumed admission. |
 
 Issue19 distinguishes NativeCAS from ObservationOnly: generic put_session cannot
-allocate, prepare or consume. Each migrated typed native write must use the real
-private NativeCAS port after exact P/G/T and full lock-set CAS. Neither the binder
+allocate, prepare or consume. Each fresh preparation/admission/consumption write must use the real private
+NativeCAS port after exact P/G/T and full lock-set CAS. Historical operation
+observations follow their separately constrained modes below. Neither the binder
 nor Workflow manufactures that proof. At these baselines no other Workflow test
 adapter implements AgentAdapter: #41 extends the same FakeAgent with barriers.
 
@@ -253,9 +255,12 @@ The default from_config path currently registers GenericCliAdapter. Migrating it
 is part of the combined implementation; it is not an accepted MVP limitation.
 Before migration, the explicit pre-reservation capability rejection prevents a
 permanently held launch. Unsupported new adapters also reject there. Separately,
-an adapter that falsely advertises the capability yet writes no private pair
-must fail the actual binder after start, retain its committed unbound claim and
-durable Session, and produce no binding audit or release/retry. This is a contract
+an adapter that falsely advertises the capability and returns an ObservationOnly-
+acceptable initial known-terminal Session without private rows must fail the
+actual binder after start, retain its committed unbound claim and durable Session,
+and produce no binding audit or release/retry. A fresh protected Running write
+can instead be rejected by #19 during start; that setup refusal earns no binder
+mutant kill. This is a contract
 violation distinct from honest unsupported preflight. Positive generic and fake
 controls must both obtain real allocation/pair through their actual start paths.
 
@@ -284,6 +289,10 @@ Recheck #41's preparation_dispatched_observation_and_direct_store_terminal_fence
 preparation_pause_cancel_and_terminal_recovery_keep_owner_fenced, and
 preparation_release_cas_and_executor_lost_fences_do_not_retry in co-integration.
 Their bound fixtures must come from Engine + actual #19 admission + narrow binder.
+Capture FakeAgent's scope/lock snapshot at start entry before its pause, as real
+adapters do; persist preparation after the pause so the existing no-Session-during-
+held-start control stays meaningful. Recapture must not erase a paused interval
+revocation. Required current-source revalidation before first wire remains separate.
 Historical direct state seeding, if newly introduced, is history-only and never
 binding coverage. Existing unchanged-ID ordinary transitions keep closure proof
 and their normal Task writes; every forbidden ID delta fails before any write.
@@ -294,6 +303,57 @@ failure), and generic/fake/native successful admission. Kill an omitted-capabili
 check at the pre-reservation consumer, and omitted-private-proof check at the
 post-start binder. A setup refusal is not a private-proof mutant kill. Inventory
 all protected writer and fixture consumers again at the immutable combined head.
+
+## Post-consumption operation publications
+
+The protected recovery.dispatch_intent is solely the canonical prepared-input
+consumption DTO. It retains its runtime UUID, complete input pins and authority
+versions through the corresponding native input outcome. No permission, denial,
+terminal transport hint or callback replaces it. Private allocation/preparation/
+admitted rows remain unchanged by those observations. A second consumed input
+still requires its own reviewed fresh-admission path; an operation journal never
+becomes one. Align this contract with #19 before joint source acceptance.
+
+| Actual writer / baseline | Journal and private publication mode |
+| --- | --- |
+| Claude f9b671f explicit permission reply :1639/:1647/:1653 | Write a separate bounded recovery.operation_intent journal, retaining pending native request/operation digest and actual ALLOW/DENY fact. ALLOW keeps commit_current/NativeCAS with full current scope and lock fences before wire. DENY keeps own-Session CAS and existing activity/worktree constraints through the explicitly allowed Acked historical observation outcome, without a raw parent-version CAS or new consumption. |
+| Claude automatic DENY :1496/:1513, pending/cancel :1504/:1531 | Move all decision facts away from dispatch_intent. Exact pending request publication/removal and WaitingApproval-to-Running observation keep actor/input/consumed pair unchanged and use the historical observation mode. Broker-disabled/capacity denial remains durable before wire; failed publication stops without a phantom response. |
+| Claude terminal transport :411/:1696 | terminal_start/terminal_input hints have a distinct recovery.transport_intent journal. They cannot fabricate submission/consumption of the PreparedInput, overwrite a prior consumed DTO or confer typed Workflow admission. Workflow is NonInteractive; preserving native interactive controls does not promise typed prepared delivery through a terminal. |
+| Codex 6749505 answer_approval :2020–2062 | The actual code does not overwrite dispatch_intent. Its separate codex.approval.reply_intent audit precedes reply: Approve uses audit_if_current then put_session_if_current/NativeCAS; Decline uses audit then unchanged own-Session put_session/historical observation. Post-reply removal of the native in-memory pending request and Running publication use the Acked historical observation outcome with the consumed pair intact. Preserve existing audit/wire ordering; do not invent a new consumed intent. |
+| Grok 65aa940 callback :804–927 and prompt intent :1041 | Callback ownership/FS checks and grok.fs_observed audit remain separate from input consumption. Reject-only native permission callbacks confer no grant. The input intent at prompt dispatch becomes the canonical DTO during #19 migration; callbacks cannot replace it. Preserve existing Actor::owner before every side effect/result. |
+
+For this operation publication, #19 Acked requires the new protected tuple to
+match the exact existing private admitted digest and the same consumed UUID.
+Historical operation observation is not a new admission mode: it checks exact
+own Session version and immutable actor/native identity, unchanged prepared/input/
+consumed pins and matching private pair. It may publish the actual existing input's
+pending/decision lifecycle, including WaitingApproval-to-Running, under #19's
+explicit Acked historical observation outcome (within its Acked/ConsumedHistorical
+classification). It allocates/consumes/binds nothing,
+changes no private digest/owner, and grants no operation authority. Lost stays
+absorbing and malformed/foreign/absent pairs reject. Preserve existing generic
+activity/worktree constraints; historical does not override ProjectBlocked or an
+own-Session/write failure. Existing denial then stops without a reply wire.
+ALLOW's separate full current NativeCAS and actual owned pending-request proof
+remain mandatory. Parent Task metadata/version revocation alone cannot turn
+DENY into an operation grant or require ALLOW's parent-version fence.
+
+Inventory every consumer of the renamed operation/transport journal: Claude
+permission assertions, reserved intent audit payloads, SQL ALLOW-failure trigger
+(current :3005) and control/mutation readers. Preserve event names/order and
+update the causal field selection; no assertion should begin reading the
+prepared-input UUID as a permission decision. Add post-binding consumed-input
+controls: ALLOW survives and later exact Succeeded closure still resolves that
+same pair; DENY survives Task metadata/version revocation, while ProjectBlocked,
+own-Session CAS/storage failure and caller cancellation retain their current
+no-wire behavior. Codex Approve/Decline and post-reply Running retain the exact
+consumed UUID/pins; Grok callback/result retains its consumed proof. Kill an
+operation-overwrites-consumed-key mutant at the actual native reply plus #19
+closure consumer, and a DENY-through-parent-CAS mutant at the actual denial wire.
+No current production caller invokes step outside library tests at this baseline.
+Scheduler/Goal/CLI integrations must surface bounded configuration errors from
+pre-reservation Err and avoid hot retries; they cannot synthesize Failed, release
+holds or acquire a permit by treating Err as successful idle progress.
 
 ## Verification and meaningful mutations
 

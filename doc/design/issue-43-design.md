@@ -1,6 +1,7 @@
 # Issue 43 Design: Preserve native authority during Workflow Session binding
 
-**Status:** Design3 draft; independent delta review and implementation pending
+**Status:** Design4 draft; joint private-publication alignment, independent delta
+review and implementation pending
 **Workflow:** STRICT  
 **Scope:** Workflow native Session binding only
 
@@ -632,3 +633,21 @@ port without the real #19 predicate; no completed-merge dependency cycle.
 The separate ordinary closure checks stay in their ordinary transaction, while
 binding proof lives only in the #43 port. Update master design to implementation
 fact only in the combined source PR.
+
+
+## 21. Preserve the consumed input through native operation decisions
+
+Design3 launch-admission inventory is verified, but actual Claude permission and
+terminal paths also overwrite recovery.dispatch_intent. That key must contain
+only #19's canonical consumed PreparedInput DTO. Move permission/transport facts
+to distinct bounded journals and migrate their actual audit/assertion/SQL-trigger
+consumers. The mechanics inventory explicit and automatic Claude ALLOW/DENY,
+Codex pre/postreply writes and Grok callback/input publications, with separate
+NativeCAS versus Acked/ConsumedHistorical modes. Operation observation cannot
+allocate, consume or overwrite private input authority. Existing ALLOW fences,
+DENY own-Session/state constraints and Lost absorption remain mandatory.
+
+Joint #19 publication alignment and independent Design4 review are pending;
+source remains absent. Positive post-binding decision and later typed closure
+must retain the exact consumed UUID/pair. A new Journal name is not itself proof
+of correctness; actual reply/closure controls and causal mutants are required.

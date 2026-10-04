@@ -371,38 +371,12 @@ Observation/audit metadata retain authority digests without copied Context Pack 
 Cleanup freezes the reserved class/phases, independent of later runtime policy capture.
 Project risk-mapping recommendations can strengthen but cannot weaken runtime mappings.
 
-## 18. Native Session binding authority
+## 18. Current native Session registration
 
-Status: proposed Issue43 contract; implementation and independent design/source
-gates remain outstanding. Current main still uses ordinary persistence for this
-binding. The following specifies the intended corrected behavior.
-
-A successful native launch may return a persisted Session before the Workflow attempt has
-recorded its `session_id`. That factual registration must not invalidate the native
-adapter's already-captured Project/Goal/Task/lock currency.
-
-Workflow therefore uses a narrow crate-private Session-binding transaction rather than
-the ordinary Task/Workflow persistence path. The transaction rechecks exact captured
-Project, Goal, Task and Workflow versions; active scope/generation/attempt; committed
-dispatch marker; context identity; scoped lock currency; and the exact persisted returned
-Session identity. On success it changes only the active Running attempt's absent
-`session_id`, advances the Workflow record version and appends one factual audit. Task,
-Project, Goal, Session, Context and WorktreeLock bodies/versions are preserved.
-
-Binding is StateOnly factual owner registration after native launch, not new-operation
-admission. A visible Workflow SessionId is not a private prepared-input allocation
-credential. Provider-native authority remains unchanged: Claude reservation currency,
-Grok Actor ownership checks and Codex approval scope/Session guards continue to decide
-their own callbacks/replies/completion. Binding failure preserves the existing reservation
-and any live Session; it never releases, retries, transfers ownership or fabricates a
-native result. See [Issue #43 design](../issue-43-design.md).
-
-The proposed binding port is the sole existing-attempt Session-ID writer; ordinary
-WorkflowAccess rejects every ID delta and fresh history starts unbound. Every
-fresh Workflow Executor/Reviewer launch, including GenericCliAdapter and controlled
-test adapters, requires actual #19 private owner/preparation/admission proof in
-the binding transaction. An implementation-owned admission capability rejects
-unsupported adapters before phase/context/dispatch reservation; it cannot replace
-the durable proof or be configured into existence. A falsely advertised capability
-still leaves a post-start contract failure held. This remains proposed until the
-combined #19/#43 source, native controls, reviews and CI are accepted.
+Current main uses ordinary Task/Workflow persistence after adapter start returns.
+It records the attempt's Session ID and rewrites Task, advancing its version.
+That can invalidate the native adapter's captured scope during registration.
+The record-only correction and its typed-input/admission integration are proposed
+in [Issue43 design](../issue-43-design.md); neither the private binding port nor
+its admission capability is implemented in main. Update this section to the
+actual corrected contract only after the combined source is accepted.

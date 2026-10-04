@@ -50,3 +50,16 @@ This verifies the existing runtime baseline at that documentation head, not a
 production implementation, native binding acceptance or typed allocation proof.
 No production code, combined native matrix, mutation, typed ownership integration
 or merge is claimed. Resumed native usage remains attribution-unverified.
+
+
+Design3 a7cf49b exact CI37184947371 passed Linux/macOS. Both independent reviewers
+completed and owned cleanup verified, closing the admission-consumer inventory
+class. They found a shared Medium: post-consumption native decision publications
+collide with the protected input DTO. Primary verification confirms Claude
+permission/automatic-denial/terminal writers overwrite dispatch_intent. Codex674
+approval does not overwrite it (the older-source overwrite hypothesis is not
+established); its actual pre/postreply modes still need classification. Grok
+callbacks use separate audit/FS evidence. Design4 inventories all these writers
+and journal consumers, preserves canonical consumption and clarifies denial
+version currency versus existing state constraints. Joint #19 alignment and
+independent delta approval remain pending. No production implementation is claimed.

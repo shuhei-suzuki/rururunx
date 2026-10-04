@@ -106,8 +106,10 @@ compiled failing mutant at the actual listed native protocol consumer:
 Hold the Claude Executor native permission request across binding, then prove its
 exact ALLOW response survives binding and fails under the Task-rewrite mutant.
 Its DENY response is a required control: it grants no operation authority and
-uses own-Session-only publication, so parent-currency revocation must not prevent
-denial. Preserve the adapter's existing explicit Broker opt-in/native policy;
+uses own-Session publication without ALLOW's raw parent-version CAS: a Task
+metadata/version change must not prevent exact denial. Existing ProjectBlocked,
+own-Session CAS/storage and activity/worktree refusals still stop without wire;
+this is not a universal denial exception to those constraints. Preserve the adapter's existing explicit Broker opt-in/native policy;
 the test must not relax automatic native review. If an integrated Workflow caller
 cannot expose this path, record the concrete caller limitation rather than silently
 omitting the row. Initial input admission before `start` returns does not earn
