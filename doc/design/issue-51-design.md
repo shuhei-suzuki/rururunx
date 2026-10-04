@@ -90,7 +90,8 @@ selection and the final transaction, never store.projects() full Project decodin
 Malformed unrelated foreign fields do not block A. Missing, unreadable or non-array
 environment_refs is relevant unknown authority and denies A with the fixed opaque
 EnvironmentAuthority category. An array contributes EVERY valid string entry per name
-even if other elements are invalid; no foreign-list count/name truncation. Stream all
+even if other string entries are registry-invalid; a non-string element (object,
+array, number or null) is unknown reference authority and denies A opaquely; no foreign-list count/name truncation. Stream all
 entries and retain only membership against the bounded frozen baseline set. Names
 longer than256 bytes cannot match those bounded baseline names; skipping a nonmatching
 name is not skipping a potentially relevant record. Test a valid oversized list with
@@ -212,8 +213,10 @@ it reads no values and reports no foreign IDs, launches, counts or timestamps. I
 only through an explicit operator check in the runtime that owns the frozen baseline, never as a
 side effect of another Project's blocked admission or inventory/registration change.
 Registered, Blocked and Removed Projects all use pure state reads, without calling
-public environment_names that requires a registered source/FS. Its candidate set is
-derived only from that Project's own declarations and
+public environment_names that requires a registered source/FS. For malformed own reference projection, return only a fixed own-scoped inventory-
+unreadable status from that exact Project row; no foreign data or repair bypass.
+Corrupt-row repair belongs reviewed #14 recovery and is not performed here. Its
+candidate set is derived only from that Project's own declarations and
 the retained baseline name set, independent of other Projects' co-declarations. A's
 error/audit remains opaque.
 
@@ -256,18 +259,25 @@ and fixed opaque blocker/detail/workflow.saved reason, no Grok Session or spawn.
 those actual outcomes rather than typed AdapterError directly or no Workflow marker.
 A separate Task/control at the SAME reachable phase with empty/own ordinary map must
 return Started and own Session binding matching expected phase/agent. It proves only
-forwarding admission, not complete native turn/transport success. Current unchanged-Task
+initial selection and Starting reservation only, not later pre-spawn admission,
+spawn, terminal state or native turn/transport success. Current unchanged-Task
 binding increments raw Task version and may invalidate a running provider (#43); full
 native Workflow completion remains blocked on that separately reviewed integration.
 Do not weaken provider CAS or use an earlier failed Task's implicit retry as the control.
-Natural Generic-executor-to-Grok-reviewer completion is not claimed. If a seeded reviewer
-variant is added, use private checked workflow transition in the in-crate fixture with
-exact active review lock at context.revision; label it seeded, not natural progression.
+Natural Generic-executor-to-Grok-reviewer completion is not claimed; remove the optional
+seeded reviewer variant entirely. No synthetic completed Evidence/Exited Session/history
+is allowed. After Started, wait for owned terminal/cleanup and release only when actually
+verified safe; later StateConflict or a race to spawn is not environment admission
+evidence. Read the persisted bound Session to assert its phase/agent matches the
+prepared map. A Lost/unknown cleanup remains reserved and fails that cleanup gate.
 Caller phase prediction is unsupported as an atomic provider contract. A Generic map
 mispredicted into Grok fails closed; Grok-shaped empty input mispredicted into Generic
 may launch without intentional baseline because Generic does not enforce it. This
-existing reverse-direction baseline-obligation gap requires future provider-bound
-driver input/Generic enforcement outside51; no supported automatic mixed driver is
+existing reverse-direction baseline-obligation gap remains an explicit integration
+obligation in #11 runtime consultation/driver, #14 recovery and #16 dogfood: provider-
+bound map handoff/Generic baseline enforcement need their own verified contract,
+outside51. There is no current CLI LaunchRequest producer; do not promote the
+unreachable prediction case into an unverified native3 core blocker; no supported automatic mixed driver is
 claimed. Every forwarding positive asserts actual Started phase AND Session.agent match
 the map's intended provider.
 Future runtime/provider-aware driver integration must reconcile normally merged #5/#6

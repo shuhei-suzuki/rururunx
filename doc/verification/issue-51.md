@@ -208,3 +208,20 @@ size190.943416ms, stderr actualTimedOut251.411959ms, library86passed/1failed/1ig
 Original `/private/tmp/rururunx-issue51-ci-37194593829-failed.log` retained; no retry,
 historical PS cause or acceptance success inferred. Reviewed41 test correction is
 a future meaningful dependency integration, not this head's performed provider fix.
+
+
+## Design4 approvals and source precision
+
+Both independent native Design4 reviewers approved immutablec8b0e1b with no Critical/
+High/Medium finding or blockers; nativec2d989db selection and7ab21c3e transaction
+completed/owned cleanup verified, raw per-round meters unverified. Verified Lows remove
+the optional seeded reviewer (no synthetic history), label Started only initial
+selection/reservation and inspect the persisted Session phase/agent, preserve later
+cleanup/Lost as real gate rather than environment evidence, deny non-string corrupted
+ref elements and add explicit own-scoped unreadable-inventory operator status. Root
+coordinated reverse Generic baseline handoff as existing11/14/16 integration obligation,
+not a new unverified native3 blocker; master states Generic obligation is unenforced.
+These proposed source precision refinements retain approved authority/requirements.
+Source gates must rereview actual refinements/implementation, not infer proof from docs.
+Issue55 design fix gate has priority; no concurrent Grok source edit. Pure helper work
+may proceed in approved51 scope while actual consumers/integration remain pending.
