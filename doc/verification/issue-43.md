@@ -282,3 +282,30 @@ full positive Workflow fixture migration remains required19 integration. No test
 were skipped, native execution authorized or full-suite/CI/merge readiness claimed.
 The earlier exploratory adapter StateConflict-vsSessionLost failure remains retained
 with unmeasured cause. Independent component source review remains pending.
+
+
+Staged Source1 at f2773cce4d0434e129ae54407c04958917ab0beb: two independent
+native reviewers APPROVE, three Low findings each, no C/H/M or blockers, actual
+owned cleanup verified. Exact public findings/result hashes are retained in the
+Source1 outcome artifact. This approves only the negative preflight component;
+whole #43/private admission/native/positive regression/CI/merge remains unready.
+
+Verified follow-up source: an explicit private composition refusal after consistent
+probe checks prevents even a fully consistent descriptor from reaching the legacy
+Task-rewriting binder. A typed downcastable NativePreflightRefusal classifies missing
+reviewer/adapter/capability, mismatched identity, probe failure and absent composition;
+wrapped adapter failures preserve the AdapterError source. An enum carries either
+evidence routing or an actual selected adapter, removing the post-reservation
+fallible Option conversion. The redundant returned-worktree clause is removed.
+The existing three real consumer controls add consistent-advertiser and probe-error
+negative cases plus typed checks. Committed verification is pending.
+
+Retained-selection and returned-provider checks are implemented but causally
+unverified: genuine #19 positive fixtures and actor/provider mutants remain required.
+Synchronous probe work is also an open co-integration condition: no current adapter
+advertises the static capability, and the only probes in these controls are finite,
+no-effect FakeAgent calls. Real producer readiness must provide an actual bounded,
+owned metadata/helper probe without blocking unrelated work or detaching jobs on
+cancellation. Adding spawn_blocking plus a timeout alone would detach an unfinished
+job and cannot satisfy #60's ownership contract, so that suggested shortcut is not
+adopted. This stage stays unmergeable, with no real native availability claim.

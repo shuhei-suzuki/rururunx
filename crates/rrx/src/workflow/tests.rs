@@ -35,6 +35,7 @@ struct FakeAgent {
     probe_override: Mutex<Option<AgentInfo>>,
     capabilities_override: Mutex<Option<BTreeSet<Capability>>>,
     probes: AtomicUsize,
+    probe_error: AtomicBool,
 }
 impl FakeAgent {
     fn new(name: &str, store: SharedStore, review: bool) -> Self {
@@ -52,6 +53,7 @@ impl FakeAgent {
             probe_override: Mutex::new(None),
             capabilities_override: Mutex::new(None),
             probes: AtomicUsize::new(0),
+            probe_error: AtomicBool::new(false),
         }
     }
 }
@@ -71,6 +73,9 @@ impl AgentAdapter for FakeAgent {
     }
     fn probe(&self) -> AdapterResult<AgentInfo> {
         self.probes.fetch_add(1, Ordering::SeqCst);
+        if self.probe_error.load(Ordering::SeqCst) {
+            return Err(adapter_error("controlled probe failure"));
+        }
         if let Some(info) = self.probe_override.lock().unwrap().as_ref() {
             return Ok(info.clone());
         }
@@ -546,8 +551,11 @@ async fn native_preflight_refuses_before_context_reservation_or_session_writes()
             .step(fixture.task.id, BTreeMap::new())
             .await
             .unwrap_err();
-        assert!(
-            error.to_string().contains("PreparedInputAdmission"),
+        assert_eq!(
+            error.downcast_ref::<NativePreflightRefusal>(),
+            Some(&NativePreflightRefusal::MissingCapability(
+                Capability::PreparedInputAdmission
+            )),
             "{error:#}"
         );
         assert_eq!(
@@ -572,7 +580,7 @@ async fn native_preflight_refuses_before_context_reservation_or_session_writes()
 
 #[tokio::test]
 async fn native_preflight_rejects_contradictory_probe_without_durable_mutation() {
-    for case in 0..6 {
+    for case in 0..8 {
         let fixture = Fixture::new(WorkflowClass::Quick);
         fixture
             .engine
@@ -587,28 +595,34 @@ async fn native_preflight_rejects_contradictory_probe_without_durable_mutation()
         let expected = match case {
             0 => {
                 info.agent = "foreign".into();
-                "identity mismatch"
+                NativePreflightRefusal::IdentityMismatch
             }
             1 => {
                 info.provider = "  ".into();
-                "identity mismatch"
+                NativePreflightRefusal::IdentityMismatch
             }
             2 => {
                 info.capabilities.remove(&Capability::Execute);
-                "Execute"
+                NativePreflightRefusal::MissingCapability(Capability::Execute)
             }
             3 => {
                 advertised.remove(&Capability::Execute);
-                "Execute"
+                NativePreflightRefusal::MissingCapability(Capability::Execute)
             }
             4 => {
                 info.capabilities
                     .remove(&Capability::PreparedInputAdmission);
-                "PreparedInputAdmission"
+                NativePreflightRefusal::MissingCapability(Capability::PreparedInputAdmission)
             }
             5 => {
                 advertised.remove(&Capability::PreparedInputAdmission);
-                "PreparedInputAdmission"
+                NativePreflightRefusal::MissingCapability(Capability::PreparedInputAdmission)
+            }
+            // Even a fully consistent descriptor cannot enter the legacy binder.
+            6 => NativePreflightRefusal::ManagedBindingUnavailable,
+            7 => {
+                fixture.executor.probe_error.store(true, Ordering::SeqCst);
+                NativePreflightRefusal::ProbeFailed
             }
             _ => unreachable!(),
         };
@@ -633,10 +647,17 @@ async fn native_preflight_rejects_contradictory_probe_without_durable_mutation()
             .step(fixture.task.id, BTreeMap::new())
             .await
             .unwrap_err();
-        assert!(
-            error.to_string().contains(expected),
+        assert_eq!(
+            error.downcast_ref::<NativePreflightRefusal>(),
+            Some(&expected),
             "case {case}: {error:#}"
         );
+        if case == 7 {
+            assert_eq!(
+                error.downcast_ref::<AdapterError>().unwrap().kind,
+                ErrorKind::UnsupportedCapability
+            );
+        }
         assert_eq!(state(), before, "case {case} must not reserve or launch");
         assert!(fixture.executor.launches.lock().unwrap().is_empty());
     }
@@ -652,28 +673,48 @@ fn native_preflight_requires_selected_reviewer_and_implementation_admission() {
         .preflight_native_adapter(&task, Phase::ImplementationReview)
         .err()
         .expect("missing reviewer must refuse");
-    assert!(error.to_string().contains("reviewer not configured"));
+    assert_eq!(
+        error.downcast_ref::<NativePreflightRefusal>(),
+        Some(&NativePreflightRefusal::MissingReviewer)
+    );
     task.reviewers = vec!["missing".into()];
     let error = fixture
         .engine
         .preflight_native_adapter(&task, Phase::ImplementationReview)
         .err()
         .expect("unregistered reviewer must refuse");
-    assert!(error.to_string().contains("unregistered agent"));
+    assert_eq!(
+        error.downcast_ref::<NativePreflightRefusal>(),
+        Some(&NativePreflightRefusal::AdapterUnavailable)
+    );
+    assert_eq!(
+        error.downcast_ref::<AdapterError>().unwrap().kind,
+        ErrorKind::InvalidConfiguration
+    );
     task.reviewers = vec!["executor".into()];
     let error = fixture
         .engine
         .preflight_native_adapter(&task, Phase::ImplementationReview)
         .err()
         .expect("executor role does not grant review");
-    assert!(error.to_string().contains("Review"));
+    assert_eq!(
+        error.downcast_ref::<NativePreflightRefusal>(),
+        Some(&NativePreflightRefusal::MissingCapability(
+            Capability::Review
+        ))
+    );
     task.reviewers = vec!["reviewer".into()];
     let error = fixture
         .engine
         .preflight_native_adapter(&task, Phase::ImplementationReview)
         .err()
         .expect("legacy reviewer has no private admission producer");
-    assert!(error.to_string().contains("PreparedInputAdmission"));
+    assert_eq!(
+        error.downcast_ref::<NativePreflightRefusal>(),
+        Some(&NativePreflightRefusal::MissingCapability(
+            Capability::PreparedInputAdmission
+        ))
+    );
     assert!(
         !fixture
             .executor

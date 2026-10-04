@@ -730,3 +730,15 @@ cancel-only exit followed by full TerminalRecovery. Genuine phase_closed release
 unspent ledger reserve atomically. Raw REPLACE cannot overwrite a reserved prefix or
 marked W; actual BEFORE INSERT existing-key guards/fresh-migrated goldens are required.
 All source/native/recovery gates remain pending; no current ready port is claimed.
+
+
+### Staged preflight source acceptance boundary
+
+Until genuine private admission and record-only binding are composed, a private
+source guard refuses even consistent advertised/probed capabilities BEFORE hold
+clearance, context preparation and reservation. Capability metadata cannot enable
+legacy binding. Pre-reservation refusals have a downcastable typed reason for future
+scheduler/Goal/CLI attention and non-hot retry handling. Evidence/native selection is
+carried by an enum so there is no fallible absence check after reservation commit.
+The real bounded, owned probe and genuine positive actor/provider controls remain
+co-integration gates; a detached blocking job timeout is not an implementation.

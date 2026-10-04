@@ -18,6 +18,35 @@ use crate::{
 
 pub type WorkflowFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 
+/// A pre-reservation configuration refusal; callers must not hot-retry it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum NativePreflightRefusal {
+    MissingReviewer,
+    AdapterUnavailable,
+    MissingCapability(Capability),
+    IdentityMismatch,
+    ProbeFailed,
+    ManagedBindingUnavailable,
+}
+impl std::fmt::Display for NativePreflightRefusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MissingReviewer => f.write_str("reviewer not configured"),
+            Self::AdapterUnavailable => f.write_str("selected adapter unavailable"),
+            Self::MissingCapability(capability) => {
+                write!(f, "missing prepared native phase capability {capability:?}")
+            }
+            Self::IdentityMismatch => f.write_str("selected adapter probe identity mismatch"),
+            Self::ProbeFailed => f.write_str("selected adapter probe failed"),
+            Self::ManagedBindingUnavailable => {
+                f.write_str("managed native binding and private admission are not composed")
+            }
+        }
+    }
+}
+impl std::error::Error for NativePreflightRefusal {}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Phase {
@@ -446,6 +475,16 @@ struct NativeAdapterSelection {
     adapter: Arc<dyn AgentAdapter>,
     agent: String,
     provider: String,
+}
+enum PhaseAdapterSelection {
+    EvidencePort,
+    Native(NativeAdapterSelection),
+}
+fn require_managed_native_binding_composed() -> Result<()> {
+    // Capability metadata cannot authorize the legacy Task-rewriting binder.
+    // Replace this refusal only when the actual private admission and record-only
+    // binding producers are composed, with genuine positive controls.
+    Err(NativePreflightRefusal::ManagedBindingUnavailable.into())
 }
 #[cfg(test)]
 #[derive(Default)]
@@ -905,9 +944,9 @@ impl WorkflowEngine {
             });
         }
         let selected = if phase.actor() == Actor::EvidencePort {
-            None
+            PhaseAdapterSelection::EvidencePort
         } else {
-            Some(self.preflight_native_adapter(&snapshot.task, phase)?)
+            PhaseAdapterSelection::Native(self.preflight_native_adapter(&snapshot.task, phase)?)
         };
         clear_hold(&mut snapshot);
         let context = self
@@ -958,9 +997,12 @@ impl WorkflowEngine {
             }
         }
         self.reserve(&mut snapshot, &context, phase)?;
-        if phase.actor() == Actor::EvidencePort {
-            return self.evaluate(snapshot, index, None).await;
-        }
+        let selected = match selected {
+            PhaseAdapterSelection::EvidencePort => {
+                return self.evaluate(snapshot, index, None).await;
+            }
+            PhaseAdapterSelection::Native(selected) => selected,
+        };
         let claim = PreparationClaim::committed(&snapshot, index);
         let mut eligible = true;
         let result = self
@@ -970,7 +1012,7 @@ impl WorkflowEngine {
                     context,
                     config,
                     environment,
-                    selected: selected.context("native phase requires preflight selection")?,
+                    selected,
                 },
                 &claim,
                 &mut eligible,
@@ -1057,30 +1099,34 @@ impl WorkflowEngine {
         let (agent, needed) = match phase.actor() {
             Actor::Executor => (&task.executor, Capability::Execute),
             Actor::Reviewer => (
-                task.reviewers.first().context("reviewer not configured")?,
+                task.reviewers
+                    .first()
+                    .ok_or(NativePreflightRefusal::MissingReviewer)?,
                 Capability::Review,
             ),
             Actor::EvidencePort => anyhow::bail!("evidence phase does not select a native adapter"),
         };
-        let adapter = self.registry.get(agent)?;
+        let adapter = self.registry.get(agent).map_err(|error| {
+            anyhow::Error::new(error).context(NativePreflightRefusal::AdapterUnavailable)
+        })?;
         let capabilities = adapter.capabilities();
         for required in [needed, Capability::PreparedInputAdmission] {
-            ensure!(
-                capabilities.contains(&required),
-                "agent {agent} lacks prepared native phase capability {required:?}"
-            );
+            if !capabilities.contains(&required) {
+                return Err(NativePreflightRefusal::MissingCapability(required).into());
+            }
         }
-        let info = adapter.probe()?;
-        ensure!(
-            info.agent == *agent && !info.provider.trim().is_empty(),
-            "selected adapter probe identity mismatch"
-        );
+        let info = adapter.probe().map_err(|error| {
+            anyhow::Error::new(error).context(NativePreflightRefusal::ProbeFailed)
+        })?;
+        if info.agent != *agent || info.provider.trim().is_empty() {
+            return Err(NativePreflightRefusal::IdentityMismatch.into());
+        }
         for required in [needed, Capability::PreparedInputAdmission] {
-            ensure!(
-                info.capabilities.contains(&required),
-                "agent {agent} lacks prepared native phase capability {required:?}"
-            );
+            if !info.capabilities.contains(&required) {
+                return Err(NativePreflightRefusal::MissingCapability(required).into());
+            }
         }
+        require_managed_native_binding_composed()?;
         Ok(NativeAdapterSelection {
             adapter,
             agent: agent.clone(),
@@ -1221,7 +1267,6 @@ impl WorkflowEngine {
                     session.scope == snapshot.task.scope()
                         && session.agent == agent
                         && session.provider == provider
-                        && Some(&session.worktree) == snapshot.task.worktree.as_ref()
                         && session.worktree == worktree
                         && session.role
                             == if phase.actor() == Actor::Reviewer {
