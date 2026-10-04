@@ -40,6 +40,9 @@ The independent [encoding component](../design/issue-19-encoding-component-desig
 implements only existing compact artifact byte bounds,120-container depth and typed
 read-order validation. It introduces no schema/native/publication authority and does
 not satisfy the pending S6 producer matrix by itself.
+The separately proposed [checkpoint append identity component](../design/issue-19-checkpoint-identity-component-design.md)
+enforces existing exact scoped predecessor/Session and semantic-retention requirements
+only; it creates no native ownership, epoch or production acceptance.
 
 - Task packs preserve purpose, criteria, workflow/risk/phase, constraints, owned
   repository/worktree/revision, scoped authoritative artifact references, selected

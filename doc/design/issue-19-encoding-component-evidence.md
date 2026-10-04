@@ -151,7 +151,7 @@ Both negative SQL fixture UPDATEs assert exactly1 changed row. Fitting Goal and
 validate_capture controls positively observe their decode trace; context_artifact
 shares its trace bit with its nested validate_capture, so that positive assertion
 does not isolate its own marker (nonblocking Source3 follow-up).
-checkpoint now genuinely drops1 of2 transient events under its256-byte window and
+Checkpoint now genuinely drops1 of2 transient events under its256-byte window and
 checks exact retained encoding/accounting. Actual Store decode is cited by function
 and pinned source-head line. All16 focused tests and clippy passed on committed
 correction; two additional separately committed, compiled consumer mutants were killed:
