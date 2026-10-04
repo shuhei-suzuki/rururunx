@@ -258,6 +258,9 @@ The command examples above describe the MVP target. Currently implemented:
   encoding now streams compact JSON validation with a1-MiB byte cap and120-container
   depth cap; it retains no encoded validation buffer. Independent component Source
   review and full schema6/native/legacy integration acceptance remain separate gates.
+  Its standalone Task/Draft producer also caps the complete rendered frame at1MiB
+  before prepared-frame publication, including mandatory metadata and rules;
+  see the [scoped producer evidence](doc/design/issue-19-standalone-frame-evidence.md).
 - Library Git/worktree management with project ownership checks, protected branches,
   dirty-state checks, durable logical review locks and safe merged cleanup. CLI/workflow
   integration and interrupted-operation reconciliation are pending.

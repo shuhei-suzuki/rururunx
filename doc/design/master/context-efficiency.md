@@ -374,6 +374,12 @@ is distinct from semantic/lifecycle version; optional repository budget and mand
 facts are counted separately under the complete1-MiB input cap. Provider measurements
 remain nullable. Git/filesystem observations stay outside SharedStore.
 
+The [standalone producer correction](../issue-19-standalone-frame-evidence.md)
+applies the same complete1-MiB cap before Ready/private frame publication for Task
+and nonlaunch Draft preparation. Its explicit source budget may remain16MiB;
+mandatory rules/envelopes still count in the final frame. This is component5
+artifact preparation, not genuine6 managed admission or settlement authority.
+
 The independently scoped [artifact encoding component](../issue-19-encoding-component-design.md)
 streams the existing compact1-MiB artifact validation and caps container depth at120.
 Typed reader guards run before digest/clone/decode; opaque provenance keeps its prior

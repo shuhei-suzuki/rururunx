@@ -87,6 +87,9 @@ so normal and environment Session writers both retain them. Artifact producer,
 append28lines and encoder files are unchanged. The only added regression is
 component5 mechanical CPP-frame validation at the actual environment consumer;
 NO native managed preparation/input/settlement producer is qualified.
+This Session regression causally proves the prepared-frame fence only; checkpoint
+write-fence retention is structural in the shared guard plus existing generic
+Record tests, not independent mutation credit for this fixture.
 
 Committed misplaced-guards mutant5b64565998096fa77f594fda7cf1b36c6a687829 puts
 CPP fences only in the obsolete put_record_tx wrapper; actual environment=true
