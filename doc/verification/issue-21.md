@@ -198,7 +198,8 @@ No helper, unavailable measurement or fixture can close the whole telemetry issu
 Source head b47b773 (guard introduced in5a2f47a) contains only a pre-write signed-i64
 range guard for the six typed Usage integers: input_tokens, cached_input_tokens,
 output_tokens, context_pack_version, context_pack_size and repo_map_size. Values at
-i64::MAX and the real cached_input_tokens zero remain exact; each typed field at
+i64::MAX for the other five typed fields and the real cached_input_tokens zero
+remain exact; each typed field at
 i64::MAX+1 or u64::MAX
 rejects before any Usage/audit or P/G/T/Session mutation. No clamp/cast/relabeling.
 Legacy Usage, collection-time phase/round and arbitrary cache_metadata remain
@@ -258,3 +259,14 @@ this is tested-source provenance, distinct from run.headSha. Public structured
 provenance accompanies this ledger. Prior failures remain. This is narrow component
 approval, not qualified #21 telemetry/source/native benchmark or MVP acceptance.
 Evidence/wording delta re-review remains pending.
+
+Evidence delta Source2 at8918130: B approved without C/H/M, one optional wording Low
+now corrected to state i64::MAX on FIVE fields and cached_input_tokens zero. A did
+NOT produce a review terminal within the1200s harness bound and is not an accepted
+verdict. Owned cleanup recorded sticky cleanup_unverified, then later selected-group
+death confirmed with no retained leader/inspector anchors; acceptance remained false.
+This is a failed native review/harness outcome, not source failure or full descendant
+cleanup proof. Original failure is retained; no same-session result is fabricated.
+Fresh independent review of the complete public component/evidence is required.
+TriggerCI37211035771 at8918130 is green; actual checkout proof not inferred from its
+trigger SHA. Earlier fully compared reviewed-source CI remains the qualified record.

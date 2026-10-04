@@ -1,0 +1,16 @@
+{
+  "head": "89181303d720269cd5a49e3553e97de5fcb067ff",
+  "section": "source2a",
+  "native_session": "64f9bf1b-8177-41f8-b6af-43af52a75e60",
+  "failure": "review_timeout",
+  "review_accepted": false,
+  "cleanup": {
+    "state": "cleanup_unverified",
+    "leader_anchor_retained": false,
+    "inspector_anchor_retained": false,
+    "observation_attempts": 2,
+    "later_selected_group_death_confirmed": true,
+    "acceptance": false
+  },
+  "whole_issue_acceptance": false
+}
