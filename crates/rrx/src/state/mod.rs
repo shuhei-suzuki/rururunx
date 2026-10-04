@@ -524,6 +524,14 @@ impl Store {
             let after: crate::workflow::WorkflowSnapshot =
                 serde_json::from_value(workflow.data.clone())?;
             if before.active.is_some() && after.active != before.active {
+                let attempt = &before.history[before.active.unwrap()];
+                ensure!(
+                    !(access != WorkflowAccess::TerminalRecovery
+                        && attempt.phase.actor() != crate::workflow::Actor::EvidencePort
+                        && attempt.dispatch_started
+                        && attempt.session_id.is_none()),
+                    crate::workflow::UNBOUND_NATIVE_RECOVERY_REQUIRED
+                );
                 let mut statement = tx.prepare("SELECT body FROM records WHERE project_id=?1 AND goal_id=?2 AND task_id=?3 AND kind='session'")?;
                 let own_id = before
                     .active
