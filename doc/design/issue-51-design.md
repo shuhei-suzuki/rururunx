@@ -1,8 +1,9 @@
 # Issue 51 design: Grok environment admission
 
 Risk: STRICT. Proposed design, pending independent approval. No Issue51 provider or
-Store implementation exists; reviewed main Issue46 is normally integrated. Requirements5
-approved `c627ad0`, including the verified explicit credential prohibition restoration.
+Store implementation exists; reviewed main Issue46 is normally integrated. Requirements7
+approved `1688a85`, preserving Requirements5's explicit credential prohibition and
+Requirements6's SSLKEYLOGFILE/fresh-decision/checkpoint ordering clarification.
 The earlier optional precision findings are adopted in the requirements and below. Source gates
 must review the exact helper and its actual start/resume consumers before acceptance.
 
@@ -205,7 +206,8 @@ update the fixture file before its new owned process starts. Preserve existing a
 Store/preflight/permission/continuation tests rather than deleting failing consumers.
 
 Define cfg(test)-only per-adapter/per-Actor hooks after final preflight/before admission
-and after successful admission/before spawn; retained invocation-private handles only,
+after successful admission/before spawn, and checkpoint capture/after Git preflight
+before its own Session CAS; retained invocation-private handles only,
 not process-global state, public runtime fields, environment or argv channels. Put new
 actual-consumer tests in Grok in-crate unit module so cfg(test) hooks are visible (integration
 binaries compile the library without cfg(test)). Reuse fixture-owned fake ACP helpers
@@ -229,7 +231,12 @@ capture or binary-revision attestation. New build/source provenance is labelled 
 - Actual positives: own TZ, own/shared XAI_API_KEY synthetic exact runtime value,
   undeclared global native auth, protected baseline unchanged despite invalid foreign
   control declaration, absent foreign baseline name, and irrelevant foreign registration/deletion/reference/control/lifecycle/non-reference
-  update. Include own/shared/foreign SSLKEYLOGFILE exact-value cases as non-control. Preserve actual ACP identity/lifecycle rather than synthesize exit0.
+  update. Include own/shared/foreign SSLKEYLOGFILE exact-value cases as non-control.
+  Inject every irrelevant change inside that actual consumer's own window: start capture
+  to admission, checkpoint capture to Session CAS, resume capture to new admission.
+  Compare owning A scoped event kinds/counts against the unchanged-reference control,
+  ignoring identities/timestamps and preserving normal operation audit. One compiled
+  raw-roster-equality operator per boundary must die on that actual-consumer positive. Preserve actual ACP identity/lifecycle rather than synthesize exit0.
 - Per-invocation private hooks after snapshot and immediately before final admission use
   a second Store connection to mutate own refs or register/replace a foreign reference.
   Assert no child/native wire/consumed-input intent and rolled-back admission; unchanged

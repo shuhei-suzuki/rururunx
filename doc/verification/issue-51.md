@@ -144,3 +144,17 @@ remain expected; no additional A error/audit derived from irrelevant foreign cha
 The predicate wording now unambiguously says registry-forbidden named baseline keys.
 This acceptance/wording-only delta receives scoped Requirements7 fix rereview before
 Design2; no provider or Store implementation/test execution is claimed.
+
+
+## Requirements7 approval before Design2
+
+Independent Requirements7 approved1688a85108593cc4133b4dd554b51c1e12e88b84 with no
+Critical/High/Medium finding or unresolved blocker; natived2936e70 completed and owned
+cleanup verified. Raw resumed attribution remains unverified. H01/H02 were rereviewed
+and accepted. Optional I01 is verified as implementation-level causal precision and
+is adopted in Design2, without another normative requirement change: hook mutation
+inside each actual start/checkpoint/resume capture-to-admission/CAS window, one compiled
+raw-roster operator per boundary, owning event kinds/counts unchanged-control oracle
+ignoring identities/timestamps. No test or implementation acceptance is inferred.
+Two independent Design2 fix reviews next assess full helper/Actor boundary and actual
+Workflow/Generic producer excerpts omitted from their prior inputs; no Rust edits yet.
