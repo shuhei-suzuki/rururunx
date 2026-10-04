@@ -459,3 +459,11 @@ are not generic managed permissions. [Design23](../issue-19-design.md#design23-c
 counts every Workflow context publication, requires actual maintenance effect
 reservation and sealed43 closed-receipt binding, and keeps60/14 producer/recovery
 and native acceptance explicitly pending. Actual main3/component5 state is unchanged.
+
+
+[Design24](../issue-19-design.md#design24-reachable-failure-release-goal-admission-and-factual-rendering)
+separates allocated-unbound non-success receipt release from active-only43 binding,
+repeats actual23 Running/accepted-DAG admission at marker/prep/consumption/ALLOW and
+marks ALL rendered checkpoint events as unverified caller classification. Bounded
+observations/body/headroom, exact private event names and atomic restore+receipt remain
+pre-code/native integration gates; schema3 main and unmerged component5 stay factual.

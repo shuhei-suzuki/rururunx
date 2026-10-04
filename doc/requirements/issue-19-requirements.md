@@ -529,7 +529,8 @@ baseline is5, each preserved until actual composed release/migration/profile gat
 actual58 producer; candidate refusal/drain controls stay reachable. Latest closed
 Session-less predecessor selects Fresh, refusal chain cannot be skipped. Workflow
 history256/generation64 and atomic phase-context publication bound retry growth.
-Promoted caller-classified Consultant history renders its unverified provenance.
+All own-Task and promoted checkpoint events render UNVERIFIED CALLER CLASSIFICATION,
+including generic terminal Executor history; captured role is attribution, not authority.
 These are corrected pre-code contracts, not schema6 implementation/acceptance.
 
 
@@ -543,3 +544,19 @@ uses actual historical DENY/owned stop; Engine external observation stays pre-ma
 or in the actual effect-owned supervisor. Consumed-known-zero-wire stays held14;
 private event kinds share reserved rrx.private.* and every generic audit rejects it.
 All remain source/native integration gates, not an available managed/recovery API.
+
+
+Design24 keeps43 binding active-only, allowing only its ordinary Workflow Record
+metadata increment plus bounded audit. Cancelled/Failed TerminalRecovery may release
+an allocated but unbound attempt WITHOUT SessionID write only from the actual owned
+current settlement receipt and exact frozen allocation/operation/input/body pins;
+missing proof/Lost remains held, never success. Actual composed23 Running Goal/accepted
+definition/no hold/listed DAG/verified hard-prerequisite readiness is checked at marker,
+preparation, first/new consumption and ALLOW in their authority transaction; absent
+port is Unsupported. Historical ACK/DENY/cleanup retain separate factual guards.
+All own/promoted event rendering remains caller-classified. Gate observations cap64
+per attempt; new Workflow bodies cap8 MiB with64-KiB closure headroom before external
+claims/JSON scans. Restoration and NoCurrentDispatch receipt are one settlement tx;
+private emitted events use exact rrx.private.* constants. A prewire failed Continue
+forces Fresh until a new admitted/settled Fresh, preserving lineage history/budgets.
+These are proposed pre-code predicates and acceptance controls, not production proof.

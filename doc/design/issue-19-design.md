@@ -3,7 +3,7 @@
 Status: actual main80452f4 is schema3; this unmerged component source is5. Proposed
 schema6 remains fixture-only/pre-code until its independent gate and actual composed
 source/native production release. No Phase::DecisionReview or native producer is
-created by prose. The schema6 canonical writer table below plus Design16–23 private
+created by prose. The schema6 canonical writer table below plus Design16–24 private
 port/bounds define proposed native authority. Earlier schema5 protocol examples are
 historical component context ONLY and cannot authorize a managed/public writer;
 artifact/encoding contracts continue where this table does not supersede them.
@@ -22,18 +22,29 @@ is separately permitted under authorized lifecycle holds, never launch/ALLOW.
 | --- | --- | --- |
 | Initial unmanaged Task or NoTask nonterminal Session | None | Unsupported before effects; future58 NoTask private port is separate |
 | Initial terminal unallocated factual history | Generic factual writer | Unverified captured classification, no launch/cleanup authority; no Lost or allocated-owner replacement |
-| Managed initial Starting / native setup binding | Actual operation-bound private preparation | Current full frame/head/lifecycle/CAS; monotonic requested→effective binding; effects_started before Session/effect |
-| First/new consumed input (including Starting→Starting) | Actual operation-bound NativeCAS | Current full CPP/head/frame/source + P/G/T/own Session/locks/activity; unique consumption committed before bytes |
+| Managed initial Starting / native setup binding | Actual operation-bound private preparation | Same-tx composed23 admission; current full frame/head/lifecycle/CAS; monotonic requested→effective binding; effects_started before Session/effect |
+| First/new consumed input (including Starting→Starting) | Actual operation-bound NativeCAS | Same-tx composed23 admission; current full CPP/head/frame/source + P/G/T/own Session/locks/activity; unique consumption committed before bytes |
 | Consumed Starting→Running acknowledgement | Actual owned historical acknowledgement | Exact current admitted tuple/consumed UUID, same attempt; no re-admission or new payload |
 | Admitted Waiting/pending permission or fixed DENY observation | Private Acked/DenyHistorical | Original input/actor pins and provider-specific activity; no prepared consumption or grant |
-| Tool/action ALLOW | Private AllowCurrent + actual trusted grant proof | Full current CPP/head/source/P/G/T/own Session/locks/activity before wire; no historical fallback |
+| Tool/action ALLOW | Private AllowCurrent + actual trusted grant proof | Same-tx composed23 admission; full current CPP/head/source/P/G/T/own Session/locks/activity before wire; no historical fallback |
 | Current managed non-Lost terminal / receipt | Actual owned supervisor settlement | Actual current native outcome or eligible NoCurrentDispatch + complete required owned cleanup; immutable exact receipt/body |
-| Exact prior terminal restoration before current dispatch | Actual private restoration producer | Exact private prior checksum, no current admit/consume/uncertainty; never current success |
+| Exact prior terminal restoration before current dispatch | Actual owned settlement producer | Same Immediate transaction as the new operation's NoCurrentDispatch receipt/body/audit; exact private prior checksum, no current admit/consume/uncertainty; never current success |
 | Fresh higher-input continuation | Sealed managed Fresh/Continue selector + new operation | Exact latest closed predecessor/receipt; Continue actual registry proof; new context/frame/full current CAS |
 | Managed monotonic Lost diagnostics | Actual private owned observation | Actor/input/intent pinned, conservative flags only; held shares/locks, no receipt or completion |
 | Any Lost→non-Lost or consumed-uncertain release | None here | Actual14 recovery required; generic terminal labels and late diagnostics cannot release |
-| Workflow native SessionID None→Some binding | Sole private43 record-only binder | Exact allocation/private prep/admit OR sealed known-current closed-receipt proof; full active-owner CAS; no Session/Task/P/G/lock write |
-| Workflow closure/retry/escalate/invalidate/release | Exact private receipt predicate | Every allocated marked owner settled by required class; no label-only reset; #41 unmarked invocation-owner policy stays separate |
+| Workflow native SessionID None→Some binding | Sole private43 record-only binder | Exact allocation/private prep/admit OR sealed known-current closed-receipt proof; full active-owner CAS; ordinary Workflow Record version/updated_at increment + one bounded reserved audit only, no Session/Task/P/G/lock write |
+| Workflow closure/retry/escalate/invalidate/release | Exact private receipt predicate | Every allocated marked owner settled by required class; non-success TerminalRecovery may leave session_id None with exact allocated receipt proof, never success/binding; no label-only reset; #41 unmarked invocation-owner policy stays separate |
+
+The dispatch-marker transaction also invokes the SAME private composed23 admission
+predicate as preparation, first/new consumption and AllowCurrent in its Immediate
+transaction: Registered Project, exact accepted goal_authority/definition digest,
+Running Goal without a whole-Goal hold, exact listed DAG Task membership and verified
+WorkflowSuccessProof for EVERY hard prerequisite. A ready report, Merged label or
+Created/Analyzing Goal is insufficient. Continuation follows23 revocation-only
+current prerequisite/input predicates; self-owned operation is not a competing claim.
+Absent actual composed23 predicate means Unsupported before effects, not a weaker
+active-Goal fallback. Historical acknowledgement/DENY/observations and actual factual
+settlement retain their separate guards and do not require new dispatch readiness.
 
 All CPP/rule/source integrity checks are bounded observations outside SharedStore,
 followed by exact same-transaction authority revalidation; no OS-atomic FS claim.
@@ -1178,7 +1189,7 @@ ordinary actor ownership and universal Lost rules remain global.
 
 | Outcome | Head/frame and lifecycle | Private writes |
 | --- | --- | --- |
-| Validated fresh Starting/pending binding/first Running/first consumed | Latest complete frame, live checkpoint head; active Project/Goal, nonterminal admissible Task; Executor ReadyForPr/PrCreated refused | Preparation/admission/consumed ID as applicable; typed Workflow owner allocation |
+| Validated fresh Starting/pending binding/first consumed | Latest complete frame, live checkpoint head; same-tx composed23 Registered Project/exact accepted Running Goal/no hold/listed DAG/hard-prerequisite proofs, nonterminal admissible Task; Executor ReadyForPr/PrCreated refused | Preparation/admission/consumed ID as applicable; typed Workflow owner allocation |
 | BoundHistorical | Exact old admitted digest, same pinned input/intent, old nonterminal non-Lost; no live head/frame comparison. Existing CAS active Goal/nonterminal Task/Executor ReadyForPr fences remain | Only permitted monotonic initial binding digest update, no new consumption |
 | Acked/ConsumedHistorical | Exact existing pair/UUID and unchanged actor/input/intent; no current head comparison, no fresh input | None |
 | RestoredPrior | Exact frozen canonical prior checksum and no current admission/consumption/uncertainty; no live head comparison | None |
@@ -1647,7 +1658,7 @@ only from its tracked invocation's actual no-dispatch/settled-setup state. Absen
 of Session, PID or allocation is insufficient. After preparation, this class also
 requires no current private admitted/consumed input and no dispatch uncertainty.
 Dropping the handle before supervisor transfer or while still unsettled emits a
-bounded best-effort native.operation.abandoned audit/attention record, never a
+bounded best-effort rrx.private.operation.abandoned audit/attention record, never a
 receipt or release. Lock poisoning/publication failure cannot erase the operation;
 status derives durable attention from the outstanding operation even if the Drop
 audit itself fails. A cancelled-before-transfer controlled case proves this path.
@@ -1738,14 +1749,20 @@ new-open-attempt validation never substitutes a historical receipt for current p
 | Pre-marker, no operation | Separately reviewed Issue41 invocation-owner rule only; never receipt fiction |
 | Post-marker, no Session/allocation, matching NoCurrentDispatch receipt | Failed/Interrupted non-success closure, explicit retry replacement or TerminalRecovery; same-tx exact operation/claim/frame and no owner. Succeeded impossible |
 | Post-marker, no Session/allocation, no receipt | Held for actual supervisor settlement or private Issue14 recovery |
-| Allocated current failed preparation with NoCurrentDispatch receipt | Non-success closure with exact frozen preparation/terminal receipt body |
-| Allocated older restored terminal with NoCurrentDispatch receipt | RestoredPriorNotAdmitted failure/interruption only; exact frozen checksum and no current admitted/consumed input |
-| Allocated known current terminal receipt | Existing metadata/claim checks; Succeeded additionally bound Exited + actual successful outcome + exact current admitted/consumed pair |
+| Allocated current failed preparation with NoCurrentDispatch receipt | Non-success closure/TerminalRecovery with exact frozen preparation/terminal receipt body; unbound session_id may stay None |
+| Allocated older restored terminal with NoCurrentDispatch receipt | RestoredPriorNotAdmitted failure/interruption/TerminalRecovery only; exact frozen checksum and no current admitted/consumed input; unbound session_id stays None |
+| Allocated known current terminal receipt | Non-success TerminalRecovery can leave unbound session_id None with exact allocation/current receipt proof; existing metadata/claim checks; Succeeded additionally bound Exited + actual successful outcome + exact current admitted/consumed pair |
 | Missing operation for marked/allocated post-epoch native context, stale/foreign receipt, Lost/uncertain owner | Corruption/hold; never generic label fallback |
 
-The no-Session receipt row explicitly updates retry and TerminalRecovery's old
-session_id.is_some() || !dispatch_started check: accept this exact non-success
-receipt alternative in the same transaction, and nothing weaker. No automatic
+Both no-Session and allocated-but-unbound receipt rows explicitly update retry and
+TerminalRecovery's old session_id.is_some() || !dispatch_started check. The sole
+non-success alternative derives exact allocation (or its proved absence), operation,
+current receipt/body/version and input/actor pins in that same transaction. It may
+release a Cancelled/Failed decision under inactive owners after actual owned cleanup,
+leaving session_id None; it neither binds a Session nor grants dispatch/success.
+Allocated NoCurrentDispatch requires tracked no current admit/consume/uncertainty;
+KnownCurrentTerminal requires an actual owned current outcome and complete cleanup,
+not cancellation bookkeeping. Stale/foreign/missing proof or Lost retains the claim. No automatic
 ordinary-observer release is added. Original #41 pre-marker reserve-owner policy
 is not a substitute or prohibition for this post-marker managed receipt row.
 
@@ -2416,15 +2433,17 @@ obligations/shared exhaustion or physical holds. Controls at255/256/257 history 
 63/64/65 generations prove no overflow marker/context/operation and no reset.
 
 Role-classified factual Consultant history is explicitly UNVERIFIED CALLER CLASSIFICATION.
-Every cross-Task promoted event includes that marker in the typed provenance and
-actual rendered target frame; its content/hash proves captured bytes, not native
+EVERY retained event, own-Task historical_checkpoint AND cross-Task promotion,
+includes that marker in the typed provenance and actual rendered target frame; its content/hash proves captured bytes, not native
 origin or assertions. Unknown/legacy role provenance defaults to caller-classified.
 No generic initial terminal record can produce owned-native role provenance; future
 actual retained58 or separately reviewed producer may supply scoped native proof
 only through its actual private port. This never broadens58 to Task Consultant launch.
 Target accepted Goal/Task constraints remain authoritative and original scope/hash/
-actor/event provenance remains immutable. Test a generically inserted Consultant
-terminal history promotes only with the explicit marker, and caller JSON/role change
+actor/event provenance remains immutable. A generic terminal Executor role is also
+unverified; role never upgrades caller-supplied Constraint/Decision/NextAction text.
+Test generic terminal Executor own checkpoint and Consultant promotion both render
+the explicit marker, and caller JSON/role change
 cannot render it as verified native evidence or clear a blocker.
 
 
@@ -2473,7 +2492,8 @@ current input/admit/consumed actor/frame pins. It is not caller SessionID/receip
 returned native identity or a new live owner. Full current active P/G/T/Workflow Record,
 generation/index/context/dispatch marker, agent/native identity, lifecycle and pinned
 complete lock-set predicates stay identical to normal43 binding. Allowed writes are
-ONLY that exact active history.session_id None→allocated ID and bounded reserved audit;
+ONLY that exact active history.session_id None→allocated ID, ordinary Workflow Record
+version/updated_at increment and one bounded reserved audit;
 no Task/P/G/Session/lock body/version increments and no launch/ALLOW/resume permission.
 NoSession NoCurrentDispatch and restored-prior Exited are nonbinding. Dropped start
 future/restart with an exact settled successful receipt can then bind and close through
@@ -2521,3 +2541,65 @@ require reservation through every generic audit path; no look-alike admission ki
 is treated as trusted merely by public text. Existing ordinary session.saved etc
 are explicitly factual projections, not certificates. Actual audit/usage bounds
 remain and publication is atomic with its owning private write.
+
+
+### Design24: reachable failure release, Goal admission and factual rendering
+
+The canonical writer and closure tables now explicitly separate non-success
+TerminalRecovery from the active-only43 binder. Store derives a sealed non-success
+closure proof from exact scope/Workflow generation/index/context/marker, allocation,
+operation and its actual current receipt plus frozen Session Record/body/preparation/
+admission/consumed/restore pins. No caller SessionID/receipt JSON or terminal label
+creates it. Under an authorized Cancelled/Failed decision it releases only the exact
+settled claim, leaves any unbound session_id None, preserves Task decision/definition
+and grants no native permission. All ordinary unknown-gate/claim/CAS and operation
+phase_closed constraints remain. This is an actual owned cleanup path, not an inactive
+success-binding exemption or14 Lost recovery. Fixture barriers cancel AFTER allocation
+BEFORE start-result/binder, then actual producer settles; exact failure release passes,
+missing allocation/receipt class/current body/source pins fails, and Succeeded fails.
+The active-only success binder remains43's sole SessionID writer with only its ordinary
+Workflow Record metadata increment and bounded audit.
+
+Actual composed23 readiness is a repeated authority gate, not a display evaluator:
+marker, initial preparation, first/new consumption and each ALLOW all check the same
+private predicate in their committing transaction. Missing implementation rejects
+before effect. Tests/mutants exercise Created/Analyzing, absent/wrong definition digest,
+whole-Goal hold, nonmember DAG Task and merely-Merged/unverified hard prerequisite at
+EACH actual consumer; exact accepted Running/all prerequisite proofs is the positive.
+Historical ACK/fixed DENY/actual settlement continue under their existing constraints.
+
+Rendering never upgrades factual checkpoint text. EVERY event in own history and
+promotion carries UNVERIFIED CALLER CLASSIFICATION and retains captured Session/role/
+scope/hash as attribution only. Mandatory placement preserves history but does not
+make it an authoritative instruction; accepted Goal/Task/rules and verified evidence
+remain separately labelled. Generic terminal Executor 'skip tests' Constraint/Decision/
+NextAction must render with the marker, cannot clear a blocker/replace actual constraints
+or forge native output. Preserve exact stored/checkpoint hashes; the new rendered
+provenance belongs to the new version2 frame projection, not rewriting old events.
+
+Bound every new post-epoch attempt to64 gate observations and the complete serialized
+Workflow Record body to8 MiB. Charge claim observation slots before any EvidencePort
+execution; refuse the65th without external effect or a lost observation. Reserve64 KiB
+within that body cap for exact terminal/hold/closure metadata; ordinary claim/history/
+publication writes cannot consume that headroom. Existing bound text/authority/history/
+context limits still apply. SQLite enforces UTF-8 body bytes before JSON scans and Rust
+checks the complete rendered Record before every Workflow write; receipts remain
+separate so a bounded hold cannot erase owned cleanup. Overflow holds with evidence/
+operations intact, not repeated retries that reset review budgets. Boundary63/64/65 and
+8-MiB byte/headroom controls prove unchanged Record/Task/audit on refusal and receipt-
+backed closure using the reserved headroom. Legacy pre-epoch history remains read-only.
+
+Pin emitted events: rrx.private.operation.created, rrx.private.operation.effects_started,
+rrx.private.operation.abandoned, rrx.private.operation.phase_closed,
+rrx.private.settlement.published. All other compiled private producer constants likewise
+use rrx.private.*. native.operation.* and native.settlement.* are rejected historical
+aliases ONLY, never current emitted kinds; status/attention consumers use compiled
+constants. Exact prewire restoration exists ONLY in the same Immediate settlement
+transaction as its current NoCurrentDispatch receipt, Session body/version and audit.
+
+A failed prewire Continue closed with restored-prior NoCurrentDispatch is deliberately
+NOT transparent to predecessor selection. It is the latest closed Session-bearing
+attempt but did not deliver, so the next invocation must Fresh; later successfully
+admitted/settled Fresh can establish a new eligible chain. This declared availability
+limit avoids skipping to an older receipt/UUID and never resets budgets/authorship.
+Consumed-known-zero-wire remains held14, never this restoration alternative.
