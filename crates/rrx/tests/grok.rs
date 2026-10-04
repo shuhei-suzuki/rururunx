@@ -20,6 +20,21 @@ use fixture_support::{Fixture, git};
 use rrx::git as fixture_git;
 
 impl Fixture {
+    async fn start_structured_trait(
+        &self,
+        adapter: &dyn AgentAdapter,
+        schema: Value,
+    ) -> AdapterResult<Session> {
+        let lower = receipt_support::watermark(&self.store, &self.request.scope)
+            .expect("before-launch audit unavailable");
+        let mut request = self.request.clone();
+        request
+            .environment
+            .insert("RRX_EXPECT_SCHEMA".into(), schema.to_string());
+        let session = adapter.start_structured(request, schema).await?;
+        self.record_attempt(&session, lower, self.request.input.version);
+        Ok(session)
+    }
     fn review(&mut self) {
         rrx::git::WorktreeManager::lock_review(
             &mut self.store.lock().unwrap(),
@@ -225,8 +240,9 @@ async fn concurrent_native_reviewers_share_exact_lock_and_validate_structured_ve
     for status in [&e, &f] {
         assert!(
             registered.transport_succeeded(status),
-            "{:?}",
-            status.failure
+            "{:?}; {}",
+            status.failure,
+            fixture.receipt_message(status)
         );
         let output: Value = serde_json::from_slice(&status.stdout).unwrap();
         assert_eq!(output["verdict"], "DENY");
@@ -834,6 +850,74 @@ async fn installed_native_structured_decision_has_exact_response_correlation() {
         git(&fixture.request.worktree, &["status", "--porcelain"]),
         ""
     );
+}
+
+#[tokio::test]
+async fn structured_schema_rejection_precedes_all_session_and_spawn_effects() {
+    for registered_path in [false, true] {
+        let mut fixture = Fixture::new();
+        fixture.review();
+        let marker = fixture.directory.path().join("structured-spawn-observed");
+        fixture
+            .request
+            .environment
+            .insert("RRX_SPAWN_OBSERVED".into(), marker.to_str().unwrap().into());
+        let adapter = Arc::new(fixture.adapter());
+        let mut registry = AgentRegistry::default();
+        registry.register("grok".into(), adapter.clone()).unwrap();
+        let registered = registry.get("grok").unwrap();
+        let lower = receipt_support::watermark(&fixture.store, &fixture.request.scope).unwrap();
+        for schema in [
+            json!({"type":"object","properties":{"verdict":{"type":"string","const":"DENY"}}}),
+            json!({"type":"object","description":"x".repeat(16_384)}),
+        ] {
+            let result = if registered_path {
+                fixture.start_structured_trait(&*registered, schema).await
+            } else {
+                fixture.start_structured(&adapter, schema).await
+            };
+            assert_eq!(result.unwrap_err().kind, ErrorKind::InvalidInput);
+            let store = fixture.store.lock().unwrap();
+            assert!(
+                store
+                    .records(&fixture.request.scope, RecordKind::Session)
+                    .unwrap()
+                    .is_empty()
+            );
+            assert!(
+                store
+                    .events(&fixture.request.scope, lower, 100)
+                    .unwrap()
+                    .is_empty()
+            );
+            assert!(
+                !marker.exists(),
+                "rejected caller schema started native fixture"
+            );
+        }
+        let schema = json!({"type":"object","properties":{"verdict":{"type":"string","enum":["DENY"]},"reason":{"type":"string"}},"required":["verdict","reason"],"additionalProperties":false});
+        let session = if registered_path {
+            fixture
+                .start_structured_trait(&*registered, schema)
+                .await
+                .unwrap()
+        } else {
+            fixture.start_structured(&adapter, schema).await.unwrap()
+        };
+        let status = finished(&*registered, &session, &fixture).await;
+        assert!(
+            registered.transport_succeeded(&status),
+            "{:?}; {}",
+            status.failure,
+            fixture.receipt_message(&status)
+        );
+        assert!(
+            marker.exists(),
+            "following valid launch did not reach native fixture"
+        );
+        receipt_support::assert_receipt(&fixture.observation(&status).receipt);
+        registered.release((&session).into()).unwrap();
+    }
 }
 
 #[tokio::test]

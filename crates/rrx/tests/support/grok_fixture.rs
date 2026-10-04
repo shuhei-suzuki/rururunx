@@ -144,14 +144,15 @@ impl Fixture {
     pub(super) async fn start(&self, adapter: &dyn AgentAdapter) -> AdapterResult<Session> {
         let lower = receipt_support::watermark(&self.store, &self.request.scope)
             .expect("before-launch audit unavailable");
-        let session = adapter.start(self.request.clone()).await?;
-        self.attempts.lock().unwrap().insert(
-            session.id,
-            Attempt {
-                lower,
-                input_version: self.request.input.version,
-            },
-        );
+        let mut request = self.request.clone();
+        if request.role == SessionRole::Reviewer {
+            request.environment.insert(
+                "RRX_EXPECT_SCHEMA".into(),
+                json!({"type":"object"}).to_string(),
+            );
+        }
+        let session = adapter.start(request).await?;
+        self.record_attempt(&session, lower, self.request.input.version);
         Ok(session)
     }
     pub(super) async fn start_structured(
@@ -161,39 +162,22 @@ impl Fixture {
     ) -> AdapterResult<Session> {
         let lower = receipt_support::watermark(&self.store, &self.request.scope)
             .expect("before-launch audit unavailable");
-        let session = adapter
-            .start_structured(self.request.clone(), schema)
-            .await?;
-        self.attempts.lock().unwrap().insert(
-            session.id,
-            Attempt {
-                lower,
-                input_version: self.request.input.version,
-            },
-        );
+        let mut request = self.request.clone();
+        request
+            .environment
+            .insert("RRX_EXPECT_SCHEMA".into(), schema.to_string());
+        let session = adapter.start_structured(request, schema).await?;
+        self.record_attempt(&session, lower, self.request.input.version);
         Ok(session)
     }
-    // Shared with library receipt controls; this route is exercised by the
-    // separate registered structured integration target.
-    #[allow(dead_code)]
-    pub(super) async fn start_structured_trait(
-        &self,
-        adapter: &dyn AgentAdapter,
-        schema: Value,
-    ) -> AdapterResult<Session> {
-        let lower = receipt_support::watermark(&self.store, &self.request.scope)
-            .expect("before-launch audit unavailable");
-        let session = adapter
-            .start_structured(self.request.clone(), schema)
-            .await?;
+    pub(super) fn record_attempt(&self, session: &Session, lower: i64, input_version: u64) {
         self.attempts.lock().unwrap().insert(
             session.id,
             Attempt {
                 lower,
-                input_version: self.request.input.version,
+                input_version,
             },
         );
-        Ok(session)
     }
     pub(super) async fn resume(
         &self,
