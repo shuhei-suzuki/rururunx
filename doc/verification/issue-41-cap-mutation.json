@@ -22,5 +22,10 @@
     "stderr second loop is not reached in failed mutant run",
     "wrapper producer Unknown(size or deadline) supplies no causal size guard credit",
     "historical46 size operators remain masked/no-credit"
-  ]
+  ],
+  "mutant_exit_code": 101,
+  "mutant_test_seconds": 0.08,
+  "mutant_compile_seconds": 20.68,
+  "verbatim_panic_excerpt": "thread 'adapter::inspection::tests::prepared_stream_cap_rejects_complete_zombie_prefix_before_hidden_live_row' (224175593) panicked at crates/rrx/src/adapter/inspection.rs:474:32:\nreader accepted a truncated all-Z prefix: true",
+  "source_reasoning_only": "following zero-length read could set EOF and hide remaining live row; not executed by this failed mutant"
 }
