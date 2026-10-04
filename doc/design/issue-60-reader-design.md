@@ -295,8 +295,26 @@ late-release. Readers on a retained but no-longer-driven runtime remain unobserv
 
 ## 7. Terminal execution frame and retention storage
 
-Outer supervisor frame owns runtime, assets, ticket and permit bundle; its std thread
-runs the inner future by mutable borrow inside catch_unwind. On healthy completion
+A preallocated OpRecord is retained by the pool BEFORE thread Begin. It owns the
+runtime/reader asset vault and native asset vault through strong references; actual
+Child/pipe/JoinHandle storage is assigned there before the next fallible step.
+Each execution frame exclusively borrows its own vault into inner work. These
+vaults have separate private mutexes from the pool/publication locks; admission,
+caller Drop/result bookkeeping NEVER acquires a vault held during native work.
+Pool mutation only handles record references/counters, never drops a vault.
+
+An OUTER-frame unwind therefore drops only borrowed guards, not owned Runtime,
+Child or JoinHandles; the pool's actual vault remains retained, possibly poisoned.
+The publication guard still wakes the caller and the preavailable native lane.
+Vault poison is inspected only for retaining existing assets via into_inner, never
+new admission/counter reset/implicit asset destruction. No fallible allocation is
+needed to create a retention container after effects: the record was preallocated.
+Removing a record is permitted only after the healthy owner observed/took/destroyed
+all actual resources, so its remaining vaults contain no native/runtime handles.
+This is process-local custody, not a durable resource-registration capability.
+
+The outer supervisor frame holds those vault references, ticket and permit bundle;
+its std thread runs the inner future by mutable borrow inside catch_unwind. On healthy completion
 it observes/destroys that future, joins the actual completed native worker, verifies
 no resource/job is pending, and drops reader/runtime/native settled resources BEFORE
 terminal permit release. The permit bundle has NO releasing Drop/RAII path: unwind/Drop retains all4.
