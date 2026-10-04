@@ -28,7 +28,7 @@ passed fixture. The matrix is the single current native acceptance inventory.
 | S6-16 | Actual composed caller/projection/schema readiness | All actual native/Generic/Fake and Goal/binding/effect/recovery ports; phase-closed pending-Goal drain; bounded prerequisite transaction≤128 rows,4096 bytes each/512 KiB aggregate; capacity in same claim transaction; synthetic proof never production readiness (Design31/32/33/34/35) |
 
 Each stable key requires named exact consumer tests AND meaningful causal mutants
-in final source evidence; it is not an invented available API or a checkmark. The named Design16 and Design18–35 contracts
+in final source evidence; it is not an invented available API or a checkmark. The named Design16 and Design18–37 contracts
 and the canonical writer table define the required private predicates. Source evidence
 must map each key to actual fixture/result SHA and list unready production ports.
 
@@ -305,7 +305,11 @@ Private preparation/admission proves exact input currency, not native transcript
 truth. Provider private Session ownership must reject unregistered historical
 UUID/native_ref before native resume or wire delivery. Factual Consultant/history
 checkpoint append remains supported with caller-classified provenance and cannot
-certify Workflow success or native completion. Pending Starting initial actor
+certify Workflow success or native completion. For a Task with an open managed
+phase, factual events use the same owned staging contract: no generic checkpoint
+head append or admitted-context rewrite. Closed historical publication retains its
+existing provenance checks; historical rows never mint managed staging authority.
+Pending Starting initial actor
 binding revalidates the latest full frame/head/lifecycle and updates its private
 preparation pair atomically; it never grants delivery. Migration verifies all
 legacy typed checkpoint references before mutation, retaining actual old-producer
@@ -521,8 +525,14 @@ Every operation column/marker mutation is SQL constrained, including REPLACE and
 already-marked inserted history. Generic managed Goal completion is fenced using
 durable post-epoch Workflow/operation history, not only outstanding operations;
 actual Issue23 accepted definition authority further governs its integrated path.
-Same-Task live checkpoint append preserves admitted history; new context/input
-remains operation/current-head fenced. Receipt freeze permits only exact record-only
+Same-Task live checkpoint capture stages mandatory facts under the actual owned
+operation, preserving the admitted input AND published head. Durable ordered
+publication follows genuine settlement and exact phase closure; every new same-Task
+prepared input/marker/context ingress is held while staged facts remain unpublished.
+The fence is atomic with staging/closure, survives restart and refuses on quota or
+publication conflict with attention. This clarifies the earlier live-append timing
+example; it does not permit loss of mandatory facts or relax head currency.
+Receipt freeze permits only exact record-only
 late Workflow binding and closure, never Session mutation. These require actual
 caller/transaction positives and causal mutants in source acceptance.
 
@@ -771,8 +781,8 @@ conformance remain mandatory and unimplemented, not earned by this document revi
 
 Design35's normative finite transaction manifest separates compact proof≤128rows/
 512 KiB from actual full P/G/T/W/Context≤8-MiB bodies, ownSession≤4 MiB, private
-operation/receipt≤4 MiB, authority tuples≤2 MiB, full256locks≤4 MiB and complete
-physical4096-scope-row lookup≤64 MiB. Actual endpoint/duplicate indices never
+operation≤4 MiB, complete frozen receipt≤64 KiB, authority tuples≤2 MiB,
+full256locks≤4 MiB and complete physical4096-scope-row lookup≤64 MiB. Actual endpoint/duplicate indices never
 replace native registry proof or truncate a conflict scan. Full body-write/SQL
 JSON cost is reported, not silently exempted; actual contention tests remain required.
 S6-13 byte-guards ALL CHECK surfaces including4-MiB generic audit/1-MiB Usage before

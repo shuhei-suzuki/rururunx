@@ -401,3 +401,10 @@ Managed condensation stages evidence without changing the live checkpoint head,
 then publishes only after genuine settlement and phase closure. Receipt64KiB and
 operation4MiB are distinct complete-row limits. Local selected-child/reader custody
 in60 and the unavailable native6 backend do not themselves produce that authority.
+
+Design37 is the proposed finite correction to Design36: the sole retained
+supervisor lends revocable actor message access, owns effect resources before
+adapter unwind/await, and every new Task input waits on durable ordered staged
+publication. Frozen receipts are64KiB complete encoded records, separately from
+4-MiB operations; status-aware factual UUID negatives grant no native ownership.
+No actual producer/backend/epoch or source acceptance is created by this design.

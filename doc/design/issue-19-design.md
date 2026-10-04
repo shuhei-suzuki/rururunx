@@ -3,7 +3,7 @@
 Status: actual merged main is schema3; this unmerged component source is5. Proposed
 schema6 remains fixture-only/pre-code until its independent gate and actual composed
 source/native production release. No Phase::DecisionReview or native producer is
-created by prose. The schema6 canonical writer table below plus named Design16 and Design18–36 private
+created by prose. The schema6 canonical writer table below plus named Design16 and Design18–37 private
 port/bounds define proposed native authority. Earlier schema5 protocol examples are
 historical component context ONLY and cannot authorize a managed/public writer;
 artifact/encoding contracts continue where this table does not supersede them.
@@ -1221,8 +1221,9 @@ fully settled factual observations/audit/usage remain separately possible with
 pinned actors. Do not relax those lifecycle checks to hide a binding conflict.
 The latest-head exemption is only for history; a new consumed UUID always follows
 Validated and requires current active ownership. Mutate the per-outcome selector
-and cover late Waiting binding after checkpoint append plus paused/ReadyForPr
-rejection with no new model input.
+and cover late Waiting binding after owned checkpoint staging (no head/pair change)
+plus paused/ReadyForPr rejection with no new model input. Older append examples
+remain historical component5 only.
 
 After schema6, every fresh Workflow native Executor/Reviewer phase requires actual
 typed19 frame publication, explicit own checkpoint head (including none), complete
@@ -1740,9 +1741,11 @@ Session ID and persisted Record version, private preparation version/digest,
 optional admitted version/digest/consumed UUID as an all-present/all-null triple,
 optional frozen prior-restore digest, settlement class and known outcome,
 bounded native turn/ref attribution, runtime-instance UUID and observed timestamp.
-Fixed fields plus bounded attribution fit 64 KiB; refs are at most 8192 UTF-8 bytes,
-reason at most 8192 bytes. It contains no model transcript, prompt, environment or
-JSON credential. Receipts accept NO UPDATE, including Session NULL→Some; only
+The COMPLETE encoded receipt fits64 KiB. Source native refs/reason remain at most
+8192 UTF-8 bytes; Design37 defines the explicit bounded attribution/blob route and
+static worst-case encoding, including escaping. These raw field maxima are not a
+claim that their full escaped copies jointly fit the receipt. It contains no model
+transcript, prompt, environment or JSON credential. Receipts accept NO UPDATE, including Session NULL→Some; only
 operation rows have the separately constrained one-time allocator binding.
 Receipts and epoch rows reject UPDATE, DELETE and INSERT OR REPLACE; inserts require
 their private producer and one scoped unique identity, in addition to every
@@ -2578,9 +2581,11 @@ Fixture actual supervisor completes receipt before start-result delivery, then d
 that delivery and runs the actual private binder; foreign/stale/restored/missing owner
 mutants reject. A controlled fixture may not seed private SQL/claim success from labels.
 
-A live checkpoint append leaves admitted input unchanged but can invalidate an
-outstanding ALLOW. Stale-head grant sends zero ALLOW bytes and takes the existing
-handle-bound fixed DENY path if that provider's existing activity predicate permits;
+HISTORICAL component5 live-append example, superseded for managed phases by
+Design36/37: own live capture STAGES facts and leaves the admitted pair/head
+unchanged. Actual rule/HEAD/lifecycle or other immutable-governing-source revocation
+still invalidates an outstanding ALLOW. Such a stale grant sends zero ALLOW bytes
+and takes the existing handle-bound fixed DENY path if that provider's existing activity predicate permits;
 otherwise actual supervisor stop/cancel owns cleanup and receipt. No timeout-only
 idle permission waits are invented. Claude Blocked still cannot send prewire DENY;
 Codex unchanged Waiting Decline preserves its existing behavior. Cancellation with
@@ -2945,8 +2950,10 @@ forged/stale/unknown receipt, original-frame drift and public start-Err negative
 claim with zero retry dispatch. Consumer closure/receipt/source checks receive causal mutants.
 This actual19/23/8 source port remains pending, not an implemented Phase variant/API.
 
-S6-05 explicitly covers consumed Starting, live own checkpoint append, then historical
-Running ACK succeeding with original input pins. Native-originated permission cancellation
+S6-05 explicitly covers consumed Starting, owned live checkpoint STAGING with no
+published-head/pair change, then historical Running ACK with original input pins.
+The earlier component5 live-head-append positive is historical, not a managed writer.
+Native-originated permission cancellation
 (including Claude control_cancel_request) is private historical observation with the existing
 provider-specific target-state/activity predicate; Blocked→Running still rejects. Codex
 OperationDecision::Cancel is a fixed non-grant protocol response via DenyHistorical, never
@@ -3217,7 +3224,7 @@ schema5 source or installed production ports.
 | Source/outcome/native-result blob INSERT | Actual captured source/owned result/settlement producer | Exact typed immutable bytes/hash/scope + quota charge, no row-only native verdict; immutable identity dedup only | 08/10/13 |
 | New-Task epoch INSERT | Schema-owned Task AFTER INSERT trigger | Exact inserted scoped Task, boundary zero, exact-version fence; Task insert rolls back if epoch fails | 01/02 |
 | WorktreeLock activate/change/deactivate | Actual authorized lock/closure consumer, no generic owner release | All matching native operations/maintenance reservations counted regardless Session label; no lock mutation/release while its operation/phase owns it except exact required final closure | 03/09/14 |
-| Pending Goal authority barrier | Actual trusted23/24 queued-change producer | Durable scoped accepted proposal + expected Goal version, no Goal version change merely to queue; marker refuses while pending | 16 |
+| Pending Goal authority barrier | Actual trusted23/24 queued-change producer | Durable scoped accepted proposal + expected Goal version, no Goal version change merely to queue; marker refuses while ACTIVE; held14 demotion preserves NONactive proposal/attention, no current definition/version change | 16 |
 | Task non-lifecycle edit while operation open | None through generic put_task | Operation-aware typed hold; issue/title/criteria/executor/reviewers cannot rewrite native-fenced Task/version during open phase | 05/10/16 |
 | Project non-lifecycle edit while operation open | None through generic put_project | Project-wide open-phase hold, including name/max_tasks bookkeeping; authorized lifecycle Block remains available, remove requires actual complete idle ownership | 06/10/16 |
 | Compact prerequisite certificate / revocation | Actual23 trusted full-proof publisher / authorized revocation | Out-of-lock evidence extraction plus exact publication CAS; immutable scoped proof and monotonic revocation, bounded native transaction reads | 02/04/06/16 |
@@ -3291,7 +3298,7 @@ context/blob/managed-authority bytes per Workflow; no unsupported 256×payload c
 **Goal change drain barrier.** Genuine trusted23/24 queued authority changes use a
 durable scoped pending-request/barrier under accepted policy and original expected
 Goal version. Queueing does NOT rewrite Goal.version. ALL new native markers for that
-Goal observe this same pending barrier in their admission transaction and return a
+Goal observe this same ACTIVE pending barrier in their admission transaction and return a
 typed retryable pending-authority hold without claim/input; already owned phases retain
 their exact historical observation/settlement rights. A queued authoritative mutation
 may apply only after EVERY open phase that pins that Goal version has phase_closed=true
@@ -3302,8 +3309,10 @@ The actual23/24 controller drain/check/apply transaction revalidates complete cu
 ownership and expected Goal authority, applies only authorized additive DAG/lifecycle
 policy, then clears the barrier atomically. New marker admissions remain blocked until
 that transaction completes; repeated scheduling cannot starve the pending change with
-new phase openings. Lost/unknown/held closure preserves barrier and honest14 recovery
-attention; no bounded-time drain promise for unknown native work. A stale/cancelled
+new phase openings. Lost/unknown/held closure preserves the queued proposal and honest14 recovery
+attention; Design37 derives NONactive demotion of an impossible drain without
+changing any current definition, grant or physical hold. No bounded-time drain
+promise exists for unknown native work. A stale/cancelled
 proposal may be retired only by its actual trusted policy, with factual reason and
 no native release. Accepted Goal definitions remain immutable. Source acceptance needs
 actual19/23/43/24 producer/controller: settle→pending change BEFORE lost-result binder
@@ -3761,7 +3770,7 @@ principal mutants; no fake stop or automatic current-row authority recapture.
 **Project authority drain and Goal pointer writer composition.** A separately typed
 trusted Project pending-authority request is bounded, scoped and durable, as the Goal
 barrier is. It does not change current Project definitions/source refs/version or grant
-permission. Fresh markers/claims in that Project wait while pending, allowing already
+permission. Fresh markers/claims in that Project wait while ACTIVE, allowing already
 admitted operations to settle under their ORIGINAL frame. Apply only after EVERY
 Project phase_closed and complete relevant ownership/physical exclusion, with exact
 expected Project version and genuine trusted configuration authority. Unknown/Lost
@@ -3920,7 +3929,7 @@ rollback/write-set control and causal mutant, not an optional available-when por
 | Managed gate_hold | Actual typed gate-policy owner; only bounded detail/held_reason W +one reserved link, at most8; no new result/grant/Task rewrite | 09/10/13 |
 | Managed terminal_decision | Actual23 lifecycle authority + original private op/complete predecessor; exact terminal decision W +authorized checked Task delta +one link | 09/10/16 |
 | Final phase_closed link | Genuine receipt AND actual current accepted gate/result proof; separate exact phase closure/Task/operation/receipt +one link; success never from native transport alone | 08/09/10/13/16 |
-| Project pending request/apply/retire | Genuine trusted configuration; bounded pending metadata/expected version; no current P/definition change while queueing; new claims wait, apply only actual full Project drain under CAS | 06/10/16 |
+| Project pending request/apply/retire | Genuine trusted configuration; bounded pending metadata/expected version; no current P/definition change while queueing; ACTIVE new claims wait, held14 NONactive proposal grants nothing; apply only actual full Project drain under CAS | 06/10/16 |
 | Managed idle Task definition/bookkeeping | Actual23/task policy trusted authority; allowed exact field projection, current idle CAS/lineage; generic/native changes refused even between phases | 05/10/16 |
 | Typed Goal context-pointer publication | Actual19+23 private head/source CAS; only context_version/updated_at, semantic version unchanged, immutable accepted Goal definition preserved | 12/16 |
 | Engine stop-request audit | Actual owned supervisor request; ONLY `rrx.private.operation.stop_requested` audit≤4096 bytes with exact retained op/frame/cause/current own CAS; no operation-column/Task/W mutation or outcome | 08/09/13/16 |
@@ -4126,3 +4135,158 @@ revoked predicates remains safe held14, not a new tolerance. A closed pristine
 Session-less refusal intentionally makes the next selector Fresh: it cannot skip
 the latest closed operation to adopt an older receipt. Record that availability cost;
 no hidden older-UUID resume or lineage/budget laundering is introduced.
+
+### Design37: post-return custody and ordered staged publication
+
+Status: finite correction of verified Design36 defects under the existing mandatory
+retention/current-input contract. No source port, epoch, backend or production
+certificate is created here. Main3/component5/candidate6 remain distinct. This section
+supersedes the specific Design36 borrow-only, publication-gap, variable receipt-fit
+and unclassified storage-retry claims; unchanged native/current/physical gates remain.
+Requirements307/524 now explicitly classify open-phase capture as staging. Design23/27
+old live-head-append examples are historical. Factual unallocated history can never
+write a managed stage or advance a head during an open managed phase.
+
+**Post-return access is a message channel, not custody transfer.** ManagedSetup may
+register an owned `'static` actor/job and mint one non-Clone, nonserializable revocable
+ManagedActorChannel, bound to the exact operation, runtime, actor, original frame and
+job generation. It only sends typed requests to the retained supervisor. The actual
+supervisor performs preparation/consumption, AllowCurrent, HostCallbackCurrent,
+historical observation and settlement-input publication under their DISTINCT current
+predicates. It owns the sole OwnedNativeOperation throughout. Actor channel existence
+is not admission, settlement or a Store credential; public Session/row/receipt cannot
+construct it. A post-return Grok actor or provider supervisor uses this channel, never
+a copied operation or fresh captured frame. Cancellation/closure revokes new effects
+and grants; already-owned jobs may still send attributed cleanup/outcome facts until
+the supervisor joins them. It cannot settle while any such job/callback is outstanding.
+Channel/runtime loss is ownership uncertainty, not successful receipt.
+
+The supervisor owns an OUTER resource inventory before it polls adapter code. Every
+managed process/connection/worker/reader creation goes through a registered effect
+primitive: it reserves the real job slot, records the effects_started boundary, and
+creates the resource INTO that outer custody without an intervening adapter await or
+fallible attach. Adapter code receives an opaque job identity and channel, not a
+local Child/socket awaiting later transfer. The supervisor polls the adapter future
+with unwind capture; custody is outside that unwind frame. Ordinary spawn/open/Git
+helpers are not a managed bypass. Inventory every reachable actual managed effect
+call site, including configured hooks/probes and post-return work. A profile without
+complete actual effect inventory/owned producer refuses BEFORE effects. This is an
+application producer contract, not an OS monitor for malicious same-UID code or an
+arbitrary descendant-death theorem. A direct-spawn mutant must reach the controlled
+consumer and cannot mint no-effect receipt; absent real effect visibility remains
+unready, rather than being certified from a false flag.
+
+The isolated LIFETIME source component implements retained supervisor custody,
+registered setup/channel requests and actual cancellation/join mechanics ONLY. Its
+closed synthetic resource producer is visibly scoped mechanical evidence, not a
+native backend. Real child/worker drop and panic-between-creation-and-return controls
+retain the outer anchor; returned-Starting then later actor callback/ACK controls use
+the same channel. Revoked/missing/reconstructed channel gives zero new effect/private
+publication. Actual managed native5/6/7/Generic admission/settlement remains unavailable
+until its producer/profile composes. Neither60's proposed selected-child holder nor6's
+F4 fixture grants this component a production setup cap.
+
+**Stages are durable, ordered and cannot be skipped.** The actual supervisor's
+attributed event port appends immutable managed_context_stages keyed by operation and
+monotonic sequence, with exact scope/actor/input attribution. The SAME Immediate
+append transaction installs/maintains the Task's durable unpublished-stage fence.
+The fence exists from first stage; phase_closed asserts and retains it atomically
+with exact closure and reserved audit. This is a required writer in the exhaustive
+union, not a new mutable operation JSON field or public checkpoint credential.
+All stage rows have byte-first bounds, exact epoch/producer guards, scope/FKs,
+append-only/no UPDATE/DELETE/REPLACE semantics and fresh/migrated golden parity.
+Stage bytes/count reserve from the existing COMPLETE checkpoint1-MiB/4096-event and
+Workflow128-MiB quota, including encoding/metadata/tail; maxima need not jointly fit.
+Unanticipated non-effect observations at capacity retain owned attention/non-success
+under the actual outcome predicates, never silently discard mandatory facts or
+fabricate known terminal cleanup. Irreversible effects require reserved outcome space.
+
+Every same-Task NEW prepare_task/draft Ready, phase-context publication, marker,
+retry/Fresh/Continue ingress checks this fence in its authoritative transaction.
+It refuses while any staged predecessor is unpublished; no next-input window after
+phase_closed. Passive frozen historical observation/physical-currency checks are not
+new model preparation and remain governed by their own producer. After genuine
+settlement AND phase_closed, the sole checkpoint producer consumes stages in exact
+closed-operation order under current semantic/source/own-head CAS. Its atomic
+checkpoint/head/audit transaction records exact stage coverage and clears only that
+published prefix/fence; it does not delete retained stage facts or rewrite input.
+The next fenced predecessor cannot be skipped. Closure-before-publication crash
+reopen sees the same durable fence and evidence; genuine controller reconciles this
+level predicate, never a notification or caller label. Overflow, stale head/source or
+missing producer keeps explicit held/NeedsContext attention, no new model input and
+no orphaned history. No source-ready implementation or restart authority is claimed.
+
+Cross-Task promotions remain immutable explicitly closed snapshots. A promotion
+cannot change an input pinned by an open phase. Generic factual Consultant append
+for an open Task refuses; only the genuine attributed supervisor may stage it.
+After closure its classified historical producer may publish under the same ordered
+fence. S6-12/13 controls race close→new preparation/marker, two staged predecessors,
+restart-before-publication and full-encoded overflow. Dropping any actual ingress
+fence or stage coverage guard must allow missing facts at THAT consumer and fail.
+
+**Receipt size is statically possible before effects.** Receipt source/lock/body
+references are exact bounded immutable identities/digests, never duplicate full
+bodies. At marker/profile qualification, encode its complete fixed portion and
+reserve at most32768 encoded bytes INCLUDING keys/escape/optional presence forms.
+Reserve the remaining32768 encoded bytes for dynamic attribution: at most four
+1024-UTF8-byte explicit prefixes (worst-case6× escaping=24576) plus at most8192
+encoded bytes for their typed labels/digests/lengths/overflow flags and continuation
+reference metadata. The actual DTO encoder/golden proves the complete worst case
+≤65536; raw8192-byte source ref/reason caps do not imply full inline copies.
+A maximum fixed plan that cannot fit refuses BEFORE the governed effect.
+
+Each over-prefix field is explicitly labelled with complete byte length/digest and
+an immutable charged outcome-blob reference; its complete source value is retained
+within the existing reserved≤1-MiB outcome blob when within the declared acquisition
+cap. This is lossless attributed reference, not silent truncation. Over acquisition
+cap or invalid native identity remains explicit incomplete/unknown held ownership;
+no unknown suffix may confer native binding/known completion. Never require a new
+post-effect allocation to retain overflow. Exact/plus-one raw fields, maximum
+continue_refusal and escaped UTF8 encoder controls prove the static receipt bound,
+blob charge and unknown case. Operation≤4 MiB remains separate. Current43Design10's
+4-MiB receipt description must be amended in the combined source manifest to64KiB;
+that companion gate is OPEN, not an existing compiled consumer.
+
+**Receipt Store outcomes are typed.** Published and ExactReplay use the fixed UUID
+and retained full proof; ExactReplay writes nothing. Contradiction retains owned
+attention. DefinitiveRefusal (constraint/trigger, epoch, size, identity or CAS) parks
+without unchanged Immediate retries. Only classified Transient BUSY/LOCKED or IOERR
+with confirmed rollback gets fair bounded100ms–5s publication retries of that SAME
+proof. CommitUncertain uses read-only exact durability reconciliation. Exhaustion
+retains custody/attention and does not infer native Lost, release or new dispatch.
+Constraint-ABORT/unchanged-wake and uncertain-durable replay controls distinguish these
+branches. Published genuine native uncertainty remains held14 regardless of storage.
+
+**Negative factual identity proof includes extraction status.** A byte-first guarded
+expression/VIRTUAL index extracts actual Session agent/native_ref mapping into
+identity_status=absent/ok/unindexable plus exact scoped factual key. Nested length
+checks precede JSON parsing. Mapping/body mismatch or unsupported shape is
+unindexable, not absent. Fresh and migration DDL are identical; adding a STORED
+column via unsupported ALTER is not the migration plan. Negative lookup performs
+≤2 compact key matches AND LIMIT1 relevant-scope unindexable probe; either duplicate
+or unindexable presence refuses. Nonindexable scope itself makes the bounded scope
+proof refuse, never disappear into NULL. Native positive owner/registry index remains
+separate. Index body equality/INSERT-REPLACE guards cover raw legacy disagreement;
+malformed historical duplicate and omitted-status-probe mutants reach sole43 binder.
+
+**Impossible drain keeps a NONactive proposal.** Only ACTIVE pending barriers block
+new applicable markers. Held14 is derived from genuine retained Lost/uncertainty,
+consumed-zero-wire, unknown/escaped resource or runtime-instance custody unknown;
+no arbitrary caller JSON may classify it as recovered. If an applicable owner enters
+that class after activation, the genuine pending-controller transaction demotes
+ACTIVE→NONactive with durable proposal/attention, no P/G/T/definition/source-version
+rewrite and no physical/native hold release. Re-activation checks the complete same
+owner set/current predicates and cannot race a held transition. Genuine revoked
+current grants still refuse; unaffected progress is permitted only by actual physical
+conflict proof. Accepted Goal definitions stay immutable; no held owner is excluded
+from eventual full drain. Queued proposal and demotion are explicit exhaustive union
+writers, not generic metadata exemptions. Active→Lost race/reverse race, unchanged
+versions, no new grant, then genuine full drain/apply are S6-14/16 controls.
+
+Design31/35's exhaustive union additionally contains: (1) exact supervisor stage
+append+unpublished fence/quota, (2) exact phase_closed preservation of that fence,
+(3) closed ordered checkpoint publication+covered-prefix clearance, (4) genuine
+pending-barrier activation/demotion/retire with no current definition rewrite.
+Each has complete rollback/write-set/epoch/Replace/byte/quota goldens and actual
+consumer mutants. These additions cannot count as implemented source or real
+native/58/60/14 readiness. Full #19 acceptance remains OPEN.
