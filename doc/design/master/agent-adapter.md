@@ -375,6 +375,12 @@ remain unchanged.
 
 ## 16. Native Codex implementation in progress (Issue #6)
 
+The following records the earlier selected-group component baseline. F1 section 17
+supersedes executable readiness/completion eligibility: the current source remains
+unfixed for whole-workload ownership until its design/source/consumer gates finish.
+These implemented protocol pieces do not advertise a genuinely supported native
+production workload profile or satisfy mandatory both-host/native acceptance.
+
 The explicit `codex::CodexAdapter` uses an owned private Unix WebSocket app-server
 and native thread UUID. Noninteractive execute, consultation, structured review,
 owned resume, checkpoint and nullable token/cache usage are implemented. Exact
@@ -455,6 +461,14 @@ ownership cannot cover prior capture. Unknown filter/content identity cannot be
 published as current. All native/runtime parties need real continuous both-side
 compatibility and already-live peer→Lost protection, preserving four-plus product
 concurrency. These are pending consumer contracts, not available ports.
+
+The proposed correction separates attempt-free readiness from attempt-bound permits,
+gates before registry mutation/effects, and retains unsettled actual owners in a
+bounded table independent of release/eviction/control replacement. Preparation error,
+checkpoint restoration, discovery and cleanup-helper execution also consume complete
+setup/resource cleanup authority; known selected-parent death cannot restore or release.
+Existing persisted terminal labels still release in generic consumers until actual
+Issues 19/58/60/14 integration; this design does not claim an implemented legacy hold.
 
 Initial no-backend Unsupported is a safety checkpoint only. Required both-host
 native Executor/Reviewer/Consult/resume/stop/Task attach remains open, with actual
