@@ -258,6 +258,8 @@ The command examples above describe the MVP target. Currently implemented:
   usage remains null. Provider adapters and execution/workflow CLI commands are
   still being implemented. See [adapter design](doc/design/issue-4-design.md).
 
+- Grok [terminal cleanup receipts](doc/design/issue-55-design.md) record bounded facts;
+  no process/PID/Lost safety change or native acceptance is claimed.
 
 ## License
 

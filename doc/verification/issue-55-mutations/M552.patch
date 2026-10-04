@@ -1,0 +1,13 @@
+diff --git a/crates/rrx/src/adapter/grok/mod.rs b/crates/rrx/src/adapter/grok/mod.rs
+index 21502c8..db24731 100644
+--- a/crates/rrx/src/adapter/grok/mod.rs
++++ b/crates/rrx/src/adapter/grok/mod.rs
+@@ -1037,7 +1037,7 @@ async fn supervise(mut actor: Actor, load: Option<String>) {
+         command.args(["--disable-web-search","--sandbox",if decision{"read-only"}else{"strict"},"agent","--no-leader","--agent-profile"]).arg(&owned.path).arg("stdio")
+             .current_dir(&actor.request.worktree).env_clear().envs(&actor.environment).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true).process_group(0);
+         actor.owner()?;if actor.stopped(){return Err(failure(ErrorKind::ProcessFailure,"native stop before spawn"));}
+-        let child=ProcessGroup::new(command.spawn().map_err(|e|failure(if e.kind()==std::io::ErrorKind::NotFound {ErrorKind::ExecutableMissing}else{ErrorKind::LaunchFailure},"native Grok could not spawn"))?,ownership.group(OwnershipStage::NativeChild))?;
++        let child=ProcessGroup::new(command.spawn().map_err(|e|failure(if e.kind()==std::io::ErrorKind::NotFound {ErrorKind::ExecutableMissing}else{ErrorKind::LaunchFailure},"native Grok could not spawn"))?,ownership.group(OwnershipStage::PreSpawn))?;
+         #[cfg(all(test,target_os="macos"))]
+         let child = { let mut child = child; child.inspection_plan = actor.entry.process_inspection.clone(); child };
+         actor.session.pid=child.child.id();process=Some(child);

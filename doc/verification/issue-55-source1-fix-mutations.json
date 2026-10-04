@@ -1,0 +1,147 @@
+{
+  "base": "8cac9048393d67e6db57d02f95689ec18b32368e",
+  "default_concurrency": true,
+  "production_limits_unchanged": true,
+  "runs": [
+    {
+      "operator": "M550U",
+      "file": "crates/rrx/src/adapter/grok/mod.rs",
+      "test": "adapter::grok::receipt_tests::dispatched_unknown_receipt_retains_result_error_and_reservation",
+      "head": "01944eeb91ed04acc68c793ad8dd42366e32a4a2",
+      "patch_sha256": "a017759a614b56689c914e27bdd0cea8af621c07fe24c00fcf92e831032b2d9f",
+      "exit": 101,
+      "compiled": true,
+      "intended_oracle": "receipt_shape_invalid",
+      "oracle_observed": true,
+      "dispatch_prerequisite_observed": true,
+      "killed": true,
+      "credit": "actual dispatched forcedUnknown missing receipt",
+      "elapsed_wall_seconds": 4.624,
+      "log": "/private/tmp/rururunx-issue55-M550U.log",
+      "operator_description": "Repeat missing receipt operator on forcedUnknown dispatched consumer",
+      "operator_family": "M550",
+      "public_patch": "issue-55-mutations/M550U.patch",
+      "raw_log_durability": "local temporary log only; public patch and bounded assertion excerpt below are durable",
+      "assertion_locations": [
+        "crates/rrx/src/adapter/grok/receipt_tests.rs:48:9:",
+        "crates/rrx/src/adapter/grok/../../../tests/support/grok_receipt.rs:270:5:"
+      ],
+      "bounded_assertion_excerpt": "\nthread 'adapter::grok::receipt_tests::dispatched_unknown_receipt_retains_result_error_and_reservation' (228423938) panicked at crates/rrx/src/adapter/grok/receipt_tests.rs:48:9:\nowned sanitized fixture failed; \nrunning 1 test\ntest adapter::grok::receipt_tests::dispatched_unknown_child ... FAILED\n\nfailures:\n\nthread 'adapter::grok::receipt_tests::dispatched_unknown_child' (228423940) panicked at crates/rrx/src/adapter/grok/../../../tests/support/grok_receipt.rs:270:5:\ncleanup_receipt_unavailable=receipt_shape_invalid\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\ntest adapter::grok::receipt_tests::dispatched_unknown_receipt_retains_result_error_and_reservation ... FAILED"
+    },
+    {
+      "operator": "M551U",
+      "file": "crates/rrx/src/adapter/grok/mod.rs",
+      "test": "adapter::grok::receipt_tests::dispatched_unknown_receipt_retains_result_error_and_reservation",
+      "head": "3f587b7e1c75bdafc9fd983fcfc7d16652345bd7",
+      "patch_sha256": "e7a492cded2e8a32ef1159cbf67aa08b7369d354e633a62f44212d61089cb458",
+      "exit": 101,
+      "compiled": true,
+      "intended_oracle": "receipt_shape_invalid",
+      "oracle_observed": true,
+      "dispatch_prerequisite_observed": true,
+      "killed": true,
+      "credit": "actual dispatched forcedUnknown result-only receipt",
+      "elapsed_wall_seconds": 3.525,
+      "log": "/private/tmp/rururunx-issue55-M551U.log",
+      "operator_description": "Repeat result-success-only receipt operator on forcedUnknown dispatched consumer",
+      "operator_family": "M551",
+      "public_patch": "issue-55-mutations/M551U.patch",
+      "raw_log_durability": "local temporary log only; public patch and bounded assertion excerpt below are durable",
+      "assertion_locations": [
+        "crates/rrx/src/adapter/grok/receipt_tests.rs:48:9:",
+        "crates/rrx/src/adapter/grok/../../../tests/support/grok_receipt.rs:270:5:"
+      ],
+      "bounded_assertion_excerpt": "\nthread 'adapter::grok::receipt_tests::dispatched_unknown_receipt_retains_result_error_and_reservation' (228424690) panicked at crates/rrx/src/adapter/grok/receipt_tests.rs:48:9:\nowned sanitized fixture failed; \nrunning 1 test\ntest adapter::grok::receipt_tests::dispatched_unknown_child ... FAILED\n\nfailures:\n\nthread 'adapter::grok::receipt_tests::dispatched_unknown_child' (228424692) panicked at crates/rrx/src/adapter/grok/../../../tests/support/grok_receipt.rs:270:5:\ncleanup_receipt_unavailable=receipt_shape_invalid\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\ntest adapter::grok::receipt_tests::dispatched_unknown_receipt_retains_result_error_and_reservation ... FAILED"
+    },
+    {
+      "operator": "M558",
+      "file": "crates/rrx/src/adapter/grok/mod.rs",
+      "test": "adapter::grok::receipt_tests::dispatched_unknown_receipt_retains_result_error_and_reservation",
+      "head": "6ae103c3bccfbf97f3483bfce4ffbe9b3a512998",
+      "patch_sha256": "0bc9d80ea2095ed283a7c3bbe898fcc447116d4029aef091f1ead3c43cf39cbf",
+      "exit": 101,
+      "compiled": true,
+      "intended_oracle": "left: String(\"reap_timeout\")",
+      "oracle_observed": true,
+      "dispatch_prerequisite_observed": true,
+      "killed": true,
+      "credit": "actual dispatched forcedUnknown independent group-failure classification",
+      "elapsed_wall_seconds": 3.719,
+      "log": "/private/tmp/rururunx-issue55-M558.log",
+      "operator_description": "Misclassify cleanup_group Err as ReapTimeout while preserving actual cleanup error",
+      "operator_family": "M558",
+      "public_patch": "issue-55-mutations/M558.patch",
+      "raw_log_durability": "local temporary log only; public patch and bounded assertion excerpt below are durable",
+      "assertion_locations": [
+        "crates/rrx/src/adapter/grok/receipt_tests.rs:48:9:",
+        "crates/rrx/src/adapter/grok/receipt_tests.rs:296:5:"
+      ],
+      "bounded_assertion_excerpt": "\nthread 'adapter::grok::receipt_tests::dispatched_unknown_receipt_retains_result_error_and_reservation' (228425394) panicked at crates/rrx/src/adapter/grok/receipt_tests.rs:48:9:\nowned sanitized fixture failed; \nrunning 1 test\ntest adapter::grok::receipt_tests::dispatched_unknown_child ... FAILED\n\nfailures:\n\nthread 'adapter::grok::receipt_tests::dispatched_unknown_child' (228425396) panicked at crates/rrx/src/adapter/grok/receipt_tests.rs:296:5:\nassertion `left == right` failed: cleanup_receipt={\"cleanup_ok\":false,\"cleanup_state\":\"reap_timeout\",\"dispatched\":true,\"native_outcome\":false,\"output_verified\":true,\"owned_process_group_created\":true,\"ownership_uncertain\":true,\"reap_io_kind\":null,\"stderr_drain_state\":\"joined_returned\",\"stderr_read_error\":\"unavailable\",\"uncertainty_by_stage\":{\"in_session_binding\":false,\"native_child\":true,\"pre_spawn\":false,\"reconciliation\":false}}\n  left: String(\"reap_timeout\")\n right: \"group_cleanup_failed_unclassified\"\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n"
+    },
+    {
+      "operator": "M559",
+      "file": "crates/rrx/src/adapter/grok/receipt_tests.rs",
+      "test": "adapter::grok::receipt_tests::positive_parent_rejects_zero_matched_child_after_owned_cleanup",
+      "head": "3dcf4dcc32f60d724714f05586db250572dac949",
+      "patch_sha256": "f021325e62f890f595a6fdbc5655f3c2b6434d0f0badf87539e0e2568862062f",
+      "exit": 101,
+      "compiled": true,
+      "intended_oracle": "test did not panic as expected",
+      "oracle_observed": true,
+      "dispatch_prerequisite_observed": null,
+      "killed": true,
+      "credit": "actual owned zero-child parent guard",
+      "elapsed_wall_seconds": 2.277,
+      "log": "/private/tmp/rururunx-issue55-M559.log",
+      "operator_description": "Omit exact-child completion/count guard at actual positive-parent callsite",
+      "operator_family": "M559",
+      "public_patch": "issue-55-mutations/M559.patch",
+      "raw_log_durability": "local temporary log only; public patch and bounded assertion excerpt below are durable",
+      "assertion_locations": [
+        "crates/rrx/src/adapter/grok/receipt_tests.rs:466:10"
+      ],
+      "bounded_assertion_excerpt": "---- adapter::grok::receipt_tests::positive_parent_rejects_zero_matched_child_after_owned_cleanup stdout ----\nnote: test did not panic as expected at crates/rrx/src/adapter/grok/receipt_tests.rs:466:10\n\nfailures:\n    adapter::grok::receipt_tests::positive_parent_rejects_zero_matched_child_after_owned_cleanup\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 107 filtered out; finished in 0.01s"
+    }
+  ],
+  "restored_controls": [
+    {
+      "label": "receipts",
+      "head": "8cac9048393d67e6db57d02f95689ec18b32368e",
+      "exit": 0,
+      "log": "/private/tmp/rururunx-issue55-source1-fix-control-receipts.log"
+    },
+    {
+      "label": "ownership",
+      "head": "8cac9048393d67e6db57d02f95689ec18b32368e",
+      "exit": 0,
+      "log": "/private/tmp/rururunx-issue55-source1-fix-control-ownership.log"
+    },
+    {
+      "label": "cap",
+      "head": "8cac9048393d67e6db57d02f95689ec18b32368e",
+      "exit": 0,
+      "log": "/private/tmp/rururunx-issue55-source1-fix-control-cap.log"
+    }
+  ],
+  "summary": {
+    "compiled_runs": 4,
+    "assertion_kill_runs": 4,
+    "repeated_operator_families": [
+      "M550",
+      "M551"
+    ],
+    "new_operator_families": [
+      "M558",
+      "M559"
+    ],
+    "grok_dispatched_forced_unknown_runs": 3,
+    "zero_test_owned_parent_guard_runs": 1,
+    "restored_control_pass_counts": {
+      "receipt_parent_controls": 6,
+      "ownership_units": 3,
+      "prepared_cap_unit": 1
+    },
+    "worktree": "exact restored clean and normally removed",
+    "limits_or_parallelism_relaxed": false
+  }
+}
