@@ -1317,7 +1317,12 @@ mod registry_tests {
         let exit = child.reap().await.unwrap();
         let output = stdout.await.unwrap().unwrap();
         let diagnostic = stderr.await.unwrap().unwrap();
-        assert!(observed.is_ok(), "isolated child fixture timed out");
+        assert!(
+            observed.is_ok(),
+            "isolated child fixture timed out: {} {}",
+            String::from_utf8_lossy(&output),
+            String::from_utf8_lossy(&diagnostic)
+        );
         assert!(
             exit.success(),
             "sanitized fixture failed: {} {}",
@@ -1381,6 +1386,7 @@ mod registry_tests {
                 }
             );
             assert_eq!(status.session.state, saved.state);
+            drop(state);
             assert!(!adapter.transport_succeeded(&status));
         }
     }
