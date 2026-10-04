@@ -552,3 +552,54 @@ The abnormal-drop fixture is an actual owned synthetic Unix RPC child and keeps
 its runtime alive until the child is reaped, while its operation remains Lost.
 Evidence: `/private/tmp/rururunx-issue6-f4-mutation-results6.json`,
 `/private/tmp/rururunx-issue6-f4-mutations6-run.log`.
+
+## F4 composed immutable source approval
+
+Normal merge `9f2f3db8f098c52ecca1f615577bbb33549eb523` includes reviewed
+main `80452f4` (#46 bounded inspection) while preserving the public `a7a219b` and
+`8526c75` ancestry. Its three Codex F4 files are byte-identical to `8526c75`.
+Additive conflicts preserve both design sections and the existing crate-private
+ProcessGroup API plus the reviewed test inspection plan. Exact-head formatting,
+all-target Clippy with warnings denied, debug/release builds and default-concurrency
+workspace debug/release tests pass: **277 Rust tests plus two doctests in each
+profile**. Exact Linux/macOS CI
+[37191925788](https://github.com/shuhei-suzuki/rururunx/actions/runs/37191925788)
+passes. CI has release build; the separate local release test suite also passes.
+The interim `8526c75` PR had no new CI because it conflicted with main, not a
+passing CI result; the normal merge resolves that conflict.
+
+Two independent native Claude manual source sessions each continue only their
+own earlier full-authority review. The same peer-free packet contains complete
+changed production authorities, changed caller tests, the literal delta and
+unchanged original-authority hashes; public archive bytes match Git objects.
+The packet is 637,723 bytes, SHA-256
+`d708ed426c815c166e18c289969686c3028a990c7c704b7a0ea1744fbaf6d410`.
+Both return **approve with zero findings** on exact `9f2f3db`. Normal native
+auth/hooks/rules/default model/effort remain intact; model tools and inherited
+MCP operations are disabled. Each V2 guardian confirms its owned group's death
+before leader reap; native CLI exit is zero. No live review owner remains.
+
+This approval covers F4 registration/cancellation/admission/cleanup/publication
+and its #46 integration. Terminal watch publication precedes Finished by a short
+fail-closed window: checkpoint/resume may temporarily return StateConflict; stop
+can join the captured attempt. The uncertainty fixture uses a synthetic ownership
+flag and real Reservation/Store/error paths, not an induced Codex host-inspection
+failure. Abnormal-drop cleanup keeps the actual synthetic child runtime alive
+until reaping while the operation remains Lost. Native detached-child containment,
+Decision-CWD, native configuration/reference provenance, interactive/attach,
+provider-neutral continuation handling and #19 private settlement integration
+remain separate open boundaries; this is not Issue #6/MVP acceptance.
+
+Evidence: `/private/tmp/rururunx-issue6-f4-9f2f3db-lint-result.json`,
+`/private/tmp/rururunx-issue6-f4-9f2f3db-gates-result.json`,
+`/private/tmp/rururunx-issue6-f4-9f2f3db-ci-result.json`,
+`/private/tmp/rururunx-issue6-f4-main-composition-identity.json`,
+`/private/tmp/rururunx-issue6-f4-delta-public-manifest.json`,
+`/private/tmp/rururunx-issue6-f4-review-A2-result.json`,
+`/private/tmp/rururunx-issue6-f4-review-B2-result.json`.
+Resumed-session cost/usage/duration fields in these native terminal results are
+reported as supplied by the CLI, without claiming incremental or billed cost.
+The V2 harness has real normal-death and persistent Unknown/partial-frame tests;
+its stronger framing is not retroactively attributed to the original A/B runner.
+Evidence: `/private/tmp/rururunx-review-guardian-v2-normal-result.json`,
+`/private/tmp/rururunx-owned-review-guardian-v2-result.jsonl`.
