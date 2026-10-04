@@ -673,6 +673,22 @@
         "base_blob": "38bb794dc14eee7957573c9ff12bd18156295b57",
         "reviewed_blob": "38bb794dc14eee7957573c9ff12bd18156295b57"
       }
+    },
+    "later_reviewed_source_reasoning": {
+      "head": "b2cafd39a4f3094af8119dd53315930b27ef54a6",
+      "execution_not_repeated_at_this_head": true,
+      "production_sha256_unchanged": true,
+      "test_delta": "additive resumed canary/exact validation assertions, caller LANG retained in invalid-own projections and independent atomic Store-port test",
+      "delta_77b1186_to_head": "documentation only",
+      "changed_paths_77b1186_to_head": [
+        "doc/verification/issue-51-native-environment-mutations.json",
+        "doc/verification/issue-51.md"
+      ],
+      "basis": "both Source3 approvals verify producer identity and preserved intended consumer paths; this is source reasoning, not new execution/timing/cleanup evidence",
+      "historical_excerpt_limits": [
+        "M10 original environment_tests.rs:251 is a 798cd6f excerpt; corresponding current kind assertion is line257",
+        "M11 own-store-layer original native_dispatch_tests.rs:426 is the original candidate-only unit failure; current stronger owned-LANG direct policy fails earlier when validation is omitted. The independently executed L3 at77b1186 reaches the atomic port at553. Do not label historical excerpts as current execution."
+      ]
     }
   },
   "separate_low_refinement_source": {
@@ -764,5 +780,57 @@
       "crates/rrx/src/state/native_dispatch_tests.rs": "235ce98943278f7a31f8c9baa42f1ddc426c1b03"
     },
     "production_delta_from_reviewed72f": "none; only two test sources and verification documentation changed"
+  },
+  "source3_verification": {
+    "head": "b2cafd39a4f3094af8119dd53315930b27ef54a6",
+    "reviews": [
+      {
+        "reviewer": "policy",
+        "head": "b2cafd39a4f3094af8119dd53315930b27ef54a6",
+        "session": "139c716e-dfa4-477c-8c11-4c07d258ee97",
+        "verdict": "approve",
+        "findings": [
+          {
+            "id": "S3-01",
+            "severity": "Low"
+          }
+        ],
+        "cleanup_verified": true,
+        "result_sha256": "fc36d3b20a103f636f5fb4ad42ec76b3ec60032623afea69c1b281780e3ee93d",
+        "meter_scope": "raw_native_resumed_session_fields_unverified_operation_inventory"
+      },
+      {
+        "reviewer": "lifecycle",
+        "head": "b2cafd39a4f3094af8119dd53315930b27ef54a6",
+        "session": "9af5aa79-0ff4-42e2-89f0-b0049d61b240",
+        "verdict": "approve",
+        "findings": [],
+        "cleanup_verified": true,
+        "result_sha256": "a9b0217cc32d4c153f8d0b00bf578ca893ce317619c284bc203b05968bcb19d2",
+        "meter_scope": "raw_native_resumed_session_fields_unverified_operation_inventory"
+      }
+    ],
+    "ci_run": 37213687167,
+    "ci_both_os": "success",
+    "actual_both_checkout": "b5dd0f53ada6a3ec0345acd192620e6c9584fe9e",
+    "parents": [
+      "d87faec18066dd1d134faa2e123a65874d8b7079",
+      "b2cafd39a4f3094af8119dd53315930b27ef54a6"
+    ],
+    "tested_tree": "5c7db78d21b443b29c55a800918effdb62d50d5e",
+    "tested_tree_equals_trigger": true,
+    "full_default_ci_tests": {
+      "macos": {
+        "rust": 246,
+        "doctests": 2,
+        "ignored": 23
+      },
+      "linux": {
+        "rust": 224,
+        "doctests": 2,
+        "ignored": 17
+      }
+    },
+    "historical_reds_not_reinterpreted": true
   }
 }

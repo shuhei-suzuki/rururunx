@@ -1,9 +1,11 @@
 # Issue51 verification
 
-STRICT environment-isolation source candidate. Requirements7 and both Design4 reviews
-approved before implementation. Scoped controls below pass; source review, causal
-mutations and full exact-head gates remain pending. Earlier rounds retain their
-historical scope and failures.
+STRICT environment-isolation change. Requirements7 and both Design4 reviews preceded
+implementation. Both Source3 delta reviews approve reviewed code/test head b2cafd3,
+with completed causal controls and both-OS actual-checkout CI. This final outcome-only
+documentation delta still requires its separate CI/root check. Earlier sections are
+historical round records; their pending statements do not replace the current gates
+below. Historical failures and native integration limits remain explicit.
 
 The executor reports using actual GrokAdapter source at docs-only d56f2bf, identical
 Grok blob to merged4851fcd; the compiled binary revision remains unattested. Isolated
@@ -330,3 +332,12 @@ Verified optional Low refinements add a fresh resumed positive child canary for 
 Committed77b1186 changes no production source. Four changed consumers individually pass in debug and release (resumed own TZ canary/selection rejection/own projection precedence/atomic own-name admission); fmt and all-target Clippy-Dwarnings pass. These are focused checks, not a new full-default-workspace count. Three separately compiled single-layer/wiring mutations are recorded in the separate Low ledger: substituting the frozen baseline only in actual resume Actor wiring dies on the missing fresh resumed-child canary; removing initial own validation changes the exact error text and earns API-message defence-in-depth credit only; removing shared own validation reaches the atomic Session environment port with caller LANG still owned and returns Ok(version2), killed by that consumer's expected rejection. The latter is an actual Store transaction consumer, with no native-child credit. No compound/equivalent or earlier subset guard masks these three intended assertions.
 
 All three mutations restore exact77b1186; four focused restored controls pass before the clean temporary worktree is normally removed. Source2 pending gate statements remain launch-time history while actual72f full/default/build/CI results above are complete. Source3 will review only the four Low refinements, provenance/count corrections and changed consumer controls, against the approved72f authority; final new public checkout CI remains required. Historical failures/#43/#14/#19/#16 limits stay open.
+
+
+## Final Source3 outcome
+
+Both independent Source3 delta reviews approve b2cafd39a4f3094af8119dd53315930b27ef54a6 with owned cleanup verified: lifecycle has0findings; policy has one optional Low carryover note (S3-01), resolved here by explicitly separating source reasoning from historical798 executions. No Critical/High/Medium finding remains. All four Source2 Low refinements are verified resolved; no production source changed. The17 earlier runs are not claimed re-executed at b2. Their raw line-number excerpts remain historical: M10 line251 shifts to current257, and M11's historical candidate-only unit failure differs from the strengthened owned-LANG policy path. Separately executed L3 directly tests the atomic Store port. The ledger keeps original execution heads/logs/excerpts and records current producer identity, additive consumer changes and Source3 reasoning without inventing new timing/cleanup observations. The77b1186..b2cafd3 range is documentation only.
+
+CI37213687167 passes both required contexts `check (ubuntu-latest)` and `check (macos-latest)`. Trigger b2cafd3 differs from actual BOTH tested PR merge b5dd0f53ada6a3ec0345acd192620e6c9584fe9e; parentsd87faec18066dd1d134faa2e123a65874d8b7079/b2cafd39a4f3094af8119dd53315930b27ef54a6; tested tree5c7db78d21b443b29c55a800918effdb62d50d5e equals trigger tree. Full default CI tests pass Mac246Rust+2doctests (23ignores) and Linux224Rust+2doctests (17ignores); mac-only receipt coverage explains the count difference. Format/all-target Clippy-Dwarnings/both builds pass in both jobs. Local full default debug/release at reviewed72f each245Rust+2docs and changed77 focused debug/release4PASS each remain separately scoped.
+
+Current acceptance evidence proves scoped synthetic native environment consumers and atomic names admission only. Existing intentional global native defaults/auth/hooks are retained; no actual installed-agent credentials/config/inference were read or exercised by these controls. Historical c124 Generic Git-output-open and other inspector Unknown failures are not retrospectively explained. #11 runtime handoff, #14 recovery, #19 same-epoch writer migration, #43 native workflow completion and #16 actual multi-Project/native dogfood obligations remain open. The final outcome-only docs delta receives direct root review and separate final CI; no self-referential whole native review loop is required.
