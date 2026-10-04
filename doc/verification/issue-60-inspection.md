@@ -176,3 +176,11 @@ Design2 documentation CI37224052464 remains RED macOS: one own Context inspectio
 timeout,15PASS/1FAIL, unchanged baseline implementation. No old-head rerun or
 cause attribution; fresh changed-source CI is required. Full60, reader/driver draft,
 recovery14, native16 and Issue51 final RED remain open.
+
+
+First-source70705e9 compiled successfully before execution. Scoped default inspector
+controls passed17/17 (nine existing plus eight new). Initial all-target Clippy failed
+on two test-only style checks (`int_plus_one` and nested first-kind capture); preserved
+in `/private/tmp/rururunx-issue60-source707-clippy.log`. The following source commit
+corrects those styles and completes finite-enum formatter branch coverage. No broader
+suite, Context consumer, mutation or independent source approval is claimed yet.

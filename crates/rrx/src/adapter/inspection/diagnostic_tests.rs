@@ -59,7 +59,7 @@ fn actual_frame_guard_facts_are_safe_and_success_preserves_live_dead() {
         assert!(matches!(sample.kill, Kill::NotRequested));
         for endpoint in [sample.stdout.unwrap(), sample.stderr.unwrap()] {
             assert_eq!(endpoint.eof, Eof::Observed);
-            assert!(endpoint.calls >= endpoint.would_block + endpoint.interrupted + 1);
+            assert!(endpoint.calls > endpoint.would_block + endpoint.interrupted);
         }
         let status = sample.status.unwrap();
         assert!(status.calls > 0);
@@ -387,6 +387,88 @@ fn maximum_value_formatter_is_finite_and_counters_saturate_without_raw_bodies() 
             assert!(text.contains("cleanup=wait_failed_uncertain"));
         }
     }
+    // Exercise every non-framing formatter enum arm with maximum numeric fields.
+    let mut facts = Collector::new();
+    for cause in [
+        Refusal::Deadline,
+        Refusal::Allocation,
+        Refusal::MissingEndpoint,
+        Refusal::Io(io::ErrorKind::NotFound),
+        Refusal::Io(io::ErrorKind::PermissionDenied),
+        Refusal::Io(io::ErrorKind::Interrupted),
+        Refusal::Io(io::ErrorKind::InvalidInput),
+        Refusal::Io(io::ErrorKind::InvalidData),
+        Refusal::Io(io::ErrorKind::TimedOut),
+        Refusal::Io(io::ErrorKind::WouldBlock),
+        Refusal::Io(io::ErrorKind::UnexpectedEof),
+        Refusal::Io(io::ErrorKind::BrokenPipe),
+        Refusal::Io(io::ErrorKind::OutOfMemory),
+        Refusal::Io(io::ErrorKind::WriteZero),
+        Refusal::Io(io::ErrorKind::Other),
+    ] {
+        for stream in [StreamKind::None, StreamKind::Stdout, StreamKind::Stderr] {
+            facts.fail(Site::Endpoint, stream, cause, io::ErrorKind::Other);
+            assert!(
+                facts
+                    .attach(io::Error::other("DO_NOT_RENDER_ERROR_BODY"))
+                    .to_string()
+                    .len()
+                    < 2048
+            );
+        }
+    }
+    for (cleanup, kill, validation, exit, eof) in [
+        (
+            Cleanup::NotReached,
+            Kill::NotRequested,
+            Validation::NotReached,
+            Exit::Unavailable,
+            Eof::NotObserved,
+        ),
+        (
+            Cleanup::ReapedByStatus,
+            Kill::Ok,
+            Validation::Dead,
+            Exit::Success,
+            Eof::Observed,
+        ),
+        (
+            Cleanup::KillThenReaped,
+            Kill::Error(io::ErrorKind::Other),
+            Validation::Live,
+            Exit::Nonzero,
+            Eof::Pending,
+        ),
+        (
+            Cleanup::Relinquished,
+            Kill::NotRequested,
+            Validation::NotReached,
+            Exit::Signaled,
+            Eof::Pending,
+        ),
+    ] {
+        facts.facts.cleanup = cleanup;
+        facts.facts.kill = kill;
+        facts.facts.validation = validation;
+        facts.facts.status = Some(StatusFacts {
+            exit,
+            ..Default::default()
+        });
+        facts.facts.stdout = Some(StreamFacts {
+            eof,
+            ..Default::default()
+        });
+        let text = facts
+            .attach(io::Error::other("DO_NOT_RENDER_ERROR_BODY"))
+            .to_string();
+        assert!(text.len() < 2048 && !text.contains("DO_NOT_RENDER_ERROR_BODY"));
+    }
+    assert!(
+        Collector::new()
+            .attach(io::Error::other("private text"))
+            .to_string()
+            .contains("site=unavailable")
+    );
     // Actual prepared File reads exercise saturating increments, not just rendering.
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("bytes");

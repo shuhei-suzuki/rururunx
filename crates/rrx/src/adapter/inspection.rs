@@ -1175,10 +1175,10 @@ impl TestPlan {
             leader,
             |_| {},
         );
-        if let Ok(mut kind) = self.original_kind.lock() {
-            if kind.is_none() {
-                *kind = result.as_ref().err().map(io::Error::kind);
-            }
+        if let Ok(mut kind) = self.original_kind.lock()
+            && kind.is_none()
+        {
+            *kind = result.as_ref().err().map(io::Error::kind);
         }
         Some(result)
     }
