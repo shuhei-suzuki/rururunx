@@ -109,6 +109,7 @@ PhasePackArtifact lengths and fitting unknown-format envelope errors. All16 focu
 controls and clippy pass; no production policy/predicate changed.
 
 The two caller mutants compiled and failed actual consumer assertions:
+
 - goal-descriptor-opaque-intent: `e2fb9fa0dfa0a1a634847bee39f712ada54da3ec`; killed (exit101).
 - goal-validation-before-digest: `f7e79d8bfd9cf5484701cdc0ee460c3b075efb71`; killed (exit101).
 
