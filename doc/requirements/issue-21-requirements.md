@@ -1,8 +1,8 @@
 # Issue 21: Attributable telemetry and Context Efficiency comparison
 
 Workflow: STRICT (shared durable metrics, provider normalization and Project isolation).
-Status: Requirements2; prior independent Req1 findings verified and refined below.
-Requirements2/design/source reviews pending.
+Status: Requirements3; independent Req1/Req2 findings verified and refined below.
+Requirements3/design/source reviews pending.
 Baseline: main80452f4, schema3. Depends on merged #2 and #4; part of #17.
 
 ## Purpose and existing gap
@@ -32,10 +32,15 @@ producer or benchmark conditions needed for #21 closure below.
 ## Measurement and attribution
 
 - Attribute every observation to exact Project/Goal/Task (where applicable),
-  rrx Session, native-session/operation identity, agent/provider and consuming
-  model/tokenizer, phase, review round, reviewer slot/roster and target revision.
-  Derive these from the immutable actual dispatch record, captured before execution.
-  Collection-time usage(phase, round) arguments and model/public JSON cannot set or
+  rrx Session, native-session/operation identity, agent/provider, requested/configured
+  model/effort, phase, review round, reviewer slot/roster and target revision.
+  Derive these ownership/request attributes from the immutable actual dispatch
+  record, captured before execution. Separately derive the ACTUAL consuming model,
+  effort and tokenizer from the adapter-owned native observation per measurement
+  or disjoint containment partition. Requested settings never substitute for
+  unreported effective settings; unknown native fallback/helper models stay unknown.
+  Grouping, pricing, cached ratios and comparison use actual observed consuming units.
+  Collection-time usage(phase, round) arguments and agent-authored/public JSON cannot set or
   override them; intervals spanning operations/rounds remain unattributed there.
   Overlapping Issue numbers and native IDs do not merge different Project scopes.
 - Distinguish measured provider tokens, labeled packing estimates, runtime byte
@@ -64,7 +69,10 @@ producer or benchmark conditions needed for #21 closure below.
   turn ID or a durable owned event ordinal when native lacks one; never collection
   time, query sequence or payload equality. Same identity and identical payload is
   a no-op, conflicting payload rejects, and different identities with equal counts
-  remain distinct genuine observations, without replay changes to totals or audit. A cumulative snapshot and its qualified delta cannot both be counted.
+  remain distinct genuine observations, without replay changes to totals or audit.
+  Assign an ordinal once at the actual owned native event/stream position, never
+  per collection channel: status and final-result views of one event share identity.
+  A cumulative snapshot and its qualified delta cannot both be counted.
   Collection before/after restart or repeated status queries cannot double count.
 - Missing/unsupported/invalid values carry per-field reasons. Zero means an actual
   qualified measurement of zero. Partial totals include coverage and exclusions;
@@ -98,6 +106,12 @@ producer or benchmark conditions needed for #21 closure below.
 - Include every attributable efficiency-layer provider call and cache-write premium
   in the enabled lane, including its failed/retried attempts. Only local CPU/byte
   overhead is separately identified; wall completion time includes all work.
+  Record the beneficiary Task/round/Goal links of shared out-of-scope feature work.
+  Direct scoped totals are descriptive together with linked, unallocated overhead;
+  they cannot establish scoped savings by moving work to a Goal/runtime owner.
+  Only complete lane-level totals, including all shared provider overhead, establish
+  an end-to-end reduction. Do not sum shared cost once per beneficiary or silently
+  allocate it to a scope without a separately reviewed predeclared partition rule.
 - Observation containment records whether a turn/session total includes child
   requests, subagents, helper models, per-model breakdowns or tool usage. Sum only
   one verified non-overlapping partition. Do not add an outer total and its parts;
@@ -192,6 +206,12 @@ producer or benchmark conditions needed for #21 closure below.
   native comparison exercises2 independent reviewers and a round>1 delta re-review.
   Baseline never forwards executor chat or peer findings to reviewers.
   Resource/budget exhaustion is an explicit failure, not silent mandatory truncation.
+  For EVERY dispatch in both lanes, retain actual producer-backed delivery evidence
+  mapping the complete mandatory rules/evidence set computed from that dispatch's
+  current authorized inputs to delivered content identities/digests and scope.
+  A configuration list, prepared-but-unsent payload or agent's assertion is not
+  delivery proof. Missing, stale or truncated mandatory delivery invalidates the
+  pair and prevents savings/quality equivalence, irrespective of token coverage.
 - Record immutable workload/revision/acceptance and verification plan, selected
   reduction features, provider/native versions, actual effective model/effort,
   policy/capability configuration, telemetry qualification and cache conditions.
@@ -202,7 +222,14 @@ producer or benchmark conditions needed for #21 closure below.
   between independent reviewers. Inventory known persistent native memory/history
   channels without reading/copying secret contents. Record possible prior exposure,
   cache warmth and actual model/effort per observation where available; unknown or
-  mismatched model mix prevents causal savings. Uncontrolled cross-lane/reviewer
+  mismatched model/effort mix, including native automatic fallback, prevents causal
+  savings. Give each lane AND repetition unique owned fixture paths, Project/Task
+  identities and native sessions, avoiding controllable path-keyed memory collision.
+  Recorded known-channel cross-lane/prior-repetition exposure, or exposure that
+  cannot be excluded on an inventoried reachable channel, makes the pair confounded:
+  no causal savings or quality-equivalence certification. Retain all such attempts
+  in the report with exposed/unverified and qualified cohorts clearly distinguished;
+  never drop them to improve an overall result. Uncontrolled cross-lane/reviewer
   state is a confound, never blind independence. Preserve native auth/hooks/defaults,
   never redirect/copy credentials or delete user native history. Clean only owned
   runtime fixtures and disclose native-created history left to its provider; no
@@ -226,6 +253,18 @@ producer or benchmark conditions needed for #21 closure below.
   quality is unverified and benchmark acceptance remains unmet. Equal findings counts, model
   assertions, exit zero or cheaper tokens alone never certify equivalent quality.
   Failed/timeout/unsupported lanes stay in the report rather than being discarded.
+  Every credited reduction feature needs predeclared verified oracle items sensitive
+  to the content it can omit: an out-of-slice caller/dependency or triggered rule,
+  a decision/failure predating condensation, or an unresolved prior-round finding
+  and impact outside a round>1 delta. Record per-feature oracle coverage/detection;
+  exercised features without sensitive oracle items have unverified quality and
+  receive no savings credit. Keep hidden answers outside lane-readable fixture
+  trees/commit history and runtime inputs/caches, without claiming an OS sandbox.
+  Report fix/round counts and early termination beside costs. Per-round/per-feature
+  comparisons need identical immutable revision/bundle inputs; divergent trajectories
+  support only a qualified end-to-end comparison, never same-input round savings.
+  Oracle adjudication and separate amplification-reference calls are benchmark
+  apparatus, reported separately for both lanes rather than reduction work.
 - The runner/reporting contract may be tested with controlled fixtures; final
   native representative comparison is required before benchmark acceptance.
   Issue16 additionally owns full multi-Project/Goal/four-Task dogfood evidence.
@@ -237,12 +276,17 @@ producer or benchmark conditions needed for #21 closure below.
 
 Input Tokens per Task/Round and Estimated Cost per Task sum qualified non-overlapping
 inventoried operations in that exact scope, grouped by model/unit/pricing basis and
-with coverage. Cached Ratio is eligible cached reads divided by compatible total
+with coverage. Report linked shared overhead separately as described above. These direct scoped
+metrics remain descriptive; complete lane totals establish end-to-end savings.
+Cached Ratio is eligible cached reads divided by compatible total
 input that includes those reads; absent/zero/incompatible denominator is unavailable.
 Reviewer amplification per round compares the sum of actual independent reviewer
 input to a predeclared measured single-reviewer reference on the same immutable
 bundle/model; report reviewer slots/count, shared/specific input and cached/uncached
-separately. An absent reference means no amplification ratio. Reduction is paired
+separately. A heterogeneous roster requires compatible per-model references, never
+a cross-model token sum. A replaced reviewer gets a new immutable operation and
+slot/roster version; attempts stay accounted for rather than rewriting the old slot.
+An absent reference means no amplification ratio. Reduction is paired
 (baseline-enabled)/baseline for a compatible complete metric; zero/unknown baseline
 or any failed coverage/quality/comparison condition prevents a savings claim.
 Human interruptions/attention use actual scoped interaction events and interval
@@ -256,7 +300,7 @@ these contracts with its full native dogfood, not the first definition of metric
 | Cache counters/use | Documented native category semantics plus actual observation or unsupported reason; no guessed ratio |
 | Per-Task API query | Bounded scoped public Rust/library reporting API, complete inventory/coverage and two-Project negative access controls; TUI/CLI10/24 consumes it later |
 | Baseline comparison mode | #21 native runner executes predeclared equivalent enabled/baseline feature configurations; no safety/independence weakening |
-| Token/cost/time/success/review-quality report | Qualified metrics or explicit unavailable, all attempts, dispersion/confounds, independent frozen quality oracle and comparability decisions |
+| Token/cost/time/success/review-quality report | Qualified metrics or explicit unavailable, all attempts, dispersion/confounds, per-dispatch mandatory delivery, feature-sensitive independent frozen quality oracle and comparability decisions; the minimum native token comparison below is required |
 | Cache-independent correctness | Actual warm/cold/unavailable-cache freshness/admission/gate controls and compiled bypass mutant |
 | Goal aggregate token/cost/time query | #21 scoped API with actual23/24 lifecycle timing producer; unavailable is honest interim output but Goal-time acceptance stays open until producer integrates |
 | Pack/Repo Map/condensation/expansion telemetry | Actual18/19/20 event/artifact provenance, idempotent event counts and full provider overhead accounting; #21 stays open while required producers absent |
@@ -265,6 +309,15 @@ these contracts with its full native dogfood, not the first definition of metric
 
 No scope checkbox is silently transferred away. #21 stays open until its complete
 contract, required integrated producers and representative native benchmark pass.
+The native token-comparison acceptance requires qualified comparable input/output
+token measurements with complete operation/partition coverage for EVERY provider
+used in the representative lanes. An all-unavailable report satisfies honest
+missing-telemetry behavior only; it cannot close the benchmark/token KPI acceptance.
+Missing native exposure keeps that acceptance open with its actual named dependency
+or separately reviewed owned-channel policy blocker. Cached counters and monetary
+cost retain the source Issue's where-available condition: show qualified native or
+operator-configured estimates when available, otherwise explicit unavailable and
+no cache/cost savings claim. Do not invent measurements or change native defaults.
 TUI rendering and final16 whole-MVP dogfood are separate; neither is falsely claimed
 by API implementation. Use one linear schema history coordinated with19, reject
 unknown/future formats without downgrade, and test every real predecessor.
@@ -305,6 +358,13 @@ secret/raw append exposure and dropped unfavorable repetitions at real report
 consumers. Stable-prefix determinism/currency and warm/cold/unavailable cache
 controls retain equivalent authority. Enabled/baseline native runs require
 quality/safety evidence beside savings.
+Also kill compiled mutants that replace an observed fallback model with the requested
+dispatch model at pricing/comparability consumers; move a Task's provider condensation/
+pack work to a Goal/runtime owner then allow scoped savings; omit a mandatory delivered
+item but still report savings; or credit a feature without its sensitive quality
+oracle/with known-channel exposure. All-unavailable native counters must leave the
+token benchmark acceptance open. These are real reporting/closure consumer controls,
+not model assertions that a deliberately weakened fixture remains safe.
 
 Run relevant state/provider/context/workflow regressions, fmt/clippy/build, exact
 Linux/macOS CI and independent source reviews. Update master design/README only to

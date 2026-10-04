@@ -40,3 +40,21 @@ cap from unqualified native counters. Req2 review remains pending; no implementa
 
 Exact Req1 30a994b CI37193793804 succeeded; documentation-only main804 runtime
 coverage, not21 telemetry or native savings acceptance.
+
+Req2 11d5a4f CI37195027084 passed fmt/clippy/tests/debug and release builds on BOTH
+Linux and macOS. Two independent native Req2 reviews requested changes, each with
+actual V2 selected owned-group cleanup and child reap verified. Their raw resumed
+usage/cost counters remain unattributed, never an incremental cost sum.
+
+Verified Medium classes refined in Req3: actual consuming model/effort/tokenizer
+observed separately from immutable requested settings; beneficiary links and
+descriptive scoped metrics prevent hiding Goal/runtime shared provider overhead;
+each credited reduction feature needs an omission-sensitive independent oracle;
+mandatory rule/evidence delivery must be proven for every dispatch; controllable
+path/session identity reuse and known-channel exposure invalidate causal claims;
+and all-unavailable native tokens cannot close native token comparison acceptance.
+Actual Issue21 requires estimated cost where available/configurable, so optional
+unavailable monetary/cache fields do not become invented mandatory measurements.
+Cost/cache savings still require their own complete qualified comparable fields.
+These changes match Product40.10 and actual adapter/native provenance gaps; no
+source, model/default, permission, hook or credential change. Req3 review pending.
