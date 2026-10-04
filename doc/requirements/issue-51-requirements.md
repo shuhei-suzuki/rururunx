@@ -68,8 +68,8 @@ contracts, not universal provider safety evidence.
    Undeclared and foreign-only keys return one identical opaque bounded category.
 3. Separate immutable global native identity/routing/config/safety controls from scoped
    references. Controls cannot be replaced, removed, or made Project-local by foreign
-   declaration. Protected baseline controls include the existing named baseline routing/
-   identity/TLS/proxy/shell keys and forbidden LD_/DYLD_ loader prefixes; the design must
+   declaration. Protected baseline controls include existing registry-forbidden named baseline
+   routing/identity/TLS/proxy/shell keys and forbidden LD_/DYLD_ loader prefixes; the design must
    enumerate a reviewed finite set of additional runtime controls such as
    NODE_TLS_REJECT_UNAUTHORIZED, never classify all NODE_/GROK_/XAI_ names as control.
    A protected key in own refs fails admission; a foreign declaration (including an
@@ -82,7 +82,10 @@ contracts, not universal provider safety evidence.
    because no valid Project can own them. Registry-valid credential-bearing or
    credential-locating names must never be added to, or reclassified into, the protected
    control set, including the reviewed finite additions. Existing HOME/XDG identity
-   controls remain global. The design's drift check must preserve this prohibition.
+   controls remain global. SSLKEYLOGFILE is registry-valid and names a TLS-secret output
+   sink; native whitelist membership alone does not protect it. It remains a non-control
+   reference under the same own/shared/foreign conflict and exact-value rules. The
+   design's structural drift check must preserve this prohibition and classification.
    Ambiguous registry-valid names cannot be silently stripped as credentials or accepted
    as controls. Reuse the registry predicate or verify drift explicitly.
 4. For any non-control baseline name referenced by another Project but not A, reject
@@ -120,17 +123,31 @@ contracts, not universal provider safety evidence.
    imply complete per-Project credential-value separation.
 6. Final environment authority admission is the last state check BEFORE actual child
    exec/spawn, including resume initialize/authenticate/load, not merely prompt dispatch.
-   Snapshot owning versions plus foreign name/reference inventory; owning P/G/T CAS
-   alone cannot detect another Project registering a formerly global credential name.
-   Deterministic per-invocation hooks/second Store mutate own refs and foreign inventory
-   after snapshot/before admission. Define exact atomic admission/dispatch-intent fence
-   in design; Git/filesystem/native work runs outside SharedStore. SQLite+OS exec cannot
+   Snapshot owning versions and select against name-only reference authority. Final
+   admission must reevaluate the relevant environment decision using current persisted
+   references in the same transaction as Session CAS: owning P/G/T CAS alone cannot
+   detect another Project registering a formerly global credential name. Do not compare
+   raw foreign roster identities/versions: irrelevant registration/reference/metadata
+   changes must not cause A errors or audit correlated with another Project. Checkpoint
+   does not inspect foreign roster changes or confer environment authority.
+   Deterministic private per-invocation hooks/second Store mutate own refs and foreign
+   reference authority after snapshot/before admission. Define exact atomic admission
+   fence in design, with actor/Store/watch versions coherent and stop checked again
+   immediately before spawn; no new environment-specific dispatch-intent is required.
+   Preserve existing model-prompt consumed intent rather than conflating admission
+   with inference; Git/filesystem/native work runs outside SharedStore. SQLite+OS exec cannot
    be atomic: changes after successful admission are explicitly non-retroactive. A
    pre-prompt recheck may reject/stop an already admitted child, preserving native
    cleanup/outcome uncertainty; it cannot retroactively claim its environment never ran.
-7. Checkpoint publishes fresh input, not environment authority. Resume derives current
-   own/inventory authority afresh at its new pre-spawn admission; launch-time caller
-   keys removed from own refs remain non-resumable with the same opaque category.
+7. Checkpoint publishes fresh input and refreshes current own Project metadata under
+   existing immutable identity and P/G/T/lock guards; it does not confer environment
+   authority or compare foreign rosters. Resume uses that explicitly checkpointed
+   Project snapshot and freshly evaluates current reference authority at pre-spawn
+   admission. If own metadata changed after checkpoint, existing stale-Project
+   StateConflict takes precedence and another explicit fresh checkpoint is required;
+   no implicit resume-time Project refresh is introduced. If caller keys were removed
+   before the latest successful checkpoint, resume rejects them with the same opaque
+   environment category. Removed authority never becomes resumable from cached refs.
    Native identity/fresh input/no implicit mutating replay and Lost reservations stay
    authoritative. No uncertain native outcome is cleared by this environment fix.
 8. Diagnostics remain exact owning scoped and bounded; never log/persist environment

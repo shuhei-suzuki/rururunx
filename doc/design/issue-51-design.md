@@ -77,72 +77,102 @@ is newly trusted here: absent foreign references the existing global baseline re
 while declared non-control names obey the same conflict rule. Installed native auth/config
 values are never read for this design or tests.
 
-## Name-only snapshot and atomic pre-spawn boundary
+## Name-only selection and atomic pre-spawn boundary
 
-Introduce a crate-private environment roster DTO containing sorted pairs of ProjectId
-and the persisted raw `environment_refs` list. It contains no display names, roots, settings,
-credential values or Project activity beyond those reference lists. Retain invalid and
-duplicate strings for exact change detection; selection separately applies per-name
-syntax/control rules. Snapshot all records, not just the current owner. New Project,
-removed Project, or reference replacement is a roster change. A foreign display-name,
-context-pointer or other non-reference metadata update is not an environment change.
-The owning full Project/Goal/Task version guards still apply separately.
+Keep a private frozen-baseline name set and bounded caller-key set for environment
+admission; no values, foreign identities, Project versions or raw roster are persisted
+or emitted. The selected environment remains private. ScopeSnapshot captures own
+Project/Goal/Task/lock authority and a temporary name-only view for initial selection;
+foreign record order, identities and versions are not authority tokens. Final admission
+reevaluates the same pure environment decision against current references inside SQLite.
+Only an actual relevant conflict denies A. Registering/removing/replacing unrelated names,
+foreign control-only changes, lifecycle or non-reference metadata must remain eligible
+and must not produce an A error/audit correlated with those changes. Own P/G/T versions
+remain exact independent guards. Include all foreign lifecycle states and per-name
+validity in this evaluation, with no foreign filesystem/config/Git work.
 
 Proposed additive Store boundary is `put_session_with_environment_if_current` taking
-the existing Session/version, expected P/G/T versions, exact WorktreeLock IDs/versions,
-and the private roster DTO. Factor the existing `put_session_if_current` transaction
-body into one private implementation with an optional roster check; the existing method
-keeps identical behavior. In the same Immediate transaction, compare exact P/G/T versions,
-ownership/activity, nullable scope, exact lock set and the current roster, then perform
-the ordinary Session CAS/guards/audit. Any mismatch rolls back all writes. No schema
-marker change or persisted global inventory record is required. Root and shared Store
-owners must coordinate the exact additive helper before implementation; the full helper,
-cross-connection fixtures and both provider consumers are source-review inputs.
+existing Session/version, expected P/G/T versions, exact WorktreeLock IDs/versions and
+one crate-private bounded EnvironmentAdmission DTO of frozen non-control baseline names
+and caller names. Pure policy constructors enforce syntax/control classification and
+bounds; no environment values or mutable callback enter the transaction. Factor existing
+`put_session_if_current` into one private transaction body with an optional pure
+environment decision. Existing consumers retain identical behavior. In the same Immediate
+transaction, validate exact own versions/ownership/activity/nullable scope/lock set,
+fully validate current owning refs, read current foreign refs name-only, reevaluate
+caller ownership and foreign retained-baseline conflicts, then perform ordinary Session
+CAS/guards/audit. A relevant conflict returns one fixed opaque typed guard without
+foreign IDs, names, values or inventory/version details. All writes roll back on failure.
+No schema change or global inventory record. Coordinate helper with shared Store owners
+before implementation; full helper and actual consumers enter source reviews.
 
-At start, capture own ScopeSnapshot and name-only roster together under SharedStore.
-Other Store connections are not excluded by that process-local mutex. Require the
-roster's owning raw refs to equal the captured owning Project refs, select from this
-roster, and rely on the final Immediate transaction for coherent admission. Inconsistent
-read snapshots fail closed; a process-local lock alone is never a cross-connection fence.
-Select private environment against that snapshot and reserve Starting using the existing
-scoped Session boundary. Git/filesystem/profile preflight continues outside the lock.
-Immediately before `command.spawn`, after all preflight, encode a bounded native-spawn
-intent in Session recovery, check cancellation, and call the new atomic helper with the
-captured roster and current owned Session version. A failed admission cannot start a
-child, send ACP initialize/authenticate/load/prompt, or publish a consumed-input intent.
-Environment errors are identical opaque bounded categories; do not include foreign
-names/IDs, values, roster contents or detailed guard internals in A's error or audit.
-The native-spawn intent records only this scoped operation, not environment data; it is
-distinct from the existing authoritative model-prompt dispatch/consumed-input intent.
+Initial selection and Starting reservation preserve current authority. Git/filesystem/
+profile preflight stays outside Store. At the last state boundary before spawn, Actor's
+new private `admit_environment` takes entry.transition and follows Actor.publish's exact
+ownership protocol: build candidate from its current session without mutating private
+state first; check stopping; execute full atomic helper using current Actor.version and
+captured own authority; on success update Actor.version and retained watch Session to
+that exact saved candidate while transition is held. On failure keep previous private
+version/session/watch unchanged. This Session CAS is the admission fence; no new
+native-spawn recovery intent or audit schema is added. Ordinary Session.saved records
+this exact scoped write and retains its existing field set; prior model-prompt
+consumed-input/dispatch intent remains unchanged. Admission is neither prompt consumption
+nor completion nor process-death evidence.
 
-After successful admission, release the Store lock and spawn with the already-selected
-map. SQLite admission and OS spawn are not atomic. A concurrent reference change after
-admission does not retrospectively revoke the child's environment; disclose that window.
-Existing pre-prompt and approval scope checks remain. Checkpoint's former full-Project
-roster equality is narrowed to the exact reference roster, without weakening its own
-P/G/T/lock checks; unrelated foreign metadata never grants or revokes environment
-authority. If post-admission scope checks reject an admitted child,
-retain factual spawn/audit outcome and verified cleanup or Lost uncertainty; never assert
-that auth/config initialization did not run. A spawn intent does not establish model
-completion or prove native process death. This fix never changes Lost reservation,
-unknown dispatch, cancellation or recovery authority.
+After releasing transition/Store, check entry.stopping again immediately before
+command.spawn with no intervening await. A stop recorded after admission must not start
+a child; a deterministic hook tests this exact boundary. Stop/entry authority cannot
+observe a mismatched persisted Session and private/watch snapshot. SQLite admission and
+OS exec are not atomic; a reference mutation or stop after this last check is an
+explicit non-retroactive window, not atomic revocation. Successful spawn keeps existing
+factual process_spawned audit and normal supervision. Post-admission scope checks may
+reject/stop an admitted child; retain factual native outcomes and verified cleanup or
+Lost uncertainty, never claim initialize/auth/config did not run. No Lost reservation,
+unknown dispatch, cancellation or recovery authority is weakened.
 
-Resume captures current own refs and the full current roster again, selects against the
-same frozen baseline, then uses the same last pre-spawn helper before initialize/auth/load.
-Checkpoint updates PreparedInput only. Removed caller authority makes continuation fail
-opaquely even if cached launch metadata once permitted it. Existing fresh input version,
-same native UUID/private supervisor, verified death and no implicit replay gates remain.
-Foreign roster updates after admission do not become permission-grant authority; native
-permission checks keep their exact own scope/session/lock CAS.
+Checkpoint refreshes current own Project under immutable identity/full own authority
+and explicitly higher PreparedInput version, as current source does; remove its foreign
+whole-Project roster comparison entirely. Actor/pre-prompt/approval checks continue exact
+own scope guards. Resume uses that explicit checkpoint's Project snapshot, captures
+current own authority and reevaluates live references during the same fresh pre-spawn
+admission. If own metadata changed after checkpoint, preserve current ScopeSnapshot's
+stale-Project StateConflict and require another explicit fresh checkpoint. If refs were
+removed before latest checkpoint, selector/admission fails opaquely. No implicit Project
+refresh or cached-authority exception. Fresh input, same private native UUID, verified
+death and no implicit prompt replay remain authoritative.
+
+### Error precedence and structural drift
+
+Malformed/duplicate/forbidden own refs follow owning configuration rejection before
+selection; existing malformed/GIT_ input remains InvalidInput. Reserved RRX_, caller
+controls and unsupported caller names are InvalidConfiguration, regardless of identical
+baseline value. Eligible caller names use an OR: one of the six own ordinary names,
+or an own native-whitelisted non-control name with exact constructor-baseline value;
+ordinary values need not equal that baseline. A declared unsupported name not actually
+passed by this provider is metadata for other providers, not a blanket own-Project
+rejection. Undeclared/foreign-only eligible-shape caller and baseline conflict, including
+final transaction conflict, share the same fixed opaque InvalidConfiguration category.
+Add fixed-display EnvironmentAuthority guard; do not expose SnapshotChanged foreign IDs.
+Own stale Project/parent/Session/lock/lifecycle errors retain current precedence/kinds.
+
+Structural tests assert finite additions exactly {NODE_TLS_REJECT_UNAUTHORIZED}, every
+named protected baseline key registry-forbidden, and the registry-valid named baseline
+exception SSLKEYLOGFILE non-control. XAI_API_KEY, valid GROK_*, OPENSSL_CONF and BUN_OPTIONS
+remain non-controls. Syntactically invalid baseline names cannot become own refs or be
+accepted from callers; existing undeclared native baseline remains intentional global
+runtime input, and invalid foreign strings contribute no new authority. Assert unchanged
+native whitelist separately; membership never implies protected status.
 
 ## Operator diagnosis without a reverse leak
 
 Provide an explicit state-only Project-scoped policy inspection method. It reports only
-the selected Project's own referenced baseline names and unsupported/control declarations;
+the selected Project's own referenced non-control baseline candidate names;
 it reads no values and reports no foreign IDs, launches, counts or timestamps. Invoke it
 only through an explicit operator check in the runtime that owns the frozen baseline, never as a
 side effect of another Project's blocked admission or inventory/registration change.
-Its non-control candidate set is derived only from that Project's own declarations and
+Registered, Blocked and Removed Projects all use pure state reads, without calling
+public environment_names that requires a registered source/FS. Its candidate set is
+derived only from that Project's own declarations and
 the retained baseline name set, independent of other Projects' co-declarations. A's
 error/audit remains opaque.
 
@@ -155,8 +185,16 @@ the explicit scoped inspection contract and regression are required here.
 
 ## Producer inventory and fixtures
 
-Current source inventory finds caller environment in WorkflowEngine's supplied map and
-Grok's direct LaunchRequest consumers. No production RRX_ producer was found at this
+Current WorkflowEngine.step(task_id, environment) accepts a caller-supplied map and
+forwards it unchanged into LaunchRequest; it does not resolve refs or construct a native
+provider-safe map (workflow.rs750/753/998). Direct Grok consumers also supply maps.
+Current CLI has no LaunchRequest producer. Shared Generic fixtures use caller PATH
+(adapter.rs1775/1795 and1830/1902); those remain Generic-only. Grok in-crate unit requests
+currently use empty maps; installed acceptance clears caller environment. Preserve the
+Generic contract separately: callers supply its intentional baseline; Grok derives its
+immutable control/auth baseline in new() and rejects caller HOME/PATH/config controls.
+Add actual WorkflowEngine-to-Grok forwarding coverage with own-declared ordinary inputs
+and unsupported caller controls; do not claim the engine builds or filters them. No production RRX_ producer was found at this
 head; any later integrated producer reopens requirements rather than adding an exception.
 `crates/rrx/tests/grok.rs` currently carries RRX_DATABASE, RRX_FOREIGN, RRX_MODE,
 RRX_SPAWN_OBSERVED, RRX_PAUSE, RRX_PROMPT_OBSERVED and RRX_EXPECT_INPUT. They are fixture
@@ -165,6 +203,14 @@ next to each fake ACP script. The fixed native argv remains unchanged. Each invo
 loads its private configuration at startup; mode/input changes for a later continuation
 update the fixture file before its new owned process starts. Preserve existing actual
 Store/preflight/permission/continuation tests rather than deleting failing consumers.
+
+Define cfg(test)-only per-adapter/per-Actor hooks after final preflight/before admission
+and after successful admission/before spawn; retained invocation-private handles only,
+not process-global state, public runtime fields, environment or argv channels. Put new
+actual-consumer tests in Grok in-crate unit module so cfg(test) hooks are visible (integration
+binaries compile the library without cfg(test)). Reuse fixture-owned fake ACP helpers
+there; keep existing external Grok tests and migrate their metadata to sibling JSON.
+Hooks run outside SharedStore and never accept callbacks inside the SQLite transaction.
 
 New canary fixtures re-execute a dedicated test-binary child under env_clear with known
 synthetic HOME/PATH/tool paths, intentional native keys and private TempDir. The child
@@ -182,18 +228,20 @@ capture or binary-revision attestation. New build/source provenance is labelled 
   foreign/undeclared errors without exposing names. Assert no spawn marker first.
 - Actual positives: own TZ, own/shared XAI_API_KEY synthetic exact runtime value,
   undeclared global native auth, protected baseline unchanged despite invalid foreign
-  control declaration, absent foreign baseline name, and foreign non-reference metadata
-  update. Preserve actual ACP identity/lifecycle rather than synthesize exit0.
+  control declaration, absent foreign baseline name, and irrelevant foreign registration/deletion/reference/control/lifecycle/non-reference
+  update. Include own/shared/foreign SSLKEYLOGFILE exact-value cases as non-control. Preserve actual ACP identity/lifecycle rather than synthesize exit0.
 - Per-invocation private hooks after snapshot and immediately before final admission use
   a second Store connection to mutate own refs or register/replace a foreign reference.
   Assert no child/native wire/consumed-input intent and rolled-back admission; unchanged
-  controls prove this exact prepared path starts. Cover reference changes between
-  checkpoint and resume and between its new snapshot and pre-spawn transaction.
+  controls prove this exact prepared path starts. Cover own reference changes before checkpoint (opaque resume denial), after checkpoint
+  (stale-Project StateConflict until another checkpoint), and between new snapshot/admission.
+  After-admission hook requests stop and asserts no spawn, coherent Actor/Store/watch
+  versions, unchanged prompt intent; no Session death inferred from stop alone.
 - Store tests independently prove cross-connection new/deleted/replaced refs are seen,
-  unchanged foreign metadata is eligible, and failed roster CAS leaves Session/audit
+  irrelevant foreign roster changes are eligible, and relevant decision conflict leaves Session/audit
   unchanged while existing P/G/T/lock/activity/Blocked/Lost guards remain effective.
 - Compiled actual-consumer mutants remove caller ownership, baseline conflict and final
-  roster check individually. They must fail on child canary/spawn state; helper-only,
+  fresh environment decision individually. They must fail on child canary/spawn state; helper-only,
   masked, uncompiled or irrelevant failure receives no consumer credit. Restore exact
   source/control, kill/reap owned groups before leader reap, then normal worktree cleanup.
 - Immutable two independent design/source gates, verified fixes/rereviews, commit before

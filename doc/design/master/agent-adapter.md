@@ -271,10 +271,12 @@ before bounded async Git metadata preflight outside the shared Store mutex.
 The adapter rechecks original lifecycle-validation Project/Goal/Task versions
 before spawn and uses the same runtime-native Git environment as Git management,
 while Store's task-level lock/session exclusion prevents
-review/executor races. Native processes receive only explicit environment; callers
+review/executor races. Generic processes receive only explicit environment; Generic callers
 must include intentional native baseline HOME/PATH/config/auth so safety settings
-remain authoritative. The adapter never supplies bypass flags or an empty native
-configuration home.
+remain authoritative. Grok separately retains its constructor native control/auth
+baseline; pending Issue51 rejects caller control replacement and scopes eligible ordinary
+caller refs without inheriting all ambient variables. The adapter never supplies bypass
+flags or an empty native configuration home.
 
 Tokio supervises private process groups without busy polling. Concurrent output
 drains retain bounded 64 KiB byte tails and report truncation/I/O failures. Natural exit uses waitid NOWAIT and SIGCHLD to kill the owned group before
@@ -327,9 +329,11 @@ Grok currently whitelists intentional native constructor baseline but does not b
 ordinary caller keys/known foreign baseline references to persisted owning Project
 refs. A synthetic actual-child probe verified two cross-Project paths; it did not use
 installed native Grok or real credentials. Issue51 requires owning caller declarations,
-foreign-reference filtering and fresh registered-inventory admission, preserving global
+opaque rejection for known foreign non-control baseline references and fresh all-lifecycle
+name-only decision admission, preserving global
 native auth/hooks/config/safety and immutable controls. Requirements/design/source gates
 are pending; #5/#6 patterns are comparison inputs, not universal safety acceptance.
 No child isolation fix or schema change is claimed in the current baseline. The proposed
-[Issue51 design](../issue-51-design.md) adds pure registry/control predicates and exact
-reference-roster CAS before actual native spawn; approval/source implementation is pending.
+[Issue51 design](../issue-51-design.md) adds pure registry/control predicates and a
+fresh relevant environment decision in the scoped Session transaction before actual
+native spawn; approval/source implementation is pending.

@@ -93,3 +93,39 @@ Independent native Requirements5 approved exact `c627ad0be4252afad283af27bf81811
 Optional G02 is handled by the design's explicit runtime operator evaluation against that adapter's retained baseline, not a separate registry CLI process. G03 stale documentation-only wording is corrected. G01's suggested SSLKEYLOGFILE grandfather needs independent design classification: baseline_key admits it, but admission to a native whitelist is not itself a protected-control classifier (the same whitelist admits XAI credentials). The proposed design keeps this registry-valid TLS-secret-sink path out of new implicit protected authority; design reviewers must assess consistency with existing named TLS controls and the approved credential-bearing/locating rule. No new exception or implemented behavior is claimed by this disposition.
 
 Reviewed Issue46 main80452f4 was normally merged at94e6f1e after requirements reviewer cleanup, retaining public ancestry. README/master conflicts were resolved by keeping both Issue46 implemented contract and Issue51 proposed environment contract; current crates match integrated main exactly. Two fresh independent immutable Design1 gates on the published outcome head precede implementation. Formal requirements authority remains the approved c627 semantics; header/provenance changes here only clarify imported baseline and review status.
+
+
+## Design1 verified requirements alignment and design correction
+
+Both independent native Design1 reviewers completed request_changes at public immutable
+cc89cec7b8ab70937a618b98f0f5a5296008e82c, with owned cleanup verified: selection
+c2d989db-8b32-4a37-b1f7-eb7517e3ba1d and transaction7ab21c3e-e15c-47e5-a75c-4a6161eef43e.
+No Issue51 source exists. Raw native meters are not measured per-round wall time. Full
+source inspection verifies their blocking mechanics against current Grok Actor.publish,
+entry/stop, checkpoint, ScopeSnapshot and Store Immediate Session CAS.
+
+Selection D51-01/transaction D51-04: keep SSLKEYLOGFILE non-control, and clarify requirements
+that baseline membership is not protected-control authority. Selection D51-02 and
+transaction D51-01/02: admission must hold transition, update Actor.version and retained
+watch only after the same saved candidate succeeds, retain previous snapshot on failure,
+and recheck stopping immediately before spawn. Drop proposed environment-specific
+spawn intent: existing Session CAS/audit is the fence, prior prompt intent remains, and
+no new recovery/audit schema is justified. Selection D51-05/transaction Low08: raw foreign
+roster equality would create irrelevant registration-correlated A errors/audit. Replace
+it with fresh pure relevant decision in the transaction; remove checkpoint's foreign
+roster dependency. Selection D51-03/transaction Low11: Workflow actually forwards supplied
+environment unchanged; Generic fixtures/control contract are separate, not native
+producer filtering. Selection D51-04/transaction D51-05: explicit cfg(test) per-invocation
+in-crate hooks make the required second-Store and post-admission stop boundaries reachable.
+
+Transaction D51-03/selection Low10: actual checkpoint refreshes own Project under stable
+identity guards, while resume rejects post-checkpoint stale metadata before environment
+selection. Requirements now preserve that ordering: before-checkpoint ref removal yields
+opaque resume denial; after-checkpoint change requires explicit fresh checkpoint after
+StateConflict. No implicit Project refresh or weakened lifecycle is added. Low precision
+items adopt bounded error precedence/fixed display, exact predicate drift expectations,
+all-lifecycle state-only operator candidate inspection, unsupported declaration versus
+actual caller selection, and master all-lifecycle opaque rejection/Generic versus Grok
+baseline ownership. These verified documentation changes require immutable Requirements6
+clarification approval and two Design2 delta approvals before implementation. No tests,
+native execution or private environment/config reading was performed for these changes.
