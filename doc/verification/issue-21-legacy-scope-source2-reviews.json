@@ -1,0 +1,66 @@
+{
+  "reviewed_head": "d937db3cedf6bc741d135cb7c665482456c9c352",
+  "round": "source2",
+  "independent": true,
+  "reviews": [
+    {
+      "head": "d937db3cedf6bc741d135cb7c665482456c9c352",
+      "native_session": "4c2889c8-e103-4938-86a9-beb57b2eb976",
+      "review": {
+        "verdict": "approve",
+        "findings": [
+          {
+            "id": "S2A-L1",
+            "severity": "Low",
+            "file": "doc/verification/issue-21.md",
+            "line": 353,
+            "claim": "The recorded workspace test count is off by one. The ledger says '235 Rust + 2 doctests', but the retained summaries show 236 Rust tests plus 2 doctests, 238 passed in total.",
+            "evidence": "In issue-21-legacy-scope-nullable-checks.json the workspace-test summaries are 133+0+19+5+16+18+13+16+16 = 236 for the Rust targets, plus the two '1 passed' doctest runs, for 238 total. The 7+2 = 9 ignored matches. This is consistent with Source1: lib 120\u2192133 (+13 from the merged PR61 diagnostics) and state 15\u219216 (+1 new test), so 222+13+1 = 236. The same miscount appears in summary.rust_tests_passed (nullable-checks.json:241) and issue-21.md:353. Pass/fail is unaffected; only the provenance arithmetic is wrong.",
+            "fix": "Correct both records to 236 Rust tests plus 2 doctests (238 total) in a metadata-only commit, keeping the retained log hash unchanged."
+          },
+          {
+            "id": "S2A-L2",
+            "severity": "Low",
+            "file": "crates/rrx/tests/state.rs",
+            "line": 909,
+            "claim": "Optional and non-blocking. The new 'insertion order' assertion cannot tell sequence order apart from scope or index order. This is because the fixture inserts the Project, Goal and Task rows in the same order that usage_by_scope(project_id, goal_id, task_id) sorts them, with NULLs first.",
+            "evidence": "In the fixture, the rows are inserted P(NULL,NULL), G(g,NULL), T(g,t). SQLite sorts NULL before any value, so an `ORDER BY goal_id,task_id` mutant returns exactly json!(valid) and survives. Removing ORDER BY so that the usage_by_scope index order is used would very likely survive too. Every other usage test has a single row. The production ORDER BY is unchanged from baseline and no ordering mutant is claimed, so this concerns control strength, not correctness. The test comment at 907-908 and the doc text 'exact ordered selected rows' imply more than the assertion discriminates.",
+            "fix": "Insert the Task-scoped row first, or interleave the rows, so that sequence order differs from scope/index order. Optionally record an ORDER BY mutant. Not required for this component."
+          }
+        ],
+        "assessment": "This is a read-only review of the supplied public files; no tools were executed. Production is byte-identical to my Source1 review: mod.rs blob 9dae57d and sha256 59ed49fd, schema.sql bfa8119, domain.rs f3f70b8. The SQL and the symmetric Option equality are unchanged, and there is no scope, API or authority expansion.\n\nPrior findings are resolved as follows.\n\nS1A-M1: the new test writes legitimate Project-, Goal- and Task-scoped non-executor Reviewer Sessions and Usage through the public put_session/put_usage writers. The Project view returns all three rows exactly, the Goal view returns [G,T] and the Task view returns [T]. Both reverse directions are now exercised. First, a NULL goal column with body Some(g) on the Project row is refused under the Project view, while the Goal and Task views return only the unaffected rows. Second, a NULL task column with body Some(t) on the Goal row is refused under the Project and Goal views, while the Task view returns [T]. I checked each per-view `selects_corrupt` expectation by hand against the SQL filter semantics. The Project view with the task corruption also places a valid row ahead of the corrupt one, so skip, filter and take_while partial-vector mutants would now return Ok and be killed.\n\nS1A-L1: the b29 paragraph is marked SUPERSEDED AND WITHDRAWN, and the master now says 'validates the requested Scope shape' without 'staged'.\n\nS1A-L2: legacy_usage_rows_snapshot covers every usage row with all columns and every audit row globally, in both tests.\n\nS1A-L3: the static-error claim is narrowed to identity and request-shape refusals, and serde decode detail is explicitly deferred.\n\nMutant evidence was verified against the HEAD layout:\n- Patch lines 897, 908-909 and 919-922 match the current mod.rs.\n- The panic sites match the intended assertions: 813:44 and 838:31 in the first test (the Source1 lines shifted +41-3), 910:58 at the positive Project read, and 947:39 at the refusal unwrap_err.\n- null_goal_wildcard and null_task_wildcard return Ok on the corrupted Project view.\n- nonoptional_goal_column and nonoptional_task_column fail the legitimate NULL-column read with InvalidColumnType. That is a real consumer failure, not a compile or setup failure.\n- omit_goal and omit_task are now killed by both tests; omit_project, omit_session and omit_scope_shape by the first.\n- The reused patch blobs and mutated-source hashes equal Source1's, as expected with unchanged production.\n- The baseline and restored trees are both b680fc5 with source 59ed49fd, and both controls pass.\n- The collector-string correction is disclosed. It affected report parsing only; the actual test exit was 101, with no retry-to-pass.\n\nThe manifest's state.rs blob b918741 and sha256 5e6ca01c equal the checks and mutation records. There are 38 inputs (36 plus the two PR61 diagnostics files). The fmt log hash is the SHA-256 of empty output, which is consistent with a clean --check.\n\nScope disclaimers remain honest. Release tests are not claimed, and whole #21, native, qualified and projection producers stay open. The remaining items are a clerical test-count error and an optional ordering-control strengthening; neither blocks this component.",
+        "unresolved_blockers": []
+      },
+      "cleanup_verified": true,
+      "meter_scope": "raw_native_resumed_session_attribution_unverified"
+    },
+    {
+      "head": "d937db3cedf6bc741d135cb7c665482456c9c352",
+      "native_session": "bd6a3359-b32f-4708-94ba-22e7c275f31b",
+      "review": {
+        "verdict": "approve",
+        "findings": [
+          {
+            "id": "L1-workspace-test-count-arithmetic",
+            "severity": "Low",
+            "file": "doc/verification/issue-21-legacy-scope-nullable-checks.json",
+            "line": 1,
+            "claim": "summary.rust_tests_passed is 235, and the ledger repeats '235 Rust+2 doctests'. Neither agrees with the test_summaries retained in the same JSON.",
+            "evidence": "The nine non-trivial targets in workspace-test.test_summaries sum to 236: 133+0+19+5+16+18+13+16+16. Two trailing one-test targets follow. Source1's identical classification gave 120+0+19+5+16+18+13+16+15=222 Rust plus 2 doctests. The only changes since then are lib +13 (merged PR61 diagnostics; ignored 6\u21927) and state +1, so 222+14=236. The ignored total of 9 (7+2) is consistent. The same 235 appears in doc/verification/issue-21.md ('At301a885 DEFAULT normal-host workspace235 Rust+2 doctests PASS').",
+            "fix": "Derive the count mechanically from the retained summaries and correct it to 236 Rust tests plus 2 doctests in both the JSON summary and the ledger sentence. If one trailing single-test target is not a doctest, label it explicitly. Metadata only; no source or test change needed."
+          }
+        ],
+        "assessment": "Static delta review of the supplied materials (tools disabled); log hashes were not recomputed and nothing was executed.\n\nProduction is unchanged. state/mod.rs blob 9dae57d and sha256 59ed49fd match my Source1 packet, as do schema.sql bfa8119 and domain.rs f3f70b8. The SQL and the symmetric Option equality are identical, so my Source1 correctness reading still holds.\n\nM1 (NULL-column controls) is resolved.\n- The new test writes legitimate Project-, Goal- and Task-scoped Reviewer Sessions and Usage rows through the public writers.\n- Positive reads return exactly [0,1,2] for the Project view, [1,2] for the Goal view and [2] for the Task view, in sequence order.\n- A Project row with a body claiming goal Some refuses on the Project view. The Goal and Task views correctly exclude that row through the column filter and stay readable.\n- A Goal row with a body claiming task Some (an otherwise valid Task-shaped body) refuses on the Project and Goal views. The Task view excludes it.\n- `legacy_usage_rows_snapshot` now captures every usage row with all columns, plus every audit row, so my snapshot note is fixed.\n- Restore leaves byte-identical history, and the final Project read passes.\n\nMutant kills are causal and consistent with the source.\n- The wildcard mutants make the Project-view read return Ok, which fails `unwrap_err` at state.rs:947:39. The observed rows match the corrupted Project (goal) and Goal (task) iterations.\n- The non-optional mutants fail the positive Project read at 910:58 with 'Invalid column type Null' at index 1/2.\n- The original five mutants still fail at 813:44 or 838:31. These positions equal the Source1 lines shifted by +41 for the helper and \u22123 for the snapshot closure.\n- Every patch hunk (897, 908, 909, 920, 921, 922) matches the unchanged source.\n- All nine patch sha256 values match the manifest. The original five mutated-source hashes equal the Source1 values, as expected for identical production bytes.\n- Baseline and restored tree are both b680fc5, the control and restore runs pass 2 tests, and the focused runs show '14 filtered out' out of 16 state tests.\n- The collector-string note is a reporting-parser issue. The credited failure is the actual consumer panic; no failure was turned green by a retry.\n\nInputs:\n- 38 inputs recorded: the 36 from Source1 plus the two PR61 inspection diagnostics files.\n- The state.rs and mod.rs blobs match the manifest.\n\nMy Low findings:\n- My L1 is fixed: the b29 paragraph is now explicitly historical, superseded and withdrawn.\n- My L2 is fixed: the static-error claim is scoped to identity and requested-scope refusals, with serde decode detail pending.\n- The master's 'staged' wording is now accurate current-state wording.\n\nOnly the off-by-one test count remains, as a Low.\n\nStill outside this component, as stated: session-scope authority, raw retirement, bounded projections, epoch, native or qualified telemetry, and whole-#21 acceptance. Release tests and the main555 failure stay open and are not claimed. The peer Source2 review and exact-source CI remain the required process gates before merge.",
+        "unresolved_blockers": []
+      },
+      "cleanup_verified": true,
+      "meter_scope": "raw_native_resumed_session_attribution_unverified"
+    }
+  ],
+  "scope": "limited legacy Store::usage read identity component only",
+  "verified_disposition": {
+    "count": "verified clerical error; mechanically corrected to236 Rust+2docs from unchanged retained summaries/hash; no tests rerun",
+    "ordering_control": "nonblocking optional test strengthening deferred: existing SQL ORDER BY sequence is unchanged and no ordering-mutation kill is claimed. Current three-row positive assertions observe their expected sequence but do not discriminate against the alternative scope-index order. No source/test change for this Low.",
+    "scope": "Both approved only limited read integrity. Full21/private producers/native telemetry/bounded projections/epoch/raw writer retirement and known main555 release failure remain unresolved. CI release BUILD is not release TEST."
+  }
+}
