@@ -385,3 +385,9 @@ fresh native Sessions and potential-blocker holds. They are not implemented curr
 behavior; see [Issue 9 requirements](../../requirements/issue-9-requirements.md).
 Existing example rosters are proposed configuration, not actual parallel-review
 acceptance. Real native isolation/efficiency acceptance remains Issue #16.
+
+The proposed ReviewSet contract freezes activated review rubric/policy provenance,
+labels prior-round exposure under current-round input independence and retains
+unreleased native holds across successor Sets/descendants. Stable acceptance IDs
+require linked actual consumer evidence; these remain requirements, not current
+Workflow implementation claims.

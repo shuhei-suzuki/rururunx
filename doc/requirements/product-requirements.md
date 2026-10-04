@@ -634,6 +634,16 @@ Allow-duplicate-agent permits fresh Sessions sharing a non-author registered ide
 independent of allow-self. Eligible Sessions can count toward the floor when the
 activated policy permits them; blocker-confirmer pair diversity still applies.
 
+Governing review policy, mandatory rules, instructions and required skills use an
+activated Runtime/Project revision outside Task-author control; edits in the
+reviewed delta remain reviewed content/proposals, never their author's rubric.
+After an earlier full round safely settles, labelled prior findings may enter a
+new fresh round and eligible approvals still count under current-round input
+independence. Certificates expose that history and never claim blind independence.
+Unreleased Lost/uncertain members fence every new formal round/Set/descendant in
+the obligation lineage, including after termination or decomposition. Normal
+completion cleanup expiry can produce this hold even after a valid APPROVE.
+
 ### Parallel review
 
 Configured reviewers should run concurrently whenever their review inputs are independent.
