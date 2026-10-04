@@ -1,0 +1,55 @@
+{
+  "source": "cba0b1d3b52ca643eae7add73b73417138e3ff38",
+  "clean": true,
+  "checks": {
+    "workspace-debug": {
+      "log": "/private/tmp/rururunx-issue6-stageA-cba0b1d-workspace-debug.log",
+      "sha256": "fd7331ed20f4545380b8415ed52788cf015783873881ad6b835493a6bcf60baa",
+      "bytes": 42745,
+      "terminal_success": true
+    },
+    "workspace-release": {
+      "log": "/private/tmp/rururunx-issue6-stageA-cba0b1d-workspace-release.log",
+      "sha256": "e836175d7d3bb4cb8bd27357f56da1e789a92301a51db42a900b9a6af5e214d6",
+      "bytes": 42755,
+      "terminal_success": true
+    },
+    "clippy": {
+      "log": "/private/tmp/rururunx-issue6-stageA-cba0b1d-clippy.log",
+      "sha256": "b84b52a21a9f2e4bb1b3b3c002b26256ee199bfe4a0a91017201dc313674a32b",
+      "bytes": 223,
+      "terminal_success": true
+    },
+    "build-debug": {
+      "log": "/private/tmp/rururunx-issue6-stageA-cba0b1d-build-debug.log",
+      "sha256": "32d47f791eadf1ea833d9f8c84fbfea5cab1f438e113e93be05bd5b908e1c2ac",
+      "bytes": 72,
+      "terminal_success": true
+    },
+    "build-release": {
+      "log": "/private/tmp/rururunx-issue6-stageA-cba0b1d-build-release.log",
+      "sha256": "2d5694fb348541fae3d68a033b004800c9c79f8f6edb468d5763b1d8f389597a",
+      "bytes": 62,
+      "terminal_success": true
+    }
+  },
+  "default_top_level_rust_passed": 370,
+  "default_doctests_passed": 2,
+  "ignored": 26,
+  "nested_ordinary_child_extra_not_double_counted": 1,
+  "qualified_mutants": {
+    "assertion-killed": 6,
+    "plain-truncation-survived-no-credit": 1
+  },
+  "restored_controls_pass": true,
+  "historical_failures_preserved": [
+    "initial0c defaultdebug10Grok failures precisecauseUNKNOWN",
+    "initial0crelease leftovercallerenv schemafixture InvalidConfiguration corrected0dc",
+    "Source2bothrequest_changes retained",
+    "initialSource3mutation operator-count harness error",
+    "S304 narrowtruncation survivor",
+    "oldwrapper54058/35522 retainedUnknown noverdict/cleanupcredit"
+  ],
+  "reviewed_source": "cba0b1d3b52ca643eae7add73b73417138e3ff38",
+  "later_delta": "evidence docs + probabilistic-control comment only, separate direct review and CI required"
+}

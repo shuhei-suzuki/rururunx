@@ -21,6 +21,20 @@ use fixture_support::{Fixture, git};
 use rrx::git as fixture_git;
 
 impl Fixture {
+    async fn start_structured_trait(
+        &self,
+        adapter: &dyn AgentAdapter,
+        schema: Value,
+    ) -> AdapterResult<Session> {
+        let lower = receipt_support::watermark(&self.store, &self.request.scope)
+            .expect("before-launch audit unavailable");
+        self.synthetic("RRX_EXPECT_SCHEMA", schema.to_string());
+        let session = adapter
+            .start_structured(self.request.clone(), schema)
+            .await?;
+        self.record_attempt(&session, lower, self.request.input.version);
+        Ok(session)
+    }
     fn review(&mut self) {
         rrx::git::WorktreeManager::lock_review(
             &mut self.store.lock().unwrap(),
@@ -158,7 +172,7 @@ async fn concurrent_native_reviewers_share_exact_lock_and_validate_structured_ve
     let schema = json!({"type":"object","properties":{"verdict":{"type":"string","enum":["DENY"]},"reason":{"type":"string"}},"required":["verdict","reason"],"additionalProperties":false});
     let (one, two) = tokio::join!(
         fixture.start_structured(&adapter, schema.clone()),
-        fixture.start_structured(&adapter, schema)
+        fixture.start_structured(&adapter, schema.clone())
     );
     let one = one.unwrap();
     let two = two.unwrap();
@@ -215,10 +229,35 @@ async fn concurrent_native_reviewers_share_exact_lock_and_validate_structured_ve
         serde_json::to_value(registered.status((&three).into()).await.unwrap().session).unwrap(),
         serde_json::to_value(&c.session).unwrap()
     );
-    for status in [&a, &b, &c, &d] {
+    // The workflow receives dyn AgentAdapter from the registry. Caller constraints
+    // must reach the same native prompt and local validator through that path.
+    let (five, six) = tokio::join!(
+        fixture.start_structured_trait(&*registered, schema.clone()),
+        fixture.start_structured_trait(&*registered, schema)
+    );
+    let five = five.unwrap();
+    let six = six.unwrap();
+    assert_ne!(five.id, six.id);
+    let (e, f) = tokio::join!(
+        finished(&*registered, &five, &fixture),
+        finished(&*registered, &six, &fixture)
+    );
+    for status in [&e, &f] {
+        assert!(
+            registered.transport_succeeded(status),
+            "{:?}; {}",
+            status.failure,
+            fixture.receipt_message(status)
+        );
+        let output: Value = serde_json::from_slice(&status.stdout).unwrap();
+        assert_eq!(output["verdict"], "DENY");
+        assert!(output["reason"].is_string());
+        assert_eq!(output.as_object().unwrap().len(), 2);
+    }
+    for status in [&a, &b, &c, &d, &e, &f] {
         receipt_support::assert_receipt(&fixture.observation(status).receipt);
     }
-    for session in [&one, &two, &three, &four] {
+    for session in [&one, &two, &three, &four, &five, &six] {
         registered.release(session.into()).unwrap();
     }
 }
@@ -785,7 +824,13 @@ async fn installed_native_structured_decision_has_exact_response_correlation() {
     fixture.request.effort = Some("low".into());
     fixture.request.input.payload = "Decision-only supplied fixture bundle. Requirement: writes must remain in the owned Task. Proposed operation: write to a different Project. Return verdict DENY and a concise reason; no files, searches, tools or operations are authorized.".into();
     let schema = json!({"type":"object","properties":{"verdict":{"type":"string","enum":["DENY"]},"reason":{"type":"string"}},"required":["verdict","reason"],"additionalProperties":false});
-    let session = fixture.start_structured(&adapter, schema).await.unwrap();
+    let mut registry = AgentRegistry::default();
+    registry.register("grok".into(), Arc::new(adapter)).unwrap();
+    let adapter = registry.get("grok").unwrap();
+    let session = fixture
+        .start_structured_trait(&*adapter, schema)
+        .await
+        .unwrap();
     let mut status = adapter.subscribe((&session).into()).unwrap();
     let decision = tokio::time::timeout(Duration::from_secs(330), async {
         while !status.borrow().terminal() {
@@ -813,41 +858,143 @@ async fn installed_native_structured_decision_has_exact_response_correlation() {
 }
 
 #[tokio::test]
-async fn native_structured_consumer_rejects_each_schema_violation_and_live_decision_tools() {
-    for mode in [
-        "schema_enum",
-        "schema_required",
-        "schema_extra",
-        "decision_tool",
-    ] {
+async fn structured_schema_rejection_precedes_all_session_and_spawn_effects() {
+    for registered_path in [false, true] {
         let mut fixture = Fixture::new();
         fixture.review();
-        fixture.mode(mode);
-        let adapter = fixture.adapter();
-        let schema = json!({"type":"object","properties":{"verdict":{"type":"string","enum":["DENY"]},"reason":{"type":"string"}},"required":["verdict","reason"],"additionalProperties":false});
-        let session = fixture.start_structured(&adapter, schema).await.unwrap();
-        let status = finished(&adapter, &session, &fixture).await;
-        receipt_support::assert_state(
-            status.session.state,
-            if mode == "decision_tool" {
-                SessionState::Lost
+        let marker = fixture.directory.path().join("structured-spawn-observed");
+        fixture.synthetic("RRX_SPAWN_OBSERVED", marker.to_str().unwrap().into());
+        let adapter = Arc::new(fixture.adapter());
+        let mut registry = AgentRegistry::default();
+        registry.register("grok".into(), adapter.clone()).unwrap();
+        let registered = registry.get("grok").unwrap();
+        let lower = receipt_support::watermark(&fixture.store, &fixture.request.scope).unwrap();
+        for schema in [
+            json!({"type":"object","properties":{"verdict":{"type":"string","const":"DENY"}}}),
+            json!({"type":"object","description":"x".repeat(16_384)}),
+        ] {
+            let result = if registered_path {
+                fixture.start_structured_trait(&*registered, schema).await
             } else {
-                SessionState::Failed
-            },
-            &format!("{mode}: {:?}", status.failure),
-            &fixture.receipt_message(&status),
-        );
+                fixture.start_structured(&adapter, schema).await
+            };
+            let error = match result {
+                Err(error) => error,
+                Ok(unexpected) => {
+                    // A compiled guard mutant may launch a finite owned fixture.
+                    // Finish its exact supervisor cleanup before failing the assertion.
+                    let status = finished(&*registered, &unexpected, &fixture).await;
+                    receipt_support::assert_receipt(&fixture.observation(&status).receipt);
+                    registered.release((&unexpected).into()).unwrap();
+                    panic!("unsupported caller schema reached native launch");
+                }
+            };
+            assert_eq!(error.kind, ErrorKind::InvalidInput);
+            let store = fixture.store.lock().unwrap();
+            assert!(
+                store
+                    .records(&fixture.request.scope, RecordKind::Session)
+                    .unwrap()
+                    .is_empty()
+            );
+            assert!(
+                store
+                    .events(&fixture.request.scope, lower, 100)
+                    .unwrap()
+                    .is_empty()
+            );
+            assert!(
+                !marker.exists(),
+                "rejected caller schema started native fixture"
+            );
+        }
+        let schema = json!({"type":"object","properties":{"verdict":{"type":"string","enum":["DENY"]},"reason":{"type":"string"}},"required":["verdict","reason"],"additionalProperties":false});
+        let session = if registered_path {
+            fixture
+                .start_structured_trait(&*registered, schema)
+                .await
+                .unwrap()
+        } else {
+            fixture.start_structured(&adapter, schema).await.unwrap()
+        };
+        let status = finished(&*registered, &session, &fixture).await;
         assert!(
-            !adapter.transport_succeeded(&status),
-            "{}",
+            registered.transport_succeeded(&status),
+            "{:?}; {}",
+            status.failure,
             fixture.receipt_message(&status)
         );
         assert!(
-            status.failure.is_some(),
-            "{}",
-            fixture.receipt_message(&status)
+            marker.exists(),
+            "following valid launch did not reach native fixture"
         );
         receipt_support::assert_receipt(&fixture.observation(&status).receipt);
+        registered.release((&session).into()).unwrap();
+    }
+}
+
+#[tokio::test]
+async fn native_structured_consumer_rejects_each_schema_violation_and_live_decision_tools() {
+    for registered_path in [false, true] {
+        for mode in [
+            "schema_enum",
+            "schema_required",
+            "schema_extra",
+            "decision_tool",
+        ] {
+            let mut fixture = Fixture::new();
+            fixture.review();
+            fixture.mode(mode);
+            let adapter = Arc::new(fixture.adapter());
+            let mut registry = AgentRegistry::default();
+            registry.register("grok".into(), adapter.clone()).unwrap();
+            let registered = registry.get("grok").unwrap();
+            let selected: &dyn AgentAdapter = if registered_path {
+                &*registered
+            } else {
+                &*adapter
+            };
+            let schema = json!({"type":"object","properties":{"verdict":{"type":"string","enum":["DENY"]},"reason":{"type":"string"}},"required":["verdict","reason"],"additionalProperties":false});
+            let session = if registered_path {
+                fixture
+                    .start_structured_trait(selected, schema)
+                    .await
+                    .unwrap()
+            } else {
+                fixture.start_structured(&adapter, schema).await.unwrap()
+            };
+            let status = finished(selected, &session, &fixture).await;
+            receipt_support::assert_state(
+                status.session.state,
+                if mode == "decision_tool" {
+                    SessionState::Lost
+                } else {
+                    SessionState::Failed
+                },
+                &format!("{mode}: {:?}", status.failure),
+                &fixture.receipt_message(&status),
+            );
+            assert!(
+                !adapter.transport_succeeded(&status),
+                "{}",
+                fixture.receipt_message(&status)
+            );
+            assert!(
+                status.failure.is_some(),
+                "{}",
+                fixture.receipt_message(&status)
+            );
+            receipt_support::assert_receipt(&fixture.observation(&status).receipt);
+            if status.session.state == SessionState::Lost {
+                assert_eq!(
+                    selected.release((&session).into()).unwrap_err().kind,
+                    ErrorKind::SessionLost,
+                    "uncertain decision/cleanup retains reservation; {mode}, registered={registered_path}"
+                );
+            } else {
+                selected.release((&session).into()).unwrap();
+            }
+        }
     }
 }
 

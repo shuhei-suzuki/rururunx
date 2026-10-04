@@ -125,7 +125,12 @@ impl Fixture {
         let path = self.executable.with_extension("json");
         let mut metadata: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
         metadata[key] = json!(value);
-        std::fs::write(path, serde_json::to_vec(&metadata).unwrap()).unwrap();
+        use std::io::Write;
+        let mut replacement = tempfile::NamedTempFile::new_in(path.parent().unwrap()).unwrap();
+        replacement
+            .write_all(&serde_json::to_vec(&metadata).unwrap())
+            .unwrap();
+        replacement.persist(path).unwrap();
     }
     pub(super) fn synthetic_value(&self, key: &str) -> String {
         let metadata: Value =
@@ -145,18 +150,46 @@ impl Fixture {
     }
 }
 
+#[test]
+fn synthetic_sidecar_stays_complete_for_actual_concurrent_reader() {
+    // Scheduling determines whether reads overlap replacements. This is a
+    // probabilistic control, not proof that any particular replacement was read.
+    let fixture = Fixture::new();
+    let barrier = std::sync::Barrier::new(2);
+    std::thread::scope(|scope| {
+        let reader = scope.spawn(|| {
+            barrier.wait();
+            for _ in 0..2000 {
+                let bytes = std::fs::read(fixture.executable.with_extension("json")).unwrap();
+                let metadata: Value = serde_json::from_slice(&bytes)
+                    .expect("atomic sidecar reader observed incomplete JSON");
+                assert!(metadata["RRX_DATABASE"].is_string());
+                assert!(metadata["RRX_FOREIGN"].is_string());
+                std::thread::yield_now();
+            }
+        });
+        barrier.wait();
+        for version in 0..200 {
+            fixture.synthetic("RRX_CONCURRENT", format!("{version}:{}", "x".repeat(4096)));
+        }
+        reader.join().unwrap();
+    });
+    assert!(
+        fixture
+            .synthetic_value("RRX_CONCURRENT")
+            .starts_with("199:")
+    );
+}
+
 impl Fixture {
     pub(super) async fn start(&self, adapter: &dyn AgentAdapter) -> AdapterResult<Session> {
         let lower = receipt_support::watermark(&self.store, &self.request.scope)
             .expect("before-launch audit unavailable");
+        if self.request.role == SessionRole::Reviewer {
+            self.synthetic("RRX_EXPECT_SCHEMA", json!({"type":"object"}).to_string());
+        }
         let session = adapter.start(self.request.clone()).await?;
-        self.attempts.lock().unwrap().insert(
-            session.id,
-            Attempt {
-                lower,
-                input_version: self.request.input.version,
-            },
-        );
+        self.record_attempt(&session, lower, self.request.input.version);
         Ok(session)
     }
     pub(super) async fn start_structured(
@@ -166,17 +199,21 @@ impl Fixture {
     ) -> AdapterResult<Session> {
         let lower = receipt_support::watermark(&self.store, &self.request.scope)
             .expect("before-launch audit unavailable");
+        self.synthetic("RRX_EXPECT_SCHEMA", schema.to_string());
         let session = adapter
             .start_structured(self.request.clone(), schema)
             .await?;
+        self.record_attempt(&session, lower, self.request.input.version);
+        Ok(session)
+    }
+    pub(super) fn record_attempt(&self, session: &Session, lower: i64, input_version: u64) {
         self.attempts.lock().unwrap().insert(
             session.id,
             Attempt {
                 lower,
-                input_version: self.request.input.version,
+                input_version,
             },
         );
-        Ok(session)
     }
     pub(super) async fn resume(
         &self,

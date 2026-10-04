@@ -17,9 +17,11 @@ toml = "0.8"
 rusqlite = { version = "0.37", features = ["bundled"] }
 uuid = { version = "1.18", features = ["v4", "serde"] }
 tempfile = "3.23"
-tokio = { version = "1.48", features = ["rt-multi-thread", "macros", "process", "io-util", "sync", "time", "signal"] }
+tokio = { version = "1.48", features = ["rt-multi-thread", "macros", "process", "io-util", "sync", "time", "signal", "net"] }
 rustix = { version = "1.1", features = ["process", "fs"] }
 sha2 = "0.10"
+tokio-tungstenite = { version = "0.30", default-features = false, features = ["handshake"] }
+futures-util = { version = "0.3", default-features = false, features = ["std", "sink", "async-await"] }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
