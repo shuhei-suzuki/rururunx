@@ -1,11 +1,12 @@
 # Issue 6: Native Codex verification in progress
 
-This evidence is partial; Issue 6 is not ready to merge. Native TUI/attach,
-final immutable independent delta source review and final
-exact-head CI remain required. Authentication/provider compatibility guards are
-implemented and tested; native Interactive/Attach remain explicitly unavailable.
+This evidence is partial; Issue 6 capability completion remains open. The finite
+Stage A EMPTY/no-effect foundation has the scoped Source3 approvals and exact-tree
+CI recorded below, and can be considered for a limited merge separately. Required
+ready native workloads, TUI/attach and Stage B ownership/settlement remain
+unavailable. Historical checks and pending statements apply to their named heads.
 
-## Grok structured trait integration (source review pending)
+## Grok structured trait integration (component evidence)
 
 The merged Issue 7 provider already accepts caller schemas through its inherent
 API. Issue 6's additive object-safe structured-start API now delegates Grok's
@@ -32,8 +33,11 @@ run receives no acceptance credit. This fixture keeps its existing explicit
 `grok-4.7`/`low` request, native auth/config/hooks and isolated zero-tool Project.
 It establishes one real successful trait-dispatched constrained decision, not
 native reliability under all timing or Issue 9 Review Set/Broker acceptance.
-Production was cherry-picked byte-identically to `65aa940` for later immutable
-Issue 6 source review and combined exact-head CI; those gates remain pending.
+Production was cherry-picked byte-identically to `65aa940`. The complete Grok
+production receiver and shared trait authority were subsequently supplied in the
+approved F4 `9f2f3db` composition review; current combined checks are recorded below.
+This is forwarding/component compatibility evidence, not complete Grok native
+workload or Review Set/Broker acceptance.
 
 Evidence: /private/tmp/rururunx-issue6-grok-trait-control.log,
 /private/tmp/rururunx-issue6-grok-trait-rejections.log (initial release failure),

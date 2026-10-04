@@ -25,6 +25,12 @@ prerequisite for publishing an adapter implementation checkpoint.
 Source: [Issue 6](https://github.com/shuhei-suzuki/rururunx/issues/6),
 product requirements and master Agent Adapter design.
 
+Current partial Stage A component availability is **EMPTY**. Ordinary launch,
+resume, checkpoint, attach and approval paths refuse before new effects; there is
+no ready workload backend or dispatch producer. The scoped source checkpoint may
+merge independently, but none of the required native or Stage B acceptance gates
+below is completed or waived by this refusal boundary.
+
 ## Behavior
 
 1. Execute prepared Task context through the installed native Codex CLI in the
