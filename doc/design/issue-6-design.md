@@ -87,16 +87,22 @@ to the retired channel or waits on the shared watch's latest value. Existing
 public SessionRef stays unchanged; the first poll defines this invocation's target.
 
 Use a small synchronous admission mutex with Preparing, CancelledBeforeAdmission
-and Consumed states, plus a separate level-triggered watch<AttemptPhase>.
+and Consumed states, plus terminal CheckpointCommitted for a checkpoint, and a
+separate level-triggered watch<AttemptPhase>.
 AttemptPhase is Preparing, AwaitingTurnAck, Supervised, or Finished(TypedOutcome).
-TypedOutcome is RestoredBeforeAdmission, Terminal{status,record_version},
-Lost{publication_result}, or RestoreUnpublished{error}. A captured attempt retains
+TypedOutcome is RestoredBeforeAdmission{cause: Cancelled | Failed(kind)},
+CheckpointCommitted{input_version}, Terminal{snapshot}, Lost{cause,publication_result},
+or RestoreUnpublished{cause,error}. A terminal snapshot includes the exact serialized
+Session and native attempt identity, rather than a raw Store record version.
+A captured attempt retains
 its own terminal snapshot and outcome even if a newer preparation replaces the
 shared watch. A waiter subscribes before checking the level and never relies on
 Notify edges. Finished is published only AFTER owned async cleanup and the final
 Session publication or its explicit failure; the Reservation owns this last act.
 Transferred supervision is Supervised, not Finished. The sole supervisor writes
 this same attempt's terminal outcome after cleanup/publication, including errors.
+Fresh start also installs a registered control at the Supervised transfer before
+its supervisor can run. Every observable Session therefore has a captured control.
 
 Stop atomically cancels Preparing, or queues an interrupt to the captured attempt's
 new channel if Consumed/Supervised. Hold the admission mutex through the exact
@@ -107,13 +113,30 @@ uses control then Store. Never take control from Store or hold a lock over await
 Checkpoint's final validated-request replacement uses registry/control/Store in
 that order with lock-held helpers, never current()/reference() reentry. Cancellation
 winning before replacement preserves the prior request and exact prior Session.
+The successful checkpoint commit changes its control to CheckpointCommitted in
+that SAME critical section as request replacement and exact Session restoration.
+Stop cannot change this terminal admission state to Cancelled. Its factual outcome
+is CheckpointCommitted{input_version}, even in the interval before Finished is sent.
+Both linear orders distinguish a cancelled unchanged request from a committed new
+input that a later resume actually consumes; no cancellation classification follows
+a committed checkpoint or a Failed(kind) restore.
 
 Stop awaits only its captured attempt's level-triggered outcome. For restored
 pre-admission cancellation return StateConflict with a factual cancellation/restore
-classification, rather than returning historical Exited as a new successful stop.
+classification ONLY when this invocation won or joined Preparing cancellation.
+Read phase before admission state: capturing an already Finished attempt is an idle
+terminal stop and returns its matching persisted snapshot, regardless of the cause
+of an earlier restore. A committed checkpoint returns the actual restored terminal
+Session with the committed-input classification, never cancellation. A failure of
+an attempt that this stop joined returns its actual Failed(kind) classification.
 Usage of that restored Session remains the prior actual turn, with no new turn
 attribution. For a consumed attempt, return its own terminal status only if the
-persisted record still matches the captured terminal version/status. If Session
+persisted Session exactly matches its snapshot and native attempt identity. Do not
+compare raw Store versions: Starting and exact restore legitimately increment them.
+An idle stop after a committed, cancelled or failed checkpoint, or a cancelled resume,
+still returns the prior terminal Session. The Finished-before-control-restore window
+also returns that matching terminal Session without claiming this stop cancelled it.
+If Session
 has advanced to attempt B, return StateConflict identifying advancement, with no
 cancellation or interrupt to B. Unpublished restore or cleanup uncertainty returns
 an explicit error; a completion signal alone never establishes successful stop.
@@ -124,6 +147,9 @@ TransitionClaim. Keep its JoinHandle in the registered attempt, release that han
 on task completion, and never abort it when a caller disappears. A caller-side
 guard requests cancellation on drop; it cannot claim native completion. The owned
 task continues bounded cleanup and exact restore before completing the attempt.
+The guard only cancels Preparing, never interrupts Consumed/Supervised, and is
+disarmed when the caller takes its result. Losing that admission race leaves the
+actual consumed turn supervised; it does not silently inject an interrupt.
 Panic/runtime shutdown retains the existing conservative Drop/Lost fallback and
 finishes with a typed uncertain/unpublished outcome, never a fabricated restore.
 No task may be spawned without its registered control/transition ownership.
@@ -147,7 +173,15 @@ existing native RPC/start/cleanup/inspection deadline is relaxed.
 
 Controls live until final cleanup/publication. The transition owner restores the
 old terminal control only on matching installed Arc identity; successful resume
-keeps that same new control for supervision. Separate per-attempt phase/status
+keeps that same new control for supervision. Restore leaves the terminal Session
+snapshot current despite incremented Store versions. Release the TransitionClaim
+in the SAME registry critical section that installs new evidence, reply channel,
+publisher and Supervised phase; the supervisor owns the control, never that claim.
+This makes pending_approvals, usage and transport_succeeded observable throughout
+the resumed native turn, including WaitingApproval and WaitingHuman. Old-control
+restore and JoinHandle release never run while holding Store; observation takes
+registry then Store. A closed captured stop channel waits on its own level-triggered
+phase and cannot report SessionLost from a retired receiver. Separate phase/status
 channels prevent a later checkpoint/resume from stealing a stop completion.
 No schema, caller-provided ownership token, native auth/hook/trust change is added.
 
@@ -161,7 +195,14 @@ must not miss notification. Gate stop-A's waiter; finish A and start checkpoint 
 and resume B, then wake A: no B cancellation or interrupt and A returns bounded.
 Inject restore CAS failure and consumed-then-RPC timeout to assert typed outcomes.
 Drop callers at every held preparation window: owned task restores asynchronously;
-panic remains Lost. Compiled mutants remove cancellation checks, mutex ordering,
+panic remains Lost, with panic cause distinct from publication failure. Gate idle
+stop after start/Exited and each checkpoint/restore outcome, plus fresh-start stop
+and Finished-before-control-restore; a raw-record-version comparison mutant must fail.
+Gate both checkpoint commit/stop linear orders and prove the committed input is
+resumed, killing a mutant that leaves Preparing after request replacement. Resume
+into WaitingApproval, read pending_approvals and usage, then submit its exact hash
+and assert exactly one native reply; keeping the transition claim through supervision
+must fail that consumer. Compiled mutants remove cancellation checks, mutex ordering,
 channel transfer, level-triggered Finished, attempt-bound lookup, publication-before-
 completion or owned task lifetime. Kill each with causal consumer assertions,
 restore exact source and run controls. The installed-native descendant/Decision-CWD/
