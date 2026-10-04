@@ -66,7 +66,6 @@ async fn engine(fixture: &Fixture, adapter: Arc<GrokAdapter>) -> WorkflowEngine 
     {
         let mut store = fixture.store.lock().unwrap();
         let mut task = store.task(task_id).unwrap().unwrap();
-        task.workflow = WorkflowClass::Quick;
         task.risk = RiskClass::R0;
         store.put_task(&mut task).unwrap();
     }
@@ -105,7 +104,7 @@ async fn reachable_workflow_native_phase_rejects_generic_map_and_binds_own_map()
 #[ignore = "only entered by owned env-cleared canary parent"]
 async fn forwarding_child() {
     assert_eq!(std::env::var("RRX_INSPECTION_FIXTURE_CHILD").unwrap(), "1");
-    let denied = Fixture::new();
+    let denied = Fixture::with_workflow(WorkflowClass::Quick);
     let adapter = Arc::new(denied.adapter());
     let workflow = engine(&denied, adapter).await;
     let task_id = denied.request.scope.task_id.unwrap();
@@ -154,7 +153,7 @@ async fn forwarding_child() {
     }
 
     // Separate actual Task at the same reachable phase; no implicit failed retry.
-    let mut allowed = Fixture::new();
+    let mut allowed = Fixture::with_workflow(WorkflowClass::Quick);
     {
         let mut store = allowed.store.lock().unwrap();
         let mut project = allowed.request.project.clone();

@@ -27,6 +27,9 @@ pub(super) fn git(root: &Path, args: &[&str]) -> String {
 }
 impl Fixture {
     pub(super) fn new() -> Self {
+        Self::with_workflow(WorkflowClass::default())
+    }
+    pub(super) fn with_workflow(workflow: WorkflowClass) -> Self {
         let directory = tempfile::tempdir().unwrap();
         let root = directory.path().join("project");
         std::fs::create_dir(&root).unwrap();
@@ -75,6 +78,7 @@ impl Fixture {
             }],
         );
         let mut task = Task::new(project.id, goal.id, "native".into(), "grok".into());
+        task.workflow = workflow;
         task.worktree = Some(worktree.clone());
         task.branch = Some("feature/task".into());
         let database = directory.path().join("state.db");

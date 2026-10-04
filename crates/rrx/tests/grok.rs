@@ -1,5 +1,6 @@
 use rrx::{
     adapter::{grok::GrokAdapter, *},
+    config::WorkflowClass,
     domain::*,
     state::Store,
 };

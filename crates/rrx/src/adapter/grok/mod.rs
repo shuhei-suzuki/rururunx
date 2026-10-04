@@ -18,6 +18,7 @@ mod receipt_support;
 mod receipt_tests;
 #[cfg(test)]
 use crate::{
+    config::WorkflowClass,
     domain::{CompletionCriterion, Goal, Task},
     git as fixture_git,
 };
