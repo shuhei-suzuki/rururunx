@@ -1,6 +1,6 @@
-# Issue 60 component requirements: inspection diagnostics and Git reader ownership
+# Issue60 component requirements: bounded inspector failure diagnostics
 
-Risk: STRICT for shared native process/reader lifetime and uncertainty boundaries.
+Risk: STRICT for shared native process observation/error and uncertainty boundaries.
 Status: requirements candidate; no design/source approval or implementation claimed.
 Parent [Issue60](https://github.com/shuhei-suzuki/rururunx/issues/60) retains its full
 runtime workload/effect/delegation/settlement acceptance. This component does not close it.
@@ -8,7 +8,8 @@ runtime workload/effect/delegation/settlement acceptance. This component does no
 ## Verified current source and failures
 
 Baseline main054aefd3a22a02951fa72b9fa397bed58d156bbf invokes trusted env-cleared
-/bin/ps -g OWNED_LEADER -o pid=,pgid=,stat= on macOS. Existing post-spawn250ms
+/bin/ps -g OWNED_LEADER -o pid=,pgid=,stat= on macOS, with no COMMAND_MODE
+override (production UNIX2003 semantics; legacy is a negative fixture only). Existing post-spawn250ms
 observation includes independent1MiB stdout/stderr, EOF and direct-child status.
 Complete framing, exact unreaped leader, empty stderr and successful exit are required.
 Unknown retains the existing process uncertainty/latch; blocking inspector cleanup/reap
@@ -27,9 +28,13 @@ inspector PID/pipe/status/timing evidence survived these errors. Cause is unknow
 At this baseline bounded_git_raw_inner spawns stdout/stderr Tokio JoinHandles before
 observation. Cleanup/reap/observation/output errors can return while dropping one or
 both handles; dropping a JoinHandle detaches the task. Timeout paths request abort
-but do not observe joins. Caller future Drop also loses these reader handles. Drop during observe_exit, reap
-timeout/error or observation error can run blocking ProcessGroup Drop on the async
-polling worker; cleanup_group error runs its Drop retry on the blocking worker. These are verified lifetime gaps,
+but do not observe joins. Caller future Drop also loses these reader handles. Caller
+Drop during observe_exit, before cleanup, can run blocking ProcessGroup Drop on the
+async polling worker. Successful kill_group sets group_owned=false: subsequent reap
+timeout/error loses the unreaped Child anchor to Tokio kill_on_drop/orphan reaping
+while uncertainty remains, without a blocking group Drop. After successful reap an
+observation error has the reader-handle gap only. Cleanup error runs its existing Drop
+retry on the blocking worker; a worker JoinError does not prove group settlement. These are verified lifetime gaps,
 not proof they caused any CI timeout or that an escaped workload existed.
 
 ## Required inspector observations
@@ -59,7 +64,9 @@ not proof they caused any CI timeout or that an escaped workload existed.
    | deadline after validate | deadline_after_validation | deadline |
 
    A timeout during loop/reads retains actual stdout/stderr EOF and exit flags; these
-   distinguish pending EOF/status without inferring cause. Count every invoked read,
+   distinguish pending EOF/status without inferring cause. Keep a separate finite observed
+   exit category: unavailable, success, nonzero_exit or signaled/other; no PID or arbitrary
+   status text. Count every invoked read,
    including WouldBlock and Interrupted; also separate successful-byte count and those
    two finite result counts. Saturating integer counters never overflow or grant success.
    If post-validation deadline masks a validation result, return original TimedOut but
@@ -80,8 +87,15 @@ not proof they caused any CI timeout or that an escaped workload existed.
 5. Carry typed/static bounded facts through existing cleanup/AdapterError and first
    Context failure rendering without message-substring classification. Fixed fact
    formatting must reach retained test/Context error diagnostics and cannot change
-   cleanup on formatting failure. Public AdapterError fields need not change. Existing
-   Session.saved, generic session failure, and grok.turn_observed scoped event equations
+   cleanup on formatting failure. New bounded fixed fact text may enter EXISTING failure
+   messages; their exact bytes are not frozen. Inventory Context first-error rendering,
+   Generic adapter.launch_failure.reason audit and runtime SessionStatus.failure, and
+   Grok turn_observed.diagnostic/runtime SessionStatus.failure, including shared
+   kill_group users. Session.saved contains state/ownership/dispatch projection, not
+   these failure facts, and must remain unchanged.
+   Copied future provider consumers require composition review. No new audit authority
+   or event schema follows from these facts. Public AdapterError fields need not change. Existing
+   session.saved, generic session failure, and grok.turn_observed scoped event equations
    and schema stay unchanged; Grok cleanup receipt remains unclassified until a separately
    reviewed typed consumer adopts new facts. Update its master rationale accordingly.
 6. Exclude argv, executable/repository paths, environment/auth/config, all PID numbers,
@@ -90,94 +104,39 @@ not proof they caused any CI timeout or that an escaped workload existed.
    from outside-budget spawn/cleanup timing; elapsed does not prove scheduling, retained
    FD identity, native outcome, workload death or permission. Missing facts never guess.
 
-## Git operation ownership, admission and result rules
+## Diagnostic component boundary
 
-7. Define a private process-local in-memory owner pool, not a Store record or workload
-   lease. Exactly64 job permits globally bound these component jobs. Before ANY Git
-   spawn reserve four permits atomically for one operation: one supervisor, two readers,
-   one blocking cleanup job. All four remain reserved while any group/reader/cleanup
-   ownership is unresolved; no extra job per timeout/cancel/retry. This caps admitted
-   operations at16, reader jobs at32 and all jobs at64, with two output streams capped at1MiB+1 captured bytes each
-   per operation, without claiming exact Vec allocation capacity. It permits four-plus concurrent operations, not serialization.
-   Saturation refuses before spawn with fixed LaunchFailure/capacity_unavailable, no
-   process/readers/cleanup jobs and no new uncertainty for that unstarted operation.
-   No caller-provided Arc/new runtime bypasses the process-global cap.
-8. The pool retains actual ProcessGroup and both JoinHandles independently of caller
-   future or runtime lifetime. One admitted supervisor drives each operation. Native
-   blocking kill/inspector work is dispatched only on its pre-reserved blocking job;
-   asynchronous Child wait may run on the supervisor while its actual anchor remains
-   pool-owned. A
-   synchronous caller Drop signals cancellation and retains anchors, never performs
-   blocking ProcessGroup Drop on the async poller. This fixes verified observe_exit-
-   await/reap-error/reap-timeout Drop gaps, in addition to detached reader handles.
-   A Git-specific cleanup failure retains its actual group anchor/flag and pool permits;
-   it does not drop it through the common helper's implicit retry. No new group retry,
-   adoption or recovery is introduced. Common native ProcessGroup Drop changes require
-   separately coordinated impact/source gates and are not silently included here.
-9. The actual holder stays in the pool when a supervisor/cleanup executor is unavailable
-   or fails, including runtime shutdown. No unbounded fallback task/thread, async-worker
-   blocking cleanup or destroying the group's anchor on worker unwind. Runtime shutdown
-   alone is not settlement; pending states/permits remain held for separately governed
-   recovery. Private observable owner occupancy and join/group states permit causal tests.
-   Cancellation before effects must prevent later spawn; cancellation racing dispatch
-   retains the operation's uncertainty before caller observation can disappear.
-10. Abort is cancellation requested, not completion. Join vocabulary for each reader:
-    not_started, joined_returned (read outcome separately ok/IO/budget error), joined_panic,
-    joined_cancelled, not_observed. Observed Panic/Cancelled JoinResult proves task future
-    and its pipe endpoint dropped, never successful reading or native group death. A
-    reader's runtime-shutdown Cancelled result can count only when actually observed;
-    shutdown with not_observed handles remains uncertain. Cleanup-worker failure has
-    its own group/worker fact and is never a reader join. Both joins must be observed,
-    including a pending peer after the first reader errors.
-11. Freeze primary result precedence, with reader settlement a separate diagnostic:
-
-    | Highest to lowest existing primary | Required original kind |
-    | --- | --- |
-    | group cleanup error | SessionLost |
-    | reap timeout/error | SessionLost |
-    | caller observe deadline | Timeout |
-    | child observation error | SessionLost |
-    | stdout returned read/join error | original reader kind |
-    | stderr returned read/join error after stdout | original reader kind |
-    | shared output wait elapsed before prior reads returned | ProcessFailure/output_open |
-    | observed unsuccessful Git exit | OwnershipMismatch |
-    | successful bytes | success |
-
-    Keep stdout-before-stderr primary ordering: an already-failed stderr cannot replace
-    output_open while stdout never returns. Cleanup/reap remain prior to reader errors.
-    New pending-peer facts never replace an established primary error with SessionLost.
-12. One existing250ms output/reader-settlement budget is used once per operation after
-    cleanup/reap or their failure. Output collection, requested abort and observation
-    of both joins share the SAME deadline; never add a second250ms abort wait. Early
-    cleanup/reap/observe errors request both aborts then use that one budget for joins.
-    At budget expiry request abort without resetting the deadline and retain unobserved
-    handles in the admitted owner. Cleanup-dispatch await and mandatory inspector reap
-    are not hard-bounded; the caller Git deadline is not a total operation-time bound.
-    No extra deadline extension or success from an unobserved abort.
-13. Selected-group cleanup AND reap plus both reader terminations must be observed before
-    this operation's uncertainty can clear. Both-joined read errors and in-budget abort/
-    cancelled joins may be settled resource outcomes while the original error remains.
-    Unknown group or not_observed joins keep the per-call flag true and deliberately
-    propagate Context's existing sticky latch. Later completion cannot clear a flag
-    already returned/observed uncertain or that process-wide latch. No false latch on
-    fully observed successful settlement/in-budget abort or proven pre-effect refusal.
-    Actual late resource settlement may release pool permits only after every retained
-    group/reader/cleanup resource is observed settled; it cannot clear the already
-    latched flag or mint replay/freshness authority. These are selected-group/reader
-    facts only, not whole helper/service/hook settlement.
-14. All current callers consume this same bound: Generic validate_git preflight; Grok
-    ScopeSnapshot::verify_git ownership through ownership.rs bounded
-    Git (initial/refresh consumers); Grok index_digest through mod.rs bounded_git_raw; Context
-    git_value_owned/git_value; scalar bounded_git wrapper and private regression helper.
-    Current native/Context flag isolation remains; operation-local facts must not confuse
-    a peer's live flag with its own uncertainty. Linux KILL/ESRCH semantics remain; Git
-    error-retention changes are reviewed explicitly across both platforms. Synchronous
-    git.rs commands and future #5/#6/#19 copied callers are inventory/composition work,
-    not silently migrated or claimed fully owned by this component.
-15. No schema/Store ownership, native auth/hooks/defaults, permission/protocol/environment,
-    scheduler policy or kernel backend changes. Full Issue60 private workload owner,
-    durable reservation, readiness/default-deny delegation and effect matrix remain
-    pending. A process-local reader holder is not that workload certificate.
+7. This component changes only inspector failure observations and their safe existing
+   error rendering. Existing Git reader handles, abort/join behavior, ProcessGroup
+   new/reap/Drop, caller flags, pool/admission/runtime drivers and primary ordering are
+   UNCHANGED. The verified detached-reader and unreaped-anchor gaps above remain open.
+   The [Git reader/driver contract draft](issue-60-git-reader-contract-draft.md) is explicitly
+   unapproved; no diagnostic acceptance grants it requirements/design/source approval.
+8. Diagnostics cannot change any group_owned/unreaped/exit transition, signal choice,
+   selected argv/env, framing result, EOF requirement, direct-child status check,
+   original ErrorKind/priority, stream cap, deadline or mandatory wait. Keep the observed
+   first failure's kind when later cleanup fails; capture that cleanup uncertainty
+   separately. No extra attempt, wait, retry, cached-PID signal, new worker or global
+   process dump is introduced. A prior existing Drop retry cannot overwrite first facts.
+9. Preserve shared caller outcome equations and inputs for this component: Context's
+   sticky latch, Generic Reservation Lost/Failed choice, Grok uncertainty_by_stage and
+   clean receipt operand. Fact fields are never parsed to manufacture cleanup_ok,
+   process/native outcome, freshness, replay permission or reservation release. Grok's
+   existing unclassified cleanup-error provenance stays unclassified unless a later
+   separately reviewed typed consumer adopts the facts. Native audit schemas/ownership,
+   auth/hooks/defaults/permission/environment, scheduler and Store are unchanged.
+10. Inventory every actual inspector route: resolve_macos_signal_result EPERM handling,
+    ordinary cleanup_group and ProcessGroup Drop; Generic, Grok ownership/index and
+    Context bounded Git error propagation. New fixed facts can decorate existing
+    bounded failure messages, not change their authority. Linux native semantics remain
+    unchanged; macOS-only fact collection must not add a Linux inspector. Synchronous
+    git.rs and future provider copies remain separate composition/inventory work.
+11. Diagnostic collection is bounded and value-free even on its own failures. Missing
+    or unallocatable measurements are unavailable; diagnostic formatting failure must
+    neither suppress original error/cleanup nor grant success. Observation elapsed is
+    separate from outside-budget spawn/mandatory cleanup. No250ms total-time promise
+    or performance claim. Keep finite bytes/read/status counters and static categories;
+    no raw frame/stderr/config/path/PID appears in new errors or retained fact artifacts.
 
 ## Causal verification and gates
 
@@ -185,36 +144,33 @@ not proof they caused any CI timeout or that an escaped workload existed.
   pending/observed direct-child status and valid/invalid frames. Input/spawn failures
   use unstarted paths. Missing endpoint/fcntl/read/allocation/status errors require
   labelled private injection/unit seams, not claims real ps naturally reached them.
-  Map every deadline/guard site, preserve original kind and masked validation category.
-  A status-error seam asserts relinquished_without_cleanup and Unknown; removing that
-  distinction must fail an intended consumer assertion. No cached-PID recovery.
-- First bounded Git/Context own failure rendering contains safe facts; later latch
-  refusals contain no invented new sample. Independently observe both-stream counters
-  and cleanup status; discard diagnostics as authority. Compiled stage/fact guard
-  omissions earn actual caller credit only when reaching that caller, units stay units.
-- Real bounded Git pipes/tasks cover cleanup/reap/observation/read errors, output-open
-  and caller Drop before/after dispatch/during output. Independently pending peer tests
-  cannot be masked by the first reader's error. Inspect actual pool occupancy, joined
-  endpoints and original kind/latch equations. Cancel/Panic join termination is distinct
-  from read success; unavailable executor/shutdown retains unobserved owners/permits.
-- Positive Context consumers leave latch clear after complete successful settlement and
-  in-budget abort-and-observed-join. A mutant that always latches read error/cancel must
-  fail those positives. A later settlement cannot undo a previously latched Unknown.
-- Pre-spawn saturation of ALL64 permits creates no new child; four operations genuinely
-  progress concurrently with real owned outputs. Mutants removing admission, retaining
-  only readers or only groups, dropping peer handles, omitting abort/join or clearing
-  uncertainty early must fail independently reached causal consumers. Shared Drop code
-  stays unchanged or triggers separate explicitly reviewed impact/source gates.
-- Commit requirements/design before independent native gates; implementation/impact
-  commit precedes tests/source reviews. Verify/fix/re-review actual findings. Default
-  affected/full debug/release, fmt/Clippy/builds and final Linux/macOS public CI preserve
-  raw failure logs and actual checkout provenance. No blind green-only rerun, default
-  serialization, larger deadline, or weaker Unknown/PID/permission guard.
+  Each adjacent deadline site needs a deterministic private clock/site seam, labelled
+  injected; timing fixtures cannot earn exact-site credit. Preserve original category
+  and masked validation separately. A status-error seam proves
+  relinquished_without_cleanup != actual reap, and never creates cached-PID authority.
+- Tests observe safe counters/EOF/exit/cleanup states at their actual inspector source
+  before rendering. Compiled omissions of site, fact or relinquishment guard must fail
+  intended assertions; unit facts earn unit credit only. First bounded Git/Context
+  own-failure rendering must carry safe facts; derived latch refusal has no fresh sample.
+  Reach actual Generic/Grok propagation where accessible and disclose any test-only
+  adapter seam or historical consumer left unexercised. No inventing diagnostic reach.
+- Positive native/fixture valid_live/valid_dead, cleanup and original primary-error
+  controls keep source outcomes unchanged. Mutants turning diagnostic unavailable or
+  relinquished status into cleanup success must fail a real authority consumer or be
+  labelled as unit guard coverage. Diagnostics-only tests cannot earn reader-retention,
+  workload death, speed or whole F1 credit. Existing timeout/ownership evidence survives.
+- Commit requirements before two independent narrowed native requirement gates, then
+  committed diagnostic design before two independent design gates. Source/impact commit
+  precedes tests/immutable independent source review. Verify/fix/re-review findings.
+  Default affected/full debug/release, fmt/Clippy/builds and final both-OS public CI retain
+  raw failure logs and actual checkout provenance. A new reviewed diagnostic source can
+  be measured by its own CI once; no old-head rerun, serialization, larger deadline or
+  weaker Unknown/PID/permission guard. Any final required red remains a merge blocker.
 
 ## Acceptance limit
 
-This component improves diagnostic/lifetime observability and actual owned reader
-retention. It does not itself fix the current inspection availability cause or prove a
+This component adds bounded diagnostic observability only. Git reader/driver retention
+and published-flag corrections remain an explicitly unapproved separate draft. It does not itself fix the current inspection availability cause or prove a
 new backend faster/complete. Native separate-PGID/SID descendants, partial kill success,
 non-atomic fork/exit samples, actual runtime conflict/effect enforcement, all reachable
 Git delegation, durable workload reservations, recovery14 and aggregate native16 remain

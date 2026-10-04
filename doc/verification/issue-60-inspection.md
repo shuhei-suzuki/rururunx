@@ -1,6 +1,6 @@
 # Issue 60 inspection/reader component verification
 
-Requirements2 candidate; no design/source approval or implementation. Isolated main054
+Requirements3 narrowed diagnostic candidate; no design/source approval or implementation. Isolated main054
 baseline, no production edits or new process tests. Frozen Issue51 final18c CI remains
 red; first bounded native inspection timeout and derived latch failures retained, cause
 unknown. No rerun, deadline/latch/permission/Unknown relaxation.
@@ -14,7 +14,7 @@ Verified exact static timeout/check sites, cleanup Ok after relinquished signal 
 is not verified reap, missing owner/admission/Drop-driver contract, undecided reader-kind/
 latch/budget precedence and observed Cancelled/Panic taskfuture closure qualification.
 
-Requirements2 fixes those definitions before design:64global job permits cover supervisor/
+Requirements2 proposed definitions before design (both reviews requested changes):64global job permits cover supervisor/
 2readers/cleanup (4perop,max16), no unstarted uncertainty on capacity refusal; actual
 anchors outlive caller/runtime, no async blocking Group Drop or unbounded fallback;
 Git-specific failed group stays retained, common native Drop remains separately gated.
@@ -28,10 +28,40 @@ Every inspector check/guard maps to a finite site/refusal and safe facts; status
 relinquishment is distinct from cleanup success. First facts survive existing Drop retry;
 safe retained Context failure rendering is required. Missing endpoint/setup/read/syscall
 errors are injected/unit observations, not claims real ps naturally reached them.
-Requirements2 independent delta review remains pending; no finding is assumed resolved.
+Requirements2 independent delta reviews completed request_changes with cleanup verified.
+Observation:1High+3Medium+5Low; lifetime:1High+4Medium+2Low. All16 findings were
+verified against actual source/contracts and recorded in
+[Requirements2 dispositions](issue-60-requirements2-findings.json). No approval inferred.
+
+Requirements3 corrects the inherited Drop attribution and Git capture limit: group
+cleanup success disables blocking Drop, reap timeout loses the unreaped anchor, and
+observation failure after reap has reader-only gap. OUTPUT_LIMIT is64KiB, distinct
+from inspector1MiB. Production selected ps is env_clear with no COMMAND_MODE override;
+legacy is only a negative fixture. Prior GIT-OWNER-4 disposition is qualified accordingly.
+
+The separate UNAPPROVED reader/driver draft proposes preserving shutdown FIRST cleanup on a preavailable
+reserved non-poller lane, retains Unknown under total driver failure, and claims no
+restart recovery. Git internal flag is separated from frozen caller publication;
+Context626/662, Generic Lost/Failed and Grok receipt operands get explicit causal
+controls. Native common ProcessGroup behavior stays unchanged. Bounded admission
+uses the existing caller deadline, with safe active/retained counts; cfg(test)-only
+private pools isolate destructive controls while production routes one singleton.
+The draft forbids locks across native cleanup. Output_open not_observed would remain deliberately
+Unknown, with immediate peer abort in existing ordered primary collection and no late
+flag reset. Those behavior changes are not diagnostic implementation or approval.
+
+Requirements3 formal scope is inspector diagnostic facts/safe error rendering ONLY,
+with exact stage/refusal, EOF/counters/finite exit, cleanup-vs-relinquishment and original
+kind/priority constraints. Existing reader behavior/flags/admission/driver/Drop and all
+resource equations stay unchanged. Two narrowed independent requirement gates remain
+pending before diagnostic design/source. Full60/shared availability/native16 are open.
 
 Requirements-only CI37219380561 passes bothOS on unchanged production; source/reader/
 availability acceptance is not inferred. Public actual-checkout provenance will be
 recorded independently of trigger head. Apple libproc/sysctl source-only recon establishes
 no bounded complete replacement or exact installed-XNU equivalence. Full Issue60 workload/
 effect/delegation/settlement and native16 remain pending.
+
+Requirements2-only CI37220390302 also passed bothOS, actual checkout
+709f4aaba3797a2ef21e5513bcea8f30bd0104ea; unchanged production. No implementation,
+shared availability or failed Issue51 final-context acceptance credit follows.

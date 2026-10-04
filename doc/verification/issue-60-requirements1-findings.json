@@ -35,9 +35,9 @@
       "review": "observation",
       "id": "GIT-OWNER-4",
       "severity": "Medium",
-      "verified": true,
-      "source_claim": "Verified against main054 actual inspector/ProcessGroup/bounded_git_raw_inner and Tokio1.53.1 JoinHandle docs/harness",
-      "disposition": "Requirements2 clarification; independently re-review pending"
+      "verified": "qualified",
+      "source_claim": "Reader/caller retention gap verified; prior reviewer and Requirements2 overclaimed blocking Drop after successful cleanup. group_owned=false skips kill_group; reap timeout is unreaped-anchor loss, observation error after reap is reader-only.",
+      "disposition": "Requirements3 corrects attribution; no blocking-reap mutant credit; independent re-review pending"
     },
     {
       "review": "observation",
