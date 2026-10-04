@@ -23,20 +23,28 @@ Session or Workflow body inherits this component's1-MiB artifact limit.
 
 Keep the existing private `bounded(&impl Serialize)` consumer. Use a private
 counting `Write` sink with checked arithmetic and a delegating serde_json Formatter.
-The sink accepts an entire write chunk or returns an error, never partial/zero
-success. Before accepting, bound actual complete encoded bytes to1 MiB. Formatter
+An empty write returns Ok(0) without counting or clearing a latched refusal. Each
+nonempty chunk returns Ok(len) or an error, never partial/zero success. Before
+accepting, bound actual complete encoded bytes to1 MiB. Formatter
 begin_object/begin_array computes checked depth+1; above120 latches Depth BEFORE
 writing a delimiter or visiting children; otherwise increments then delegates the
-write. end_object/end_array delegates the closing write then checked-decrements
+write. Depth counts all nested JSON containers INCLUDING the artifact root as1;
+120 opening containers accepts and121 refuses. end_object/end_array delegates the closing write then checked-decrements
 after success. All other Formatter methods retain CompactFormatter's exact encoding. Quoted
 strings, escaped quotes/backslashes and UTF-8 are handled by serde_json rather than
 reparsed by an independent byte scanner. No output buffer or depth-sized stack is
-retained. There is no redundant token-count acceptance claim.
+retained. There is no redundant token-count acceptance claim. Actual artifacts use
+no RawValue, and current resolved serde_json features omit raw_value/arbitrary_precision.
+Override write_raw_fragment with a sticky fixed unsupported-raw-JSON refusal rather
+than permit a future raw container to bypass depth. Current accepted artifact
+bytes remain unchanged; any future raw/arbitrary-precision artifact requires a
+separate reviewed encoding contract, not implicit feature-unification acceptance.
 
-First Bytes/Depth refusal is latched in shared private validation state. Every later
-write refuses. After Serialize returns, inspect that state even if custom Serialize
+First Bytes/Depth/Raw refusal is latched in shared private validation state. Every later
+nonempty write refuses; empty writes do not clear the latch. After Serialize returns, inspect that state even if custom Serialize
 swallowed errors: Bytes produces the existing “mandatory pack/checkpoint exceeds
-1 MiB; narrow explicitly” error, Depth a distinct fixed artifact-nesting error.
+1 MiB; narrow explicitly” error, Depth a distinct fixed artifact-nesting error,
+Raw a distinct fixed unsupported-raw-JSON error.
 With no latched refusal, propagate the original Serialize error unchanged. Valid
 encoded-length measurement is reusable for existing small HistoryEvent accounting.
 
@@ -50,11 +58,20 @@ in real Store round-trip tests; a future envelope expansion must retain the marg
 Store parser in the consistent-corruption negative fixture.
 
 Guard the persisted checkpoint Value BEFORE digest serialization/typed decode.
-Guard plain recognized TaskPack/GoalPack data in load_context BEFORE digest and clone/
-decode. Opaque/legacy/general formats pass through load_context EXACTLY as today:
-no artifact guard and no new rejection; validate_task_reference/Goal descriptors
-retain their supported opaque provenance path. Typed loaders keep their own shape
-rejection. This is not a1-MiB limit on every historical/general ContextVersion.
+The private context loader takes an explicit consumer read intent, not a public
+optional authority selector. TypedTask always guards whole data, or ONLY nested
+task_pack if phase, before digest/clone/decode even if format is unrecognized.
+TypedGoal always guards whole data before digest/decode even if its format is
+unrecognized. Those malformed typed loads already fail today; only their error
+priority changes. TaskProvenance preserves EXACTLY today's opaque classification:
+phase OR format==FORMAT is typed, every other Task context is opaque (including
+GOAL_FORMAT in Task scope) and receives no new guard. Actual call inventory:
+task_pack515, validate_task_map's phase probe726 and source recheck756, and physical
+manifest recheck1198 use TypedTask; goal_pack1393 and validate_goal1406 use TypedGoal;
+validate_task_reference1182 and Goal Task-descriptor probe1456 use TaskProvenance.
+No generic shape-only GOAL_FORMAT check may reject opaque Task provenance.
+Typed loaders keep their own shape rejection. This is not a1-MiB limit on every
+historical/general ContextVersion.
 For a recognized Workflow phase ContextVersion, guard ONLY its nested task_pack
 artifact before its clone/decode (also validate_capture/context_artifact direct
 consumers), not the whole ContextVersion. Keep the post-typed artifact check too:
@@ -99,7 +116,23 @@ Exercise a custom serializer that ignores a size/depth error and continues: refu
 stays latched, and a separate early-stop serializer proves later children are not
 visited after the first normal propagated error. Exercise a real existing
 checkpoint loader with a genuinely published fixture checkpoint, then an explicitly
-corrupted oversize/deep stored artifact negative. Recompute its reference digest,
+corrupted oversize/deep stored artifact negative. Use the following branch-specific
+carriers and acceptance points, preserving valid identity/reference digest.
+
+| Actual branch | Byte-excess carrier | Depth-excess carrier | Limit-omitted acceptance point / consistency |
+| --- | --- | --- | --- |
+| load_checkpoint | mandatory_goal padding (not text constrained to8192) | mandatory_goal Value | load_checkpoint Ok; recompute CheckpointRef digest and recorded accounting unchanged |
+| plain TaskPack | decisions | task Value | task_pack Ok, not live validate_task projection/currency |
+| GoalPack | cross_task_decisions | goal Value | goal_pack Ok, not validate_goal projection/currency |
+| phase context_artifact | source_versions, outside header/native payload | pack.task Value | context_artifact Ok; source_versions mirrored into ContextVersion.source_hashes and exact SourceSnapshot; depth fixture rewrites source payload header, payload_digest, estimated_bytes/tokens, mandatory/optional bytes and source_payload_offset consistently |
+| direct validate_capture | source_versions mirrored into SourceSnapshot | pack.task Value | validate_capture Ok; same exact phase/HEAD/scope/budget, depth header/payload/accounting consistency as above |
+
+No mutant may be credited merely for returning a different later error. Excess
+phase bytes in pack itself would hit the separate1-MiB native-frame cap, so do not
+use that masked fixture. Loader acceptance is distinct from live source/projection
+validation. For pre-guard wiring mutants, forbidden-stage traces separately prove
+order even where the retained post-typed guard must still refuse.
+ Recompute its reference digest,
 retain all other valid identity/semantic/history pins, and assert the EXACT byte/depth
 error; the size/depth-omitted mutant must reach later acceptance rather than fail
 on digest/parser/shape. Corruption is a negative fixture, never positive ownership.
@@ -126,11 +159,23 @@ or consumer is replaced by the trace. Use fitting genuine artifact controls, exa
 recomputed digest and otherwise-valid pins, and assert the named byte/depth error.
 Include direct context_artifact/validate_capture preguard branches; whole-context
 digest is deliberately allowed for opaque/general contexts, not an artifact guard.
-Opaque Task context in publish_goal/validate_goal must remain
-accepted with typed_context=false; an unknown-format-rejection mutant must fail it.
+Opaque Task contexts (unknown FORMAT and GOAL_FORMAT in Task scope) in
+publish_goal/validate_goal must remain accepted with typed_context=false; a
+shape-only GOAL_FORMAT rejection mutant must fail. TypedTask/TypedGoal attempted
+unrecognized-format oversized data must hit the guard before digest/clone/decode,
+then retain normal shape errors for fitting data.
 A10,000-sibling shallow array must pass; omitted end-decrement must fail it. Cheap
 kind/scope/version checks precede the raw checkpoint guard, which precedes digest;
-foreign-kind/scope oversized data still yields the original identity refusal.
+foreign-kind/scope/version/version!=1 oversized checkpoint data still yields the
+original stale/foreign identity refusal. Correct identity with a stale/wrong digest
+AND oversized/deep data intentionally yields the artifact-bound error BEFORE digest;
+fitting wrong-digest data retains the original digest refusal. The TypedTask phase
+probe intentionally yields artifact-bound refusal before the existing Engine-only
+phase refusal. Pin all these priority cases. Wrapped checkpoint-capacity errors
+assert the fixed root cause through error.chain(), not a top-level capacity label.
+Include one actual checkpoint-admission depth control where a Checkpoint fits120
+but its derived Task/phase embedding exceeds120: refuse before append_pack_checkpoint.
+Also test empty writes, root-inclusive depth and direct raw-fragment refusal/latch.
 
 Existing context artifact integration tests must pass. Compile independent mutants
 omitting the byte limit and depth limit, with passing controls reaching the intended
