@@ -509,6 +509,71 @@ async fn stop_admission_child() {
 
 #[test]
 fn control_and_native_whitelist_are_separate_finite_policies() {
+    use crate::project::{environment_name_forbidden, environment_name_valid};
+    assert_eq!(
+        environment::CONTROL_ADDITIONS,
+        &["NODE_TLS_REJECT_UNAUTHORIZED"]
+    );
+    assert_eq!(
+        BASELINE_PREFIXES,
+        &["GROK_", "XAI_", "DYLD_", "LD_", "NODE_", "BUN_", "OPENSSL_"]
+    );
+    assert_eq!(
+        BASELINE_NAMES,
+        &[
+            "SSLKEYLOGFILE",
+            "BASH_ENV",
+            "ENV",
+            "SHELL",
+            "ZDOTDIR",
+            "HOME",
+            "PATH",
+            "TMPDIR",
+            "XDG_CONFIG_HOME",
+            "XDG_DATA_HOME",
+            "XDG_STATE_HOME",
+            "XDG_CACHE_HOME",
+            "NODE_OPTIONS",
+            "SSL_CERT_FILE",
+            "SSL_CERT_DIR",
+            "REQUESTS_CA_BUNDLE",
+            "CURL_CA_BUNDLE",
+            "HTTP_PROXY",
+            "HTTPS_PROXY",
+            "ALL_PROXY",
+            "NO_PROXY",
+            "http_proxy",
+            "https_proxy",
+            "all_proxy",
+            "no_proxy",
+        ]
+    );
+    for key in BASELINE_NAMES {
+        assert_eq!(environment_name_forbidden(key), *key != "SSLKEYLOGFILE");
+    }
+    let prefixed = BASELINE_PREFIXES
+        .iter()
+        .map(|prefix| format!("{prefix}SYNTHETIC"));
+    for key in BASELINE_NAMES
+        .iter()
+        .map(|key| (*key).to_owned())
+        .chain(prefixed)
+        .chain([
+            "GROK_CONFIG_DIR".into(),
+            "GROK_API_KEY".into(),
+            "OPENSSL_MODULES".into(),
+            "NODE_TLS_REJECT_UNAUTHORIZED".into(),
+            "GROK_INVALID-NAME".into(),
+        ])
+    {
+        assert!(baseline_key(&key));
+        assert_eq!(
+            environment::control(&key),
+            !environment_name_valid(&key)
+                || environment_name_forbidden(&key)
+                || environment::CONTROL_ADDITIONS.contains(&key.as_str())
+        );
+    }
     for name in [
         "XAI_API_KEY",
         "GROK_FUTURE_REFERENCE",

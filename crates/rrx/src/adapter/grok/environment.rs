@@ -7,40 +7,14 @@ use crate::{
     state::EnvironmentAdmission,
 };
 
+// Registry-forbidden baseline names are already protected; this exact finite
+// addition must never grow into credential-bearing/locating native prefixes.
+pub(super) const CONTROL_ADDITIONS: &[&str] = &["NODE_TLS_REJECT_UNAUTHORIZED"];
 pub(super) fn control(key: &str) -> bool {
     baseline_key(key)
         && (!environment_name_valid(key)
             || environment_name_forbidden(key)
-            || key == "NODE_TLS_REJECT_UNAUTHORIZED"
-            || [
-                "HOME",
-                "PATH",
-                "TMPDIR",
-                "BASH_ENV",
-                "ENV",
-                "SHELL",
-                "ZDOTDIR",
-                "XDG_CONFIG_HOME",
-                "XDG_DATA_HOME",
-                "XDG_STATE_HOME",
-                "XDG_CACHE_HOME",
-                "NODE_OPTIONS",
-                "SSL_CERT_FILE",
-                "SSL_CERT_DIR",
-                "REQUESTS_CA_BUNDLE",
-                "CURL_CA_BUNDLE",
-                "HTTP_PROXY",
-                "HTTPS_PROXY",
-                "ALL_PROXY",
-                "NO_PROXY",
-                "http_proxy",
-                "https_proxy",
-                "all_proxy",
-                "no_proxy",
-            ]
-            .contains(&key)
-            || key.starts_with("LD_")
-            || key.starts_with("DYLD_"))
+            || CONTROL_ADDITIONS.contains(&key))
 }
 pub(super) fn admission(
     baseline: &BTreeMap<String, String>,

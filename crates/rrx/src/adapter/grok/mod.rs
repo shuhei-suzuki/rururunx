@@ -344,38 +344,39 @@ impl GrokAdapter {
         Ok(session)
     }
 }
+const BASELINE_PREFIXES: &[&str] = &["GROK_", "XAI_", "DYLD_", "LD_", "NODE_", "BUN_", "OPENSSL_"];
+const BASELINE_NAMES: &[&str] = &[
+    "SSLKEYLOGFILE",
+    "BASH_ENV",
+    "ENV",
+    "SHELL",
+    "ZDOTDIR",
+    "HOME",
+    "PATH",
+    "TMPDIR",
+    "XDG_CONFIG_HOME",
+    "XDG_DATA_HOME",
+    "XDG_STATE_HOME",
+    "XDG_CACHE_HOME",
+    "NODE_OPTIONS",
+    "SSL_CERT_FILE",
+    "SSL_CERT_DIR",
+    "REQUESTS_CA_BUNDLE",
+    "CURL_CA_BUNDLE",
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "ALL_PROXY",
+    "NO_PROXY",
+    "http_proxy",
+    "https_proxy",
+    "all_proxy",
+    "no_proxy",
+];
 fn baseline_key(key: &str) -> bool {
-    ["GROK_", "XAI_", "DYLD_", "LD_", "NODE_", "BUN_", "OPENSSL_"]
+    BASELINE_PREFIXES
         .iter()
         .any(|prefix| key.starts_with(prefix))
-        || [
-            "SSLKEYLOGFILE",
-            "BASH_ENV",
-            "ENV",
-            "SHELL",
-            "ZDOTDIR",
-            "HOME",
-            "PATH",
-            "TMPDIR",
-            "XDG_CONFIG_HOME",
-            "XDG_DATA_HOME",
-            "XDG_STATE_HOME",
-            "XDG_CACHE_HOME",
-            "NODE_OPTIONS",
-            "SSL_CERT_FILE",
-            "SSL_CERT_DIR",
-            "REQUESTS_CA_BUNDLE",
-            "CURL_CA_BUNDLE",
-            "HTTP_PROXY",
-            "HTTPS_PROXY",
-            "ALL_PROXY",
-            "NO_PROXY",
-            "http_proxy",
-            "https_proxy",
-            "all_proxy",
-            "no_proxy",
-        ]
-        .contains(&key)
+        || BASELINE_NAMES.contains(&key)
 }
 // Additional scoped values have no native loader/auth/permission selector meaning.
 fn ordinary_key(key: &str) -> bool {
