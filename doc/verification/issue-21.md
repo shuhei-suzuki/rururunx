@@ -58,3 +58,17 @@ unavailable monetary/cache fields do not become invented mandatory measurements.
 Cost/cache savings still require their own complete qualified comparable fields.
 These changes match Product40.10 and actual adapter/native provenance gaps; no
 source, model/default, permission, hook or credential change. Req3 review pending.
+
+Req3 38c3786 exact CI37196041124 passed all Linux/macOS fmt/clippy/test/debug/release
+steps. Two independent native Req3 reviews requested changes with verified actual
+owned cleanup. Verified remaining Medium classes: survivor-cohort bias, an untested
+feature hidden inside a whole-lane result, exclusive uncached input mislabeled as
+logical-context reduction, and a mandatory-set oracle computed by the reduction
+loader itself or satisfied by stale delivery. Req4 makes all required repetitions
+part of the claim denominator, requires every exercised feature's sensitive oracle,
+names inclusive/exclusive token definitions, and fixes reduction-independent policy
+and actual per-dispatch sent/retained delivery provenance. Native self-loading is
+separate and unverified, never a substitute or an OS internal-attention claim.
+Unknown effort/model produces honest non-comparability rather than requiring a
+positive causal savings outcome; required token/quality/safety evidence remains.
+Req4 review pending; no runtime/source or benchmark acceptance is claimed.

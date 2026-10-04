@@ -1,8 +1,8 @@
 # Issue 21: Attributable telemetry and Context Efficiency comparison
 
 Workflow: STRICT (shared durable metrics, provider normalization and Project isolation).
-Status: Requirements3; independent Req1/Req2 findings verified and refined below.
-Requirements3/design/source reviews pending.
+Status: Requirements4; independent Req1/Req2/Req3 findings verified and refined below.
+Requirements4/design/source reviews pending.
 Baseline: main80452f4, schema3. Depends on merged #2 and #4; part of #17.
 
 ## Purpose and existing gap
@@ -84,6 +84,11 @@ producer or benchmark conditions needed for #21 closure below.
   Report cached ratio only with a compatible measured denominator; otherwise it
   is unavailable. Cache use, cache-hit performance and logical context reduction
   are different measurements.
+  Every token KPI/comparison names its input definition. A logical-context reduction
+  needs a native logical-input-inclusive total or a verified disjoint sum of uncached,
+  cache-read and cache-write tokens. Exclusive input with unavailable cache categories
+  is only an "uncached input change (includes cache effects)"; logical reduction is
+  unavailable. Stable-prefix/cache effects never become logical-context savings.
 
 ## Complete operation accounting and cost
 
@@ -212,6 +217,16 @@ producer or benchmark conditions needed for #21 closure below.
   A configuration list, prepared-but-unsent payload or agent's assertion is not
   delivery proof. Missing, stale or truncated mandatory delivery invalidates the
   pair and prevents savings/quality equivalence, irrespective of token coverage.
+  Derive this set from the reduction-independent Project/workflow mandatory rule
+  and evidence policy for the exact phase/scope, computed under the same policy in
+  both lanes. The selection/progressive loader under evaluation cannot reclassify
+  its own missing item as optional. Delivery is in that dispatch's actual sent
+  input, or separately proven runtime-controlled retained content with no intervening
+  condensation, session replacement or unknown compaction. Otherwise re-deliver or
+  mark unverified. Native self-loaded files are a separate native-loaded/unverified
+  category under preserved defaults; they cannot substitute for runtime-mandatory
+  delivered content or acquire reduction credit. No proof of native internal
+  attention/retention after delivery is claimed. Lost context fails required checks.
 - Record immutable workload/revision/acceptance and verification plan, selected
   reduction features, provider/native versions, actual effective model/effort,
   policy/capability configuration, telemetry qualification and cache conditions.
@@ -237,6 +252,14 @@ producer or benchmark conditions needed for #21 closure below.
   lanes, retain EVERY attempted repetition including unfavorable/failing results,
   and report dispersion/cache/environment. Differences within observed variation
   remain inconclusive/indicative, not established causal savings.
+  Freeze invalidation/exclusion rules as well. Lane-attributable mandatory loss,
+  coverage failure, fallback or execution failure is that lane's failure/safety
+  regression, never a neutral excluded confound. Report every invalidation by lane
+  and run order. ANY required repetition failing coverage, delivery, quality or
+  comparison conditions prevents a whole-run causal savings/equivalence claim.
+  Qualified survivor cohorts are descriptive only; retaining failures in an appendix
+  does not permit savings on a favorable subset or lost counterbalance. Preserve
+  original aggregate failure/unknown denominators and the frozen repetition plan.
 - Compare actual Goal/Task completion time, throughput, waiting/blocked time,
   measured input/cached/output tokens, qualified estimated/reported cost, review
   time and actual Human interruptions/attention where observable. Missing Human
@@ -265,6 +288,21 @@ producer or benchmark conditions needed for #21 closure below.
   support only a qualified end-to-end comparison, never same-input round savings.
   Oracle adjudication and separate amplification-reference calls are benchmark
   apparatus, reported separately for both lanes rather than reduction work.
+  End-to-end savings AND quality-equivalence certification require sensitive oracle
+  coverage for EVERY actually exercised reduction feature. Any uncovered feature
+  makes the full result quality-unverified/descriptive, even if the overall oracle
+  for other features passes. An uncovered feature must be predeclared disabled to
+  avoid that result. Per-feature credit needs predeclared same-input ablation runs.
+  Both lanes begin from the same frozen starting artifacts, without pre-generated
+  reduction outputs; any enabled setup generation is charged in provider cost and
+  completion time. Equality of cross-lane inputs means equality after canonical
+  substitution ONLY of predeclared lane identity fields; report their actual byte/
+  token lengths. No source/content/rule/finding substitution hides lane differences.
+  Apparatus classification is fixed before dispatch, and its outputs never feed
+  execution/gates. Disclose providers excluded from the actual default MVP roster
+  and restrict comparisons to measured providers. Human attach turns and unowned
+  native-internal calls/compaction leave interval coverage unknown unless the owned
+  observation documents a complete disjoint encompassing partition.
 - The runner/reporting contract may be tested with controlled fixtures; final
   native representative comparison is required before benchmark acceptance.
   Issue16 additionally owns full multi-Project/Goal/four-Task dogfood evidence.
@@ -318,6 +356,14 @@ or separately reviewed owned-channel policy blocker. Cached counters and monetar
 cost retain the source Issue's where-available condition: show qualified native or
 operator-configured estimates when available, otherwise explicit unavailable and
 no cache/cost savings claim. Do not invent measurements or change native defaults.
+The minimum token comparison states the native input definition it measures; it
+does not certify logical reduction without inclusive coverage above. Acceptance
+requires an executed representative comparison with actual quality/safety evidence
+and honest comparability decisions, not a positive saving or causal conclusion.
+Unknown effective effort/model can produce an explicitly non-comparable native
+result rather than fabricated certainty. Missing required token measurements,
+unverified feature-sensitive oracle coverage or observed safety/quality regression
+still leave their acceptance conditions unmet.
 TUI rendering and final16 whole-MVP dogfood are separate; neither is falsely claimed
 by API implementation. Use one linear schema history coordinated with19, reject
 unknown/future formats without downgrade, and test every real predecessor.
@@ -365,6 +411,10 @@ item but still report savings; or credit a feature without its sensitive quality
 oracle/with known-channel exposure. All-unavailable native counters must leave the
 token benchmark acceptance open. These are real reporting/closure consumer controls,
 not model assertions that a deliberately weakened fixture remains safe.
+Further reporting mutants must reject survivor-only savings after an enabled-lane
+invalid pair; end-to-end credit when any exercised feature lacks a sensitive oracle;
+exclusive uncached change relabeled logical reduction; and a loader reclassifying
+a policy-mandatory item as optional or counting stale prior delivery after loss.
 
 Run relevant state/provider/context/workflow regressions, fmt/clippy/build, exact
 Linux/macOS CI and independent source reviews. Update master design/README only to
