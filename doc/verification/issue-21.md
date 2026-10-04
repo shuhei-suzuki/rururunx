@@ -392,3 +392,16 @@ audit rows and owners/Sessions. Debug may retain ordinary anyhow backtrace behav
 no configuration override or bound on arbitrary backtrace is claimed. Whole21/
 private projection/native/epoch/raw-retirement remain OPEN. Changed-source checks,
 causal mutants, two independent reviews and current CI are pending.
+
+
+Legacy decode projection changed source c44cbc7: full default normal-host workspace
+237 Rust+2doc tests PASS,9explicitignored; fmt/all-target Clippy-Dwarnings and debug/
+release BUILD PASS. Counts derived mechanically from retained11 target summaries.
+Three compiled clean committed mutants revert projection, retain raw cause, or
+format raw cause into text; each ACTUALLY leaks the synthetic canary through public
+Store::usage and the real consumer detects it. Full tree/source restored and focused
+control PASS. Public patches/source/test/tree/log hashes and all38 build inputs
+retained; compiler/setup errors earn no credit. Other shared decode readers, legacy
+valid raw metadata, allocation bounds, SQL error/backtrace details, native and full21
+producer gates remain outside this limited component. Two independent reviews and
+current CI still required before merge. No tracking Issue closure.
