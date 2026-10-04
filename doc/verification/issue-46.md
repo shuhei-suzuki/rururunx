@@ -26,3 +26,22 @@ Existing-source safety gap: Apple ps can emit sysctl stderr yet return0, includi
 initial/exhausted failures. Retry can sleep1s on non-ENOMEM. Current discarded
 stderr/empty-as-dead is not sufficient death proof. No shared helper changed yet,
 no250ms deadline/latch/serialization relaxation and no historical root-cause claim.
+
+## Requirements review1 and verified refinements
+
+Immutable public `f844d4c` Requirements1 native session
+`f5c3cbdd-df13-437f-a863-92ef89f38e2c` completed request_changes; owned cleanup was
+verified. R46-1 High is a verified requirement omission: exact-group completeness
+must include cross-UID/non-TTY members, which same-UID fixtures cannot establish.
+Pinned Apple ps selector increments nselectors/xkeep_implied before default-owner
+insertion; one-group optimization occurs afterward, then keepit bypasses UID
+filtering. XNU PGRP callback has UID/TTY check flags zero. This source-scoped
+verification is distinct from installed binary identity or privileged acceptance.
+
+R46-2 Medium is verified: XNU skips SIDL/forking while collecting PIDs under lock,
+then fills records after unlock with zombie fallback. The non-atomic fork/exit
+window is now an explicit residual limitation. R46-3 Low partial-success KILL
+non-claim and R46-4 Low observable error-category precision are also included;
+inspection Unknown retains its category and maps to Lost, valid live returns
+EPERM, no raw stderr or additional durable permission data. No code or runtime
+evidence changed. Requirements2 delta re-review and design gate remain required.

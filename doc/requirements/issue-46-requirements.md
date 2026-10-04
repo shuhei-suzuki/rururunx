@@ -27,6 +27,12 @@ inspection failure. A flag substitution alone does not close this safety gap.
    No `-a`, additional PID/group selector, inherited compatibility mode or shell
    expansion may broaden/change the selection. Numeric query hints do not confer
    signal authority; only the existing owned unreaped ProcessGroup can signal.
+   Selection must include every visible member regardless of real/effective/saved
+   UID or controlling TTY, without implicit owner filtering. Verify pinned Apple
+   selector/default-owner and XNU PGRP callback logic. Same-UID unprivileged
+   fixtures cannot prove cross-credential visibility; that evidence is source-
+   scoped unless a privileged fixture is explicitly authorized. If platform
+   completeness cannot be established, observation is Unknown.
 2. Use the owned still-unreaped leader PID equal to its group ID as an expected
    observation. Preserve its waitid NOWAIT/kill-before-reap lifecycle. A death
    result requires a complete successful observation containing that exact leader,
@@ -61,6 +67,11 @@ inspection failure. A flag substitution alone does not close this safety gap.
    allocation/formatting; XNU still traverses global process lists and allocates
    its temporary PID list using global nprocs. No global-kernel-work elimination,
    strict latency improvement or explanation of the earlier CI failure is claimed.
+   The sample is non-atomic: XNU collects PIDs under a list lock, excludes processes
+   still being forked, then releases the lock before reading records. Fork/exit
+   races can omit a newly created member while a sampled parent becomes zombie.
+   The result is observational evidence under the existing fallback contract,
+   not atomic group-death or complete descendant-containment proof.
 8. Actual isolated fixtures cover two independently owned groups, exact selected
    membership against a global diagnostic baseline, live members, zombie leader
    with live children, all-zombie owned group and absence/malformed/truncated/error
@@ -76,6 +87,12 @@ inspection failure. A flag substitution alone does not close this safety gap.
     widen deadlines, suppress diagnostics or relax Lost fences for a pass.
 
 ## Boundaries and completion
+
+Successful killpg can signal only some members when credentials differ. Its
+existing success path is unchanged and is not covered by the new EPERM observation.
+Non-signalable survivors, the non-atomic fork/exit sampling window and intentional
+group/session escapes remain explicit residual limitations; this follow-up cannot
+claim whole-native-descendant containment or permission-proof atomic death.
 
 No persisted schema, agent permissions/auth/hooks, native protocol, dispatch/retry
 policy or process containment claim changes. Detached sessions/daemons and unknown

@@ -11,7 +11,13 @@ limits. No schema or public provider interface changes.
 prevents PID/PGID reuse. The macOS EPERM resolver passes that owned leader to a
 private observer, which invokes `/bin/ps -g <decimal leader> -o pid=,pgid=,stat=`
 with env_clear, null stdin and piped stdout/stderr. No global `-a` flag or second
-selector remains. `-g` is process-group selection; `-G` is unrelated real-group
+selector remains. Cross-UID and non-TTY completeness is required: in the pinned
+ps source, `-g` increments nselectors and xkeep_implied; the owner-default list is
+inserted only when no selector was specified, before the single-group kernel
+optimization resets nselectors. Subsequent keepit bypasses UID filtering and
+xkeep avoids the TTY filter. The XNU PGRP path leaves uidcheck/ruidcheck/ttycheck
+zero and matches only p_pgrpid. This is published-source scoped evidence, not an
+actual privileged cross-UID fixture or installed binary/source identity proof. `-g` is process-group selection; `-G` is unrelated real-group
 selection. Leading-minus options avoid legacy mode and cleared environment avoids
 inherited CMD_ENV/COMPAT_MODE. The inspector is a trusted direct child, not an
 agent and not a recursively supervised process group.
@@ -50,7 +56,13 @@ against installed man/source and actual installed fixtures before code.
 
 Any stderr byte rejects proof; no locale-specific parsing or raw diagnostic audit.
 Errors identify timeout/size/exit/diagnostic/missing-leader/framing categories.
-Sticky uncertainty and SessionLost remain unchanged. Inspector cleanup errors
+Primary installed macOS state characters are I/R/S/T/U/Z; documented suffixes
+are +, <, >, A, E, L, N, S, s, V, W and X. Source/installed compatibility must
+be checked before finalizing the validator.
+
+Sticky uncertainty and SessionLost remain unchanged. Unknown returns its bounded
+inspection category, valid live data returns original EPERM; both map to Lost.
+No additional raw EPERM/stderr audit field is required. Inspector cleanup errors
 must remain explicit and never become an agent-death success.
 
 ## Primary platform evidence
@@ -73,7 +85,15 @@ byte-matched to the installed binary. Cached immutable blob provenance:
   has personality-sensitive selection. This change deliberately keeps existing
   Linux rustix cleanup; no BSD selector is introduced there.
 
-These support a smaller returned table and stricter proof, not a measured CI
+The sample is non-atomic. proc_iterate collects PIDs under proc_list_lock, skips
+SIDL/forking processes, unlocks, then fetches records with live/zombie lookup. A
+fork/exit race can omit a new member while its sampled parent becomes Z. The
+observer does not prove atomic whole-group death. Successful killpg also preserves
+its existing partial-success semantics if non-signalable members survive; this
+EPERM change does not cover that path. These residual limits remain alongside
+intentional process-group/session escapes and are not claimed as closed.
+
+These support a smaller returned table and stricter observation, not a measured CI
 cause, no-allocation claim or guaranteed250ms completion under global load.
 
 ## Consumer verification and impact
