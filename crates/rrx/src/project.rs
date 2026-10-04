@@ -480,7 +480,7 @@ pub(crate) fn validate_environment_references(names: &[String]) -> Result<Vec<St
     Ok(names.to_vec())
 }
 
-fn validate_environment(project: &Project) -> Result<Vec<String>> {
+pub(crate) fn validate_environment(project: &Project) -> Result<Vec<String>> {
     validate_environment_references(&project.environment_refs)
 }
 /// Resolve only a file inside this source root; validate symlinks before every read.

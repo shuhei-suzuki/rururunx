@@ -4,6 +4,12 @@
 
 It does not replace Claude Code, Codex, Grok, Gemini, or open-source coding agents. It keeps them running in parallel, coordinates reviews and approvals, isolates work with Git worktrees, and escalates to a human only when needed.
 
+The native Codex component currently advertises no executable capabilities. Its
+public launch, resume, checkpoint, attach and approval routes refuse before effects
+until genuine workload ownership and dispatch producers are implemented. Existing
+protocol fixtures are limited component evidence; required native provider and
+both-platform MVP acceptance remains open.
+
 CLI command:
 
 ```bash
