@@ -600,6 +600,15 @@ Supported completion policies must include at least:
 
 A **two-reviewer setup is a first-class configuration**, not a workaround.
 
+Formal Core gates retain Critical/High/Medium as blocking severities. Workflow
+class changes approval count and verification breadth: QUICK/STANDARD require
+at least one independent non-author approval, STRICT at least two. Explicit
+same-agent opinions can participate in completion policy, but cannot satisfy
+that independent floor. They never dismiss their own delta's blockers. Reviewer
+independence means runtime-controlled inputs/expansions exclude same-round peer
+outputs and raw executor transcripts; native permissions remain unchanged, with
+same-user filesystem visibility stated separately rather than an invented sandbox.
+
 The existing Claude + Codex + Grok Triple Adversarial Review is provided as a preset, not hard-coded into the runtime.
 
 ### Parallel review
