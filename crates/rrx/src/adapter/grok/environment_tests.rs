@@ -13,6 +13,8 @@ async fn isolated(name: &str) {
         .env("PATH", "/usr/bin:/bin")
         .env("RRX_INSPECTION_FIXTURE_CHILD", "1")
         .env("GROK_SYNTHETIC_AUTH", "synthetic-native-global")
+        .env("XAI_API_KEY", "synthetic-xai-global")
+        .env("SSLKEYLOGFILE", "synthetic-keylog-locator")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -74,22 +76,42 @@ fn foreign(fixture: &Fixture, names: &[&str]) -> (tempfile::TempDir, crate::doma
         .unwrap();
     (directory, project)
 }
-fn assert_not_spawned(fixture: &Fixture, session: &Session, lower: i64) {
-    let store = fixture.store.lock().unwrap();
-    let events = store.events(&session.scope, lower, 500).unwrap();
+fn assert_not_spawned(fixture: &Fixture, status: &SessionStatus) {
+    let observation = fixture.observation(status);
+    receipt_support::assert_receipt(&observation.receipt);
     assert!(
-        !events
+        !observation
+            .events
             .iter()
-            .any(|event| event.kind == "grok.process_spawned"),
+            .any(|event| event["kind"] == "grok.process_spawned"
+                && event["data"]["session"] == json!(status.session.id)),
         "environment rejection started native child"
     );
     assert!(
-        !events.iter().any(|event| event.kind == "session.saved"
-            && event.data["evidence"]["dispatch_intent"]["input_version"].as_u64()
-                == Some(fixture.request.input.version)),
+        !observation
+            .events
+            .iter()
+            .any(|event| event["kind"] == "session.saved"
+                && event["data"]["id"] == json!(status.session.id)
+                && event["data"]["evidence"]["dispatch_intent"]["input_version"].as_u64()
+                    == Some(fixture.request.input.version)),
         "environment rejection consumed new prompt"
     );
 }
+async fn rejected_start(adapter: &GrokAdapter, fixture: &Fixture) -> AdapterError {
+    match fixture.start(adapter).await {
+        Err(error) => error,
+        Ok(session) => {
+            let status = terminal(adapter, fixture, &session).await;
+            if status.session.pid.is_none() {
+                adapter.release((&session).into()).unwrap();
+            }
+            assert_not_spawned(fixture, &status);
+            panic!("environment admission unexpectedly reserved a Session");
+        }
+    }
+}
+
 #[tokio::test]
 async fn environment_initial_selection_drives_real_canary_and_rejection_consumers() {
     isolated("adapter::grok::environment_tests::initial_child").await;
@@ -147,7 +169,7 @@ async fn initial_child() {
         .insert("LANG".into(), "synthetic-foreign-locale".into());
     let adapter = denied.adapter();
     assert_eq!(
-        denied.start(&adapter).await.unwrap_err().kind,
+        rejected_start(&adapter, &denied).await.kind,
         ErrorKind::InvalidConfiguration
     );
     denied.request.environment.clear();
@@ -159,7 +181,7 @@ async fn initial_child() {
         .put_project(&mut other)
         .unwrap();
     assert_eq!(
-        denied.start(&adapter).await.unwrap_err().kind,
+        rejected_start(&adapter, &denied).await.kind,
         ErrorKind::InvalidConfiguration
     );
     other.state = ProjectState::Removed;
@@ -170,7 +192,7 @@ async fn initial_child() {
         .put_project(&mut other)
         .unwrap();
     assert_eq!(
-        denied.start(&adapter).await.unwrap_err().kind,
+        rejected_start(&adapter, &denied).await.kind,
         ErrorKind::InvalidConfiguration
     );
     assert!(
@@ -213,7 +235,7 @@ async fn initial_child() {
             .environment
             .insert(key.into(), "synthetic".into());
         assert_eq!(
-            denied.start(&adapter).await.unwrap_err().kind,
+            rejected_start(&adapter, &denied).await.kind,
             ErrorKind::InvalidConfiguration
         );
         denied.request.environment.clear();
@@ -243,16 +265,16 @@ async fn admission_child() {
             Ok(())
         })
     }));
-    let lower = receipt_support::watermark(&fixture.store, &fixture.request.scope).unwrap();
     let session = fixture.start(&adapter).await.unwrap();
     let status = terminal(&adapter, &fixture, &session).await;
+    assert_not_spawned(&fixture, &status);
     assert_eq!(
         status.failure.as_deref(),
         Some("InvalidConfiguration: native environment authority unavailable")
     );
     assert_eq!(status.session.state, SessionState::Failed);
     assert!(status.session.pid.is_none());
-    assert_not_spawned(&fixture, &session, lower);
+    assert_not_spawned(&fixture, &status);
     adapter.release((&session).into()).unwrap();
 
     let mut resumed = Fixture::new();
@@ -293,7 +315,6 @@ async fn admission_child() {
         .await
         .unwrap();
     resumed.request.input = input;
-    let lower = receipt_support::watermark(&resumed.store, &resumed.request.scope).unwrap();
     let second = resumed.resume(&adapter, (&first).into(), 2).await.unwrap();
     let status = terminal(&adapter, &resumed, &second).await;
     assert_eq!(
@@ -308,7 +329,7 @@ async fn admission_child() {
     for key in ["dispatch_intent", "prompt_id", "dispatch_state"] {
         assert_eq!(status.session.recovery[key], previous[key]);
     }
-    assert_not_spawned(&resumed, &second, lower);
+    assert_not_spawned(&resumed, &status);
     assert_eq!(invocations.load(Ordering::SeqCst), 2);
     adapter.release((&second).into()).unwrap();
 
@@ -333,14 +354,13 @@ async fn admission_child() {
     }));
     let adapter = Arc::new(adapter);
     *adapter_slot.lock().unwrap() = Some(Arc::downgrade(&adapter));
-    let lower = receipt_support::watermark(&fixture.store, &fixture.request.scope).unwrap();
     let session = fixture.start(adapter.as_ref()).await.unwrap();
     let status = terminal(&adapter, &fixture, &session).await;
     assert_eq!(status.session.state, SessionState::Stopped);
     let stopped = stop_result.lock().unwrap().take().unwrap();
     let stopped = stopped.await.unwrap().unwrap();
     assert_eq!(stopped.session.state, SessionState::Stopped);
-    assert_not_spawned(&fixture, &session, lower);
+    assert_not_spawned(&fixture, &status);
     let (saved, version) = fixture
         .store
         .lock()
@@ -388,4 +408,260 @@ fn control_and_native_whitelist_are_separate_finite_policies() {
     assert!(environment::control("NODE_TLS_REJECT_UNAUTHORIZED"));
     assert!(!ordinary_key("RRX_SYNTHETIC"));
     assert!(!baseline_key("UNRELATED_SYNTHETIC"));
+}
+
+#[tokio::test]
+async fn unrelated_foreign_changes_do_not_revoke_start_checkpoint_or_resume() {
+    isolated("adapter::grok::environment_tests::irrelevant_start_child").await;
+    isolated("adapter::grok::environment_tests::irrelevant_checkpoint_child").await;
+    isolated("adapter::grok::environment_tests::irrelevant_resume_child").await;
+}
+fn mutation_hook(
+    database: PathBuf,
+    foreign: crate::domain::Project,
+    kind: usize,
+    enabled: Arc<AtomicBool>,
+) -> EnvironmentHook {
+    Arc::new(move |_entry| {
+        let database = database.clone();
+        let mut foreign = foreign.clone();
+        let apply = enabled.swap(false, Ordering::SeqCst);
+        Box::pin(async move {
+            if apply {
+                let mut store = Store::open(&database).unwrap();
+                match kind {
+                    0 => {}
+                    1 => {
+                        foreign.id = crate::domain::ProjectId::new();
+                        foreign.version = 0;
+                        foreign.root = foreign
+                            .root
+                            .with_file_name(format!("synthetic-new-{}", foreign.id));
+                        foreign.worktree_root = foreign.root.join("worktree");
+                        store.put_project(&mut foreign).unwrap();
+                    }
+                    2 => {
+                        foreign.environment_refs = vec!["FOREIGN_ABSENT_NATIVE_NAME".into()];
+                        store.put_project(&mut foreign).unwrap();
+                    }
+                    3 => {
+                        foreign.environment_refs =
+                            vec!["HOME".into(), "NODE_TLS_REJECT_UNAUTHORIZED".into()];
+                        store.put_project(&mut foreign).unwrap();
+                    }
+                    4 => {
+                        foreign.state = ProjectState::Blocked;
+                        foreign.blocked_reason = Some("synthetic".into());
+                        store.put_project(&mut foreign).unwrap();
+                    }
+                    5 => {
+                        foreign.state = ProjectState::Removed;
+                        store.put_project(&mut foreign).unwrap();
+                    }
+                    6 => {
+                        foreign.name = "synthetic-irrelevant-rename".into();
+                        store.put_project(&mut foreign).unwrap();
+                    }
+                    7 => {
+                        let connection = rusqlite::Connection::open(&database).unwrap();
+                        connection
+                            .execute("DELETE FROM projects WHERE id=?1", [foreign.id.to_string()])
+                            .unwrap();
+                    }
+                    8 => {
+                        let connection = rusqlite::Connection::open(&database).unwrap();
+                        connection.execute("UPDATE projects SET body=json_set(body,'$.root',json('null')) WHERE id=?1",[foreign.id.to_string()]).unwrap();
+                    }
+                    _ => unreachable!(),
+                }
+            }
+            Ok(())
+        })
+    })
+}
+async fn irrelevant(boundary: usize, name: &str) {
+    assert_eq!(std::env::var("RRX_INSPECTION_FIXTURE_CHILD").unwrap(), "1");
+    let mut control = None;
+    for kind in 0..9 {
+        let mut fixture = Fixture::new();
+        let (_foreign_dir, foreign) = foreign(&fixture, &[]);
+        let active = Arc::new(AtomicBool::new(boundary == 0));
+        let hook = mutation_hook(
+            fixture.directory.path().join("state.db"),
+            foreign,
+            kind,
+            active.clone(),
+        );
+        let mut adapter = fixture.adapter();
+        if boundary == 1 {
+            adapter.checkpoint_environment = Some(hook);
+        } else {
+            adapter.before_environment_admission = Some(hook);
+        }
+        let first = fixture.start(&adapter).await.unwrap();
+        let mut status = terminal(&adapter, &fixture, &first).await;
+        assert!(
+            adapter.transport_succeeded(&status),
+            "irrelevant start rejected kind{kind}; {:?}; {}",
+            status.failure,
+            fixture.receipt_message(&status)
+        );
+        if boundary != 0 {
+            let mut input = fixture.request.input.clone();
+            input.version = 2;
+            input.payload = "explicit fresh continuation".into();
+            active.store(boundary == 1, Ordering::SeqCst);
+            adapter
+                .checkpoint((&first).into(), input.clone())
+                .await
+                .unwrap();
+            active.store(boundary == 2, Ordering::SeqCst);
+            fixture.request.input = input;
+            let second = fixture.resume(&adapter, (&first).into(), 2).await.unwrap();
+            status = terminal(&adapter, &fixture, &second).await;
+            assert!(
+                adapter.transport_succeeded(&status),
+                "irrelevant resume rejected kind{kind}; {:?}; {}",
+                status.failure,
+                fixture.receipt_message(&status)
+            );
+        }
+        let events = fixture.observation(&status).events;
+        let kinds = events
+            .iter()
+            .map(|event| event["kind"].as_str().unwrap().to_owned())
+            .collect::<Vec<_>>();
+        if let Some(control) = &control {
+            assert_eq!(
+                &kinds, control,
+                "irrelevant foreign metadata correlated with owning event kinds/counts"
+            );
+        } else {
+            control = Some(kinds);
+        }
+        adapter.release((&first).into()).unwrap();
+    }
+    child_completed(name);
+}
+#[tokio::test]
+#[ignore = "only entered by owned env-cleared canary parent"]
+async fn irrelevant_start_child() {
+    irrelevant(
+        0,
+        "adapter::grok::environment_tests::irrelevant_start_child",
+    )
+    .await;
+}
+#[tokio::test]
+#[ignore = "only entered by owned env-cleared canary parent"]
+async fn irrelevant_checkpoint_child() {
+    irrelevant(
+        1,
+        "adapter::grok::environment_tests::irrelevant_checkpoint_child",
+    )
+    .await;
+}
+#[tokio::test]
+#[ignore = "only entered by owned env-cleared canary parent"]
+async fn irrelevant_resume_child() {
+    irrelevant(
+        2,
+        "adapter::grok::environment_tests::irrelevant_resume_child",
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn native_references_and_ordinary_callers_keep_exact_scoped_alternatives() {
+    isolated("adapter::grok::environment_tests::reference_child").await;
+}
+#[tokio::test]
+#[ignore = "only entered by owned env-cleared canary parent"]
+async fn reference_child() {
+    assert_eq!(std::env::var("RRX_INSPECTION_FIXTURE_CHILD").unwrap(), "1");
+    for (key, value) in [
+        ("XAI_API_KEY", "synthetic-xai-global"),
+        ("SSLKEYLOGFILE", "synthetic-keylog-locator"),
+    ] {
+        let mut fixture = Fixture::new();
+        let (_foreign_dir, _foreign) = foreign(&fixture, &[key]);
+        own_refs(&mut fixture, &[key]);
+        fixture.request.environment.insert(key.into(), value.into());
+        let adapter = fixture.adapter();
+        let first = fixture.start(&adapter).await.unwrap();
+        let status = terminal(&adapter, &fixture, &first).await;
+        assert!(
+            adapter.transport_succeeded(&status),
+            "own/shared native reference rejected; {:?}; {}",
+            status.failure,
+            fixture.receipt_message(&status)
+        );
+        adapter.release((&first).into()).unwrap();
+        fixture
+            .request
+            .environment
+            .insert(key.into(), "synthetic-replacement".into());
+        assert_eq!(
+            rejected_start(&adapter, &fixture).await.kind,
+            ErrorKind::InvalidConfiguration
+        );
+        fixture.request.environment.clear();
+        own_refs(&mut fixture, &[]);
+        let error = rejected_start(&adapter, &fixture).await;
+        assert_eq!(error.kind, ErrorKind::InvalidConfiguration);
+        assert_eq!(error.message, "native environment authority unavailable");
+    }
+    let mut fixture = Fixture::new();
+    let (_foreign_dir, mut other) = foreign(&fixture, &["TZ"]);
+    fixture
+        .request
+        .environment
+        .insert("TZ".into(), "synthetic-own-tz".into());
+    let adapter = fixture.adapter();
+    let foreign_error = rejected_start(&adapter, &fixture).await;
+    other.environment_refs = vec![];
+    fixture
+        .store
+        .lock()
+        .unwrap()
+        .put_project(&mut other)
+        .unwrap();
+    let undeclared_error = rejected_start(&adapter, &fixture).await;
+    assert_eq!(
+        foreign_error, undeclared_error,
+        "foreign inventory became an error side channel"
+    );
+    own_refs(&mut fixture, &["TZ"]);
+    let first = fixture.start(&adapter).await.unwrap();
+    let status = terminal(&adapter, &fixture, &first).await;
+    assert!(
+        adapter.transport_succeeded(&status),
+        "own ordinary alternative rejected; {:?}; {}",
+        status.failure,
+        fixture.receipt_message(&status)
+    );
+    adapter.release((&first).into()).unwrap();
+    // A declared unsupported provider key is harmless until a caller tries passing it.
+    fixture.request.environment.clear();
+    own_refs(&mut fixture, &["OTHER_PROVIDER_REFERENCE"]);
+    let first = fixture.start(&adapter).await.unwrap();
+    let status = terminal(&adapter, &fixture, &first).await;
+    assert!(
+        adapter.transport_succeeded(&status),
+        "unused owning reference changed provider authority"
+    );
+    adapter.release((&first).into()).unwrap();
+    // Mixed registry-invalid strings still contribute their valid retained reference.
+    other.environment_refs = vec!["INVALID-NAME".into(), "GROK_SYNTHETIC_AUTH".into()];
+    fixture
+        .store
+        .lock()
+        .unwrap()
+        .put_project(&mut other)
+        .unwrap();
+    assert_eq!(
+        rejected_start(&adapter, &fixture).await.kind,
+        ErrorKind::InvalidConfiguration
+    );
+    child_completed("adapter::grok::environment_tests::reference_child");
 }

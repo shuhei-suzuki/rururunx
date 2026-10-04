@@ -333,3 +333,60 @@ fn environment_projection_streams_all_names_and_ignores_unrelated_foreign_metada
         std::collections::BTreeSet::from(["GROK_SYNTHETIC_AUTH".into()])
     );
 }
+
+#[test]
+fn environment_name_dto_rejects_bounds_without_dropping_candidates() {
+    assert!(EnvironmentAdmission::new((0..512).map(|i| format!("NATIVE_{i}")), []).is_ok());
+    assert!(EnvironmentAdmission::new((0..513).map(|i| format!("NATIVE_{i}")), []).is_err());
+    assert!(EnvironmentAdmission::new(["A".repeat(256)], []).is_ok());
+    assert!(EnvironmentAdmission::new(["A".repeat(257)], []).is_err());
+    let wide = |i| format!("N{i:03}_{}", "X".repeat(251));
+    assert!(EnvironmentAdmission::new((0..256).map(wide), []).is_ok());
+    assert!(EnvironmentAdmission::new((0..257).map(wide), []).is_err());
+    assert!(EnvironmentAdmission::new([], (0..128).map(|i| format!("CALLER_{i}"))).is_ok());
+    assert!(EnvironmentAdmission::new([], (0..129).map(|i| format!("CALLER_{i}"))).is_err());
+}
+#[test]
+fn environment_policy_keeps_blocked_lock_and_lost_guard_precedence() {
+    for guard in 0..3 {
+        let (_directory, mut store, mut project, goal, task, mut session) = fixture();
+        let (_foreign_dir, mut foreign) = foreign_environment(&mut store);
+        foreign.environment_refs = vec!["GROK_SYNTHETIC_AUTH".into()];
+        store.put_project(&mut foreign).unwrap();
+        let mut locks = vec![];
+        if guard == 0 {
+            project.state = ProjectState::Blocked;
+            project.blocked_reason = Some("synthetic".into());
+            store.put_project(&mut project).unwrap();
+        } else if guard == 1 {
+            let mut lock = Record::new(
+                task.scope(),
+                RecordKind::WorktreeLock,
+                json!({"active":true,"revision":"a".repeat(40),"worktree":task.worktree,"branch":task.branch,"reason":"review"}),
+            );
+            store.put_record(&mut lock).unwrap();
+            locks.push((lock.id, lock.version));
+        } else {
+            let version = store.put_session(&session, 0).unwrap();
+            session.state = SessionState::Lost;
+            store.put_session(&session, version).unwrap();
+            session.id = SessionId::new();
+            session.state = SessionState::Starting;
+        }
+        let error = store
+            .put_session_with_environment_if_current(
+                &session,
+                0,
+                [project.version, goal.version, task.version],
+                &locks,
+                &environment_policy(),
+            )
+            .unwrap_err();
+        assert!(matches!(
+            (guard, error.downcast_ref::<StateGuardError>()),
+            (0, Some(StateGuardError::ProjectInactive))
+                | (1, Some(StateGuardError::WorktreeLocked))
+                | (2, Some(StateGuardError::ExecutorReserved))
+        ));
+    }
+}
