@@ -1,8 +1,8 @@
 # Issue 21: Attributable telemetry and Context Efficiency comparison
 
 Workflow: STRICT (shared durable metrics, provider normalization and Project isolation).
-Status: Requirements8; independent Req1–Req7 findings verified and refined below.
-Requirements8/design/source reviews pending.
+Status: Requirements8 at e001483 independently approved by two native reviewers
+with no findings and actual owned cleanup verified. Design/source acceptance pending.
 Baseline: main80452f4, schema3. Depends on merged #2 and #4; part of #17.
 
 ## Purpose and existing gap

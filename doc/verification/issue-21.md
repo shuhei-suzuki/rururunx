@@ -120,3 +120,16 @@ pre-run registration and feature-author exposure rules to ALL certifying plans;
 known tuning-exposed items remain regression evidence only. Shared runtime defects
 are not environment exclusions merely because both lanes fail. Requirements8 review
 pending; no implementation, native benchmark or MVP acceptance is claimed.
+
+Req8 e001483 completed two independent native approvals with no findings and actual
+v3 owned cleanup verified. Requirements approval covers no design or implementation.
+Exact CI37199736228 is RED: macOS lib86 passed/1 failed/1 ignored; old
+adapter::inspection::tests::each_output_stream_has_a_causal_size_failure at442
+observed stdout202.449042ms with byte-budget failure and stderr261.674333ms TimedOut.
+Ubuntu fmt/clippy/tests/debug build passed, release build cancelled by fail-fast;
+macOS builds skipped. Original failed log retained, no rerun or invented PS cause.
+The narrow cap-test component already being integrated with #55 is the related
+pending source gate; a later green result alone does not erase this failure.
+Design1 starts from approved Req8 and actual main/native/context inventory. Its
+private operation/measurement/epoch/producers, real controls, native benchmark and
+source/security gates remain unimplemented and pending.
