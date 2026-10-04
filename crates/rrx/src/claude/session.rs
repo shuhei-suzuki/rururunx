@@ -132,6 +132,10 @@ struct Reservation {
     input_may_have_been_sent: bool,
     previous_terminal: Option<Session>,
 }
+struct CurrentPublicationError {
+    failure: crate::adapter::AdapterError,
+    authority_current: Option<bool>,
+}
 impl Reservation {
     fn persist_current(&mut self, snapshot: &ScopeSnapshot) -> AdapterResult<()> {
         self.commit_current(self.session.clone(), snapshot)
@@ -141,17 +145,41 @@ impl Reservation {
         candidate: Session,
         snapshot: &ScopeSnapshot,
     ) -> AdapterResult<()> {
+        self.commit_current_observed(candidate, snapshot)
+            .map_err(|error| error.failure)
+    }
+    fn commit_current_observed(
+        &mut self,
+        candidate: Session,
+        snapshot: &ScopeSnapshot,
+    ) -> Result<(), CurrentPublicationError> {
         self.version = self
             .store
             .lock()
-            .map_err(|_| failure(ErrorKind::StateFailure, "state store poisoned"))?
+            .map_err(|_| CurrentPublicationError {
+                failure: failure(ErrorKind::StateFailure, "state store poisoned"),
+                authority_current: None,
+            })?
             .put_session_if_current(
                 &candidate,
                 self.version,
                 snapshot.versions(),
                 &snapshot.lock_versions(),
             )
-            .map_err(super::ownership::state_error)?;
+            .map_err(|error| {
+                let authority_current =
+                    match error.downcast_ref::<crate::state::StateGuardError>() {
+                        Some(crate::state::StateGuardError::SnapshotChanged {
+                            table, id, ..
+                        }) if table == "records" && id == &candidate.id.to_string() => None,
+                        Some(_) => Some(false),
+                        None => None,
+                    };
+                CurrentPublicationError {
+                    failure: super::ownership::state_error(error),
+                    authority_current,
+                }
+            })?;
         self.session = candidate;
         Ok(())
     }
@@ -1368,18 +1396,14 @@ async fn supervise(
     let persisted = if matches!(result, Ok(true)) && !uncertain && policy::decision(request.role) {
         let mut candidate = reservation.session.clone();
         candidate.recovery["final_authority_current"] = json!(true);
-        match reservation.commit_current(candidate, &snapshot) {
+        match reservation.commit_current_observed(candidate, &snapshot) {
             Ok(()) => {
                 final_authority_current = Some(true);
                 true
             }
             Err(error) => {
                 let mut candidate = reservation.session.clone();
-                final_authority_current = matches!(
-                    error.kind,
-                    ErrorKind::StateConflict | ErrorKind::Locked | ErrorKind::InvalidInput
-                )
-                .then_some(false);
+                final_authority_current = error.authority_current;
                 // Storage failure withholds proof without asserting that
                 // authority changed. Preserve a nullable factual observation.
                 candidate.recovery["final_authority_current"] = json!(final_authority_current);
@@ -1792,8 +1816,9 @@ for line in sys.stdin:
    open(__file__+'.second-denied','w').write('exact-denial')
    emit({{'type':'control_cancel_request','request_id':'permission-2'}})
    continue
-  assert m['response']['request_id']=='permission-1'
-  assert 'updatedPermissions' not in m['response']['response']
+ assert m['response']['request_id']=='permission-1'
+ assert 'updatedPermissions' not in m['response']['response']
+  open(__file__+'.permission-response','w').write(json.dumps(m))
   if m['response']['response']['behavior']=='allow':assert m['response']['response']['updatedInput']=={{'command':'pwd'}}
   emit({{'type':'result','subtype':'success','is_error':False,'session_id':native,'result':'done'}})
 "#
@@ -2175,6 +2200,59 @@ for line in sys.stdin:
             fresh.version = 2;
             assert!(adapter.checkpoint((&session).into(), fresh).await.is_err());
         }
+    }
+    #[tokio::test]
+    async fn decision_terminal_own_record_conflict_is_unknown_and_never_overwrites_other_writer() {
+        let mut fixture = Fixture::new(true);
+        fixture.review();
+        let temp = tempfile::tempdir().unwrap();
+        let path = executable(&temp, "result-gated");
+        let ready = PathBuf::from(format!("{}.ready", path.display()));
+        let go = PathBuf::from(format!("{}.go", path.display()));
+        let adapter = ClaudeAdapter::new("claude".into(), path, fixture.store.clone()).unwrap();
+        let session = adapter.start(fixture.request.clone()).await.unwrap();
+        let mut receiver = adapter.subscribe((&session).into()).unwrap();
+        fixture_marker(&ready).await;
+        let mut other = crate::state::Store::open(
+            fixture
+                .request
+                .project
+                .root
+                .parent()
+                .unwrap()
+                .join("state.sqlite3"),
+        )
+        .unwrap();
+        let (mut changed, version) = other.session(session.id).unwrap().unwrap();
+        changed.recovery["outside_writer"] =
+            json!("same scope; independently changed Session record");
+        other.put_session(&changed, version).unwrap();
+        std::fs::write(go, "go").unwrap();
+        tokio::time::timeout(Duration::from_secs(10), async {
+            while !receiver.borrow().terminal() {
+                receiver.changed().await.unwrap();
+            }
+        })
+        .await
+        .unwrap();
+        let observed = receiver.borrow().clone();
+        assert_eq!(observed.session.state, SessionState::Lost);
+        assert!(!adapter.transport_succeeded(&observed));
+        let registry = adapter.registry().unwrap();
+        let evidence = registry.get(&session.id).unwrap().evidence.lock().unwrap();
+        assert!(evidence.terminal_observed);
+        assert!(!evidence.completed);
+        assert_eq!(evidence.final_authority_current, None);
+        drop(evidence);
+        drop(registry);
+        assert_eq!(
+            serde_json::to_value(other.session(session.id).unwrap().unwrap().0).unwrap(),
+            serde_json::to_value(changed).unwrap()
+        );
+        assert_eq!(
+            adapter.status((&session).into()).await.unwrap_err().kind,
+            ErrorKind::StateConflict
+        );
     }
     #[tokio::test]
     async fn decision_terminal_storage_failure_withholds_proof_without_claiming_revocation() {
@@ -2894,6 +2972,67 @@ for line in sys.stdin:
         assert!(!adapter.transport_succeeded(&status));
         assert!(status.session.recovery.get("pending_permission").is_none());
         assert!(adapter.pending_operation((&session).into()).is_err());
+    }
+    #[tokio::test]
+    async fn allow_storage_failure_never_grants_or_publishes_intent_and_retains_lost() {
+        let fixture = Fixture::new(true);
+        let temp = tempfile::tempdir().unwrap();
+        let path = executable(&temp, "pending");
+        let marker = PathBuf::from(format!("{}.permission-response", path.display()));
+        let adapter = ClaudeAdapter::new("claude".into(), path, fixture.store.clone())
+            .unwrap()
+            .with_runtime_broker();
+        let session = adapter.start(fixture.request.clone()).await.unwrap();
+        let mut receiver = adapter.subscribe((&session).into()).unwrap();
+        tokio::time::timeout(Duration::from_secs(10), async {
+            while receiver.borrow().session.state != SessionState::WaitingApproval {
+                receiver.changed().await.unwrap();
+            }
+        })
+        .await
+        .unwrap();
+        let pending = receiver.borrow().session.recovery["pending_permission"].clone();
+        let connection = rusqlite::Connection::open(
+            fixture
+                .request
+                .project
+                .root
+                .parent()
+                .unwrap()
+                .join("state.sqlite3"),
+        )
+        .unwrap();
+        connection.execute_batch("CREATE TRIGGER fixture_allow_storage BEFORE UPDATE ON records WHEN json_extract(NEW.body,'$.data.recovery.dispatch_intent.decision')='ALLOW' BEGIN SELECT RAISE(ABORT,'synthetic ALLOW storage failure'); END;").unwrap();
+        let mut decision = pending.as_object().unwrap().clone();
+        decision.remove("tool_name");
+        decision.insert("decision".into(), json!("ALLOW"));
+        assert_eq!(
+            adapter
+                .submit_approval((&session).into(), Value::Object(decision))
+                .await
+                .unwrap_err()
+                .kind,
+            ErrorKind::StateFailure
+        );
+        let status = terminal(&adapter, (&session).into()).await;
+        assert_eq!(status.session.state, SessionState::Lost);
+        assert!(status.session.pid.is_none());
+        assert!(!adapter.transport_succeeded(&status));
+        assert_eq!(status.session.recovery["pending_permission"], pending);
+        assert!(status.session.recovery["dispatch_intent"]["decision"].is_null());
+        assert!(!marker.exists(), "no permission response may reach native");
+        assert!(adapter.pending_operation((&session).into()).is_err());
+        assert!(adapter.resume((&session).into()).await.is_err());
+        assert!(
+            fixture
+                .store
+                .lock()
+                .unwrap()
+                .events(&session.scope, 0, 100)
+                .unwrap()
+                .iter()
+                .all(|event| event.data["evidence"]["dispatch_intent"]["decision"] != "ALLOW")
+        );
     }
     #[tokio::test]
     async fn exact_pending_broker_escalation_reply_replay_and_stop() {
