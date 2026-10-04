@@ -1,8 +1,8 @@
 # Issue 58: Retained ownership of Task-free native Consultant work
 
 Workflow: STRICT (native ownership, durable authority and Project exclusion).
-Status: Requirements8; verified independent Req1–Req7 gaps corrected below;
-requirements/design/source gates pending.
+Status: Requirements8 approved at8facb8d by two independent native reviewers;
+no Critical/High/Medium remains. Design/source gates pending.
 Baseline: main80452f4/schema3. MVP follow-up from #6 F1 and #19; see
 [Issue58](https://github.com/shuhei-suzuki/rururunx/issues/58).
 

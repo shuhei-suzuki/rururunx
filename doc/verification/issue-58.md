@@ -113,3 +113,24 @@ Live/unfenced/truncated scopes still refuse; actual crash-at-fence/reconciliatio
 two-former-instance consumer controls/mutants are required. No successor/profile/
 recovery source exists here, and mandatory production #14 readiness remains open.
 Requirements8 review pending; no new native defaults, source or acceptance claim.
+
+Requirements8 8facb8d completed two independent native approvals, no C/H/M or
+unresolved blockers, one shared Low each; both actual v3 owned cleanup/reap checks
+passed. Low replacement-intent/live-owner ordering is a Design obligation: pending
+replacement cannot preempt a legitimate prior owner; actual no-effect withdrawal
+and genuine per-owner fencing remain required. Observed component reviews do not
+prove native memory/OS secrecy or full9/16 profile independence. Raw resumed native
+meters are attribution-unverified and are not summed or labeled per-round.
+
+Trigger-head CI37208015937 is RED: macOS lib120PASS/6ignored, then actual Generic
+adapter terminal_retention_is_bounded_and_output_can_be_released:668 failed during
+forget_retained_output with SessionLost 'native process group cleanup failed: native
+process inspection timed out'; adapter18PASS/1FAIL, builds skipped. Every Ubuntu
+fmt/clippy/test/debug/release step passed, but the job is cancelled by fail-fast.
+Failed log retained, no rerun/cause/deadline/Unknown relaxation. This differs from
+the historical cap expectation and was handed to actual supervisor diagnostics work.
+CI default checkout tests PR merge context; trigger head alone is not proof of tested
+source identity. Actual checkout SHA/parents and source-blob comparison must accompany
+future implementation gates. Requirements7 triggerCI37206735920 was green both OS,
+without repairing this newer failure. Requirements approval is not source/CI/MVP
+acceptance; actual supported native/recovery/job/epoch producers remain required.
