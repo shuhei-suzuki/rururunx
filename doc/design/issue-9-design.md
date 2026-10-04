@@ -113,3 +113,25 @@ roster first and verify every reported potential blocker. Stop remaining work on
 through the adapter's explicit safe cancellation path, retaining cancellation and
 uncertainty as individual outcomes. Lost is a hold, never an implicit roster
 removal. A completed certificate explicitly reports tolerated failures/timeouts.
+
+
+## Parallel member authority
+
+The prepared-context integration must introduce an explicit private ReviewSet
+allocation/delegation contract. One immutable Workflow review claim and one Task
+context remain fixed for the whole round. Reserve an immutable round roster with
+one private owner per member; do not clone the CPP or increment Task.context_version
+for each Reviewer. Native prepared frames bind exact Set/round/slot identity,
+actual payload SHA, shared core hash, specialization digest, requested model/effort
+and source/CPP provenance. Shared factual core may be equal while slot wrappers
+have different full-frame digests; both are independently recorded and validated.
+
+The existing single-native phase_session_owners guard remains the default.
+Delegation can replace that ownership shape only through the private atomic
+ReviewSet publication bound to the exact active Workflow claim. Session JSON or
+role cannot declare delegation. All member admission/closure checks resolve that
+private roster and exact member ownership while preserving current native source,
+lifecycle/lock/CAS checks. A new round cannot change context/source authority until
+all prior native members are safely settled. Record-only single-actor binding43
+is not an implicit N-way roster API; review delegation needs its own approved
+additive transition and integration design against the merged19 kernel.
