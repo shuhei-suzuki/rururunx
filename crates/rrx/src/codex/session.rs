@@ -775,12 +775,6 @@ impl CodexAdapter {
                 "native preparation requires a confirmed terminal Session",
             ));
         }
-        if !matches!(*entry.control.subscribe().borrow(), Phase::Finished(_)) {
-            return Err(failure(
-                ErrorKind::StateConflict,
-                "native predecessor has not finished its final publication",
-            ));
-        }
         // Registry -> Store, without current/reference reentry. No write or await.
         let persisted = self
             .store
