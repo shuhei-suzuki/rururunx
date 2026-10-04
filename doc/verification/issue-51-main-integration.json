@@ -67,5 +67,86 @@
     "log_sha256": "e885d0988714622979ff707be5ca44e7e1c72f2187e6a728afe15dd6f5cb10b6",
     "cause": "unknown; no Issue51/main usage attribution or underlying error inferred"
   },
-  "integrated_validation": "pending new combined-source local checks and public both-OS actual-checkout CI"
+  "integrated_validation": {
+    "source_head": "b90b59ab1395ffb8565e610caa6d75ae35b0f6b9",
+    "merge_ready": false,
+    "blocking_gate": "Actual combined-source local default DEBUG failed; distinct release and public CI passes do not close it. Scoped causal investigation/fix is required before merge.",
+    "debug": {
+      "result": "failed",
+      "exit_code": 101,
+      "passed_before_context": {
+        "lib": 146,
+        "adapter": 19,
+        "cli": 5
+      },
+      "context": {
+        "passed": 3,
+        "failed": 13
+      },
+      "first_failure": "state_version_recheck_rejects_changed_task_goal_and_worktree_branch, tests/context.rs:110:14",
+      "first_observed_error": "native Git process-group cleanup uncertain; context operation blocked; bounded context Git: SessionLost: native process group cleanup failed: native process inspection timed out",
+      "following_failures": "12 derived sticky/concurrent PROCESS_UNCERTAIN latch discards or blocked launches; not 13 independent inspection failures",
+      "later_targets": "not run",
+      "log": {
+        "path": "/private/tmp/rururunx-issue51-b90b59a-main-composition-debug.log",
+        "sha256": "86cbf8a794adce027bb0ef6164bf0ee570d1b0206b756242cd4582ff5998de9a"
+      }
+    },
+    "distinct_release": {
+      "result": "success",
+      "rust_tests": 247,
+      "doctests": 2,
+      "ignored": 23,
+      "default_internal_concurrency": true,
+      "debug_blocker_closed": false,
+      "log": {
+        "path": "/private/tmp/rururunx-issue51-b90b59a-main-composition-release.log",
+        "sha256": "9daa4c06ab4c98ec2473e120c9231a5ac61a4cdf39c88c5fe8ee93834d342542"
+      }
+    },
+    "format_clippy_debug_release_builds": "all success after owned suites completed",
+    "build_logs": [
+      {
+        "path": "/private/tmp/rururunx-issue51-b90b59a-composition-fmt.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "result": "success"
+      },
+      {
+        "path": "/private/tmp/rururunx-issue51-b90b59a-composition-clippy.log",
+        "sha256": "4bbae376a58355246da8b403c5e43b40d87ace3501920842e974c4339c9ffac5",
+        "result": "success"
+      },
+      {
+        "path": "/private/tmp/rururunx-issue51-b90b59a-composition-debug-build.log",
+        "sha256": "a5f4c585ee974ca44916ac30a98bbc189e067a7e0a6bc6d2e8d6bc525be724af",
+        "result": "success"
+      },
+      {
+        "path": "/private/tmp/rururunx-issue51-b90b59a-composition-release-build.log",
+        "sha256": "92434e198f27984c035c376ec77a7cf9e6ebdde782f8ccb1336ae3329b66ddb7",
+        "result": "success"
+      }
+    ],
+    "public_ci": {
+      "run": 37216243950,
+      "trigger_head": "b90b59ab1395ffb8565e610caa6d75ae35b0f6b9",
+      "actual_checkouts": {
+        "check (ubuntu-latest)": "43dd591ab376645c89373a80fc7658ded82aed57",
+        "check (macos-latest)": "43dd591ab376645c89373a80fc7658ded82aed57"
+      },
+      "parents": [
+        "054aefd3a22a02951fa72b9fa397bed58d156bbf",
+        "b90b59ab1395ffb8565e610caa6d75ae35b0f6b9"
+      ],
+      "tested_tree": "aed64850b942756d95f34e5b414846944cd9a480",
+      "trigger_tree": "aed64850b942756d95f34e5b414846944cd9a480",
+      "tested_tree_equals_trigger": true,
+      "both_required_contexts": "success",
+      "actual_local_debug_gate": "FAILED_context_first_inspection_timeout_and12latch_cascades_NOT_CLOSED_BY_CI",
+      "local_debug_log_sha256": "86cbf8a794adce027bb0ef6164bf0ee570d1b0206b756242cd4582ff5998de9a",
+      "local_release_log_sha256": "9daa4c06ab4c98ec2473e120c9231a5ac61a4cdf39c88c5fe8ee93834d342542"
+    },
+    "cause": "unmeasured; no environment, usage guard, peer workload, pipe-holder or underlying inspection attribution",
+    "policy": "No same-mode/head debug rerun, latch reset, deadline change, serialization or Unknown relaxation; PR53 remains draft/unmerged."
+  }
 }
