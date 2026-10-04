@@ -1,7 +1,9 @@
 # Issue 51 design: Grok environment admission
 
-Risk: STRICT. Design4 independently approved at c8b0e1b. Pure registry-helper
-implementation is beginning; no Issue51 native consumer or Store admission implementation exists; reviewed main Issue46 is normally integrated. Requirements7
+Risk: STRICT. Design4 independently approved at c8b0e1b. The current registry/native
+selector/Store admission source candidate normally integrates reviewed main46/55/41.
+Actual source acceptance gates and findings are tracked in verification; approval of
+this design alone supplies no source/native acceptance. Requirements7
 approved `1688a85`, preserving Requirements5's explicit credential prohibition and
 Requirements6's SSLKEYLOGFILE/fresh-decision/checkpoint ordering clarification.
 The earlier optional precision findings are adopted in the requirements and below. Source gates

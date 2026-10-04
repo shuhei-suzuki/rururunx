@@ -2,9 +2,9 @@
 
 Risk: STRICT. MVP-blocking follow-up to #7 and actual integration acceptance #16.
 Goal §6 separates credentials/environment references by Project. Requirements/design
-approval precedes native/shared implementation. This issue changes documentation only
-(requirements and proposed design) relative to its normally integrated main baseline;
-no Issue51 Grok, Store or provider implementation exists yet.
+approval preceded native/shared implementation. Requirements7 and Design4 are approved;
+current source candidate and pending acceptance gates are recorded in
+[verification](../verification/issue-51.md).
 
 ## Verified problem and evidence limits
 
@@ -203,5 +203,5 @@ consumer/transaction design coordinated with shared Store/provider owners. Exist
 native permission/hooks/auth controls remain authoritative. Dependencies #7; reviewed
 #5/#6 policies may be reused only after normal integration; #16 must dogfood the fixed
 provider isolation. Root owns merge/close. Issue46 cleanup implementation has priority
-when its formal design gate approves; this worktree contains proposed documentation only
-until its own design gate approves.
+and its reviewed integration is preserved. Source/default/CI/native-integration gates
+remain explicit; approved documentation alone does not supply their evidence.

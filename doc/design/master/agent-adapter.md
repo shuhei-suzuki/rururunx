@@ -277,7 +277,7 @@ remain authoritative. This Generic baseline obligation is not enforced by the ge
 wrapper; automatic mixed-provider map prediction remains unsupported until the #11/
 #14/#16 driver/recovery/dogfood integration supplies a reviewed provider-bound handoff.
 This is not a claimed current CLI/native3 exposure. Grok separately retains its constructor native control/auth
-baseline; pending Issue51 rejects caller-supplied controls even with identical values
+baseline; caller-supplied controls are rejected even with identical values
 and scopes eligible ordinary
 caller refs without inheriting all ambient variables. The adapter never supplies bypass
 flags or an empty native configuration home.
@@ -371,17 +371,54 @@ CI timeouts or contain detached native descendants. Non-atomic fork/exit samplin
 KILL with non-signalable survivors remain residual limits; Linux cleanup semantics
 remain unchanged.
 
-## Pending Issue51 native environment authority
+## Grok environment admission
 
-Grok currently whitelists intentional native constructor baseline but does not bind
-ordinary caller keys/known foreign baseline references to persisted owning Project
-refs. A synthetic actual-child probe verified two cross-Project paths; it did not use
-installed native Grok or real credentials. Issue51 requires owning caller declarations,
-opaque rejection for known foreign non-control baseline references and fresh all-lifecycle
-name-only decision admission, preserving global
-native auth/hooks/config/safety and immutable controls. Requirements/design/source gates
-are pending; #5/#6 patterns are comparison inputs, not universal safety acceptance.
-No child isolation fix or schema change is claimed in the current baseline. The proposed
-[Issue51 design](../issue-51-design.md) adds pure registry/control predicates and a
-fresh relevant environment decision in the scoped Session transaction before actual
-native spawn; approval/source implementation is pending.
+The adapter freezes its intentional whitelisted native baseline at construction.
+Caller values require current owning Project declarations: LANG, LC_ALL, LC_CTYPE,
+TERM, COLORTERM and TZ may use their own ordinary values; native-whitelisted non-control
+keys must exactly match the frozen value. Declared unsupported keys are harmless until
+passed. RRX_ and controls cannot be passed by callers, including identical control values.
+Existing syntax/Git errors retain InvalidInput; environment admission failures have a
+fixed opaque InvalidConfiguration category. No environment values are audited or retained
+in the name-only admission DTO.
+
+A retained non-control baseline name declared by another Project but not by the owner
+rejects launch; it is never silently stripped to select cached/default authentication.
+Shared declarations permit only the same intentional runtime value. Undeclared global
+native auth/settings/hooks remain intentional. All lifecycle states contribute references.
+Controls keep the existing routing/identity/TLS/proxy/prefix policy plus the finite
+NODE_TLS_REJECT_UNAUTHORIZED addition. Registry-valid credential-bearing/locating keys
+are non-controls, including SSLKEYLOGFILE, XAI_API_KEY and unknown valid native references.
+This can make combined private-provider credential configurations unsupported; use
+undeclared global native auth or genuinely shared names/values. There is no privacy flag
+or distinct per-Project credential-value routing.
+
+ScopeSnapshot reads only own Project/Goal/Task/lock authority. Environment policy projects
+only environment_refs through SQLite, streaming every valid name without a foreign-count
+cap or foreign Project decoding/filesystem/config reads. Invalid strings do not hide
+valid conflicting names; missing/non-array/non-string reference authority fails opaquely.
+The bounded value-free DTO admits512baseline names/256bytes each/64KiB total and128caller
+names/256bytes each, rejecting oversized configuration rather than truncating candidates.
+
+Initial selection and final scoped Session admission use the same pure name decision.
+The final Immediate transaction preserves exact P/G/T/nullable-lock and Session identity,
+activity/exclusion/version guards before environment policy. Actor retains its prior
+version/watch on failure and publishes the exact saved candidate on success under its
+transition lock. Final own-scope/non-executor reservation checks remain before admission;
+this does not introduce a new atomic non-executor fence. Production checks stop immediately
+before spawn with no intervening await. SQLite and OS exec are not atomic; changes after
+admission are explicitly non-retroactive. Explicit higher-version checkpoint refresh and
+resume re-admission preserve native UUID/no implicit prompt replay, PID/death/Lost safety.
+
+Explicit Project-scoped candidate inspection reports only that Project's own non-control
+reference names present in the frozen baseline, including inactive Projects; it reads no
+foreign inventory/activity or values. Never call it automatically from another Project's
+rejection. Corrupt owning refs produce only the fixed unreadable authority status. If
+owning source cannot be reactivated to clear refs, reconstruct the adapter without the
+intentional runtime variable; do not erase another Project or fall back to cached auth.
+
+The implementation has synthetic actual-child and transaction tests; exact source review,
+mutation/default full gates and native multi-Project dogfood remain separate acceptance
+requirements in [verification](../../verification/issue-51.md). No schema/ACP/permission,
+factory/attach or global native-control bypass is introduced. All future authoritative
+state migrations must include this port in the same writer epoch/fences.

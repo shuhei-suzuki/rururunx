@@ -465,10 +465,8 @@ fn mutation_hook(
                         store.put_project(&mut foreign).unwrap();
                     }
                     7 => {
-                        let connection = rusqlite::Connection::open(&database).unwrap();
-                        connection
-                            .execute("DELETE FROM projects WHERE id=?1", [foreign.id.to_string()])
-                            .unwrap();
+                        foreign.environment_refs.clear();
+                        store.put_project(&mut foreign).unwrap();
                     }
                     8 => {
                         let connection = rusqlite::Connection::open(&database).unwrap();
@@ -486,7 +484,12 @@ async fn irrelevant(boundary: usize, name: &str) {
     let mut control = None;
     for kind in 0..9 {
         let mut fixture = Fixture::new();
-        let (_foreign_dir, foreign) = foreign(&fixture, &[]);
+        let initial_refs: &[&str] = if kind == 7 {
+            &["FOREIGN_ABSENT_NATIVE_NAME"]
+        } else {
+            &[]
+        };
+        let (_foreign_dir, foreign) = foreign(&fixture, initial_refs);
         let active = Arc::new(AtomicBool::new(boundary == 0));
         let hook = mutation_hook(
             fixture.directory.path().join("state.db"),
