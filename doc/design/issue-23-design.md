@@ -1,8 +1,9 @@
 # Issue 23: Goal authority, DAG and completion
 
 Status: Design4 f4b4926 approved with no Critical/High/Medium; source gates pending. Requirements3 `1fc82b1` independently approved.
-The initial structural graph component is implemented below; its verification/review
-and the complete authority/evaluation integration remain pending. Baseline main4851fcd and integrated main80452f4 have schema3 and generic Goal snapshots; the native
+The initial structural graph component is implemented and independently reviewed
+with its controls/mutations below; complete authority/evaluation integration remains
+pending. Baseline main4851fcd and integrated main80452f4 have schema3 and generic Goal snapshots; the native
 branches and proposed #19 schema6/private input projection must be composed before
 source acceptance. Allocate the final migration number in that combined revision.
 
@@ -60,6 +61,11 @@ Authorized Cancel/Fail remains available for recovery; known terminal rows remai
 terminal/unverified. Tests use the real trusted test ingress and explicit Running
 transition, replacing old generic setup and mutation helpers. No production
 cfg-test capability leaks into normal builds.
+The future typed legacy Cancel/Fail port preserves the original invalid DAG history
+without editing/ratifying it or granting dispatch. Initial structural generic saves
+can reject a previously accepted legacy cycle/self/duplicate pair; that verified
+Low limitation is recorded in the source ledger. An actual legacy fixture must
+verify conservative typed closure when that port is implemented.
 
 ## Durable observations and currency
 
@@ -368,7 +374,7 @@ macOS CI, independently reviews the immutable source/security scope, and compose
 compatible #19/#43 migration and producers. No CLI/event loop #24, scheduler #14/
 #27, native Goal #25 or final16 dogfood acceptance is implied by this model.
 
-## Initial source component (pending review)
+## Initial structural source component
 
 TaskDag::hard_order now validates at most4096 nodes and16384 edges, rejects
 duplicate nodes, undeclared endpoints, self edges, duplicate ordered pairs
@@ -380,3 +386,9 @@ row, caller versions and audit unchanged. This is structural validation only:
 generic Goal authority is still legacy, no readiness/completion/native permit is
 implemented, and no managed Goal is exposed. Remaining typed authority, mutation
 policy, coherent reports, evidence and #19/#43 composition stay pending.
+The graph component at7c1fd88 received two independent approvals without Critical/
+High/Medium findings and with actual owned native cleanup verified. Full local
+regressions/build/lint, release graph/Store controls and six compiled causal mutants
+are recorded in [verification](../verification/issue-23.md). Documentation639a25c
+passed exact Linux/macOS CI; that does not explain or erase earlier7c1fd88's macOS
+inspection timeout. No complete Issue23, readiness/native or MVP acceptance follows.
