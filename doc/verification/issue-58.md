@@ -183,3 +183,16 @@ connection coordination are explicit unimplemented readiness gates. Primary leas
 semantics inform required installed-host controls, not resource proof. No tests/source,
 schema, native profile or whole-Issue acceptance is claimed. Requirements8 unchanged;
 Design4 independent review pending. Historical failures remain retained.
+
+
+Design4 at31397fb received independent request_changes A1M2L/B1M2L, both actual
+cleanup/reap verified. Verified unlimited historical-orphan upgrade requirement was
+unreachable; proposed5 documents the unrecorded legacy residual without certifying
+death or clearing ANY known recorded hold, with actual drained-history upgrade and
+old-writer/reopen negatives required. Verified top-level join omits nested/blocking
+workers and remote claimant lacks live handles: complete registry-owned join and
+co-resident single-owner transfer now required. All holder classes/no-effect Drop,
+non-poisoning per-entry integrity, original Pending noninterference and typed physical
+stop/workload-release consumers have actual controls/mutants required. No source/test,
+schema, native backend or cleanup acceptance is claimed. Requirements8 unchanged;
+Design5 independent review/source/native/recovery gates remain pending.

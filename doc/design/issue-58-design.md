@@ -1,6 +1,6 @@
 # Issue 58 design: retained Task-free native consultation ownership
 
-Status: Design4 proposed; Requirements8 approved at8facb8d. No source/profile,
+Status: Design5 proposed; Requirements8 approved at8facb8d. No source/profile,
 recovery, native TUI or whole-issue acceptance is claimed. STRICT.
 Source baseline: integrated main d87faec/schema3, branch f84c94e; approved
 [requirements](../requirements/issue-58-requirements.md) remain authoritative.
@@ -38,18 +38,30 @@ rusqlite functions feature/API wiring is part of the composed source, absent tod
 See SQLite [function flags](https://www.sqlite.org/c3ref/c_deterministic.html) and
 [application functions](https://www.sqlite.org/appfunc.html); INNOCUOUS requires review
 of the actual predicate, not an automatic security label. Legacy schema3 runtimes
-never acquired a new instance lease; DB triggers or a missing legacy row cannot prove
-their readers/helpers dead. Migration requires a genuine reviewed #14 legacy-drain
-handoff from an actual continuously owned bridge supervisor, carrying complete enabled
-legacy workload/resource settlement, plus actual exclusive connection coordination
-which prevents old binaries reopening during migration. This bridge/coordination
-producer is unimplemented and must be tested with an actual old binary between
-transactions and executing helpers. A fresh isolated Store has no legacy workload.
-Unknown/unowned old helpers cannot be discovered or certified merely from SQLite,
-process labels or a user shutdown assertion: keep that upgrade unready/data unchanged
-until real controlled drain evidence exists. No orphan-resource theorem is claimed.
-The mandatory supported legacy upgrade and recovery remain source/conformance gates,
-not a permanent unsupported waiver. Failed migration preserves schema/data/history
+never acquired a new instance lease. Upgrade does not claim a universal old-helper
+death proof from SQLite, historical rows or a shutdown assertion. Under actual reviewed
+exclusive connection coordination, drain/recover every DURABLY RECORDED legacy owner
+(nonterminal/Lost Sessions, unsettled locks and active/unbound/evaluating Workflow
+claims) through the genuine #14 controlled legacy handoff. Atomically install the
+composed epoch triggers/current-only writers and user_version rejected by old open
+paths before any new-epoch admission. Actual pre-opened old writer and reopen-race
+controls are required. A failed preflight/schema migration leaves bytes unchanged;
+no preparatory user_version commit is silently reclassified as a failed atomic upgrade.
+Current-source migration must align with #19's stricter old Workflow/irreversible-tail
+inventory, not omit a known owner simply because a generic state label is terminal.
+
+Documented legacy residual: unrecorded helper effects of historical schema3 runs have
+no private provenance/bridge owner and are NOT certified drained, adopted, settled or
+contained by this upgrade. Absence of a row does not prove their death. They remain
+outside new retained-owner authority like independently started user/IDE activity;
+upgrade/readiness makes no complete historical or machine-wide cleanup claim. This
+residual never clears a known live/uncertain recorded hold or permits it to overlap
+new conflicting work. Supported quiescent legacy data with genuine recorded-owner
+drain may upgrade; missing real drain for recorded uncertainty stays unready. Required
+control upgrades schema3 historical data with no actual recorded live workload, and
+refuses unchanged when a genuine recorded hold lacks settlement. Real native ownership,
+restart recovery and supported legacy upgrade are mandatory source/conformance gates;
+the residual is explicit, not a positive resource-cleanup certificate. Failed migration preserves schema/data/history
 bytes. Terminal labels, inactive rows or an epoch retag do not prove physical fencing.
 #58 cannot precede #19 Task-scope fences or #60 reverse producers in production.
 Candidate component tests can run in isolated stores; missing ports keep affected
@@ -177,11 +189,22 @@ actor/mode, input/source pins, actual native identities when known and checked v
 Store minimal allowlisted IDs/digests/version numbers/reason codes, never environment
 values, prompts/native transcripts, credentials or raw configuration. States distinguish
 ReservedSetup, OwnedLive, HeldUncertain and Settled; native turn state is separate.
+EVERY capability holder enters the private registry when minted: pure capture,
+pre-transfer Consult setup, actual runtime/native supervisor and all nested workers.
+Each private unique holder cell has exact generation/scope and bounded preallocated
+state. A never-effect-authorized holder's Drop seals an I/O-free atomic no-effect
+abandonment witness; reliable bounded registry scanning consumes it outside all locks
+through exact Store owner CAS. Notification is only a hint, not sole progress. This
+returns pure/pre-transfer abandoned capacity without restarting disjoint live work.
+If effect authority was ever granted, Drop cannot mint no-effect proof; retain its
+full structured workload for the authentic ended/revoked/#14 path. A public state or
+strong-count guess is not a witness. Actual cancel-at-capture/acquire-to-transfer and
+lost-wake controls must prove genuine release versus held effect-bearing state.
 A Session-less ReservedSetup hold already excludes competing effects. Actual Task-free
 entry is typed start_consult(owner: ConsultLifetimeOwner, ...), consuming the owner
 by value. ALL native-effect AgentAdapter methods migrate to private-constructed
 Task-scoped types with a REQUIRED validated Task: start/resume, attach, checkpoint,
-submit_approval, start_native_goal and resume_native_goal. Use TaskScopedLaunchRequest,
+submit_approval, stop, workload_release, start_native_goal and resume_native_goal. Use TaskScopedLaunchRequest,
 TaskScopedSessionRef, TaskScopedPreparedInput and TaskScopedNativeGoalRef as applicable;
 public SessionRef/PreparedInput/NativeGoalRef fields, Scope::project/goal and JSON cannot
 construct these authority-bearing types. Native goal references alone are execution
@@ -198,7 +221,7 @@ release never grant work: require the actual retained owner for physical stop/se
 and keep public output release distinct from workload release. Probe execution requires
 its actual owned #60 port too. No Session write is needed to enforce this typed boundary.
 Compile-fail doctests and real zero-effect direct/registry rejection controls cover
-EACH method, including Task-free attach and Goal-scoped native-goal start/resume; public
+EACH method, including Task-free attach/stop/workload release and Goal-scoped native-goal start/resume; public
 registration/labels or an unsupported default implementation are not a positive owner.
 
 Proposed private operations, all epoch-fenced and with bounded audit in the same Tx:
@@ -328,14 +351,33 @@ any claimant fencing/inspection/reconciliation effect capability is minted.
 Authorization has two reviewed genuine producers. Across a dead runtime, an actually
 released continuously held instance lease excludes its exact formerly registered
 supervisors. Inside a still-live runtime, the actual private supervisor registry must
-observe the exact owned supervisor task's joined ending (including known panic),
-synchronously revoke ALL its nonserializable admission capabilities/queued grant
-paths and transfer retained actual resource handles to #14. Its sealed generation-
+retain and observe the COMPLETE structured in-process workload: top supervisor,
+every nested async task, blocking worker, callback mutation and output/drain worker.
+Reserve its private registry slot BEFORE scheduling; the worker cannot perform any
+effect until synchronous handoff stores the returned JoinHandle and opens its genuine
+private start gate. Failed handoff retains the slot and unopened/owned worker; no
+spawn-then-enroll effect gap or queue label can substitute for this handshake.
+Supervisor panic/caller Drop cannot detach its children by dropping the only handles.
+Authorization requires all exact owned in-process jobs joined, THEN synchronous
+revocation of every admission capability/queued grant path. Abort request or top-task
+join alone is insufficient; a running spawn_blocking worker is non-abortable and held
+until its actual join. Unregistered/detached/unjoinable work refuses authorization and
+needs actual controlled stop/restart, never a thread/process-number death inference.
+Transfer retained resource handles through one nonserializable single-owner handoff
+to the exact CO-RESIDENT #14 claimant. Authorized CAS pins that claimant's instance,
+identity/generation and genuine received handle extent; a remote instance cannot
+present this live-registry witness or reconstruct unreaped leader handles from DB.
+Dead-instance recovery uses its separately reviewed kernel/profile proof instead. Its sealed generation-
 bound ended/revoked witness is not a persisted label, caller bool or heartbeat. Registry
-revocation is I/O-free; no Store/native call under its mutex. The immutable witness
+revocation is I/O-free. Use preallocated per-owner cells and a non-poisoning lock with
+checked nonpanicking updates; no user callback/allocation/Store/native call under it.
+An interrupted entry is conservatively invalid/held without mutating disjoint cells.
+A registry-wide integrity failure reports actual restart-required readiness, never
+claims B progress; actual panic-under-entry-lock controls must prove B remains live
+or truthfully report that broader failure. The immutable witness
 then supplies an outside-lock Immediate CAS excluding that exact supervisor epoch;
 no gap can resurrect its revoked capability. Other supervisors/Project B remain live
-and their epochs unchanged. Joined task ending is NOT helper/native cleanup: after
+and their epochs unchanged. Complete in-process join is NOT external helper/native cleanup: after
 authorization, the claimant owns the real fence operation, then proves full physical
 settlement before adoption. Unjoined/wedged live supervisors cannot be recovered from
 labels; use a genuinely reviewed controlled stop/restart protocol. Recovery must not
@@ -349,11 +391,12 @@ intent and retains all original obligations. It MUST NOT bump/revoke the still-l
 prior owner's settlement CAS before genuine authorization/instance exclusion. A live prior may finish normally;
 new claimant withdraws only its own proved no-effect pending claim, atomically, without
 releasing prior holds. Pending claims are a PRIVATE explicitly pre-effect class: no
-native/helper/inspection/fence authority; excluded ONLY from the EXACT prior intent’s
-adoption, owned #60 recovery reservation and settlement conflict predicates. They
+native/helper/inspection/fence authority; excluded ONLY from EACH covered exact original owner or prior intent’s
+owned cleanup/recovery reservation, adoption and settlement conflict predicates. They
 remain irrelevant to ordinary admission because original holds still block it.
-Prior adoption/settlement atomically invalidates claims pinned to superseded prior
-versions. A crashed claim provably still in private pre-effect state may be discarded
+Original owner cleanup/settlement or prior adoption/settlement atomically invalidates
+claims pinned to its superseded versions. A first-level Pending proposal cannot block
+a live original HeldUncertain owner from completing its own legitimate cleanup. A crashed claim provably still in private pre-effect state may be discarded
 by that exact prior/successor without physical fencing; public inactive labels cannot
 prove this state. Use one checked private pending slot per exact prior intent/version, charged to
 reserved recovery headroom; concurrent proposals cannot consume the prior's reserve.
@@ -437,7 +480,7 @@ attention/read-only status, and production profile readiness remains unfulfilled
 | workflow::inputs/load_rules; project::resolve_file/git_metadata/validate_namespace/validate_inputs/validate/effective_config/scoped_file/environment_names | pure equivalent reads or OWN actual #60 reservation BEFORE each executing Git route, including rule-ref-directory rev-parse |
 | ProjectRegistry::resolve/list/reconcile and cwd WorktreeManager::status | separate pure held report from executing validation/reconcile; process each Project independently; held/Unsupported A cannot fail B status/removal or become Blocked from an unexecuted check |
 | Grok checkpoint verify_git; supervise verify_binding/index_digest at PreSpawn/InSessionBinding/Reconciliation | actual own #60 effect/capture owner and cleanup, stable handoff/compatibility with native hold; native-only owner cannot settle helper |
-| AgentAdapter start/resume/attach/checkpoint/submit_approval/start_native_goal/resume_native_goal; public SessionRef/PreparedInput/NativeGoalRef constructors | required private Task-scoped types for every generic effect entry; Task-free effects only actual owner-bound methods, observation/stop/output-release separated and never grant authority |
+| AgentAdapter start/resume/attach/checkpoint/submit_approval/stop/workload_release/start_native_goal/resume_native_goal; public SessionRef/PreparedInput/NativeGoalRef constructors | required private Task-scoped types for every generic effect entry; Task-free effects only actual owner-bound methods, observation/stop/output-release separated and never grant authority |
 | #14 recovery; #26 Project registry | actual exclusive intent/fence/full-union adoption; no public-row producer |
 
 Current main has generic Task reservation and #41 owned attempt diagnostics, not these
@@ -509,3 +552,29 @@ with supervisor-granular genuine registry and dead-instance lease witnesses. Sta
 overlap quota language is corrected; lease descriptor/fork/record-lock controls and
 truthful legacy-drain readiness are explicit. Actual source/backend/legacy bridge and
 native conformance remain mandatory and absent. Requirements8 is unchanged.
+
+
+## Complete in-process and legacy acceptance controls
+
+Actual Grok callback/source60 scoped mutating spawn_blocking work starts, then the
+supervisor panics/aborts: original registry still owns the worker, authorization is
+refused until actual join; no claimed cleanup/adoption while it can mutate. A
+top-supervisor-only join mutant must expose that continuing effect. Same-instance
+claimant with transferred exact handles progresses after full join; another runtime
+presenting that witness refuses before fence/adoption. Kill claimant-binding omission.
+Pure capture cancellation, pre-transfer Consult drop and lost abandonment notification
+converge through genuine no-effect cell/owner CAS without runtime restart. An effect-
+bearing holder remains held until full settlement. Original uncertain owner cleans
+up/settles despite inserted first-level Pending; stale proposals invalidate atomically.
+Per-entry panic isolation must preserve disjoint B or report true broader readiness.
+Typed stop/workload-release rejection is tested alongside every native grant entry;
+public output-only release is neither process stop nor reservation release.
+
+The in-process constraints follow Tokio [JoinHandle](https://docs.rs/tokio/1.53.1/tokio/task/struct.JoinHandle.html)
+and [spawn_blocking](https://docs.rs/tokio/1.53.1/tokio/task/fn.spawn_blocking.html)
+semantics; locked Cargo dependency1.53.1 source confirms detachment and non-abortable blocking
+workers; installed-host controls remain required.
+Top-level completion or an abort request cannot certify a detached blocking writer.
+Design4 actual reviewers identified these verified design gaps, with owned cleanup
+complete. Proposed Design5 changes no source/requirements/schema/native readiness;
+all actual #14/#19/#23/#60/registry/lease/native conformance gates remain mandatory.
