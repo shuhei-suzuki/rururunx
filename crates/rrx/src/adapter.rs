@@ -1637,10 +1637,9 @@ mod tests {
             let mut adapter =
                 GenericCliAdapter::new("fake".into(), vec!["/bin/cat".into()], store.clone())
                     .unwrap();
+            let plan = ProcessInspectionPlan::unknown(UnknownObservation::Diagnostics);
             if unknown {
-                adapter.process_inspection = Some(ProcessInspectionPlan::unknown(
-                    UnknownObservation::Diagnostics,
-                ));
+                adapter.process_inspection = Some(plan.clone());
             }
             let reference = adapter
                 .start(fixture_request(project, &task, worktree))
@@ -1677,7 +1676,9 @@ mod tests {
             );
             assert_eq!(saved.state, status.session.state);
             if unknown {
-                assert!(status.failure.unwrap().contains("SessionLost"));
+                let diagnostic = status.failure.as_ref().unwrap();
+                assert!(diagnostic.contains("SessionLost"));
+                plan.assert_diagnostics_transport(diagnostic);
                 assert!(
                     crate::git::WorktreeManager::lock_review(
                         &mut store.lock().unwrap(),
@@ -1689,6 +1690,63 @@ mod tests {
                 );
             }
         }
+    }
+    #[cfg(target_os = "macos")]
+    #[tokio::test]
+    async fn generic_post_spawn_failure_audit_preserves_inspector_facts_and_lost_reservation() {
+        let (_temp, store, project, task, worktree) = preflight_fixture();
+        let mut adapter =
+            GenericCliAdapter::new("fake".into(), vec!["/bin/cat".into()], store.clone()).unwrap();
+        let plan = ProcessInspectionPlan::unknown(UnknownObservation::Diagnostics);
+        adapter.process_inspection = Some(plan.clone());
+        let spawned = Arc::new(tokio::sync::Notify::new());
+        let proceed = Arc::new(tokio::sync::Notify::new());
+        adapter.before_running_write = Some((
+            spawned.clone(),
+            proceed.clone(),
+            Arc::new(std::sync::atomic::AtomicU32::new(0)),
+        ));
+        let request = fixture_request(project, &task, worktree);
+        let mut launch = tokio::spawn(async move { adapter.start(request).await });
+        let reached = tokio::time::timeout(Duration::from_secs(5), spawned.notified()).await;
+        let blocked = if reached.is_ok() {
+            let mut state = store.lock().unwrap();
+            let mut project = state.project(task.project_id).unwrap().unwrap();
+            project.state = ProjectState::Blocked;
+            project.blocked_reason = Some("scoped synthetic post-spawn barrier".into());
+            state.put_project(&mut project)
+        } else {
+            Ok(())
+        };
+        // Release/settle the owned launch before any assertion, including an early
+        // fixture error. Abort+join preserves the existing future's Drop bookkeeping.
+        proceed.notify_one();
+        let finished = tokio::time::timeout(Duration::from_secs(10), &mut launch).await;
+        let outcome = match finished {
+            Ok(value) => value,
+            Err(_) => {
+                launch.abort();
+                let _ = launch.await;
+                panic!("owned synthetic launch watchdog elapsed")
+            }
+        };
+        reached.unwrap();
+        blocked.unwrap();
+        let error = outcome.unwrap().unwrap_err();
+        assert_eq!(error.kind, ErrorKind::SessionLost);
+        plan.assert_diagnostics_transport(&error.message);
+        let state = store.lock().unwrap();
+        let records = state.records(&task.scope(), RecordKind::Session).unwrap();
+        let saved: Session = serde_json::from_value(records[0].data.clone()).unwrap();
+        assert_eq!(saved.state, SessionState::Lost);
+        assert!(crate::git::executor_reserved(&saved));
+        let events = state.events(&task.scope(), 0, 100).unwrap();
+        let audit = events
+            .iter()
+            .find(|e| e.kind == "adapter.launch_failure")
+            .expect("launch failure audit absent");
+        let reason = audit.data["reason"].as_str().unwrap();
+        plan.assert_diagnostics_transport(reason);
     }
     use super::*;
     use crate::domain::{CompletionCriterion, Goal, Task};

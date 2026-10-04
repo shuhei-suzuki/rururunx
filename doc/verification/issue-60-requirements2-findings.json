@@ -1,0 +1,137 @@
+{
+  "head": "7af0e272563a9e72eeff641d1bde486d067985f7",
+  "review": "Requirements2",
+  "outcomes": {
+    "observation": "request_changes",
+    "lifetime": "request_changes"
+  },
+  "cleanup_verified": true,
+  "raw_result_sha256": {
+    "observation": "e086bf80827269a5753c013bce31a8606c7fb738f772728bdd1a66bdc8dbc981",
+    "lifetime": "7c5b64c36258eb1e48461e3356538afbadc083d7b9ad98524df11ac75c7a70c2"
+  },
+  "findings": [
+    {
+      "review": "observation",
+      "id": "R2-SHUTDOWN-1",
+      "severity": "High",
+      "verified": true,
+      "disposition": "Separate UNAPPROVED reader/driver contract draft; excluded from diagnostic behavior change; independent requirements/design/source still pending"
+    },
+    {
+      "review": "observation",
+      "id": "R2-DROPGAP-2",
+      "severity": "Medium",
+      "verified": true,
+      "disposition": "Requirements3 diagnostics-only clarification, narrowed independent gate pending"
+    },
+    {
+      "review": "observation",
+      "id": "R2-FLAG-3",
+      "severity": "Medium",
+      "verified": true,
+      "disposition": "Separate UNAPPROVED reader/driver contract draft; excluded from diagnostic behavior change; independent requirements/design/source still pending"
+    },
+    {
+      "review": "observation",
+      "id": "R2-CAPACITY-4",
+      "severity": "Medium",
+      "verified": true,
+      "disposition": "Separate UNAPPROVED reader/driver contract draft; excluded from diagnostic behavior change; independent requirements/design/source still pending"
+    },
+    {
+      "review": "observation",
+      "id": "R2-DEADLINE-SEAM-5",
+      "severity": "Low",
+      "verified": true,
+      "disposition": "Requirements3 diagnostics-only clarification, narrowed independent gate pending"
+    },
+    {
+      "review": "observation",
+      "id": "R2-PREANCHOR-6",
+      "severity": "Low",
+      "verified": true,
+      "disposition": "Separate UNAPPROVED reader/driver contract draft; excluded from diagnostic behavior change; independent requirements/design/source still pending"
+    },
+    {
+      "review": "observation",
+      "id": "R2-VOCAB-7",
+      "severity": "Low",
+      "verified": true,
+      "disposition": "Requirements3 diagnostics-only clarification, narrowed independent gate pending"
+    },
+    {
+      "review": "observation",
+      "id": "R2-LIMIT-8",
+      "severity": "Low",
+      "verified": true,
+      "disposition": "Requirements3 diagnostics-only clarification, narrowed independent gate pending"
+    },
+    {
+      "review": "observation",
+      "id": "R2-SINK-9",
+      "severity": "Low",
+      "verified": true,
+      "disposition": "Requirements3 diagnostics-only clarification, narrowed independent gate pending"
+    },
+    {
+      "review": "lifetime",
+      "id": "R60I2-01",
+      "severity": "High",
+      "verified": true,
+      "disposition": "Separate UNAPPROVED reader/driver contract draft; excluded from diagnostic behavior change; independent requirements/design/source still pending"
+    },
+    {
+      "review": "lifetime",
+      "id": "R60I2-02",
+      "severity": "Medium",
+      "verified": true,
+      "disposition": "Separate UNAPPROVED reader/driver contract draft; excluded from diagnostic behavior change; independent requirements/design/source still pending"
+    },
+    {
+      "review": "lifetime",
+      "id": "R60I2-03",
+      "severity": "Medium",
+      "verified": true,
+      "disposition": "Separate UNAPPROVED reader/driver contract draft; excluded from diagnostic behavior change; independent requirements/design/source still pending"
+    },
+    {
+      "review": "lifetime",
+      "id": "R60I2-04",
+      "severity": "Medium",
+      "verified": true,
+      "disposition": "Separate UNAPPROVED reader/driver contract draft; excluded from diagnostic behavior change; independent requirements/design/source still pending"
+    },
+    {
+      "review": "lifetime",
+      "id": "R60I2-05",
+      "severity": "Medium",
+      "verified": true,
+      "disposition": "Requirements3 diagnostics-only clarification, narrowed independent gate pending"
+    },
+    {
+      "review": "lifetime",
+      "id": "R60I2-06",
+      "severity": "Low",
+      "verified": true,
+      "disposition": "Requirements3 diagnostics-only clarification, narrowed independent gate pending"
+    },
+    {
+      "review": "lifetime",
+      "id": "R60I2-07",
+      "severity": "Low",
+      "verified": true,
+      "disposition": "Separate UNAPPROVED reader/driver contract draft; excluded from diagnostic behavior change; independent requirements/design/source still pending"
+    }
+  ],
+  "verification_notes": [
+    "Shared ProcessGroup.new sets flag only after spawn; reap clears before readers. Internal flag/caller publication separation required; shared behavior unchanged.",
+    "Success kill_group sets group_owned=false. Corrected Req1 reviewer and Req2 text overclaim of blocking Drop on reap/observation errors.",
+    "OUTPUT_LIMIT=64*1024 at adapter486, so Req2 1MiB+1 Git capture assertion was wrong; inspector independently1MiB.",
+    "Shutdown first kill is existing behavior; retaining static anchors alone omits it. Dedicated preavailable bounded cleanup lane required; total driver failure remains Unknown and no restart recovery inferred.",
+    "Global64job admission retained; bounded deadline wait and active/retained facts; test-only private pools isolate destructive controls without production bypass.",
+    "New not_observed flag inputs affect Context/Generic/Grok equations; output_open conservatively Unknown, fully settled error remains failure without false uncertainty.",
+    "No requirements approval, design/source implementation or historical timeout cause claimed."
+  ],
+  "split_scope": "Formal Requirements3 diagnostic facts/error rendering only; reader/driver changes remain unapproved partial60 draft; combined Requirements2 not approval."
+}
