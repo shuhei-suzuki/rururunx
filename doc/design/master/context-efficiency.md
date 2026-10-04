@@ -433,3 +433,10 @@ Executor/Reviewer launch rejects even before a typed context exists. Actual sett
 alone may publish terminal actor binding. Receipt outcome drives phase closure,
 and private Issue14 recovery is an explicit production deployment gate for held
 orphan/Lost ownership. No such authority is claimed in current schema5 source.
+
+The proposed [Design20 Store fence](../issue-19-design.md#design20-store-launch-fence-locks-and-deliberate-migration)
+refuses every unmanaged Task native role/nonterminal generic Session, preserves
+role-classified exact pre-marker lock ownership and makes old-DB migration deliberate.
+Same-generation/unchanged-authority Continue and immutable closed managed bodies
+preserve receipt provenance. Task-free Consultant ownership remains pending58.
+These are design gates, not source5 or production profile readiness.

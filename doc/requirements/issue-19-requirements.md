@@ -114,7 +114,7 @@ Store::validate_context_input checks actual request bytes; Session admission pin
 input_sha256 and consumed intent must match that hash. Provider-specific RPC
 envelopes/fixed prefixes are a distinct transport digest, never this input hash.
 Older public schema 4 writers refuse schema 5. Existing schema4 standalone packs
-must be prepared again under the new private publication contract before launch.
+historically needed preparation again under the new private publication contract before launch.
 
 Once the same dispatch intent is consumed before wire delivery, its Starting
 status/Running acknowledgement is a historical admitted observation. Later
@@ -174,8 +174,8 @@ Standalone prepared payloads render stable scoped instruction and Task policy
 hashes and publish exact private byte/hash authority. Sibling progress, blockers,
 pointer-only and sibling bookkeeping cannot strand pending semantic input;
 constraints, refs, identity, own standalone directives/policy and lifecycle changes remain fenced. Physical
-HEAD/source hashes remain authoritative. Explicit idle consecutive republish must
-allow safe old-frame migration and higher-version terminal continuation; default
+HEAD/source hashes remain authoritative. Explicit idle consecutive standalone artifact republish supports only missing
+v2 contract or variant cap128 recovery; it remains non-launchable under schema6; default
 publication remains idempotent and active launches immutable.
 
 Schema6 migration is ordered, atomic and makes no historical admission claims.
@@ -200,7 +200,8 @@ Sessions cannot consume the same attempt before Engine Session binding.
 Fresh input admission must reject a Task put on hold after Starting, even when its
 frame hashes are unchanged. Protection cannot change underneath a live legacy
 Session. Fabricated terminal history cannot unlock forced consecutive publication;
-private validated preparation/admission must bind the exact terminal input.
+a historical standalone terminal pair is not a schema6 force branch. Managed
+continuation instead binds its exact closed-operation receipt and private owner.
 Provider lifecycle/lock/version fences remain independent of semantic input checks.
 
 
@@ -483,3 +484,15 @@ Receipt class drives Engine success/failure selection independently of historica
 Session labels. Pristine/orphan/Lost remains held; actual private Issue14 recovery
 is a production deployment prerequisite, not a reconstructed JSON receipt. Source
 acceptance must prove these actual caller paths and statement-order rollback.
+
+
+Design20 enforces fresh Task native ownership at the shared Store writer as well as
+every adapter: ALL generic Task nonterminal Session writes and ALL unmanaged Task
+native roles are refused, including untyped Consultant. Actual managed operation-
+handle ports are the sole positive path; terminal factual history remains unverified.
+Review locks precede marker commit and exact role-classified lease/lock sets persist
+through receipt/closure. Continue needs same generation and unchanged semantic/rule/
+reference authority, else Fresh. Closed managed bodies remain generic immutable.
+Plain current Store open refuses older DBs unchanged; only deliberate migration
+performs ordered drain/fence upgrade. Candidate profiles do not become ready through
+that API. Task-free Consultant ownership is pending58, not this managed producer.

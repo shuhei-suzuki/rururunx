@@ -314,10 +314,10 @@ pending input. An input once admitted as Running cannot be restored to an older
 terminal input by visiting Starting. Previous historical ack rows can remain while
 a higher pending input is prepared; their digest does not admit that new input.
 
-Standalone prepared frames are Executor inputs only. Session admission requires
-exact Task.executor, Executor role and Task.worktree as well as scoped frame bytes,
-revision, version, hashes, owner lifecycle and existing lock/worktree gates. This
-applies to initial Starting and Running. Workflow frames retain their exact active
+Standalone prepared frames retain Executor artifact provenance but are not
+launchable under schema6; native Starting/Running is Unsupported. Managed Session
+admission requires exact attempt agent/role and Task.worktree plus actual operation
+handle, scoped frame, lifecycle and lock authority. Workflow frames retain their exact active
 attempt agent/role/Session fences AND require Session.worktree == Task.worktree
 for every native actor, including Reviewer, on initial Starting and Running. No arbitrary Consultant/ApprovalReviewer role
 can adopt an Executor frame. Existing scoped Consultant history may be condensed;
@@ -329,8 +329,9 @@ row per (Project, Goal, Task, context_version), containing Session ID. Context
 version uniquely identifies the immutable native phase attempt. Every first private native CAS-validated
 preparation/admission write for a typed Workflow native phase (not standalone or
 EvidencePort) allocates it atomically with Record/audit:
-INSERT or UPDATE to Starting/Running, or first/new consumed dispatch. This includes a terminal
-legacy Session updated to a fresh typed Starting. Later writes
+INSERT or UPDATE to Starting/Running, or first/new consumed dispatch. This includes only a terminal
+managed Session entering a sealed Continue with its exact closed-operation receipt;
+unverified legacy terminal history cannot enter that path. Later writes
 must be by that same Session. Another Session cannot reserve or consume the frame
 even before Engine binds attempt.session_id. Allocation is immutable across
 terminal history, foreign keys bind the Session and Task, and generic writes have
@@ -453,34 +454,18 @@ phase or captured status. For Workflow-owned Tasks, blockers and next_action are
 HEAD and frame revision. Engine effective workflow/risk/budget is immutable phase
 wrapper/attempt authority, not a phase-stable source hash.
 
-For new admissions, require an explicit Task-state allowlist. Standalone admits
-Created/Consulting/Planning/Implementing/Testing/Reviewing/Fixing, and excludes
-WaitingHuman/WaitingApproval/WaitingReview, ReadyForPr/PrCreated and every terminal
-state. Typed Workflow admission requires Task.state and Task.phase to equal the
+For new managed admissions, require Task.state and Task.phase to equal the
 immutable native phase's expected state/key, in addition to active attempt guards.
-This is fresh input admission, not historical Acked/ConsumedHistorical observation.
-An operator Task hold after Starting but before first Running/new consumption fences
-the model input. Historical terminal/Lost diagnostics remain recordable.
-
-For standalone admission, additionally bind workflow/risk and its OWN Task
-blockers/next_action and standalone Task.artifacts in a versioned policy digest.
-Unlike Engine-owned artifacts, standalone artifacts may carry direct operator
-instructions. Thus a new
-operator directive on that standalone Task fences its pending input. Sibling
-Task status, Goal criterion satisfaction/DAG/followups and Project scheduling or
-label changes remain usable. Phase packs describe Engine-owned hold/blocker state
-as nonauthoritative status at capture; authoritative new stop/scope constraints
-must use Goal.constraints/Task.acceptance_criteria or lifecycle pause, which are
-always fenced. The rendered phase header labels capture status explicitly. No
-status field can grant launch, approval, cleanup or other authority.
-
-Standalone admission REPLACES the current full authority_digest/pack.task/pack.goal
-projection-equality checks with exact equality of freshly derived version2
-instruction/policy keys against the private frame source map. Its private frame
-must still match exact scope/version/revision/bytes/SHA256/complete source map;
-latest pointer, active lifecycle, physical/source revision and checkpoint head
-checks remain. Full projections and authority_digest remain mandatory during
-pack preparation/publication snapshot CAS, not pending-input admission.
+This is fresh input admission, not historical acknowledgement. An authorized
+lifecycle hold after Starting but before first consumption fences input. The
+schema5 standalone state allowlist and admission policy are historical component
+behavior only; schema6 native standalone is Unsupported. Standalone artifact
+preparation still includes OWN Task blockers/next_action/artifacts and workflow/risk
+in its versioned policy digest, because these can affect artifact selection, but
+that digest never authorizes a Session or wire. Sibling progress/status remains
+captured bookkeeping rather than an admission credential. Accepted Goal definitions
+remain immutable under23; authorized lifecycle stops or actual typed Task/graph
+ports cannot be replaced by generic Goal instruction edits.
 
 Standalone preparation renders the canonical instruction and policy digest map in
 its complete mandatory payload and privately publishes the same map with frame
@@ -493,15 +478,14 @@ same-payload old-schema collisions. Old pending inputs without these hashes fail
 closed. Add an explicit forced consecutive Task pack publication option (default
 idempotent reuse unchanged). It uses the existing idle/owner/source/head CAS and
 audit, never changes an active launch, and provides a strictly higher context
-version for terminal continuation or migration recovery. Permit forced publication only when the latest context is actually referenced by
-an owned terminal Session whose exact pinned metadata matches its PRIVATE validated
-preparation/admission pair, or lacks the required v2 instruction contract
-for migration, OR the private prepared variant count for that current context
-has reached its cap128. The cap-exhaustion branch performs the same idle/source/
-head/owner CAS and starts a fresh bounded variant index without deleting history.
-Otherwise identical reuse remains required. Private variants stay
-bounded per context; unused identical force calls cannot create endless versions. Test recovery from an actual schema5 prepared frame through
-terminal state, forced higher publication, preparation and fresh admission.
+version for artifact-contract migration or bounded variant-cap recovery. Forced
+standalone publication is permitted only when the current artifact lacks the
+required v2 instruction contract or its private variant count reaches cap128;
+apply the same idle/source/head/owner CAS and audit, retaining all history.
+A schema5 terminal Session/private admission pair is not a schema6 eligibility
+branch. Otherwise identical reuse remains required. Test old-contract republish
+and cap128 recovery as non-launchable artifacts, and native launch refusal before
+reservation; no new-UUID admission positive is required or supported.
 
 ### Migration and already-open writers
 
@@ -594,8 +578,8 @@ Lost-to-every-other-state rejection, unknown
 flag forgery, caller JSON ack forgery, successful first Running then historical
 reentry, forbidden Running-to-Starting-to-old-terminal rollback, exact prewire
 restore, higher-version continuation, Session/ack/audit rollback and reopening.
-Wrong standalone role/agent/worktree and wrong Workflow Reviewer worktree must
-fail on initial Starting AND Running. Two independent Store connections racing to
+Standalone native admission must be Unsupported before reservation; wrong managed
+Workflow role/agent/worktree must fail on initial Starting AND Running. Two independent Store connections racing to
 reserve the same Reviewer attempt must yield exactly one Session allocation;
 neither JSON nor prebinding session_id=None can admit a second actor.
 Changed instructions/policy/ref hashes fail; sibling progress remains usable.
@@ -813,8 +797,9 @@ reservation or process. One delivery remains per (Session UUID,input version) fo
 supported managed input, with higher-version same-UUID continuation and immutable
 Workflow native phase allocation. No terminal label certifies owned cleanup.
 
-Store::open performs migration only, without application reconciliation/audit or
-native effects after the migration transaction. A runtime that invokes additional
+The explicit migration entry performs migration only, without application
+reconciliation/audit or native effects after the migration transaction. Plain
+Store::open refuses older application schemas unchanged (Design20). A runtime that invokes additional
 startup reconciliation closes the manual backup window immediately. The manual
 rollback precondition remains operator-attested; no automatic restore method or
 private safe-rollback certificate is introduced by this context contract.
@@ -1055,7 +1040,7 @@ phase allocation and BoundHistorical row mutation, including the frozen prior
 terminal restore checksum. They may retain exact privately
 indexed historical observations, monotonic conservative Lost diagnostics,
 permitted terminal observations, or exact no-dispatch prewire restoration without
-changing any private pair/allocation, for standalone or unmanaged historical
+changing any private pair/allocation, for schema5 historical standalone or unmanaged factual history
 Sessions only. An open managed operation prohibits all generic Session writes;
 its private observation/settlement and post-receipt freeze rules below apply first.
 Initial legitimate terminal history remains
@@ -1075,7 +1060,7 @@ native outcome; native fixture proves that outcome causally. Caller-authored JSO
 alone is not advertised as an authoritative native terminal transcript. Lost and
 uncertainty remain absorbing regardless of this distinction.
 
-One `MAX_TYPED_INPUT_BYTES = 1 MiB` applies to every launchable standalone and
+One `MAX_TYPED_INPUT_BYTES = 1 MiB` applies to non-launchable standalone artifacts and
 Workflow complete PreparedInput frame, including mandatory facts/rules. Standalone
 Budget values above that cap reject before selection or variant counting; estimated
 budget caps remain distinct estimates and cannot raise the byte cap. Private
@@ -1123,10 +1108,10 @@ transaction; malformed/contradictory references refuse. Diagnostics/timings/usag
 can be recorded separately with attribution, never altering the restore body.
 Closure can therefore compare the frozen checksum without a new restoration
 marker or overwritten provenance. Once Failed/Interrupted closes that exact
-attempt, ordinary permitted terminal observations resume. Standalone frames have
-no phase allocation and are not subject to this allocated-attempt freeze. Test a
-post-restoration diagnostic attempt is rejected, separate Usage/audit is retained,
-Failed closure succeeds, and the terminal diagnostic is permitted after closure;
+attempt, managed Session history still rejects generic body writes; only a new
+validated managed Continue may change it. Standalone artifacts allocate no Session.
+Test a post-restoration diagnostic attempt is rejected, separate Usage/audit is
+retained, Failed closure succeeds, and generic terminal diagnostics remain rejected;
 mutate the freeze predicate to demonstrate the checksum wedge.
 
 The private native CAS port has this per-outcome check table. Every outcome checks
@@ -1157,11 +1142,10 @@ mandatory task_pack plus rule/frame source authority, and its private native CAS
 preparation/allocation. A new opaque native-phase context/launch is rejected before
 process or dispatch marker even for a Task with no typed ancestry. Existing opaque
 historical records and separately validated EvidencePort phases remain readable,
-not new native launch authority. Standalone typed frames NEVER allocate a
-phase_session_owners row: a new Session UUID may re-admit their current frame under
-its independent latest-frame/owner/lock guards. Tests cover opaque fresh native
-phase refusal, evidence/history reading, and standalone new-UUID retry without
-allocation. No guarantee is broadened to unprotected legacy history.
+not new native launch authority. Standalone artifact frames NEVER allocate a phase_session_owners row or authorize
+native admission. Tests cover opaque fresh native phase refusal, evidence/history
+reading, and standalone new-UUID Unsupported before reservation/process. Generic
+Task nonterminal Session refusal also applies without typed ancestry (Design20).
 
 Native caller migration inventory includes GenericCliAdapter, Claude5, Codex6,
 Grok7 and positive Workflow FakeAgent fixtures. Generic first Starting/Running
@@ -1636,8 +1620,8 @@ optional frozen prior-restore digest, settlement class and known outcome,
 bounded native turn/ref attribution, runtime-instance UUID and observed timestamp.
 Fixed fields plus bounded attribution fit 64 KiB; refs are at most 8192 UTF-8 bytes,
 reason at most 8192 bytes. It contains no model transcript, prompt, environment or
-JSON credential. Operation identity fields are immutable; Session None→Some is
-the only binding mutation and requires the allocator's exact private same-tx proof.
+JSON credential. Receipts accept NO UPDATE, including Session NULL→Some; only
+operation rows have the separately constrained one-time allocator binding.
 Receipts and epoch rows reject UPDATE, DELETE and INSERT OR REPLACE; inserts require
 their private producer and one scoped unique identity, in addition to every
 table's v6 writer fence. One receipt is not a new native input/permission grant.
@@ -2073,3 +2057,96 @@ second statement rolls back Workflow/audit/operation together. Concrete JSON pat
 variant tags are pinned by canonical schema goldens. Active None alone or any receipt
 for another entry is insufficient. Reversed-order and weakened-index/receipt mutants
 exercise the actual multi-statement consumer.
+
+
+### Design20: Store launch fence, locks and deliberate migration
+
+The shared Store record helper rejects ANY generic nonterminal Task-scope Session
+INSERT or UPDATE, regardless of public role, typed ancestry or recovery keys.
+This includes Consultant/ApprovalReviewer on a Task, not only Executor/Reviewer.
+Generic scoped CAS without the actual private managed operation handle also rejects.
+Only the real operation-bound managed port can create/advance Task native ownership;
+its allowed actor remains the exact typed phase's Executor/Reviewer. Initial terminal
+Consultant/factual history remains unverified observation, never a launch/cleanup
+credential. Every actual unmanaged Task native entry likewise returns Unsupported
+before reservation/Starting/connection/process/bytes, regardless of role or path.
+A public Consultant label is not read-only/hook/filesystem proof. There is no Task
+Consultant exception through Project-only scope or a copied ReadOnly frame.
+Independent Store connections and actual caller mutants cover initial Starting/
+Running, terminal→live and untyped Task Consultant, with real managed positives.
+Missing operation/handle or generic record wrappers cannot evade this shared fence.
+
+Task-free Project/optional-Goal Consultant ownership is the separate pending
+[Issue58](https://github.com/shuhei-suzuki/rururunx/issues/58) contract, not a managed
+Task receipt or new Task Consultant permission. Its affected native profiles remain
+Unsupported-before-effect until reviewed retained ownership/actual settlement and
+Project/root/common-Git exclusion compose. Canonical primary-root and universalLost
+checks remain applicable, but terminal labels do not prove cleanup. This inventory
+adds no schema58 table/port or production readiness claim to Issue19.
+
+Operation-aware lease classification is explicit. Open Executor operations (including
+receipt-pending phase closure) exclude review-lock acquisition, competing native
+admission and Mutating access. The Executor's own actual owned tools use the separate
+private operation permission contract, not a generic Mutating bypass. Open read-only
+Reviewer operations exclude Mutating access and competing native admission, and may
+coexist only with the exact immutable review lock IDs/versions pinned in their
+operation. Acquire/validate the actual review lock before marker commit; the marker
+transaction captures and compares the complete scoped lock set and pins it in the
+operation encoding. No lock can be added/changed/released around an open operation.
+Receipt publication keeps those pins; exact closure releases operation ownership,
+and subsequent deliberate lock release retains existing lock authority. Binding,
+observation, admission and closure compare the same set/version without treating
+an operation's own previously acquired review lock as a foreign mutator. Worktree/
+Project idle/removal still counts both roles. Test Reviewer+its exact lock positive,
+Executor with lock refusal, missing/changed/foreign lock refusal and Reviewer lease
+blocking mutation before first Session and after receipt/before closure.
+
+Continue additionally requires the same Workflow generation and unchanged exact
+semantic instruction:project.v2/goal.v2/task.v2, scoped config/rule/reference/environment-
+name authority keys between prior operation and new frame. The immutable ContextVersion
+source map supplies the exact keys; the operation/descriptor pin their versioned
+projection digest. Unknown/unclassified new authority keys refuse continuation until
+classified. HEAD/source artifact changes within the same accepted authority may be
+new input facts; revoked reference, changed constraints/rules/policy or generation
+forces Fresh before marker. Full raw prior transcript/default native memory remains
+native history exposure, not part of the new authoritative payload or a claim that
+the model forgot it. The new frame labels current facts/as-of context; no removed
+instruction scope can be reintroduced by Continue. Actual same-generation unchanged-
+authority continuation and revoked-reference/generation-change Fresh fixtures are
+required, with source-key comparison mutants reaching the real selector.
+
+Closed managed Session bodies remain generic-write immutable, including diagnostics
+and terminal→terminal relabels. Usage/audit may remain separate. Only a new exact
+managed Continue or actual reviewed recovery port can change that UUID's body;
+receipt/history remain frozen. Generic history cannot wedge its future checksum or
+reinterpret native completion. Raw SQL receipt UPDATE NULL→Session and generic
+post-closure body mutants must reject; real higher-input Continue is positive.
+Private native.operation.* and native.settlement.* audit namespaces are reserved
+in every generic audit/audit_if_current path. Only actual ports emit inserted,
+effects_started, abandoned, settlement/phase_closed events; caller JSON cannot
+forge operator-facing producer history.
+
+While schema6 is a gated integration candidate, plain Store::open(path) creates a
+fresh empty current database or opens an already-current database. An existing
+older application database returns MigrationRequired before DDL, user_version,
+audit, journal-mode or reconciliation mutation. A deliberate
+Store::migrate_to_current(path, expected_old_schema) library entry performs the
+same ordered v1→2→3→4→5→6 drain/reference/schema preflight and writer fence in one
+Immediate transaction, rechecking the expected version under its lock. There is
+no status/list/launch implicit migration. No CLI migration command is claimed here;
+a future trusted ingress can deliberately compose this API. Unknown application/
+version and stale expected-old-version reject unchanged. Failed drain/ref/schema
+preflight leaves all state/marker/history unchanged. Fresh/explicit-migrated final
+DDL must match exactly; memory() remains fresh. Native old writer fixtures use this
+explicit entry and also prove ordinary open refusal with unchanged DB/state digest.
+A deliberate migration still does not make unsupported production profiles ready:
+Design18/19 release gates, required producers, private14 recovery and actual23/43
+composition remain mandatory.
+
+Task.reviewers/executor remain classified in the declared semantic instruction
+projection as well as actor allocation pins. Changing them may restart pre-effect
+work or hold a post-PR/merge Task for actual13 reconciliation. This conservative
+post-effect reviewer-change availability limit is explicit; do not remove a source
+fence or infer safe external rollback merely because no instruction text changed.
+The later9 roster/delegation contract must integrate its own reviewed policy rather
+than silently weakening this single-phase source authority.
