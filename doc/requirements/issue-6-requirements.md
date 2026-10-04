@@ -61,9 +61,9 @@ product requirements and master Agent Adapter design.
     limited to non-executing filesystem/registry metadata validation.
     Its supported profile must cover all processes that profile can start: setup,
     native helpers, preserved hooks/MCP, tool commands and frontend children where
-    enabled. Unsupported ownership fails explicitly before that side effect and
-    before operation/input consumption; no app-server probe may bootstrap the
-    proof it already needs. Native process IDs, parent/group/session hints,
+    enabled. Unsupported ownership fails explicitly before that first native
+    execution and before model-input admission/consumption; no app-server probe
+    may bootstrap the proof it already needs. Native process IDs, parent/group/session hints,
     termination acknowledgements and background-terminal inventories do not
     create ownership or whole-workload cleanup authority. After possible dispatch,
     absent cleanup authority remains Lost with private completion false even if
@@ -119,11 +119,22 @@ their absence or supported lifecycle cannot be assumed or achieved by disabling
 them. Reduced-profile evidence must come from enforceable native/kernel controls
 or a side-effect-free authoritative source bound to the exact effective inputs
 the native process consumes (user/project/managed/trust/profile/plugin/environment
-layers). rrx's own reconstruction of native configuration cannot mint a smaller
-owner. Changed, unresolved or unbound inputs are unknown. If reduced startup
-coverage cannot be established beforehand, require full workload authority or
+layers), plus the resolved executable and complete launcher/shim path chain,
+trusted package version metadata and content digests. Version metadata cannot
+require an unowned executable probe. Bind the actual executed entrypoint to this
+identity, not a later PATH resolution. rrx's own reconstruction of native
+configuration cannot mint a smaller owner. Changed, unresolved or unbound inputs
+are unknown. If reduced startup coverage cannot be established beforehand,
+require full workload authority or
 fail unsupported before the first native execution. A later native inventory
 mismatch is a failure under the cleanup rules below, never a retroactive owner.
+Before the first model turn or tool grant, authoritative running-native evidence
+or already effective kernel enforcement must confirm the reduced capability.
+Keep the exact input/executable binding throughout the attempt. Detected changes
+are unknown and invoke the cleanup rules; they never widen the profile. If this
+binding cannot be maintained, the reduced profile is unsupported. Kernel controls
+that refuse a required native hook/helper do not establish native compatibility;
+metadata-only success does not prove Review or Executor compatibility.
 
 Fix the attempt's profile at owner acquisition to the widest capability reachable
 through its entire lifecycle. Attach, frontend launch, native permission changes
@@ -132,6 +143,19 @@ first side effect or grant; a wider profile needs a separate fresh higher-versio
 attempt after the prior workload's cleanup is proven. A no-command owner cannot
 authorize file-only Executor/ApplyPatch solely by its role name: actual native
 operation and setup compatibility require their own bounded inventory and proof.
+
+The workload boundary also includes persistent execution delegated to an existing
+process outside descendant enrollment, such as a container engine, service manager,
+tmux server or remote command endpoint. A descendant-only cgroup, singleton or
+event stream cannot certify those jobs cleaned. Each reachable delegation path
+must either be covered by genuine current ownership/cleanup authority, or blocked
+by enforceable profile controls before the first native execution; otherwise the
+profile is unsupported. This applies to preserved startup/hooks/MCP and frontend
+paths as well as model tools. Ordinary bounded native inference/auth requests are
+not claimed as remotely owned process cohorts, and remain native responsibilities;
+they cannot become an untracked persistent Task-execution channel. No narrower
+delegated-job exclusion or whole-workload claim is authorized by this correction.
+No global service kill, broad process adoption or host-policy mutation is implied.
 
 Before any native process may have executed, registered Preparing cleanup and
 exact historical rollback/factual failure remain authoritative. Once any native
@@ -150,8 +174,27 @@ Until that actual Issue 19 port is composed, managed native operations cannot be
 admitted or settled by an adapter-local JSON/state substitute. Unsupported/synthetic
 controls are allowed development evidence, not a managed-operation grant.
 
+Managed ordering distinguishes profile readiness, operation reservation and model
+input consumption. Implementation-owned unsupported profiles refuse before
+clear_hold/reserve/context/dispatch_started and never fall back to legacy start.
+For a supported profile, the successful exact reservation precedes Issue19's
+atomic dispatch_started plus operation-lease transaction. That marker is not model
+input consumption or cleanup proof. The supervisor receives the private operation
+handle, acquires the attempt's genuine workload owner before any native execution,
+and retains both through startup, admission and settlement. Runtime owner-acquisition
+failure after the marker sends no native process or input, but cannot erase the
+operation by adapter rollback. Every post-marker failure closes only through the
+actual private port's NoCurrentDispatch receipt: tracked pristine no-execution
+authority, or tracked setup cleanup with no current admission/consumption/uncertainty.
+Preparing rollback is an adapter-internal historical restoration, never a managed
+lease release. Unavailable proof retains the operation; Error/drop/terminal labels
+are not substitutes. Protected standalone native launch remains unsupported before
+reservation/process until its separately reviewed private authority exists; it
+cannot borrow a Workflow operation lease or silently use a generic legacy path.
+
 No resume, checkpoint continuation, retry or fresh replacement may execute in the
-same Session/worktree/lock scope while an earlier workload's cleanup is unknown.
+same Session/worktree/lock scope until the earlier workload's cleanup is proven.
+Known-alive, pending, incomplete and unknown cleanup all block same-scope execution.
 Lost is absorbing under ordinary adapter calls. Escalate to Human and retain the
 reservation; a recorded human judgement, PID clearing or manual state change
 does not certify cleanup, settle the operation or authorize implicit replay.
@@ -208,8 +251,15 @@ permission for privileged installation or silently change the required hosts.
   Linux/macOS CI and factual limitations before component merge. These limits
   cannot replace the required native capability completion gates above.
 - Genuine profile-specific workload authority before the actual first native
-  startup/operation consumer, including configuration discovery; unsupported
-  readiness sends no native startup/model frame or consumed-operation marker.
+  execution consumer, including launcher, version, auth, policy, protocol and
+  configuration probes; unsupported readiness executes no native process and
+  sends no model frame or model-input admission/consumption. A real-consumer
+  fixture and compiled mutation moving a native probe before owner acquisition
+  must expose this boundary.
+- Managed unsupported-profile refusal precedes reservation/marker. A separate
+  actual post-marker owner-acquisition failure fixture proves that only tracked
+  NoCurrentDispatch settlement can close the operation; rollback alone cannot.
+  Protected standalone refusal occurs before reservation or any native process.
 - A causal real-consumer fixture in which known parent-group death and a valid
   native terminal cannot certify an escaped/unverified workload, plus compiled
   mutations removing the caller readiness/cleanup guard.
@@ -218,6 +268,13 @@ permission for privileged installation or silently change the required hosts.
   reservation; a caller-guard mutation must make this real-consumer fixture fail.
 - Reduced-profile attach/permission/broker expansion is rejected before native
   side effects; a guard-removal mutation must expose that real caller regression.
+- Actual executable/launcher and effective-input binding mismatch before dispatch
+  or during a reduced attempt cannot grant tools or certify cleanup. Exercise
+  the running-native/kernel capability confirmation at the real grant consumer.
+- At least one real-consumer delegation fixture proves an existing external
+  service cannot start persistent Task work outside the profile's owned boundary.
+  A guard-removal mutant exposes the rejection; enrolled descendants ending
+  cannot certify a delegated job's cleanup.
 - Installed real native proof on BOTH required host families for nested child
   sessions, retained ownership during stop/caller drop, bounded uncertainty and
   exact private Issue 19 settlement composition. Issue 16 separately carries the
