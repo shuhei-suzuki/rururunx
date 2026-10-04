@@ -1,6 +1,6 @@
 # Issue60 diagnostic component design
 
-Risk: STRICT. Design1 candidate, not implemented or source-approved.
+Risk: STRICT. Design2 candidate, not implemented or source-approved.
 Requirements4 has two independent diagnostic-only approvals at26de8da. The later
 source-aside correction does not change its required real-inspector consumer criterion.
 Full Issue60 workload ownership/effect/delegation/durable settlement, native16 and the
@@ -25,7 +25,12 @@ permission, death, native completion, freshness, replay or reservation authority
 ## Private typed fact frame
 
 Add private finite enums and a fixed-size fact snapshot, containing no command or
-process values. A small internal collector records actual facts at source. An error
+process values. A small internal collector records actual facts at source. All collection and final
+error attachment live only in shared inspect_command/observe_command/complete/Inspector/
+Stream/validate code, including their private common helpers. Production-only inspect,
+macos_group_is_dead, process_group_inspection, inspect_process_group and resolver
+closure arms remain byte-identical pass-throughs. No production-only fact decoration
+or stripping is allowed: the shared attachment site is the causal mutation target. An error
 owns a snapshot; no caller may supply it as authority. Public `io::Result<bool>` and
 AdapterError shape remain compatible. Source error categories are typed, never
 reconstructed from strings. Facts are not a new persisted record or audit schema.
@@ -49,7 +54,10 @@ not_observed, pending after a non-EOF read and observed EOF. Count successful by
 immediately from the read result even if reserve/store later fails; it is bytes read,
 not buffer capacity. Count every read invocation including Interrupted/WouldBlock.
 A successful0-byte read observes EOF. Count only invoked try_wait, not a cached exit.
-Exit categories are unavailable, success, nonzero_exit or signaled_or_other; no numeric
+Status measurements are unavailable until the first actual try_wait; a loop-entry
+timeout does not manufacture zero status polls. Capture a non-Interrupted try_wait
+error's underlying finite IO kind before baseline discards it; its returned IO kind
+still stays Other. Exit categories are unavailable, success, nonzero_exit or signaled_or_other; no numeric
 PID/exit code/status text is necessary. Finite IO kinds map unmatched variants to other.
 
 Do not add argv/path/env/auth/config, PIDs/PGIDs, raw rows/stderr/child bytes, foreign
@@ -60,8 +68,9 @@ scheduler delay, an inherited FD or group ancestry. Missing data is unavailable.
 
 Pass an invocation-local collector through the existing Inspector and Stream runner.
 No shared/global mutable test clock or fact sink is used. Each check records its
-static site before performing the unchanged check, and sets the refusal only when
-that check fails. Stream setup errors retain endpoint/other-stream observations
+candidate static site before performing the unchanged check; freeze returned failure
+site/refusal/elapsed at the selected error return, not merely the latest successful
+check. Deferred validation below is a deliberate exception to immediate selection. Stream setup errors retain endpoint/other-stream observations
 already reached; they do not invent an unopened peer's measurements. Nonblocking
 flags and File ownership are unchanged.
 
@@ -84,18 +93,31 @@ The first error retains its original IO kind when cleanup also fails. A typed wr
 formats its static original category plus bounded facts AFTER mandatory cleanup;
 formatting cannot skip cleanup or turn an error into success. Existing fixed human
 prefixes used by tests remain available. Raw syscall error text need not be copied:
-retain IO kind and a static site message. Do not expose child bytes as error bodies.
-A fixed maximum-size rendering test covers maximum counters and every enum; formatter
-uses finite fields without child-derived allocation. If optional fact formatting is
-unavailable, keep the original error and cleanup outcome, never synthesize success.
+retain original returned IO kind, source finite IO kind and a static site message.
+This explicitly replaces raw syscall Display at decorated inspect errors; wrapped
+io::Error.raw_os_error is None, not a promised preserved errno. Current production
+callers stringify/kind-check only. Existing complete-directory-read unit expects
+raw ISDIR: keep its unwrapped inner read error. The real live-member resolver control
+expects raw PERM: Ok(false) inspection still returns original signal PERM unchanged.
+Inventory those tests; no raw-metadata consumer is silently changed. Known framing/
+timeout human prefixes remain. Do not expose child bytes as error bodies.
+Display writes only fixed strs, enums and integers, propagating only writer errors;
+it never originates fmt::Error, unwraps or invents an optional formatting-failure
+branch. String formatting therefore cannot turn this Display into a cleanup-worker
+panic. The maximum-size rendering test exercises that EXACT Display with every enum
+and maximum counters; no child-derived allocation or raw-body formatter is called.
 
 A completed Frame carries its observations into the existing exit/stderr/frame guards.
 The validator produces private typed framing refusals at their source while preserving
 its externally observed IO kind/boolean and fixed message. No substring classifier is
 introduced. Preserve full-frame validation before valid_live/valid_dead. The result of
-validate is recorded independently, then the unchanged post-validation deadline is
-checked: a timeout still wins even if validation had an error; retain that masked typed
-result separately. Success does not render/persist facts or change boolean outcomes.
+validate ONLY writes its separate typed validation field, without freezing failure.
+Then run the unchanged post-validation deadline. Deadline Err selects returned
+site=deadline_after_validation, refusal=deadline and elapsed there, retaining masked
+valid_live/valid_dead/framing separately. Deadline Ok plus validation Err selects
+site=frame_validation, its typed refusal and elapsed at that selected return. Thus
+an unmasked framing failure never carries a successful deadline-check site, and a
+masked framing failure never carries framing as its returned timeout site. Success does not render/persist facts or change boolean outcomes.
 
 ## Error transport and discarded paths
 
@@ -116,17 +138,29 @@ Existing sinks may include new bounded text, with unchanged priority/authority:
 
 session.saved continues projecting only state, agent, provider, role, native_ref and
 recovery.dispatch_intent. Grok cleanup_receipt retains its exact schema and unclassified
-cleanup failure; message facts cannot classify/alter its clean operand. Native hooks,
+cleanup failure; message facts cannot classify/alter its clean operand. Master rationale must explicitly keep unclassified as POLICY until a
+separately reviewed typed consumer exists: AdapterError erases structure, safe text
+may remain, and parsing it grants no authority. Native hooks,
 auth/defaults, permissions, environmental policy, Store/schema and safety gates are
-untouched. Future copied5/6/19 consumers need composition review; no universal acceptance.
+untouched. Synchronous git.rs gets no diagnostic/consumer credit in this component;
+any later route requires inventory/composition review. Future copied5/6/19 consumers
+also need composition review; no universal acceptance.
 
 ## Private seams and causal verification
 
 Use per-invocation cfg(test) hooks for deterministic failure/clock sites. They can fail
 one exact endpoint/fcntl/read/allocation/status/deadline site and pass real execution
 elsewhere. Label these injections; do not claim the OS naturally reached them. Injection
-of a status error follows the actual relinquishment branch, including no cached-PID
-kill/reap. Each adjacent deadline check is reached deterministically rather than waiting
+of a status error is UNIT-only and substitutes an error only AFTER an actual owned
+Child try_wait has returned Some(exit), so std has already reaped that direct child.
+Retain its actual Child handle in the fixture through synthetic relinquishment; never
+rescue by numeric observed-callback PID, waitid/adoption or later PID signals. The
+source error branch then clears unreaped/has no reported exit just as baseline.
+Any cleanup-call omission mutant in this synthetic state uses recorded fixture-only
+kill/wait operations, not a new real syscall on a reaped PID. Assert no calls after
+relinquishment and independently verify the pre-injection actual reap even on assertion
+failure. No stranded live child/zombie or real status-error acceptance is claimed.
+Each adjacent deadline check is reached deterministically rather than waiting
 for scheduling between statements. Production uses its unchanged monotonic clock.
 
 The existing TestPlan800–914 already reaches real `inspect_with_prefix→inspect_command`
@@ -141,10 +175,24 @@ withdrawn. Any future hand-built fact/ioError bypass earns rendering pass-throug
 Actual Context tests use a private latch to isolate destructive first-Unknown controls
 from default concurrent tests. The supplied plan must execute the real inspector; its
 error snapshot must survive resolver→cleanup_group→bounded Git→Context rendering.
-Assert original kind, exact reached facts, retained uncertainty and derived refusal
-without a new sample. A compiled mutation removing construction/attachment at the
+Assert original kind, a present safe fact block, retained uncertainty and derived
+refusal without a fresh sample. Exact deterministic guard/refusal/stream, EOF/exit/
+validation/cleanup/kill categories and fixed shim stderr-byte count apply ONLY when
+that guard actually wins. A deadline-masked run accepts only a deadline-family site
+and its truthful retained fields, preserving failure without exact-site/throughput
+credit. Context Timeout accepts that family; exact adjacent sites are unit clock-seam
+evidence only. Never assert exact elapsed/read/WouldBlock/try_wait counts or dynamic
+leader-digit-dependent stdout length at Context. Counter invariants require invoked
+reads >= WouldBlock+Interrupted+observed-EOF reads and positive try_wait calls only
+when status was reached; deterministic counter-omission kills earn unit/seam credit.
+Unmasked framing shims must carry frame_validation, masked valid_live/framing unit
+cases must carry deadline_after_validation with separate validation result. A compiled mutation removing construction/attachment at the
 inspector-to-resolver boundary must fail this actual consumer. General formatting unit
-mutants do not earn this reach credit. Reach Generic/Grok existing sinks where actual
+mutants do not earn this reach credit. A separate pre-effect entry-hop fixture uses
+nonexistent executable through process_group_inspection→inspect_process_group→inspect
+and asserts spawn-site facts survive; injected resolver PERM opens that route without
+any child/signal. Label entry-hop-only credit, not Context/OS-permission acceptance.
+Production-only wrappers stay unchanged; an untested decoration diff is prohibited. Reach Generic/Grok existing sinks where actual
 fixture support permits; disclose remaining sink coverage precisely.
 
 Real controlled subprocess/owned-pipe tests cover pending stdout/stderr, actual EOF and
@@ -165,7 +213,9 @@ source reviews. Run default debug/release, fmt/all-targetClippy, both builds and
 public Linux/macOS CI; preserve trigger vs actual checkout parents/tree/source provenance.
 No blind old-head rerun, serialized default tests, larger deadlines or Unknown relaxation.
 Final red blocks merge. Fresh changed diagnostic source may be measured once by CI;
-passing it does not repair an unexplained earlier inspector timeout.
+passing it does not repair an unexplained earlier inspector timeout. Implementation
+updates README/master pending status only after actual source gates; the master Grok
+unclassified rationale above must remain consistent with the unchanged receipt.
 
 This component supplies finite failure-stage evidence only. It does not improve the
 native backend's known availability, fix detached Git readers/unreaped anchors/async

@@ -1,6 +1,6 @@
 # Issue 60 inspection/reader component verification
 
-Requirements4 normative diagnostic approvals, corrected source provenance; Design1 candidate; no design/source approval or implementation. Isolated main054
+Requirements4 normative diagnostic approvals, corrected source provenance; Design2 candidate; no design/source approval or implementation. Isolated main054
 baseline, no production edits or new process tests. Frozen Issue51 final18c CI remains
 red; first bounded native inspection timeout and derived latch failures retained, cause
 unknown. No rerun, deadline/latch/permission/Unknown relaxation.
@@ -55,7 +55,7 @@ with exact stage/refusal, EOF/counters/finite exit, cleanup-vs-relinquishment an
 kind/priority constraints. Existing reader behavior/flags/admission/driver/Drop and all
 resource equations stay unchanged. Requirements3/4 results are recorded below;
 source-aside correction does not change the approved real-inspector criterion;
-Design1 independent gates remain pending before source. Full60/shared availability/native16 are open.
+Design1 request_changes recorded below; Design2 delta gates pending before source. Full60/shared availability/native16 are open.
 
 Requirements-only CI37219380561 passes bothOS on unchanged production; source/reader/
 availability acceptance is not inferred. Public actual-checkout provenance will be
@@ -104,3 +104,23 @@ TestPlan source is included in Design1 packets. No production or completed-fixtu
 Design1 proposes only typed bounded inspector facts and existing safe error rendering.
 Requirements4 two approvals/noC/H/M and corrected source provenance are preserved;
 no reader/flag/ProcessGroup behavior enters this design. Native design gates pending.
+
+## Design1 verified findings
+
+Atab2ac23 two fresh independent native design reviews completed request_changes with
+actual cleanup verified. Facts2Medium+5Low; authority3Medium+4Low. [All14 dispositions](issue-60-design1-findings.json)
+retain raw digests. Design2 fixes selected deferred-validation site, shared-only fact
+attachment/pass-through wrappers, invariant real-consumer assertions and labelled
+deadline alternatives, and UNIT status-error injection AFTER real direct Child reap.
+Numeric callback/PID rescue is rejected; recorded testops protect synthetic mutations.
+The formatter originates no fmt::Error; underlying status kind and unavailable counts
+are explicit. Decorated IO text/outer raw errno replacement is disclosed; existing
+inner ISDIR and unchanged live PERM controls remain. Master unclassified policy and
+synchronous-git exclusion are explicit. No native/source behavior changes or evidence
+credit from plans. Design2 independent delta reviews pending before implementation.
+
+Design1 documentation-only CI37222832843 all required steps bothOS success, actual
+checkout07a7d6b2d08329bcd25fb151fb45653b98ecf9ac parents054aefd/ab2ac23 tree=head.
+Requirements4/source-aside CI37222227095/37222545671 likewise unchanged-source green;
+provenance artifacts preserve actual both checkouts64c31906/87716538 and parents.
+No diagnostics source/availability or failed Issue51 acceptance follows.
