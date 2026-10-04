@@ -1,6 +1,7 @@
 # Issue14 unbound native retry component
 
-Requirements3 candidate NOT APPROVED. No implementation or qualification yet.
+Requirements3 approved at1463d37: TWO independent APPROVE, noCHM/blockers.
+Design1 candidate NOT APPROVED; no implementation/source qualification yet.
 Open Issue14 explicitly requires this follow-up from Issue41. Current main efe9774
 still allows explicit Failed+dispatch_started+session_id=None retry when the
 Session loop has nothing to reject. Existing characterization is evidence of the
@@ -30,3 +31,11 @@ binding/fail/decision and classifies Failed-generation falsecredit. Grok returne
 startErr versus bound post-start actor failure split corrected; Generic-shaped
 unbound terminal row control added, observation writer inventoried and header
 updated. Source unchanged; independent Requirements3 delta re-review pending.
+
+Requirements3 at1463d37: BOTH independent native APPROVE, zeroCHM and blockers,
+selected wrappers actuallyclosed/cleaned. Three distinct optional Lows verified: Grok
+bound outcome depends on binding commit, row-resolution mutation attribution per
+guard, and co-located valid pre-marker raw-builder controls. Design1 records finite
+precision/disposition with no WHAT change. Requirements amended only to qualify
+the binding sentence; source/test/build untouched. Design1 independent review next;
+whole14/MVP/native/F1 and genuine recovery producer remain OPEN.

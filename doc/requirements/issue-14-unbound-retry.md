@@ -1,6 +1,8 @@
 # Issue 14: fence explicit retry of an unbound native dispatch
 
-Requirements3 candidate, NOT APPROVED. Risk STRICT: shared Workflow/Store
+Requirements3 approved at1463d37 by two independent native reviewers, no
+Critical/High/Medium or blockers. Low precision dispositions accompany Design1.
+Risk STRICT: shared Workflow/Store
 reservation and replay boundary. Base main efe9774, normal composition of63 after
 both Requirements1 reviewers finished/cleaned. No production change.
 Related open Issue14's "Verified explicit retry gap" acceptance; limited
@@ -61,8 +63,11 @@ effort/input/binding/Git/preflight/Store/process-start errors, and Grok pre-pers
 input/capture/environment/ownership/registration/Session-save errors returned
 from start, can yield the same Failed marked-unbound attempt.
 Grok Git/profile/admission/spawn/actor failures AFTER start returns its saved
-Session are bound outcomes under existing policy (Failed or Lost); do not classify
-them as unbound. Generic can save its own same-scope/agent/role terminal Session
+Session are bound outcomes under existing policy (Failed or Lost) ONLY after the
+Workflow Session-binding transition commits. A binding CAS loss leaves Issue41's
+retained Running marked-unbound attempt regardless of the actor's later terminal
+Session; durable fields determine classification and14 recovery remains required.
+Generic can save its own same-scope/agent/role terminal Session
 before returning Err; that unbound row supplies no trusted no-dispatch proof.
 Enumerate all current start implementations and
 transitive error producers in source impact analysis; do not infer effects from
