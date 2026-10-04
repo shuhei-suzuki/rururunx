@@ -1,6 +1,6 @@
 # Issue 43 design: record-only native Session binding
 
-Status: proposed Design2; independent STRICT delta review pending. No implementation.
+Status: proposed Design3; independent STRICT delta review pending. No implementation.
 Requirements: [issue-43-requirements.md](../requirements/issue-43-requirements.md).
 This supplements [the shared Issue43 design](issue-43-design.md). Both describe
 the same proposed gate; neither is implemented. The exact transaction mechanics
@@ -32,14 +32,32 @@ separate session_id is an outcome reference, not a PhaseAttempt writer.
 
 ## Engine call and trusted identity
 
-Before committing the dispatch marker, resolve the adapter from the existing
-immutable AgentRegistry and call its existing `probe` outside the Store mutex.
+For every native Executor/Reviewer phase, resolve the selected adapter and probe
+outside the Store mutex **before reserving any PhaseAttempt**, publishing that
+phase's ContextVersion or committing its dispatch marker. In current step this
+belongs after the source/policy-drift branches and before clear_hold/prepare_pack
+(workflow.rs:860); the capability check currently in prepare_agent at :957 is too
+late. Keep legitimate prior policy invalidation as its own separate return path.
+Native Git/gate phases do not select an AgentAdapter through this gate.
+
 Require probe.agent to equal the selected registered name, a nonempty provider,
-and the required role capability. Keep existing capability checks, executable
-validation and native defaults. Probe failure uses the pre-launch failure path;
-it does not launch a model, override authentication or infer authentication from
-an unobservable value. Registry registration currently validates name uniqueness,
-not probe identity; the new check must therefore be explicit.
+the required Execute/Review role, and the new implementation-owned
+Capability::PreparedInputAdmission in both capabilities() and probe.capabilities.
+This capability is absent by default and advertised by Rust implementation only
+after its actual #19 Session admission port is wired. Config cannot enable it;
+there is no class exemption, caller flag, JSON discriminator or test-only
+production bypass. It promises that a fresh Workflow launch creates the real
+private owner/preparation pair before returning; it does not itself prove that
+pair. Store always checks the actual durable proof independently.
+
+Missing adapter/reviewer, unsupported capability, invalid probe identity or
+probe failure returns an explicit error without calling fail, creating a phase,
+clearing a durable hold, writing a ContextVersion/Session/audit, claiming dispatch
+or launching a native child. Retain the selected immutable adapter/identity for
+prepare_agent and recheck current policy/owners before marker as usual; do not
+silently select a different adapter after preflight. Existing registry only
+validates name uniqueness. Preserve executable validation, authentication,
+hooks and native default model/effort.
 
 Retain a crate-private `NativeBindingIdentity` built from the selected registry
 name, probed provider, exact launch Scope, role and Task worktree, together with
@@ -184,12 +202,17 @@ binding. Every fresh native phase must obtain the actual #19 private owner/pair.
 The Engine supplies no optional allocation authority; an expectation can only
 cross-check Store-derived proof. An omitted caller expectation never skips it.
 
-Implement and review the narrow record-only path in isolation, then compose the
+Implement the narrow record-only path in isolation with production failing closed
+when the private predicate is absent. No permissive predicate or SQL-seeded pair
+earns positive binding acceptance on that staged branch. Then compose the
 actual #19 predicate before claiming typed-native acceptance or merging this
 issue. Use a co-integration branch preserving both source commit ancestries for
 the #19 predicate and #43 binding port. Run their approved combined source review,
-native integration and exact-head CI before the ready PR(s) merge. This avoids
-making either completed merge a prerequisite for the other's acceptance. Neither
+native integration and exact-head CI on a **single combined PR merge vehicle**
+before either issue closes. Preserve both source ancestries in that combined PR;
+main never receives a ready #43 binding port without #19. Update superseded draft
+PRs to link that vehicle rather than separately merging their unintegrated heads.
+This avoids making either completed merge a prerequisite for the other's acceptance. Neither
 independent staged branch claims integrated native acceptance. Coordinate the
 private helper signature with the #19 owner; do not create
 a second competing allocator or copy private authority into Workflow JSON.
@@ -203,10 +226,81 @@ Grok environment-isolation follow-up retain their own scopes; binding cannot
 weaken cleanup or environment authority to make acceptance pass. ReviewSet9
 multi-member slots are a separate typed port, not an exception to one owner.
 
+## Actual admission writers and fixture migration
+
+"Native" here describes the Workflow Executor/Reviewer phase, including generic
+and protocol-controlled adapters, rather than an exemption limited to native
+provider brands. There are five known launch implementations at the inspected
+public baselines. None earns compliance from capabilities alone. Recheck this
+inventory on the combined source, including new #41 barriers and all impl
+AgentAdapter occurrences, before implementation review.
+
+| Launch implementation / primary baseline | Current Session write and required migration |
+| --- | --- |
+| GenericCliAdapter, 0665583 adapter.rs:631/:693 | Starting/Running call save_session then generic put_session. Current metadata has input_bytes and lacks payload SHA/current-consumption proof. Move validated Starting and actual input consumption to #19 NativeCAS with exact P/G/T plus complete lock-set expectations, all five prepared-input pins and runtime-created unique intent. Consume atomically before the real stdin write; no invented native ACK. Keep existing Execute-only role and unsupported model/effort behavior. Advertise PreparedInputAdmission only after these writes are wired. |
+| Workflow FakeAgent, 0665583 workflow/tests.rs:48/:86-96 | Bare put_session and recovery Null currently provide no pair. Migrate the shared fixture to real #19 NativeCAS preparation/admission under the actual owner/lock snapshots, full payload pins and unique intent before start returns. Its controlled successful wire boundary represents fixture consumption only. No allocator stub or generic Session write may create a positive owner. Fake execution is synthetic evidence. |
+| Claude, f9b671f claude/session.rs:186-194 and :140-163 | Fresh persist uses generic put_session; commit_current uses put_session_if_current. Fresh preparation must use #19 NativeCAS, and the existing current admission must supply its full protected preparation/input pair and actual pre-wire consumed intent. Terminal observations and validated rollback remain their distinct modes. Preserve ALLOW-only current fences and independent DENY own-Session publication. |
+| Codex, 6749505 codex/session.rs persist_unchecked/private rollback and admit_dispatch | Generic fresh/checkpoint preparation and rollback are distinct from current admit_dispatch. Wire fresh/committed checkpoint through #19 NativeCAS, keep private exact restore provenance, and preserve F4 admission-mutex/first-cause ordering around the consumed CAS and first wire. Stop/caller-drop cannot relabel failed admission. |
+| Grok, 65aa940 adapter/grok/mod.rs:225/:322 | save_current already uses put_session_if_current, but initial Starting lacks the five prepared-input pins. Supply #19 protected preparation/actor pins plus unique intent at actual consumption before callback/startup wire. Terminal save_session is factual observation, never allocation or consumed admission. |
+
+Issue19 distinguishes NativeCAS from ObservationOnly: generic put_session cannot
+allocate, prepare or consume. Each migrated typed native write must use the real
+private NativeCAS port after exact P/G/T and full lock-set CAS. Neither the binder
+nor Workflow manufactures that proof. At these baselines no other Workflow test
+adapter implements AgentAdapter: #41 extends the same FakeAgent with barriers.
+
+The default from_config path currently registers GenericCliAdapter. Migrating it
+is part of the combined implementation; it is not an accepted MVP limitation.
+Before migration, the explicit pre-reservation capability rejection prevents a
+permanently held launch. Unsupported new adapters also reject there. Separately,
+an adapter that falsely advertises the capability yet writes no private pair
+must fail the actual binder after start, retain its committed unbound claim and
+durable Session, and produce no binding audit or release/retry. This is a contract
+violation distinct from honest unsupported preflight. Positive generic and fake
+controls must both obtain real allocation/pair through their actual start paths.
+
+Primary test inventory at 0665583 finds one AgentAdapter impl, two PhaseAttempt
+literal constructors starting with None, sixteen ordinary
+put_workflow_transition call sites and no direct assignment of
+PhaseAttempt.session_id in tests. The assignment to evidence.session_id at :331
+is a different outcome field. The sixteen calls initialize unbound history or
+preserve bound IDs across evidence/authority/terminal/cancel transitions; there
+is no verified direct-bound-seeding defect. Engine start/binding builds their
+bound attempts today, so migrate that common path and shared FakeAgent rather
+than granting ordinary transitions a fixture exemption.
+
+The existing explicit_stricter_selection_and_unsupported_review_capability_are_honest
+control currently observes post-reservation failure; migrate its unsupported branch
+to the new pre-reservation explicit error and assert no attempt/claim/context/audit
+write. Registry/probe failures get the same causal consumer controls.
+
+Required bound consumers include all_presets_drive_real_adapter_calls_and_persist_phase_context_history,
+restarted_native_attempt_reports_durable_recovery_without_rebinding_or_launching,
+lost_reviewer_also_requires_verified_recovery_before_retry,
+quick_requires_actual_merge_cleanup_before_terminal_and_cancel_never_implies_native_death,
+inactive_owners_allow_cancel_but_terminal_release_requires_verified_session, and
+rejected_review_cancel_releases_only_verified_terminal_attempt_and_project.
+Recheck #41's preparation_dispatched_observation_and_direct_store_terminal_fence,
+preparation_pause_cancel_and_terminal_recovery_keep_owner_fenced, and
+preparation_release_cas_and_executor_lost_fences_do_not_retry in co-integration.
+Their bound fixtures must come from Engine + actual #19 admission + narrow binder.
+Historical direct state seeding, if newly introduced, is history-only and never
+binding coverage. Existing unchanged-ID ordinary transitions keep closure proof
+and their normal Task writes; every forbidden ID delta fails before any write.
+
+Add real Engine controls for missing admission capability (no phase/context/claim,
+Session, audit or child), misadvertised admission (held post-marker contract
+failure), and generic/fake/native successful admission. Kill an omitted-capability
+check at the pre-reservation consumer, and omitted-private-proof check at the
+post-start binder. A setup refusal is not a private-proof mutant kill. Inventory
+all protected writer and fixture consumers again at the immutable combined head.
+
 ## Verification and meaningful mutations
 
+All positive binding tests run on the actual #19/#43 co-integration revision.
 First test Workflow's actual successful-start consumer with a protocol-controlled
-registered adapter that persists a real Session. Assert P/G/T and every scoped
+registered adapter that persists a real Session through #19 NativeCAS admission.
+Assert P/G/T and every scoped
 Session/WorktreeLock body/version unchanged, Workflow.version advances once,
 only the active absent ID changes, and exactly one binding audit is appended.
 Exercise a Starting return followed by durable Running, effective binding and
@@ -224,15 +318,26 @@ unbound closure after actual #19 integration.
 
 Sibling live Reviewer, Lost and executor-reserved records are success controls
 when their UUID does not conflict: binding succeeds and changes none of their
-bodies/versions. Immediately before/after binding compare the same ReadOnly or
-Mutating reserve attempt: its existing refusal/StateGuardError must stay exact.
+bodies/versions. Use a held adapter/read barrier immediately before returning to
+the Engine so
+independent native writes cannot contaminate the binding-only preservation interval.
+For separate admission controls rebuild the reserve candidate from each current
+Workflow version and isolate the refusal cause: Lost or executor-reserved sibling,
+or live Session for Mutating. ReadOnly with only a live Reviewer can instead fail
+later on existing active history and earns no admission-sweep kill credit. Its
+existing refusal/StateGuardError must stay exact.
+validate_worktree_exclusion has Session/WorktreeLock branches and no Workflow
+branch, so the shared record writer does not itself reject these sibling positives.
 No sibling gains currency/completion, and binding returns only the committed
 Workflow record, no value accepted as an admission credential. Actual validators
 still require their private owner/pair. Kill a reserve-sweep-in-binding mutant and
 a bound-ID-as-admission-proof mutant at those causal consumers.
 
-Add ordinary-transition controls for every WorkflowAccess rejecting an existing
-None-to-Some Session ID and new-history injected IDs. A caller omitting allocation
+Add ordinary-transition controls for every WorkflowAccess rejecting existing
+None-to-Some, Some-to-None and Some-to-different ID changes, in active and nonactive
+history entries, and new-history injected IDs. Unchanged existing IDs remain valid
+for ordinary phase/context/terminal transitions with their separate guards.
+A caller omitting allocation
 expectation must still fail on absent/restored old private ownership. For UUID
 uniqueness, hold a None return, publish a duplicate durable Some before binding,
 and reject without write/audit; kill the returned-value-only lookup mutant.

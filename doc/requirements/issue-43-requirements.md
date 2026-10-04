@@ -1,7 +1,8 @@
 # Issue 43: Preserve native authority during Workflow Session binding
 
-Workflow: STRICT. Requirements approved at `d8c5266` by native independent
-requirements re-review4; design and implementation gates remain outstanding.
+Workflow: STRICT. Requirements baseline `d8c5266` approved by native independent
+requirements re-review4. Item6 clarification in Design2 remains subject to joint
+requirements/design delta review; design and implementation gates are outstanding.
 
 ## Problem and MVP relationship
 

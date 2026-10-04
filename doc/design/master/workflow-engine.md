@@ -243,7 +243,6 @@ Supported examples:
 
 Human override should not silently disable mandatory project safety rules.
 
-
 ## 16. Goal Runtime integration
 
 Goal Runtime does not replace Task workflows.
@@ -372,7 +371,6 @@ Observation/audit metadata retain authority digests without copied Context Pack 
 Cleanup freezes the reserved class/phases, independent of later runtime policy capture.
 Project risk-mapping recommendations can strengthen but cannot weaken runtime mappings.
 
-
 ## 18. Native Session binding authority
 
 Status: proposed Issue43 contract; implementation and independent design/source
@@ -398,3 +396,13 @@ Grok Actor ownership checks and Codex approval scope/Session guards continue to 
 their own callbacks/replies/completion. Binding failure preserves the existing reservation
 and any live Session; it never releases, retries, transfers ownership or fabricates a
 native result. See [Issue #43 design](../issue-43-design.md).
+
+The proposed binding port is the sole existing-attempt Session-ID writer; ordinary
+WorkflowAccess rejects every ID delta and fresh history starts unbound. Every
+fresh Workflow Executor/Reviewer launch, including GenericCliAdapter and controlled
+test adapters, requires actual #19 private owner/preparation/admission proof in
+the binding transaction. An implementation-owned admission capability rejects
+unsupported adapters before phase/context/dispatch reservation; it cannot replace
+the durable proof or be configured into existence. A falsely advertised capability
+still leaves a post-start contract failure held. This remains proposed until the
+combined #19/#43 source, native controls, reviews and CI are accepted.

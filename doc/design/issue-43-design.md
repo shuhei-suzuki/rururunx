@@ -1,6 +1,6 @@
 # Issue 43 Design: Preserve native authority during Workflow Session binding
 
-**Status:** Design2 draft; independent delta review and implementation pending
+**Status:** Design3 draft; independent delta review and implementation pending
 **Workflow:** STRICT  
 **Scope:** Workflow native Session binding only
 
@@ -346,8 +346,8 @@ timestamp = existing AuditEvent.at
 Do not copy prompts, transcripts, credentials or native protocol payloads.
 
 A failed binding emits no success audit. Diagnostic failure logging may use existing bounded non-authoritative channels.
-Public audit/audit_if_current refuse this reserved kind. The mechanics' bounded
-payload additionally includes workflow_version_before and task_version_preserved;
+Public audit/audit_if_current refuse this reserved kind. The mechanics use this same bounded payload, including
+workflow_version_before and task_version_preserved;
 there is no separate marker UUID beyond the exact versioned tuple above.
 
 ## 12. Workflow Engine integration
@@ -534,7 +534,8 @@ legitimate startup progress is not rejected by a stale returned-record version.
 The own-Session CAS mutation requirement also exercises the provider's actual
 currency consumer; it does not introduce a contradictory stale-start CAS.
 
-For typed input, #19 private allocation/input-pair checks are mandatory inside
+For every fresh native Executor/Reviewer binding, #19 private allocation/input-pair
+checks are mandatory inside
 this transaction. A missing private predicate is an integration/merge blocker,
 never a permissive fallback. Starting preparation is allocation proof, not ACK;
 restored prior terminal snapshots cannot bind as new input owners. No typed
@@ -548,7 +549,8 @@ dispatched work. Current fresh-start Workflow has no resumed-UUID predecessor
 exemption; any future exception requires verified private resume lineage.
 
 Both documents remain draft pending independent STRICT design review. The
-requirements gate approved d8c5266; no production implementation is present.
+requirements baseline approved d8c5266; the subsequent item6 clarification is
+subject to this joint delta review. No production implementation is present.
 
 The narrow binding primitive is the only writer of existing PhaseAttempt Session
 IDs. All ordinary WorkflowAccess modes refuse an existing ID delta; new native
@@ -563,9 +565,10 @@ after binding. See the mechanics for the causal control/mutant matrix.
 Primary locations at public12f545f unless explicitly pinned otherwise:
 
 - workflow.rs:879 reserves a native attempt with None; :1016 is the sole production
-  assignment. validate_transition:2139 currently permits active None-to-Some;
-  :2256 requires new attempts to begin unbound. Change the former ordinary writer
-  permission, retain the latter, and check every WorkflowAccess caller.
+  assignment. validate_transition:2139 and :2148–2155 currently permit active
+  None-to-Some; :2250 requires new attempts to begin unbound. Both ordinary
+  permissions become reject-only for ID deltas; retain the latter initializer
+  guard and check every WorkflowAccess caller.
 - state/mod.rs:355 put_workflow_transition, :516 ordinary validator and :522–570
   closure guard compose separately with #19. The new binder owns registration;
   ordinary transitions retain closure proof and Task writes.
@@ -589,3 +592,43 @@ Primary locations at public12f545f unless explicitly pinned otherwise:
 - Schema6 allocation/pairs are #19's source dependency. Use co-integration with
   both commit ancestries, combined source/native acceptance and exact CI before
   ready PR(s) merge; neither issue depends on the other's completed merge.
+
+## 20. Design3 admission and fixture impact
+
+[Binding mechanics](issue-43-binding-mechanics.md#actual-admission-writers-and-fixture-migration)
+inventories all five known launch implementations: GenericCliAdapter, shared
+Workflow FakeAgent, Claude, Codex and Grok. Each must write the real #19 private
+allocation/preparation/admitted pair through NativeCAS, including the complete
+P/G/T and scoped-lock CAS. ObservationOnly Session persistence cannot create
+that authority. Generic/Fake are consumers of the same Workflow native phase;
+there is no provider-class exemption or test-only production bypass.
+
+Add implementation-owned Capability::PreparedInputAdmission, absent by default
+and not configurable. Resolve/probe/role/capability check before the native phase
+reservation, context publication and dispatch marker (current step:860, rather
+than current prepare_agent:957). Unsupported adapters return an explicit error
+without phase/claim/Session/audit or native child; they do not call fail. Existing
+policy/source invalidation remains a separate earlier path. A false capability
+advertiser that starts without a real private pair still fails binding after the
+marker and stays held under the existing error rule. Actual proof remains solely
+Store-derived. Migration of the default generic path is part of the implementation,
+not an accepted MVP limitation.
+
+The main baseline has sixteen ordinary transition test calls, two unbound
+PhaseAttempt constructors and one shared FakeAgent. Bound fixtures come through
+Engine; direct PhaseAttempt.session_id test seeding was not found. Migrate the
+common start/bind fixture through actual #19 and the narrow port. Re-inventory
+#41's extended FakeAgent/barrier/terminal tests at the combined immutable head.
+Unchanged bound IDs keep their ordinary closure/Task-write path. Test every
+WorkflowAccess against None-to-Some, Some-to-None and Some-to-different changes
+in active and nonactive entries; no fixture exemption.
+
+Staged #43 production fails closed without #19 and earns no positive binding
+coverage. Positive generic/fake/native controls, sibling success, startup
+progression and the native matrix all run on the actual co-integration revision.
+Use one combined PR preserving both source ancestries, reviewed/tested with
+exact-head CI, before either issue closes. Main never receives the ready binding
+port without the real #19 predicate; no completed-merge dependency cycle.
+The separate ordinary closure checks stay in their ordinary transaction, while
+binding proof lives only in the #43 port. Update master design to implementation
+fact only in the combined source PR.
