@@ -1413,8 +1413,9 @@ Task-authored hints remain unactivated proposals, never permission to omit rules
 **11.c — New Task lineage base.** Registered-base sync retains recorded uncertified
 contributions even after upstream reachability. This includes contributions recorded
 by earlier Workflow epochs whose legacy Passed/Completed labels provide no current
-ReviewSet certificate. They retain factual authors and uncertified obligations; unknown
-applicability inherits/refuses rather than applying an epoch cutoff or converting an
+ReviewSet certificate. They retain evidence-backed authors under12.d; legacy content
+lacking that binding remains unknown authorship (refuse/exclude every candidate family).
+All uncertified obligations remain; unknown applicability inherits/refuses rather than applying an epoch cutoff or converting an
 old native result into certified upstream proof. A new obligation may be fresh only
 with trusted exact applicability evidence proving disjoint changed AND relied-on
 source/dependency/context and retained finding scopes. Affected or unknown obligations
@@ -1960,7 +1961,7 @@ when Human events occurred; concurrency is neither origin proof nor automatic re
 | --- | --- |
 | Human fallback dismissal/downgrade/not-applicable/duplicate adjudication; policy relaxation; post-observation roster/confirmers change or supersession; Human authorship/unknown-origin disposition; decomposition | Actual trusted Human ingress with scoped principal/event/reason/evidence; automated controller cannot mint/borrow it |
 | Original eligible finder or frozen independent confirmer verification | Actual fresh owned verifier input/result/settlement provenance under I9-AC-9.a, I9-AC-9.e, I9-AC-9.g, I9-AC-9.h; never a controller-generated finding |
-| Initial INSTANCE of an EXACT already Human-approved policy digest; frozen conditional branch, scheduling, verified bounded retry/fix/re-review progression | Separate automated controller under that exact activated policy, within immutable floor/lineage/designation; never post-opinion relaxation or approval shopping |
+| Initial INSTANCE of an EXACT already Human-approved policy digest; frozen conditional branch, scheduling, verified bounded retry/fix/re-review progression | Separate automated controller under that exact activated policy, within immutable floor/lineage/designation; never post-opinion relaxation, roster/confirmer swap, budget reset or approval carry; bounded18.a/18.i reruns retain their disclosed residual |
 | Approve any NEW policy/rubric CONTENT digest, including rules introduced by base-sync | Actual trusted Human ingress approving that exact digest; controller base-sync/source capture cannot mint it |
 | Genuine safe cancellation/termination without certificate allowed by frozen policy | Actual owned controller/supervisor cancellation and required settlement/closure; never Human clearance, approval or Lost release |
 
@@ -2343,6 +2344,9 @@ exposure-specific policy refusal; lower observability never implies broader secr
 
 
 ## Requirements review37 dispositions
+
+Informative review provenance only: this section adds, removes or amends no
+requirement. The cited18.a/18.i/11.c/18.h criteria govern.
 
 Native review58639061-4cd8-41f2-af8d-e1ef4458cd4e at10e53704 found no Critical/High
 and three Medium observations. M1 is accepted as wording precision:18.a no longer
