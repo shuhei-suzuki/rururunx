@@ -225,12 +225,23 @@ failure and post-spawn launch-failure audit use the existing native plan and hel
 barrier. Grok completed-success synthetic ACP exercises the cleanup diagnostic and
 runtime failure with unchanged unclassified/clean=false receipt. Existing Grok
 predispatch/unowned-read errors correctly mask later cleanup text by priority, so they
-do not prove fact transport. Grok reconciliation_error host-Git transport lacks a
-current stage-specific plan seam and has no direct fact-transport assertion in this scope; unchanged forwarding is source-only evidence;
-no production priority or stage port is changed to make the fixture pass.
+do not prove fact transport. Generic preflight bounded-Git and Grok pre-spawn,
+in-session-binding ownership/index Git forwarding have no stage-specific plan seam
+or direct fact-transport assertion. Grok reconciliation_error host-Git and the
+unknown-dispatch wrapper's cleanup-selected form likewise remain source-forwarding
+only, unasserted routes. The incidental release555 pre-spawn diagnostic is a retained
+uncontrolled observation, not an asserted fixture. No production priority or stage
+port is changed to manufacture coverage.
 
-Real controlled subprocess/owned-pipe tests cover pending stdout/stderr, actual EOF and
-observed child exit, exit/stderr/framing failures, valid_live/dead and cleanup. Keep
+Real controlled subprocess/owned-pipe tests exercise actual EOF/observed child exit,
+exit/stderr/framing failures, valid_live/dead and cleanup. The retained-writer fixture
+conditionally asserts pending stdout after a data read; it does not guarantee those
+observations were reached before the real deadline. Residual unit gaps are explicit:
+no positive WouldBlock or status.pending/interrupted count assertion, no independent
+pending-stderr assertion, and no drain-site Interrupted omission kill. The prepared
+Interrupted result test asserts the helper only, not its drain-site wiring or an
+actual kernel Interrupted event. Counter invariants do not prove omitted increments
+would be detected. No universal counter/unit coverage is claimed. Keep
 owned inspector/fixture cleanup and joins even on assertion failure; no unrelated PID
 signals. Parser/site/counter injections and maximum formatter tests are unit evidence.
 Use both omission and authority-refusal mutants: removing relinquishment distinction

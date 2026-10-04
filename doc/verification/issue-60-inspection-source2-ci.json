@@ -1,0 +1,49 @@
+{
+  "run": 37230220373,
+  "trigger_head": "d930b5abc93f711dd6b6ffa73ef3661a67574941",
+  "actual_checkouts": {
+    "check (ubuntu-latest)": "3969a84f87943a16dfd55aa2cf643e2adb4e0c61",
+    "check (macos-latest)": "3969a84f87943a16dfd55aa2cf643e2adb4e0c61"
+  },
+  "parents": [
+    "054aefd3a22a02951fa72b9fa397bed58d156bbf",
+    "d930b5abc93f711dd6b6ffa73ef3661a67574941"
+  ],
+  "tested_tree": "19f4cf016a268a122a5ccad52517ae91111eb9ca",
+  "trigger_tree": "19f4cf016a268a122a5ccad52517ae91111eb9ca",
+  "tested_tree_equals_trigger": true,
+  "jobs": {
+    "check (ubuntu-latest)": {
+      "conclusion": "success",
+      "steps": {
+        "Set up job": "success",
+        "Run actions/checkout@v4": "success",
+        "Run dtolnay/rust-toolchain@1.91.1": "success",
+        "Run cargo fmt --all -- --check": "success",
+        "Run cargo clippy --locked --workspace --all-targets -- -D warnings": "success",
+        "Run cargo test --locked --workspace": "success",
+        "Run cargo build --locked --workspace": "success",
+        "Run cargo build --locked --release --workspace": "success",
+        "Post Run actions/checkout@v4": "success",
+        "Complete job": "success"
+      }
+    },
+    "check (macos-latest)": {
+      "conclusion": "success",
+      "steps": {
+        "Set up job": "success",
+        "Run actions/checkout@v4": "success",
+        "Run dtolnay/rust-toolchain@1.91.1": "success",
+        "Run cargo fmt --all -- --check": "success",
+        "Run cargo clippy --locked --workspace --all-targets -- -D warnings": "success",
+        "Run cargo test --locked --workspace": "success",
+        "Run cargo build --locked --workspace": "success",
+        "Run cargo build --locked --release --workspace": "success",
+        "Post Run actions/checkout@v4": "success",
+        "Complete job": "success"
+      }
+    }
+  },
+  "log_sha256": "713626860d8f8f6649cda0b28e45968ea15d1c5ff220eb1a8bf225bd373cd27d",
+  "scope": "Diagnostic Source1 fixes; actual local default release failed remains open shared runtime availability, no native16 credit"
+}

@@ -13,14 +13,14 @@
           "severity": "Medium",
           "claim": "The existing Issue46 retained-writer test lost its owned-inspector reap assertion. The diff replaced `inspector.cleanup().unwrap()` with `cleanup_failure(...)`, which discards the cleanup result.",
           "repository_verified": true,
-          "disposition": "Verified narrow correction committed555098d; affected controls and delta mutations completed; immutable own-session Source2 re-review pending"
+          "disposition": "Verified narrow correction at555098d; affected controls/delta mutants verified; own-session Source2 independently confirmed fixed atd930b5a, no C/H/M"
         },
         {
           "id": "I60-SR-02",
           "severity": "Medium",
           "claim": "The Generic and Grok sinks are accessible through existing macOS plan fixtures, but no test asserts fact transport to them, and no supplied artifact discloses them as unexercised.",
           "repository_verified": true,
-          "disposition": "Verified narrow correction committed555098d; affected controls and delta mutations completed; immutable own-session Source2 re-review pending",
+          "disposition": "Verified narrow correction at555098d; affected controls/delta mutants verified; own-session Source2 independently confirmed fixed atd930b5a, no C/H/M",
           "qualification": "Coverage gap verified; existing Grok predispatch/unowned-read primary result errors mask later cleanup fact text by unchanged priority. New completed-success synthetic turn targets the reachable cleanup-selected diagnostic; reconciliation transport remains source-only."
         },
         {
@@ -28,42 +28,42 @@
           "severity": "Low",
           "claim": "The Allocation injection cases assert KillThenReaped, but scheduling can let observe() reap the child before the injected allocation read. The assertion depends on timing.",
           "repository_verified": true,
-          "disposition": "Verified narrow correction committed555098d; affected controls and delta mutations completed; immutable own-session Source2 re-review pending"
+          "disposition": "Verified narrow correction at555098d; affected controls/delta mutants verified; own-session Source2 independently confirmed fixed atd930b5a, no C/H/M"
         },
         {
           "id": "I60-SR-04",
           "severity": "Low",
           "claim": "Clock::Open, and non-target Clock::Expire checks, remove the only bound on the real child/pipe loop. Unit tests can therefore stall indefinitely on the known macOS pipe-inheritance race.",
           "repository_verified": true,
-          "disposition": "Verified narrow correction committed555098d; affected controls and delta mutations completed; immutable own-session Source2 re-review pending"
+          "disposition": "Verified narrow correction at555098d; affected controls/delta mutants verified; own-session Source2 independently confirmed fixed atd930b5a, no C/H/M"
         },
         {
           "id": "I60-SR-05",
           "severity": "Low",
           "claim": "An Interrupted read is counted as an invoked read but leaves EOF at not_observed. A WouldBlock read sets pending. This is inconsistent with the design's 'pending after a non-EOF read'.",
           "repository_verified": true,
-          "disposition": "Verified narrow correction committed555098d; affected controls and delta mutations completed; immutable own-session Source2 re-review pending"
+          "disposition": "Verified narrow correction at555098d; affected controls/delta mutants verified; own-session Source2 independently confirmed fixed atd930b5a, no C/H/M"
         },
         {
           "id": "I60-SR-06",
           "severity": "Low",
           "claim": "The comment claims the non-framing formatter arms are exercised with maximum numeric fields, but they use a fresh zeroed Collector and only Site::Endpoint.",
           "repository_verified": true,
-          "disposition": "Verified narrow correction committed555098d; affected controls and delta mutations completed; immutable own-session Source2 re-review pending"
+          "disposition": "Verified narrow correction at555098d; affected controls/delta mutants verified; own-session Source2 independently confirmed fixed atd930b5a, no C/H/M"
         },
         {
           "id": "I60-SR-07",
           "severity": "Low",
           "claim": "The requirements status line is stale: it still says 'Design1 candidate; no design/source approval or implementation'.",
           "repository_verified": true,
-          "disposition": "Verified narrow correction committed555098d; affected controls and delta mutations completed; immutable own-session Source2 re-review pending"
+          "disposition": "Verified narrow correction at555098d; affected controls/delta mutants verified; own-session Source2 independently confirmed fixed atd930b5a, no C/H/M"
         },
         {
           "id": "I60-SR-08",
           "severity": "Low",
           "claim": "The Cleanup, Kill and StreamKind vocabularies omit the 'unavailable' members listed in the requirements and design. Unattached default snapshots render stream=none next to site=unavailable.",
           "repository_verified": true,
-          "disposition": "Verified narrow correction committed555098d; affected controls and delta mutations completed; immutable own-session Source2 re-review pending"
+          "disposition": "Verified narrow correction at555098d; affected controls/delta mutants verified; own-session Source2 independently confirmed fixed atd930b5a, no C/H/M"
         }
       ]
     },
@@ -79,21 +79,21 @@
           "severity": "Low",
           "claim": "The allocation-injection cases assert Cleanup::KillThenReaped and a requested kill, but that outcome depends on scheduling rather than the seam.",
           "repository_verified": true,
-          "disposition": "Verified narrow correction committed555098d; affected controls and delta mutations completed; immutable own-session Source2 re-review pending"
+          "disposition": "Verified narrow correction at555098d; affected controls/delta mutants verified; own-session Source2 independently confirmed fixed atd930b5a, no C/H/M"
         },
         {
           "id": "L2",
           "severity": "Low",
           "claim": "Open-clock and single-site Expire-clock unit tests have no real-time bound and busy-spin once 250ms of real time has passed. A delayed child or an inherited pipe writer turns them into CPU-spinning hangs rather than bounded failures.",
           "repository_verified": true,
-          "disposition": "Verified narrow correction committed555098d; affected controls and delta mutations completed; immutable own-session Source2 re-review pending"
+          "disposition": "Verified narrow correction at555098d; affected controls/delta mutants verified; own-session Source2 independently confirmed fixed atd930b5a, no C/H/M"
         },
         {
           "id": "L3",
           "severity": "Low",
           "claim": "Fact rendering at the Generic and Grok sinks is executed but neither asserted nor disclosed in the committed verification and docs, although the requirement says to reach those sinks where accessible and disclose what is left unexercised.",
           "repository_verified": true,
-          "disposition": "Verified narrow correction committed555098d; affected controls and delta mutations completed; immutable own-session Source2 re-review pending",
+          "disposition": "Verified narrow correction at555098d; affected controls/delta mutants verified; own-session Source2 independently confirmed fixed atd930b5a, no C/H/M",
           "qualification": "Coverage gap verified; existing Grok predispatch/unowned-read primary result errors mask later cleanup fact text by unchanged priority. New completed-success synthetic turn targets the reachable cleanup-selected diagnostic; reconciliation transport remains source-only."
         },
         {
@@ -101,14 +101,14 @@
           "severity": "Low",
           "claim": "The existing 'empty' and 'partial' substring assertions for \"incomplete\" now pass on the appended fact tokens even if the human prefix were wrong.",
           "repository_verified": true,
-          "disposition": "Verified narrow correction committed555098d; affected controls and delta mutations completed; immutable own-session Source2 re-review pending"
+          "disposition": "Verified narrow correction at555098d; affected controls/delta mutants verified; own-session Source2 independently confirmed fixed atd930b5a, no C/H/M"
         },
         {
           "id": "L5",
           "severity": "Low",
           "claim": "The requirements status line is stale, and the master doc does not record a caller-visible contract change at wrapped inspect errors.",
           "repository_verified": true,
-          "disposition": "Verified narrow correction committed555098d; affected controls and delta mutations completed; immutable own-session Source2 re-review pending"
+          "disposition": "Verified narrow correction at555098d; affected controls/delta mutants verified; own-session Source2 independently confirmed fixed atd930b5a, no C/H/M"
         }
       ]
     }

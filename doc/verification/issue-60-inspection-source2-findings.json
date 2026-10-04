@@ -1,0 +1,71 @@
+{
+  "scope": "Two independent own-session Source2 atd930b5a approved diagnostic correctness; 3 Low disclosure corrections; local release failure remains explicit separate gate",
+  "reviews": [
+    {
+      "review": "facts",
+      "head": "d930b5abc93f711dd6b6ffa73ef3661a67574941",
+      "verdict": "approve",
+      "cleanup_verified": true,
+      "raw_result_sha256": "01d319ee35c74712e8b4b6fe1244fa5321d92f06d7caca805116812c8b701563",
+      "meter_scope": "raw_native_resumed_session_fields_unverified_operation_inventory",
+      "findings": [
+        {
+          "id": "I60-SR2-01",
+          "severity": "Low",
+          "file": "crates/rrx/src/adapter/inspection.rs",
+          "line": 267,
+          "claim": "Several counter and EOF facts have no compiled assertion that would fail if they were omitted. That includes the new drain-site wiring of interrupted_read.",
+          "evidence": "The only Interrupted test is unit_interrupted_read_result_is_pending_and_counter_saturates (diagnostic_tests.rs:589-601), which calls the helper directly. Deleting `s.interrupted_read()` at inspection.rs:268-270 fails no test.\nSimilarly, no test asserts a positive would_block count (260-264) or status.pending/interrupted counts (75-82). The invariants `calls > would_block+interrupted` (diagnostic_tests.rs:62) and `reads >= wb+int+eof` (inspection.rs:1196) still pass when an increment is removed.\nPending stderr is never asserted, although design:232-233 claims real fixtures cover pending stdout/stderr.",
+          "fix": "Add deterministic unit/seam assertions, labelled as unit credit:\n- an owned pipe with its writer retained, giving one WouldBlock with `would_block==1` and `eof=Pending` for each stream;\n- an `exec /bin/sleep 30` child with Clock::Expire(AfterStatusDeadline), giving `status.pending==1`;\n- a one-shot Interrupted read-result seam proving drain-site wiring.\nOr record these as residual unit gaps.",
+          "repository_verified": true,
+          "disposition": "Precise residual unit/sink-coverage disclosure only; no production/test/requirement authority change; scoped own-session docs delta review pending"
+        },
+        {
+          "id": "I60-SR2-02",
+          "severity": "Low",
+          "file": "doc/design/issue-60-inspection-design.md",
+          "line": 222,
+          "claim": "The sink-coverage disclosure names only Grok reconciliation_error as unasserted. Two other inventoried bounded-Git routes also have no fact-transport assertion and are not named.",
+          "evidence": "Requirements:140-144 inventory Generic/Grok ownership/index bounded-Git error propagation, and design:148-152 lists Generic Git preflight and Grok ownership/index Git paths.\nThe plan reaches only post-spawn native children (adapter.rs:650-653) and Context. Neither Generic preflight bounded Git (\u2192 launch_failure.reason / failure) nor Grok pre-spawn/in-session-binding ownership Git (\u2192 diagnostic / status.failure) is exercised with a fact assertion. The local release failure shows the Grok pre-spawn route carrying facts naturally, but that is not an asserted fixture.\nThe master doc says only 'No universal sink coverage' (agent-adapter.md:315). The composed pieces are covered separately (bounded-Git transport in Context, sink forwarding in Generic/Grok), so the risk is low.",
+          "fix": "Name Generic preflight Git and Grok pre-spawn/binding ownership Git explicitly as source-forwarding-only, unasserted routes, alongside reconciliation_error.",
+          "repository_verified": true,
+          "disposition": "Precise residual unit/sink-coverage disclosure only; no production/test/requirement authority change; scoped own-session docs delta review pending"
+        }
+      ],
+      "launch_time_blockers": [
+        "Full default RELEASE test run at 555098d FAILED: grok native_execute_edits_only_owned_files_and_preserves_actual_exit (grok.rs:64, Lost vs Exited), pre-spawn inspection deadline_loop_entry with stdout EOF pending. Later release targets and doctests were not executed. This red must remain evidence; it is an open required gate per requirements:193-196, with no rerun, relaxation or inferred cause.",
+        "Final public both-OS CI on the exact current head d930b5a (or its successor) is pending; CI 37227213174 measured 03cd688, not this head.",
+        "The full Issue60 runtime availability, reader/pool/driver work, frozen RED51 and native16 remain explicitly open outside this diagnostic component."
+      ]
+    },
+    {
+      "review": "authority",
+      "head": "d930b5abc93f711dd6b6ffa73ef3661a67574941",
+      "verdict": "approve",
+      "cleanup_verified": true,
+      "raw_result_sha256": "a834c82302df95984d2fb380c590815e6c0cc4ece68dd8d7acb4194b0b86fe9d",
+      "meter_scope": "raw_native_resumed_session_fields_unverified_operation_inventory",
+      "findings": [
+        {
+          "id": "L1",
+          "severity": "Low",
+          "file": "doc/design/master/agent-adapter.md",
+          "line": 312,
+          "claim": "The sink-coverage disclosure lists the asserted sinks and reconciliation_error, but does not name the other forwarding routes that stay unasserted. They are covered only by the generic phrase 'No universal sink coverage'.",
+          "evidence": "Requirement 5 (requirements:99-101) and design 148-152 inventory several routes that remain execution- or source-only:\n- Generic/Grok host-Git preflight and ownership/index Git errors. The test plan seam installs only on the native child ProcessGroup (adapter.rs:652; Grok's native child), and Generic preflight forwards through audit_launch_failure(..., &e.message) at adapter.rs:636.\n- The Grok unknown-dispatch wrapper (grok/mod.rs:1261-1271) when its selected diagnostic is the cleanup error. That happens when result is Ok but dispatched && !native_outcome, the path whose fallback is 'stop requested'.\n\nThe existing dispatched-unknown fixture exercises the wrapper only with the masking unowned-read primary error (receipt_tests.rs:341-347). The incidental release-run facts on the Grok pre-spawn route are an uncontrolled failure observation, not an assertion.",
+          "fix": "Extend master line 312-315 and the design disclosure (222-230) to state that these routes are unchanged string forwarding with no fact-transport assertion in this component. These are the host-Git preflight/ownership/index routes without a plan seam, and the unknown-dispatch wrapper's cleanup-selected form.",
+          "repository_verified": true,
+          "disposition": "Precise residual unit/sink-coverage disclosure only; no production/test/requirement authority change; scoped own-session docs delta review pending"
+        }
+      ],
+      "launch_time_blockers": [
+        "GATE (not a scoped source defect): the full DEFAULT RELEASE run at 555098d exited 101. tests/grok.rs native_execute_edits_only_owned_files_and_preserves_actual_exit failed (Lost vs Exited) on the pre-spawn real-inspector route: deadline_loop_entry, inspector child exit success, stdout EOF pending. Later targets and doctests were not executed. It must stay recorded as FAILED and incomplete, not passed, with no same-head rerun and no relaxation; its disposition under the required-gate rule needs an explicit decision.",
+        "GATE: final both-OS public CI on the exact current head d930b5a (not 555098d or 03cd688) is still pending. Any red required step remains a merge blocker. The local affected/debug evidence is at 555098d, so CI must confirm the published head."
+      ]
+    }
+  ],
+  "blocker_disposition": {
+    "current_ci": "CI37230220373 later completed every required step bothOSsuccess, actual3969a84f parents054+d930 tree19f4cf=trigger; launch-time pending CI is closed by actual evidence",
+    "release": "555 full default releaseFAILED retained; no rerun or acceptance-waiver; explicit partial component gate disposition pending, runtime/full60 availability remains open"
+  }
+}

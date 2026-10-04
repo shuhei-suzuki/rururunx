@@ -298,3 +298,27 @@ target-group death or repaired availability. The local suite exited101; no same-
 rerun, default-concurrency change, deadline relaxation or sticky-Unknown reset.
 This red is retained alongside every old red and frozen Issue51; full60/runtime
 availability/native16 remain OPEN. Source2 and final required both-OS CI pending.
+
+
+## Source2 outcomes and verified disclosure precision
+
+Both own-session independent Source2 reviews atd930b5a APPROVED, no C/H/M; actual
+owned cleanup verified. [Raw result hashes/dispositions](issue-60-inspection-source2-findings.json)
+record3 Low findings. Source1 fixes were independently confirmed. Remaining verified
+Low corrections are documentation only: Generic preflight bounded-Git and Grok
+pre-spawn/binding ownership/index Git, reconciliation host-Git and cleanup-selected
+unknown-dispatch wrapper are unasserted source-forwarding routes. Incidental release
+pre-spawn facts are uncontrolled observation, not assertion coverage. Positive
+WouldBlock/status pending/interrupted counts, pending-stderr and Interrupted drain
+wiring are residual unit gaps; the helper test is prepared-result credit only.
+Conditional pending-stdout assertion and count invariants do not imply universal
+increment/wiring omission kills. No requirement authority, Rust/tests or production
+behavior changed in this disclosure delta. Scoped own-session docs re-review pending.
+
+[Source2 public CI37230220373](issue-60-inspection-source2-ci.json): every required
+step Linux/macOS SUCCESS; actual3969a84f parents054+d930 tree19f4cf=trigger. This
+closes launch-time pending CI only. CI has default debug tests and release build,
+no release-test step.555 local full DEFAULT RELEASE FAILED and later release targets/
+doctests were not executed; no subsequent rerun or cause/availability claim. Review
+source approvals do not turn that failure into pass. Partial diagnostic gate
+disposition remains explicit; full60, frozen RED51 and native16 stay OPEN.

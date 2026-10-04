@@ -306,13 +306,20 @@ have two narrowed approvals; [component design](../issue-60-inspection-design.md
 two independent Design2 approvals. The diagnostic-only implementation now attaches
 finite value-free site/stream/EOF/status/cleanup facts at common inspector error exits,
 preserving selected argv/env,250ms observation, Unknown and original authority.
-Source1 corrections and independent source gates are pending; no availability claim.
+Source2 twice approved scoped source with no C/H/M; final gates remain pending.
+Local release555 FAILED remains open shared availability evidence, not repaired.
 Wrapped inspector syscall errors now render static site text plus facts, preserve kind
 and have raw_os_error()=None. Inner Complete/Stream/validate and valid-live resolver
 PERM retain raw values. Fact assertions target actual Context, Generic terminal/
 launch-failure audit, and Grok completed-turn cleanup diagnostic/runtime failure.
-Grok earlier primary errors still mask cleanup text; its reconciliation_error host-Git
-fact transport remains unasserted without a stage seam. No universal sink coverage.
+Grok earlier primary errors still mask cleanup text. Generic preflight bounded-Git,
+Grok pre-spawn/binding ownership/index Git, reconciliation_error host-Git and the
+unknown-dispatch wrapper's cleanup-selected form remain source-forwarding-only,
+unasserted routes without a stage seam. Incidental release555 pre-spawn failure facts
+are uncontrolled observation, not fixture assertion. No universal sink/counter
+coverage: positive WouldBlock/status pending/interrupted counts, pending stderr and
+Interrupted drain-site wiring have residual unit gaps; helper ISR test is prepared
+result credit only.
 Reader/driver retention and every existing Drop/reap gap remain separate/open. The
 Grok receipt below stays unclassified; facts cannot grant cleanup or alter clean.
 
