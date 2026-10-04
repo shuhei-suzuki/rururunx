@@ -318,7 +318,7 @@ becomes one. Align this contract with #19 before joint source acceptance.
 | --- | --- |
 | Claude f9b671f explicit permission reply :1639/:1647/:1653 | Write a separate bounded recovery.operation_intent journal, retaining pending native request/operation digest and actual ALLOW/DENY fact. ALLOW keeps commit_current/NativeCAS with full current scope and lock fences before wire. DENY keeps own-Session CAS and existing activity/worktree constraints through the explicitly allowed Acked historical observation outcome, without a raw parent-version CAS or new consumption. |
 | Claude automatic DENY :1496/:1513, pending/cancel :1504/:1531 | Move all decision facts away from dispatch_intent. Exact pending request publication/removal and WaitingApproval-to-Running observation keep actor/input/consumed pair unchanged and use the historical observation mode. Broker-disabled/capacity denial remains durable before wire; failed publication stops without a phantom response. |
-| Claude terminal transport :411/:1696 | terminal_start/terminal_input hints have a distinct recovery.transport_intent journal. They cannot fabricate submission/consumption of the PreparedInput, overwrite a prior consumed DTO or confer typed Workflow admission. Workflow is NonInteractive; preserving native interactive controls does not promise typed prepared delivery through a terminal. |
+| Claude terminal transport :411/:1696 | Protected Tasks reject Interactive/PTY startup and terminal_input before reservation, Starting publication, spawn or terminal bytes. Do not allocate a typed phase merely to reject later; pending Waiting states grant no bypass. Outside protected Tasks, transport facts may use a separate bounded recovery.transport_intent journal, without fabricating prepared input consumption or typed Workflow authority. Workflow is NonInteractive. |
 | Codex 6749505 answer_approval :2020–2062 | The actual code does not overwrite dispatch_intent. Its separate codex.approval.reply_intent audit precedes reply: Approve uses audit_if_current then put_session_if_current/NativeCAS; Decline uses audit then unchanged own-Session put_session/historical observation. Post-reply removal of the native in-memory pending request and Running publication use the Acked historical observation outcome with the consumed pair intact. Preserve existing audit/wire ordering; do not invent a new consumed intent. |
 | Grok 65aa940 callback :804–927 and prompt intent :1041 | Callback ownership/FS checks and grok.fs_observed audit remain separate from input consumption. Reject-only native permission callbacks confer no grant. The input intent at prompt dispatch becomes the canonical DTO during #19 migration; callbacks cannot replace it. Preserve existing Actor::owner before every side effect/result. |
 
@@ -350,6 +350,11 @@ no-wire behavior. Codex Approve/Decline and post-reply Running retain the exact
 consumed UUID/pins; Grok callback/result retains its consumed proof. Kill an
 operation-overwrites-consumed-key mutant at the actual native reply plus #19
 closure consumer, and a DENY-through-parent-CAS mutant at the actual denial wire.
+Exercise actual Claude Interactive startup and terminal_input entry points on a
+protected Task: refusal leaves no new reservation/Starting row/spawn or wire,
+including a pending Waiting state. Kill the omitted-protected-mode guard at these
+actual consumers; a Workflow-only NonInteractive setting is not coverage. These
+requirements align with #19 Design15; neither source gate is complete.
 No current production caller invokes step outside library tests at this baseline.
 Scheduler/Goal/CLI integrations must surface bounded configuration errors from
 pre-reservation Err and avoid hot retries; they cannot synthesize Failed, release

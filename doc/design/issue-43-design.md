@@ -646,6 +646,9 @@ Codex pre/postreply writes and Grok callback/input publications, with separate
 NativeCAS versus Acked/ConsumedHistorical modes. Operation observation cannot
 allocate, consume or overwrite private input authority. Existing ALLOW fences,
 DENY own-Session/state constraints and Lost absorption remain mandatory.
+Protected Tasks reject Interactive/PTY startup and terminal input before any
+reservation, Starting row, spawn or terminal bytes; NonInteractive Workflow
+configuration alone does not protect the direct native adapter entry points.
 
 Joint #19 publication alignment and independent Design4 review are pending;
 source remains absent. Positive post-binding decision and later typed closure

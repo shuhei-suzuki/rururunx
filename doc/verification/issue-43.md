@@ -63,3 +63,10 @@ callbacks use separate audit/FS evidence. Design4 inventories all these writers
 and journal consumers, preserves canonical consumption and clarifies denial
 version currency versus existing state constraints. Joint #19 alignment and
 independent delta approval remain pending. No production implementation is claimed.
+
+Before Design4 review, verified #19 Design14/15 clarification is incorporated:
+protected Claude Interactive/PTY startup and terminal_input are unsupported and
+reject before reservation/Starting/spawn/bytes, including pending Waiting states.
+Actual adapter-entry controls and a causal mode-guard mutant are required; no
+terminal journal is treated as typed prepared consumption. Public Design15
+de69e362f0dfec2e17e2d3a3bc9b3f654e230898 remains independently under review.
