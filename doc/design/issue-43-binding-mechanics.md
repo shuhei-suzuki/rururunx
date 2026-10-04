@@ -1,6 +1,6 @@
 # Issue 43 design: record-only native Session binding
 
-Status: proposed Design9 from approved Requirements9 at91d4f34; independent STRICT
+Status: proposed Design10 from approved Requirements9 at91d4f34; independent STRICT
 design/source and actual composed producer/native/recovery gates pending. No implementation.
 Requirements: [issue-43-requirements.md](../requirements/issue-43-requirements.md).
 This supplements [the shared Issue43 design](issue-43-design.md). Both describe
@@ -89,41 +89,55 @@ dispatch claim and any durable Session intact. Do not call `fail`, retry
 start, stop/adopt a Session, release the claim, or publish completion in that error
 path. Observer polling remains passive under #41; #13/#14 own reconciliation.
 
-## One Immediate transaction
+## Outside-lock body plan and one Immediate publication transaction
 
-The method is crate-private and performs no await, filesystem access, child launch
-or native wire operation while holding Store. SQLite Immediate excludes other
-writers across connections. All checks and the one Workflow/audit write use its
-Transaction; a failed check, write or audit rolls back everything. Update the
-caller's mutable Record only after successful commit.
+The method is crate-private. Before holding SharedStore, obtain a coherent exact
+version-pinned Store read snapshot, derive the full genuine ledger proof, decode and
+validate the complete current Workflow and relevant context, construct the exact
+one-field candidate and canonical before/after hashes, and seal this plan in a
+Store-only nonserializable type. Reject unknown fields and every extra projection.
+The ClosedSettlement candidate ID comes from genuine immutable allocated-owner
+proof; publication independently rechecks that exact owner. No caller hash or
+mutable candidate constructs this plan. A changed W/context/ledger version forces
+outside-lock rederivation of the SAME factual operation, never native redispatch.
+
+Immediate publication performs no await, filesystem access, child launch or native
+wire operation. SQLite excludes other writers across connections. All owner checks
+and the one Workflow/audit write use its Transaction; refusal or failed write rolls
+back everything. The two explicit finite cost classes below apply: compact proof
+and bounded mandatory owner/body validation/write cost. Update the caller's Record
+only after successful commit. Full planned-body construction/semantic validation and
+canonical hashing are outside held Store; bounded SQLite OLD/NEW projection, JSON
+CHECK and body writes remain inside and are measured honestly.
 
 1. Read the immutable private marker frame and its Project, Goal and Task by exact
    IDs. Validate their owning edges, frame versions, Registered Project, active Goal
    and nonterminal Task. Caller snapshots can only cross-check this frame; no
    caller-supplied Task change is admitted. No Project/Goal/Task write follows.
-2. Read the existing Workflow by ID and require frame Workflow-version equality
-   and immutable ID/kind/Scope. Its checked version
-   covers factual timestamps; no caller Record supplies an alternative. Require exactly
-   one Workflow in the Task
-   scope. Decode with existing Workflow validation, check Task workflow/risk,
-   revision and context pointer, active index bounds, current generation, a native
-   Executor/Reviewer phase, Running state, absent Session ID, committed
-   dispatch_started, expected agent, and no completion or finished authority.
-3. Clone the complete previous JSON data and replace exactly
-   `history[active].session_id` with the NormalReturned identity or the genuine
-   ClosedSettlement allocated owner ID derived inside this transaction. Require this Value to equal
-   the internally constructed candidate data. Post-epoch managed bodies reject unknown
-   stored fields before decoding/hashing; complete equality covers EVERY typed field. The caller supplies no mutable candidate or alternate expected tuple.
-   Run the ordinary structural validator on the unchanged previous Workflow and
-   explicit private binding validation on the candidate. The ordinary validator
-   must reject this ID change, so do not introduce a caller-supplied bypass flag.
-   The private validator requires the complete one-field delta and every binding
-   predicate. Do not validate only a subset or round-trip away unknown fields.
+2. Check the exact Workflow ID/kind/Scope/version and latest genuine ledger
+   endpoint against the sealed version-pinned plan. For an original unbound frame,
+   marker W/hash is exact; any permitted predecessor comes only from its complete
+   genuine chain. Require exactly one Workflow in the Task scope using a bounded
+   indexed existence check. The outside-lock validation covers Task workflow/risk,
+   revision/context, active index/generation, native Executor/Reviewer phase, Running,
+   absent Session ID, dispatch_started, expected agent and no completion/finished
+   authority. Mandatory owner rows are current inside Immediate; no stale plan
+   overrides their versions or identity. Same-version raw body change is forbidden
+   by the composed #19 checked-version/projection and no-REPLACE guards.
+3. Stage ONLY the exact prevalidated candidate that changes absent
+   history[active].session_id to the checked NormalReturned identity or genuine
+   ClosedSettlement allocated ID. Complete before/after typed-field comparison,
+   ordinary previous structural validation and private one-field validation occurred
+   outside held Store. Ordinary transition validation still rejects this ID change;
+   no caller bypass flag exists. The protected writer/CHECK validates its prescribed
+   current OLD/NEW projection under the explicit body-cost cap before saving.
 4. Read every scoped WorktreeLock ID/version, sort and compare the complete set
-   to the captured set, rejecting additions, removal and version change. Read
-   the latest ContextVersion in the exact Task scope. Require it to be the
-   Task/attempt/Workflow context_version and run `validate_context` against the
-   candidate. This preserves source hashes, generation, phase and revision. It
+   to the captured set, rejecting additions, removal and version change. Read the exact launch/latest
+   ContextVersion identities needed by this port
+   (at most two); check their versions against the validated plan and require the
+   Task/attempt/Workflow context pointer to match. `validate_context` against the
+   complete candidate is performed outside held Store. This preserves source hashes,
+   generation, phase and revision. It
    neither inserts ContextVersion nor performs new-operation source admission.
 5. Read the returned ID's durable Session Record and enforce record/payload
    ID, exact Scope, kind and immutable actor/provider/role/worktree equality with
@@ -139,15 +153,22 @@ caller's mutable Record only after successful commit.
    identity-checked while Immediate excludes writers. An own-Session CAS race at
    the provider's currency consumer remains separately required; binding may not
    invalidate that consumer by rewriting its Session record.
-6. Inspect scoped Session identities using the latest durable native_ref read in
-   step5 whenever it is Some, including when start returned None. A returned Some
-   must equal that value. Reject another scoped Session with the same provider
-   and UUID, including a live or Lost sibling. Do not use a cross-project UUID
-   search, PID hint, public recovery JSON
-   or UUID equality to acquire ownership. The current Workflow calls fresh
-   `start`, not `resume`; if a future caller reuses a native UUID through a
-   different predecessor Session, a reviewed private resume-lineage port is
-   required before exempting that predecessor. No generic JSON exception.
+6. Use the latest durable native_ref from step5, including a Some published after
+   a None return; a returned Some must equal it. Preserve Requirements9's negative
+   ambiguity rule for EVERY distinct scoped Session with the same provider/UUID,
+   including Lost and factual historical unallocated Sessions. A bounded indexed
+   factual identity lookup (exact scope/provider/validated native_ref/distinct ID),
+   ≤2 compact matching rows, proves a conflict without reading full historical
+   bodies. This lookup is NOT a uniqueness constraint and cannot mint a private
+   managed owner. Its exact generated/typed lexical identity columns must cover
+   every valid persisted Session identity, with all actual writer/epoch/migration
+   goldens. Invalid own Session rejects independently. A separately protected #19
+   managed-owner index and actual provider registry still prove positive ownership;
+   an unallocated factual UUID never creates either. D35's owner-only index is not
+   by itself sufficient for this broader negative rule; this additional factual
+   lookup is an explicit co-integration requirement, not an existing API claim.
+   No cross-Project UUID/PID search or truncated-list absence proof. Fresh start has
+   no predecessor exemption; future resume needs a reviewed private lineage port.
 7. Every fresh Workflow native Executor/Reviewer binding requires #19's private
    allocation/input-pair predicate in this same transaction. Store derives this
    obligation from durable native phase/scope/context; no caller Option or public
@@ -166,8 +187,9 @@ Sessions for identity ambiguity only; unchanged sibling live/Lost facts neither
 grant ownership nor reject this factual binding merely by being present. New
 operation admission and future closure keep their separate existing guards.
 
-The SQL count and Session scans remain bounded by the owning Task's stored scope;
-they do not scan other Projects. Native inspection/execution/cleanup deadlines are
+Exact-ID and indexed existence queries use the finite manifest below; they never
+scan full historical Session bodies or unrelated Projects. Native inspection/
+execution/cleanup deadlines are
 unchanged; bounded active-driver wake is scheduling only. The binding/diagnostic
 ports join the composed writer epoch and have no independent schema history.
 
@@ -459,7 +481,7 @@ Reviewer frame, or the actual native-entry guard seam with retained owned termin
 Startup rejection cannot itself kill an omitted terminal_input guard. The source
 review must resolve the reachable construction rather than count setup failures.
 
-## Design9: one immutable marker frame and receipt-sourced route
+## Design10: one immutable marker frame and receipt-sourced route
 
 Approved Requirements9 is authoritative. The marker transaction itself constructs
 and privately persists `DispatchBindingFrame` in immutable #19 native-operation
@@ -517,7 +539,7 @@ report a SAME private bound operation fact, never infer it from a matching publi
 AlreadyBound for that SAME genuine private operation returns Started to a losing
 normal invocation. No retry, fail, release or native dispatch follows a lost race.
 
-## Design9: managed launch endings and durable readiness
+## Design10: managed launch endings and durable readiness
 
 Introduce private Engine `reconcile_settled_native_binding` called ONLY by the
 actual #23 authoritative active Task driver and that managed invocation's post-marker
@@ -611,7 +633,7 @@ success. Restart requires authentic durable frame/current-success evidence AND a
 Actual #19/#23/#43/#14 producer ancestry co-integration is the merge vehicle; no
 completed-merge cycle or SQL-seeded/direct-binder-only acceptance.
 
-## Design9: separate record-only bound-live diagnostics
+## Design10: separate record-only bound-live diagnostics
 
 Current d87faec bound `poll` writes Task through refresh_owners + ordinary persist on
 adapter.status error and validate_persisted_status mismatch. Replace ONLY those arms
@@ -646,7 +668,7 @@ with private settlement; authorized cancel/fail/lifecycle revoke authority and r
 ownership; other Source/retry/recovery transitions retain separate reviewed gates.
 Unclassified live bookkeeping cannot claim native-currency preservation.
 
-## Design9: extended actual consumer controls and mutations
+## Design10: extended actual consumer controls and mutations
 
 Keep all prior concrete provider/ordinary-access/private publication matrices.
 Add genuine managed controls: normal and late paths use exact marker frame/full locks;
@@ -677,7 +699,7 @@ controls remain mandatory; synthetic callback/SQL/direct binder alone does not c
 No implementation/native/profile acceptance is claimed by these design documents.
 
 
-## Design9: additional genuine consumer controls
+## Design10: additional genuine consumer controls
 
 Run more than4096 sequential normal dispatch/bind/closure cycles without history slot
 leak; Held Project A does not block B. Two-connection/cross-runtime claim races are atomic inside41reserve: each result
@@ -704,7 +726,7 @@ All controls require actual co-integrated19/23/43/14 producers; isolated SQL/dir
 binder tests and this proposed design do not qualify production/native acceptance.
 
 
-## Design9: remaining liveness and perturbation controls
+## Design10: remaining liveness and perturbation controls
 
 More than4096 sequential genuine pre-marker preparation errors with41release AND
 source invalidations must leave a later native dispatch admitted. Real crashes and
@@ -728,9 +750,10 @@ the authentic operation/binder/native consumer supplies all positive prerequisit
 Kill lock-check omission at that consumer; public SQL seeding is still not an owner.
 
 
-## Design9: bounded factual Workflow successor proof
+## Design10: bounded factual Workflow successor proof
 
-Co-integrate the proposed #19 Design33 contract at public cac5618. That dependency
+Co-integrate the proposed #19 Design35 contract at public
+0993d2ec8f03d23ed422b86646741ab06584f8bb. That dependency
 is itself under review, not implemented or source approved. The immutable marker
 anchors complete canonical Workflow body SHA256, planned post-marker W version,
 full P/G/T/context/source/actor/lock frame and operation identity. An unbound first
@@ -744,7 +767,10 @@ is also an append-only factual ledger link: exact scope/operation/attempt, origi
 marker-frame digest, predecessor/successor W versions, COMPLETE predecessor/successor
 Workflow body SHA256 and prior ledger-link digest. First binding starts at the exact
 immutable marker W/hash. Checked consecutive W versions and the complete allowed
-projection are verified before writing; then re-read stored W/body/hash before commit.
+projection and hashes are verified in the outside-lock version-pinned plan.
+Inside publication compare exact current versions/endpoint and guarded OLD/NEW
+projection; do not re-read/re-hash the full W after writing. The checked successor
+and same-version body-mutation guards protect the exact planned bytes.
 Binding changes only absent active.session_id to the variant-specific exact private
 allocated identity; diagnostic changes only the allowlisted bounded detail. No extra
 operation/table/count-row update, Task/Session write or default workflow.saved audit.
@@ -799,7 +825,7 @@ storage retry controls remain mandatory. These contracts require independent rev
 actual #19/#23/#41/#43/#14 integration and native/source gates; none exists in main.
 
 
-## Design9: complete open-phase Workflow writer classification
+## Design10: complete open-phase Workflow writer classification
 
 Verified current workflow.rs terminate(1348–1372) sets terminal_decision and rewrites
 Task/W through TerminalDecision, retaining active. release_terminal_reservation
@@ -815,9 +841,10 @@ put_workflow_transition/put_record_tx call; unknown open-phase writers cannot sh
 | First factual binding | #43 session_bound: ONLY exact absent SessionID; no parent/operation write |
 | Bound live diagnostic | #43 native_diagnostic: ONLY allowlisted active.detail; no parent/operation write |
 | Gate claim | #19/#8 gate_claim: ONLY Evaluating and exact claimed_observations; genuine gate invocation authority |
-| Gate result / Waiting | #19/#8 gate_observed: fuse actual compact claimed outcome + its genuine typed disposition in ONE result transaction. Waiting/known held failure may set exact active Waiting/heldFailed, bounded detail/held_reason; no later ordinary Task/W persist. Passed leaves final success/Task/context changes to genuine atomic phase closure |
+| Gate result / Waiting | #19/#8 gate_observed: fuse actual compact claimed outcome + its genuine typed disposition in ONE result transaction. Waiting/known held failure may set exact active Waiting/heldFailed, bounded detail/held_reason; repeated actual identical outcomes may update ONLY checked occurrence count and last_time of the exact reused compact entry, preserving first_time/identity and counting each actual claim; no later ordinary Task/W persist. Passed leaves final success/Task/context changes to genuine atomic phase closure |
 | Gate hold / clear | #19/#8 gate_hold: ONLY exact active bounded detail/held_reason under actual typed gate policy; same-marker/body successor, no native grant/source/parent refresh |
-| Authorized cancel/fail decision | #19/#8 terminal_decision: ONLY previously absent exact terminal_decision in W, plus separately authorized checked Task lifecycle delta in SAME transaction; no SessionID/outcome/claim removal |
+| Task-terminal cancel/fail_task decision | #19/#8 terminal_decision: ONLY previously absent exact terminal_decision in W, plus separately authorized checked Task lifecycle delta in SAME transaction; no SessionID/outcome/claim removal |
+| Engine::fail | #19 KnownCurrentFailureClosure with genuine current failure/full cleanup, or actual typed failed-gate phase_closed; atomic non-success closure and awaiting_explicit_retry, never terminal_decision or ordinary Task/W persist |
 | Native/phase closure, including TerminalRecovery | #19 phase_closed: actual eligible settled receipt/current typed gate result or separately authorized terminal decision, complete genuine factual prefix, exact final allowed phase/body/Task projection and actual required jobs settled |
 | Escalation/source invalidation/retry/new context | Under #19 own closed-operation rules after actual owned stop→receipt→closure, not ordinary writes into an open phase; #41 pristine pre-marker policy remains separate |
 
@@ -830,7 +857,10 @@ closure. Actual consumers must use this derived factual status while preserving 
 authority. Transport success, public status or ordinary JSON cannot mint a typed gate
 result, lifecycle action or ledger link. Each producer validates its complete exact
 allowed projection before emitting ONE private audit; it replaces generic workflow.saved
-in that transaction rather than adding a second default audit through put_record_tx.
+in that transaction rather than adding a second default audit through put_record_tx. Managed gate
+observation ALSO replaces legacy workflow.gate_observed: exactly ONE private event,
+never a private link plus a legacy event. Historical unmanaged events retain their
+own history/provenance. All consumers must recognize the compiled private kinds.
 
 TerminalDecision checks the genuine prefix/full body BEFORE appending, for BOTH bound
 and unbound attempts. Its actual authorized controller/lifecycle action, current Task
@@ -851,7 +881,7 @@ missing links or grant native inputs under changed owners. Explicit lifecycle re
 must remain available through its trusted existing port; a broken W ledger is never a
 reason to permit fresh input. This is not an exception to native admission currency.
 
-## Design9: finite ledger allowances and compact transactional proof
+## Design10: finite ledger allowances and compact transactional proof
 
 The per-operation256-link policy is explicit: up to99 genuine gate cycles×at most TWO
 links (claim + fused outcome/disposition)=198, binding1, terminal_decision1,
@@ -860,9 +890,17 @@ exact per-class allowances before marker/effects under the existing Workflow quo
 Each actual cycle reserves its pair BEFORE a gate effect. The100th refuses before
 claim/effect with bounded attention; no Failed, native/phase redispatch or budget reset.
 An admitted99th Passed result can always commit and close using reserved headroom.
-Cancel and full TerminalRecovery stay available at exhaustion. Gate hold exhaustion
-coalesces/no-writes with attention, never consumes cancellation/closure slots. Duplicate
-facts no-write. More than64 identical Waiting outcomes followed by Passed fits this
+After99 Waiting cycles, the100th refusal is an explicit cancel-only availability
+limit: trusted Task cancellation then actual full cleanup/TerminalRecovery closes
+once, with zero redispatch. It cannot resume that terminal Task or fabricate Failed.
+Unknown/revoked settlement stays held14. Gate hold/clear8 is FOUR pairs; reserve
+the clear slot whenever a hold is written. An exhausted required hold/clear refuses
+ALL further gate claims and success closure with attention; mandatory facts cannot
+be silently omitted. Only trusted cancellation and genuine full TerminalRecovery
+remain available, never spend their reserved slots on optional facts. Duplicate
+facts no-write. Genuine phase_closed atomically releases ONLY unspent ledger reserve;
+spent retained bytes stay charged as used. Held operations keep their reservation.
+More than64 identical Waiting outcomes followed by Passed fits this
 allowance and retains exact coalesced repeat count; coalescing does not erase ledger
 spend or native call count. Unknown effect stays retained; finite policy is no timing
 guarantee and does not authorize a Human-only policy change.
@@ -870,19 +908,53 @@ guarantee and does not authorize a Human-only policy change.
 Derive/verify the COMPLETE ≤256-link,≤1-MiB append-only chain in a coherent read
 snapshot OUTSIDE held SharedStore/write transaction into a Store-only nonserializable
 sealed factual proof. In the Immediate transaction compare exact immutable marker,
-operation/attempt/frame, current W version/COMPLETE body hash and exact latest genuine
-link ID/sequence/digest. Generated indexed audit keys, uniqueness and reserved append-
+operation/attempt/frame, current W version and exact latest genuine link ID/sequence/
+digest against the sealed COMPLETE body hashes. Do not recompute W hashes inside;
+the actual same-version mutation and existing-key guards protect that currency. Generated indexed audit keys, uniqueness and reserved append-
 only UPDATE/DELETE refusal preserve the verified immutable prefix; no arbitrary audit
 tail/current row self-match suffices. Concurrent W/link/head mutation makes publication
 CAS refuse. The proof cannot be minted by a caller hash or receipt JSON. No new binder
-operation/count-row write. Actual compact transaction checks remain bounded to the
-shared #19 ≤128 compact rows/≤512 KiB plus declared scalar guards; do not replay full
-Workflow/native-result/ledger histories while holding SQLite write lock. Full current
-Workflow body hashing/validation uses the genuine version-pinned Store extraction and
-exact publication CAS, not an untrusted claimed hash. Co-integration must implement
-and test the real private proof producer and DB immutability guards, not SQL seeding.
+operation/count-row write. The compact proof class is ≤128 rows,
+≤4096 complete encoded bytes EACH/≤512 KiB,
+including actual certificates/endpoints/scalars. It is NOT the total transactional
+read/write/JSON/CHECK cost or a mutex-time bound. The separate mandatory owner/body
+class below aligns #19 Design35. Each port reads only its needed rows, instruments
+actual bytes/rows/repeated reads/JSON calls, and refuses any unlisted or oversized
+surface. Full ledger extraction/hashing and planned W construction stay outside.
+Own Session/current native_ref is still read INSIDE Immediate: legitimate startup
+advancement must not be rejected by stale returned-Session version CAS.
 
-## Design9: exact diagnostic link fields and new consumer controls
+| Mandatory current owner/body surface | Maximum complete encoded read/write set |
+| --- | --- |
+| Project / Goal / Task | One each,8 MiB EACH; existing actual Goal DAG limits remain |
+| Workflow | One body≤8 MiB; bounded SQLite OLD/NEW projection/CHECK/body-write cost counted |
+| Launch/latest ContextVersion | At most two exact rows≤8 MiB EACH; no historical context scan |
+| Own Session | One≤4 MiB, recovery≤3 MiB/depth32/nodes32768; fresh identity check inside |
+| Exact operation / frozen receipt | One each when applicable≤4 MiB EACH; referenced native result≤1 MiB checked separately |
+| Preparation / admission / phase owner | One each when applicable≤2 MiB EACH; source authority limits unchanged |
+| Consumed dispatch DTO | One≤8192 bytes; no duplicate full native payload |
+| Scalar quota/epoch/request/index metadata | Each≤4096 bytes, charged within compact128-row proof cap |
+| Scoped WorktreeLock set | COMPLETE≤256 rows×16384 bytes=4 MiB; original sorted ID/version set≤64 KiB |
+| Settlement host-effect metadata | Only applicable closure:≤256 admissions×8 KiB+256 outcomes×2 KiB=2.5 MiB; actual ALL workers join outside before closure |
+| Retained physical owner lookup | Only applicable admission: COMPLETE indexed≤4096 scopes×16384 bytes=64 MiB; paths≤4096 bytes, LIMIT4097 overflow refuses before grant; includes Lost/unknown/session-less/Removed/nested/common-Git owners |
+
+Protected physical acquire/close index updates occur in the actual owning transaction;
+no out-of-lock disjointness claim or truncated scan. Binder does not mint a new
+physical owner or perform new admission. No arbitrary source/outcome/blob extraction
+inside admission, and all new bounded writes charge actual128-MiB Workflow quota.
+These simultaneous maxima do not enlarge source-map/model-frame limits. Finite cost
+is not measured latency/availability. Near8-MiB W/4-MiB own Session and256 locks need
+actual instrumented controls; report contention/other-Project publication honestly.
+
+Reserved ledger UPDATE/DELETE refusal plus BEFORE INSERT existing-key rejection for
+ALL reserved operation/sequence/predecessor/audit-ID conflicts, and post-epoch managed
+Workflow Record existing IDs, forbid INSERT OR REPLACE even with recursive_triggers
+OFF. Same-version body mutation refuses through checked-version/projection guards.
+Fresh/migrated DDL goldens and raw SQL controls are required. Without those guards a
+sealed prefix/version-only CAS cannot qualify. Actual co-integration must implement
+the proof producer and guards, never substitute SQL-seeded positive ownership.
+
+## Design10: exact diagnostic link fields and new consumer controls
 
 The native_diagnostic payload is EXACTLY: kind, project_id/goal_id/task_id,
 workflow_id, generation, attempt_index, phase, session_id, private_operation_ref,
@@ -901,9 +973,17 @@ then cancel remains held while actual revocation/stop still works. Omit decision
 accept forged ordinary terminal audit, bypass closure chain and gate-hold Task-rewrite
 mutants independently fail at these genuine consumers. At99-cycle boundary an admitted
 Passed closes;100th refuses before call/claim. More than64 Waiting then Passed succeeds;
-diagnostic/hold exhaustion still permits cancel/full settled closure. Concurrent link/
+diagnostic exhaustion permits genuine success closure; hold exhaustion refuses new
+gates/success but still permits trusted cancel/full settled closure. Four hold/clear
+pairs succeed, ninth required change refuses before effects.99 Waiting→100th refusal
+→trusted cancel→full TerminalRecovery closes once without redispatch. Repeated closed
+operations release unspent quota without leaking reserve; held attempts retain it. Concurrent link/
 body drift between out-of-lock proof extraction and publication refuses unchanged;
-UPDATE/DELETE of reserved links and forged proof constructor fail. Restore exact
+UPDATE/DELETE/REPLACE of reserved links and same-version W/REPLACE controls refuse;
+removed BEFORE INSERT guards fail their actual consumers. Unlisted/full-history
+inside-lock lookup and compact-only measurement mutants fail instrumentation. Forged
+proof construction fails. Full canonical W plan outside, concurrent CAS refusal and
+latest own-Session advancement positive controls preserve startup behavior. Restore exact
 source controls. All #19/#23/#41/#43/#14/#8/#9/#12/#15/#60 producers, native/recovery
 conformance, exact tested source CI and independent source review remain unimplemented
-mandatory gates. This Design9 proposal cannot qualify them.
+mandatory gates. This Design10 proposal cannot qualify them.

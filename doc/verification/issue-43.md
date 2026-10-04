@@ -225,3 +225,15 @@ append-only reserved-link guards inside; actual producer/race controls remain re
 Diagnostic exact fields, unknown-field refusal and current design labels aligned.
 Requirements9 normative clauses unchanged. All source/native/recovery/co-integration
 gates remain unimplemented/pending; Design9 independent review still required.
+
+
+Design9 at1e00920: independent A request_changes1Medium3Low/Bapprove4Low, both actual
+cleanup verified. Current step lists contradicted compact-total cost claims; Design10
+uses explicit separate compact proof and mandatory owner/body cost classes, builds
+full W plan/hash outside, checks current version/private head and latest own Session
+inside, and requires actual indexed ambiguity proof. No stale startup snapshot CAS.
+Hold-clear pair/exhaustion, explicit99Waiting cancel-only exit, unspent quota release,
+BEFORE INSERT REPLACE guards, Engine::fail mapping, repeat projection, ONE managed
+private audit and complete replaced-event consumer inventory are corrected. Aligns
+public unapproved19Design35; no native/source/implementation credit. Requirements9
+unchanged, all actual shared-source/native/recovery gates remain mandatory.

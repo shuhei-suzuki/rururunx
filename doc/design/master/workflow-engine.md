@@ -447,7 +447,7 @@ mutants are required. This port/source is unimplemented, not part of merged #41;
 terminal/authorized lifecycle/unknown recovery transitions retain their own gates.
 
 
-Issue43 proposed Design9 additionally carries one immutable resulting marker frame
+Issue43 proposed Design10 additionally carries one immutable resulting marker frame
 through actual native preparation/consumption/AllowCurrent, derives binding readiness
 from marked/unbound/phase-open private operations, reserves per-Project operation
 capacity atomically inside41reserve and parks only definitive Held observations without repeated binder
@@ -464,26 +464,25 @@ while the genuine invocation retains the same returned identity/frame and owned 
 durable facts. No added native dispatch, owner refresh or new binder write is allowed.
 
 
-Binding and bound-live diagnostics advance Workflow W but never original native grant
-currency. Proposed #43 Design8 aligns #19 Design33's bounded sealed factual successor
-proof: each existing ONE reserved audit contains exact predecessor/successor W versions
-and complete canonical Workflow-body hashes anchored at the immutable marker. Only
-Store-derived genuine private links can qualify a later closure; current-row self-match
-or old original-W equality cannot substitute.256 links×4096 bytes,1 MiB total, with
-mandatory gate/closure headroom reserved before effects and optional diagnostics
-coalesced at exhaustion. No extra binder operation-row/table write or P/G/T/Session/
-lock/source/input refresh. Separate #19/#8 record-only gate claim/observation requires
-its own real gate/result/effect-owner authority and adds no Task bump before closure.
-These source/native/recovery producers remain unimplemented mandatory gates.
+Binding and bound-live diagnostics advance factual Workflow W without renewing
+original native currency. Proposed #43 Design10 aligns unapproved #19 Design35
+at0993d2e: ONE private audit carries the complete canonical factual successor link.
+The exhaustive managed writer table includes dependency-owned gate claim/observation/
+hold, Task-terminal decision and genuine phase closure. Gate observations fuse actual
+compact outcome/repeat-count/last-time and typed Waiting disposition in ONE W-only
+transaction; no extra legacy gate audit or hidden Task version bump.15/23 derive held
+status; Engine::fail instead uses actual non-success closure/awaiting_explicit_retry.
+Cancellation cannot wash raw W drift. Full eligible TerminalRecovery validates the
+same complete genuine chain for bound and unbound attempts and grants nothing.
 
-
-Proposed #43 Design9 adds an exhaustive managed open-phase writer table. Genuine
-#19/#8 TerminalDecision and gate hold/Waiting publication must be private factual
-successors, with separately validated lifecycle/gate authority; terminal release checks
-the same genuine prefix for bound and unbound attempts, never washes raw W drift.
-Gate observed facts and their typed Waiting/held disposition publish in ONE W-only
-transaction; #15/#23 derive held status without a Task version bump before closure.
-Explicit256-link allowances are99claim/result pairs+1bind+1terminal decision+1closure+
-8holds+47diagnostics. Complete ≤1-MiB immutable-chain proof derives outside SharedStore;
-exact compact head/current-body/version CAS and append-only reserved guards qualify
-publication. All actual producers/consumer mutations/native/recovery remain pending.
+The256-link allowance is99claim/result pairs+1bind+1terminal decision+1closure+
+8hold/clear links (four reserved pairs)+47diagnostics. Exhausted mandatory hold refuses
+new gates/success; the100th Waiting cycle refuses before effects with explicit trusted
+cancel-only/full-cleanup exit. Genuine closure releases only unspent ledger reserve.
+Full chain/Workflow plan/hash derives outside held Store; current version/endpoint CAS
+and fresh own-Session identity remain inside. Compact≤128 rows/512 KiB is a proof
+class, separate from bounded mandatory owner/body/SQL validation/write cost; no total
+mutex latency guarantee. Same-version mutation and INSERT OR REPLACE must refuse via
+actual checked-version/projection and BEFORE INSERT existing-key guards. Binder writes
+only W+one link, never parent/Session/operation/lock/native pins. Actual dependency
+producers, consumer mutations, native/restart and exact-source CI remain pending.
