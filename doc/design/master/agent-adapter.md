@@ -462,21 +462,33 @@ published as current. All native/runtime parties need real continuous both-side
 compatibility and already-live peer→Lost protection, preserving four-plus product
 concurrency. These are pending consumer contracts, not available ports.
 
-The proposed Design3 separates freshly revalidated non-executing pre-reservation
+The proposed Design4 separates freshly revalidated non-executing pre-reservation
 readiness from attempt-bound permits. Flags also require the actual callable route
 producer/hold consumers; managed-only readiness cannot advertise legacy start. The
 managed operation/claim/control handoff is synchronous before the observation future
-or any await. A private table stores live/held conflict extents with guaranteed
-disjoint quotas; unknown cleanup retains anchors. Genuine complete cleanup may
+or any await; synchronous handoff performs no filesystem I/O, only in-memory epoch/
+claim/exclusion checks. Metadata/env identity checks are bounded async before reserve
+and inside the retained task. Remove the executing codex --version probe; conformance-
+bound nonexec metadata supplies that identity. One runtime table across adapter aliases
+stores physical extents separately from actual exclusion edges, with fixed activation
+caps and guaranteed owner-partition quotas; unknown cleanup retains anchors. Genuine complete cleanup may
 retire a resource anchor while the durable absorbing Lost hold remains. Session-less
 owners retain an operation-keyed private observation/cleanup route, never PID adoption.
-Admission checks overlapping held/unknown and unmatrixed live extents before marker.
+Refusal-only held entries survive retirement/restart without reconstructing owners.
+Admission rejects actual exclusion/unknown edges before marker, not every physical
+common-dir/HOME overlap. Proven compatible live peers retain their own quota. Actual
+old-instance exclusion+epoch permits an owned fence while holds remain; full proof
+precedes adoption through pending14/58/60, never record/PID reconstruction.
 
 Adapter Git/helper execution is explicitly the pending #60 route with sealed job
-enrollment, bound executable/config closure and an actual settlement cleanup conjunct
+enrollment, non-transferable parent/epoch child bindings, bound executable/config
+closure and its own actual job settlement feeding a native cleanup conjunct
 at native completion. Checkpoint-success needs separately composed #19 input-update
 publication plus #60 workload cleanup; refusal/terminal labels cannot mint it.
-Preparation/discovery/grant/inspection spawning requires genuine enrollment. Current
+Preparation/discovery/grant/inspection spawning requires genuine enrollment and a
+mechanical spawn-inventory guard. Private cfg(test) route/native/job issuers preserve
+actual F4 consumer coverage without production bypass; ordinary library emptiness
+and diagnostic-pinned privacy plus production-refusal mutants are separate gates. Current
 source authority is `cab665d56f7032f086946c1acfce448f5b9d076d`, unchanged by these docs.
 Existing generic terminal-label and Executor-only role filters still bypass
 Reviewer/Consultant Lost until actual19/58/60/14 shared hold consumers compose.
