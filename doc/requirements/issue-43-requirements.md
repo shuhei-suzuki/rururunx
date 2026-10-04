@@ -37,6 +37,9 @@ retain their own acceptance criteria.
    No PID/UUID hint grants process ownership or transport completion. Typed input's
    private allocation remains mandatory even when a public identity matches.
    Lost, foreign, malformed, ambiguous or missing Sessions cannot bind.
+   Ambiguity includes a returned ID missing its Session record, conflicting immutable
+   actor/scope identity, or a duplicate provider/native UUID on a different Session
+   within the owning scope. No cross-project native UUID lookup grants ownership.
 4. Preserve the original reservation after binding failure, including a still-running
    Session. No release, retry, ownership transfer, native turn or fabricated completion
    follows a failed binding transaction.
@@ -76,18 +79,32 @@ from fake-protocol controls and avoid claiming real model acceptance from a fake
 
 Inventory the exact role/consumer at the immutable integrated source revision:
 Claude `session::supervise` decision final `Reservation::commit_current` uses raw
-Task/P/G/lock and Session CAS; its Executor currency is observational and cannot earn
-decision mutation credit. Grok `Actor::owner`, called before startup/callbacks/final
+Task/P/G/lock and Session CAS. Executor final currency is observational and cannot earn
+decision mutation credit; its initial input and Broker ALLOW publication separately
+use that full fence before their wire write. Grok `Actor::owner`, called before startup/callbacks/final
 native result, checks `ScopeSnapshot::recheck_scope` for every role. Codex
 `answer_approval` checks that scope before an operation reply; current Codex transport
 completion alone does not establish final decision-currency enforcement. The hold
-and Task-rewrite mutant must exercise Claude Reviewer completion, Grok owned native
-result/callback, or a Codex Executor operation reply whose current-scope guard really
-runs. Record distinct behavior and unavailable guarantees; do not invent a common
-final decision fence or infer a kill from an unfenced Executor completion.
+and Task-rewrite mutant must exercise each row below, with a passing control and
+compiled failing mutant at the actual listed native protocol consumer:
 
-Also mutate binding to bump a Session record or scoped lock: the exact expected
-Session/lock currency consumer must fail, with original uncertainty retained. Read
+| Provider/role | Required held-turn consumer after Workflow binding |
+| --- | --- |
+| Claude Reviewer | Decision completion through `Reservation::commit_current` |
+| Grok | Each exercised ownership stage: startup, native callback and final result through `Actor::owner` |
+| Codex Executor | `answer_approval` current-scope and Session guard before its exact native operation reply |
+
+Record distinct behavior and unavailable guarantees; do not invent a common final
+decision fence or infer a kill from an unfenced Executor completion. These rows are
+required composition checks, not interchangeable alternatives. Also compile a binding
+mutant for each preserved class: Task, Project, Goal, Session and scoped WorktreeLock.
+Each must meet a named real currency consumer; Claude `put_session_if_current` is
+one known consumer of all five classes, including the exact full scoped lock set.
+Include an own-Session CAS race and a lock-only version change so neither can be
+masked by a concurrent Task change. Restore exact source bytes and pass controls.
+If a specific role/provider has no consumer for a class, record that unavailable
+guarantee explicitly while preserving the class and testing its known consumer.
+Read
 other live Reviewer and Lost/reserved Session facts without changing or adopting
 them, and verify this factual binding cannot serve as new-operation admission.
 
