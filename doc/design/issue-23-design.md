@@ -1,6 +1,6 @@
 # Issue 23: Goal authority, DAG and completion
 
-Status: proposed Design4. Requirements3 `1fc82b1` independently approved; design
+Status: Design4 f4b4926 approved with no Critical/High/Medium; source gates pending. Requirements3 `1fc82b1` independently approved; design
 review, source integration and acceptance remain pending. No implementation fact
 is claimed. Current main4851fcd has schema3 and generic Goal snapshots; the native
 branches and proposed #19 schema6/private input projection must be composed before
@@ -141,8 +141,12 @@ Graph nodes are actual same-scope Tasks. Generic put_task cannot insert into a
 managed Goal or change any Task Project/Goal scope. Only the typed graph/accepted-
 proposal port creates such Tasks and nodes atomically, preserving existing
 Workflow-owned field fences for updates. Managed Task policy is authority even
-before the first Workflow record: generic put_task cannot change workflow class,
-risk, executor, worktree/branch, lifecycle or accepted purpose/acceptance fields.
+before the first Workflow record: generic put_task permits only byte-identical
+managed Task replay, with no version/audit increment. EVERY actual Task-row change
+uses its typed owning port, including origin, policy digest, minimum gate set,
+class/risk, executor, worktree/branch, lifecycle, purpose/acceptance and timestamps.
+No display exception reintroduces generic next_action/blockers writes; #19 pins
+those to Workflow, and standalone observations use a separate ledger.
 The graph/proposal port derives class/risk and minimum gate set from the approved
 proposal and exact active Human-approved policy, records origin and canonical
 policy digest for that Task, and retains the single Task row as authoritative.
@@ -209,7 +213,9 @@ artifact pins; permanent terminal success survives unrelated later repository
 commits, while actual prerequisite certificate/ownership invalidation blocks new
 side effects. An existing exact own PhaseAttempt reservation is continuation
 ownership, not a reason to reject its own admission as another live Task.
-Initial starts reject any conflicting ownership; terminal recovery and factual
+Continuation revalidation is revocation-only against the exact prerequisite
+success certificate and immutable artifact pins captured at first start, not
+selection of an unrelated newer success result. Initial starts reject any conflicting ownership; terminal recovery and factual
 observation remain separate. Goal/project-scoped Consultant planning may run outside
 protected Task dispatch, with separately reviewed scope rules; it cannot mutate
 accepted definition, mint a Task permit or bypass native owner checks.
@@ -336,7 +342,9 @@ class/risk downgrade and executor/worktree/branch/accepted-purpose reassignment,
 and ignored
 attestation DAG-drift mutant. Add a compiled pre-Workflow policy-downgrade mutant
 that reaches a reduced-gate prerequisite/Goal success consumer and fails an
-assertion, with real accepted policy and positive controls. Mutants must reach the intended consumer, compile
+assertion, with real accepted policy and positive controls. Also refuse generic
+policy-origin/digest/minimum-gate rewrites; a compiled weaker-policy substitution
+mutant must reach the reduced-gate success consumer. Mutants must reach the intended consumer, compile
 and fail an assertion; setup
 refusal, timeout or unrelated safety guards provide no causal credit. Restore
 source and passing controls after each isolated mutation.
@@ -349,7 +357,9 @@ be retained as factual owned observation, but progression/accepted completion
 waits for authorized resolution and fresh input currency; test that distinction.
 Goal/project Consultant planning still rejects unverified/terminal/held Goals.
 
-Requirements passed independently; Design4 now needs delta review before source.
+Requirements3 and Design4 passed independently. These recorded Low/source
+precision clarifications remain in the immutable source/security review scope.
+No further design approval is claimed for the absent coordinated implementation.
 Source updates Goal master design/README to actual behavior, runs full appropriate
 shared-state/native/Workflow regressions plus fmt/clippy/build and exact Linux/
 macOS CI, independently reviews the immutable source/security scope, and composes

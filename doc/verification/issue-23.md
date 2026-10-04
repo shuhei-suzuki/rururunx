@@ -88,3 +88,12 @@ allows only audited strengthening/provider/Git ownership transitions. Actual
 pre-Workflow downgrade consumer controls and compiled mutation remain required.
 No managed dispatch precedes composed private settlement/epoch integration.
 Exact Design3 CI37190102126 succeeded; individual jobs still to be checked.
+
+Design4 f4b4926 independently approved with no Critical/High/Medium and verified
+owned cleanup. One Low D6 asks explicit protection of the new accepted Task policy
+origin/digest/minimum gates; clarification requires byte-identical generic Task
+replay only, all actual fields typed-port-owned, and weaker-policy rewrite controls
+with compiled reduced-gate consumer mutant. It does not allow generic blockers/
+next_action (#19 writer pins). Legacy unlisted wording and revocation-only
+continuation are clarified. Source/security review must verify these obligations.
+Exact CI37190847079 succeeded; individual jobs remain to be checked.
