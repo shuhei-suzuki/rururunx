@@ -71,7 +71,7 @@ outputs/transcripts are never injected. Dismissal adjudication history retains
 actor identity. Dismissal claims/rationales remain labelled claims,
 not verified facts; re-raising a dismissed finding remains possible.
 Eligible opinions after this declared prior-round exposure may satisfy the
-independent floor: independence means current-round runtime-input independence,
+independent floor only with 8.c actual profile eligibility: independence means current-round runtime-input independence,
 not lifetime blindness to prior findings. This also applies to a slot’s fresh native
 Session in a new full-roster retry round when its prior invocation had no structured
 result; no within-round retry is permitted. Result/certificate
@@ -116,7 +116,7 @@ or disputed verification, all source/policy/coverage pins remain current and mod
 independent floor are already met. It changes no original verdict or author eligibility.
 REQUEST_CHANGES never becomes APPROVE. ESCALATE/dispute requires a new full-roster
 round after trusted resolution; a changed-target fix always requires a new round.
-Test same-round quorum after nondisputed Human dismissal versus new-round dispute,
+Acceptance 2.a/9.c: test same-round quorum after nondisputed Human dismissal versus new-round dispute,
 ESCALATE and actual fix; no carried approval or certificate-floor substitution.
 
 Severity is Critical/High/Medium/Low. The immutable policy's blocking set always
@@ -271,8 +271,9 @@ verification/journal allowances. Missing/noncomputable profile bounds refuse bef
 input. Stable source metadata can be charged by its known bytes; dynamic fields use
 their frozen upper bound. Numeric bounds are
 1 MiB result/acquired model-content prefix per slot, 64 KiB transport diagnostics
-per slot, 8 MiB verification/check artifacts and 4 MiB bounded control/adjudication/
-attention/manifests per round, plus core and member-frame bytes and the existing
+per slot, a FIXED full8-MiB verification/check artifact allowance and FIXED full4-MiB
+control/adjudication/attention/manifest allowance reserved per round (not configurable
+ceiling knobs), plus core and member-frame bytes and the existing
 expansion ceilings. These are simultaneous bounds, not a promise every maximum
 configuration fits 128 MiB. If remaining quota cannot cover the complete reservation,
 reject before input. In-flight admitted results/prefixes/diagnostics always fit the
@@ -349,7 +350,8 @@ safe cleanup, otherwise an uncertain/Lost hold. It never counts as approval. Res
 attention threshold, default600; crossing it emits durable attention but the slot
 STAYS queued and automatically admits when actual permits return, after fresh
 source/claim/round/lock/currency checks. It neither requires Human rescheduling nor
-pretends a model timed out. An explicit policy/trusted Human termination still applies.
+pretends a model timed out. An explicit policy/trusted Human termination still applies;14.h separately defines
+frozen optional queue expiry and exact round-lock timing.
 Existing Runtime,
 Project and agent resource limits can lower local parallelism, never be bypassed.
 
@@ -430,7 +432,7 @@ not one per shared budget root. Concurrent descendant Sets are allowed when phys
 safe and actual permits permit, with ATOMIC shared64-round/128-MiB retained reservation/
 4-GiB delivery counters. Concurrent admissions exceeding remaining shared capacity
 admit at most one; rollback changes no root and every held reservation stays charged.
-Test two children sharing an origin-phase root versus independent phase roots,
+Acceptance 11.c/14.g: test two children sharing an origin-phase root versus independent phase roots,
 concurrent combined overflow, inherited author/veto union and no fresh-ID budget reset.
 
 At most one nonterminal Review Set owns a current Task/Workflow review phase. A new
@@ -569,7 +571,7 @@ trusted Human acceptance or deterministic Workflow policy evidence verifies its 
 Only then applies monotonic escalation and the next full-roster round meets that floor.
 Trusted Human may reject an unverified signal with reason/evidence; this rejects a
 proposal, never downgrades an applied class or disables a governing minimum. An
-allow-self author's signal cannot certify itself. Test immediate hold, independent/
+allow-self author's signal cannot certify itself. Acceptance 12.i: test immediate hold, independent/
 Human/deterministic acceptance, Human rejection and applied class never downgraded. If the frozen roster cannot meet it, hold for actual
 trusted Human roster selection or terminate without certificate. Post-opinion
 roster change/supersession requires that authority; automated Workflow cannot swap
@@ -600,8 +602,10 @@ overlapping uncertain ownership cannot silently be assigned to a convenient iden
 authorship is surfaced and requires
 explicit disposition. Policy may ONLY refuse or conservatively exclude every
 candidate native family; it cannot relabel unknown as Human/unattributed to restore
-eligibility. Specific actor/Human attribution requires trusted ingress with evidence.
-Test a policy attempting a nonconservative unknown-delta disposition rejects;
+eligibility. Specific actor/Human attribution requires trusted ingress with evidence. Actual typed
+deterministic runtime-effect attribution is separately covered by12.k; a generic hook
+name or successful command cannot silently make changes non-native-authored.
+Acceptance 12.d: test a policy attempting a nonconservative unknown-delta disposition rejects;
 a changed executor cannot silently self-confirm
 its own earlier changes.
 
@@ -613,7 +617,7 @@ round never takes this path. The real Workflow remediation consumer, not generic
 JSON, returns control to the scoped Executor for fix+commit+milestone context publication.
 Next full-round admission acquires ONE roster-wide delegation bound to the then-current
 Workflow-published ContextVersion/target/source, with no Set/member-originated version
-bump. Stale/advanced context refuses. Test two rounds across actual fix/commit showing
+bump. Stale/advanced context refuses. Acceptance 20.d: test two rounds across actual fix/commit showing
 only Workflow milestone context versions, no settled-Set executor blockage and no
 permember/current-round head rewrite. The compiled19/43/9 integration must implement
 this handoff; a proposed delegation cannot count as existing ownership release.
@@ -942,7 +946,7 @@ explicit eligible custom roster. Human authorship remains separately attributed.
     21.c/21.d (normal/cancel/timeout settlement holds, capacity and Task-time).
     It additionally requires 8.h claim exposure/verdict-input exclusion, 11.e narrow/
     widened native effect scope, 14.c retention versus finite actual-delivery/provider
-    metrics (actual #21 telemetry), and 9.f Human-only blocker clearance impact,
+    metrics (actual #21 telemetry), and 9.c Human self-adjudication impact,9.f Human-only blocker clearance impact,
     18.g normal cleanup bound/profile readiness, 11.d scoped applicability/resource impact and
     round/artifact-quota exhaustion frequency, retained
     Task-time and decomposition/termination impact (14.e below). Branch blob URLs
@@ -958,6 +962,10 @@ explicit eligible custom roster. Human authorship remains separately attributed.
     before9 closure; actual core-native declarations/support under4/16.b remain real
     pre-closure inputs, not tracking exemptions. No cyclic merge dependency is introduced.
     New21.h tracks12 applicability producer/conformance and9 consumer ownership.
+    Public12 also quotes10.d complete delta impact-closure producer obligations, while
+    16 records actual full-fallback frequency and delta-efficiency separately. Public13
+    quotes13.a exact post-certificate irreversible reconciliation, preserving original
+    certificate/outcomes; tracked obligations do not assert those ports implemented.
 
 **21.b — Default measurement handoff.** Safe retry/timeout defaults are retained until real #16 measurements justify a
 separately reviewed policy change. Native dogfood reports how often partial-output
@@ -1045,30 +1053,36 @@ executor Session, a resumed native history or a prior-round native Session. A ne
 runtime UUID alone is insufficient: the actual adapter startup contract must
 guarantee fresh native creation and reject conflicting resume/continue configuration
 before input. Criterion 8 rejects owned executor/history reuse and unsupported
-fresh-session capability. Native auto-loaded global/user instruction files, memory
-and external history/context channels are distinct residual channels, listed as
-declared-by-adapter or unverifiable in result/certificate. Runtime-controlled input
-independence never certifies those channels; default auth/hooks/rules are preserved.
-The distinction from governing-rubric currency is intentional: the latter is an
-exact activated normative snapshot rrx can validate, while residual native memory is
-not asserted absent by the runtime-input certificate. Eligible fresh opinions may
-count F with explicitly unknown residual channels; this is a declared F-counting risk,
-not proof of peer-free native memory. Actual known current-peer injection invalidates
-that round. No family-equality, temporal overlap or permission label supplies a proof.
-Actual supported native profile/conformance and16 must test the risk; if that required
-profile cannot satisfy its declared independence, it remains unready, not waived.
-Criterion21's16 handoff includes resulting floor-count/certificate eligibility impact
-for serialized and concurrent same-family profiles, alongside actual known exposure
-refusal; uncertainty disclosure is never a statement that native memory was isolated.
-Criterion 21's #16 isolation handoff requires observing/testing native auto-injection
-separately from passive filesystem/tool-read visibility. This includes serialized and
-concurrent same-family fresh members: family equality/fresh SID/overlapping lifetime
-alone neither proves contamination nor physical secrecy. Known actual current-peer
-injection fails independence; unknown native channels stay explicitly unverifiable,
-never silently labelled current-peer-free. Runtime-controlled exclusions remain
-mandatory and ordinary family-repeat eligibility is unchanged unless actual policy
-requires diversity. Test declared/observed current-peer injection rejection and
-reported unknown channels;16 must verify actual supported native defaults.
+fresh-session capability. Native auto-loaded global/user instruction files, memory and external history/context
+channels require concrete registered-profile evidence before they can support an
+independent-gate readiness claim. Preserve native auth/hooks/rules/default behavior.
+Classify each channel separately: actual observed current-peer injection, documented
+current-peer-capable channel, reachable channel with unknown scope/timing, or an actual
+supported profile whose reviewed source/control/conformance demonstrates its bounded
+current-round peer-free starting/input behavior. Family equality alone is no class.
+Observed injection invalidates the round. A documented capable or unknown reachable
+current-peer channel cannot earn floor credit just by disclosing uncertainty, fresh SID,
+read-only label or an abstract 'inert' declaration. Its actual registered producer must
+provide repository/session memory key/scope, read/load and write timing, method/source
+version and concrete supported-profile controls; no docs-only or synthetic label positive.
+A load-at-start/concurrent admission argument requires demonstrated peer-free initial
+snapshot AND absence of current-round peer writes before ALL relevant loads/admissions;
+overlap alone supplies neither. Serialized same-family members with an unproven capable
+channel cannot supply STRICT's F=2. Actual proven custom same-family profiles remain
+possible; there is no universal family-diversity floor or deletion/disable/default override.
+Unknown or unavailable required profile evidence rejects formal gate admission before
+input; separately labelled nongating diagnostics/opinions cannot become certificates.
+
+Certificates cover runtime-controlled input/provenance checks plus this declared actual
+profile basis; they do not prove OS secrecy, passive filesystem unreadability or removal
+of all prior native history. Known unrelated/prior exposure is still recorded. Governing
+rubric currency remains exact activated normative authority; native memory is not a
+substitute for it. Actual installed-profile conformance/#16 reports eligibility/refusal
+and availability for serialized/concurrent profiles, observing auto-injection separately
+from passive tool/filesystem visibility. Tests reject declared capable/unknown reachable
+channels without actual conformance and observed current-peer injection; actual supported
+peer-free profile controls may admit, preserving defaults. No claim that slot A actually
+stored or injected a peer finding follows merely from channel documentation.
 
 Primary documentation, not inspected private user memory, establishes the channel:
 [Claude memory](https://code.claude.com/docs/en/memory) describes repository-shared
@@ -1160,8 +1174,8 @@ synthetic peers do not prove native enforcement. Result/certificate records that
 
 **8.d — Prior-round exposure.** A transient same-target retry with one prior
 non-result slot and completed peer findings delivers only permitted labelled prior
-claims after safe settlement. Its eligible fresh opinions may count F under declared
-current-round input independence; certificate records exposure and never claims
+claims after safe settlement. Its eligible fresh opinions may count F only with 8.c
+actual registered-profile conformance for current-round independence; certificate records exposure and never claims
 blind/lifetime independence. A current-round peer finding delivered before every
 roster slot settles rejects certification. #16 reports blind and exposed
 round results separately.
@@ -1371,10 +1385,14 @@ closes; product handler completion remains a separate MVP gate, not a9→15 merg
 **21.f — Native contract producer ownership.** Issue9 owns consumer conformance and
 runtime declaration checks; actual 5/6/7 adapters or explicitly linked reviewed follow-up
 Issues own producer obligations for 8.c fresh no-resume native identity,16.b/18.g normal
-cleanup shape/bounds,18.c requested/effective configuration,16.b/16.c runtime read-only
+cleanup shape/bounds,14.g bounded retained Session/private pair/operation/receipt/usage/
+audit overhead needed for complete pre-input reservation,18.c requested/effective configuration,16.b/16.c runtime read-only
 permission construction and 8.a available access traces. Public owner entries identify
 exact supported profiles and refusal limits before 9 closes. Existing declarations or
 synthetic fixtures do not assert these producers or real native acceptance complete.
+Unknown actual overhead bounds refuse admission; tests use the real bounded producer
+DTO/output path and actual row-byte accounting, not library constants in place of a
+native declaration.16.b/14.g carry exact admitted/refused boundary evidence.
 
 **21.g — Fairness with held shares.** ReviewSet retains exact global/Project/provider
 shares under Lost; its local parallelism/per-Project cap never releases them or invents
@@ -1465,11 +1483,71 @@ claims it complete or waives actual9 core support prerequisites.
 | Stable acceptance keys | Public owner / actual responsibility |
 | --- | --- |
 | 11.b, 11.e, 18.b, 21.a/c/d/g | #14 exact held native/lineage/resource recovery; #27 fair admission; #16 scoped hold/availability measurements |
-| 8.g, 10.d | #20 production typed bundle/delta/coverage; #9 consumer contract; #12 impact producer; #18 captured source inputs |
+| 8.g, 10.d | #20 production typed bundle/delta/coverage; #9 consumer contract; #12 actual complete delta impact-closure producer; #18 captured inputs; #16 actual full-fallback/delta-efficiency |
 | 11.c/d, 21.h | #12 trusted applicability producer, #18/#20 inputs, #9 consumer; #16 actual disjoint/unknown/resource impact and pre12 author-growth/zero-eligible availability |
-| 16.b/c, 18.g, 8.a/c, 21.f | #5/#6/#7 actual supported native/config/permission/cleanup declarations or tracked reviewed follow-up; #16 real enforcement/trace/default evidence |
-| 8.d/h, 12.j, 14.f, 16.a, 14.c/d/e, 17.c, 20.a/b, 21.b, 9.f | #16 actual exposure, efficiency, finite delivered versus retained bytes, quotas/retries/eligibility/Human impact; #21 nullable native telemetry |
+| 16.b/c, 18.g, 14.g, 8.a/c, 21.f | #5/#6/#7 actual supported native/config/permission/cleanup and actual bounded retained-overhead declarations or tracked reviewed follow-up; #16 real enforcement/trace/default evidence |
+| 8.d/h, 12.j, 14.f, 16.a, 14.c/d/e, 17.c, 20.a/b, 21.b, 9.c/f, 14.h | #16 actual exposure, efficiency, finite delivered versus retained bytes, quotas/retries/eligibility/Human impact; #21 nullable native telemetry |
 | 3.b, 9.d, 21.e/i | #9 typed phase-policy/ingress/readiness consumer; #23 shared principal derivation; #15/#24 actual scoped product policy/Human handlers; #14/#27 actual recovery/admission |
+| 12.k | #60 actual owned deterministic-effect attribution producer; #12 inspected effect/source evidence; #9 checker; LLM/unknown origin refuses/conservative exclusion |
+| 13.a | #13 actual post-certificate irreversible reconciliation; no fabricated rollback or later certificate washing |
+
+**12.k — Actual deterministic runtime authorship.** A scoped trusted runtime effect
+may record a non-native RuntimeAuthor only from an actual60 owned producer binding exact
+operation/config/executable effect inventory, before/after trees and current source,
+with a reviewed method demonstrating the declared deterministic non-LLM modification.
+Preserved hook/formatter/test/codegen execution is not sufficient by name, exit status
+or selected-group death. Hooks that can invoke a native/LLM writer retain its recorded
+native family; unknown origin remains unknown and refuses/conservatively excludes.
+Missing actual producer cannot earn RuntimeAuthor or restore roster eligibility.
+Test an actual closed controlled deterministic formatter effect with native defaults
+preserved versus undeclared/LLM-invoking/unknown hook effects; fixture mechanics do not
+prove production60 containment or attribution. Public60/12 must own actual evidence
+and source acceptance; no fresh source-execution exemption is introduced.
+
+**14.h — Queue lock and bounded exit.** Acquire the real round lock/delegation at the
+first member's actual admission after permits and exact fresh source/context checks.
+An entirely queued roster owns no round/worktree lock or native context slot; its
+prepared frozen bundle may become stale and must be revalidated before admission.
+Once any member starts, retain the round lock through all slots actually settled or
+queued slots safely cancelled; new source drift holds, never permits peer exposure.
+A frozen optional queue-expiry policy is Disabled by default or1–3600seconds per slot
+measured from its enqueue;0/3601 reject. Expiry safely cancels an unstarted queued slot,
+terminates that round without certificate, consumes its already admitted round budget,
+and starts actual owned cancellation for any started members. It releases no Lost/unknown
+owner or unused reservation before safe whole-round closure. Attention default600 is
+independent notification, not expiry or mandatory Human rescheduling. Status distinguishes
+ordinary queue from queue behind retained uncertain capacity;14/27 recovery/admission
+and15/24 actual trusted handlers remain pending where required. Tests cover entirely
+queued/no lock, one started+queued/lock retained, expiry safe closure versus Lost held,
+permits returned after attention and stale bundle refusal.16 reports these Task-times.
+
+**20.d — Actual remediation handoff.** Two rounds around actual executor fix/commit
+must release only a completely settled round's lock/member delegation, return control
+through actual Workflow remediation and bind the next roster to its single new published
+milestone context. Neither generic Set JSON nor per-member context increments may create
+that handoff. Original findings/budgets survive; unsettled/Lost still blocks.
+
+**16.d — Reviewer permission-request behavior.** Formal read-only native permission
+requests for prohibited actions receive deterministic DENY with bounded exact scoped
+request/diagnostic and visible reason/status.9 never mints a10 Broker ALLOW or free-text
+Human command authority; a request requiring unavailable product attention is explicitly
+nonactionable, not only a generic timeout. Actual provider owned historical observation/
+DENY contract and settlement remain mandatory; no label-based privilege or Lost release.
+Test reachable native request→zero ALLOW/action wire and visible typed denial/hold through
+the actual provider path, including existing provider-specific lifecycle write failures.
+
+**14.i — Fixed shared reservation arithmetic.** Before each round reserve full8 MiB
+verification plus4 MiB control allowances, including its64-KiB attention margin, alongside
+actual core/member frames, each maximum1-MiB result,64-KiB diagnostic, declared retained
+expansion and actual reviewed producer row overhead. With Triple, three1-MiB frames,
+three1-MiB results and default three1-MiB retained expansions contribute9 MiB plus192 KiB
+diagnostics; shared allowances add12 MiB. Any separately retained core/copies/refs plus
+actual authority/usage/audit rows add their real charges: the illustrative21 MiB+192 KiB
+is NOT a universal complete-reservation total. Representation dedup counts only actual
+shared identity once. Simultaneous ceilings do not guarantee64 rounds fit128 MiB.
+Unused reservation is released only by safe round closure; retained history persists.
+Test this formula with actual producer rows and separate/shared core representations,
+exact remaining-quota boundary and refusal without input; external refs never erase bytes.
 
 Every criterion and bold subcriterion ID above is a stable closure-evidence key.
 Absent suffixes are intentional reserved IDs; reordered subcriteria retain their
