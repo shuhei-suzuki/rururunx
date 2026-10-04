@@ -84,8 +84,11 @@ inspection failure. A flag substitution alone does not close this safety gap.
 8. Actual isolated fixtures cover two independently owned groups, exact selected
    membership against a global diagnostic baseline, live members, zombie leader
    with live children, all-zombie owned group and absence/malformed/truncated/error
-   output. Fixture cleanup signals only owned unreaped groups and verifies cleanup
-   before reaping. Shim tests are failure-injection tests, not real ps acceptance.
+   output. Real fixtures use exact production argv with env_clear and record actual exit
+   status/stderr byte count, including all-zombie and zombie-leader groups. A
+   deliberate COMMAND_MODE=legacy control must remain Unknown without signaling
+   returned numeric hints. Fixture cleanup signals only owned unreaped groups and
+   verifies cleanup before reaping. Shim tests are failure-injection tests, not real ps acceptance.
 9. Causal compiled mutants remove selection, leader, stderr, framing/all-members
    guards or uncertainty preservation. Prefer actual ProcessGroup/cleanup and
    bounded-Git/Context callers; report masked and unit-only mutants honestly.

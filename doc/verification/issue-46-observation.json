@@ -61,5 +61,8 @@
   ],
   "environment": {},
   "script_sha256": "8b32759b54a407c1df19d5c8a209e0cc41819c8236d54fee21b39e847d1ea0e1",
-  "scope": "same-UID owned isolated read-only observation, not cross-UID privilege acceptance or production helper"
+  "scope": "same-UID owned isolated read-only observation, not cross-UID privilege acceptance or production helper",
+  "provenance": "historical executor attestation with temporary script digest; not a committed reproducible fixture or production acceptance",
+  "exit_status": null,
+  "stderr_bytes": null
 }

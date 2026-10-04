@@ -80,7 +80,9 @@ byte-matched to the installed binary. Cached immutable blob provenance:
   exhausted sysctl failure emits stderr yet returns0; non-ENOMEM retry sleeps1s.
 - Apple [kern_sysctl.c](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_sysctl.c),
   blob `1e9baecfcbe6e56d8deac42fe59022266ab7db46`: exact p_pgrpid filtering
-  applies to live and zombie lists; required size includes KERN_PROCSLOP.
+  applies to live and zombie lists; required size includes KERN_PROCSLOP. The
+  post-iteration handler returns ENOMEM if needed exceeds copied oldlen; ps
+  resizes/retries and exhausted failure emits stderr even on exit0.
 - Apple [kern_proc.c](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_proc.c),
   blob `a08362b2e777ee607e226d869131efd5e164e526`: proc_iterate still allocates
   against global nprocs+1 and traverses global lists before adding filtered PIDs.
@@ -121,7 +123,9 @@ leader+live children refuse death, zombie leader+live children refuse death and
 owned zombie members satisfy observational acceptance while the leader remains unreaped.
 Record exact env_clear argv; a deliberate COMMAND_MODE=legacy diagnostic fixture
 must be rejected by missing leader/foreign frame or exit/diagnostic failure. It is
-not the production environment and must never signal its returned numeric hints. Failure
+not the production environment and must never signal its returned numeric hints.
+Record actual exit status and stderr byte count for each real installed fixture,
+especially all-zombie and zombie-leader outcomes. Failure
 fixtures exercise empty/exit0 stderr, timeout, both output overflows, incomplete
 and malformed rows, foreign groups, duplicate PIDs, absent leader, reader failure
 and fallible reader spawn. Direct-child cleanup is checked using its actual owned

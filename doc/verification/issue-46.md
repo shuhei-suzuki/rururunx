@@ -60,3 +60,16 @@ acceptance is claimed. Legacy-mode negative acceptance remains required before
 implementation acceptance. R46-6 Low removes undefined visible-member wording;
 R46-7 Low aligns master/README observational and residual-limit language.
 Requirements3 delta re-review precedes design gate/code.
+
+## Requirements3 gate
+
+Independent native Requirements3 at public `d3aa523` completed approve with no
+blockers, verified owned cleanup. It verified R46-1..7 refinements from pinned
+Libc/ps/XNU source; approval is requirements-only, not design/runtime evidence.
+Optional R46-8 exact-env/legacy fixtures and R46-9 actual exit/stderr accounting
+are now explicit acceptance conditions. Historical env={} metadata is an executor
+attestation, not a committed reproducible fixture; unrecorded exit/stderr stay
+null. R46-10 verified pinned sysctl_prochandle needed>copied oldlen returns ENOMEM,
+then ps resize/retry/exhaustion surfaces stderr even if exit0. These refinements
+are included for scoped recheck in the independent design gate before code.
+Raw resumed native token/cost/API counters have unverified per-round attribution.
