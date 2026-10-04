@@ -39,14 +39,21 @@ contracts, not universal provider safety evidence.
    or duplicate own refs fail closed. Existing activity/owner/session/lock/version
    guards remain. Foreign inventory is a syntactic name-only read within admission,
    including inactive records; never scan foreign filesystem/Git/rules/config. Foreign
-   malformed/forbidden records cannot grant authority or alter global controls. An
-   operator diagnostic, if emitted, is scoped to its owning foreign Project, never
-   copied into A's context/audit; no values or foreign identity in A's error.
+   malformed/forbidden records cannot grant authority or alter global controls.
+   Inventory semantics are per name: an invalid mixed record still contributes each
+   exact non-control baseline name to conflict detection; a forbidden control name
+   falls under requirement 3. Skipping a record never grants its references.
+   Provide a separately Project-scoped operator diagnostic for that Project's own
+   conflicting reference names only; never copy it into A's context/audit or expose
+   values/foreign identity in A's error. Explain the existing clear/reactivate remedy
+   for an inactive/Removed declaring Project, without weakening its lifecycle guards.
 2. Preserve the registry's RRX_ reserved-name prohibition. Caller RRX_ keys and routing/
    loader/native-control names are rejected, even with identical baseline values.
    No new runtime bypass/channel is added. Existing fake ACP metadata must move to the
-   generated fixture executable/arguments or other fixture-owned data, not LaunchRequest
-   environment. Analyze all current producers/harnesses before implementation.
+   generated fixture executable or other fixture-owned data, not LaunchRequest
+   environment. The adapter's fixed argv is not a fixture channel. Analyze all current
+   producers/harnesses before implementation; any production RRX_ producer reopens
+   requirements rather than receiving a design-time exception.
    Admissible caller keys are only registry-valid own references that were already
    allowed by the Grok policy: ordinary LANG/LC_ALL/LC_CTYPE/TERM/COLORTERM/TZ, or native-
    whitelisted non-control names with exactly their constructor baseline value. A
@@ -60,11 +67,16 @@ contracts, not universal provider safety evidence.
    NODE_TLS_REJECT_UNAUTHORIZED, never classify all NODE_/GROK_/XAI_ names as control.
    A protected key in own refs fails admission; a foreign declaration (including an
    invalid persisted control reference) neither strips nor replaces its baseline value.
-   Ambiguous names cannot be silently stripped as credentials or accepted as controls.
+   Caller rejection and baseline protection use the same reviewed set. Include every
+   registry-forbidden name that can enter the baseline, including prefix-only
+   NODE_EXTRA_CA_CERTS/NODE_PATH; credential-bearing or credential-locating names must
+   never be reclassified as controls. Ambiguous names cannot be silently stripped as
+   credentials or accepted as controls.
 4. For any non-control baseline name referenced by another Project but not A, reject
    A's pre-spawn admission if the retained baseline contains it. Do not silently remove
-   an auth key and fall back to cached/default auth/config. This includes known credential
-   names such as XAI_API_KEY and unclassified XAI_PROJECT_B_CANARY; no A child is launched
+   an auth key and fall back to cached/default auth/config. This includes example names
+   XAI_API_KEY and unclassified XAI_PROJECT_B_CANARY (not a claim about which environment
+   names installed Grok consumes); no A child is launched
    with either. Names absent from the existing baseline do not add any value. Explicit
    shared means declared by A and at least one other Project; it remains eligible only
    under existing exact-value/non-control policy. Own/shared XAI_API_KEY and own TZ are
@@ -75,7 +87,17 @@ contracts, not universal provider safety evidence.
    evidence capture, global config/HOME redirect, hooks/auth skipping or control bypass.
    Name-level isolation only: distinct per-Project values under the same variable name
    remain unsupported; a shared declaration shares the single intentional runtime value.
-   #16 cannot claim complete per-Project credential-value separation from this contract.
+   Availability is narrower than name-only isolation: if one frozen runtime baseline
+   contains distinct A-only and B-only declared native names, both Projects' Grok
+   admissions conflict. Declaring a previously undeclared global name blocks other
+   non-declaring Grok Projects. Supported multi-Project setups retain intentional
+   undeclared global native auth, or explicitly share the same runtime references/value
+   among all Grok-using Projects; ordinary own scoped caller values remain isolated.
+   Do not co-declare another Project's private credential as a workaround. Distinct
+   Project-native credential/value sources need a separate reviewed future contract.
+   #16 still requires actual 2+ Projects/4+ Tasks/all three native agents under supported
+   configurations; this limit does not waive its multi-Project acceptance criterion or
+   imply complete per-Project credential-value separation.
 6. Final environment authority admission is the last state check BEFORE actual child
    exec/spawn, including resume initialize/authenticate/load, not merely prompt dispatch.
    Snapshot owning versions plus foreign name/reference inventory; owning P/G/T CAS
@@ -104,10 +126,14 @@ contracts, not universal provider safety evidence.
   foreign records are separate cases. Own TZ, own/shared XAI_API_KEY, undeclared global
   native auth and foreign-declared protected control canaries remain positive controls.
   Also cover undeclared caller
-  key rejection, immutable native control replacement denial, GIT_/invalid refs.
+  key rejection, immutable native control replacement denial, GIT_/invalid refs and a
+  foreign mixed invalid record containing a valid conflicting baseline reference.
 - Constructor environment must be isolated by sanitized test-binary re-exec or a reviewed
   injection path actually used by new(); no ambient credential capture or parallel
-  in-process set_var. All result/output artifacts stay inside owned TempDir on Linux/macOS.
+  in-process set_var. Fail closed before capture unless every captured value is an
+  expected synthetic marker; unknown values are never written, hashed or printed.
+  Compare marker matches/booleans without assert diagnostics that print values.
+  All result/output artifacts stay inside owned TempDir on Linux/macOS.
 - A causal second-Store mutation after snapshot/before final admission changes owning
   reference authority and separately registers/replaces a foreign reference formerly
   treated as global. Assert no native spawn/dispatch or stale consumed intent from
