@@ -110,17 +110,23 @@ ContextVersion.data, phase artifact at ContextVersion.data.task_pack; source Eng
 retains only refs/contextVersion in Workflow history, not a full duplicated artifact.
 Pin these actual envelope paths/depths in tests; no future uninspected embedding is
 assumed safe. All original digest/semantic checks must still run for a fitting artifact.
-Allocation-observable tests scope a test-only thread-local counting System allocator
-to the validation call, after constructing its8-MiB input. Assert total Rust allocation
-requests during streamed validation≤64 KiB; report the measured value, not an OS/RSS
-claim. A compiled revert-to-to_vec-before-count mutant MUST fail this check. For EACH
-new loader pre-guard branch, compare allocation requests to the actual Store parser-
-only baseline for the SAME oversized fixture, allowing at most64-KiB extra guard/
-error overhead; removing/moving that guard after digest/clone/decode must exceed it.
-Use fitting genuine artifact controls, exact recomputed digest and otherwise-valid
-pins, and assert the named byte/depth error. Include direct context_artifact/
-validate_capture input guards, excluding whole-context digest costs from that
-particular comparison. Opaque Task context in publish_goal/validate_goal must remain
+The workspace forbids unsafe code (Cargo.toml25); no inline GlobalAlloc, new allocator
+dependency or physical heap/RSS ceiling is part of this component. The early-stop
+control is causal: custom Serialize emits an8-MiB BORROWED string first, then a
+second child that records it was visited. Streaming refusal must leave that second
+child unvisited; a compiled revert-to-to_vec-before-count consumes it before the
+late length error and MUST fail. Source review verifies the real sink retains only
+scalar counters/refusal state, never an encoded output buffer. This is observed
+serialization progress plus source evidence, not a quantified allocation theorem.
+For EACH loader pre-guard branch, test-only bounded stage traces at the ACTUAL digest/
+clone/typed-decode entry record ordering. Oversize/deep refusal must occur before
+any such later stage; removing/moving that guard must reach the forbidden stage and
+fail the assertion even if a post-typed guard also returns the same error. No authority
+or consumer is replaced by the trace. Use fitting genuine artifact controls, exact
+recomputed digest and otherwise-valid pins, and assert the named byte/depth error.
+Include direct context_artifact/validate_capture preguard branches; whole-context
+digest is deliberately allowed for opaque/general contexts, not an artifact guard.
+Opaque Task context in publish_goal/validate_goal must remain
 accepted with typed_context=false; an unknown-format-rejection mutant must fail it.
 A10,000-sibling shallow array must pass; omitted end-decrement must fail it. Cheap
 kind/scope/version checks precede the raw checkpoint guard, which precedes digest;
