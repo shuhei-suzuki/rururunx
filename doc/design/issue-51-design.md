@@ -1,8 +1,9 @@
 # Issue 51 design: Grok environment admission
 
-Risk: STRICT. Proposed design, pending independent approval. No provider or Store
-implementation is changed by this head. Requirements3 approved `713ccce`; its four
-optional precision findings are adopted in the requirements and below. Source gates
+Risk: STRICT. Proposed design, pending independent approval. No Issue51 provider or
+Store implementation exists; reviewed main Issue46 is normally integrated. Requirements5
+approved `c627ad0`, including the verified explicit credential prohibition restoration.
+The earlier optional precision findings are adopted in the requirements and below. Source gates
 must review the exact helper and its actual start/resume consumers before acceptance.
 
 ## Authority and availability

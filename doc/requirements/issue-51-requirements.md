@@ -2,8 +2,9 @@
 
 Risk: STRICT. MVP-blocking follow-up to #7 and actual integration acceptance #16.
 Goal §6 separates credentials/environment references by Project. Requirements/design
-approval precedes native/shared implementation. No Grok, Store or provider source is
-changed by this documentation-only head (requirements and proposed design).
+approval precedes native/shared implementation. This issue changes documentation only
+(requirements and proposed design) relative to its normally integrated main baseline;
+no Issue51 Grok, Store or provider implementation exists yet.
 
 ## Verified problem and evidence limits
 

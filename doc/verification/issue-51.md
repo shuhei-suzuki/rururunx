@@ -19,7 +19,7 @@ owned Grok supervision; no persisted PID hint was signaled. Fixture TempDir clea
 completed; source/result remain reproducible diagnostic artifacts, not acceptance of
 the pending fix. Published corrected Rust fixture uses the actual public rrx dependency and
 requires isolated Cargo metadata with serde_json/tempfile/tokio test dependencies;
-it is not automatically built as a production/test target in this requirements head.
+it is not automatically built as a production/test target in this documentation-only head.
 
 The checked-in observation has both foreign child values plus the intentional global
 native baseline positive control; null exit stays null. Goal§6 and issue7 ownership
@@ -84,3 +84,12 @@ The proposed design inventories current actual RRX fixture producers, a pure reg
 Independent Requirements4 at `aea7655b53c3a3352dfc4ad996fdd48760c6fca6` completed request_changes, exit0 and owned cleanup verified. R51-F01 Medium is verified: the E02 precision edit referred to a credential-bearing/locating prohibition but deleted its explicit normative sentence. It is restored in substance: registry-valid credential-bearing or locating names can never enter the protected control set, including finite additions; registry-forbidden baseline precedence and existing HOME/XDG global identity controls remain. The proposed design now adds only NODE_TLS_REJECT_UNAUTHORIZED, with credential/ambiguous-name non-control drift assertions; OpenSSL runtime configuration documentation alone does not confer new protected authority. No source or test change is made.
 
 Optional F02..04 are adopted: availability concerns non-control baseline names only, a control declaration blocks only its owner; operator candidate names derive independently from its own refs and retained baseline names and never from another Project's registration/inventory change; head scope is documentation-only with proposed design. Formal Requirements5 fix rereview precedes the two independent design gates. No prior approval is attributed to these corrections. Counters remain raw resumed-session totals with unverified per-round attribution.
+
+
+## Requirements5 approval and normally integrated design baseline
+
+Independent native Requirements5 approved exact `c627ad0be4252afad283af27bf818114d501005b` with no Critical/High/Medium finding and no unresolved blockers; exit0 and owned cleanup verified. Same native session d2936e70-0b86-4c86-904d-9a9cd7a893d4; counters remain raw resumed totals with unverified per-round attribution. F01 explicit credential prohibition restoration was verified. No fixture SHA/lineage, external #16 text or implementation acceptance was claimed.
+
+Optional G02 is handled by the design's explicit runtime operator evaluation against that adapter's retained baseline, not a separate registry CLI process. G03 stale documentation-only wording is corrected. G01's suggested SSLKEYLOGFILE grandfather needs independent design classification: baseline_key admits it, but admission to a native whitelist is not itself a protected-control classifier (the same whitelist admits XAI credentials). The proposed design keeps this registry-valid TLS-secret-sink path out of new implicit protected authority; design reviewers must assess consistency with existing named TLS controls and the approved credential-bearing/locating rule. No new exception or implemented behavior is claimed by this disposition.
+
+Reviewed Issue46 main80452f4 was normally merged at94e6f1e after requirements reviewer cleanup, retaining public ancestry. README/master conflicts were resolved by keeping both Issue46 implemented contract and Issue51 proposed environment contract; current crates match integrated main exactly. Two fresh independent immutable Design1 gates on the published outcome head precede implementation. Formal requirements authority remains the approved c627 semantics; header/provenance changes here only clarify imported baseline and review status.
