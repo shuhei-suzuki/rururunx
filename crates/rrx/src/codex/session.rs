@@ -1565,7 +1565,7 @@ impl CodexAdapter {
             native,
             reservation,
             sender: registered.publisher,
-            stopped: registered.stopped,
+            stopped: mpsc::channel(8).1,
             evidence,
             replies,
             identity: NativeTurn {
