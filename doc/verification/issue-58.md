@@ -157,3 +157,15 @@ private pre-effect replacement class which does not impede the exact live prior.
 Own factual settlement does not compare competing pre-effect claims. Typed Consult
 entry is explicit; genuine native/resource/recovery producers remain unimplemented.
 Independent Design2 review pending; prior Generic timeout red remains preserved.
+
+Design2 269d050 reviews both completed request_changes, two Medium each with optional
+Low refinements, actual v3 owned cleanup/reap verified. Shared verified gaps: shared
+HOME/config overlap could globalize quota/adoption; prior physical fence proof before
+owning fence effects was circular. Design3 uses actual exclusion edges/per-instance
+exclusive resources and continuous compatibility through Lost/successor effects;
+genuine non-label instance authorization+private epoch exclusion -> OWNED physical
+fencing -> complete proof before adoption. One pending slot, exact Git effective config
+inventory, pure-only capture revocation, typed Task launch signatures and SQLite
+predicate flags/self-tests explicit. Native/resource/instance/recovery producers remain
+unimplemented/mandatory; Design3 independent review pending. No early physical fence,
+row labels or permanently Unsupported path counts as positive or whole58 acceptance.

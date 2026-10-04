@@ -368,7 +368,7 @@ remain unchanged.
 ### Proposed retained Consultant lifetime (#58; not implemented)
 
 Approved [Requirements8](../../requirements/issue-58-requirements.md) and proposed
-[Design2](../issue-58-design.md) require a genuine nonserializable lifetime owner
+[Design3](../issue-58-design.md) require a genuine nonserializable lifetime owner
 before Task-free native startup/probe/input. Session-less setup, a live server after
 a turn and Lost/unknown cleanup retain physical root/common-Git exclusion. Public
 Session/Record/PID labels and generic CAS cannot mint/admit/release that authority.
@@ -400,3 +400,10 @@ epoch fences for old open connections. Private pre-effect replacement claims can
 block their exact live prior's adoption/helper reservations/settlement; they never
 have effect authority. Actual put_goal terminal and registry/rules/Grok capture callers
 are explicit migration consumers. These remain proposed, unimplemented contracts.
+
+Design3 distinguishes physical overlap from actual exclusion edges so compatible
+shared native stores do not become global quota/adoption holds. Actual compatibility
+must survive Lost AND successor effects. Replacement Pending has no effect authority;
+genuine #14 non-label former-instance exclusion/authorized shutdown grants OWNED
+physical fencing, whose complete proof is required before adoption. Instance lease/
+epoch exclusion alone is not resource cleanup. Required actual producers remain open.

@@ -1,6 +1,6 @@
 # Issue 58 design: retained Task-free native consultation ownership
 
-Status: Design2 proposed; Requirements8 approved at8facb8d. No source/profile,
+Status: Design3 proposed; Requirements8 approved at8facb8d. No source/profile,
 recovery, native TUI or whole-issue acceptance is claimed. STRICT.
 Source baseline: integrated main d87faec/schema3, branch f84c94e; approved
 [requirements](../requirements/issue-58-requirements.md) remain authoritative.
@@ -28,7 +28,18 @@ function and fail after SQLite schema-cookie reload; a Rust-only check is insuff
 Private authority functions additionally require the actual private write context;
 generic current writers cannot fake private ports by knowing the epoch. Migration
 uses its own reviewed private transaction context. Inventory all table names and
-trigger coverage in the composed source. Migration preflight drains actual legacy owners and requires
+trigger coverage in the composed source. Use trusted_schema=OFF and audited
+read-only integer/boolean predicate functions tagged INNOCUOUS (no I/O, SQL, arbitrary
+state mutation or secrets), NOT DIRECTONLY (must run from triggers), and not a
+cached DETERMINISTIC epoch value. Missing/misflagged functions fail closed. Startup
+self-tests require current-context writes pass and actually pre-opened old/absent-
+context writes fail on every protected table; failure blocks readiness. Actual
+rusqlite functions feature/API wiring is part of the composed source, absent today.
+See SQLite [function flags](https://www.sqlite.org/c3ref/c_deterministic.html) and
+[application functions](https://www.sqlite.org/appfunc.html); INNOCUOUS requires review
+of the actual predicate, not an automatic security label. Migration preflight proves
+NO live pre-epoch runtime instance (including executing readers/helpers), drains every
+actual legacy owner and requires
 reviewed #14 recovery for uncertainty. Failed migration preserves schema/data/history
 bytes. Terminal labels, inactive rows or an epoch retag do not prove physical fencing.
 #58 cannot precede #19 Task-scope fences or #60 reverse producers in production.
@@ -57,7 +68,11 @@ predicate and actual current domain inventory before introducing any overlap.
 Bootstrap ONLY bounded non-executing in-process path/canonical metadata and Git
 layout reads: plain primary .git directory or a validated bounded gitdir/commondir
 layout. Bound each metadata file to16KiB, paths to4096UTF-8 bytes, link/file hops to32
-and aggregate bootstrap data to256KiB. Enumerate bounded alternates/hooksPath/includes
+and aggregate bootstrap data to256KiB. Enumerate bounded alternates/hooksPath/includes using EXACT later executing Git
+environment and all applicable system/global/XDG/local config, conditional includes
+and environment-injected config (GIT_CONFIG_PARAMETERS/COUNT/KEY_n/VALUE_n,
+GLOBAL/SYSTEM/NOSYSTEM/EXEC_PATH/TEMPLATE_DIR); unknown/unclassified injection or
+conditional include refuses before execution. No secret values are persisted. Resolve
 without execution or refuse the layout/profile; verify opened physical identity chains
 and changing aliases before effects. Unprovable/changing/unsupported layout refuses
 before external Git; no guessed candidate reservation around a Git-first probe.
@@ -103,6 +118,36 @@ signed-i64; total encoded size validated before insertion. Any affected cap refu
 before effects without clamping. Numbers are policy bounds, not OS/RAM performance
 proof; a same-scope exhausted case never earns native parallelism or recovery credit.
 
+### Physical overlap, exclusion and compatible shared domains
+
+Physical overlap is inventory, NOT the exclusion graph. An EXCLUSION EDGE exists
+only when an overlapping pair lacks an ACTUAL reviewed continuously enforced profile
+compatibility relation. Compute capacity closure/headroom and successor adoption over
+exclusion edges, not all physical overlaps. Unknown compatibility is exclusion. Each
+compatible shared native HOME/config/session-store domain carries exact per-instance
+exclusive subdomains/resources plus its continuous enforcement obligation; no string
+role/readOnly or same native UUID claims compatibility. Native default shared stores
+cannot silently join every Project into one quota or adoption set.
+
+The relation must survive Lost and apply to the successor's OWN actual fencing,
+inspection and reconciliation effects. Compatible live peers outside the exclusion
+closure stay live, retain their own quota, and are not adopted/fenced simply due to
+shared configuration. Any dynamic transition which could create a new exclusion edge
+must have pre-admitted reserved worst-case capacity and actually protect already-live
+peers; a profile whose compatibility cannot remain enforced through Lost/recovery is
+Unsupported before original effects. This is not an ordinary Lost-compatible bypass:
+actual #6/#60 resource enforcement and exact #14 successor remain necessary. Private
+physical index still queries ALL overlaps, then derives exclusion from actual pinned
+compatible profiles, never omits a shared domain. An active executing mutator or
+capture conflicts unless its concrete effect/governing-domain compatibility is proved.
+
+Required control uses real native per-user shared store: A becomes Lost and its owned
+successor fences/adopts/settles A's exclusive workload while B remains live and can
+admit within its separate quota. Exhausted A closure cannot refuse B. Kill a mutant
+that builds closures over all overlaps and one that treats Lost/shared labels as proof.
+If genuine profile conformance is absent these controls remain mandatory/unready;
+physical strings cannot stand in for an actual positive.
+
 ## 3. Persisted owner and transaction API
 
 A private ownership table (not generic Record) stores immutable owner ID, physical
@@ -113,9 +158,12 @@ values, prompts/native transcripts, credentials or raw configuration. States dis
 ReservedSetup, OwnedLive, HeldUncertain and Settled; native turn state is separate.
 A Session-less ReservedSetup hold already excludes competing effects. Actual Task-free
 entry is typed start_consult(owner: ConsultLifetimeOwner, ...), consuming the owner
-by value. Runtime dispatcher/registry-facing generic start rejects Task-free scopes
-for EVERY registration; AgentAdapter labels/public registration cannot replace the
-actual typed entry. Implemented providers must migrate every direct entry, including
+by value. Change generic AgentAdapter start/resume request to private-constructed
+TaskScopedLaunchRequest with a REQUIRED Task ID/validated Task scope; a Task-free
+request cannot be constructed through that signature. Migrate direct inherent and
+registry Arc<dyn AgentAdapter> callers, ALL providers/fixtures. A compile-fail doctest
+and real no-effect direct/registry rejection controls verify the boundary; public
+registration/labels cannot replace the actual typed Consult entry. Implemented providers must migrate every direct entry, including
 Session-less launch/probe paths; no Session write is needed to trigger that guard.
 
 Proposed private operations, all epoch-fenced and with bounded audit in the same Tx:
@@ -150,6 +198,10 @@ consume its known-settled capture witness into lifetime/current input admission 
 retire only that capture read protection. No gap permits a mutator to reserve/mutate/
 settle between capture and admission; a prior idle/version pin is not enough. Drop
 or failed handoff retains protection until its exact owned no-effect/settled closure.
+A pure-only read reservation is separately revocable by private exact owner CAS or
+genuine instance-epoch exclusion after crash: it never launched an effect, and revoked
+handoff then fails. An executing capture retains its genuine #60 effects/reservation
+and full physical recovery obligation; public pure/readOnly labels cannot classify it.
 
 Pure capture has local nonserializable read authority, not fake native/helper cleanup.
 Already-live native/runtime work must have a reviewed continuously enforced compatible
@@ -158,7 +210,9 @@ returns held/Unsupported. Post-acquisition executing revalidation uses a named r
 Consultant-self #60 capture compatibility profile plus the same retained handoff; own
 Consultant recognition is not a bypass. Native-mutated target bytes are not silently
 recaptured as governing input. External independent user/IDE writes remain outside
-application authority; actual source-currency rechecks still refuse stale facts.
+application authority; this DB/handoff check DOES NOT detect arbitrary such writes
+between capture and wire. Do not claim machine/filesystem secrecy or atomicity against
+those writers. Observed stale source at a real validation point still refuses.
 Supervisor ownership
 is independent of droppable caller futures. Drop only posts bounded in-memory hint;
 no blocking Store IO/destructor release. Failed publication retains actual ownership
@@ -229,7 +283,8 @@ auth/model/effort/hooks/UI defaults; no disabled native features count as accept
 
 #14 is the sole private recovery producer. Before ANY fencing/inspection/reconciliation
 effect it atomically reserves one exclusive recovery intent and #6/#60 effect owner
-for the complete bounded physical closure, retaining all original holds. Capture exact
+for the complete bounded exclusion closure and actual required compatibility
+obligations on shared domains, retaining all original holds. Capture exact
 former instances/epochs, prior intents/versions and associated partial effects.
 Fencing requires actual profile resource evidence and private writer-epoch exclusion;
 row/boot/heartbeat/PID labels alone cannot fence actual native/helper resources.
@@ -238,7 +293,7 @@ controlled shutdown; no arbitrary PID kill or row-based live-owner reconstructio
 
 Pending replacement of a prior recovery intent reserves only a private competing
 intent and retains all original obligations. It MUST NOT bump/revoke the still-live
-prior owner's settlement CAS before actual fencing. A live prior may finish normally;
+prior owner's settlement CAS before genuine authorization/instance exclusion. A live prior may finish normally;
 new claimant withdraws only its own proved no-effect pending claim, atomically, without
 releasing prior holds. Pending claims are a PRIVATE explicitly pre-effect class: no
 native/helper/inspection/fence authority; excluded ONLY from the EXACT prior intent’s
@@ -247,20 +302,42 @@ remain irrelevant to ordinary admission because original holds still block it.
 Prior adoption/settlement atomically invalidates claims pinned to superseded prior
 versions. A crashed claim provably still in private pre-effect state may be discarded
 by that exact prior/successor without physical fencing; public inactive labels cannot
-prove this state. Pending-to-fencing CAS is possible ONLY with actual separately
-authorized genuine prior-owner fencing proof and reviewed #14 authority. Its effect
+prove this state. Use one checked private pending slot per exact prior intent/version, charged to
+reserved recovery headroom; concurrent proposals cannot consume the prior's reserve.
+Define Pending -> Authorized -> Fencing -> Adopted explicitly. Pending has NO effect
+capability. Authorized transition requires the reviewed #14 sealed NON-LABEL witness
+that the exact prior runtime instance is no longer a legitimate live owner, or an
+explicitly reviewed authorized controlled-shutdown protocol; atomically exclude its
+actual private instance/writer epoch and retain every hold. Candidate witness producer
+is an actual kernel-released runtime-instance lease held continuously by the runtime
+through its worker lifetime, with exact private lease/instance ownership and genuine
+non-executing observation; a missing PID/heartbeat/file/row/boot label is not one.
+Its real Linux/macOS owner/lifetime controls and producer review are mandatory before
+profile readiness. Slow live prior still holding its genuine lease cannot be authorized
+and completes normally. Unknown lease/failure remains pending/attention.
+
+Only this genuine authorization/epoch exclusion allows the claimant to acquire its
+OWN retained #6/#60 recovery effect capability under the original exclusive intent
+and enter Fencing, inspecting/physically fencing surviving helpers/native resources.
+PHYSICAL complete fencing proof is required BEFORE adoption, not before granting the
+authorized owned fence operation. Instance-lease death/epoch exclusion is NOT resource
+cleanup proof. No third-party unowned fencing is permitted. Every original/prior
+recovery effect remains retained through this stage and any crash. Its effect
 reservation remains retained thereafter. Settlement/withdrawal CAS pins own exact
 rows/identity/current versions and required outcome/cleanup; never compares competing
 pre-effect pending rows as a reason to invalidate a live prior. Active adoption still
-checks every actual effectful/live/uncertain outside owner. Competing replacement
+checks every actual effectful/live/uncertain outside owner and its actual overlap/
+exclusion relation; compatible shared peers retain continuously enforced obligations. Competing replacement
 claimants CAS on their exact private pending authority; no public successor label.
 
 A crashed recovery's intent, partially fenced resources and partial reconciliation
 are themselves retained owners. Successor genuinely fences EACH former instance and
-prior recovery owner/effects, then atomically adopts ALL intersecting members covered
+prior recovery owner/effects, then atomically adopts ALL exclusion-connected members covered
 by the union of genuine proofs into ONE successor WITHOUT release. Adoption includes
 complete current outside holds/full locks and original immutable identities; truncated,
-missing proof/live/unfenced intersections refuse. Intersecting adopted members do not
+missing proof/live/unfenced NONCOMPATIBLE intersections refuse. Compatible peers
+remain outside adoption only through actual continuous shared-domain enforcement
+which also governs successor fencing/inspection/reconciliation, never a row exemption. Intersecting adopted members do not
 block their own sole successor's inspection, and another proved former instance is
 not a conflict solely due to its epoch. Partial adoption cannot start reconciliation.
 No ordinary Lost-compatible exemption and no global fence substitute.
@@ -313,7 +390,9 @@ Controls use real private acquisition/supervisor/consumer APIs, not seeded SQL/r
 | bounds/migration | Project A quota/Lost while disjoint B still acquires; retired settled Removed history does not exhaust current scans; actual closure-at-bound refuses ordinary effects but successor recovers; complete index under reactivation/alias/domain merges; actually pre-opened schema3 put_project(Removed)/put_session/put_goal and all private writes fail DB epoch triggers; mutation omits trigger/index/quota-headroom |
 | capture handoff | mutator attempts reserve/mutate/settle INSIDE capture-to-admission window; retained protection refuses it and legitimate handoff passes; missing protection/early-release mutants permit intended stale source violation |
 | Goal/registry | actual put_goal Completed with live/Lost Goal hold refuses; Cancel/Fail preserves it; held A pure status plus B actual status/removal succeeds; omit terminal hold check or hard-fail cross-Project sweep mutant |
-| replacement | claimant inserted between live prior intent and adoption plus crashed pre-effect claimant; prior adopts/executes genuine #60 recovery/settles; remove pending-class exception/invalidation or grant pre-effect authority mutant |
+| replacement | claimant inserted between live prior intent and adoption plus crashed pre-effect claimant; prior adopts/executes genuine #60 recovery/settles; one-slot bound; remove pending-class exception/invalidation or grant pre-effect authority mutant |
+| authorization/fencing | actual crashed prior with orphan helper: genuine instance lease exclusion -> owned fencing -> full proof -> adopt/settle; slow live prior refuses authorization; heartbeat/PID label authorization and fence-before-owner mutants |
+| shared compatible domains | actual same native per-user store, A Lost recovery while B stays live/admissible within its own quota; overlap-to-global-closure or row-only Lost-compatible mutants |
 
 Each credited mutant compiles, crosses real positive prerequisites and reaches the
 intended actual consumer assertion; setup refusal/timeout/helper-only failure earns
@@ -335,3 +414,13 @@ scope and aliases; scoped indexed capacity/recovery headroom/settled history ret
 actual generic Goal terminal/registry sweep consumers; database-enforced old-connection
 writer epoch; pending replacement pre-effect noninterference and typed Consult entry.
 All controls/producer/source/native gates remain mandatory and unimplemented.
+
+Design2 residuals were independently verified: overlap-only connected closures would
+couple shared HOME/config across Projects, and requiring physical fence proof before
+owning the fence operation was circular. Design3 separates actual exclusion edges,
+per-instance exclusive resources and continuous shared-domain obligations; genuine
+instance authorization/epoch exclusion precedes owned physical fencing, whose full
+proof precedes adoption. Typed Task-only requests, pure capture revocation, exact
+effective Git config/environment inventory and SQLite predicate flags/self-tests
+are explicit. No actual instance lease/resource backend, schema or native proof is
+introduced by this design; all mandatory producer/native/recovery gates remain open.
