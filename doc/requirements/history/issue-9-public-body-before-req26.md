@@ -74,3 +74,11 @@ Req24 refinement at the linked requirements revision: independent-gate readiness
 
 
 Req25 linked revision supersedes earlier refinement entries where they differ. Current closure quotes use I9-AC-<key> to distinguish acceptance IDs from GitHub Issue numbers; historical short keys remain aliases. I9-AC-9.h bounds and assigns required disposition outputs before input; I9-AC-18.g complete normal cleanup includes escalation/cancel during normal under one timer. I9-AC-14.h charges round/retry counts at first actual member admission: stale entirely queued proposals retain charged byte provenance without silent target rebind. I9-AC-16.d is actual #5/#6/#7 supported-profile DENY/zero-ALLOW producer conformance, tracked through21.f/#16; I9-AC-2.b explicitly holds quorum/any with a Lost member. Gates remain pending, no implementation or production acceptance is claimed.
+
+
+## Requirements-history precision (Req27)
+
+Earlier prose described a Project-wide ancestry availability defect and an ambiguous
+retention-versus-delivery quota. The current scope-based applicability rule, distinct
+retained/delivery accounting and configured 100ms cleanup margin supersede those
+proposals. They are contract revisions, not implemented runtime or native proof.
