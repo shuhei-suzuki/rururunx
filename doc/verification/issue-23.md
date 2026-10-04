@@ -39,3 +39,12 @@ Tasks, edge identity is ordered, and explicit graph authority changes must have
 designed sibling-currency consequences. Requirements3 review remains pending; no
 source or evaluator acceptance is claimed. Raw resumed native usage has unverified
 per-round attribution and is not an incremental cost measurement.
+
+Requirements3 1fc82b1 independently approved with no findings and verified owned
+cleanup; native resumed meter attribution remains unverified. Exact CI37188124469
+passed Linux/macOS. Design1 proposes accepted-definition authority, separate
+observation ledgers, bounded coherent DAG evaluation and an actual Workflow success
+extractor. Legacy origin/evaluators stay unverified, definition proposals cannot
+apply, explicit graph writes retain native raw Goal currency invalidation, and
+coordinated schema/writer fencing remains required before source integration.
+Design/source reviews and actual acceptance remain pending.
