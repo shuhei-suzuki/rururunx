@@ -51,8 +51,8 @@ next body consistently, then call actual crate-private append_pack_checkpoint.
 Positive first/consecutive controls persist and load through ContextPacks reader.
 For each inner scope, Session, role, predecessor, format, worktree and dropped/
 rewritten mandatory-prefix variant, the actual Store consumer refuses and record ID,
-head and checkpoint.saved audit remain unchanged. A stale outer CAS and current-head
-race retain existing failure behavior. No raw SQL seeding is counted as a positive.
+head and checkpoint.saved audit remain unchanged. Existing outer CAS/current-head predicates remain unchanged; this component
+fixture does not separately qualify their race cases. No raw SQL seeding is counted as a positive.
 Atomic audit-trigger failure retains no partial record/head, using only the owned DB.
 
 Compile separately committed omission mutants against each important equality and
@@ -71,5 +71,7 @@ input index or proposed6 managed authority, real providers, legacy migration or
 
 Reader-only classification, sequence-range, omitted commitment, recent accounting,
 nullable measurements and new suffix provenance predicates remain residual outside
-this identity/prefix correction. This component does not claim that append accepts
+this identity/prefix correction. Projection/authority freshness and input_digest
+remain producer assertions, not attested by these identity consumers. The residual
+examples are non-exhaustive. This component does not claim that append accepts
 exactly the set of DTOs accepted by the reader. Native/whole-CPP gates remain OPEN.

@@ -51,3 +51,46 @@ and `rururunx-issue19-checkpoint-identity-mutant-*.txt`. These are not native au
 Source1 independent component review pending. Whole PR39 remains DRAFT/UNAPPROVED.
 Main schema3 has no CPP consumer; component schema5 is unmerged. All proposed6,
 native/legacy/19-23-43-60 integration and complete parent CPP source gates remain OPEN.
+
+
+Source1 at exact269084bd2018b6377e94e3603b319ddb559354aa APPROVED this component,
+no blockers/Critical/High/Medium,2 nonblocking Low plus2 Info. Native session
+9734e340-1ad5-42d1-900d-8d84bceea412 exited before inspection. Public packet90506
+bytes/SHA2563f60c9b506183edae3e1d151a471871a4a7929c44d759aca3e3a9705a00e75f7.
+Existing CAS/head race examples are not claimed as separate new fixture coverage;
+reader/producer residuals are non-exhaustive and confer no truth authority.
+Committed1122430 full default-parallel passed301 including2 doctests,9 opt-ins
+ignored. Log SHA256c184c52ea2dd0f31d391ae999bebfb23cf2503e1194dd8c320726ae108342e21:
+`/private/tmp/rururunx-issue19-checkpoint-identity-full-tests.txt`.
+
+Exact Source1 reviewed crate subtree (`269084b:crates/rrx`) is
+`2b13bdbbf69a6b24c27eff94d98a9f5f15402594`. ALL below actual mutant-parent and restored
+crate trees equal that exact tree (Git object comparison, not caller assertion):
+
+| Mutant | Actual parent commit (identical crate subtree) |
+| --- | --- |
+| format | `11224304a456157a1d911775a743c95a46e78a4b` |
+| scope | `da02fad22b192f187e8e2e498eba169582ed160f` |
+| session | `a9b195cdc15d5093ece30d5299e56f92d6950702` |
+| role | `86b1a851ce39017606873a4009105984e82fc92b` |
+| worktree | `87df3e745e53b83fa1027b3ee5171bafc2659336` |
+| predecessor | `09efcf78da9e3147047a22e05362e614e0a4c857` |
+| mandatory-prefix | `2d6cda12483365aeb2bbd26651db7c3976328065` |
+| prefix-length-only | `a8b746e33ac8b68ab8c83721cbf9a494e1a7309e` |
+| prefix-first-only | `c9953679f27e5a552c8bd77ccb63e9613477b2be` |
+
+
+Normal merge95f6909 retains reviewed main2c6ae9d ancestry, exact usage read-scope
+and Grok environment policies. The only conflict is module union and the extracted
+Record guard/write split: both existing CPP fences are in shared guard_record_tx,
+so normal and environment Session writers both retain them. Artifact producer,
+append28lines and encoder files are unchanged. The only added regression is
+component5 mechanical CPP-frame validation at the actual environment consumer;
+NO native managed preparation/input/settlement producer is qualified.
+
+Committed misplaced-guards mutant5b64565998096fa77f594fda7cf1b36c6a687829 puts
+CPP fences only in the obsolete put_record_tx wrapper; actual environment=true
+Session consumer accepts the inconsistent hash and kills it (compiled exit101).
+Restored clean d147589ccf24e7e8d811194dabb16fcbf23989b4 passes18 controls.
+Source2 scoped composition delta review and exact integrated-head CI remain pending;
+full integrated default regression also pending here. Whole PR39 remains unapproved.
