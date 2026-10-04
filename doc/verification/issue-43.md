@@ -237,3 +237,30 @@ BEFORE INSERT REPLACE guards, Engine::fail mapping, repeat projection, ONE manag
 private audit and complete replaced-event consumer inventory are corrected. Aligns
 public unapproved19Design35; no native/source/implementation credit. Requirements9
 unchanged, all actual shared-source/native/recovery gates remain mandatory.
+
+
+Design10 at6a7210574ead672d210906f51cb82cae3f78008c: both native reviewers APPROVE,
+each3Low, no Critical/High/Medium/blockers and actual owned cleanup verified.
+The public outcome artifact retains exact findings, own session IDs and private
+result hashes. Low clarifications specify body-derived complete negative lookup +
+non-indexable scope refusal, exact original-marker first binder, dedicated versioned
+UPDATE writers/noUPSERT, common outside diagnostic plan and separate reserved hold-
+clear links. These remain required joint source controls, not implemented indices.
+
+Initial STAGED source adds actual Workflow capability preflight before clear_hold/
+pack/reserve/marker, retained immutable adapter/probed identity, and returned provider
+cross-check. Static missing capability refuses before probe helpers. NO current
+adapter/default legacy FakeAgent advertises PreparedInputAdmission; spoofed probe
+fixtures serve negative controls only and cannot create real19 allocation proof.
+Only preflight refusals are implemented: binder, diagnostics, owned launch supervision
+and19/23/14 integration remain absent, full positive/native acceptance stays OPEN.
+Formal committed-source validation and independent component source review pending.
+The full existing successful Workflow fixture suite remains unmigrated and cannot
+qualify this stage for merge. No tests are disabled or supplied fake allocator proof.
+
+Exploratory development compilation and three new focused controls passed. A first
+broader substring filter ALSO ran existing adapter::tests::ownership_change_during_
+native_preflight_prevents_executor_launch: it failed atadapter.rs1927, expected
+StateConflict/actualSessionLost. Underlying cause unmeasured; no same-test rerun,
+deadline change or ownership-latch reset. This failure is distinct from the new
+preflight controls and is retained; no full regression/CI success is claimed.

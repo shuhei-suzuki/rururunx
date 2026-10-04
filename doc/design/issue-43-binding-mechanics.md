@@ -1,11 +1,13 @@
 # Issue 43 design: record-only native Session binding
 
-Status: proposed Design10 from approved Requirements9 at91d4f34; independent STRICT
-design/source and actual composed producer/native/recovery gates pending. No implementation.
+Status: Design10 at6a72105 independently approved by two native reviewers, no
+Critical/High/Medium findings, actual cleanup verified. Requirements9 at91d4f34 is
+approved. Low clarifications below require actual joint source controls; staged
+preflight source is in progress, full binder/producers/native/recovery remain pending.
 Requirements: [issue-43-requirements.md](../requirements/issue-43-requirements.md).
 This supplements [the shared Issue43 design](issue-43-design.md). Both describe
-the same proposed gate; neither is implemented. The exact transaction mechanics
-below resolve audit, lock and private-owner details before source work.
+the same approved proposal; full record-only ports remain unimplemented. Staged
+preflight source is separate from their audit/lock/private-owner integration.
 
 ## Cause and scope
 
@@ -115,9 +117,9 @@ CHECK and body writes remain inside and are measured honestly.
    and nonterminal Task. Caller snapshots can only cross-check this frame; no
    caller-supplied Task change is admitted. No Project/Goal/Task write follows.
 2. Check the exact Workflow ID/kind/Scope/version and latest genuine ledger
-   endpoint against the sealed version-pinned plan. For an original unbound frame,
-   marker W/hash is exact; any permitted predecessor comes only from its complete
-   genuine chain. Require exactly one Workflow in the Task scope using a bounded
+   endpoint against the sealed version-pinned plan. First binding ALWAYS requires current W to equal the immutable marker
+   W version/complete body hash with ZERO preceding links. Chain-derived predecessors
+   apply to bound diagnostics and dependency ports, never a later first binder. Require exactly one Workflow in the Task scope using a bounded
    indexed existence check. The outside-lock validation covers Task workflow/risk,
    revision/context, active index/generation, native Executor/Reviewer phase, Running,
    absent Session ID, dispatch_started, expected agent and no completion/finished
@@ -161,8 +163,14 @@ CHECK and body writes remain inside and are measured honestly.
    ≤2 compact matching rows, proves a conflict without reading full historical
    bodies. This lookup is NOT a uniqueness constraint and cannot mint a private
    managed owner. Its exact generated/typed lexical identity columns must cover
-   every valid persisted Session identity, with all actual writer/epoch/migration
-   goldens. Invalid own Session rejects independently. A separately protected #19
+   every valid persisted Session identity, derived from stored bodies (generated/
+   expression columns or exact body-equality triggers), never independent caller
+   metadata. A separate bounded indexed non-indexable-scope guard refuses binding
+   if ANY malformed/oversized/unextractable Session identity exists in this scope;
+   NULL due to a byte guard cannot prove absence. Valid None native_ref is distinct
+   from non-indexable. Migration must populate both indices or refuse unchanged.
+   Actual writer/epoch/fresh/migrated goldens and oversized/malformed duplicate
+   controls plus omitted-nonindexable-check mutants are mandatory. Invalid own Session rejects independently. A separately protected #19
    managed-owner index and actual provider registry still prove positive ownership;
    an unallocated factual UUID never creates either. D35's owner-only index is not
    by itself sufficient for this broader negative rule; this additional factual
@@ -195,13 +203,17 @@ ports join the composed writer epoch and have no independent schema history.
 
 ## Persistence and audit implementation boundary
 
-Reuse `put_record_tx`'s record CAS/version validation, immutable scope/kind,
-worktree exclusion and serialization path. Introduce a private typed audit choice
-only if needed to supply the binding fact: the existing helper delegates to the
-same internal record writer with its current default audit, while this one caller
-selects `rrx.private.workflow.session_bound`. It replaces the default workflow.saved audit
-for this call, rather than adding a second event. Preserve every other caller's
-existing event name/payload and write behavior.
+Use a DEDICATED private Workflow writer. Share exact record CAS, immutable scope/
+kind and exclusion predicates, but do not call generic put_record_tx or its default
+audit/serialization path. Write the exact sealed preplanned bytes with a checked
+versioned UPDATE, then ONE reserved audit. Existing managed marker/ordinary transition/
+gate/decision/closure statements must likewise update existing W by exact versioned
+UPDATE; BEFORE INSERT existing-ID guards reject REPLACE and UPSERT before conflict
+handling. Initial new-ID creation uses INSERT only. Source acceptance inventories
+EVERY actual W INSERT/UPDATE/UPSERT/REPLACE writer and tests each positive prescribed
+UPDATE under the guards; no unknown writer can ship. Nonmanaged historical writers
+retain their separately classified behavior. Binder only emits session_bound and
+bound diagnostic only native_diagnostic; neither is a generic private-event selector.
 
 Reserve the exact `rrx.private.workflow.session_bound` event name in `reserved_audit_kind`:
 public `audit` and `audit_if_current` must refuse it. Primary inspection found
@@ -637,17 +649,20 @@ completed-merge cycle or SQL-seeded/direct-binder-only acceptance.
 
 Current d87faec bound `poll` writes Task through refresh_owners + ordinary persist on
 adapter.status error and validate_persisted_status mismatch. Replace ONLY those arms
-with private `observe_native_diagnostic`, distinct from binding. Transaction checks
-exact Workflow Record version/generation/active Running bound attempt and genuine
-private operation/context/input/actor/Session identity. Use original expected private
+with private `observe_native_diagnostic`, distinct from binding. The same Store-only
+version-pinned outside-lock plan validates complete previous/candidate W projection,
+bound Running attempt/generation and before/after hashes. Inside Immediate recheck
+current W version/private latest endpoint, exact operation/attempt and current
+context/input/actor/Session identity plus guarded OLD/NEW projection. Use original expected private
 identity, not parent authority recapture. Return latest committed Workflow Record only.
 
 Allowed delta is solely active.detail -> allowlisted reason status_unavailable or
 persisted_status_mismatch with bounded fact fields (total128UTF-8 bytes), plus checked
 Wversion/updated_at and one bounded reserved rrx.private.workflow.native_diagnostic event. Audit
 maximum4KiB; both public audit APIs refuse this kind. Enumerate both exact compiled
-private constants in reserved_audit_kind under the composed rrx.private.* prefix. Compare complete previous/candidate
-JSON and Record metadata, rejecting every extra field including unknown fields.
+private constants in reserved_audit_kind under the composed rrx.private.* prefix.
+The outside plan compares complete JSON/metadata and rejects unknown/extra fields;
+inside exact current version/head guards protect those planned bytes.
 Identical diagnostic is true no-write/no-audit; no infinite repeat history list.
 No Task/P/G/Session/full-lock body/version write, private input/owner/admission pin
 change, marker/Session ID/context/attempt outcome or grant. Status mismatch is simply
@@ -894,7 +909,9 @@ After99 Waiting cycles, the100th refusal is an explicit cancel-only availability
 limit: trusted Task cancellation then actual full cleanup/TerminalRecovery closes
 once, with zero redispatch. It cannot resume that terminal Task or fabricate Failed.
 Unknown/revoked settlement stays held14. Gate hold/clear8 is FOUR pairs; reserve
-the clear slot whenever a hold is written. An exhausted required hold/clear refuses
+the clear slot whenever a hold is written. Clearance is its own gate_hold link;
+claim/observed must not silently clear held_reason. Align the dependency projections
+in shared goldens and require actual hold→clear→claim→closure chain acceptance. An exhausted required hold/clear refuses
 ALL further gate claims and success closure with attention; mandatory facts cannot
 be silently omitted. Only trusted cancellation and genuine full TerminalRecovery
 remain available, never spend their reserved slots on optional facts. Duplicate
@@ -930,7 +947,7 @@ advancement must not be rejected by stale returned-Session version CAS.
 | Workflow | One body≤8 MiB; bounded SQLite OLD/NEW projection/CHECK/body-write cost counted |
 | Launch/latest ContextVersion | At most two exact rows≤8 MiB EACH; no historical context scan |
 | Own Session | One≤4 MiB, recovery≤3 MiB/depth32/nodes32768; fresh identity check inside |
-| Exact operation / frozen receipt | One each when applicable≤4 MiB EACH; referenced native result≤1 MiB checked separately |
+| Exact operation / frozen receipt | Operation one≤4 MiB; frozen receipt one≤64 KiB (its stricter #19 contract); referenced native result≤1 MiB checked separately |
 | Preparation / admission / phase owner | One each when applicable≤2 MiB EACH; source authority limits unchanged |
 | Consumed dispatch DTO | One≤8192 bytes; no duplicate full native payload |
 | Scalar quota/epoch/request/index metadata | Each≤4096 bytes, charged within compact128-row proof cap |
@@ -987,3 +1004,19 @@ latest own-Session advancement positive controls preserve startup behavior. Rest
 source controls. All #19/#23/#41/#43/#14/#8/#9/#12/#15/#60 producers, native/recovery
 conformance, exact tested source CI and independent source review remain unimplemented
 mandatory gates. This Design10 proposal cannot qualify them.
+
+
+## Staged preflight source boundary
+
+The first source slice only adds PreparedInputAdmission and the actual Workflow
+preflight before clear_hold/prepare_pack/reserve/marker. Static missing capability
+refuses even before probe/helper calls; a supported descriptor must pass both actual
+and probed roles/admission capability and probe identity. It retains selected adapter/
+probe identity through preparation. No current provider or legacy FakeAgent advertises
+this capability: genuine #19 allocation/input-pair wiring is still absent. Negative
+legacy-fixture controls exercise actual step and verify unchanged owners/W/context/
+Sessions/locks/audits and zero launches. They do not mint positive typed authority.
+Existing successful legacy Workflow fixture tests need genuine #19 migration before
+full-source CI can pass. This staged source is not ready for merge or whole43 closure.
+Private binding/diagnostic/launch supervision, native acceptance and recovery remain
+unimplemented dependencies, and capability alone never certifies those proofs.

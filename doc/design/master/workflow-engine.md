@@ -465,7 +465,7 @@ durable facts. No added native dispatch, owner refresh or new binder write is al
 
 
 Binding and bound-live diagnostics advance factual Workflow W without renewing
-original native currency. Proposed #43 Design10 aligns unapproved #19 Design35
+original native currency. Approved proposal #43 Design10 at6a72105 aligns unapproved #19 Design35
 at0993d2e: ONE private audit carries the complete canonical factual successor link.
 The exhaustive managed writer table includes dependency-owned gate claim/observation/
 hold, Task-terminal decision and genuine phase closure. Gate observations fuse actual
@@ -486,3 +486,12 @@ mutex latency guarantee. Same-version mutation and INSERT OR REPLACE must refuse
 actual checked-version/projection and BEFORE INSERT existing-key guards. Binder writes
 only W+one link, never parent/Session/operation/lock/native pins. Actual dependency
 producers, consumer mutations, native/restart and exact-source CI remain pending.
+
+
+Issue43 staged source adds only the pre-reservation prepared-admission capability
+check and retained registered/probed selection. Current adapters/legacy fixtures do
+not advertise that capability until actual19 admission is wired; unsupported phase
+selection refuses without clearing held state or publishing context/marker/Session.
+This branch is not ready for merge: successful legacy Workflow fixtures require
+actual private-producer migration and full composed source/native/recovery checks.
+No record-only binder/diagnostic or native readiness is implemented by this slice.

@@ -1,7 +1,9 @@
 # Issue 43 Design: Preserve native authority during Workflow Session binding
 
-**Status:** Design10 proposed from Requirements9 approved at91d4f34; independent
-design/source reviews and actual producer/native/recovery gates pending
+**Status:** Design10 at6a72105 approved by two independent native reviewers with
+no Critical/High/Medium findings and actual cleanup verified; Requirements9 approved.
+Low clarifications and staged preflight source require source review; actual full
+producer/native/recovery integration remains pending
 **Workflow:** STRICT  
 **Scope:** factual native binding, managed settled-success route and two bounded live diagnostics
 
@@ -127,10 +129,10 @@ checks current owners plus guarded versions/private head in the same transaction
 1. reload exact Project/Goal/Task; check current Workflow identity/version/private head
 2. verify exact expected versions
 3. verify Project/Goal/Task are still active and eligible
-4. verify exact Workflow scope/generation/active attempt
-5. verify active attempt is Running and has no bound Session
-6. verify committed dispatch marker is the expected marker
-7. verify context pointer/identity remains current
+4. version-pinned plan validates Workflow scope/generation/active attempt
+5. plan validates Running/absent ID; current W version CAS protects it
+6. first binder requires exact original marker W/body and ZERO preceding links
+7. validate context in the outside plan; current exact pointer/version CAS inside
 8. load the exact Session from NormalReturned identity or private ClosedSettlement allocation
 9. validate immutable Session identity
 10. reject any distinct factual provider/UUID duplicate in scope through bounded
@@ -570,7 +572,8 @@ this method neither grants their authority nor pretends to suspend already
 dispatched work. Current fresh-start Workflow has no resumed-UUID predecessor
 exemption; any future exception requires verified private resume lineage.
 
-Design4/item6 was approved at77da799. Requirements9 is approved at91d4f34; both Design10 documents remain proposed pending independent STRICT design/source review. No production implementation is present.
+Design4/item6 was approved at77da799. Requirements9 is approved at91d4f34; Design10 at6a72105 has two independent approvals; staged preflight source and all
+actual private binder/producer/native/recovery source acceptance remain pending.
 
 The narrow binding primitive is the only writer of existing PhaseAttempt Session
 IDs. All ordinary WorkflowAccess modes refuse an existing ID delta; new native
@@ -674,8 +677,10 @@ Protected Tasks reject Interactive/PTY startup and terminal input before any
 reservation, Starting row, spawn or terminal bytes; NonInteractive Workflow
 configuration alone does not protect the direct native adapter entry points.
 
-Design4 and Design7 proposal reviews were approved; Design10 actual #19/#23/#14 composition and independent review remain pending;
-source remains absent. Positive post-binding decision and later typed closure
+Design4/Design7 and Design10 proposal reviews were approved; actual #19/#23/#14
+composition and independent source review remain pending;
+full binding/driver/diagnostic source remains absent; preflight source is staged.
+Positive post-binding decision and later typed closure
 must retain the exact consumed UUID/pair. A new Journal name is not itself proof
 of correctness; actual reply/closure controls and causal mutants are required.
 
