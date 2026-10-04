@@ -94,6 +94,10 @@ fn expect_environment(fixture: &Fixture, expected: Value) -> PathBuf {
     observed
 }
 fn assert_environment(observed: &Path) {
+    assert!(
+        observed.is_file(),
+        "synthetic child canary was not written for current attempt"
+    );
     let matches: Value = serde_json::from_slice(&std::fs::read(observed).unwrap()).unwrap();
     assert!(!matches.as_object().unwrap().is_empty());
     assert!(
@@ -1170,8 +1174,10 @@ async fn reference_child() {
         assert_environment(&observed);
         adapter.release((&first).into()).unwrap();
         fixture.request.environment.clear();
+        std::fs::remove_file(&observed).unwrap(); // Prior attempt cannot satisfy this child's proof.
         let retained = fixture.start(&adapter).await.unwrap();
         let status = terminal(&adapter, &fixture, &retained).await;
+        assert_environment(&observed);
         assert!(
             adapter.transport_succeeded(&status),
             "retained owning native baseline failed"
