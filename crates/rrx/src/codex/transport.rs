@@ -215,7 +215,8 @@ impl NativeServer {
                 "native Codex app-server could not start",
             ))
         })?;
-        let mut process = ProcessGroup::new(child, uncertain)?;
+        let mut process =
+            ProcessGroup::new(child, uncertain).map_err(|error| preparation.failed(error))?;
         let pid = process.child.id().expect("validated owned child PID");
         let stdout = Reader::spawn(process.child.stdout.take().expect("piped stdout"));
         let stderr = Reader::spawn(process.child.stderr.take().expect("piped stderr"));

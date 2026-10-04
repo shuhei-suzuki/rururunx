@@ -5001,6 +5001,10 @@ mod tests {
                     if mode == "ack_lost" {
                         break;
                     }
+                    if mode == "ack_timeout" {
+                        tokio::time::sleep(std::time::Duration::from_secs(35)).await;
+                        continue;
+                    }
                     if mode == "ack_hold" {
                         ready(&directory.join("release-ack")).await;
                     }
@@ -5409,6 +5413,159 @@ mod tests {
             .collect();
         assert_eq!(starts.len(), 2);
         assert_eq!(starts[1]["params"]["input"][0]["text"], input.payload);
+        adapter.release(reference).unwrap();
+    }
+    #[tokio::test]
+    async fn actual_registered_review_git_cancel_reaps_owned_hook_before_failed_without_native_spawn()
+     {
+        use std::os::unix::fs::PermissionsExt;
+        let mut owned = Fixture::new(true);
+        crate::git::WorktreeManager::lock_review(
+            &mut owned.store.lock().unwrap(),
+            owned.request.scope.task_id.unwrap(),
+            &owned.request.input.revision,
+            "synthetic immutable review",
+        )
+        .unwrap();
+        owned.request.role = SessionRole::Reviewer;
+        owned.request.input.kind = crate::adapter::InputKind::ReviewBundle;
+        let parent = owned.request.project.root.parent().unwrap();
+        let hook = parent.join("synthetic-fsmonitor");
+        let marker = parent.join("git-hook-ready");
+        std::fs::write(
+            &hook,
+            format!(
+                "#!/bin/sh\nprintf '%s' \"$$\" > {}\nexec /bin/sleep 30\n",
+                quoted_path(&marker)
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let configured = std::process::Command::new("git")
+            .current_dir(&owned.request.worktree)
+            .args(["config", "core.fsmonitor", hook.to_str().unwrap()])
+            .output()
+            .unwrap();
+        assert!(configured.status.success());
+        let (executable, native_marker) = bootstrap_fixture(&owned);
+        let adapter =
+            Arc::new(CodexAdapter::new("codex".into(), executable, owned.store.clone()).unwrap());
+        let actor = adapter.clone();
+        let request = owned.request.clone();
+        let mut caller = tokio::spawn(async move { actor.start(request).await });
+        tokio::select! {_=ready(&marker)=>{},early=&mut caller=>panic!("Git fixture ended before hook readiness: {early:?}")}
+        let reference = {
+            let registry = adapter.registry().unwrap();
+            SessionRef::from(&registry.values().next().unwrap().status.borrow().session)
+        };
+        let control = preparing_control(&adapter, reference.id);
+        let stopped = bounded(adapter.stop(reference.clone())).await;
+        let launch = bounded(caller).await.unwrap();
+        let outcome = bounded(control.wait_finished()).await.unwrap();
+        assert_eq!(stopped.unwrap().session.state, SessionState::Failed);
+        assert_eq!(launch.unwrap_err().kind, ErrorKind::StateConflict);
+        assert!(matches!(
+            outcome,
+            Outcome::FailedBeforeAdmission {
+                cause: Cause::Cancelled,
+                ..
+            }
+        ));
+        assert_leader_reaped(&marker);
+        assert!(
+            !native_marker.exists(),
+            "cancel during real Git preflight prevents later native bootstrap"
+        );
+        assert_eq!(adapter.current(&reference).unwrap().session.pid, None);
+        adapter.release(reference).unwrap();
+    }
+
+    #[tokio::test]
+    async fn actual_consumed_rpc_timeout_after_caller_drop_keeps_owned_task_and_lost_completion() {
+        let owned = Fixture::new(true);
+        let (executable, directory) = wire_fixture(&owned, "ack_timeout");
+        let adapter =
+            Arc::new(CodexAdapter::new("codex".into(), executable, owned.store.clone()).unwrap());
+        let gate = adapter.gates.install(TestPoint::BeforeDispatch);
+        let actor = adapter.clone();
+        let request = owned.request.clone();
+        let caller = tokio::spawn(async move { actor.start(request).await });
+        bounded(gate.reached()).await;
+        let (reference, control) = {
+            let registry = adapter.registry().unwrap();
+            let entry = registry.values().next().unwrap();
+            (
+                SessionRef::from(&entry.status.borrow().session),
+                entry.control.clone(),
+            )
+        };
+        gate.release();
+        bounded(async {
+            while !journal_values(&directory)
+                .iter()
+                .any(|value| value["method"] == "turn/start")
+            {
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            }
+        })
+        .await;
+        let started = tokio::time::Instant::now();
+        caller.abort();
+        let _ = caller.await;
+        assert!(
+            control.consumed(),
+            "caller drop loses cancellation after committed consumption"
+        );
+        let stop_gate = adapter.gates.install(TestPoint::StopWaiting);
+        let actor = adapter.clone();
+        let target = reference.clone();
+        let stopper = tokio::spawn(async move { actor.stop(target).await });
+        bounded(stop_gate.reached()).await;
+        stop_gate.release();
+        // Exercise the existing native 30s RPC deadline, without replacing it
+        // with a shorter test-only timeout or claiming ACK as terminal proof.
+        let stopped = tokio::time::timeout(std::time::Duration::from_secs(40), stopper)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap_err();
+        let outcome = control.wait_finished().await.unwrap();
+        assert_eq!(stopped.kind, ErrorKind::SessionLost);
+        assert!(started.elapsed() >= std::time::Duration::from_secs(29));
+        assert!(matches!(
+            &outcome,
+            Outcome::Lost {
+                cause: Cause::Failed(ErrorKind::Timeout, _),
+                publication_result: Ok(_)
+            }
+        ));
+        let snapshot = adapter.current(&reference).unwrap();
+        assert_eq!(snapshot.session.state, SessionState::Lost);
+        assert_eq!(snapshot.session.pid, None);
+        assert_eq!(
+            snapshot.session.recovery["native_dispatch_unobserved"],
+            true
+        );
+        assert!(
+            snapshot
+                .failure
+                .unwrap()
+                .contains("native RPC response timed out")
+        );
+        assert_eq!(
+            journal_values(&directory)
+                .iter()
+                .filter(|value| value["method"] == "turn/start")
+                .count(),
+            1
+        );
+        assert!(
+            !journal_values(&directory)
+                .iter()
+                .any(|value| value["method"] == "turn/interrupt"),
+            "queued stop cannot send an interrupt before the unobserved ACK supplies a turn identity"
+        );
+        assert_leader_reaped(&directory.join("leader"));
         adapter.release(reference).unwrap();
     }
 }
