@@ -15,6 +15,7 @@ pub(super) async fn isolated(name: &str) {
         .env("GROK_SYNTHETIC_AUTH", "synthetic-native-global")
         .env("XAI_API_KEY", "synthetic-xai-global")
         .env("SSLKEYLOGFILE", "synthetic-keylog-locator")
+        .env("NODE_TLS_REJECT_UNAUTHORIZED", "synthetic-tls-control")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -135,6 +136,7 @@ async fn initial_child() {
     assert_eq!(std::env::var("RRX_INSPECTION_FIXTURE_CHILD").unwrap(), "1");
     let mut positive = Fixture::new();
     own_refs(&mut positive, &["LANG"]);
+    let (_control_dir, _) = foreign(&positive, &["NODE_TLS_REJECT_UNAUTHORIZED"]);
     positive
         .request
         .environment
@@ -163,7 +165,16 @@ async fn initial_child() {
         "synthetic native baseline mismatch"
     );
     assert!(canary["RRX_CALLER_FORBIDDEN"].is_null());
+    assert!(
+        canary["NODE_TLS_REJECT_UNAUTHORIZED"] == "synthetic-tls-control",
+        "synthetic protected control mismatch"
+    );
     adapter.release((&launched).into()).unwrap();
+    own_refs(&mut positive, &["LANG", "NODE_TLS_REJECT_UNAUTHORIZED"]);
+    assert_eq!(
+        rejected_start(&adapter, &positive).await.kind,
+        ErrorKind::InvalidConfiguration
+    );
 
     let mut denied = Fixture::new();
     assert!(
@@ -695,6 +706,20 @@ async fn reference_child() {
         rejected_start(&adapter, &fixture).await.kind,
         ErrorKind::InvalidConfiguration
     );
+    let connection = rusqlite::Connection::open(fixture.directory.path().join("state.db")).unwrap();
+    let mut oversized = vec!["INVALID-NAME".to_owned(); 3000];
+    oversized.push("GROK_SYNTHETIC_AUTH".into());
+    for projection in [json!(oversized), json!({}), json!([{}])] {
+        connection
+            .execute(
+                "UPDATE projects SET body=json_set(body,'$.environment_refs',json(?2)) WHERE id=?1",
+                [other.id.to_string(), projection.to_string()],
+            )
+            .unwrap();
+        let error = rejected_start(&adapter, &fixture).await;
+        assert_eq!(error.kind, ErrorKind::InvalidConfiguration);
+        assert_eq!(error.message, "native environment authority unavailable");
+    }
     child_completed("adapter::grok::environment_tests::reference_child");
 }
 
