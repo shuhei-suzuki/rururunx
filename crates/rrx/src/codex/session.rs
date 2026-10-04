@@ -202,7 +202,7 @@ impl Drop for RegisteredTransition {
             && Arc::ptr_eq(&entry.control, &self.control)
         {
             let restored = matches!(
-                *self.control.subscribe().borrow(),
+                &*self.control.subscribe().borrow(),
                 Phase::Finished(outcome) if matches!(outcome.as_ref(),Outcome::RestoredBeforeAdmission { .. } | Outcome::CheckpointCommitted { .. })
             );
             if let Some(previous) = &self.previous_control
