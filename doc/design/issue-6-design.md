@@ -92,8 +92,9 @@ CheckpointCommitted for a checkpoint, and a
 separate level-triggered watch<AttemptPhase>.
 AttemptPhase is Preparing, AwaitingTurnAck, Supervised, or Finished(TypedOutcome).
 TypedOutcome is RestoredBeforeAdmission{cause: Cancelled | Failed(kind)},
-CheckpointCommitted{input_version}, Terminal{snapshot}, Lost{cause,publication_result},
-or RestoreUnpublished{cause,error}. A terminal snapshot includes the exact serialized
+CheckpointCommitted{input_version}, FailedBeforeAdmission{cause,snapshot},
+Terminal{snapshot}, Lost{cause,publication_result}, RestoreUnpublished{cause,error},
+or FreshUnpublished{cause,error}. A terminal snapshot includes the exact serialized
 Session and native attempt identity, rather than a raw Store record version.
 Every Finished variant also retains its published Session snapshot, or None when
 publication failed, so an idle stop never returns another attempt's current status.
@@ -112,11 +113,18 @@ entry. A pre-admission cancelled or failed fresh start has no historical Session
 restore: after verified cleanup it persists Failed with the factual cause; unknown
 cleanup/publication retains Lost/error. The entry is visible for stop/status once the
 Starting record is visible. No Store write precedes registered control ownership.
+Every fresh preparation persist, including discovery/native PID and native binding,
+and its conservative Drop publication update that same watch while holding Store.
+This is the same ordered publication used for resume; no stale provisional watch
+may diverge from a successfully persisted preparation Session.
 
 Stop atomically cancels Preparing, or queues an interrupt to the captured attempt's
 new channel if Consumed/Supervised. Hold the admission mutex through the exact
 consumed-input Store CAS, reject cancellation with zero turn/start writes, and set
-Consumed only on successful CAS. Failed CAS stays cancellable. Pre-encode the full
+Consumed only on successful CAS. A failed CAS atomically moves Preparing to
+Failing(the actual typed error) in that same control critical section, with exact
+in-memory intent rollback; it is unconsumed but cannot be relabelled by later stop.
+Pre-encode the full
 bounded frame first. Use registry then control then Store lock order; admission
 uses control then Store. Never take control from Store or hold a lock over await.
 Checkpoint's final validated-request replacement uses registry/control/Store in
@@ -140,6 +148,9 @@ StateConflict. A real ownership/security failure linearized first retains its ki
 metadata-only audit. Later observations cannot rewrite the first cause; a separately
 observed security failure is recorded without inventing success or allowing dispatch.
 Consumed execution still uses its authoritative native terminal/drain outcome.
+Route every pre-admission error exit, including propagated errors, through one
+private cause-selection helper before any cleanup await; no generic early return
+can leave a known failed attempt Preparing.
 
 Stop awaits only its captured attempt's level-triggered outcome. For restored
 pre-admission cancellation return StateConflict with a factual cancellation/restore
@@ -240,6 +251,10 @@ never an invented ownership/launch failure. Gate actual worktree inode replaceme
 and stop in both orders: failure-first retains audited OwnershipMismatch, cancel-first
 retains Cancelled with any later ownership observation separately recorded. Kill
 mutants using generic non-success child-exit mapping or final-state cause inference.
+Gate a real second-writer admission CAS failure while holding native cleanup, then
+call stop/drop the caller: zero wire writes, unconsumed input, retained first actual
+typed failure and matching final Session/watch. Kill a mutant leaving Preparing
+after failed CAS.
 Timeout/drop fresh start during Git/bootstrap must leave verified cleanup and Failed,
 not unconsumed Lost; stop/status through its persisted Starting reference must observe
 the exact owned preparation. Kill transfer-only registry insertion with that consumer.
