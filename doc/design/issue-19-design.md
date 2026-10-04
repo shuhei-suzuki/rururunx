@@ -521,7 +521,8 @@ recovery port yet: an old database containing Lost ownership cannot upgrade unti
 that port is implemented or the compatible runtime produces genuine authoritative
 terminal/cleanup evidence. Editing Lost to Stopped, relying on a dead PID, or
 manually deleting a lock is not a supported upgrade procedure. Fresh drained
-databases can use schema6 without claiming that recovery integration. An explicitly terminal Task's non-owning Workflow
+databases can exercise isolated schema6 component mechanics without claiming that
+recovery integration or production deployment readiness. An explicitly terminal Task's non-owning Workflow
 history is preserved and nonlaunchable. Existing terminal Goal/project-only Consultant
 history remains readable; live ownership in that scope must also drain. Cancel is a terminal disposition: interrupted Task history cannot be resumed
 as that Task. Idle unfinished and post-effect Workflows are deliberately refused
@@ -905,7 +906,10 @@ continuation, exact private prewire restoration, pending initial binding with
 latest-frame/head/lifecycle validation, combined Validated first-Running/first-
 consumption monotonic initial binding, or BoundHistorical initial None-to-Some
 binding proved by the old exact admitted pair. BoundHistorical requires a nonterminal old state (Starting, Running,
-WaitingApproval or WaitingHuman), and may report an ordinary terminal outcome;
+WaitingApproval or WaitingHuman). For an open managed operation its NativeCAS
+target must remain nonterminal; actual terminal binding is performed atomically
+by the sole private settlement port with its receipt (Design19 below). Unmanaged
+historical ordinary terminal observations remain separate;
 terminal-to-terminal native binding is forbidden; it cannot
 leave or change actor fields of Lost. All other actor fields remain exact on those
 exceptions. Acked requires digest(new)==admitted_digest, not just the old digest.
@@ -1485,7 +1489,8 @@ Deserialize. Store/producer helpers and receipt predicates are crate-private.
 
 ```rust
 // Only the Engine's successful exact dispatch-marker transaction creates this.
-pub struct ManagedPhaseLaunch { request: LaunchRequest, operation: OwnedNativeOperation }
+pub struct ManagedPhaseLaunch { request: LaunchRequest, operation: OwnedNativeOperation,
+    continuation: ManagedContinuation /* private Fresh or validated Continue */ }
 // Runtime-owned supervisor identity; cannot be reconstructed from persisted JSON.
 pub struct OwnedNativeOperation { /* private operation, runtime and claim pins */ }
 pub struct OwnedNativeSettlement { /* private supervisor outcome and captured pins */ }
@@ -1527,8 +1532,8 @@ managed-dispatch transaction. A false→true dispatch_started transition inserts
 exactly one scoped operation in that transaction; operation uniqueness covers
 (Workflow Record,generation,index,phase,context_version). Marked native attempts
 must reference that exact operation on every later Store write. Preparation,
-allocation and admission require this existing unsettled operation and bind its
-Session once in the same transaction; missing/settled/foreign operation rejects.
+allocation and admission require this existing unsettled operation AND the actual nonserializable owned operation
+handle/runtime identity, and bind its Session once in the same transaction; missing/settled/foreign operation rejects.
 Allocation present with missing operation is corruption, never unmanaged fallback.
 Every marker/allocation/operation row rolls back together on Session/audit/CAS error.
 
@@ -1952,3 +1957,119 @@ NotAdmitted/nonbinding. Current success requires exact admitted/consumed pins an
 actual successful terminal receipt; Pending does not claim delivery. Exercise actual
 start-return/binder-CAS delay while supervisor settles, then fresh record-only
 binding and closure; stale/foreign/restore cases remain held.
+
+
+### Design19: managed continuation and admission possession
+
+This is a refinement of Design18, not schema6 source. ManagedPhaseLaunch has a
+private continuation selector: Fresh, or Continue with a transaction-validated
+prior Session/closed-operation identity. Public LaunchRequest JSON cannot set it.
+The Engine selects Continue only from the exact closed prior native attempt of
+this Task/Workflow, not from a user-provided UUID/native_ref or an adapter registry
+search by loosely matching scope. Fresh mints a new privately owned UUID. Continue
+is optional per actual production profile; unsupported continuation rejects before
+new marker/operation, while its supported Fresh path remains available.
+
+The marker/operation transaction for Continue validates the persisted prior Session
+as terminal, non-Lost and non-uncertain, its latest managed operation phase_closed,
+and that operation's exact immutable receipt against the current complete Session
+body checksum/Record version and applicable pair. Scope, registered agent, native
+family/profile, role and exact worktree must match the new request/operation; a
+role-changing next phase uses Fresh. The new input/context version is strictly
+higher. The sealed continuation descriptor contains exact prior identities/version/
+checksum and receipt, not native permission JSON. Actual adapter startup additionally
+checks its private owned registry/current Session/native UUID before any effect.
+A historical unowned native_ref or older receipt cannot be resumed. A service/server
+already cleaned up may reconnect the retained privately owned native thread UUID;
+no idle-service resource release is implied.
+
+Terminal→Starting occurs only through this Continue descriptor and the new owned
+operation's private admission transaction. It binds the new operation's Session
+None→the exact prior UUID, installs fresh requested model/effort and full frame/
+source/bytes/hash, preserves its privately owned known native_ref, records exact
+prior canonical restore checksum, and clears prior dispatch uncertainty/consumed
+markers only for this genuinely fresh input. The old receipt/history remains
+immutable; it is no longer compared to the new current body. The new operation
+pins its own preparation/admitted tuple. Before new consumption, actual tracked
+prewire failure can atomically restore that exact old terminal body with the new
+operation's NoCurrentDispatch receipt; it is RestoredPriorNotAdmitted for this
+attempt, never a delivery/success claim. Receipt-based non-success closure frees
+the new claim only after exact cleanup. Post-consumption rollback is forbidden.
+All protected legacy resume/checkpoint/terminal-to-Starting callers without this
+sealed managed entry remain Unsupported. Causal managed consumer fixtures cover
+same-UUID fresh Starting, successful fresh consumption, failed prewire exact restore,
+foreign/unowned UUID refusal, changed receipt/body refusal and new-role Fresh.
+Earlier component resume fixtures alone do not prove this actual managed producer.
+
+Post-epoch managed preparation, allocation, first admission, consumed publication
+and actor binding require &OwnedNativeOperation (or a private nonserializable token
+borrowed from that same handle). Generic put_session_if_current with ordinary
+ScopeSnapshot/lock CAS is not that authority. In the same transaction, check exact
+operation ID/runtime-instance, immutable claim/context/frame pins, unsettled/open
+state and effects_started=true for any Session write, then current P/G/T/lock CAS
+and the applicable full input/head predicate. Exact Session agent/provider/profile,
+role/worktree/mode and explicit requested model/effort match operation authority;
+only the separately validated monotonic effective binding may differ from None.
+A second adapter instance or restarted runtime without the handle cannot take its
+Session allocation or commit consumption merely because the row exists. Provider
+capability declarations, scope versions and recovery JSON do not reconstruct the
+handle. Observe/settlement ports check the same identity/remembered versions.
+Mutants must reach the actual preparation and final-wire consumers without a handle
+and reject before authority publication/input, with the real handle positive.
+
+NativeCAS BoundHistorical can only publish nonterminal managed targets. If a known
+native terminal reports its first permissible None→Some model/effort/native_ref,
+the actual private settlement transaction performs that same monotonic predicate
+using the old exact admitted digest, refreshes applicable preparation/admitted actor
+digests without new consumption, and pins the resulting actor/body/digest in the
+receipt atomically. Explicit Some cannot change; lost/foreign actor binding rejects.
+Actual owned terminal outcome/cleanup is still required. A terminal NativeCAS write
+without settlement is forbidden even if its actor binding alone is valid. Test
+late-ref terminal binding+receipt positive and no-receipt BoundHistorical→terminal
+negative through the real consumer, not generic terminal JSON.
+
+Schema6 refuses all unmanaged Task-worktree native Executor/Reviewer launches,
+including not-yet-typed Tasks, before reservation/Starting/native connection/process.
+Workflow initialization cannot convert a post-boundary unmanaged native operation
+into trusted history or silently rely on its Exited label. No generic/public history
+write creates such launch authority. Legacy pre-migration native resource drain
+retains the documented old-runtime/operator-attested limit; factual Consultant
+history is not a cleanup certificate. This closes the untyped-launch→label-release→
+managed-worktree sequence. Test actual legacy entry rejection on an untyped Task
+with a managed positive control; no escape/worktree ownership is inferred from
+historical terminal facts. Project/Goal Consultant factual scope remains primary
+Project.root, never the Task worktree namespace. Native operation escape proof
+continues to gate the managed profile as Design18 specifies.
+
+Pristine handle cancellation/drop or a crash before effects_started remains durable
+attention/held ownership until the actual private Issue14 recovery port. Durable
+false alone is not proof while an old runtime could later cross the effect boundary.
+This design deliberately adds no generic revocation/quarantine or Drop-issued
+receipt. The real synchronous pristine refusal port remains available to the actual
+still-owned producer; cancellation-before-transfer and restart-orphan cases prove
+held status, retained resource/worktree ownership and migration refusal. Production
+deployment additionally requires the actual reviewed Issue14 owned recovery handoff
+for these restart-unknown/Lost/pristine-orphan operations, with exact runtime/
+operation/attempt/epoch CAS and actual native cleanup or safely revoked no-effect
+ownership. That is an explicit release prerequisite, not completed Issue19 source
+or an out-of-scope fake receipt. No DB-edit, Human opinion, terminal label or late
+selected-group cleanup releases them. Component tests can prove this conservative
+boundary; they cannot claim production availability before recovery exists.
+
+Engine poll/evaluate uses the private receipt class/outcome reader to select native
+phase outcome: NoCurrentDispatch/restored prior maps only to Failed/Interrupted;
+KnownCurrentTerminal known success plus current admitted/consumed Exited may map
+to Succeeded. It never selects success solely from a restored Exited label. Missing/
+unknown receipt stays held. Test restored-Exited full Engine progression to the
+non-success closure, not merely a Store rejection looping forever.
+
+SQL enforces relational marker↔exact operation and allowed column changes, not
+which Rust function was called. Nonserializable authority and absence of a public
+producer enforce code-path ownership. Exact closure statement order in one Immediate
+transaction is Workflow Record update first, then operation phase_closed update;
+the latter trigger checks the matching scoped Workflow history index/generation/
+phase/context is closed, active is not that index, and exact receipt exists. A failed
+second statement rolls back Workflow/audit/operation together. Concrete JSON paths/
+variant tags are pinned by canonical schema goldens. Active None alone or any receipt
+for another entry is insufficient. Reversed-order and weakened-index/receipt mutants
+exercise the actual multi-statement consumer.

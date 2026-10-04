@@ -426,3 +426,10 @@ Managed Goal classification persists across pre-marker/between-phase/all-settled
 windows using exact durable ancestry, and composes with Issue23 accepted authority.
 Live checkpoint append preserves admitted input; receipt freeze allows exact late
 record-only binding, with no Session rewrite. This remains proposed, not schema5 source.
+
+The proposed [Design19 refinement](../issue-19-design.md#design19-managed-continuation-and-admission-possession)
+uses sealed managed continuation and handle-bound admission; unmanaged Task native
+Executor/Reviewer launch rejects even before a typed context exists. Actual settlement
+alone may publish terminal actor binding. Receipt outcome drives phase closure,
+and private Issue14 recovery is an explicit production deployment gate for held
+orphan/Lost ownership. No such authority is claimed in current schema5 source.

@@ -470,3 +470,16 @@ Same-Task live checkpoint append preserves admitted history; new context/input
 remains operation/current-head fenced. Receipt freeze permits only exact record-only
 late Workflow binding and closure, never Session mutation. These require actual
 caller/transaction positives and causal mutants in source acceptance.
+
+
+Managed continuation is explicit sealed Fresh/Continue authority selected from an
+exact closed prior attempt/receipt, with actual adapter registry ownership before
+effects; protected legacy resume methods cannot bypass the managed entry. Every
+managed preparation/admission/consumption requires the actual operation handle and
+runtime identity, not an existing row alone. Unmanaged native Task Executor/Reviewer
+launches are Unsupported even before typed context creation. Managed terminal initial
+binding is atomically part of actual settlement, never receipt-free NativeCAS.
+Receipt class drives Engine success/failure selection independently of historical
+Session labels. Pristine/orphan/Lost remains held; actual private Issue14 recovery
+is a production deployment prerequisite, not a reconstructed JSON receipt. Source
+acceptance must prove these actual caller paths and statement-order rollback.
