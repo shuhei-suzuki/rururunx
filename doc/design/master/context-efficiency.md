@@ -366,11 +366,3 @@ current grants, compact bounded evidence and real19/23/43/60/native composition.
 JSON, terminal labels and synthetic fixture proofs never confer production ownership,
 cleanup or review independence. Candidate schema6 is not implemented or an ordinary
 user upgrade; migration and supported native readiness are separate pending gates.
-
-
-Candidate Issue19 Design32 keeps initial prepared-frame provenance immutable while
-allowing only runtime-declared current Executor output references to change mid-turn.
-Governing rules/config, promoted/foreign/undeclared inputs and Reviewer sources stay
-exact. Complete encoded UTF-8 bytes, including multibyte JSON, govern every trigger's
-pre-parse bound. Full prerequisite evidence is extracted outside SharedStore; repeated
-native gates read bounded genuine compact authority. No source6 readiness is inferred.

@@ -3,7 +3,7 @@
 Status: actual merged main is schema3; this unmerged component source is5. Proposed
 schema6 remains fixture-only/pre-code until its independent gate and actual composed
 source/native production release. No Phase::DecisionReview or native producer is
-created by prose. The schema6 canonical writer table below plus named Design16 and Design18–32 private
+created by prose. The schema6 canonical writer table below plus named Design16 and Design18–33 private
 port/bounds define proposed native authority. Earlier schema5 protocol examples are
 historical component context ONLY and cannot authorize a managed/public writer;
 artifact/encoding contracts continue where this table does not supersede them.
@@ -35,7 +35,7 @@ is separately permitted under authorized lifecycle holds, never launch/ALLOW.
 | Any Lost→non-Lost or consumed-uncertain release | None here | Actual14 recovery required; generic terminal labels and late diagnostics cannot release |
 | Workflow native SessionID None→Some binding | Sole private43 record-only binder | Exact allocation/private prep/admit OR sealed known-current closed-receipt proof; Store-derived ORIGINAL resulting marker P/G/T/postmarker Workflow/full-lock frame, never refreshed expectations; full active-owner CAS; ordinary Workflow Record version/updated_at increment + one bounded reserved audit only, no Session/Task/P/G/lock write |
 | Bound-live native diagnostic observation | Sole private43 record-only observe_native_diagnostic | Exact actual private operation/attempt/Workflow CAS; bounded diagnostic + Workflow version/updated_at + audit ONLY, duplicate no-write; no P/G/T/Session/full-lock/native-pin change, authority refresh, fail/retry or input |
-| Workflow closure/retry/escalate/invalidate/release | Exact private receipt predicate | Every allocated marked owner settled by required class; non-success TerminalRecovery may leave session_id None with exact allocated receipt proof, never success/binding; no label-only reset; #41 unmarked invocation-owner policy stays separate |
+| Workflow closure/escalate/invalidate/release; later closed-attempt retry | Exact private receipt predicate; retry additionally exact awaiting_explicit_retry hold | Every allocated marked owner settled by required class; non-success TerminalRecovery may leave session_id None with exact allocated receipt proof, never success/binding; no label-only reset; #41 unmarked invocation-owner policy stays separate |
 
 The dispatch-marker transaction also invokes the SAME private composed23 admission
 predicate as preparation, first/new consumption and AllowCurrent in its Immediate
@@ -1368,12 +1368,14 @@ controls use real private preparation, not seeded admission rows.
 
 Every non-Succeeded removal/replacement of an allocated attempt checks exact owner,
 terminal non-Lost/non-uncertain state and current preparation/admission pins, or the
-exact RestoredPriorNotAdmitted alternative. This includes retry while old attempt
-state is Waiting or Failed, escalation/invalidation and all WorkflowAccess paths.
+exact RestoredPriorNotAdmitted alternative. The component active-Waiting/Failed retry example is HISTORICAL ONLY. Managed retry
+requires the already closed awaiting_explicit_retry hold; escalation/invalidation and
+all WorkflowAccess paths retain their actual settlement predicates.
 An unbound allocated live actor is still ownership. Preserve the separate #41
 claim-owner/observer-release policy; this predicate does not manufacture owner death.
-Test active Waiting→None retry with a different-input terminal Session rejects,
-then exact current failed preparation or frozen older restoration permits closure.
+Test the old component retry(active) rejects EVERY marked post-epoch native attempt.
+Exact current failed preparation/frozen restoration permits the private non-success
+closure, followed only later by an independently authorized closed-attempt retry.
 Succeeded always uses its stronger unconditional admitted+consumed predicate.
 These input/terminal predicates are necessary but insufficient: every managed
 operation also needs its actual owned settlement receipt below, including before
@@ -1779,15 +1781,16 @@ new-open-attempt validation never substitutes a historical receipt for current p
 | Exact managed phase state | Allowed closure/replacement |
 | --- | --- |
 | Pre-marker, no operation | Separately reviewed Issue41 invocation-owner rule only; never receipt fiction |
-| Post-marker, no Session/allocation, matching NoCurrentDispatch receipt | Failed/Interrupted non-success closure, explicit retry replacement or TerminalRecovery; same-tx exact operation/claim/frame and no owner. Succeeded impossible |
+| Post-marker, no Session/allocation, matching NoCurrentDispatch receipt | Failed/Interrupted non-success closure or TerminalRecovery; managed retry is later closed-attempt-only under Design32, never active replacement; same-tx exact operation/claim/frame and no owner. Succeeded impossible |
 | Post-marker, no Session/allocation, no receipt | Held for actual supervisor settlement or private Issue14 recovery |
 | Allocated current failed preparation with NoCurrentDispatch receipt | Non-success closure/TerminalRecovery with exact frozen preparation/terminal receipt body; unbound session_id may stay None |
 | Allocated older restored terminal with NoCurrentDispatch receipt | RestoredPriorNotAdmitted failure/interruption/TerminalRecovery only; exact frozen checksum and no current admitted/consumed input; bound session_id retained unchanged OR unbound session_id stays None; never clear/rebind |
 | Allocated known current terminal receipt | Exact active current unbound known failure may use separate KnownCurrentFailureClosure without SessionID write (Design27); Cancelled/Failed Task TerminalRecovery remains separate; Succeeded additionally bound Exited + actual successful outcome + exact current admitted/consumed pair |
 | Missing operation for marked/allocated post-epoch native context, stale/foreign receipt, Lost/uncertain owner | Corruption/hold; never generic label fallback |
 
-Both no-Session and allocated-but-unbound receipt rows explicitly update retry and
-TerminalRecovery's old session_id.is_some() || !dispatch_started check. The sole
+Both no-Session and allocated-but-unbound receipt rows update non-success closure and
+TerminalRecovery's old session_id.is_some() || !dispatch_started check. Managed retry
+then consumes ONLY the closed awaiting_explicit_retry hold, never the active entry. The sole
 non-success alternative derives exact allocation (or its proved absence), operation,
 current receipt/body/version and input/actor pins in that same transaction. It may
 release a Cancelled/Failed decision under inactive owners after actual owned cleanup,
@@ -3204,6 +3207,8 @@ schema5 source or installed production ports.
 **Immutable original marker columns and insert ordering.** native_phase_operations
 explicitly stores marker_project_version, marker_goal_version, marker_task_version,
 marker_workflow_record_version and canonical full marker_lock_set plus SHA256 digest.
+The immutable marker_workflow_body_sha256 additionally anchors the exact canonical
+planned complete Workflow Record body; its byte recipe is projection/version pinned.
 The full sorted ID/version list is bounded to 256 entries/64 KiB before marker; its
 exact encoded bytes also fit the existing aggregate authority-tuple bound. The columns
 are immutable under EVERY UPDATE/REPLACE/Delete guard, including private bookkeeping
@@ -3355,8 +3360,8 @@ or exceptions to14 restart/runtime-instance and original-frame authority.
 **Failed closure and explicit retry.** Current component `Engine::fail` keeps active
 and bumps Task; later `retry` expects active. Those schema3/5 transitions are historical
 consumer context, not the candidate managed failure state machine. Candidate managed
-KnownCurrentFailureClosure and bound non-success closure validate the original frame
-BEFORE their own writes and perform one Immediate transaction: mark that exact attempt
+KnownCurrentFailureClosure and bound non-success closure validate original P/G/T/
+context/source/locks and the Design33 legitimate Workflow successor BEFORE their own writes and perform one Immediate transaction: mark that exact attempt
 Failed (or Interrupted under actual23/8 policy), retain result/receipt and reason,
 clear its active index, publish matching phase_closed, and set durable Workflow
 `awaiting_explicit_retry={attempt_index, generation, phase, reason}` while Task becomes
@@ -3458,3 +3463,133 @@ read-only exact reconciliation, not fail/retry/native redispatch. The actual dri
 retains its bounded attention and ownership. S6-16 requires saturated/unmarked/bound/
 closed/cancelled-open cases and contention/rollback/mismatch distinction. All actual
 19/23/41/43/58/60 producer and native acceptance gates remain pending.
+
+
+### Design33: factual Workflow successors and complete compact field inventory
+
+**Immutable marker versus legitimate successor.** Original marker P/G/T/W versions,
+body hash, context/source/frame, actor and full locks NEVER change. Unbound43 binding
+and unbound failure still compare original W. Binding and bound diagnostic legitimately
+advance W, so bound closure uses a sealed Store-derived factual successor proof for W,
+not original-W equality and not a fresh current-row self-match. No binder-updated
+operation column/table is added. Preserve43's allowed write set: Workflow Record body/
+version/updated_at plus ONE bounded reserved audit in the same transaction only.
+
+That audit is an append-only factual ledger link with exact scope/operation/attempt,
+original marker-frame digest, checked predecessor/successor W versions, predecessor/
+successor canonical COMPLETE Workflow body SHA256 and prior ledger digest. Binder event
+is exactly `rrx.private.workflow.session_bound`; diagnostic event is exactly
+`rrx.private.workflow.native_diagnostic`. At the first bind, predecessor is the immutable
+planned marker W/body hash. Binder changes only the exact active history.session_id
+None→allocated exact ID; diagnostic changes only that attempt's bounded detail. Each
+producer checks its complete allowed projection and original immutable pins before
+writing, installs the next W, and verifies the stored complete body/hash before commit.
+Ordinary audit data, a reserved string in JSON, current rows or receipt IDs cannot mint
+a link. Generic audit writers reject the whole reserved namespace. Canonical stored
+body encoding/hash recipe is explicit; projection hashes alone cannot hide changed fields.
+
+Generated/indexed audit operation/frame/predecessor/successor keys and uniqueness bind
+exact consecutive W steps to the same private operation. Complete derivation is bounded
+to256 compact links per operation, each at most4096 encoded UTF-8 bytes (aggregate1 MiB),
+verified from the marker anchor through the latest genuine successor and exact current
+Workflow body hash. No arbitrary history scan or current-row adoption. Within that
+finite allowance reserve binding and all required gate/closure links before effects;
+optional diagnostic exhaustion coalesces/no-writes with explicit attention, never spends
+mandatory closure headroom or changes authority. Duplicate diagnostic is no-write.
+The ledger remains charged to the existing Workflow128-MiB quota; index fields do not
+hide actual retained bytes. Bind/diagnostic still never update an operation row, P/G/T,
+Session, context, lock or native-grant body/version. The factual successor proof cannot
+refresh any of those pins or authorize an input/ALLOW. A legitimate later Workflow
+closure is not a new native binding or grant.
+
+S6-09/10 requires genuine bind→diagnostic→failed closure→explicit retry-hold positive,
+bind→successful phase-gate closure, diagnostic budget exhausted but mandatory closure
+still succeeds, and rollback. Foreign Workflow version/body write, missing/different
+chain, forged ordinary audit, altered marker anchor, illegal bind projection and
+scope/operation replay hold without new input. A raw-SQL version/body drift mutant and
+caller-reachable missing ledger/current-self-match mutants must fail. Actual43 source
+and gate-owner integration is required; private SQL seeding is no proof.
+
+**Managed gate reservation and observation.** Current component evaluate() writes
+Evaluating/claimed_observations through Task+Workflow persist; observe_workflow_gate
+already writes Workflow only. Candidate managed callers migrate to separate private
+record-only gate-claim and factual gate-observation ports. They NEVER bump Task before
+the final atomic native phase closure. They remain19/8 consumers, not43 binder or
+native-diagnostic scope. Reserved ledger constants are
+`rrx.private.workflow.gate_claim` and `rrx.private.workflow.gate_observed`, with the
+same genuine predecessor/successor complete-body hashes, original operation/frame and
+exact active index/generation/phase/Session/context. Claim changes only Evaluating and
+its exact claimed_observations index; observation appends only that claim's actual
+compact source/outcome/error entry and bounded detail. The private Store checks each
+complete allowed projection; ordinary Workflow writes cannot masquerade as a link.
+
+Claim requires genuine current native receipt/input/result authority and actual gate
+invocation ownership, full current original lifecycle/source/lock admission before any
+new gate effect. Effectful gates additionally require their actual independent runtime-
+job/evidence owner and physical reservation before first effect; pure evaluators require
+actual typed input/result provenance, not a fabricated external job. Factual outcome
+publication after admitted gate work may preserve its original claim under later
+revocation, changing W/audit only; it cannot renew authority or authorize closure under
+stale P/G/T. Exact genuine #9 review disposition and #12 evidence semantics determine
+Passed; transport success/receipt, native text, arbitrary Evidence JSON or statusNone
+cannot do so. Missing/unknown actual producer/outcome retains the gate/phase claim.
+Final closure additionally requires every relevant evidence job actually settled, with
+its genuine outcomes; the earlier native receipt does not settle a later independent
+job. No actor/input/source refresh and no duplicate external call on observation replay.
+
+The finite256-link budget INCLUDES binding, diagnostic, gate claim and outcome records.
+Before effects reserve every mandatory configured gate/observation/final-closure link
+and byte margin; optional diagnostics cannot spend it. If required work cannot fit,
+refuse before effect rather than omit terminal facts. S6-09/10/13 require actual
+bind→gate claim→observed Passed/Failed→closure, Task version unchanged before closure,
+revoked observation retained without permission, unknown effect/result held, missing
+producer refusal and gate-claim Task-bump/forged-Passed/ledger-removal mutants. Real
+19/8/9/12/43/60 integration remains required; no seeded gate owner proves acceptance.
+
+**Consumed failure under revocation remains held.** No new revocation-tolerant
+KnownCurrentFailure policy is introduced here. Its exact consumed input/native outcome
+and complete cleanup are necessary but do not waive current original P/G/T/context/
+source/locks/active-owner predicates. If an authorized Project Block, Goal Pause or Task
+hold changed those pins after consumption, factual failure/receipt may be retained but
+phase closure remains recovery-pending14, even after later resume. Success binding is
+also strict. This is an explicit availability limit; do not fabricate NCD after input
+or clear a hold to make retry work. The narrower genuine pre-input NCD closure under
+revocation remains Design31. Expanding consumed-failure closure needs separate reviewed
+requirements/native controls. S6-09 distinguishes normal genuinely current failed
+closure from revoked consumed failure held, with zero duplicate dispatch. Public
+Cancelled/Failed TerminalRecovery keeps only its separately authorized existing scope.
+
+**Complete Workflow storage projection.** Every post-epoch Workflow field that can
+carry a source map or large evidence uses typed immutable bounded references, not
+nested maps or escaped JSON. The field inventory is exhaustive:
+
+| Stored field | Compact representation and authoritative material |
+| --- | --- |
+| sources | scope/revision/source-blob digest and exact ContextVersion ref; no source_versions map or payload copy |
+| history[].observations[].sources / outcome / error | source/outcome refs, typed status/count/time, bounded512-byte entry as Design26 |
+| escalations[].evidence | exact source/outcome refs and at most512-byte factual reason; no serde_json source-map string |
+| invalidations[].previous_sources / sources | two exact immutable source refs plus revisions/cause; no embedded maps |
+| completed[*].source_versions / dependencies / artifacts | exact source ref plus dependency/artifact manifest refs with scoped digest; no map/path-list duplication |
+| retries[].reason / awaiting_explicit_retry / terminal_decision / finalizations / held_reason | bounded512-byte text + exact index/revision/ref, large evidence in charged outcome blob |
+| configured_phases / class/risk/generation/active/context and remaining scalar metadata | bounded typed scalars/enums; no opaque Value/source/evidence extension |
+
+All history/change lists share the existing256-entry count ceilings and complete8-MiB
+Workflow body bound. Each source/dependency/artifact manifest blob is at most2 MiB;
+outcome/evidence text blobs are at most1 MiB. Proven identical immutable bytes/scope/
+projection deduplicate physically once; every actual delivery remains separately charged.
+Unique source/outcome authorities share the existing64-unique observation/material ceiling;
+a new distinct map/evidence at that boundary returns NeedsContext BEFORE further effects.
+No unlisted field can embed a large map/opaque value. Decoding old read-only historical
+rows is separately bounded and never silently adopted into managed authority.
+
+Actual Engine consumers resolve full references outside SharedStore for capture,
+verification and phase decisions, then revalidate exact digests/current authority in the
+mutation transaction. Compact records are not summaries replacing mandatory evidence;
+missing refs refuse. Actual whole-body reservation derives worst-case bytes for EACH
+of these fields and any new source/outcome blob, including escaped bounded text and
+all irreversible tail contexts/history/counters/audits; it reserves before effects.
+S6-13 uses realistic near2-MiB maps across escalation, invalidation, completed evidence,
+retry and tail finalization: compact body/128-MiB charging stays bounded; source digests
+still detect actual change. Each map-reembedding mutant and omitted tail-family mutant
+must fail the real consumer/quota test. This is proposed schema6 storage/Engine work,
+not current component SourceSnapshot or provider API implementation.
