@@ -18,8 +18,9 @@ query if any row is inconsistent; it never returns an earlier partial vector. Op
 Goal/Task identity must preserve None exactly. The existing usage-table CHECK already
 requires Task columns to have Goal columns; matching body identities preserves that
 shape for supported schema3 history. No new redundant body-shape guard is added. The identity-mismatch and requested-scope refusal messages contain only static
-codes/text, not the foreign body. Malformed-body decode chains retain pre-existing
-serde detail, pending the bounded safe-code projection gate. No repair, audit, schema, owner or historical write.
+codes/text, not the foreign body. The separate legacy decode-error component maps malformed Usage bodies to a
+static refusal without a serde source chain. Other readers and full bounded
+safe-code projection remain pending. No repair, audit, schema, owner or historical write.
 Valid Task, Goal, Project and NoTask history retain existing representation/order.
 
 Actual consumers: state integration history/reopen tests, missing-usage validation

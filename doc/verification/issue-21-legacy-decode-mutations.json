@@ -1,0 +1,70 @@
+{
+  "baseline": "c44cbc792c0e8dd231305a9455262028c0a52fef",
+  "baseline_tree": "5113df978bc3c49d9698c7f91dc65d9c6b2eb852",
+  "source_sha256": "662ba433f06de59ee0129ac44888e4fd51c3be0fec450da3108f6a5f02510a99",
+  "tests_sha256": "6041ece1179a59deee12ca2749b7a5ec16c7ae2b3832a4a2238fac1b791dd30c",
+  "scope": "legacy Usage decode error projection only; no private query/native/whole21 acceptance",
+  "mutations": [
+    {
+      "mutation": "revert_static_projection",
+      "head": "80735f4893e3594016143c1b34c327a106134404",
+      "tree": "f49364150983cf4f1543957a1345205c7956fba2",
+      "compiled": true,
+      "test_exit": 101,
+      "actual_consumer_leak_failure": true,
+      "source_sha256": "2abbe5ddf3d30335ea8e690b9642fba75a721ea23048d901c6eccc9e668f4bfe",
+      "patch_sha256": "bda31fdfb6f9edc88b6847a59098dd082d36887baefce3b7a1421bd16b580e7f",
+      "log_sha256": "ed93e7079545e19f1e61becc11a27b201af8e247fad5427012b6e8f9f566a08a",
+      "observed_assertions": [
+        "thread 'legacy_usage_query_redacts_malformed_body_decode_chain_without_writes' (231723363) panicked at crates/rrx/tests/state.rs:1062:17:",
+        "usage read leaked body via input_tokens: invalid persisted snapshot: invalid type: string \"STATIC_USAGE_BODY_CANARY_DO_NOT_PROJECT\", expected u64 at line 1 column 207",
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 16 filtered out; finished in 0.01s"
+      ]
+    },
+    {
+      "mutation": "retain_raw_cause_chain",
+      "head": "94ab48ccc48393b9456d5b559b2e0557ea2e9845",
+      "tree": "78312066b2fc6d0b5e1aedcc23fa07b0608f9066",
+      "compiled": true,
+      "test_exit": 101,
+      "actual_consumer_leak_failure": true,
+      "source_sha256": "28f09857821bdebfc4a3b4ce8270645b4a120add7351d96a80f857273cc4f0db",
+      "patch_sha256": "ac9d36daa4f04a7c839eee8451c15c2ce098a22b2d292973a6fd6e98ec68ffc5",
+      "log_sha256": "17187ec48e746ccd105e7a06b5208746726fe192718205827994d6d607625c74",
+      "observed_assertions": [
+        "thread 'legacy_usage_query_redacts_malformed_body_decode_chain_without_writes' (231724380) panicked at crates/rrx/tests/state.rs:1062:17:",
+        "usage read leaked body via input_tokens: invalid persisted usage snapshot: invalid persisted snapshot: invalid type: string \"STATIC_USAGE_BODY_CANARY_DO_NOT_PROJECT\", expected u64 at line 1 column 207",
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 16 filtered out; finished in 0.01s"
+      ]
+    },
+    {
+      "mutation": "format_raw_cause_into_message",
+      "head": "32691e5d7700988240440c1f6147a16653cf2606",
+      "tree": "5aa62a00057c7127a3638acea8cc13560cb7ed74",
+      "compiled": true,
+      "test_exit": 101,
+      "actual_consumer_leak_failure": true,
+      "source_sha256": "db83585949982365f7ff9c7ac07fbfc9ad500c5308478db0d46ac8cbab6f6fde",
+      "patch_sha256": "1229788a324c74cb2c4d2d490ef8f6cfeefd164458f84e954ffd45d27d8baaa7",
+      "log_sha256": "ec1bf52e4f8dccb2947445a06aa7c4b0cd6fa036950b1efc62ab48921c8f02e9",
+      "observed_assertions": [
+        "thread 'legacy_usage_query_redacts_malformed_body_decode_chain_without_writes' (231725299) panicked at crates/rrx/tests/state.rs:1062:17:",
+        "usage read leaked body via input_tokens: invalid persisted usage snapshot: invalid persisted snapshot: invalid type: string \"STATIC_USAGE_BODY_CANARY_DO_NOT_PROJECT\", expected u64 at line 1 column 207",
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 16 filtered out; finished in 0.01s"
+      ]
+    }
+  ],
+  "control": {
+    "exit": 0,
+    "tests": 1,
+    "log_sha256": "4d868cdcc317cb9d53d23feb735857e8194c7e14e3814ad1ea3798ecf0f82b04"
+  },
+  "restored": {
+    "head": "3ba8f0074f80f01e2411b913913a8d961c5d335e",
+    "tree": "5113df978bc3c49d9698c7f91dc65d9c6b2eb852",
+    "source_sha256": "662ba433f06de59ee0129ac44888e4fd51c3be0fec450da3108f6a5f02510a99",
+    "exit": 0,
+    "tests": 1,
+    "log_sha256": "faf1503657757314770dbeebf99e114de1838a45dfbef1259fe71eb6fb63297b"
+  }
+}
