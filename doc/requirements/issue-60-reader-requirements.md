@@ -1,12 +1,10 @@
-# Issue60 selected Git reader lifetime — Requirements4 candidate
+# Issue60 selected Git reader lifetime — Requirements4 approved; design pending
 
-Risk: STRICT. Status: UNAPPROVED requirements candidate. Separate from the merged
-inspection diagnostics slice. Combined Requirements2 was request_changes twice;
-its source findings motivate this contract, not approval. Reader Requirements1
-was also request_changes twice; verified corrections below remain pending
-re-review. Reader Requirements2 also returned request_changes twice at6faf26f;
-Reader Requirements3 also returned request_changes twice at7761f07. Current
-corrections are not approved. Requirements, design and source gates for this component are still required before production edits.
+Risk: STRICT. Status: Requirements4 at a8e8a8b received two independent native
+approvals, no Critical/High/Medium findings, two Low findings each. Design and
+source gates remain pending. The four Low findings are verified precision items
+carried into Design1 and the outcome ledger; this is not reader implementation
+approval. Earlier combined/reader Requirements1–3 request_changes remain preserved.
 Initial base: public main2c6ae9d6f54e68a3bdbead25817c46981d231db0.
 Current candidate normally composes main efe977486693a065122d8fc177b0e83d29620bdc;
 its independent usage-read error projection changes no native/common source.
@@ -46,8 +44,9 @@ predicate does not cover executor spawn; no actual occurrence is asserted.
 ## Proposed normative contract
 
 The numbered clauses7–15 of [the reader/driver candidate](issue-60-git-reader-contract-draft.md)
-are the full proposed contract reviewed together with this document. They remain
-UNAPPROVED. In particular:
+are the full contract reviewed together with this document. Requirements4 approval
+covers a8e8a8b; the derived Low precision below must be verified by Design1 reviewers.
+No design or source is approved. In particular:
 
 - Before Git spawn, reserve actual bounded capacity for supervisor, both readers
   and cleanup; exactly64 total job permits, four per operation, maximum16 admitted
@@ -116,7 +115,7 @@ At least four selected operations must progress with healthy driver/free capacit
 global capacity couples Projects and cannot promise isolation/fairness under holds.
 This is not actual native3/runtime mixed-workload MVP acceptance.
 
-## Acceptance gates — pending
+## Acceptance gates — requirements complete; design/source pending
 
 1. Two independent immutable requirements and design reviews approve this partial
    component before source; all findings verified against actual source. Include
@@ -129,8 +128,10 @@ This is not actual native3/runtime mixed-workload MVP acceptance.
    cleanup/reap failure, real nonexistent-executable native spawn Err with no
    profile witness preserving Unknown/flag/permits/Context latch/Generic Lost and
    original ProcessFailure; no actual Child anchor is claimed when none returned.
-   Proven no-native-spawn-attempt refusal must keep/clear the flag on its live settled
-   return, with no Context latch/Generic Failed, using actual no-attempt evidence.
+   For proven no-native-spawn-attempt refusal the flag stays false if never set, or
+   clears on the live in-budget settled return if set at admitted→spawning; caller
+   Drop after spawning still freezes it true. The refusal must produce no Context
+   latch and Generic Failed, using actual no-attempt evidence.
    Never-started reader settlement needs no-task/endpoint evidence. Healthy reserved-supervisor late observation and mandatory
    permit release with unchanged flag/latch, and lost-supervisor no-observer permanent
    retention. Prove owning-runtime resource survival after caller runtime shutdown;
@@ -149,7 +150,8 @@ This is not actual native3/runtime mixed-workload MVP acceptance.
 4. Compiled actual consumer mutants reach the intended missing guard; masked or
    unit-only effects earn corresponding limited attribution. Exact restored
    controls pass. No caller-only copied helper can substitute for real routing.
-   Route current7+1 Unknown fixtures and new destructive Generic/Grok consumers through cfg(test)
+   Route current7+1 Unknown fixtures AND every new destructive/Unknown control,
+   including Context git_value_owned and direct bounded_git, through cfg(test)
    private pools; prove production retained count unchanged and non-poller private
    teardown/retention. Actual Generic returned output_open/peer/Timeout/initialization
    Unknown must persist Lost/reserve, with original non-SessionLost API kind; settled

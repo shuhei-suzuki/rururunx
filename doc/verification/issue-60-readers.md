@@ -154,3 +154,27 @@ blob ea45b08e90a34dd3400edb41ec1ac31f43bfc96b and SHA256
 The posix_spawn host-error proof remains unaccepted. Requirements4 is a candidate;
 no implementation, lifetime/availability acceptance or historical cause/regression
 finding is introduced by these corrections. Whole60/F1/native16 remain OPEN.
+
+Reader Requirements4 at a8e8a8b completed BOTH independent own-session delta
+reviews: ownership and capacity APPROVE, no C/H/M, two Low findings each, actual
+wrapper cleanup_verified=true. This weak wrapper fact is not F1/workload proof.
+[The finite findings ledger](issue-60-reader-requirements4-findings.json) records
+all four raw findings, hashes and verified dispositions. Derived precision is
+carried into Design1: no-Child ambiguous Err completes/destroys the supervisor
+but permanently retains all four slots, with no observer/release/clear; EVERY new
+Unknown/destructive consumer uses a private pool, including Context/direct Git;
+no-attempt keeps false if never set or clears at live settled return if set,
+while Drop after spawning freezes true. These do not add native authority,
+profiles, deadlines or reader source. Design/source approval is still pending.
+
+Candidate Design1 chooses a Git-local std Child worker plus a per-operation
+current-thread runtime/supervisor frame. Its actual four work jobs are one
+supervisor execution frame, stdout reader, stderr reader and one native worker;
+no separate permanent dispatcher/reaper/monitor or bootstrap task is proposed.
+At most16 operation frames/32 readers use64 slots; resources and initialization
+stay independent of caller runtime. The design must pass its own two native
+gates before source. No actual reader controls/mutants have run. Requirements3
+CI37239214385 and Requirements4 CI37240132705 report all steps both OS success;
+actual checkout/tree proofs are not yet captured here, so these are docs baseline
+observations only, never reader Source, Release TEST or availability evidence.
+All historical reds, cause AND regression UNKNOWN, full60/F1/native16 remain OPEN.

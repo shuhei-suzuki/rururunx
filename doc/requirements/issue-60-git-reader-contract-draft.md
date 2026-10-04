@@ -1,12 +1,10 @@
-# Issue60 Git reader/driver contract draft — UNAPPROVED
+# Issue60 Git reader/driver contract — requirements approved; design/source pending
 
-Risk: STRICT. Status: unapproved partial contract; requirements/design/source gates
-have NOT passed. This is NOT part of the diagnostic component
-implementation/acceptance. Combined Requirements2 and the separate reader Requirements1
-both had request_changes from both independent reviewers. Candidate clarifications
-below address verified source/lifetime issues but have not been re-reviewed. No
-pool/driver/publication code may be inferred approved from the diagnostic gate. Parent
-Issue60 full runtime workload/effect/delegation/durable settlement remains open.
+Risk: STRICT. Requirements4 at a8e8a8b received two independent approvals with
+no C/H/M; four verified Low precision findings are carried into the candidate
+Design1 gate. No pool/driver/publication implementation is approved or part of
+the earlier diagnostic component. Previous request_changes remain in verification.
+Full Issue60 runtime workload/effect/delegation/durable settlement remains open.
 
 ## Git operation ownership, admission and result rules
 
@@ -30,7 +28,8 @@ Issue60 full runtime workload/effect/delegation/durable settlement remains open.
    of caller Arc/runtime. Only cfg(test) permits an explicit private pool for
    saturation, shutdown, panic and unresolved cleanup experiments; production cannot
    construct it. Route existing seven adapter unknown-plan calls and the Context
-   unknown-plan call, plus new Generic/Grok saturation or Unknown consumers, through
+   unknown-plan call, plus EVERY new destructive/Unknown control (including Context git_value_owned
+   and direct bounded_git consumers), through
    this cfg(test)-only private pool using the actual consumer path, not a copied
    helper. Production retained occupancy must be unchanged by these experiments.
    Private-pool teardown either settles actual owned anchors on its reserved non-poller
@@ -59,8 +58,10 @@ Issue60 full runtime workload/effect/delegation/durable settlement remains open.
    admitted→cancelled prevents spawn and never sets uncertainty. Drop after spawning
    freezes the flag true unless a live in-budget return had already cleared it; driver
    observation or result-ready alone cannot clear it. Mandatory clear points are the
-   live in-budget complete-settlement return and the live in-budget genuine native
-   return proving no native OS spawn was attempted and no resources remain. A
+   live in-budget complete-settlement return and the live in-budget settled
+   return proving no native OS spawn was attempted and no resources remain. For
+   that proven refusal the flag stays false if never set, or clears if it was set
+   at admitted→spawning; caller Drop after spawning still freezes it true. A
    native spawn Err with no actual Child returned is ambiguous in this component:
    retain Unknown/flag true/all four permits; no Child anchor is claimed available
    when the primitive did not return it. Err/no handle or a CI label is not proof.
@@ -166,8 +167,10 @@ Issue60 full runtime workload/effect/delegation/durable settlement remains open.
     a post-spawn Err path. Default create_pidfd=false/no pre_exec does not by itself
     complete that proof. Fork/exec can create then internally reap a child before
     returning Err; no surviving child would be a resource fact, not durable no-effect.
-    Proven no-native-spawn-attempt refusal has no child and keeps/clears the flag
-    only on the live in-budget settled return; pre-admission refusal never sets it.
+    Proven no-native-spawn-attempt refusal has no child: the flag stays false if
+    never set, or clears on the live in-budget settled return if set at
+    admitted→spawning. Caller Drop after spawning still freezes it true.
+    Pre-admission refusal never sets it.
     Tokio wrapper, stdio/signal or reader initialization failure after an actual Child was produced
     retains that Child and original initialization kind; incomplete settlement remains
     Unknown. A live in-budget fully observed settlement MUST clear the resource flag,
@@ -231,7 +234,10 @@ Issue60 full runtime workload/effect/delegation/durable settlement remains open.
     observer/monitor job is created. Driver/core setup and this frame stay within
     reserved accounting, with no native/blocking work after release; publishing data
     alone is not completion. Design must verify this exact linearization. A terminal group/reap error or lost
-    supervisor/driver retains all four with no late observation guarantee. Healthy late
+    supervisor/driver retains all four with no late observation guarantee. An
+    ambiguous native spawn Err with no Child is also terminal retention: the
+    supervisor completes and its execution frame destroys it, but all four slots
+    remain retained, with no late observer, release or clear. Healthy late
     settlement cannot clear the already latched flag or mint replay/freshness
     authority. These are selected-group/reader facts only, not whole
     helper/service/hook settlement. Caller outcomes are explicit: not_observed now
