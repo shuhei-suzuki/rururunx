@@ -1,7 +1,7 @@
 # Issue 58: Retained ownership of Task-free native Consultant work
 
 Workflow: STRICT (native ownership, durable authority and Project exclusion).
-Status: Requirements2; verified independent Req1 gaps corrected below;
+Status: Requirements3; verified independent Req1–Req2 gaps corrected below;
 requirements/design/source gates pending.
 Baseline: main80452f4/schema3. MVP follow-up from #6 F1 and #19; see
 [Issue58](https://github.com/shuhei-suzuki/rururunx/issues/58).
@@ -33,8 +33,9 @@ results do not prove Workflow transport success. Preserve that scope.
   native profile, actor/role, mode and native session/turn identities. Overlapping
   Issue names, paths or native IDs in another Project grant no authority.
   Conflict identity is canonical physical scope, not Project ID alone: overlapping
-  ancestor/nested roots or a shared common-dir are checked across all registered
-  Projects. Independent means non-overlapping physical effects and distinct shared
+  ancestor/nested roots or a shared common-dir are checked across all Projects in
+  ANY state that can retain ownership, including Blocked/Removed history.
+  Independent means non-overlapping physical effects and distinct shared
   Git metadata. Registration/root/identity changes cannot introduce an unobserved
   overlap around a held effect; include those consumers in the coherent CAS frame.
 - Acquisition requires actual registered Project/current versions and applicable
@@ -68,8 +69,10 @@ results do not prove Workflow transport success. Preserve that scope.
   It requires the actual live opaque capability, exact retained hold and current
   source/Session/Project/Goal/full-lock versions in the same transaction. Correct
   public IDs/versions or a scope self-match never grant admission; generic/public
-  scoped CAS refuses. Only that port may distinguish its exact owner from a
-  competing hold. Pending #6 TUI admission must compose this ownership check with
+  scoped CAS refuses. Only private owner-bound ports may distinguish their exact
+  owner from a competing hold: current input/grant and separate factual observation/
+  denial/cleanup/settlement ports each retain their own rules. Pending #6 TUI
+  admission must compose this ownership check with
   its existing planned per-submission CAS, not manufacture an alternate ledger.
 - Retain Session-less setup, pending input, live service, native background work,
   dropped futures, publication conflicts and Lost/unknown outcomes. A completed
@@ -96,6 +99,18 @@ results do not prove Workflow transport success. Preserve that scope.
   through cleanup/settlement/conflict; a prior idle read or version pin alone is
   insufficient. Every side uses the shared exclusion protocol; unsupported missing
   consumer producers block that scope/profile's production readiness.
+  Reverse reservations and every lock used as one require an actual nonserializable
+  effect-owner capability acquired atomically before effects. Creation, factual
+  observation and release use only the private exclusion protocol. Release needs
+  that exact owner's evidence of no effect/settled setup, or a known current effect
+  outcome AND full required cleanup/reconciliation, published atomically with audit.
+  Generic Record/lock/Session writes, public scoped CAS, identical-body version bumps,
+  active=false/terminal labels, missing PIDs or leader exit cannot hide, relabel or
+  release them. Drop, crash, failed publication and partial/unknown Git/filesystem
+  outcomes retain reservation/attention until reviewed #14 effect recovery; no row
+  reconstructs a live owner. Pending #60 owns actual Git/verification workload
+  producers, consuming #6 F1 profiles and composing #12/#13/#19/#58; merged #3/#4
+  foundations are not whole-resource settlement proof or newly reopened issues.
   Same-Project concurrency follows actual reviewed compatibility: live Consult vs
   Task native phases in other worktrees or another Consult may coexist only with
   continuously enforced disjoint/compatible effects; separate paths/role labels alone
@@ -176,7 +191,8 @@ results do not prove Workflow transport success. Preserve that scope.
 ## Bounds, verification and delivery
 
 Design finite ownership/history/turn/reference/serialized/nesting/query bounds and
-checked versions, including coherent complete Project-level exclusion scans and
+checked versions, including coherent complete physical-scope cross-Project scans
+over every state with retained ownership and
 capacity exhaustion. No truncated scan proves idle or permits a release. Persist
 only allowlisted identities/digests/versions and bounded reason codes, never secrets,
 environment values, native transcripts or prompt text. Status is bounded, scoped,
@@ -198,14 +214,24 @@ consumers: omit hold lookup, release on terminal label/PID absence, forge owner 
 row identity, treat a turn as lifetime settlement, omit root/common-dir exclusion,
 or bypass a submission CAS. Controls prove exact settled positives and independent
 Project progress. Also mutate owner-less version-correct input/ALLOW, unknown-label
-generic live writes, reverse effect reservation and physical overlap lookup. Setup
+generic live writes, reverse effect reservation and physical overlap lookup.
+Mutate generic/owner-less/label-based reverse release so actual Consultant acquisition
+would proceed during a live Git effect; controls include crashed owner and partially
+failed worktree removal. At EACH actual grant class (submission, ALLOW/operation,
+input-capable attach, continuation and authority-granting publication), omit Project
+and Goal lifecycle revalidation and require its genuine refusal after a once-valid
+owner is revoked. Mutate Goal cancel/fail into release or continued admission,
+inactive-owner DENY/cleanup into fresh input/ALLOW, and path/role-only compatibility
+into admission without continuous enforcement. Restore actual positives and prove
+independent prerequisites before each intended consumer assertion. Setup
 refusal, timeout or helper-only checks are not consumer
 kills. Restore exact source and passing controls after each mutation.
 
 Run shared-state/native/Git/registry/Workflow regressions, fmt/clippy/build, exact
 Linux/macOS CI and independent immutable source reviews. Update README/master
 designs to actual behavior. Dependencies: #19 coordinated private authority/epoch;
-#6 profile/TUI conformance; #11 consult driver, #14 recovery, #23 Goal consumers and
+#6 profile/TUI conformance; #60 retained runtime Git/evidence effects; #11 consult
+driver, #14 recovery, #23 Goal consumers and
 #26 Project management. Requirements research is runnable independently; no missing
 producer is replaced by a fixture. Keep #58/#6 acceptance open until actual
 composition passes; no full #16 dogfood/MVP completion is claimed here.

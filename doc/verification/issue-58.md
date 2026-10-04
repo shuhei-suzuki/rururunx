@@ -38,3 +38,15 @@ liveness. Main repository_identity already rejects linked Project worktrees, so 
 review's linked-worktree example is not a reproduced registration; nested primary
 roots remain relevant. Requirements2/design/source review and real acceptance remain
 pending; no live native profile, private port or conflict reservation is implemented.
+
+Req2 bc1ee58 exact CI37200555441 passed both Linux/macOS fmt, clippy, tests and
+builds (individual steps inspected). Both independent native Req2 reviews completed
+request_changes with actual owned cleanup verified. Both accepted the deliberate
+migration distinction and verified prior gaps closed. Remaining shared causal gap:
+reverse Git/removal/publication reservations need generic-write-immune actual-owner
+release and Drop/crash/partial-effect recovery, rather than public lock labels.
+Req3 states this and binds pending #60 actual Git/evidence producers; adds actual
+per-grant lifecycle/inactive-owner/compatibility consumer mutants. Physical scans
+cover every state retaining ownership. Private factual/denial/cleanup ports retain
+own inactive-owner recognition without routing through current-input admission.
+Requirements3 review pending; no effect owner, port, migration or profile implemented.
