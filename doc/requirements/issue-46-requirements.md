@@ -58,6 +58,10 @@ inspection failure. A flag substitution alone does not close this safety gap.
    treated as cleanup success only after the owned-group death proof above.
    Unknown inspection preserves permission refusal, uncertainty and Lost
    reservation; never reset the latch or imply native turn completion from death.
+   Unknown returns its bounded inspection error category (for example TimedOut);
+   original EPERM is implicit in this resolver path and needs no additional
+   diagnostic field. A valid live sample returns EPERM. Either refusal maps to
+   SessionLost and preserves the sticky state.
 6. Linux keeps its existing rustix KILL/ESRCH/permission-error behavior. BSD
    `-g` is not reused with GNU/procps, where personality/selection semantics differ.
    Existing Linux consumers must pass unchanged; no new platform-specific parser
