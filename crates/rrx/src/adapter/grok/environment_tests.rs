@@ -3,7 +3,7 @@ use super::fixture_support::Fixture;
 use super::*;
 use crate::domain::ProjectState;
 
-async fn isolated(name: &str) {
+pub(super) async fn isolated(name: &str) {
     let home = tempfile::tempdir().unwrap();
     let mut command = Command::new(std::env::current_exe().unwrap());
     command

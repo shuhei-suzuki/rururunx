@@ -3,6 +3,8 @@ mod cleanup;
 mod environment;
 #[cfg(test)]
 mod environment_tests;
+#[cfg(test)]
+mod environment_workflow_tests;
 mod files;
 #[cfg(test)]
 #[path = "../../../tests/support/grok_fixture.rs"]
