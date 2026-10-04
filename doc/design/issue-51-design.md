@@ -16,10 +16,10 @@ No new CLI flag, permission bypass, global redirect or per-Project credential lo
 introduced. The whitelist stays unchanged. Current #5/#6 source is a comparison input;
 normally integrated reviewed behavior must be inspected before sharing its authority.
 
-An ordinary caller value is eligible only when its exact name is declared by the current
-owning Project, passes registry policy, is not a control, and is one of LANG, LC_ALL,
-LC_CTYPE, TERM, COLORTERM or TZ. A native whitelist name additionally requires an exact
-constructor-baseline value. An unsupported declared key does not become pass-through.
+A caller name is eligible only when declared by the current owning Project, registry-
+valid and non-control, and either (a) LANG, LC_ALL, LC_CTYPE, TERM, COLORTERM or TZ with
+its own ordinary value, or (b) a native-whitelisted name with exact constructor-baseline
+value. These are alternatives; native keys need not be ordinary. An unsupported declared key does not become pass-through.
 All caller RRX_ names are rejected, including previous fake ACP fixture channels.
 
 Any retained non-control baseline name declared by another Project and not by the owner
@@ -82,8 +82,13 @@ values are never read for this design or tests.
 
 Keep a private frozen-baseline name set and bounded caller-key set for environment
 admission; no values, foreign identities, Project versions or raw roster are persisted
-or emitted. The selected environment remains private. ScopeSnapshot captures own
-Project/Goal/Task/lock authority and a temporary name-only view for initial selection;
+or emitted. The selected environment remains private. Remove ScopeSnapshot.projects: capture/checkpoint/Actor.owner read only own Project/
+Goal/Task/lock authority, never fully decode or retain foreign Project bodies/roots/
+display names. Launch/resume selection alone obtains a temporary environment_refs
+projection from persisted Project JSON; use a bounded per-name projection, not
+store.projects() full Project decoding. Malformed unrelated foreign fields do not block
+A. Malformed/missing reference projection has no reference authority; valid string
+entries in mixed lists still contribute per-name under the existing rule;
 foreign record order, identities and versions are not authority tokens. Final admission
 reevaluates the same pure environment decision against current references inside SQLite.
 Only an actual relevant conflict denies A. Registering/removing/replacing unrelated names,
@@ -96,10 +101,19 @@ Proposed additive Store boundary is `put_session_with_environment_if_current` ta
 existing Session/version, expected P/G/T versions, exact WorktreeLock IDs/versions and
 one crate-private bounded EnvironmentAdmission DTO of frozen non-control baseline names
 and caller names. Pure policy constructors enforce syntax/control classification and
-bounds; no environment values or mutable callback enter the transaction. Factor existing
+bounds; no environment values or mutable callback enter the transaction. One shared
+value-free pure name-decision function serves initial selection and final transaction,
+with preclassified baseline/caller names and shared registry pure helpers; Store has
+no dependency on Grok control functions. Only initial selector compares actual native
+values with the private frozen baseline. Never duplicate caller/conflict logic. Removing
+only in-transaction own-ref validation is equivalent under exact own-Project CAS and
+earns no mutant credit; shared decision operators and transaction-call omission supply
+the meaningful targets. Factor existing
 `put_session_if_current` into one private transaction body with an optional pure
 environment decision. Existing consumers retain identical behavior. In the same Immediate
 transaction, validate exact own versions/ownership/activity/nullable scope/lock set,
+validate expected Session version/ownership/activity/exclusion before the
+environment decision so existing stale Session guards retain precedence,
 fully validate current owning refs, read current foreign refs name-only, reevaluate
 caller ownership and foreign retained-baseline conflicts, then perform ordinary Session
 CAS/guards/audit. A relevant conflict returns one fixed opaque typed guard without
@@ -109,7 +123,10 @@ before implementation; full helper and actual consumers enter source reviews.
 
 Initial selection and Starting reservation preserve current authority. Git/filesystem/
 profile preflight stays outside Store. At the last state boundary before spawn, Actor's
-new private `admit_environment` takes entry.transition and follows Actor.publish's exact
+existing capture-based Actor.owner() remains immediately before the new private
+`admit_environment`; preserve its non-executor reserved-Session checks, with a Task-
+Consultant executor-reserved-during-preflight no-spawn regression. `admit_environment`
+takes entry.transition and follows Actor.publish's exact
 ownership protocol: build candidate from its current session without mutating private
 state first; check stopping; execute full atomic helper using current Actor.version and
 captured own authority; on success update Actor.version and retained watch Session to
@@ -153,15 +170,25 @@ ordinary values need not equal that baseline. A declared unsupported name not ac
 passed by this provider is metadata for other providers, not a blanket own-Project
 rejection. Undeclared/foreign-only eligible-shape caller and baseline conflict, including
 final transaction conflict, share the same fixed opaque InvalidConfiguration category.
-Add fixed-display EnvironmentAuthority guard; do not expose SnapshotChanged foreign IDs.
+Add fixed-display EnvironmentAuthority guard; map it to InvalidConfiguration in BOTH
+adapter.rs::state_error (used by Grok save_current/assert_saved) and
+grok/ownership.rs::state_error, with the same fixed message and no foreign IDs. Actual
+async consumers must assert that category. Do not expose SnapshotChanged foreign IDs.
 Own stale Project/parent/Session/lock/lifecycle errors retain current precedence/kinds.
 
 Structural tests assert finite additions exactly {NODE_TLS_REJECT_UNAUTHORIZED}, every
 named protected baseline key registry-forbidden, and the registry-valid named baseline
 exception SSLKEYLOGFILE non-control. XAI_API_KEY, valid GROK_*, OPENSSL_CONF and BUN_OPTIONS
-remain non-controls. Syntactically invalid baseline names cannot become own refs or be
-accepted from callers; existing undeclared native baseline remains intentional global
-runtime input, and invalid foreign strings contribute no new authority. Assert unchanged
+remain non-controls. Syntactically invalid admitted baseline names are unownable global controls, with the
+same precedence as registry-forbidden names; preserved constructor values cannot be
+replaced by callers and invalid foreign strings grant/conflict with no reference.
+Explicit bounded name-admission failure is opaque InvalidConfiguration, never truncation:
+max512 retained names, each max256 UTF8 bytes, aggregate max64KiB; enforce in new()
+before retaining a baseline, never log offending names/values. DTO caller bounds match
+existing max128names/max256bytes per name. This resource bound does not widen whitelist
+or pass-through; oversize runtime configuration is unsupported/fails closed. Boundary
+tests assert rejection and no silent dropped conflict. Existing undeclared valid native
+baseline remains intentional global runtime input. Assert unchanged
 native whitelist separately; membership never implies protected status.
 
 ## Operator diagnosis without a reverse leak
@@ -191,11 +218,36 @@ forwards it unchanged into LaunchRequest; it does not resolve refs or construct 
 provider-safe map (workflow.rs750/753/998). Direct Grok consumers also supply maps.
 Current CLI has no LaunchRequest producer. Shared Generic fixtures use caller PATH
 (adapter.rs1775/1795 and1830/1902); those remain Generic-only. Grok in-crate unit requests
-currently use empty maps; installed acceptance clears caller environment. Preserve the
+currently use empty maps. Both installed acceptance tests use external Fixture::new
+and currently retain RRX_DATABASE/RRX_FOREIGN; their ignored status does not excuse
+breakage. Migration must remove all reserved metadata from that shared request, including
+installed tests, with a nonignored empty/reserved-free caller-map assertion. Preserve the
 Generic contract separately: callers supply its intentional baseline; Grok derives its
 immutable control/auth baseline in new() and rejects caller HOME/PATH/config controls.
 Add actual WorkflowEngine-to-Grok forwarding coverage with own-declared ordinary inputs
-and unsupported caller controls; do not claim the engine builds or filters them. No production RRX_ producer was found at this
+and unsupported caller controls; do not claim the engine builds or filters them.
+
+Compatibility impact: reusing one Generic HOME/PATH/config baseline map on a Grok phase
+now fails even for identical values; stricter control rejection remains required. The
+current step API accepts a new map each invocation, and public snapshot()/Phase.actor()
+allow a caller to prepare a phase-specific map; it does not mandate one fixed map for
+an entire mixed-provider Task. Such caller preparation is not an atomic provider-bound
+input token or an implemented runtime driver. A driver reusing one baseline map across
+providers is unsupported. Add a real Generic-executor/Grok-reviewer forwarding negative:
+Grok rejects InvalidConfiguration before any native reservation/child; Workflow already
+created its attempt reservation/dispatch_started marker and its start-error branch
+returns StepResult::Failed with no Session binding. Assert that actual outcome, never
+claim a typed AdapterError is returned directly by engine.step or that no Workflow
+reservation existed. A fresh appropriate per-phase map has a separate forwarding
+positive: assert actual StepResult::Started/native Session binding, not complete native
+review or transport success. Current unchanged-Task binding increments raw Task version
+and can invalidate the running provider (#43); full mixed native Workflow completion
+remains blocked on that independently reviewed binding integration. Do not weaken
+provider CAS or claim this forwarding positive closes #43.
+Future runtime/provider-aware driver integration must reconcile normally merged #5/#6
+caller contracts before #16; native constructor-owned baseline plus empty/eligible
+ordinary maps may avoid this Generic-specific conflict, but no native3 support is
+inferred until actual integration proves it. No production RRX_ producer was found at this
 head; any later integrated producer reopens requirements rather than adding an exception.
 `crates/rrx/tests/grok.rs` currently carries RRX_DATABASE, RRX_FOREIGN, RRX_MODE,
 RRX_SPAWN_OBSERVED, RRX_PAUSE, RRX_PROMPT_OBSERVED and RRX_EXPECT_INPUT. They are fixture
@@ -205,14 +257,22 @@ loads its private configuration at startup; mode/input changes for a later conti
 update the fixture file before its new owned process starts. Preserve existing actual
 Store/preflight/permission/continuation tests rather than deleting failing consumers.
 
-Define cfg(test)-only per-adapter/per-Actor hooks after final preflight/before admission
-after successful admission/before spawn, and checkpoint capture/after Git preflight
-before its own Session CAS; retained invocation-private handles only,
+Define cfg(test)-only per-adapter/per-Actor awaitable hooks: before admission runs
+after final preflight but BEFORE entry.transition acquisition; after admission runs
+after transition/Store release BEFORE final stopping load; checkpoint runs after
+capture/verify_git BEFORE recheck and its Session CAS; retained invocation-private handles only,
 not process-global state, public runtime fields, environment or argv channels. Put new
 actual-consumer tests in Grok in-crate unit module so cfg(test) hooks are visible (integration
 binaries compile the library without cfg(test)). Reuse fixture-owned fake ACP helpers
-there; keep existing external Grok tests and migrate their metadata to sibling JSON.
-Hooks run outside SharedStore and never accept callbacks inside the SQLite transaction.
+there. Move the fake ACP source into one shared fixture file included by both in-crate
+and integration tests; integration-crate constants cannot be imported by library tests.
+Use file-backed Store/second connection rather than the shared memory-only preflight
+fixture. Current-thread Tokio hooks must never synchronously wait on the test task. The
+after-admission hook coordinates concurrently spawned adapter.stop(), waits only for
+the stopping flag notification, then lets Actor publish terminal; awaiting stop completion
+inside Actor would deadlock. Assert actual stop returns Stopped, not Timeout, plus no
+spawn and coherent Actor/Store/watch. No-await applies only final stopping load to spawn.
+Keep external tests and migrate metadata to sibling JSON. Hooks run outside SharedStore and never accept callbacks inside the SQLite transaction.
 
 New canary fixtures re-execute a dedicated test-binary child under env_clear with known
 synthetic HOME/PATH/tool paths, intentional native keys and private TempDir. The child
@@ -239,7 +299,9 @@ capture or binary-revision attestation. New build/source provenance is labelled 
   raw-roster-equality operator per boundary must die on that actual-consumer positive. Preserve actual ACP identity/lifecycle rather than synthesize exit0.
 - Per-invocation private hooks after snapshot and immediately before final admission use
   a second Store connection to mutate own refs or register/replace a foreign reference.
-  Assert no child/native wire/consumed-input intent and rolled-back admission; unchanged
+  Assert no child/native wire/new-version consumed-input intent and rolled-back admission;
+  for resume preserve prior dispatch_intent/prompt_id/dispatch_state byte-for-byte and
+  assert no new input_version intent, rather than requiring all historical intent absent; unchanged
   controls prove this exact prepared path starts. Cover own reference changes before checkpoint (opaque resume denial), after checkpoint
   (stale-Project StateConflict until another checkpoint), and between new snapshot/admission.
   After-admission hook requests stop and asserts no spawn, coherent Actor/Store/watch

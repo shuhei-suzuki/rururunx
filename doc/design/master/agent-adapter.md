@@ -274,7 +274,8 @@ while Store's task-level lock/session exclusion prevents
 review/executor races. Generic processes receive only explicit environment; Generic callers
 must include intentional native baseline HOME/PATH/config/auth so safety settings
 remain authoritative. Grok separately retains its constructor native control/auth
-baseline; pending Issue51 rejects caller control replacement and scopes eligible ordinary
+baseline; pending Issue51 rejects caller-supplied controls even with identical values
+and scopes eligible ordinary
 caller refs without inheriting all ambient variables. The adapter never supplies bypass
 flags or an empty native configuration home.
 

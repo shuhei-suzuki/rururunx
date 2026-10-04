@@ -158,3 +158,27 @@ raw-roster operator per boundary, owning event kinds/counts unchanged-control or
 ignoring identities/timestamps. No test or implementation acceptance is inferred.
 Two independent Design2 fix reviews next assess full helper/Actor boundary and actual
 Workflow/Generic producer excerpts omitted from their prior inputs; no Rust edits yet.
+
+
+## Design2 findings verified before Design3
+
+Both independent native Design2 reviewers completed request_changes ated2b3d6 with
+owned cleanup verified, no source execution. Shared Medium D2-01 verified the real
+compatibility change: a reused Generic HOME/PATH baseline map now fails Grok control
+rejection. Its inference that an entire mixed Task cannot run is unsupported: step
+accepts a new map each invocation and snapshot/Phase.actor are public. Current engine
+start-error returns StepResult::Failed after Workflow reservation/dispatch_started,
+with no native Session; it does not directly return typed InvalidConfiguration or imply
+no Workflow marker. Design records exact impact, unsupported fixed-map reuse, actual
+mixed forwarding negative and fresh phase-specific positive; normally merged native5/6
+caller contracts and provider-aware runtime integration must be checked before16.
+
+Verified Low refinements adopt retained Actor.owner checks, async hook positions and
+concurrent stop flag coordination, file-backed secondStore/shared fake source, exact
+name DTO fail-closed bounds and invalid-name unownable global classification, top OR
+wording/both error mappers/Session precedence, remove ScopeSnapshot.projects full-foreign
+decode from checkpoint/owner, one shared name-only decision (equivalent transaction-
+only own-ref removal earns no credit), correct installed test RRX migration and resume
+prior-intent preservation. Design3 remains proposed; no Rust/test changes or performed
+consumer/mutant/native acceptance. Optional finer runtime driver issue is coordinated
+with root; no blanket native3 impossibility/availability waiver is claimed.
