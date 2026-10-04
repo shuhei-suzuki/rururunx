@@ -1015,14 +1015,14 @@ async fn current_environment_writer_preserves_cpp_frame_guard_after_main_merge()
     let mut forged = session.clone();
     forged.recovery["input_sha256"] = json!("0".repeat(64));
     let before = store.events(&f.task.scope(), 0, 100).unwrap().len();
-    for with_environment in [false, true] {
+    for with_environment in [true, false] {
         let result = if with_environment {
             store.put_session_with_environment_if_current(&forged, 0, expected, &locks, &admission)
         } else {
             store.put_session_if_current(&forged, 0, expected, &locks)
         };
         let Err(error) = result else {
-            panic!("current Session writer bypassed CPP prepared-frame guard")
+            panic!("current Session writer bypassed CPP prepared-frame guard; environment={with_environment}")
         };
         assert_eq!(
             error.root_cause().to_string(),
