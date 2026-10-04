@@ -338,3 +338,12 @@ The incompatible managed native/Goal authority remains the pending
 Actual main is schema3; unmerged component5 pack publication is not accepted managed
 Goal/native settlement. Real23 typed Goal writers must preserve the latest pack pointer
 separately from semantic version; actual source composition/production gates are pending.
+
+
+Proposed Issue19 Design32 requires actual23 compact prerequisite authority with monotonic
+revocation for repeated native admissions (at most128 rows/4096 bytes each/512 KiB),
+produced from genuine full proof outside SharedStore plus exact publication CAS.
+It does not replace accepted Goal definition or original marker fences. A failed managed
+phase closes atomically into explicit-retry hold; the controller cannot mistake active
+None for permission to redispatch. Project bookkeeping edits wait for all open phases;
+authorized lifecycle holds do not certify native cleanup. These producers remain pending.

@@ -15,20 +15,20 @@ passed fixture. The matrix is the single current native acceptance inventory.
 | S6-03 | Managed preparation/allocator (all5 actual callers) | Original frame/actor/locks, no prior terminal adoption, actual handle, allocation/factual-insert race |
 | S6-04 | First/new NativeCAS consumption before model bytes | Actual complete frame/payload SHA, CPP/head/sources+23 predicate, one UUID/delivery, stale wire zero |
 | S6-05 | Owned historical ACK/private observations | Exact admitted pair/intent, allowed native initial binding, original binding-frame pin remains immutable |
-| S6-06 | AllowCurrent + actual grant versus private DenyHistorical | Current23/head/immutable governing sources/fullscope/locks forALLOW; actual Executor own-write allowed; provider-specific factual DENY/activity; host admission/outcome256 limit, bytes/quota and unknown-worker receipt refusal |
+| S6-06 | AllowCurrent + actual grant versus private DenyHistorical | Current23/head/immutable governing sources/fullscope/locks forALLOW; actual Executor own-write and sealed current-phase output allowed; Project bookkeeping held; provider-specific factual DENY/activity; host admission/outcome256 limit, bytes/quota and unknown-worker receipt refusal |
 | S6-07 | Owned Lost observation / no generic transition | Universal absorbing hold, remembered pins, no receipt/release or caller JSON cleanup |
 | S6-08 | Actual supervisor settlement + atomic restoration | KnownCurrentTerminal/eligible NoCurrentDispatch, complete cohort/host-outcome proof, journal bounds, actual unconsumed revoked-frame non-success; consumedzeroWire held14 |
-| S6-09 | Receipt freeze + all closure/replacement consumers | Exact body/version/claim; allocated-unbound actual known-failure closure and Cancelled/Failed terminal recovery without SessionID; no success |
+| S6-09 | Receipt freeze + all closure/replacement consumers | Exact body/version/claim; allocated-unbound actual known-failure closure and Cancelled/Failed terminal recovery without SessionID; atomic awaiting-explicit-retry closure and no automatic redispatch; no success |
 | S6-10 | Sole active43 record-only binding/reconcile | Actual original frame+private owner/current or sealed successful receipt; noTask/P/G/Session/lock bump; passivepoll read-only |
 | S6-11 | Sealed Fresh/Continue selector | Latest closed delivery/predecessor+registry, exhaustive typed family/reference checks, failedprewireContinue→Fresh |
 | S6-12 | All checkpoint/pack render and publication consumers | EVERY own/promoted event caller-classified; immutable snapshots/current head vs admitted historical closure |
 | S6-13 | Counters/history/body and irreversible claim |64unique compact observations/8MiB Workflow+complete ContextVersion body/64KiBheadroom +256context/history, charged128MiB persisted bytes/journals/blobs, exact reserved tail before external effect, actual disposal terminal persists |
 | S6-14 | Operation-aware locks/idle/Git/removal/context/Goal consumer | Symmetric durable physical reservations; actual60/58/23 ports pending; fixture producer gates mechanics only; never production readiness |
 | S6-15 | Unsupported legacy Task/NoTask/interactive roles | All fresh generic nonterminal native writers refuse before effects; terminal historical facts unverified |
-| S6-16 | Exact composed projection/schema/caller readiness | Actual5/6/7/Generic/Fake and23/43/58/60 integration; pending Goal barrier/phase-closed drain/follow-up progress; synthetic producer mechanics≠production native acceptance |
+| S6-16 | Exact composed projection/schema/caller readiness | Actual5/6/7/Generic/Fake and23/43/58/60 integration; pending Goal barrier/phase-closed drain/follow-up progress; compact prerequisite gate≤128 rows/4096 bytes each/512 KiB total; same-transaction41 capacity; synthetic producer mechanics≠production native acceptance |
 
 Each stable key requires named exact consumer tests AND meaningful causal mutants
-in final source evidence; it is not an invented available API or a checkmark. Design16–31
+in final source evidence; it is not an invented available API or a checkmark. The named Design16 and Design18–32 contracts
 and the canonical writer table define the required private predicates. Source evidence
 must map each key to actual fixture/result SHA and list unready production ports.
 
@@ -699,3 +699,21 @@ NoCurrentDispatch may close that exact phase non-successfully after lifecycle/ve
 revocation under actual23/8 policy, preserving current decisions/holds; no binding,
 success, phase advance or new bytes. Consumed/uncertain/forged cleanup remains held.
 Known-current failure and successful43 binding keep original current fences.
+
+
+Design32 resolves candidate failure/retry availability without refreshing original
+native authority: genuine non-success closure atomically closes the exact phase and
+records an awaiting-explicit-retry hold; ordinary step cannot redispatch before an
+explicit RetryEvent and new independent admission. Generic Project bookkeeping writes
+are held while any Project phase remains open; authorized lifecycle revocation stays
+available and removal still requires complete idle ownership. Actual23 repeated native
+prerequisite gates consume compact genuine scoped certificates/revocation only, bounded
+to128 rows/4096 UTF-8 bytes each/512 KiB aggregate, with full evidence extraction outside
+SharedStore and atomic publication CAS. Actual current-phase Executor output declarations
+permit genuine artifact edits; governing/promoted/foreign/undeclared input and Reviewer
+references remain exact. Duplicate host reads return fixed AlreadyProcessed without IO
+or fabricated content. Every JSON trigger bounds UTF-8 BLOB bytes before parsing.
+Fresh-only lineage attribution lives in the immutable settlement receipt, not an
+unlisted table. Capacity is derived/reserved in the actual41 claim transaction, not a
+standalone token. S6-06/09/11/13/16 require actual consumers, rollback and causal mutants;
+these are proposed unimplemented contracts, not passed tests or native readiness.

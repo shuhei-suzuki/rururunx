@@ -377,3 +377,16 @@ Durable irreversible holds publish held_reason/WaitingHuman/blocker and await ac
 Observation/audit metadata retain authority digests without copied Context Pack text.
 Cleanup freezes the reserved class/phases, independent of later runtime policy capture.
 Project risk-mapping recommendations can strengthen but cannot weaken runtime mappings.
+
+
+The proposed Issue19 Design32 managed failure path supersedes the component's two-step
+fail(active retained)→retry closure only when the real schema6 producers compose.
+Receipt-checked failure closes the exact phase atomically with Failed/WaitingHuman and
+an awaiting-explicit-retry hold; no RetryEvent is invented at failure. Ordinary step
+cannot open a new operation until explicit retry records its decision and clears that
+hold under current policy. Terminal lifecycle holds and irreversible reconciliation
+remain separate. Compact actual23 prerequisite certificates bound repeated native
+admission reads; full proof extraction stays outside SharedStore. Project bookkeeping
+is held during open phases; sealed current Executor output references may vary while
+governing/promoted/foreign and Reviewer inputs stay exact. Actual41 claim capacity and
+43 reconciliation remain co-integration gates, not installed APIs.

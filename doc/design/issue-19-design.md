@@ -3,12 +3,12 @@
 Status: actual merged main is schema3; this unmerged component source is5. Proposed
 schema6 remains fixture-only/pre-code until its independent gate and actual composed
 source/native production release. No Phase::DecisionReview or native producer is
-created by prose. The schema6 canonical writer table below plus Design16–31 private
+created by prose. The schema6 canonical writer table below plus named Design16 and Design18–32 private
 port/bounds define proposed native authority. Earlier schema5 protocol examples are
 historical component context ONLY and cannot authorize a managed/public writer;
 artifact/encoding contracts continue where this table does not supersede them.
 
-## Canonical schema6 Session/Workflow writer predicate table
+## Canonical schema6 native writer predicate table
 
 Each managed row below requires actual nonserializable owned operation authority,
 exact scope/attempt/frame/pair/remembered Session version, complete pinned lock set,
@@ -41,7 +41,10 @@ The dispatch-marker transaction also invokes the SAME private composed23 admissi
 predicate as preparation, first/new consumption and AllowCurrent in its Immediate
 transaction: Registered Project, exact accepted goal_authority/definition digest,
 Running Goal without a whole-Goal hold, exact listed DAG Task membership and verified
-WorkflowSuccessProof for EVERY hard prerequisite. A ready report, Merged label or
+compact genuine WorkflowSuccessProof authority for EVERY hard prerequisite within the
+Design32 transaction-read bound. Full evidence extraction happens outside SharedStore
+and is published through the actual23 private certificate producer/CAS; no repeated
+full Workflow decode inside native admission transactions. A ready report, Merged label or
 Created/Analyzing Goal is insufficient. Continuation follows23 revocation-only
 current prerequisite/input predicates; self-owned operation is not a competing claim.
 Absent actual composed23 predicate means Unsupported before effects, not a weaker
@@ -2783,7 +2786,8 @@ The physical-source families for this grant predicate are exhaustive:
 | Source class | AllowCurrent currency |
 | --- | --- |
 | Repository root/common-dir identity and exact HEAD; current CPP pointer/checkpoint head; accepted semantic instruction/policy/evaluator/constraints | EXACT original/current authority as applicable; drift emits zero ALLOW |
-| Governing rule/config bytes, environment-name/reference declarations, promoted consultation/artifact references and their scoped digests | EXACT complete family sets and physical bytes/identity; removal/addition/change emits zero ALLOW |
+| Governing rule/config bytes, environment-name/reference declarations, promoted consultations, foreign/primary-root artifacts, and own-Task input references not declared current phase outputs | EXACT complete family sets and physical bytes/identity; removal/addition/change emits zero ALLOW |
+| Runtime-declared current Executor phase outputs in its exact Task worktree | Mutable only under the Design32 output contract; governing/promoted/foreign classification wins and remains exact |
 | Executor mutable worktree inventory/content/dirty/missing hashes used to prepare repository slices | May change during its actual owned operation; not compared with the initial prepared content snapshot for mid-turn ALLOW |
 | Reviewer source/reference snapshot | Remains immutable under its supported read-only profile; no Executor mutable exemption |
 | Unknown source family, scope or producer classification | Refuse; never infer mutable from an unrecognized prefix |
@@ -3008,8 +3012,9 @@ Admission is uniquely journalled against this operation/current request before t
 performs IO outside SharedStore. The admitted effect stays owned through its actual outcome;
 revocation before admission emits zero IO, later revocation stops further admissions and
 retains required cleanup, never drops an already admitted effect. No OS-atomic filesystem
-or foreign-writer attribution claim is made. Governing rule/config/reference targets cannot
-be overwritten through this callback. Reviewer reads retain exact snapshot and native
+or foreign-writer attribution claim is made. Governing rule/config, promoted/foreign and immutable-input reference targets cannot
+be overwritten through this callback. Runtime-declared current Executor outputs follow
+the exact Design32 output contract; a public artifact kind/path is not permission. Reviewer reads retain exact snapshot and native
 read-only profile; all runtime-private/current-peer/foreign Project/context paths remain
 ineligible even when OS-readable. Actual in-process FD path/effect ownership and containment
 are prerequisites, not a generic callback label. Grok actual authorize_write+owner callbacks
@@ -3086,7 +3091,10 @@ source/current authority and actual producer/profile references. Each complete o
 is at most 2048 bytes: the same effect key, known finished success/error classification,
 actual bounded bytes/digest and factual reason. No raw file content or repeated full
 source maps enter these rows; referenced owned material has its own charged blob bound.
-Identical request retries return existing admission/outcome, NEVER repeat IO. Identity
+Identical request retries NEVER repeat IO. A duplicate read returns the fixed protocol
+AlreadyProcessed error: retained digest/bytes are not raw content and cannot fabricate
+a read response. A duplicate write may replay only its existing known acknowledgement;
+pending/unknown outcomes return their fixed held status. Identity
 collision with differing payload rejects. Sequence 256 admits within quota; 257 refuses
 BEFORE IO with attention. All exact encoded admission bytes plus worst-case outcome
 bytes reserve under the Workflow's used/reserved 128-MiB quota before each IO. Outcome
@@ -3180,7 +3188,7 @@ schema5 source or installed production ports.
 | NoCurrentDispatch non-success closure after pre-input revocation | Actual sealed full-own-cleanup/no-current-input settlement consumer | Original marker/claim/actor retained; exact current closure CAS preserves lifecycle/decision, no binding/success/advance/grant | 08/09/16 |
 | KnownCurrentFailureClosure | Actual sealed known-current failed settlement consumer | Original immutable marker/input/actor/locks and current active claim, no SessionID write, existing23/8 non-success policy | 09/10/16 |
 | TerminalRecovery | Exact actual private settlement/recovery consumer | Factual full own cleanup under Cancelled/Failed hold, same attempt/body/input/receipt; no fresh grant/success/inactive binder | 08/09/16 |
-| Fresh-only refusal fact | Actual owned Continue selector/refusal producer | Exact predecessor/new operation/input chain and settled refusal; append-only, cannot be cleared by a later pristine attempt | 11 |
+| Receipt continue_refusal attribution | Actual owned Continue selector/refusal producer in settlement transaction | Immutable closing receipt field with exact predecessor/new operation/input chain and reason; bounded history256 chain, cannot be cleared by a later pristine attempt | 11 |
 | Maintenance acquire/close | Actual owned maintenance/effect producer (production60 pending) | Reciprocal durable physical conflict check; Held→Closed only actual NoEffect/Settled, unknown retained | 14 |
 | Host effect admission/outcome | Actual HostCallbackCurrent / owned joined-worker completion | Unique admitted request and quota before IO; outcome only matching admitted effect, actual worker-known finish, no receipt with unknown work | 06/08/13 |
 | Workflow counters/quota reserve/spend | Actual context/effect/receipt/closure producer | Scope/version + full-body byte charge and terminal headroom before effect; only safe unspent reserve release, used history never reset | 13 |
@@ -3189,6 +3197,9 @@ schema5 source or installed production ports.
 | WorktreeLock activate/change/deactivate | Actual authorized lock/closure consumer, no generic owner release | All matching native operations/maintenance reservations counted regardless Session label; no lock mutation/release while its operation/phase owns it except exact required final closure | 03/09/14 |
 | Pending Goal authority barrier | Actual trusted23/24 queued-change producer | Durable scoped accepted proposal + expected Goal version, no Goal version change merely to queue; marker refuses while pending | 16 |
 | Task non-lifecycle edit while operation open | None through generic put_task | Operation-aware typed hold; issue/title/criteria/executor/reviewers cannot rewrite native-fenced Task/version during open phase | 05/10/16 |
+| Project non-lifecycle edit while operation open | None through generic put_project | Project-wide open-phase hold, including name/max_tasks bookkeeping; authorized lifecycle Block remains available, remove requires actual complete idle ownership | 06/10/16 |
+| Compact prerequisite certificate / revocation | Actual23 trusted full-proof publisher / authorized revocation | Out-of-lock evidence extraction plus exact publication CAS; immutable scoped proof and monotonic revocation, bounded native transaction reads | 02/04/06/16 |
+| Failed closure / awaiting_explicit_retry | Actual receipt-checked non-success closure / explicit retry controller | Atomic failed history + active None + durable exact retry hold; separate explicit RetryEvent clears only that hold, never reopens receipt | 09/16 |
 
 **Immutable original marker columns and insert ordering.** native_phase_operations
 explicitly stores marker_project_version, marker_goal_version, marker_task_version,
@@ -3327,7 +3338,123 @@ and successful closed-receipt43 binding retain their stricter original current f
 Proposed43 settlement readiness is derived from the exact marked/unbound/phase-open
 private operation and actual receipt/body/input state; there is no separate caller-
 writable ready row. Binding or genuine closure naturally retires eligibility. Actual
-per-Project operation capacity reservation precedes41 claim; parked held scans use
+per-Project operation capacity is reserved INSIDE the same Immediate41 claim transaction
+before commit/effects. Derive it from durable active native claims (marked or unmarked)
+union phase-open19 operations, deduplicated by exact logical attempt. No standalone
+preclaim token/retirement row:41 closed preparation/invalidation removes its claim;
+orphan claims count, closed history does not, and activeNone with an open operation
+still counts. Marker validates its already counted claim without charging a second slot.
+Parked held scans use
 nonauthoritative changed-version/recovery-event cache without repeated Immediate
 mutations. These are actual43-owned co-integration requirements, not available APIs
 or exceptions to14 restart/runtime-instance and original-frame authority.
+
+
+### Design32: exact failure lifecycle, bounded gates and phase output currency
+
+**Failed closure and explicit retry.** Current component `Engine::fail` keeps active
+and bumps Task; later `retry` expects active. Those schema3/5 transitions are historical
+consumer context, not the candidate managed failure state machine. Candidate managed
+KnownCurrentFailureClosure and bound non-success closure validate the original frame
+BEFORE their own writes and perform one Immediate transaction: mark that exact attempt
+Failed (or Interrupted under actual23/8 policy), retain result/receipt and reason,
+clear its active index, publish matching phase_closed, and set durable Workflow
+`awaiting_explicit_retry={attempt_index, generation, phase, reason}` while Task becomes
+WaitingHuman if current policy permits. No RetryEvent is fabricated at failure time.
+NoCurrentDispatch under revocation preserves actual lifecycle holds as Design31 says;
+terminal Cancelled/Failed Tasks remain terminal and cannot gain retry permission.
+Ordinary step/poll sees this exact retry hold and returns Waiting without a new marker,
+context or automatic next_phase dispatch. Later explicit authorized retry validates
+current lifecycle/source/policy, exact closed preceding attempt and genuine settlement,
+records one RetryEvent, clears only this retry hold/blocker and lets the NEW operation
+obtain independent admission. It does not compare current Task against the pre-failure
+marker version to close the already closed operation, refresh original pins, reopen a
+receipt, or reuse old input. Irreversible phases still use their actual resume/reconcile
+policy, never ordinary retry. Stale/duplicate retry decisions are no-write/refused.
+
+This is the sole managed fail→retry path in the actual Engine/23 driver, including
+unbound dropped-start-result failure. Existing fail/persist cannot pre-bump Task and
+leave a managed terminal-but-active attempt. S6-09 requires actual bound and unbound
+failure→Waiting→explicit RetryEvent→fresh operation, step-before-retry zero marker,
+revoked lifecycle preservation and rollback. A pre-failure-version closure mutant,
+missing retry-hold mutant and retry-receipt-reuse mutant must reach these consumers.
+
+**Bounded repeated prerequisite gate.** Actual23 publishes compact immutable scoped
+prerequisite certificates only after its genuine complete evidence/receipt extractor
+runs outside SharedStore. Each certificate pins Task/Workflow/evidence/settlement and
+accepted governing dependency digests; exact snapshot/version/source revalidation and
+certificate insertion are atomic. Public Merged/Completed labels, JSON hashes or a
+caller-supplied certificate cannot construct this authority. Revocation is separately
+monotonic, produced by actual authorized lifecycle/source/definition changes. Current
+marker/preparation/consumption/AllowCurrent/HostCallbackCurrent transactions read at
+most128 hard-prerequisite compact rows, each at most4096 encoded UTF-8 bytes and at
+most512 KiB total, plus their bounded scalar authority/revocation guards. They do NOT
+re-extract full Workflow/result/receipt blobs under the SQLite write lock. The same
+exact compact identities and revocation values are pinned into the operation; later
+revocation-only admission cannot silently adopt a newer certificate. Oversize, missing,
+unknown or revoked proof refuses before effect. Cold restart needs actual14 runtime
+ownership proof in addition, not row-based live-owner reconstruction.
+
+The certificate source/format/revocation consumer is actual23 co-integration work, not
+an invented available API. S6-16 requires the maximum row/byte boundary,128/129 and
+4096/+1 cases, genuine prerequisite success/revocation, out-of-lock full extraction,
+and an actual second-Project native publication while a maximal valid gate is checked.
+Report observed contention/latency, not an OS scheduling guarantee. A full-proof-inside-
+transaction mutant must fail the bounded-read instrumentation/consumer control.
+
+**Project bookkeeping fence.** Generic put_project rejects non-lifecycle changes with
+a typed operation-aware hold while ANY phase in that Project is open, even an unbound
+or session-less operation. Name/max_tasks changes cannot bump the raw Project authority
+and silently stop all native turns. No-op generic writes also cannot bump this version
+while held. Explicit authorized Block/lifecycle revocation remains possible under its
+existing predicates; it does not certify cleanup. Removed still requires complete idle
+ownership and physical exclusion, not a blanket lifecycle exception. Future trusted
+bookkeeping proposals may queue separately without rewriting Project.version, but no
+unimplemented queue grants permission. S6-06/10/16 requires live permission wait plus
+unbound-window rename/max_tasks rejection with unchanged Project body/version, genuine
+Blocked zero-ALLOW, and a dropped-fence mutant reaching actual native/43 consumers.
+
+**Declared phase outputs.** Before marker, the actual runtime phase policy constructs
+and seals an exact output manifest: scope,phase,actor,Task-worktree-relative paths and
+FD/root identity, tied to the immutable frame. A model/artifact-kind/path/JSON claim
+cannot add outputs. Only these current Executor-owned output paths may vary during
+AllowCurrent and receive HostCallbackCurrent writes after actual action/effect checks.
+They remain captured in the immutable initial input and are recaptured for the next
+phase; mutable mid-turn currency is not input re-publication. Governing rule/config,
+accepted Goal definitions, promoted consultation, primary-root or foreign-Task targets
+ALWAYS win the exact/read-only classification even if a path also appears as an output.
+All undeclared own-Task input references remain exact; Reviewer references remain
+immutable. A Requirements input used by Design does not become a Design output merely
+because both are artifacts. Actual Requirements/Design/Implement/Fix phase policies
+must declare their genuine writable documents/source outputs or refuse that write.
+
+S6-06 requires real own-output edit→second ALLOW and own-output host-write positive,
+undeclared own input/foreign/promoted/governing edit→zero ALLOW, output/rule overlap
+refusal, actual HEAD/revocation/lock negatives and a caller-reachable classification
+mutant. This permits ordinary artifact-producing phases without claiming same-UID
+writer attribution, foreign isolation or native producer readiness.
+
+**Byte checks and durable refusal attribution.** Every JSON-reading trigger checks
+`length(CAST(NEW.body AS BLOB))` (the actual appropriate field) before ANY json_extract
+in that SAME trigger, using a CASE/ordered guard whose semantics do not depend on
+trigger execution order. SQLite length(TEXT) character counts are insufficient.
+Canonical fresh/migrated DDL and raw SQL tests cover exact-byte multibyte bounds and
++1 for Workflow/context/source/outcome/session records, with original DB unchanged on
+refusal. Rust checks actual encoded UTF-8 bytes independently. S6-13 removes each
+byte-first guard meaningfully. Fresh-only refusal is NOT a separate unlisted table:
+immutable settlement receipt attribution contains `continue_refusal={previous_operation,
+previous_attempt,previous_input_digest,previous_frame_digest,reason_code,fresh_only:true}`,
+written only by the actual owned selector/refusal settlement transaction. All-table
+receipt guards freeze it. S6-11 scans at most history256 exact closed predecessors;
+a later pristine no-Session attempt cannot erase this lineage fact.
+
+**Capacity and reconciliation coordination.** The same Immediate41 reservation owns
+the derived durable claim/open-operation capacity check before commit/effects; no
+standalone43 capacity token. Logical attempt dedup preserves orphan/open-operation
+holds and prevents closed-history leaks. A definitive original predicate mismatch
+parks without writes. Transient Busy or known rolled-back audit/storage failure retries
+fairly after100 ms–5 s with the SAME private operation/frame; uncertain commit performs
+read-only exact reconciliation, not fail/retry/native redispatch. The actual driver
+retains its bounded attention and ownership. S6-16 requires saturated/unmarked/bound/
+closed/cancelled-open cases and contention/rollback/mismatch distinction. All actual
+19/23/41/43/58/60 producer and native acceptance gates remain pending.
