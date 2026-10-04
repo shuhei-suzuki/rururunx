@@ -296,3 +296,13 @@ Goal may continue automatically only inside those boundaries.
 - TUI Goal view
 - optional native-goal adapter capability
 - provider-independent continuation
+
+## Current implementation foundation
+
+Goal snapshots and scoped Task references persist through the SQLite Store.
+TaskDag::hard_order validates finite node/edge bounds, declared unique nodes,
+non-self unique ordered edge pairs and hard dependency cycles. Store::put_goal
+uses it before publishing the Goal and its audit; soft advisory cycles are allowed.
+The deterministic order includes all declared nodes and grants no readiness or
+dispatch authority. Managed definitions, lifecycle, verified completion, controller
+loop and CLI remain pending in #23/#24 with #19/#43 producer integration.

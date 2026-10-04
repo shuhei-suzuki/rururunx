@@ -419,7 +419,10 @@ enables foreign keys and a bounded busy timeout; WAL supports concurrent readers
 Composite foreign keys enforce Goal/Task ownership and scoped records/context/usage.
 Project roots/identity and Goal/Task ownership cannot silently change on updates.
 Goal DAG/edge/follow-up references are checked for exact Project/Goal Task ownership
-before saving; edges require declared endpoints. Cycle/readiness evaluation is separate.
+before saving. Bounded structural validation rejects undeclared endpoints, self
+edges, duplicate ordered pairs and hard cycles; advisory cycles are permitted.
+TaskDag::hard_order returns deterministic hard ordering only. Managed readiness
+and verified completion authority remain pending.
 Snapshot revision checks reject stale writers.
 
 Snapshot mutations and their scoped audit events commit in the same immediate

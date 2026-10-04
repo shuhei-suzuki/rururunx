@@ -1,7 +1,8 @@
 # Issue 23: Persistent Goal model and Task DAG
 
 Workflow: STRICT (shared persistence, lifecycle and completion authority).
-Status: proposed requirements; independent review and design/source gates pending.
+Status: Requirements3 1fc82b1 independently approved; Design4 f4b4926 approved with
+no Critical/High/Medium. Implementation/source gates remain pending.
 Baseline: main4851fcd. Depends on merged #2, #8 and #26; part of #22.
 
 ## Purpose and current gap

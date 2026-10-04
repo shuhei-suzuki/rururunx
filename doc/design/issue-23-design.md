@@ -1,8 +1,8 @@
 # Issue 23: Goal authority, DAG and completion
 
 Status: Design4 f4b4926 approved with no Critical/High/Medium; source gates pending. Requirements3 `1fc82b1` independently approved.
-Source integration/security review and implementation acceptance remain pending. No implementation fact
-is claimed. Baseline main4851fcd and integrated main80452f4 have schema3 and generic Goal snapshots; the native
+The initial structural graph component is implemented below; its verification/review
+and the complete authority/evaluation integration remain pending. Baseline main4851fcd and integrated main80452f4 have schema3 and generic Goal snapshots; the native
 branches and proposed #19 schema6/private input projection must be composed before
 source acceptance. Allocate the final migration number in that combined revision.
 
@@ -134,8 +134,9 @@ returns a bounded capacity error requiring controller/Human action, never silent
 drops history, clears owned work or hot-retries. #14/#24 surface this condition.
 Reject before constructing unbounded vectors. SQL count/limited projection reads
 precede bounded body decoding; stored legacy oversize rows produce bounded error,
-not a truncated ready/success result. Evaluation is iterative O(V+E) plus bounded
-Workflow/Session/lock/evidence scans, never recursion or model calls.
+not a truncated ready/success result. Structural validation uses iterative Kahn traversal with UUID-ordered maps/sets,
+O((V+E) log V) time and O(V+E) space within the explicit finite caps.
+Workflow/Session/lock/evidence scans are separately bounded; no recursion or model calls.
 
 Graph nodes are actual same-scope Tasks. Generic put_task cannot insert into a
 managed Goal or change any Task Project/Goal scope. Only the typed graph/accepted-
@@ -366,3 +367,16 @@ shared-state/native/Workflow regressions plus fmt/clippy/build and exact Linux/
 macOS CI, independently reviews the immutable source/security scope, and composes
 compatible #19/#43 migration and producers. No CLI/event loop #24, scheduler #14/
 #27, native Goal #25 or final16 dogfood acceptance is implied by this model.
+
+## Initial source component (pending review)
+
+TaskDag::hard_order now validates at most4096 nodes and16384 edges, rejects
+duplicate nodes, undeclared endpoints, self edges, duplicate ordered pairs
+regardless of hard/soft flag, and hard cycles. It returns every node in deterministic
+UUID order subject to hard dependencies; advisory cycles are permitted.
+Store::put_goal invokes this validator in its existing immediate transaction,
+followed by its existing actual Task scope checks. A rejected update leaves the
+row, caller versions and audit unchanged. This is structural validation only:
+generic Goal authority is still legacy, no readiness/completion/native permit is
+implemented, and no managed Goal is exposed. Remaining typed authority, mutation
+policy, coherent reports, evidence and #19/#43 composition stay pending.

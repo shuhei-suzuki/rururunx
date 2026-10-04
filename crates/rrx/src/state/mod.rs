@@ -1337,20 +1337,7 @@ fn str_id<T: std::fmt::Display>(id: Option<T>) -> Option<String> {
 }
 fn validate_goal_references(tx: &Transaction<'_>, goal: &Goal) -> Result<()> {
     use std::collections::BTreeSet;
-    let nodes: BTreeSet<_> = goal.dag.nodes.iter().copied().collect();
-    ensure!(
-        nodes.len() == goal.dag.nodes.len(),
-        "duplicate goal DAG nodes"
-    );
-    let mut references = nodes.clone();
-    for edge in &goal.dag.edges {
-        ensure!(
-            nodes.contains(&edge.prerequisite) && nodes.contains(&edge.dependent),
-            "DAG edge endpoints must be declared nodes"
-        );
-        references.insert(edge.prerequisite);
-        references.insert(edge.dependent);
-    }
+    let mut references: BTreeSet<_> = goal.dag.hard_order()?.into_iter().collect();
     for proposal in &goal.followups {
         references.extend(proposal.dependencies.iter().copied());
     }

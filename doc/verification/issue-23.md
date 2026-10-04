@@ -97,3 +97,15 @@ with compiled reduced-gate consumer mutant. It does not allow generic blockers/
 next_action (#19 writer pins). Legacy unlisted wording and revocation-only
 continuation are clarified. Source/security review must verify these obligations.
 Exact CI37190847079 succeeded; individual jobs remain to be checked.
+
+Design4 exact CI37190847079 and latest documentation7ad14c4 CI37192020953
+passed all Linux/macOS jobs. Main80452f4 observer integration is present in
+5ac5e6f and7ad14c4; the earlier Design1 failure remains preserved above.
+
+Initial source component (tests/review pending): bounded TaskDag::hard_order is
+used by the existing real Store Goal save transaction. Controls cover a diamond,
+disconnected required nodes, advisory cycles, boundary-size graphs and actual
+Store rollback/reopen for cycles, self/duplicate edges and missing endpoints.
+This does not claim managed Goal authority, verified readiness/completion, native
+settlement, scheduling or CLI acceptance. Source review and causal mutations
+remain required before this component or the composed implementation is accepted.
