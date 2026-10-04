@@ -93,3 +93,18 @@ Real producer/closure controls and compiled private-proof/currency consumers are
 required; source and kernel/profile/recovery integration remain unimplemented.
 Independent Req5 review precedes the corresponding Design5 update. Earlier approved
 Design4 and old CI evidence are retained; dependency research is not source approval.
+
+Req5 670c3e3 completed two independent request_changes reviews with actual v3
+owned cleanup verified. Shared two Mediums are verified: later binding had no
+defined durable expectation source after original invocation disappears, and a
+direct binder fixture did not name reachable Engine/driver handling of start Err
+or dropped/restarted delivery. Req6 derives immutable original marker-time binding
+frame, forbids current-row recapture/bookkeeping refresh, and names the proposed
+private Engine route from actual #23 Task driver settled notifications/managed
+start-error handling. Passive observers remain passive. Known success cannot be
+mapped to fail/retry; unknown/pending remains held; non-success uses its proper #19
+closure, and restart requires real #14 authentic restore/fencing. Real driver/frame/
+error-route controls and causal mutants are required. Delta review pending; these
+ports, durable frame, native/recovery conformance and source remain unimplemented.
+Exact Req5 CI37204736754 passed Linux/macOS fmt/clippy/tests and debug/release
+builds (individual steps inspected); this validates the existing code baseline only.

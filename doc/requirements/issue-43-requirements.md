@@ -2,7 +2,7 @@
 
 Workflow: STRICT. Requirements baseline `d8c5266` approved by native independent
 requirements re-review4; joint item6/Design4 approved at `77da799` by two independent
-reviewers. Requirements5 adds narrowly scoped receipt-sourced factual binding;
+reviewers. Requirements6 corrects receipt-sourced authority and production caller;
 independent requirements/design delta and all implementation gates remain pending.
 
 ## Problem and MVP relationship
@@ -105,6 +105,45 @@ The proof grants no input/ALLOW/resume/retry/release/transfer or success. Ordina
 input, native outcome and complete settlement; factual binding alone cannot pass
 a phase or complete a Goal.
 
+For this late path, expected authority is the IMMUTABLE durable dispatch binding
+frame captured at marker commit: original P/G/T versions, post-marker Workflow
+Record version/marker tuple, context/source and complete scoped lock-set versions/
+identities, plus pinned registered actor/provider/role/worktree. Derive it inside
+the transaction from #19's private operation/marker provenance, not a later caller's
+read of current rows. Receipt, preparation/consumption and current Session must
+correlate to that frame. Do not replace it with refreshed current versions or
+#19's separately permitted bookkeeping refresh. Any mismatch, including a sibling
+Goal bookkeeping version change, rejects with no writes and keeps claim/receipt for
+reviewed recovery. No implicit tolerance for unrelated metadata or weakened CAS.
+
+The sole late-binding production route is proposed private Engine
+reconcile_settled_native_binding, invoked by the authoritative #23 active Task
+driver on the exact #19 settled-operation notification, and by that same managed
+launch invocation's post-marker start-Err handling. The driver/notification/private
+proof must actually compose in the source PR; a test-only direct binder call cannot
+close this acceptance. Passive #41 step/poll observers, status and ordinary record
+reads never invoke it or bind. It is a narrowly permitted factual Workflow write,
+not release/retry/adoption or a new-input progression grant. Generic caller JSON
+cannot produce its private operation/frame/receipt evidence.
+
+A managed post-marker start error/lost delivery branches on actual private state:
+KnownCurrentTerminal successful receipt invokes that route and never fail/retry;
+an existing/pending/unknown operation without a conclusive receipt stays held under
+its real supervisor; NoCurrentDispatch permits only its existing non-success closure;
+known current failure uses the separately reviewed #19 non-success closure without
+binding an absent Session ID. Do not map a missing start result to native failure
+or release. Restart may re-enter this active-driver factual route ONLY with authentic
+durable current-operation/frame/known-success proof and the actual reviewed #14
+restart fencing/restore protocol. It reconstructs no native owner and keeps all
+normal active/source predicates. Absent those producer/recovery ports the path is
+Unsupported/held; restart integration remains mandatory before its acceptance.
+
+Race with a delayed normal return still permits one exact binding/audit only. A
+losing binder preserves the original claim/receipt and grants no fail/retry/input;
+any AlreadyBound diagnostic must prove the same exact operation/private bound fact.
+Audit carries bounded proof-source enum and exact operation/receipt references,
+never receipt payloads or an agent-selected authority class.
+
 An inactive owner or stale source/authority rejects while preserving the original
 claim/receipt/reservation. There is no inactive/restored recovery exemption; future
 #14 recovery mode requires a separately reviewed #14/#19/#43 contract. Keep the
@@ -121,6 +160,13 @@ mutants substitute caller receipt/ID, omit current input/receipt/owner checks, a
 restored-prior or inactive evidence, broaden writes, or infer success from binding;
 each must reach its intended assertion with actual passing producer prerequisites.
 Controlled fixtures must create proof through real private ports, never seed SQL.
+Drive the actual managed Engine start-error and #23 driver-notification routes
+after real supervisor success, plus actual restart protocol where claimed; assert
+no Failed closure, retry or second dispatch and passive observers remain unchanged.
+Independently change each P/G/T version and a lock-only frame after marker commit,
+then require rejection with no row/audit mutation and preserved receipt. Kill
+freshly-recaptured expectation, missing actual-driver receipt lookup and fail→retry
+mutants at those actual consumers with exact restored passing controls.
 
 ## Impact and verification
 
@@ -200,3 +246,6 @@ Actual identity drift still requires explicit recovery; this issue does not gues
 ownership or adopt PID/UUID hints. Restart, unknown dispatch,
 explicit retry with unbound markers, Review Set slots, scheduler and external side
 effects retain their separate issue contracts.
+The receipt-sourced active-driver route above composes authentic settled-current
+restart evidence only after #14 gating; all other restart/unknown/unbound recovery
+and inactive success remain outside this binder and retain their separate contracts.
