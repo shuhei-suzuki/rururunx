@@ -1561,6 +1561,8 @@ mod registry_tests {
         });
         let entry = Arc::new(OwnedEntry {
             #[cfg(all(test, target_os = "macos"))]
+            ownership_trace: Arc::new(ownership::OwnershipTrace::default()),
+            #[cfg(all(test, target_os = "macos"))]
             process_inspection: None,
             scope: session.scope.clone(),
             transition: Mutex::new(()),
@@ -1684,6 +1686,8 @@ mod registry_tests {
             failure: None,
         });
         let entry = Arc::new(OwnedEntry {
+            #[cfg(all(test, target_os = "macos"))]
+            ownership_trace: Arc::new(ownership::OwnershipTrace::default()),
             #[cfg(all(test, target_os = "macos"))]
             process_inspection: None,
             scope: scope.clone(),

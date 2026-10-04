@@ -259,7 +259,7 @@ mod tests {
     fn session() -> Session {
         Session {
             id: SessionId::new(),
-            scope: Scope::task(ProjectId::new(), GoalId::new(), TaskId::new()),
+            scope: Scope::task(Default::default(), Default::default(), Default::default()),
             agent: "synthetic".into(),
             provider: "synthetic".into(),
             role: SessionRole::Executor,
