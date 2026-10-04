@@ -13,8 +13,10 @@ use std::{
 use tokio::sync::{mpsc, oneshot, watch};
 
 use super::{
+    attempt::{CallerGuard, Control, Outcome, Phase, TaskGuard},
     ownership::{ProcessOwnership, ScopeSnapshot, filesystem},
     policy::{DecisionPolicy, native_environment, provider_environment, verify_auth_readiness},
+    preparation::{Admission, Cause},
     protocol::{
         ApprovalLedger, Event, NativeRpc, OperationDecision, RpcId, TokenCounters, UsageTracker,
         failure, operation_paths,
@@ -32,6 +34,36 @@ use crate::{
 const OUTPUT_LIMIT: usize = 64 * 1024;
 const RETAINED_TERMINALS: usize = 32;
 const INTERRUPT_DRAIN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
+fn empty_status(session: Session) -> SessionStatus {
+    SessionStatus {
+        session,
+        exit_code: None,
+        stdout: vec![],
+        stderr: vec![],
+        stdout_truncated: false,
+        stderr_truncated: false,
+        failure: None,
+    }
+}
+
+fn fresh_session(request: &LaunchRequest, agent: &str) -> Session {
+    Session {
+        id: SessionId::new(),
+        scope: request.scope.clone(),
+        agent: agent.into(),
+        provider: "codex".into(),
+        role: request.role,
+        native_ref: None,
+        pid: None,
+        worktree: request.worktree.clone(),
+        state: SessionState::Starting,
+        model: request.model.clone(),
+        effort: request.effort.clone(),
+        recovery: json!({"project_root":request.project.root,"input_revision":request.input.revision,"input_version":request.input.version,"source_versions":request.input.source_versions,"input_bytes":request.input.payload.len(),"reconnect_supported":false}),
+        started_at: now_ms(),
+    }
+}
 
 fn pin_starting_input(
     session: &mut Session,
@@ -90,7 +122,7 @@ pub struct CodexAdapter {
     agent: String,
     executable: PathBuf,
     store: SharedStore,
-    sessions: Mutex<HashMap<SessionId, Entry>>,
+    sessions: Arc<Mutex<HashMap<SessionId, Entry>>>,
     runtime_broker: bool,
 }
 struct Entry {
@@ -102,12 +134,128 @@ struct Entry {
     evidence: Arc<Mutex<Evidence>>,
     request: LaunchRequest,
     schema: Option<Value>,
+    control: Arc<Control>,
 }
 struct TransitionClaim(Arc<AtomicBool>);
 impl Drop for TransitionClaim {
     fn drop(&mut self) {
         self.0.store(false, Ordering::SeqCst);
     }
+}
+struct RegisteredTransition {
+    sessions: Arc<Mutex<HashMap<SessionId, Entry>>>,
+    id: SessionId,
+    control: Arc<Control>,
+    previous_control: Option<Arc<Control>>,
+    active: bool,
+}
+impl RegisteredTransition {
+    fn transfer(&mut self, entry: &mut Entry) -> AdapterResult<()> {
+        if !Arc::ptr_eq(&entry.control, &self.control) {
+            return Err(failure(
+                ErrorKind::StateConflict,
+                "native attempt owner advanced",
+            ));
+        }
+        self.control.supervised();
+        entry.transition.store(false, Ordering::SeqCst);
+        self.active = false;
+        Ok(())
+    }
+}
+impl Drop for RegisteredTransition {
+    fn drop(&mut self) {
+        if !self.active {
+            return;
+        }
+        // Nested native/Reservation owners finish first; this last transition
+        // owner supplies uncertainty if a panic/drop skipped normal completion.
+        let phase = self.control.subscribe().borrow().clone();
+        if !matches!(phase, Phase::Finished(_)) {
+            let error = failure(
+                ErrorKind::SessionLost,
+                "native preparation ended without final publication",
+            );
+            let cause = if std::thread::panicking() {
+                Cause::Failed(
+                    ErrorKind::SessionLost,
+                    "owned native preparation task panicked".into(),
+                )
+            } else {
+                self.control.preparation.cause(&error)
+            };
+            let published = self.control.published();
+            let outcome = match (self.control.preparation.state(), published) {
+                (
+                    Ok(Admission::CancelledBeforeAdmission | Admission::Failing(_)),
+                    Some(snapshot),
+                ) if !std::thread::panicking()
+                    && snapshot.terminal()
+                    && snapshot.session.state != SessionState::Lost =>
+                {
+                    if self.previous_control.is_some() {
+                        Outcome::RestoredBeforeAdmission { cause, snapshot }
+                    } else {
+                        Outcome::FailedBeforeAdmission { cause, snapshot }
+                    }
+                }
+                (_, Some(snapshot)) if snapshot.session.state == SessionState::Lost => {
+                    Outcome::Lost {
+                        cause,
+                        publication_result: Ok(snapshot),
+                    }
+                }
+                _ if self.previous_control.is_some() => Outcome::RestoreUnpublished {
+                    cause,
+                    error: Cause::Failed(error.kind, error.message),
+                },
+                _ => Outcome::FreshUnpublished {
+                    cause,
+                    error: Cause::Failed(error.kind, error.message),
+                },
+            };
+            self.control.finished(outcome);
+        }
+        if let Ok(mut sessions) = self.sessions.lock()
+            && let Some(entry) = sessions.get_mut(&self.id)
+            && Arc::ptr_eq(&entry.control, &self.control)
+        {
+            let restored = matches!(
+                *self.control.subscribe().borrow(),
+                Phase::Finished(
+                    Outcome::RestoredBeforeAdmission { .. } | Outcome::CheckpointCommitted { .. }
+                )
+            );
+            if let Some(previous) = &self.previous_control
+                && restored
+            {
+                entry.control = previous.clone();
+                entry.stop = previous.stop.clone();
+                entry.transition.store(false, Ordering::SeqCst);
+            } else if self.control.published().is_none() {
+                sessions.remove(&self.id);
+            } else {
+                entry.transition.store(false, Ordering::SeqCst);
+            }
+        }
+    }
+}
+struct Registered {
+    transition: RegisteredTransition,
+    request: LaunchRequest,
+    schema: Option<Value>,
+    previous: Option<SessionStatus>,
+    publisher: watch::Sender<SessionStatus>,
+    stopped: mpsc::Receiver<()>,
+}
+struct Supervision {
+    native: NativeServer,
+    reservation: Reservation,
+    sender: watch::Sender<SessionStatus>,
+    stopped: mpsc::Receiver<()>,
+    evidence: Arc<Mutex<Evidence>>,
+    replies: mpsc::Receiver<Reply>,
+    identity: NativeTurn,
 }
 struct ResumePublication {
     previous: SessionStatus,
@@ -158,8 +306,101 @@ struct Reservation {
     armed: bool,
     resume_publication: Option<ResumePublication>,
     inference_started: bool,
+    attempt: Arc<Control>,
 }
 impl Reservation {
+    fn finish_preparation_error(
+        &mut self,
+        error: crate::adapter::AdapterError,
+    ) -> crate::adapter::AdapterError {
+        let selected = self.attempt.preparation.failed(error);
+        let cause = self.attempt.preparation.cause(&selected);
+        let previous = self
+            .resume_publication
+            .as_ref()
+            .filter(|publication| publication.previous.terminal())
+            .map(|publication| publication.previous.clone());
+        let unstarted = self.version == 0;
+        let uncertain = self.ownership.uncertain() || self.inference_started;
+        let mut status = if !uncertain {
+            previous.clone().unwrap_or_else(|| {
+                let mut status = empty_status(self.session.clone());
+                status.session.state = SessionState::Failed;
+                status.session.pid = None;
+                status.failure = Some(cause.error().to_string());
+                status
+            })
+        } else {
+            let mut status = self
+                .attempt
+                .published()
+                .unwrap_or_else(|| empty_status(self.session.clone()));
+            status.session = self.session.clone();
+            status.session.state = SessionState::Lost;
+            if !self.ownership.uncertain() {
+                status.session.pid = None;
+            }
+            if self.inference_started {
+                status.session.recovery["native_dispatch_unobserved"] = json!(true);
+            }
+            status.failure = Some(selected.to_string());
+            if let Some(publication) = &self.resume_publication
+                && let Ok(mut evidence) = publication.evidence.lock()
+            {
+                *evidence = Evidence::default();
+            }
+            status
+        };
+        self.session = status.session.clone();
+        let publication = if unstarted {
+            Err(failure(
+                selected.kind,
+                "initial native preparation was not published",
+            ))
+        } else if let Some(sender) = self
+            .resume_publication
+            .as_ref()
+            .map(|publication| publication.sender.clone())
+        {
+            self.publish(&sender, &mut status)
+        } else {
+            self.persist()
+        };
+        // A failed exact restore/publication remains explicitly unpublished. Do
+        // not let Drop attempt another write or overwrite a second writer.
+        self.armed = false;
+        let outcome = match publication {
+            Ok(()) if uncertain => Outcome::Lost {
+                cause: cause.clone(),
+                publication_result: Ok(status),
+            },
+            Ok(()) if previous.is_some() => Outcome::RestoredBeforeAdmission {
+                cause: cause.clone(),
+                snapshot: status,
+            },
+            Ok(()) => Outcome::FailedBeforeAdmission {
+                cause: cause.clone(),
+                snapshot: status,
+            },
+            Err(error) if uncertain => Outcome::Lost {
+                cause: cause.clone(),
+                publication_result: Err(Cause::Failed(error.kind, error.message)),
+            },
+            Err(error) if previous.is_some() => Outcome::RestoreUnpublished {
+                cause: cause.clone(),
+                error: Cause::Failed(error.kind, error.message),
+            },
+            Err(error) => Outcome::FreshUnpublished {
+                cause: cause.clone(),
+                error: Cause::Failed(error.kind, error.message),
+            },
+        };
+        let secondary = self.attempt.preparation.later_failures();
+        let _=self.store.lock().map_err(|_|()).and_then(|mut store| store.audit(&self.session.scope,"codex.preparation.finished",json!({"session_id":self.session.id,"cause":match &cause { Cause::Cancelled=>"cancelled",Cause::Failed(_,_)=>"failed" },"failure_kind":match &cause {Cause::Failed(kind,_)=>Some(kind),_=>None},"later_failure_kinds":secondary,"input_consumed":self.inference_started,"snapshot_published":outcome.snapshot().is_some()})).map_err(|_|()));
+        let returned = outcome.error().unwrap_or(selected);
+        self.attempt.finished(outcome);
+        returned
+    }
     async fn dispatch(
         &mut self,
         rpc: &mut NativeRpc,
@@ -180,6 +421,7 @@ impl Reservation {
         self.admit_dispatch(authority, request)?;
         // Any cancelled/failed write can already have started native inference.
         self.inference_started = true;
+        self.attempt.awaiting_ack();
         rpc.dispatch_call(prepared).await
     }
     fn admit_dispatch(
@@ -194,20 +436,22 @@ impl Reservation {
             "input_sha256":format!("{:x}",Sha256::digest(request.input.payload.as_bytes())),
             "authority_versions":authority.versions(),
         });
-        let admitted = self
-            .store
-            .lock()
-            .map_err(|_| failure(ErrorKind::StateFailure, "state store poisoned"))
-            .and_then(|mut store| {
-                store
-                    .put_session_if_current(
-                        &self.session,
-                        self.version,
-                        authority.versions(),
-                        &authority.lock_versions(),
-                    )
-                    .map_err(|error| failure(ErrorKind::StateConflict, error.to_string()))
-            });
+        let attempt = self.attempt.clone();
+        let admitted = attempt.preparation.consume(|| {
+            self.store
+                .lock()
+                .map_err(|_| failure(ErrorKind::StateFailure, "state store poisoned"))
+                .and_then(|mut store| {
+                    store
+                        .put_session_if_current(
+                            &self.session,
+                            self.version,
+                            authority.versions(),
+                            &authority.lock_versions(),
+                        )
+                        .map_err(super::ownership::state_error)
+                })
+        });
         match admitted {
             Ok(version) => {
                 self.version = version;
@@ -224,18 +468,28 @@ impl Reservation {
         }
     }
     fn persist(&mut self) -> AdapterResult<()> {
+        let attempt = self.attempt.clone();
+        attempt.preparation.publish(|| self.persist_unchecked())
+    }
+    fn persist_unchecked(&mut self) -> AdapterResult<()> {
         let mut store = self
             .store
             .lock()
             .map_err(|_| failure(ErrorKind::StateFailure, "state store poisoned"))?;
         self.version = store
             .put_session(&self.session, self.version)
-            .map_err(|e| failure(ErrorKind::StateConflict, e.to_string()))?;
+            .map_err(super::ownership::state_error)?;
         if let Some(publication) = &self.resume_publication {
             let mut status = publication.sender.borrow().clone();
             status.session = self.session.clone();
             publication.sender.send_replace(status);
         }
+        let mut status = self
+            .attempt
+            .published()
+            .unwrap_or_else(|| empty_status(self.session.clone()));
+        status.session = self.session.clone();
+        self.attempt.publish(status);
         Ok(())
     }
     fn publish(
@@ -249,9 +503,10 @@ impl Reservation {
             .map_err(|_| failure(ErrorKind::StateFailure, "state store poisoned"))?;
         self.version = store
             .put_session(&self.session, self.version)
-            .map_err(|error| failure(ErrorKind::StateConflict, error.to_string()))?;
+            .map_err(super::ownership::state_error)?;
         status.session = self.session.clone();
         sender.send_replace(status.clone());
+        self.attempt.publish(status.clone());
         Ok(())
     }
     fn terminal(
@@ -338,17 +593,10 @@ impl Drop for Reservation {
     fn drop(&mut self) {
         if self.armed {
             let uncertain = self.ownership.uncertain();
-            if !uncertain
-                && !self.inference_started
-                && let Some(publication) = &self.resume_publication
             {
-                self.session = publication.previous.session.clone();
-            } else {
-                self.session.state = if uncertain || self.inference_started {
-                    SessionState::Lost
-                } else {
-                    SessionState::Failed
-                };
+                // Only an explicit normal cleanup/restore path can prove a
+                // pre-admission restore. Panic/runtime-drop remains uncertain.
+                self.session.state = SessionState::Lost;
                 if !uncertain {
                     self.session.pid = None;
                 }
@@ -370,7 +618,7 @@ impl Drop for Reservation {
             }
             if let Some(publication) = &self.resume_publication {
                 let mut status = publication.previous.clone();
-                if uncertain || self.inference_started {
+                if self.session.state == SessionState::Lost {
                     if let Ok(mut evidence) = publication.evidence.lock() {
                         *evidence = Evidence::default();
                     }
@@ -378,7 +626,7 @@ impl Drop for Reservation {
                     status.stderr.clear();
                     status.exit_code = None;
                     status.failure =
-                        Some("native resume did not establish an owned running supervisor".into());
+                        Some("owned native attempt ended without verified completion".into());
                 }
                 let sender = publication.sender.clone();
                 let _ = self.publish(&sender, &mut status);
@@ -401,7 +649,7 @@ impl CodexAdapter {
             agent,
             executable,
             store,
-            sessions: Mutex::new(HashMap::new()),
+            sessions: Arc::new(Mutex::new(HashMap::new())),
             runtime_broker: false,
         })
     }
@@ -416,6 +664,175 @@ impl CodexAdapter {
         self.sessions
             .lock()
             .map_err(|_| failure(ErrorKind::StateFailure, "native Session registry poisoned"))
+    }
+    fn owned_handles(&self) -> Self {
+        Self {
+            agent: self.agent.clone(),
+            executable: self.executable.clone(),
+            store: self.store.clone(),
+            sessions: self.sessions.clone(),
+            runtime_broker: self.runtime_broker,
+        }
+    }
+    fn register_fresh(
+        &self,
+        request: LaunchRequest,
+        schema: Option<Value>,
+    ) -> AdapterResult<Registered> {
+        let session = fresh_session(&request, &self.agent);
+        let (publisher, status) = watch::channel(empty_status(session.clone()));
+        let (control, stopped) = Control::new(None);
+        let (reply, _) = mpsc::channel(16);
+        let mut sessions = self.registry()?;
+        if sessions.len() >= RETAINED_TERMINALS {
+            evict_one_terminal(&mut sessions);
+        }
+        sessions.insert(
+            session.id,
+            Entry {
+                status,
+                publisher: publisher.clone(),
+                transition: Arc::new(AtomicBool::new(true)),
+                stop: control.stop.clone(),
+                reply,
+                evidence: Arc::new(Mutex::new(Evidence::default())),
+                request: request.clone(),
+                schema: schema.clone(),
+                control: control.clone(),
+            },
+        );
+        Ok(Registered {
+            transition: RegisteredTransition {
+                sessions: self.sessions.clone(),
+                id: session.id,
+                control,
+                previous_control: None,
+                active: true,
+            },
+            request,
+            schema,
+            previous: None,
+            publisher,
+            stopped,
+        })
+    }
+    fn register_existing(&self, reference: &SessionRef) -> AdapterResult<Registered> {
+        let mut sessions = self.registry()?;
+        let entry = sessions.get_mut(&reference.id).ok_or_else(|| {
+            failure(
+                ErrorKind::SessionLost,
+                "native preparation owner unavailable",
+            )
+        })?;
+        let previous = entry.status.borrow().clone();
+        if previous.session.scope != reference.scope {
+            return Err(failure(
+                ErrorKind::OwnershipMismatch,
+                "foreign native preparation scope",
+            ));
+        }
+        if !previous.terminal() || previous.session.state == SessionState::Lost {
+            return Err(failure(
+                ErrorKind::StateConflict,
+                "native preparation requires a confirmed terminal Session",
+            ));
+        }
+        // Registry -> Store, without current/reference reentry. No write or await.
+        let persisted = self
+            .store
+            .lock()
+            .map_err(|_| failure(ErrorKind::StateFailure, "state store poisoned"))?
+            .session(reference.id)
+            .map_err(super::ownership::state_error)?
+            .ok_or_else(|| {
+                failure(
+                    ErrorKind::SessionLost,
+                    "native preparation record unavailable",
+                )
+            })?
+            .0;
+        if serde_json::to_value(&persisted).ok() != serde_json::to_value(&previous.session).ok() {
+            return Err(failure(
+                ErrorKind::StateConflict,
+                "native preparation owner changed",
+            ));
+        }
+        entry
+            .transition
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .map_err(|_| {
+                failure(
+                    ErrorKind::StateConflict,
+                    "native Session transition already claimed",
+                )
+            })?;
+        let (control, stopped) = Control::new(Some(previous.clone()));
+        let previous_control = std::mem::replace(&mut entry.control, control.clone());
+        entry.stop = control.stop.clone();
+        Ok(Registered {
+            transition: RegisteredTransition {
+                sessions: self.sessions.clone(),
+                id: reference.id,
+                control,
+                previous_control: Some(previous_control),
+                active: true,
+            },
+            request: entry.request.clone(),
+            schema: entry.schema.clone(),
+            previous: Some(previous),
+            publisher: entry.publisher.clone(),
+            stopped,
+        })
+    }
+    async fn launch(
+        &self,
+        request: LaunchRequest,
+        schema: Option<Value>,
+        resume: Option<Session>,
+    ) -> AdapterResult<Session> {
+        let registered = if let Some(previous) = resume {
+            self.register_existing(&SessionRef::from(&previous))?
+        } else {
+            self.register_fresh(request, schema)?
+        };
+        self.spawn_launch(registered).await
+    }
+    async fn spawn_launch(&self, registered: Registered) -> AdapterResult<Session> {
+        let control = registered.transition.control.clone();
+        let task_guard = TaskGuard(control.clone());
+        let handles = self.owned_handles();
+        let (result, receiver) = oneshot::channel();
+        let mut guard = CallerGuard::new(control.clone());
+        control.spawn(async move {
+            let _task = task_guard;
+            match handles.prepare_launch(registered).await {
+                Ok(supervision) => {
+                    let session = supervision.reservation.session.clone();
+                    let _ = result.send(Ok(session));
+                    supervise(
+                        supervision.native,
+                        supervision.reservation,
+                        supervision.sender,
+                        supervision.stopped,
+                        supervision.evidence,
+                        supervision.replies,
+                        supervision.identity,
+                    )
+                    .await;
+                }
+                Err(error) => {
+                    let _ = result.send(Err(error));
+                }
+            }
+        })?;
+        let result = receiver.await.map_err(|_| {
+            failure(
+                ErrorKind::SessionLost,
+                "owned native preparation task ended without caller result",
+            )
+        });
+        guard.disarm();
+        result?
     }
     fn reference(&self, reference: &SessionRef) -> AdapterResult<OwnedReference> {
         let sessions = self.registry()?;
@@ -546,111 +963,349 @@ impl CodexAdapter {
         }
         observe(&status, &evidence)
     }
-    async fn launch(
+    async fn prepare_checkpoint(
         &self,
-        request: LaunchRequest,
-        schema: Option<Value>,
-        resume: Option<Session>,
-    ) -> AdapterResult<Session> {
-        if request.mode == LaunchMode::Interactive {
-            return Err(failure(
-                ErrorKind::UnsupportedCapability,
-                "native interactive policy requires an owned TUI lifecycle",
-            ));
-        }
-        if schema.as_ref().is_some_and(|schema| {
-            !schema.is_object()
-                || serde_json::to_vec(schema).map_or(true, |bytes| bytes.len() > 64 * 1024)
-        }) {
-            return Err(failure(
-                ErrorKind::InvalidInput,
-                "native output schema must be a bounded JSON object",
-            ));
-        }
-        let snapshot = ScopeSnapshot::capture(&self.store, &request, &self.agent)?;
-        // The baseline comes only from the owned supervisor, never caller JSON
-        // or a native UUID hint. Missing history remains unknown on resume.
-        let previous_cumulative = if let Some(previous) = &resume {
-            let (_, _, evidence, _) = self.reference(&SessionRef::from(previous))?;
-            let evidence = evidence
-                .lock()
-                .map_err(|_| failure(ErrorKind::StateFailure, "native telemetry poisoned"))?;
-            if previous.state == SessionState::Exited && evidence.completed {
-                evidence.cumulative.clone()
-            } else {
-                None
-            }
-        } else {
-            None
+        registered: Registered,
+        input: PreparedInput,
+    ) -> AdapterResult<()> {
+        let session = SessionRef {
+            id: registered.transition.id,
+            scope: registered.request.scope.clone(),
         };
-        let mut session = resume.clone().unwrap_or_else(|| Session {
-            id: SessionId::new(), scope: request.scope.clone(), agent: self.agent.clone(), provider: "codex".into(), role: request.role,
-            native_ref: None, pid: None, worktree: request.worktree.clone(), state: SessionState::Starting,
-            model: request.model.clone(), effort: request.effort.clone(),
-            recovery: json!({"project_root":request.project.root,"input_revision":request.input.revision,"input_version":request.input.version,"source_versions":request.input.source_versions,"input_bytes":request.input.payload.len(),"reconnect_supported":false}), started_at: now_ms(),
-        });
-        let expected_version = if let Some(previous) = &resume {
-            if previous.scope != request.scope
-                || previous.worktree != request.worktree
-                || previous.agent != self.agent
-                || previous.provider != "codex"
-                || previous.role != request.role
-                || previous.native_ref.is_none()
-                || !matches!(previous.state, SessionState::Exited | SessionState::Stopped)
+        let control = registered.transition.control.clone();
+        let mut request = registered.request.clone();
+        let context = (|| -> AdapterResult<_> {
+            control.preparation.check()?;
+            let status = registered.previous.clone().ok_or_else(|| {
+                failure(
+                    ErrorKind::StateConflict,
+                    "checkpoint has no prior terminal snapshot",
+                )
+            })?;
+            if input.scope != status.session.scope {
+                return Err(failure(
+                    ErrorKind::OwnershipMismatch,
+                    "foreign native checkpoint scope",
+                ));
+            }
+            if !status.terminal() || status.session.state == SessionState::Lost {
+                return Err(failure(
+                    ErrorKind::StateConflict,
+                    "native checkpoint requires a confirmed terminal Session",
+                ));
+            }
+            if input.version <= request.input.version {
+                return Err(failure(
+                    ErrorKind::StateConflict,
+                    "native checkpoint must advance its prepared input version",
+                ));
+            }
+            request.input = input;
+            // An explicit fresh checkpoint may refresh mutable Project metadata,
+            // but may never rebind the owned repository/worktree identity.
+            let project = self
+                .store
+                .lock()
+                .map_err(|_| failure(ErrorKind::StateFailure, "state store poisoned"))?
+                .project(request.project.id)
+                .map_err(|error| failure(ErrorKind::StateFailure, error.to_string()))?
+                .ok_or_else(|| failure(ErrorKind::SessionLost, "checkpoint Project disappeared"))?;
+            if project.root != request.project.root
+                || project.repository_identity != request.project.repository_identity
+                || project.base_branch != request.project.base_branch
+                || project.worktree_root != request.project.worktree_root
             {
                 return Err(failure(
                     ErrorKind::OwnershipMismatch,
-                    "native resume requires an exact owned completed/stopped Session",
+                    "native checkpoint cannot rebind its Project repository",
                 ));
             }
+            request.project = project;
+            let snapshot = ScopeSnapshot::capture(&self.store, &request, &self.agent)?;
             let (persisted, version) = self
                 .store
                 .lock()
                 .map_err(|_| failure(ErrorKind::StateFailure, "state store poisoned"))?
-                .session(previous.id)
-                .map_err(|e| failure(ErrorKind::StateFailure, e.to_string()))?
-                .ok_or_else(|| failure(ErrorKind::SessionLost, "native resume record missing"))?;
-            if serde_json::to_value(persisted).ok() != serde_json::to_value(previous).ok() {
+                .session(session.id)
+                .map_err(|error| failure(ErrorKind::StateFailure, error.to_string()))?
+                .ok_or_else(|| {
+                    failure(
+                        ErrorKind::SessionLost,
+                        "native checkpoint record disappeared",
+                    )
+                })?;
+            if serde_json::to_value(&persisted).ok() != serde_json::to_value(&status.session).ok() {
                 return Err(failure(
                     ErrorKind::StateConflict,
-                    "native resume owner changed before reservation",
+                    "native checkpoint owner changed before reservation",
                 ));
             }
-            version
-        } else {
-            0
+
+            let evidence = self
+                .registry()?
+                .get(&session.id)
+                .ok_or_else(|| failure(ErrorKind::SessionLost, "checkpoint owner disappeared"))?
+                .evidence
+                .clone();
+            let publication = ResumePublication {
+                previous: status.clone(),
+                sender: registered.publisher.clone(),
+                evidence,
+            };
+            let mut reservation = Reservation {
+                store: self.store.clone(),
+                session: status.session.clone(),
+                version,
+                ownership: ProcessOwnership::default(),
+                armed: false,
+                resume_publication: Some(publication),
+                inference_started: false,
+                attempt: control.clone(),
+            };
+            pin_starting_input(&mut reservation.session, &request, Some(&status.session))?;
+            Ok((status, snapshot, reservation))
+        })();
+        let (previous, snapshot, mut reservation) = match context {
+            Ok(context) => context,
+            Err(error) => {
+                let error = control.preparation.failed(error);
+                let cause = control.preparation.cause(&error);
+                if let Some(snapshot) = registered.previous.clone() {
+                    control.finished(Outcome::RestoredBeforeAdmission { cause, snapshot });
+                } else {
+                    control.finished(Outcome::FreshUnpublished {
+                        cause,
+                        error: Cause::Failed(error.kind, error.message.clone()),
+                    });
+                }
+                return Err(error);
+            }
         };
-        pin_starting_input(&mut session, &request, resume.as_ref())?;
-        let resume_publication = if let Some(previous) = &resume {
-            let sessions = self.registry()?;
-            let entry = sessions.get(&previous.id).ok_or_else(|| {
-                failure(ErrorKind::SessionLost, "native resume owner disappeared")
+        let validated = async {
+            reservation.persist()?;
+            reservation.armed = true;
+            snapshot
+                .verify_git_preparing(&request, &mut reservation.ownership, &control.preparation)
+                .await?;
+            snapshot.recheck(&self.store, &request, &self.agent)?;
+            // Registry -> admission -> Store, atomic request replacement and
+            // exact restore. No current()/reference() reentry and no await.
+            let mut sessions = self.registry()?;
+            let entry = sessions.get_mut(&session.id).ok_or_else(|| {
+                failure(
+                    ErrorKind::SessionLost,
+                    "checkpoint owner disappeared during commit",
+                )
             })?;
-            Some(ResumePublication {
-                previous: entry.status.borrow().clone(),
-                sender: entry.publisher.clone(),
-                evidence: entry.evidence.clone(),
+            if !Arc::ptr_eq(&entry.control, &control) {
+                return Err(failure(
+                    ErrorKind::StateConflict,
+                    "checkpoint attempt advanced",
+                ));
+            }
+            control.preparation.checkpoint(request.input.version, || {
+                let mut store = self
+                    .store
+                    .lock()
+                    .map_err(|_| failure(ErrorKind::StateFailure, "state store poisoned"))?;
+                let version = store
+                    .put_session_if_current(
+                        &previous.session,
+                        reservation.version,
+                        snapshot.versions(),
+                        &snapshot.lock_versions(),
+                    )
+                    .map_err(super::ownership::state_error)?;
+                reservation.version = version;
+                reservation.session = previous.session.clone();
+                entry.request = request.clone();
+                registered.publisher.send_replace(previous.clone());
+                control.publish(previous.clone());
+                reservation.armed = false;
+                Ok(())
             })
-        } else {
-            None
+        }
+        .await
+        .map_err(|error| control.preparation.failed(error));
+        if let Err(error) = validated {
+            return Err(reservation.finish_preparation_error(error));
+        }
+        control.finished(Outcome::CheckpointCommitted {
+            input_version: request.input.version,
+            snapshot: previous,
+        });
+        // Drop restores the prior terminal control only by exact Arc identity.
+        Ok(())
+    }
+    async fn spawn_checkpoint(
+        &self,
+        registered: Registered,
+        input: PreparedInput,
+    ) -> AdapterResult<()> {
+        let control = registered.transition.control.clone();
+        let task_guard = TaskGuard(control.clone());
+        let handles = self.owned_handles();
+        let (result, receiver) = oneshot::channel();
+        let mut guard = CallerGuard::new(control.clone());
+        control.spawn(async move {
+            let _task = task_guard;
+            let value = handles.prepare_checkpoint(registered, input).await;
+            let _ = result.send(value);
+        })?;
+        let value = receiver.await.map_err(|_| {
+            failure(
+                ErrorKind::SessionLost,
+                "owned native checkpoint task ended without caller result",
+            )
+        });
+        guard.disarm();
+        value?
+    }
+    async fn prepare_launch(&self, mut registered: Registered) -> AdapterResult<Supervision> {
+        let request = registered.request.clone();
+        let schema = registered.schema.clone();
+        let resume = registered
+            .previous
+            .as_ref()
+            .map(|status| status.session.clone());
+        let control = registered.transition.control.clone();
+        let context = (|| -> AdapterResult<_> {
+            control.preparation.check()?;
+            if request.mode == LaunchMode::Interactive {
+                return Err(failure(
+                    ErrorKind::UnsupportedCapability,
+                    "native interactive policy requires an owned TUI lifecycle",
+                ));
+            }
+            if schema.as_ref().is_some_and(|schema| {
+                !schema.is_object()
+                    || serde_json::to_vec(schema).map_or(true, |bytes| bytes.len() > 64 * 1024)
+            }) {
+                return Err(failure(
+                    ErrorKind::InvalidInput,
+                    "native output schema must be a bounded JSON object",
+                ));
+            }
+            let snapshot = ScopeSnapshot::capture(&self.store, &request, &self.agent)?;
+            // The baseline comes only from the owned supervisor, never caller JSON
+            // or a native UUID hint. Missing history remains unknown on resume.
+            let previous_cumulative = if let Some(previous) = &resume {
+                let (_, _, evidence, _) = self.reference(&SessionRef::from(previous))?;
+                let evidence = evidence
+                    .lock()
+                    .map_err(|_| failure(ErrorKind::StateFailure, "native telemetry poisoned"))?;
+                if previous.state == SessionState::Exited && evidence.completed {
+                    evidence.cumulative.clone()
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+            let mut session = resume
+                .clone()
+                .unwrap_or_else(|| registered.publisher.borrow().session.clone());
+            if resume.as_ref().is_some_and(|previous| {
+                previous.recovery["input_version"]
+                    .as_u64()
+                    .is_none_or(|version| request.input.version <= version)
+            }) {
+                return Err(failure(
+                    ErrorKind::StateConflict,
+                    "native resume needs a newly checkpointed continuation; previous input cannot be replayed",
+                ));
+            }
+            let expected_version = if let Some(previous) = &resume {
+                if previous.scope != request.scope
+                    || previous.worktree != request.worktree
+                    || previous.agent != self.agent
+                    || previous.provider != "codex"
+                    || previous.role != request.role
+                    || previous.native_ref.is_none()
+                    || !matches!(previous.state, SessionState::Exited | SessionState::Stopped)
+                {
+                    return Err(failure(
+                        ErrorKind::OwnershipMismatch,
+                        "native resume requires an exact owned completed/stopped Session",
+                    ));
+                }
+                let (persisted, version) = self
+                    .store
+                    .lock()
+                    .map_err(|_| failure(ErrorKind::StateFailure, "state store poisoned"))?
+                    .session(previous.id)
+                    .map_err(|e| failure(ErrorKind::StateFailure, e.to_string()))?
+                    .ok_or_else(|| {
+                        failure(ErrorKind::SessionLost, "native resume record missing")
+                    })?;
+                if serde_json::to_value(persisted).ok() != serde_json::to_value(previous).ok() {
+                    return Err(failure(
+                        ErrorKind::StateConflict,
+                        "native resume owner changed before reservation",
+                    ));
+                }
+                version
+            } else {
+                0
+            };
+            pin_starting_input(&mut session, &request, resume.as_ref())?;
+            let evidence = self
+                .registry()?
+                .get(&registered.transition.id)
+                .ok_or_else(|| {
+                    failure(
+                        ErrorKind::SessionLost,
+                        "native preparation owner disappeared",
+                    )
+                })?
+                .evidence
+                .clone();
+            let resume_publication = Some(ResumePublication {
+                previous: registered
+                    .previous
+                    .clone()
+                    .unwrap_or_else(|| registered.publisher.borrow().clone()),
+                sender: registered.publisher.clone(),
+                evidence,
+            });
+            let reservation = Reservation {
+                store: self.store.clone(),
+                session,
+                version: expected_version,
+                ownership: ProcessOwnership::default(),
+                armed: false,
+                resume_publication,
+                inference_started: false,
+                attempt: control.clone(),
+            };
+            Ok((snapshot, previous_cumulative, reservation))
+        })();
+        let (snapshot, previous_cumulative, mut reservation) = match context {
+            Ok(context) => context,
+            Err(error) => {
+                let error = control.preparation.failed(error);
+                let cause = control.preparation.cause(&error);
+                control.finished(if let Some(snapshot) = registered.previous.clone() {
+                    Outcome::RestoredBeforeAdmission { cause, snapshot }
+                } else {
+                    Outcome::FreshUnpublished {
+                        cause,
+                        error: Cause::Failed(error.kind, error.message.clone()),
+                    }
+                });
+                return Err(error);
+            }
         };
-        let mut reservation = Reservation {
-            store: self.store.clone(),
-            session,
-            version: expected_version,
-            ownership: ProcessOwnership::default(),
-            armed: false,
-            resume_publication,
-            inference_started: false,
-        };
+        let prepared=async {
+            control.preparation.check()?;
         reservation.persist()?;
         reservation.armed = true;
         let binding = snapshot
-            .verify_git(&request, &mut reservation.ownership)
+            .verify_git_preparing(&request, &mut reservation.ownership, &control.preparation)
             .await?;
         snapshot.recheck(&self.store, &request, &self.agent)?;
         let executable = self.executable.clone();
-        let executable = filesystem(move || {
+        let executable = control.preparation.wait(filesystem(move || {
             use std::os::unix::fs::PermissionsExt;
             let metadata = executable.metadata().map_err(|_| {
                 failure(
@@ -665,7 +1320,7 @@ impl CodexAdapter {
                 ));
             }
             Ok(executable)
-        })
+        }))
         .await?;
         let baseline: Vec<_> = std::env::vars_os().collect();
         let environment = native_environment(
@@ -674,33 +1329,36 @@ impl CodexAdapter {
             &snapshot.project,
             &request.environment,
         )?;
-        let version = crate::adapter::bounded_git(
+        let version = super::preparation::bounded_git(
             &executable,
             &request.worktree,
             &["--version".into()],
             environment.clone(),
             tokio::time::Instant::now() + std::time::Duration::from_secs(5),
             reservation.ownership.group(),
+            &control.preparation,
         )
         .await?;
         super::protocol::verify_native_version(&version)?;
-        let mut discovery = NativeServer::launch(
+        let mut discovery = NativeServer::launch_preparing(
             &executable,
             &request.worktree,
             None,
             environment.clone(),
             reservation.ownership.group(),
+            &control.preparation,
         )
         .await?;
-        reservation.session.pid = Some(discovery.pid());
-        reservation.persist()?;
         let discovered = async {
-            let config = discovery
+            control.preparation.check()?;
+            reservation.session.pid = Some(discovery.pid());
+            reservation.persist()?;
+            let config = control.preparation.wait(discovery
                 .rpc
                 .call(
                     "config/read",
                     json!({"cwd":request.worktree,"includeLayers":false}),
-                )
+                ))
                 .await?;
             let policy = if request.role == SessionRole::Executor {
                 DecisionPolicy::for_executor(&config["config"])
@@ -716,7 +1374,7 @@ impl CodexAdapter {
             )?;
             Ok::<_, crate::adapter::AdapterError>((policy, environment))
         }
-        .await;
+        .await.map_err(|error|control.preparation.failed(error));
         let (policy, environment) =
             result_after_cleanup(discovered, discovery.shutdown().await.map(|_| ()))?;
         if self.runtime_broker
@@ -728,34 +1386,36 @@ impl CodexAdapter {
                 "native approval policy does not expose the runtime-broker client route; native reviewer retained",
             ));
         }
-        let mut native = NativeServer::launch(
+        let mut native = NativeServer::launch_preparing(
             &executable,
             &request.worktree,
             Some(&policy),
             environment,
             reservation.ownership.group(),
+            &control.preparation,
         )
         .await?;
-        reservation.session.pid = Some(native.pid());
-        reservation.persist()?;
         let setup = async {
-            let config = native
+            control.preparation.check()?;
+            reservation.session.pid = Some(native.pid());
+            reservation.persist()?;
+            let config = control.preparation.wait(native
                 .rpc
                 .call(
                     "config/read",
                     json!({"cwd":request.worktree,"includeLayers":false}),
-                )
+                ))
                 .await?;
             policy.verify_configuration(&config["config"])?;
-            let account = native
+            let account = control.preparation.wait(native
                 .rpc
-                .call("account/read", json!({"refreshToken":false}))
+                .call("account/read", json!({"refreshToken":false})))
                 .await?;
             verify_auth_readiness(&account)?;
             if request.role == SessionRole::Executor {
-                let environment = native
+                let environment = control.preparation.wait(native
                     .rpc
-                    .call("environment/status", json!({"environmentId":"local"}))
+                    .call("environment/status", json!({"environmentId":"local"})))
                     .await?;
                 policy.verify_local_environment(&environment)?;
             }
@@ -766,9 +1426,9 @@ impl CodexAdapter {
             // Native effort is a per-turn field; no native default is fabricated.
             let response = if let Some(previous) = &resume {
                 parameters["threadId"] = json!(previous.native_ref);
-                native.rpc.call("thread/resume", parameters).await?
+                control.preparation.wait(native.rpc.call("thread/resume", parameters)).await?
             } else {
-                native.rpc.call("thread/start", parameters).await?
+                control.preparation.wait(native.rpc.call("thread/start", parameters)).await?
             };
             let thread = policy.verify_thread(&response, &request.worktree)?;
             if resume
@@ -784,12 +1444,12 @@ impl CodexAdapter {
             let mut cursor: Option<String> = None;
             let mut finished = false;
             for _ in 0..32 {
-                let page = native
+                let page = control.preparation.wait(native
                     .rpc
                     .call(
                         "mcpServerStatus/list",
                         json!({"threadId":thread,"limit":100,"cursor":cursor}),
-                    )
+                    ))
                     .await?;
                 cursor = policy.verify_inventory_page(&page)?;
                 if cursor.is_none() {
@@ -811,9 +1471,9 @@ impl CodexAdapter {
                 .or_else(|| response["reasoningEffort"].as_str().map(str::to_owned));
             reservation.persist()?;
             // No model receives stale context after native startup, hooks or discovery.
-            snapshot
-                .verify_binding(&request, &mut reservation.ownership, &binding)
-                .await?;
+            if snapshot.verify_git_preparing(&request,&mut reservation.ownership,&control.preparation).await? != binding {
+                return Err(failure(ErrorKind::OwnershipMismatch,"native workspace replaced during session initialization"));
+            }
             snapshot.recheck(&self.store, &request, &self.agent)?;
             let turn = reservation
                 .dispatch(
@@ -831,7 +1491,7 @@ impl CodexAdapter {
                 .to_owned();
             Ok::<_, crate::adapter::AdapterError>((thread, turn))
         }
-        .await;
+        .await.map_err(|error|control.preparation.failed(error));
         let (thread, turn) = match setup {
             Ok(value) => value,
             Err(error) => {
@@ -843,32 +1503,18 @@ impl CodexAdapter {
         };
         reservation.session.state = SessionState::Running;
         reservation.session.recovery["native_turn"] = json!(turn);
-        if let Err(error) = reservation.persist() {
+        if let Err(error) = reservation.persist().map_err(|error|control.preparation.failed(error)) {
             return Err(failure_after_cleanup(
                 error,
                 native.shutdown().await.map(|_| ()),
             ));
         }
-        let session = reservation.session.clone();
-        let status = SessionStatus {
-            session: session.clone(),
-            exit_code: None,
-            stdout: vec![],
-            stderr: vec![],
-            stdout_truncated: false,
-            stderr_truncated: false,
-            failure: None,
+        Ok::<_,crate::adapter::AdapterError>((native,thread,turn,binding))
+        }.await.map_err(|error|control.preparation.failed(error));
+        let (native, thread, turn, binding) = match prepared {
+            Ok(prepared) => prepared,
+            Err(error) => return Err(reservation.finish_preparation_error(error)),
         };
-        let (sender, receiver) = if let Some(publication) = &reservation.resume_publication {
-            let sender = publication.sender.clone();
-            sender.send_replace(status);
-            let receiver = sender.subscribe();
-            (sender, receiver)
-        } else {
-            watch::channel(status)
-        };
-        let (stop, stopped) = mpsc::channel(1);
-        let (reply, replies) = mpsc::channel(16);
         let evidence = Arc::new(Mutex::new(Evidence {
             turn: Some(turn.clone()),
             pending: Some(
@@ -877,33 +1523,40 @@ impl CodexAdapter {
             ),
             ..Evidence::default()
         }));
-        {
+        let (reply, replies) = mpsc::channel(16);
+        let installed = (|| {
             let mut sessions = self.registry()?;
-            if sessions.len() >= RETAINED_TERMINALS {
-                evict_one_terminal(&mut sessions);
+            let entry = sessions.get_mut(&registered.transition.id).ok_or_else(|| {
+                failure(
+                    ErrorKind::SessionLost,
+                    "native preparation owner disappeared during transfer",
+                )
+            })?;
+            if !Arc::ptr_eq(&entry.control, &control) {
+                return Err(failure(
+                    ErrorKind::StateConflict,
+                    "native attempt owner advanced before transfer",
+                ));
             }
-            sessions.insert(
-                session.id,
-                Entry {
-                    status: receiver,
-                    publisher: sender.clone(),
-                    transition: Arc::new(AtomicBool::new(false)),
-                    stop,
-                    reply,
-                    evidence: evidence.clone(),
-                    request: request.clone(),
-                    schema,
-                },
-            );
+            entry.evidence = evidence.clone();
+            entry.reply = reply;
+            entry.request = request.clone();
+            entry.schema = schema;
+            registered.transition.transfer(entry)
+        })()
+        .map_err(|error| control.preparation.failed(error));
+        if let Err(error) = installed {
+            let error = failure_after_cleanup(error, native.shutdown().await.map(|_| ()));
+            return Err(reservation.finish_preparation_error(error));
         }
-        tokio::spawn(supervise(
+        Ok(Supervision {
             native,
             reservation,
-            sender,
-            stopped,
+            sender: registered.publisher,
+            stopped: registered.stopped,
             evidence,
             replies,
-            NativeTurn {
+            identity: NativeTurn {
                 thread,
                 turn,
                 previous_turn: resume.and_then(|session| {
@@ -915,8 +1568,7 @@ impl CodexAdapter {
                 binding,
                 runtime_broker: self.runtime_broker,
             },
-        ));
-        Ok(session)
+        })
     }
 }
 
@@ -978,27 +1630,101 @@ impl AgentAdapter for CodexAdapter {
     }
     fn stop(&self, session: SessionRef) -> AdapterFuture<'_, SessionStatus> {
         Box::pin(async move {
-            let (mut receiver, stop, _, _) = self.reference(&session)?;
-            if !receiver.borrow().terminal() {
-                match stop.try_send(()) {
-                    Ok(()) | Err(mpsc::error::TrySendError::Full(())) => {}
-                    Err(mpsc::error::TrySendError::Closed(())) => {
+            let control = {
+                let sessions = self.registry()?;
+                let entry = sessions.get(&session.id).ok_or_else(|| {
+                    failure(ErrorKind::SessionLost, "native stop owner unavailable")
+                })?;
+                if entry.status.borrow().session.scope != session.scope {
+                    return Err(failure(
+                        ErrorKind::OwnershipMismatch,
+                        "foreign native stop scope",
+                    ));
+                }
+                entry.control.clone()
+            };
+            // Phase precedes admission: an idle stop must not reinterpret a
+            // completed cancellation/failed restore as its own cancellation.
+            let initial = control.subscribe().borrow().clone();
+            let idle = matches!(initial, Phase::Finished(_));
+            if !idle && !control.preparation.cancel() && control.consumed() {
+                // The same channel was installed before preparation and remains
+                // queued through native turn acknowledgement/supervision.
+                let _ = control.stop.try_send(());
+            }
+            let outcome = control.wait_finished().await?;
+            let snapshot = outcome.snapshot().cloned().ok_or_else(|| {
+                outcome.error().unwrap_or_else(|| {
+                    failure(
+                        ErrorKind::SessionLost,
+                        "captured native attempt has no published final snapshot",
+                    )
+                })
+            })?;
+            let persisted = self
+                .store
+                .lock()
+                .map_err(|_| failure(ErrorKind::StateFailure, "state store poisoned"))?
+                .session(session.id)
+                .map_err(super::ownership::state_error)?
+                .ok_or_else(|| {
+                    failure(
+                        ErrorKind::SessionLost,
+                        "captured native attempt record disappeared",
+                    )
+                })?
+                .0;
+            if serde_json::to_value(&persisted).ok() != serde_json::to_value(&snapshot.session).ok()
+            {
+                return Err(failure(
+                    ErrorKind::StateConflict,
+                    format!(
+                        "captured native attempt advanced; factual outcome: {}",
+                        outcome
+                            .cause()
+                            .map(|cause| cause.error().to_string())
+                            .unwrap_or_else(|| "completed".into())
+                    ),
+                ));
+            }
+            if let Some(error) = outcome.error() {
+                return Err(error);
+            }
+            if matches!(outcome, Outcome::Lost { .. }) {
+                return Err(failure(
+                    ErrorKind::SessionLost,
+                    "captured native attempt remains Lost; cleanup or operation outcome is unverified",
+                ));
+            }
+            if !idle {
+                match &outcome {
+                    Outcome::RestoredBeforeAdmission { cause, .. } => {
+                        let error = cause.error();
                         return Err(failure(
-                            ErrorKind::SessionLost,
-                            "native stop supervisor unavailable",
+                            error.kind,
+                            format!(
+                                "{}; exact prior Session restored before input admission",
+                                error.message
+                            ),
                         ));
                     }
-                }
-                while !receiver.borrow().terminal() {
-                    receiver.changed().await.map_err(|_| {
-                        failure(
-                            ErrorKind::SessionLost,
-                            "native supervisor disappeared during stop",
-                        )
-                    })?;
+                    Outcome::FailedBeforeAdmission {
+                        cause: Cause::Failed(kind, message),
+                        ..
+                    } => return Err(failure(*kind, message.clone())),
+                    Outcome::CheckpointCommitted { input_version, .. } => {
+                        if !matches!(control.preparation.state(), Ok(Admission::CheckpointCommitted(version)) if version == *input_version)
+                        {
+                            return Err(failure(
+                                ErrorKind::StateFailure,
+                                "native checkpoint completion lacks its committed input version",
+                            ));
+                        }
+                    }
+                    _ => {}
                 }
             }
-            self.current(&session)
+            Ok(snapshot)
         })
     }
     fn attach(&self, _session: SessionRef) -> AdapterFuture<'_, ()> {
@@ -1011,18 +1737,8 @@ impl AgentAdapter for CodexAdapter {
     }
     fn resume(&self, session: SessionRef) -> AdapterFuture<'_, Session> {
         Box::pin(async move {
-            let (_claim, request, schema) = self.claim(&session)?;
-            let previous = self.current(&session)?.session;
-            if previous.recovery["input_version"]
-                .as_u64()
-                .is_none_or(|version| request.input.version <= version)
-            {
-                return Err(failure(
-                    ErrorKind::StateConflict,
-                    "native resume needs a newly checkpointed continuation; the previous prompt cannot be replayed implicitly",
-                ));
-            }
-            self.launch(request, schema, Some(previous)).await
+            let registered = self.register_existing(&session)?;
+            self.spawn_launch(registered).await
         })
     }
     fn release(&self, session: SessionRef) -> AdapterResult<()> {
@@ -1139,110 +1855,8 @@ impl AgentAdapter for CodexAdapter {
     }
     fn checkpoint(&self, session: SessionRef, input: PreparedInput) -> AdapterFuture<'_, ()> {
         Box::pin(async move {
-            let (_claim, mut request, _) = self.claim(&session)?;
-            let status = self.current(&session)?;
-            if input.scope != status.session.scope {
-                return Err(failure(
-                    ErrorKind::OwnershipMismatch,
-                    "foreign native checkpoint scope",
-                ));
-            }
-            if !status.terminal() || status.session.state == SessionState::Lost {
-                return Err(failure(
-                    ErrorKind::StateConflict,
-                    "native checkpoint requires a confirmed terminal Session",
-                ));
-            }
-            if input.version <= request.input.version {
-                return Err(failure(
-                    ErrorKind::StateConflict,
-                    "native checkpoint must advance its prepared input version",
-                ));
-            }
-            request.input = input;
-            // An explicit fresh checkpoint may refresh mutable Project metadata,
-            // but may never rebind the owned repository/worktree identity.
-            let project = self
-                .store
-                .lock()
-                .map_err(|_| failure(ErrorKind::StateFailure, "state store poisoned"))?
-                .project(request.project.id)
-                .map_err(|error| failure(ErrorKind::StateFailure, error.to_string()))?
-                .ok_or_else(|| failure(ErrorKind::SessionLost, "checkpoint Project disappeared"))?;
-            if project.root != request.project.root
-                || project.repository_identity != request.project.repository_identity
-                || project.base_branch != request.project.base_branch
-                || project.worktree_root != request.project.worktree_root
-            {
-                return Err(failure(
-                    ErrorKind::OwnershipMismatch,
-                    "native checkpoint cannot rebind its Project repository",
-                ));
-            }
-            request.project = project;
-            let snapshot = ScopeSnapshot::capture(&self.store, &request, &self.agent)?;
-            let (persisted, version) = self
-                .store
-                .lock()
-                .map_err(|_| failure(ErrorKind::StateFailure, "state store poisoned"))?
-                .session(session.id)
-                .map_err(|error| failure(ErrorKind::StateFailure, error.to_string()))?
-                .ok_or_else(|| {
-                    failure(
-                        ErrorKind::SessionLost,
-                        "native checkpoint record disappeared",
-                    )
-                })?;
-            if serde_json::to_value(persisted).ok() != serde_json::to_value(&status.session).ok() {
-                return Err(failure(
-                    ErrorKind::StateConflict,
-                    "native checkpoint owner changed before reservation",
-                ));
-            }
-            let publication = {
-                let sessions = self.registry()?;
-                let entry = sessions.get(&session.id).ok_or_else(|| {
-                    failure(
-                        ErrorKind::SessionLost,
-                        "native checkpoint owner disappeared",
-                    )
-                })?;
-                ResumePublication {
-                    previous: status.clone(),
-                    sender: entry.publisher.clone(),
-                    evidence: entry.evidence.clone(),
-                }
-            };
-            let mut reservation = Reservation {
-                store: self.store.clone(),
-                session: status.session.clone(),
-                version,
-                ownership: ProcessOwnership::default(),
-                armed: false,
-                resume_publication: Some(publication),
-                inference_started: false,
-            };
-            pin_starting_input(&mut reservation.session, &request, Some(&status.session))?;
-            reservation.persist()?;
-            reservation.armed = true;
-            // Checkpoints are validated before replacing resumable prepared input.
-            snapshot
-                .verify_git(&request, &mut reservation.ownership)
-                .await?;
-            snapshot.recheck(&self.store, &request, &self.agent)?;
-            reservation.session = status.session.clone();
-            reservation.persist()?;
-            reservation.armed = false;
-            self.current(&session)?;
-            let mut sessions = self.registry()?;
-            let entry = sessions.get_mut(&session.id).ok_or_else(|| {
-                failure(
-                    ErrorKind::SessionLost,
-                    "native checkpoint owner disappeared",
-                )
-            })?;
-            entry.request = request;
-            Ok(())
+            let registered = self.register_existing(&session)?;
+            self.spawn_checkpoint(registered, input).await
         })
     }
 }
@@ -1457,6 +2071,7 @@ async fn supervise(
     mut replies: mpsc::Receiver<Reply>,
     identity: NativeTurn,
 ) {
+    let attempt = reservation.attempt.clone();
     let NativeTurn {
         thread,
         turn,
@@ -1647,6 +2262,11 @@ async fn supervise(
     let stderr = native.stderr();
     status.stderr = stderr.bytes;
     status.stderr_truncated = stderr.truncated;
+    if let Err(error) = &result {
+        let _ = attempt
+            .preparation
+            .failed(failure(error.kind, error.message.clone()));
+    }
     let cleanup = native.shutdown().await;
     let completed = reservation.terminal(&mut status, &result, &cleanup, native_terminal_observed);
     if let Ok(mut evidence) = evidence.lock() {
@@ -1655,9 +2275,10 @@ async fn supervise(
         evidence.cumulative = tracker.total;
         evidence.pending = None;
     }
-    match reservation.publish(&sender, &mut status) {
+    let publication_error = match reservation.publish(&sender, &mut status) {
         Ok(()) => {
             reservation.armed = false;
+            None
         }
         Err(error) => {
             if let Ok(mut evidence) = evidence.lock() {
@@ -1665,9 +2286,49 @@ async fn supervise(
             }
             status.session.state = SessionState::Lost;
             status.failure = Some(format!("native terminal persistence failed: {error}"));
+            Some(Cause::Failed(error.kind, error.message))
         }
-    }
+    };
     sender.send_replace(status);
+    // Drop's conservative publication, if required, is part of this attempt's
+    // last act and precedes its own level-triggered Finished signal.
+    drop(reservation);
+    let published = attempt.published();
+    let outcome = match published {
+        Some(snapshot)
+            if snapshot.session.state != SessionState::Lost && publication_error.is_none() =>
+        {
+            Outcome::Terminal { snapshot }
+        }
+        snapshot => {
+            let cause = publication_error.unwrap_or_else(|| {
+                result
+                    .as_ref()
+                    .err()
+                    .or_else(|| cleanup.as_ref().err())
+                    .map(|error| Cause::Failed(error.kind, error.message.clone()))
+                    .unwrap_or_else(|| {
+                        Cause::Failed(
+                            ErrorKind::SessionLost,
+                            "native attempt outcome or cleanup is unverified".into(),
+                        )
+                    })
+            });
+            let publication_result = snapshot
+                .filter(|status| status.session.state == SessionState::Lost)
+                .ok_or_else(|| {
+                    Cause::Failed(
+                        ErrorKind::SessionLost,
+                        "native terminal publication is unavailable".into(),
+                    )
+                });
+            Outcome::Lost {
+                cause,
+                publication_result,
+            }
+        }
+    };
+    attempt.finished(outcome);
 }
 
 fn observe_approval_notification(
@@ -2047,6 +2708,7 @@ mod tests {
                 armed: false,
                 resume_publication: None,
                 inference_started: false,
+                attempt: Control::new(None).0,
             };
             reservation.persist().unwrap();
             reservation.session.state = if runtime_broker {
@@ -2143,6 +2805,13 @@ mod tests {
                     evidence: self.evidence.clone(),
                     request: self.authority.request.clone(),
                     schema: None,
+                    control: {
+                        let (control, _) = Control::new(Some(self.status.clone()));
+                        control.finished(Outcome::Terminal {
+                            snapshot: self.status.clone(),
+                        });
+                        control
+                    },
                 },
             );
             (adapter, SessionRef::from(&self.status.session))
@@ -2196,6 +2865,7 @@ mod tests {
         let mut task = other.task(scope.task_id.unwrap()).unwrap().unwrap();
         task.title = "changed after preflight".into();
         other.put_task(&mut task).unwrap();
+        fixture.reservation.attempt = Control::new(None).0;
         let before = fixture
             .reservation
             .store
@@ -2618,6 +3288,7 @@ mod tests {
                     evidence: fixture.evidence.clone(),
                 }),
                 inference_started: !uncertain,
+                attempt: Control::new(None).0,
             };
             reservation.session.state = SessionState::Starting;
             reservation.session.pid = Some(42);
@@ -2879,6 +3550,7 @@ mod tests {
                     armed: false,
                     resume_publication: None,
                     inference_started: false,
+                    attempt: Control::new(None).0,
                 };
                 reservation.persist().unwrap();
                 let (mut rpc, mut wire, peer) = rpc_peer().await;

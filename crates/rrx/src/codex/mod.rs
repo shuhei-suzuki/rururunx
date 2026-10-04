@@ -1,4 +1,5 @@
 //! Native Codex app-server transport; native inference/authentication stay in Codex.
+mod attempt;
 mod ownership;
 mod preparation;
 mod session;

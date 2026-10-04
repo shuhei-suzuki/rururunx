@@ -83,9 +83,10 @@ claiming the registry transition, before any await or Starting publication.
 The design at `26945b0` passed its fifth independent native design review. That
 approval does not establish implementation or native containment. The first code
 stage adds private cancellation-aware Git/bootstrap waits with actual owned-child
-controls; the cancellation trigger is test-only until the registered attempt
-controller and owned preparation task are wired. Existing public stop/resume/
-checkpoint behavior is therefore still blocked by the preparing-lifetime finding.
+controls. The next code stage wires registered per-attempt controls and retained
+owned preparation/supervision tasks into start, resume, checkpoint and stop. This
+stage is pending immutable implementation checks and independent source review;
+preparing-lifetime closure is not claimed.
 A terminal shared watch does not exclude preparation. Stop captures the current
 control Arc and exact owned scope under the registry lock; its target remains that
 attempt for the whole call. It never re-resolves a later registry control, sends

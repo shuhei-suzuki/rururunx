@@ -63,7 +63,7 @@ pub(super) struct ScopeSnapshot {
     locks: Vec<Record>,
 }
 
-fn state_error(error: anyhow::Error) -> crate::adapter::AdapterError {
+pub(super) fn state_error(error: anyhow::Error) -> crate::adapter::AdapterError {
     use crate::state::StateGuardError;
     let kind = match error.downcast_ref::<StateGuardError>() {
         Some(StateGuardError::WorktreeLocked) => ErrorKind::Locked,

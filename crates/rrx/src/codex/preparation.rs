@@ -19,15 +19,13 @@ use crate::adapter::{AdapterError, AdapterResult, ErrorKind, ProcessGroup, clean
 const OUTPUT_LIMIT: usize = 64 * 1024;
 
 #[derive(Clone, Debug)]
-enum Cause {
-    #[cfg(test)]
+pub(super) enum Cause {
     Cancelled,
     Failed(ErrorKind, String),
 }
 impl Cause {
-    fn error(&self) -> AdapterError {
+    pub(super) fn error(&self) -> AdapterError {
         match self {
-            #[cfg(test)]
             Self::Cancelled => failure(
                 ErrorKind::StateConflict,
                 "native preparation cancelled before admission",
@@ -37,34 +35,51 @@ impl Cause {
     }
 }
 
+#[derive(Clone, Debug)]
+pub(super) enum Admission {
+    Preparing,
+    CancelledBeforeAdmission,
+    Failing(Cause),
+    Consumed,
+    CheckpointCommitted(u64),
+}
+
 /// A first-cause latch, distinct from native process/turn completion. The owner
 /// selecting cancellation has no authority to infer that cleanup succeeded.
 pub(super) struct Preparation {
-    cause: Mutex<Option<Cause>>,
+    admission: Mutex<Admission>,
     cancelled: watch::Sender<bool>,
+    later_failures: Mutex<Vec<ErrorKind>>,
 }
 impl Preparation {
     pub fn new() -> Self {
         let (cancelled, _) = watch::channel(false);
         Self {
-            cause: Mutex::new(None),
+            admission: Mutex::new(Admission::Preparing),
             cancelled,
+            later_failures: Mutex::new(Vec::new()),
         }
     }
-    #[cfg(test)]
-    pub fn cancel(&self) {
-        if let Ok(mut cause) = self.cause.lock()
-            && cause.is_none()
-        {
-            *cause = Some(Cause::Cancelled);
-            self.cancelled.send_replace(true);
+    pub fn cancel(&self) -> bool {
+        if let Ok(mut admission) = self.admission.lock() {
+            match *admission {
+                Admission::Preparing => {
+                    *admission = Admission::CancelledBeforeAdmission;
+                    self.cancelled.send_replace(true);
+                    return true;
+                }
+                Admission::CancelledBeforeAdmission => return true,
+                _ => {}
+            }
         }
+        false
     }
     pub fn check(&self) -> AdapterResult<()> {
-        match self.cause.lock() {
-            Ok(cause) => match cause.as_ref() {
-                Some(cause) => Err(cause.error()),
-                None => Ok(()),
+        match self.admission.lock() {
+            Ok(admission) => match &*admission {
+                Admission::CancelledBeforeAdmission => Err(Cause::Cancelled.error()),
+                Admission::Failing(cause) => Err(cause.error()),
+                _ => Ok(()),
             },
             Err(_) => Err(failure(
                 ErrorKind::StateFailure,
@@ -73,12 +88,118 @@ impl Preparation {
         }
     }
     pub fn failed(&self, error: AdapterError) -> AdapterError {
-        match self.cause.lock() {
-            Ok(mut cause) => cause
-                .get_or_insert_with(|| Cause::Failed(error.kind, error.message))
-                .error(),
+        match self.admission.lock() {
+            Ok(mut admission) => match &*admission {
+                Admission::Preparing => {
+                    *admission =
+                        Admission::Failing(Cause::Failed(error.kind, error.message.clone()));
+                    error
+                }
+                Admission::CancelledBeforeAdmission => {
+                    if let Ok(mut later) = self.later_failures.lock()
+                        && later.len() < 8
+                        && error.kind != ErrorKind::StateConflict
+                    {
+                        later.push(error.kind);
+                    }
+                    Cause::Cancelled.error()
+                }
+                Admission::Failing(cause) => cause.error(),
+                Admission::Consumed | Admission::CheckpointCommitted(_) => error,
+            },
             Err(_) => failure(ErrorKind::StateFailure, "native preparation cause poisoned"),
         }
+    }
+    pub(super) fn state(&self) -> AdapterResult<Admission> {
+        self.admission
+            .lock()
+            .map(|admission| admission.clone())
+            .map_err(|_| failure(ErrorKind::StateFailure, "native preparation cause poisoned"))
+    }
+    pub(super) fn cause(&self, fallback: &AdapterError) -> Cause {
+        match self.state() {
+            Ok(Admission::CancelledBeforeAdmission) => Cause::Cancelled,
+            Ok(Admission::Failing(cause)) => cause,
+            _ => Cause::Failed(fallback.kind, fallback.message.clone()),
+        }
+    }
+    /// This is the attempt's admission mutex. The closure may lock Store, never
+    /// registry, and cannot await. Cancellation and consumption share one order.
+    pub(super) fn consume<T>(
+        &self,
+        publish: impl FnOnce() -> AdapterResult<T>,
+    ) -> AdapterResult<T> {
+        self.commit(None, publish)
+    }
+    pub(super) fn checkpoint<T>(
+        &self,
+        version: u64,
+        publish: impl FnOnce() -> AdapterResult<T>,
+    ) -> AdapterResult<T> {
+        self.commit(Some(version), publish)
+    }
+    pub(super) fn publish<T>(
+        &self,
+        publish: impl FnOnce() -> AdapterResult<T>,
+    ) -> AdapterResult<T> {
+        let mut admission = self
+            .admission
+            .lock()
+            .map_err(|_| failure(ErrorKind::StateFailure, "native preparation cause poisoned"))?;
+        match &*admission {
+            Admission::CancelledBeforeAdmission => return Err(Cause::Cancelled.error()),
+            Admission::Failing(cause) => return Err(cause.error()),
+            _ => {}
+        }
+        match publish() {
+            Ok(value) => Ok(value),
+            Err(error) => {
+                if matches!(*admission, Admission::Preparing) {
+                    *admission =
+                        Admission::Failing(Cause::Failed(error.kind, error.message.clone()));
+                }
+                Err(error)
+            }
+        }
+    }
+    fn commit<T>(
+        &self,
+        checkpoint: Option<u64>,
+        publish: impl FnOnce() -> AdapterResult<T>,
+    ) -> AdapterResult<T> {
+        let mut admission = self
+            .admission
+            .lock()
+            .map_err(|_| failure(ErrorKind::StateFailure, "native preparation cause poisoned"))?;
+        match &*admission {
+            Admission::CancelledBeforeAdmission => return Err(Cause::Cancelled.error()),
+            Admission::Failing(cause) => return Err(cause.error()),
+            Admission::Preparing => {}
+            _ => {
+                return Err(failure(
+                    ErrorKind::StateConflict,
+                    "native attempt already admitted",
+                ));
+            }
+        }
+        match publish() {
+            Ok(value) => {
+                *admission = checkpoint.map_or(Admission::Consumed, Admission::CheckpointCommitted);
+                Ok(value)
+            }
+            Err(error) => {
+                // A failed CAS is unconsumed, but has an actual first cause and
+                // cannot be relabelled by stop while owned cleanup is pending.
+                *admission = Admission::Failing(Cause::Failed(error.kind, error.message.clone()));
+                Err(error)
+            }
+        }
+    }
+    pub(super) fn later_failures(&self) -> Vec<ErrorKind> {
+        self.later_failures
+            .lock()
+            .map(|later| later.clone())
+            .unwrap_or_default()
     }
     pub async fn wait_cancelled(&self) {
         let mut receiver = self.cancelled.subscribe();
