@@ -54,6 +54,28 @@ async fn ordinary_empty_library_child() {
     };
     let store = Arc::new(Mutex::new(store));
     let before = snapshot(&store, &scope);
+    let plain: Arc<dyn AgentAdapter> = Arc::new(
+        CodexAdapter::new(
+            "codex".into(),
+            directory.join("codex-sentinel"),
+            store.clone(),
+        )
+        .unwrap(),
+    );
+    assert!(plain.capabilities().is_empty());
+    unavailable(plain.probe());
+    let started = plain.start(request.clone()).await;
+    assert_eq!(snapshot(&store, &scope), before);
+    assert!(!directory.join("git-effect").exists());
+    assert!(!directory.join("codex-effect").exists());
+    unavailable(started);
+    let started = plain
+        .start_structured(request.clone(), json!({"type":"object"}))
+        .await;
+    assert_eq!(snapshot(&store, &scope), before);
+    assert!(!directory.join("git-effect").exists());
+    assert!(!directory.join("codex-effect").exists());
+    unavailable(started);
     let adapter = Arc::new(
         CodexAdapter::new(
             "codex".into(),
@@ -199,6 +221,12 @@ async fn ordinary_empty_library_child() {
     assert_eq!(snapshot(&store, &scope), before);
     assert!(!directory.join("codex-effect").exists());
     assert!(!directory.join("git-effect").exists());
+    // Positive execution witness: libtest can exit zero for an empty exact filter.
+    std::fs::write(
+        directory.join("ordinary-complete"),
+        b"all public checks passed\n",
+    )
+    .unwrap();
 }
 
 fn fixture_git(root: &Path, home: &Path, args: &[&str]) -> String {
@@ -316,6 +344,10 @@ fn ordinary_library_refuses_in_scoped_child_with_effect_reaching_input() {
     assert!(
         status.success(),
         "ordinary library child failed; preserve its effect evidence"
+    );
+    assert_eq!(
+        std::fs::read(directory.join("ordinary-complete")).unwrap(),
+        b"all public checks passed\n"
     );
     assert!(!directory.join("codex-effect").exists());
     assert!(!directory.join("git-effect").exists());

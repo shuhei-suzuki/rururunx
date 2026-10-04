@@ -909,6 +909,32 @@ effects. Historical native artifacts remain unchanged.
 Every inner guard needs a direct private-route control or explicit redundant-
 survivor classification if another still-present guard prevents reaching it. This
 applies to all guards, not only inert attach/native-goal; no label-only kill credit.
+The Source2 correction adds controls for ScopeSnapshot capture, actual Reservation
+dispatch and an unavailable approval reply, in addition to the filesystem, Git,
+native launch, RPC connect and wire-send controls. A reply refusal completes its
+own result with Unsupported and preserves the pending turn. A refusal immediately
+after registration reuses the existing no-work outcome to restore the exact prior
+control (or remove a fresh unpublished entry); this is not a settlement receipt.
+
+| Inner-guard evidence class | Routes and limit |
+| --- | --- |
+| Direct controls | filesystem, bounded_git, NativeServer::launch_preparing, NativeRpc::connect/send/dispatch_call; added ScopeSnapshot::capture, Reservation::dispatch and answer_approval controls require Source2 execution/mutation gates |
+| Compiled redundant survivors in Source1 | register_fresh (outer launch gate remains); NativeRpc::call and initialize (lower dispatch gates remain) |
+| Remaining redundancy classification requires scoped mutation evidence | public launch/resume/checkpoint/submit/attach; register_existing; spawn/prepare launch/checkpoint; verify_git_preparing, resolve_git and metadata/version helpers. Their surrounding controls do not independently establish an omitted inner guard kill |
+| Fixed refusal or inert operation | attach/release/native-goal paths cannot acquire a new resource; an inert omission is not an effect-assertion kill |
+
+The saturation control seeds all 32 retained entries through actual public start,
+waits for each selected synthetic group to be reaped, claims an actual terminal
+entry, then checks public start and structured start for unchanged registry,
+control identity, Store/audit and native journal before checking StateConflict.
+It is a retention-bound control, not a ready execution quota or capacity proof.
+Plain construction without a broker has its own descriptor/dispatch controls.
+The ordinary child writes a final positive witness only after all public checks;
+the parent requires that witness, so an empty libtest filter cannot pass.
+These additions are execution/review candidates until their exact-source gates
+finish. They supply no Workflow integration credit: earlier context/reservation
+effects and the actual Workflow consumer gate remain Issue43 work.
+
 Pinned rustc-JSON probes compare COMPLETE per-snippet diagnostic sets, including
 any E0422/E0423/E0063 or uncoded errors empirically observed. The illustrative table
 is not a blanket accepted-code list; unrelated diagnostics fail against the exact

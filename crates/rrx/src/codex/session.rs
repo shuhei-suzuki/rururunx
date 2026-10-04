@@ -218,6 +218,30 @@ struct Registered {
     publisher: watch::Sender<SessionStatus>,
     stopped: mpsc::Receiver<()>,
 }
+impl Registered {
+    // Registration alone publishes no Starting/native effect. Reuse the exact
+    // no-work outcome so Drop restores the previous private control, rather
+    // than synthesizing Lost for an explicitly observed capability refusal.
+    fn refused_before_work(
+        &self,
+        error: crate::adapter::AdapterError,
+    ) -> crate::adapter::AdapterError {
+        let control = &self.transition.control;
+        let error = control.preparation.failed(error);
+        let cause = control.preparation.cause(&error);
+        control.finished(match &self.previous {
+            Some(snapshot) => Outcome::RestoredBeforeAdmission {
+                cause,
+                snapshot: snapshot.clone(),
+            },
+            None => Outcome::FreshUnpublished {
+                cause,
+                error: Cause::Failed(error.kind, error.message.clone()),
+            },
+        });
+        error
+    }
+}
 struct Supervision {
     native: NativeServer,
     reservation: Reservation,
@@ -847,7 +871,9 @@ impl CodexAdapter {
         self.spawn_launch(registered).await
     }
     async fn spawn_launch(&self, registered: Registered) -> AdapterResult<Session> {
-        self.availability.require()?;
+        self.availability
+            .require()
+            .map_err(|error| registered.refused_before_work(error))?;
         let control = registered.transition.control.clone();
         let task_guard = TaskGuard(control.clone());
         let handles = self.owned_handles();
@@ -1019,7 +1045,9 @@ impl CodexAdapter {
         registered: Registered,
         input: PreparedInput,
     ) -> AdapterResult<()> {
-        self.availability.require()?;
+        self.availability
+            .require()
+            .map_err(|error| registered.refused_before_work(error))?;
         let session = SessionRef {
             id: registered.transition.id,
             scope: registered.request.scope.clone(),
@@ -1208,7 +1236,9 @@ impl CodexAdapter {
         registered: Registered,
         input: PreparedInput,
     ) -> AdapterResult<()> {
-        self.availability.require()?;
+        self.availability
+            .require()
+            .map_err(|error| registered.refused_before_work(error))?;
         let control = registered.transition.control.clone();
         let task_guard = TaskGuard(control.clone());
         let handles = self.owned_handles();
@@ -1229,7 +1259,9 @@ impl CodexAdapter {
         value?
     }
     async fn prepare_launch(&self, mut registered: Registered) -> AdapterResult<Supervision> {
-        self.availability.require()?;
+        self.availability
+            .require()
+            .map_err(|error| registered.refused_before_work(error))?;
         let request = registered.request.clone();
         let schema = registered.schema.clone();
         let resume = registered
@@ -1931,7 +1963,10 @@ async fn answer_approval(
     status: &mut SessionStatus,
     reply: Reply,
 ) -> AdapterResult<bool> {
-    native.require_dispatch()?;
+    if let Err(error) = native.require_dispatch() {
+        let _ = reply.result.send(Err(error));
+        return Ok(false);
+    }
     let availability = native.availability();
     if reply.result.is_closed() {
         return Ok(false);
@@ -2707,6 +2742,23 @@ mod tests {
             .unwrap();
             std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700)).unwrap();
         }
+        let plain = Arc::new(
+            CodexAdapter::new("codex".into(), executable.clone(), owned.store.clone()).unwrap(),
+        );
+        plain.availability.set_git_input(git.clone());
+        let before = no_effect_snapshot(&plain, &owned.request.scope);
+        assert!(plain.capabilities().is_empty());
+        assert_unavailable(plain.probe());
+        let started = plain.start(owned.request.clone()).await;
+        assert_eq!(no_effect_snapshot(&plain, &owned.request.scope), before);
+        assert!(!marker.exists() && !git_marker.exists());
+        assert_unavailable(started);
+        let started = plain
+            .start_structured(owned.request.clone(), json!({"type":"object"}))
+            .await;
+        assert_eq!(no_effect_snapshot(&plain, &owned.request.scope), before);
+        assert!(!marker.exists() && !git_marker.exists());
+        assert_unavailable(started);
         let adapter = Arc::new(
             CodexAdapter::new("codex".into(), executable, owned.store.clone())
                 .unwrap()
@@ -3266,7 +3318,8 @@ mod tests {
             adapter.current(&reference).unwrap().session.state,
             SessionState::Exited
         );
-        assert_eq!(adapter.registry().unwrap().len(), 1); // Unsettled owners are never evicted.
+        // This control covers the claimed entry; saturation is tested separately.
+        assert_eq!(adapter.registry().unwrap().len(), 1);
         assert!(
             adapter
                 .registry()
@@ -3595,6 +3648,98 @@ mod tests {
             receiver,
             peer,
         )
+    }
+
+    #[tokio::test]
+    async fn empty_scope_and_operation_helpers_preserve_store_ledger_and_native_frames() {
+        let mut fixture = ApprovalFixture::new(true).await;
+        let availability = Availability::default();
+        let scope = fixture.reservation.session.scope.clone();
+        let store = fixture.reservation.store.clone();
+        let store_snapshot = || {
+            let store = store.lock().unwrap();
+            json!({"sessions":store.records(&scope,crate::domain::RecordKind::Session).unwrap(),"events":store.events(&scope,0,1000).unwrap()})
+        };
+        let before = store_snapshot();
+        let capture = ScopeSnapshot::capture(
+            &fixture.reservation.store,
+            &fixture.authority.request,
+            "codex",
+            &availability,
+        );
+        assert_eq!(
+            availability.sites(),
+            [0; 10],
+            "empty capture entered Store access"
+        );
+        assert_eq!(store_snapshot(), before);
+        assert_unavailable(capture.map(|_| ()));
+        // Complete the existing synthetic RPC peer before assertion failures;
+        // this is a direct helper control, not a public-start ownership seed.
+        let (mut rpc, mut frames, peer) = rpc_peer().await;
+        rpc.availability().set_fixture_inputs(false, false);
+        let input_before = serde_json::to_value(&fixture.reservation.session).unwrap();
+        let version_before = fixture.reservation.version;
+        let pending_before = json!(
+            fixture
+                .evidence
+                .lock()
+                .unwrap()
+                .pending
+                .as_ref()
+                .unwrap()
+                .pending()
+        );
+        let dispatched = fixture
+            .reservation
+            .dispatch(
+                &mut rpc,
+                &fixture.authority.snapshot,
+                &fixture.authority.request,
+                "thread",
+                None,
+            )
+            .await;
+        let (reply, result) = reply(OperationDecision::Approve, "turn");
+        let answered = fixture.answer(&mut rpc, reply).await;
+        let response = result.await;
+        drop(rpc);
+        bounded(peer).await.unwrap();
+        assert!(
+            frames.try_recv().is_err(),
+            "empty helper sent a native frame"
+        );
+        assert_eq!(
+            store_snapshot(),
+            before,
+            "empty helper changed Session/audit"
+        );
+        assert_eq!(
+            serde_json::to_value(&fixture.reservation.session).unwrap(),
+            input_before
+        );
+        assert_eq!(fixture.reservation.version, version_before);
+        assert!(!fixture.reservation.inference_started);
+        assert_eq!(
+            json!(
+                fixture
+                    .evidence
+                    .lock()
+                    .unwrap()
+                    .pending
+                    .as_ref()
+                    .unwrap()
+                    .pending()
+            ),
+            pending_before
+        );
+        assert_unavailable(dispatched);
+        assert_eq!(
+            answered.unwrap(),
+            false,
+            "unavailable reply must preserve pending turn"
+        );
+        assert_unavailable(response.unwrap());
     }
 
     #[tokio::test]
@@ -5354,6 +5499,112 @@ mod tests {
             }
         })
         .await
+    }
+
+    #[tokio::test]
+    async fn saturated_actual_owners_refuse_before_insert_or_eviction() {
+        let owned = Fixture::new(false);
+        let (executable, directory) = wire_fixture(&owned, "complete");
+        let adapter = Arc::new(
+            CodexAdapter::new("codex".into(), executable, owned.store.clone())
+                .unwrap()
+                .component_fixture(),
+        );
+        let mut references = Vec::new();
+        for _ in 0..RETAINED_TERMINALS {
+            let started = bounded(adapter.start(owned.request.clone())).await.unwrap();
+            let reference = SessionRef::from(&started);
+            terminal_status(&adapter, &reference).await;
+            assert_leader_reaped(&directory.join("leader"));
+            references.push(reference);
+        }
+        // Claim an actual public-start terminal owner. No injected Entry or
+        // terminal label is used as the retention/saturation seed.
+        let (claim, _, _) = adapter.claim(&references[0]).unwrap();
+        let before = no_effect_snapshot(&adapter, &owned.request.scope);
+        let wire_before = journal_values(&directory);
+        let first = bounded(adapter.start(owned.request.clone())).await;
+        let first_changed = no_effect_snapshot(&adapter, &owned.request.scope) != before;
+        let second =
+            bounded(adapter.start_structured(owned.request.clone(), json!({"type":"object"})))
+                .await;
+        let second_changed = no_effect_snapshot(&adapter, &owned.request.scope) != before;
+        let wire_changed = journal_values(&directory) != wire_before;
+        // A compiled remove-bound/restore-eviction mutant can create another
+        // genuine synthetic peer. Finish those actual handles before asserting.
+        for result in [&first, &second] {
+            if let Ok(session) = result {
+                terminal_status(&adapter, &SessionRef::from(session)).await;
+            }
+        }
+        assert_leader_reaped(&directory.join("leader"));
+        assert!(
+            !first_changed && !second_changed,
+            "saturated native registry inserted or evicted an actual owner"
+        );
+        assert!(
+            !wire_changed,
+            "saturated native registry reached a new native peer"
+        );
+        for result in [first, second] {
+            let error = result.unwrap_err();
+            assert_eq!(error.kind, ErrorKind::StateConflict);
+            assert_eq!(
+                error.message,
+                "unsettled native owner retention limit reached"
+            );
+        }
+        assert_eq!(adapter.registry().unwrap().len(), RETAINED_TERMINALS);
+        drop(claim);
+    }
+
+    #[tokio::test]
+    async fn postregistration_empty_refusal_restores_exact_actual_owner_control() {
+        let owned = Fixture::new(false);
+        let (executable, directory) = wire_fixture(&owned, "complete");
+        let adapter = Arc::new(
+            CodexAdapter::new("codex".into(), executable, owned.store.clone())
+                .unwrap()
+                .component_fixture(),
+        );
+        let started = bounded(adapter.start(owned.request.clone())).await.unwrap();
+        let reference = SessionRef::from(&started);
+        terminal_status(&adapter, &reference).await;
+        assert_leader_reaped(&directory.join("leader"));
+        let before = no_effect_snapshot(&adapter, &reference.scope);
+        let wire_before = journal_values(&directory);
+        for route in 0..4 {
+            adapter.availability.set_fixture_inputs(true, true);
+            let registered = adapter.register_existing(&reference).unwrap();
+            let attempt = registered.transition.control.clone();
+            adapter.availability.set_fixture_inputs(false, false);
+            let result = match route {
+                0 => adapter.spawn_launch(registered).await.map(|_| ()),
+                1 => adapter.prepare_launch(registered).await.map(|_| ()),
+                2 => {
+                    adapter
+                        .spawn_checkpoint(registered, owned.request.input.clone())
+                        .await
+                }
+                _ => {
+                    adapter
+                        .prepare_checkpoint(registered, owned.request.input.clone())
+                        .await
+                }
+            };
+            let outcome = bounded(attempt.wait_finished()).await.unwrap();
+            assert_eq!(no_effect_snapshot(&adapter, &reference.scope), before);
+            assert_eq!(journal_values(&directory), wire_before);
+            assert_unavailable(result);
+            assert!(matches!(
+                outcome,
+                Outcome::RestoredBeforeAdmission {
+                    cause: Cause::Failed(ErrorKind::UnsupportedCapability, _),
+                    ..
+                }
+            ));
+            assert!(bounded(adapter.stop(reference.clone())).await.is_ok());
+        }
     }
 
     #[tokio::test]
