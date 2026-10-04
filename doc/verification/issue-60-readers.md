@@ -127,3 +127,30 @@ log hash and full-tree comparison. This is docs/current-existing-source DEBUG
 test plus release BUILD evidence; no reader source, release TEST, requirements
 approval or native availability acceptance is claimed. Historical failures remain
 FAILED/RED; cause and regression UNKNOWN. Whole60/native16/F1 remain OPEN.
+
+Reader Requirements3 at7761f07 again completed two independent own-session reviews,
+both request_changes/cleanup_verified=true. They verify the prior8 findings
+addressed, but identify the same Medium: CI-only spawn-profile refusal has no
+pre-spawn production binding and omits libc/kernel POSIX error semantics. Full6
+findings and exact raw hashes are in
+[Requirements3 ledger](issue-60-reader-requirements3-findings.json).
+Requirements4 removes that refusal and introduces no invented profile witness,
+new pin/probe/policy. Successful actual std-Child-owned Git remains allowed under
+existing ownership/cleanup. An ambiguous native spawn Err without an actual Child
+returns original ProcessFailure with flag/Unknown/all four permits retained; it
+claims no Child anchor when none was returned. Proven no-native-spawn-attempt
+refusal uses actual no-attempt/resource facts; an attempted Err cannot be renamed
+no-attempt. Availability under such ambiguous errors remains explicitly OPEN.
+Future safe Err no-survivor classification requires separate primary std/POSIX/
+libc/kernel and actual build/recipe binding gates; nothing here grants that proof.
+
+Other verified corrections: not_started reader counts settled only when no task
+existed and its endpoint closed or never registered; a started reader still needs
+an observed join. Both OS Ok/SRCH succeed; macOS PERM needs valid-dead trusted
+inspection, all other errno cases remain Unknown; existing TestPlan PERM forcing
+is required parity input. Prior primary-defaults evidence now includes common.rs
+blob ea45b08e90a34dd3400edb41ec1ac31f43bfc96b and SHA256
+`e7f50147520968b10545167a7d5aa4a50edd3efe75559bd724e19652a42c7c9a`.
+The posix_spawn host-error proof remains unaccepted. Requirements4 is a candidate;
+no implementation, lifetime/availability acceptance or historical cause/regression
+finding is introduced by these corrections. Whole60/F1/native16 remain OPEN.

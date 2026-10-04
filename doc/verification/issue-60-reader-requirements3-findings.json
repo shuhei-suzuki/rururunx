@@ -1,0 +1,117 @@
+{
+  "component": "Issue60 selected Git reader ownership",
+  "gate": "Reader Requirements3",
+  "status": "request_changes twice; Requirements4 corrections UNAPPROVED",
+  "reviews": [
+    {
+      "reviewer": "ownership",
+      "head": "7761f07c6810abb0617a239f6b19e1be7bf853b9",
+      "native_session": "e0bdd4dc-5102-4f3e-bc44-0a21c01f9689",
+      "raw_sha256": "f4a86856362f2a1d06aab2f44ba26bf77d7e8540f22e05ba4d81d812f9747dff",
+      "cleanup_verified": true,
+      "verdict": "request_changes",
+      "unresolved_blockers_at_review": [
+        "R60RD3-M1-spawn-profile-binding: the mandatory spawn-failure clear point and the refusal of unverified profiles depend on an undefined CI-only profile that production builds cannot identify, and the profile omits the libc posix_spawn error path"
+      ],
+      "findings": [
+        {
+          "id": "R60RD3-M1-spawn-profile-binding",
+          "severity": "Medium",
+          "file": "doc/requirements/issue-60-git-reader-contract-draft.md",
+          "line": 149,
+          "claim": "The contract makes a genuine OS-spawn failure a mandatory clear point only within 'the actual Linux/macOS CI toolchain and native command recipe', and requires unverified profiles to be refused before effects. It does not define the components of that profile or how a built binary can decide it is inside the profile. As written, the clear point cannot be applied soundly outside CI, and the refusal rule cannot be implemented. The profile definition also leaves out the libc/OS spawn implementation that governs the likely default path.",
+          "evidence": "- draft:149-154 and requirements:64-67 tie the proof to the CI toolchain and recipe and refuse unverified profiles.\n- Rust std is not locked for builds. Cargo.toml:8 declares only rust-version 1.91 as a minimum, and the only cited pin is the CI step dtolnay/rust-toolchain@1.91.1 (requirements2-ci.json:33, 124).\n- The CI runners are floating ubuntu-latest and macos-latest images (ci.json:11, 101).\n- std spawn can take posix_spawn before fork (unix.rs:72-74) on linux-gnu and apple (439-447). In the non-pidfd branch, an Err comes straight from libc via cvt_nz(spawn_res)? with no reap on the std side (unix.rs:811-826). On that path, 'no surviving child' is a property of glibc or XNU posix_spawn, not of the Rust toolchain.\n- The verification record cites only the fork/exec reap (issue-60-readers.md:112) and the pidfd branch (113). draft:155-156 likewise describes only fork/exec.\n- The startup order (draft:147-149) gives neither an error kind nor a precedence position for the unverified-profile refusal.",
+          "fix": "Define the spawn profile explicitly as four parts: the Rust std version, the OS and libc spawn implementation (covering the posix_spawn branch as well as fork/exec), the recipe flags (no pre_exec, create_pidfd=false, uid/gid/groups/chroot unset), and the platforms. State how a production build is bound to that profile: for example, a pinned toolchain plus a compile-time version and cfg gate, together with stated libc/OS assumptions. If the binding is not decidable, state that spawn Err on an unverified profile retains Unknown rather than requiring an undecidable refusal. Give the profile refusal an exact pre-effect kind and position in the startup order. Require the primary proof to cover the libc/XNU posix_spawn error path actually taken by the Git recipe on both OSes.",
+          "verification": "verified",
+          "candidate_disposition": "Verified: no CI-only host refusal or invented witness. Successful stdChild-owned Git allowed; ambiguous native no-handle spawn Err original ProcessFailure retains Unknown/flag/all4 and no claimed Child anchor. No-attempt refusal uses actual evidence and live settled return. Future std/POSIX/libc/kernel profile binding/proof is separate pending gate; no pin/probe/policy added.",
+          "implementation_accepted": false
+        },
+        {
+          "id": "R60RD3-L1-not-started-reader-settlement",
+          "severity": "Low",
+          "file": "doc/requirements/issue-60-git-reader-contract-draft.md",
+          "line": 201,
+          "claim": "The contract makes it mandatory to clear the flag for a fully settled initialization error. Elsewhere it requires both reader terminations to be observed before uncertainty can clear. An initialization error that occurs before either reader task exists produces no termination to observe, so the two rules conflict.",
+          "evidence": "- draft:67-69 says a genuinely settled initialization error MUST clear the flag; requirements:64-65 says the same.\n- draft:201-202 requires both reader terminations to be observed before clearing.\n- requirements:83-84 requires all readers to be observed settled before release.\n- The reader vocabulary includes not_started (draft:136).\n- Gate 2 requires a fully-settled-error control for a forced initializer Err (requirements:120-122), which can occur before any reader is spawned.",
+          "fix": "State that a reader that was never started (no task created, and its endpoint closed or never registered) counts as settled for both clear and permit purposes. A reader that was spawned still requires an observed join.",
+          "verification": "verified",
+          "candidate_disposition": "Verified: not_started counts settled only no task plus endpoint closed/never registered; actually started reader requires observed join.",
+          "implementation_accepted": false
+        },
+        {
+          "id": "R60RD3-L2-macos-success-enumeration",
+          "severity": "Low",
+          "file": "doc/requirements/issue-60-git-reader-contract-draft.md",
+          "line": 96,
+          "claim": "The enumerated 'existing semantics' for the parity controls list Linux success/SRCH and macOS PERM, but leave out macOS plain success and SRCH, which the existing code also treats as success.",
+          "evidence": "resolve_macos_signal_result maps Ok and SRCH to Ok on macOS (adapter.rs:438-439). PERM succeeds only when inspection returns true (440). Any other errno fails (441). draft:96-97 states 'Linux success/SRCH succeeds; macOS PERM succeeds only after valid-dead trusted inspection'.",
+          "fix": "Enumerate the macOS cases fully: Ok and SRCH succeed; PERM succeeds only on a valid-dead trusted inspection and otherwise stays Unknown; any other errno fails. Do this so that the parity mutants on both OSes target the complete existing mapping.",
+          "verification": "verified",
+          "candidate_disposition": "Verified: full both-OS Ok/SRCH, mac PERM only valid-dead, all other failures Unknown; TestPlan PERM forcing included.",
+          "implementation_accepted": false
+        }
+      ]
+    },
+    {
+      "reviewer": "capacity",
+      "head": "7761f07c6810abb0617a239f6b19e1be7bf853b9",
+      "native_session": "0f60fea3-8864-40f4-ad83-2c70aceb359a",
+      "raw_sha256": "e37703852cd5014357fd12c06f9fc96ed85e4645145f90293103cdfb9fda5c24",
+      "cleanup_verified": true,
+      "verdict": "request_changes",
+      "unresolved_blockers_at_review": [
+        "M1: the spawn-profile clear point and the refusal of unverified profiles cannot be checked before spawn, and a literal refusal contradicts at-least-four progress on any non-CI build or host"
+      ],
+      "findings": [
+        {
+          "id": "M1",
+          "severity": "Medium",
+          "file": "doc/requirements/issue-60-git-reader-contract-draft.md",
+          "line": 154,
+          "claim": "'Unsupported/unverified spawn profiles refuse before effects' (line 154) depends on a spawn profile that the binary cannot establish before spawning. The no-survivor proof is tied to 'the actual Linux/macOS CI toolchain and native command recipe' (lines 149-151; requirements 66-67). Read literally, every build or host outside that profile must refuse all Git operations, which contradicts 'at least four progress with healthy driver and sufficient free capacity' (draft 210-212; requirements 109). If the profile is narrowed instead, the required runtime check cannot be implemented.",
+          "evidence": "- std tries posix_spawn first and falls back to fork/exec only when that returns Ok(None) (unix.rs:72-74).\n- On the posix_spawn branch, a spawn error is returned directly from the libc call via `cvt_nz(spawn_res)?` (unix.rs:813-826). The branch is compiled for apple and linux gnu/musl targets (unix.rs:439-447).\n- On that branch, whether a helper child survives is host libc or kernel behaviour, not std bytes.\n- The verification record cites only the fork/exec path (138-160), the pidfd path (773-809) and the defaults (common.rs:168-194); it does not cover the posix_spawn branch.\n- Cargo.toml:8 pins only a minimum rust-version of 1.91. The CI ledger proves only the CI runners (dtolnay/rust-toolchain@1.91.1 on ubuntu-latest and macos-latest).\n- The workspace forbids unsafe code (Cargo.toml:25), and rustix is built only with the process and fs features (Cargo.toml:21). Identifying the libc version at runtime is therefore not readily available.\n- Generic, Grok and Context all route through this spawn path, so a pre-effect refusal on unverified hosts disables all three.",
+          "fix": "Define the 'verified native spawn profile' using only facts the binary can establish before spawning without unsafe code or new dependencies: target OS and libc environment, the std version captured at build time, and the exact Command recipe (no pre_exec, uid/gid, chroot, groups or setsid, create_pidfd=false). Include the posix_spawn branch's libc and kernel error semantics in the required proof scope. For a profile that cannot be verified, use a conservative fallback: a spawn Err stays retained Unknown with all four permits held and no flag clear, instead of refusing all Git before effects. Alternatively, keep the refusal but explicitly record the resulting outage of every Git consumer on such hosts as OPEN and qualify the four-progress requirement.",
+          "verification": "verified",
+          "candidate_disposition": "Verified: no CI-only host refusal or invented witness. Successful stdChild-owned Git allowed; ambiguous native no-handle spawn Err original ProcessFailure retains Unknown/flag/all4 and no claimed Child anchor. No-attempt refusal uses actual evidence and live settled return. Future std/POSIX/libc/kernel profile binding/proof is separate pending gate; no pin/probe/policy added.",
+          "implementation_accepted": false
+        },
+        {
+          "id": "L1",
+          "severity": "Low",
+          "file": "doc/requirements/issue-60-git-reader-contract-draft.md",
+          "line": 96,
+          "claim": "The enumerated first-cleanup semantics are incomplete relative to current kill_group, so parity mutants and differential controls lack the full expected table.",
+          "evidence": "- Draft 96-97 lists 'Linux success/SRCH succeeds' and 'macOS PERM succeeds only after valid-dead trusted inspection, otherwise Unknown'.\n- Current macOS behaviour also treats Ok and SRCH as success before reaching the PERM inspection path (adapter.rs:438-441). Any other macOS errno fails.\n- On Linux, every errno other than SRCH fails (adapter.rs:397-401).\n- With the cfg(test) plan installed, TestPlan::signal turns KILL Ok, SRCH and PERM all into PERM (inspection.rs:1207-1219).",
+          "fix": "Enumerate the complete outcome table for both OSes: Ok and SRCH succeed on both; on macOS, PERM succeeds only with valid-dead trusted inspection and otherwise stays Unknown; every other errno is Unknown on both. Note the TestPlan PERM-forcing route as part of the parity controls.",
+          "verification": "verified",
+          "candidate_disposition": "Verified: full signal/inspection outcome table and real TestPlan PERM forcing route.",
+          "implementation_accepted": false
+        },
+        {
+          "id": "L2",
+          "severity": "Low",
+          "file": "doc/verification/issue-60-reader-requirements2-findings.json",
+          "line": 132,
+          "claim": "The evidence ledger records only unix.rs as the additional primary source.",
+          "evidence": "- issue-60-readers.md:114-115 cites the tagged common.rs lines 168-194 for create_pidfd=false and the absence of pre_exec callbacks.\n- The ledger has no blob or SHA256 for common.rs (findings.json:132-139).\n- The posix_spawn branch (unix.rs:72, 813-826) is not mentioned as part of the remaining proof scope.",
+          "fix": "Add the common.rs blob (ea45b08e\u2026) and its SHA256 to the ledger. Record that the posix_spawn branch and its host libc/kernel error semantics are still unproven inputs to the spawn-profile gate.",
+          "verification": "verified",
+          "candidate_disposition": "Verified: public common.rs blob/hash added to prior ledger; POSIX libc/kernel error branch explicitly pending.",
+          "implementation_accepted": false
+        }
+      ]
+    }
+  ],
+  "source_modified": false,
+  "historical_failure_cause": "UNKNOWN",
+  "historical_failure_regression": "UNKNOWN",
+  "remaining_open": [
+    "future Err no-survivor classification actual std/POSIX/libc/kernel proof and build/recipe binding; no witness added by this component",
+    "ambiguous native spawn Err no-survivor/anchor unavailable/availability",
+    "whole60/F1/durable owner",
+    "native16",
+    "native non-Git wrappers",
+    "Grok checkpoint resume conflict",
+    "cross-Project capacity/fairness50"
+  ]
+}

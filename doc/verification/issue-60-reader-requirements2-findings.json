@@ -143,5 +143,20 @@
     "Grok checkpoint resume conflict",
     "global capacity Project isolation/fairness50",
     "native16/runtime availability"
-  ]
+  ],
+  "additional_primary_command_defaults": {
+    "repository": "rust-lang/rust",
+    "path": "library/std/src/sys/process/unix/common.rs",
+    "ref": "1.91.1",
+    "public_blob": "ea45b08e90a34dd3400edb41ec1ac31f43bfc96b",
+    "sha256": "e7f50147520968b10545167a7d5aa4a50edd3efe75559bd724e19652a42c7c9a",
+    "url": "https://github.com/rust-lang/rust/blob/1.91.1/library/std/src/sys/process/unix/common.rs",
+    "ranges": [
+      [
+        168,
+        194
+      ]
+    ]
+  },
+  "remaining_primary_proof_scope": "std Unix posix_spawn delegates to host libc/kernel; no no-survivor profile witness or host error-path proof has been accepted"
 }

@@ -60,8 +60,11 @@ Issue60 full runtime workload/effect/delegation/durable settlement remains open.
    freezes the flag true unless a live in-budget return had already cleared it; driver
    observation or result-ready alone cannot clear it. Mandatory clear points are the
    live in-budget complete-settlement return and the live in-budget genuine native
-   OS-spawn failure return proving no surviving child remains under the verified
-   native spawn profile. Err/no returned handle alone is not that proof. Runtime/stdio/signal
+   return proving no native OS spawn was attempted and no resources remain. A
+   native spawn Err with no actual Child returned is ambiguous in this component:
+   retain Unknown/flag true/all four permits; no Child anchor is claimed available
+   when the primitive did not return it. Err/no handle or a CI label is not proof.
+   No PID reconstruction or pretend anchor substitutes for that absent proof. Runtime/stdio/signal
    wrapping failure AFTER native spawn is not that exception: retain its actual Child
    and original ProcessFailure or LaunchFailure; it is not a pre-effect refusal.
    Unknown remains until actual complete settlement is observed on a live in-budget
@@ -93,8 +96,10 @@ Issue60 full runtime workload/effect/delegation/durable settlement remains open.
 9. If first cleanup has not run, cancellation, supervisor failure or caller-runtime
    shutdown must dispatch the first selected-group cleanup on the already-reserved,
    pool-owned non-poller cleanup lane. Preserve existing semantics: KILL to the exact
-   group derived from the actual unreaped owned Child; Linux success/SRCH succeeds;
-   macOS PERM succeeds only after valid-dead trusted inspection, otherwise Unknown;
+   group derived from the actual unreaped owned Child; Ok and SRCH succeed on both
+   OSes; macOS PERM succeeds only after valid-dead trusted inspection, otherwise
+   Unknown; every other errno is Unknown (including Linux PERM). The existing
+   cfg(test) TestPlan PERM-forcing signal route is part of actual parity controls;
    group ownership clears only on success; unchanged250ms inspector/query/environment;
    no implicit Drop retry. This preserves the existing bounded group result, not a
    new whole-workload death certificate. Use either an impact-gated additive shared
@@ -139,23 +144,31 @@ Issue60 full runtime workload/effect/delegation/durable settlement remains open.
     JoinResult proves task future and its pipe endpoint dropped, never successful
     reading or native group death. A reader's runtime-shutdown Cancelled result can
     count only when actually observed; shutdown with not_observed handles remains
-    uncertain. Cleanup-worker failure has its own group/worker fact and is never a
+    uncertain. not_started counts settled only if no task was created and its
+    endpoint is closed or was never registered; an actually spawned reader still
+    requires an observed returned/panicked/cancelled join. It is never renamed
+    not_started after failure. Cleanup-worker failure has its own group/worker fact and is never a
     reader join. Both joins must be observed, including a pending peer after the first
     reader errors.
 11. Freeze primary result precedence, with reader settlement a separate diagnostic:
 
     Startup order: already-expired caller deadline→Timeout; bounded admission expiry
     →Timeout with capacity facts; unavailable driver before effects→LaunchFailure;
-    genuine native OS-spawn failure/proven no surviving child→ProcessFailure. This
-    proof is specific to the actual Linux/macOS CI toolchain and native command
-    recipe, not general std or Tokio Err. Design must verify exact primary spawn-
-    error paths; Rust1.91.1 optional Linux create_pidfd has a post-spawn Err path,
-    whereas the default command uses create_pidfd=false and no pre_exec callbacks.
-    Unsupported/unverified spawn profiles refuse before effects. No surviving child
-    is a scoped resource fact, not a durable no-effect certificate; std fork/exec
-    error can create then internally wait/reap a child before returning Err.
-    Tokio wrapper,
-    stdio/signal or reader initialization failure after an actual Child was produced
+    native OS-spawn Err without actual Child→original ProcessFailure plus retained
+    Unknown/flag true/all four permits. This does NOT refuse successful spawn or Git
+    admission. Ambiguous errors can permanently consume capacity and latch Context;
+    this conservative availability limitation is explicit OPEN, not whole-MVP ready.
+    No safe spawn-profile witness, CI-only profile, toolchain pin, version probe or
+    platform policy is introduced by this component. Any future Err no-survivor
+    classification needs its own primary std/POSIX/libc/kernel proof and actual
+    build/target/command binding gate; minimum rust-version and a CI label do not
+    supply it. Std1.91.1 delegates to host posix_spawn, and optional Linux pidfd has
+    a post-spawn Err path. Default create_pidfd=false/no pre_exec does not by itself
+    complete that proof. Fork/exec can create then internally reap a child before
+    returning Err; no surviving child would be a resource fact, not durable no-effect.
+    Proven no-native-spawn-attempt refusal has no child and keeps/clears the flag
+    only on the live in-budget settled return; pre-admission refusal never sets it.
+    Tokio wrapper, stdio/signal or reader initialization failure after an actual Child was produced
     retains that Child and original initialization kind; incomplete settlement remains
     Unknown. A live in-budget fully observed settlement MUST clear the resource flag,
     but it is never a pre-effect refusal. After spawn, failed group binding retains the
@@ -198,8 +211,13 @@ Issue60 full runtime workload/effect/delegation/durable settlement remains open.
     extension or success from an unobserved abort. output_open at deadline has
     not_observed by construction, even if a task terminates just afterwards; that
     conservative published Unknown is intentional, not a cleanup-success claim.
-13. Selected-group cleanup AND reap plus both reader terminations must be observed before
-    this operation's uncertainty can clear. Both-joined read errors and in-budget
+13. Selected-group cleanup AND reap plus both reader settlements must be observed before
+    this operation's uncertainty can clear when an actual Child was returned. Proven
+    not_attempted native spawn has no group/Child and counts settled on that fact;
+    attempted Err/no Child cannot be renamed not_attempted. For initialization
+    failure, a reader
+    never started with no task and closed/never-registered endpoint counts settled;
+    started readers require observed joins. Both-joined read errors and in-budget
     abort/cancelled joins may be settled resource outcomes while the original error
     remains. Unknown group or not_observed joins keep the per-call flag true and
     deliberately propagate Context's existing sticky latch. Later completion cannot

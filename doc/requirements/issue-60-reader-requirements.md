@@ -1,11 +1,12 @@
-# Issue60 selected Git reader lifetime — Requirements3 candidate
+# Issue60 selected Git reader lifetime — Requirements4 candidate
 
 Risk: STRICT. Status: UNAPPROVED requirements candidate. Separate from the merged
 inspection diagnostics slice. Combined Requirements2 was request_changes twice;
 its source findings motivate this contract, not approval. Reader Requirements1
 was also request_changes twice; verified corrections below remain pending
 re-review. Reader Requirements2 also returned request_changes twice at6faf26f;
-current corrections are not approved. Requirements, design and source gates for this component are still required before production edits.
+Reader Requirements3 also returned request_changes twice at7761f07. Current
+corrections are not approved. Requirements, design and source gates for this component are still required before production edits.
 Initial base: public main2c6ae9d6f54e68a3bdbead25817c46981d231db0.
 Current candidate normally composes main efe977486693a065122d8fc177b0e83d29620bdc;
 its independent usage-read error projection changes no native/common source.
@@ -63,9 +64,12 @@ UNAPPROVED. In particular:
 - Keep internal native uncertainty separate from the caller's publication flag.
   The caller flag becomes uncertain before effects. Mandatory clear points are a
   live in-budget complete-settlement return, including a fully settled error, and
-  a genuine native OS-spawn failure with proven no surviving child in the actual
-  verified CI toolchain/command profile. Err/no handle alone does not prove this. A wrapper/registration
-  Err is not no-effect. Dropped/returned Unknown is irreversible for that call;
+  a live settled return proving no native spawn attempt/resources. Native spawn Err
+  without actual Child stays Unknown/flag/all four permits; successful spawn is not
+  refused. No profile witness/pin/probe is introduced. Future Err no-survivor proof
+  needs separate primary std/POSIX/libc/kernel and actual build/recipe binding gates.
+  Ambiguous Err availability remains OPEN. A wrapper/registration Err is not
+  no-effect. Dropped/returned Unknown is irreversible for that call;
   late settlement never clears Context's existing sticky latch.
 - Preserve primary error priority and original kinds: cleanup/reap, observe,
   stdout then stderr read/join collection, output_open, unsuccessful Git exit,
@@ -75,6 +79,8 @@ UNAPPROVED. In particular:
   identity retains LaunchFailure/Unknown without an invented group action.
   Abort is requested cancellation; only observed returned/panicked/cancelled joins
   prove that reader future/endpoint ended, never successful read or native death.
+  not_started is settled only with no task and closed/never-registered endpoint;
+  started readers still require observed joins.
 - Use the single existing250ms output budget for collection/abort/both joins.
   Do not reset it or add another abort budget. Native inspector250ms and existing
   finite Git caller deadline remain unchanged; mandatory inspector cleanup/reap
@@ -120,9 +126,12 @@ This is not actual native3/runtime mixed-workload MVP acceptance.
    anchor retention before runtime/stdio/signal wrapping, real native-spawned std
    Child then forced initializer Err with retained-Unknown AND fully-settled-error
    controls, pending peer after primary read error, observed cancellation,
-   cleanup/reap failure, genuine native nonexistent-executable spawn refusal with
-   profile-specific no-survivor primary proof, clear flag/no Context latch/Generic
-   Failed, healthy reserved-supervisor late observation and mandatory
+   cleanup/reap failure, real nonexistent-executable native spawn Err with no
+   profile witness preserving Unknown/flag/permits/Context latch/Generic Lost and
+   original ProcessFailure; no actual Child anchor is claimed when none returned.
+   Proven no-native-spawn-attempt refusal must keep/clear the flag on its live settled
+   return, with no Context latch/Generic Failed, using actual no-attempt evidence.
+   Never-started reader settlement needs no-task/endpoint evidence. Healthy reserved-supervisor late observation and mandatory
    permit release with unchanged flag/latch, and lost-supervisor no-observer permanent
    retention. Prove owning-runtime resource survival after caller runtime shutdown;
    no raw-PID or outside-Child reap. The std Child anchor cannot use the current
