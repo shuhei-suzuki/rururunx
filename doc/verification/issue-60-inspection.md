@@ -194,3 +194,35 @@ actual settled Child proof in a cfg(test) Inspector field, so cleanup-guard omis
 mutants cannot call a physical kill/wait during either the measured helper or Drop.
 It also checks the no-spawn input guard. Production has no additional Inspector field
 or changed kill/reap behavior. RELEASE/latest changed controls/mutations remain pending.
+
+
+## Diagnostic source verification before independent Source1
+
+Public clean6db2cc1 preserves both normal branch ancestry and baseline054aefd.
+Default RELEASE at6db passed230 Rust+2doctests,8 explicit ignored; default DEBUG
+at2ff passed229 Rust+2doctests before the test-only settled-fixture/input-control
+addition. Latest6db inspector scoped DEFAULT controls18/18, fmtcheck, all-target
+Clippy and debug/release builds passed. Actual Context first-cause/derived-latch
+consumer passed separately at2ff and in the exact-restored6db mutation controls.
+No default serialization, deadline/budget/latch reset, or old-red rerun was used.
+
+[Mutation ledger](issue-60-inspection-mutations.json) records12 compiled assertion-killed
+cases: actual Context attachment/site/byte/EOF/cleanup/Unknown authority controls6,
+and labelled unit/seam status/kind/validation/byte/no-second-operation guards6.
+These are12 cases, not a claim of12 distinct operator families. All failures reached
+the cited intended assertions; no compile failure, timeout-only kill or masked no-credit
+case is counted. Physical EOF and Inspector signal authority remain unchanged in the
+metadata omission mutants. The sole cleanup-guard omission executes only the already
+reaped Child unit fixture, with recorded test operations protecting helper and Drop.
+Exact source was restored and committed before restored Context1/1 and inspector18/18
+controls; the clean owned private mutation worktree was normally removed afterwards.
+
+[Changed-source CI provenance](issue-60-inspection-source-ci.json): run37226585207
+triggered6db; BOTH jobs actually checked outf536deba297dca5ef27353199e65573d150c073d,
+parents054aefd+6db; tested tree32a498dd4fa4f20821367613c31b875ada9d654e equals
+trigger tree. Linux/macOS every fmt/Clippy/default-debug-test/debug-build/release-build
+step succeeded. This is diagnostic source coverage only, not native inference or
+an explanation/repair of any earlier timeout. CI has no release-test step; local
+RELEASE above is distinct evidence. Independent Source1 and final reviewed-head
+CI remain pending. All earlier reds/Unknown evidence, frozen RED Issue51, shared
+availability, reader/driver draft, recovery14, full60 and native16 limits remain open.
