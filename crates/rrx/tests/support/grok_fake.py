@@ -49,6 +49,7 @@ for line in sys.stdin:
   if calls and mode=='late_tool':tool('search_replace','late.txt',99)
   result={'result':{'sessionId':sid,'cwd':os.getcwd(),'agentName':'rururunx-decision' if decision else 'rururunx-executor','context':{'toolDefinitionsCount':(0 if decision else 2)+(1 if mode=='inventory' else 0),'toolCallCount':calls+(1 if calls and mode=='unnotified' else 0)}}}
  elif method=='session/prompt':
+  if synthetic.get('RRX_EXPECT_SCHEMA'):assert p.get('_meta',{}).get('outputSchema')==json.loads(synthetic['RRX_EXPECT_SCHEMA']),'caller schema did not reach native prompt'
   if synthetic.get('RRX_PROMPT_OBSERVED'):pathlib.Path(synthetic['RRX_PROMPT_OBSERVED']).write_text('actual prompt received')
   prompt=p['_meta']['promptId'];assert 'bash_command' not in p['prompt'][0].get('_meta',{})
   assert p['prompt'][0]['text'].startswith('Prepared Task input follows:\n\n'), 'native slash command authority escaped envelope'

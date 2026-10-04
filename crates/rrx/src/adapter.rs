@@ -213,6 +213,14 @@ pub trait AgentAdapter: Send + Sync {
             && status.failure.is_none()
             && status.exit_code == Some(0)
     }
+    /// Provider-native per-turn schema; callers own its review/approval semantics.
+    fn start_structured(
+        &self,
+        _request: LaunchRequest,
+        _schema: Value,
+    ) -> AdapterFuture<'_, Session> {
+        Box::pin(async { Err(unsupported(Capability::StructuredOutput)) })
+    }
     fn status(&self, session: SessionRef) -> AdapterFuture<'_, SessionStatus>;
     fn stop(&self, session: SessionRef) -> AdapterFuture<'_, SessionStatus>;
     fn attach(&self, session: SessionRef) -> AdapterFuture<'_, ()>;
@@ -227,6 +235,9 @@ pub trait AgentAdapter: Send + Sync {
         review_round: Option<u32>,
     ) -> AdapterFuture<'_, Usage>;
     fn submit_approval(&self, _session: SessionRef, _decision: Value) -> AdapterFuture<'_, ()> {
+        Box::pin(async { Err(unsupported(Capability::PermissionInterception)) })
+    }
+    fn pending_approvals(&self, _session: SessionRef) -> AdapterFuture<'_, Value> {
         Box::pin(async { Err(unsupported(Capability::PermissionInterception)) })
     }
     fn checkpoint(&self, _session: SessionRef, _input: PreparedInput) -> AdapterFuture<'_, ()> {
@@ -311,8 +322,8 @@ struct Reservation {
 }
 
 /// Owns the unreaped leader so PGID cannot be recycled before group cleanup.
-struct ProcessGroup {
-    child: Child,
+pub(crate) struct ProcessGroup {
+    pub(crate) child: Child,
     #[cfg(all(test, target_os = "macos"))]
     inspection_plan: Option<ProcessInspectionPlan>,
     pid: Pid,
@@ -324,7 +335,7 @@ struct ProcessGroup {
     process_uncertain: Arc<AtomicBool>,
 }
 impl ProcessGroup {
-    fn new(child: Child, process_uncertain: Arc<AtomicBool>) -> AdapterResult<Self> {
+    pub(crate) fn new(child: Child, process_uncertain: Arc<AtomicBool>) -> AdapterResult<Self> {
         let raw = child
             .id()
             .filter(|pid| *pid > 1)
@@ -345,7 +356,7 @@ impl ProcessGroup {
             process_uncertain,
         })
     }
-    async fn observe_exit(&self) -> std::io::Result<()> {
+    pub(crate) async fn observe_exit(&self) -> std::io::Result<()> {
         let mut signals = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::child())?;
         loop {
             match waitid(
@@ -404,7 +415,7 @@ impl ProcessGroup {
         }
         result
     }
-    async fn reap(&mut self) -> std::io::Result<std::process::ExitStatus> {
+    pub(crate) async fn reap(&mut self) -> std::io::Result<std::process::ExitStatus> {
         let result = self.child.wait().await;
         if result.is_ok() {
             self.process_uncertain.store(false, Ordering::SeqCst);
@@ -1428,7 +1439,7 @@ async fn read_git_output(reader: impl AsyncRead + Unpin) -> AdapterResult<Vec<u8
     }
     Ok(bytes)
 }
-async fn cleanup_group(mut child: ProcessGroup) -> AdapterResult<ProcessGroup> {
+pub(crate) async fn cleanup_group(mut child: ProcessGroup) -> AdapterResult<ProcessGroup> {
     #[cfg(test)]
     if child.fail_cleanup {
         child.forbidden_cleanup_thread = Some(std::thread::current().id());
