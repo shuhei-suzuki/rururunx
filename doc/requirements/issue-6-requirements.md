@@ -8,8 +8,13 @@ Issue 58's actual non-Task Consultant hold/settlement and Issue 14's audited
 recovery/fencing are acceptance dependencies, not authority inferred from Session
 labels. Issues 9–10 own the pending cross-agent decision-member/slot contract.
 Native Task attach requires the composed Issues 6/11/15 frontend/driver/caller,
-Issue 19 managed ownership/input and Issue 14 recovery contracts. Issues 3/12/13
-must enforce their own later-artifact execution/publication boundaries.
+Issue 19 managed ownership/input and Issue 14 recovery contracts. Issues12/13 and
+the open Issue60 Git follow-up must enforce later-artifact execution/publication boundaries.
+Issues 5/7 supply their supported native profiles' mixed-workload enforcement.
+[Issue60](https://github.com/shuhei-suzuki/rururunx/issues/60) owns the unfinished
+runtime Git/helper and Generic lifecycle/enforcement follow-up to merged Issues3/4,
+and the actual Issues12/13 job/evidence reservation/settlement composition. Those
+foundations stay closed; no new workload proof is inferred from their merged status.
 Issue 16 consumes the completed adapter in aggregate native dogfooding, rather
 than being a
 prerequisite for publishing an adapter implementation checkpoint.
@@ -185,8 +190,8 @@ List justified bounded request endpoints separately from persistent execution
 routes, including deferred file-mediated schedulers and autostart entries. A named
 daemon denylist alone is not a completeness proof.
 Inert work products awaiting a separately governed execution/publication consumer
-are not jobs already delegated by this attempt. Issue12 verification, Issue3 Git
-operations and Issue13 PR/CI orchestration must establish their own current workload
+are not jobs already delegated by this attempt. Issue12 verification, Issue60's
+runtime Git/helper follow-up to Issue3 and Issue13 PR/CI orchestration must establish their own current workload
 ownership and command-safety gate before executing/publishing those artifacts;
 this attempt's cleanup does not certify that later execution. Executable Git
 hooks and shared/common-directory configuration that can execute commands must
@@ -203,6 +208,11 @@ of its resolved executable/config/indirection edges, bound to actual inputs and
 source digests. Unknown, cyclic, unbounded or truncated automatic closure is
 Unsupported for the affected surface/profile; a traversal cutoff cannot certify
 completeness. No current resolution/enforcement producer is assumed here.
+Here automatic activation means a concrete configured Git/hooks/fsmonitor,
+scheduler, service or autostart edge. IDE/language-server-intrinsic background
+compilation, proc macros, build.rs or tests-on-save with no such configured edge
+are the external same-UID application-boundary limit; they are not owned future
+processes or a reason to classify every Rust source as an automatic closure.
 For an explicit independent outside-runtime user Git/build action, its configured
 hook/direct entry target remains protected, while transitive ordinary source,
 tests or build.rs are not recursively reclassified merely because that action could
@@ -376,9 +386,9 @@ exclusion above; a separate Task worktree is not automatically independent. This
 uncertainty rule does not serialize all live owned work by common-directory identity.
 
 Issue6 F1 coordinates the required provider-neutral reviewed live compatibility
-matrix and continuously enforced effect contract, with Issue3 Git/Issue19 managed-
-operation consumers and Issue58's Consultant conflict contract. Issues5/6/7 and
-Issue4 Generic must supply each supported profile's own continuous enforcement
+matrix and continuously enforced effect contract, with Issue60 runtime Git/helper,
+Issue19 managed-operation consumers and Issue58's Consultant conflict contract.
+Issues5/6/7 and Issue60's Generic follow-up must supply each supported profile's own continuous enforcement
 and both sides' protection/settlement; Codex-only proof does not cover another
 provider. It must cover own-branch/worktree effects,
 atomic append-only shared objects or a proven equivalent, shared executable surface
@@ -394,6 +404,23 @@ Rejecting new rrx admission cannot stop already-running native B writes, and a L
 label cannot retroactively do so. Require both positive same-repository live
 Executors plus open Consult concurrency, and mixed-provider B-already-live→A-Lost
 conformance across every supported required provider/profile combination.
+Runtime-owned workloads are also matrix parties, not merely consumers of agent
+proof: Issue60 owns the actual runtime Git/helper/Generic resource and current
+conflict reservation/settlement contract; Issues12/13 supply their actual test,
+regression/mutation/browser/staging and PR/CI/merge/cleanup job/evidence consumers.
+These producers must supply continuous enforcement, durable held/Lost uncertainty,
+known current outcome AND complete enabled-profile resource cleanup, and both-side
+protection/settlement through caller Drop, cancellation and failed publication.
+No native Issue19 phase lease is invented for EvidencePort. Their separately
+reviewed delegated-service contracts bound actual applicable resources; F1 does
+not claim all future cloud/deferred jobs or external user/IDE processes owned.
+Require positive runtime Evidence/Git/verification↔native and runtime↔runtime
+concurrency plus already-live peer B→A-Lost enforcement/settlement conformance.
+Until these actual consumers compose, affected combinations remain unsupported
+and required four-plus concurrency open. Whichever issue enables a new provider
+or runtime profile must prove its mixed combinations against every already-supported
+applicable profile before advertising readiness; closing this component cannot
+pre-authorize a later profile or skip those gates.
 Lost is absorbing under ordinary adapter calls. Escalate to Human and retain the
 reservation; a recorded human judgement, PID clearing or manual state change
 does not certify cleanup, settle the operation or authorize implicit replay.
@@ -431,9 +458,11 @@ product: Project-native Consult and native Task attachment are required; native
 Goal support remains optional. Completion also requires actual private Issue19
 managed composition, Issue58 non-Task hold/settlement, Issue14 recovery/fencing,
 Issues9/10 retained approval-decision ownership, the Issues6/11/15/19/14 composed
-Task-attach contract, and Issues3/12/13 later-consumer execution/publication guards.
+Task-attach contract, and Issues60/12/13 actual runtime workload and later-consumer
+execution/publication guards. Issue60 is a pending producer, not an existing port.
 The provider-neutral live compatibility/enforcement matrix supplied by each actual
-Issues5/6/7/Generic supported profile and composed with Issues3/19/58
+Issues5/6/7/Issue60 Generic/runtime and Issues12/13 supported workload, composed
+with Issues19/58
 must also meet product §31's four-plus simultaneous Task requirement; an unresolved
 concurrency boundary is a Core blocker, not permission to serialize the product.
 These are acceptance dependencies, not implied existing ports. Issue 16 then
@@ -502,7 +531,10 @@ permission for privileged installation or silently change the required hosts.
   actual enforcement prevents conflicting B effects or proves noninterference;
   a caller/enforcement mutation fails this fixture. A new-admission-only test cannot
   certify the existing native workload. Exercise mixed required provider/profile
-  pairs in both roles. Issue16 retains aggregate four-plus proof.
+  pairs in both roles, actual runtime Evidence/Git/verification↔native and runtime↔runtime
+  pairs, including failed publication/Drop and already-live peers. New profile
+  producers rerun combinations with all applicable already-supported profiles.
+  Issue16 retains aggregate four-plus proof.
 - A Lost approval reviewer keeps its requesting operation and affected scope held
   at the real broker/settlement consumer until actual native cleanup and separately
   gated recovery; removing the retained member/slot guard must fail the fixture.
