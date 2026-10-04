@@ -1,8 +1,8 @@
 # Issue 21: Attributable telemetry and Context Efficiency comparison
 
 Workflow: STRICT (shared durable metrics, provider normalization and Project isolation).
-Status: Requirements4; independent Req1/Req2/Req3 findings verified and refined below.
-Requirements4/design/source reviews pending.
+Status: Requirements5; independent Req1–Req4 findings verified and refined below.
+Requirements5/design/source reviews pending.
 Baseline: main80452f4, schema3. Depends on merged #2 and #4; part of #17.
 
 ## Purpose and existing gap
@@ -211,6 +211,14 @@ producer or benchmark conditions needed for #21 closure below.
   native comparison exercises2 independent reviewers and a round>1 delta re-review.
   Baseline never forwards executor chat or peer findings to reviewers.
   Resource/budget exhaustion is an explicit failure, not silent mandatory truncation.
+  Register EVERY immutable plan and started run durably before its first dispatch;
+  acceptance/reporting includes aborted and superseded plans with all results.
+  A successor cites its predecessor and an actual behavior-fixing source revision
+  or a feature predeclared disabled with narrower claims. It cannot shop away a
+  regression by reducing oracle sensitivity, representativeness, repetitions or
+  roster without separately reviewed justification. Previous observed regressions
+  remain disclosed beside later fixes/results; an unchanged-source clean re-plan
+  never erases them. One favorable plan cannot silently replace unfavorable history.
   For EVERY dispatch in both lanes, retain actual producer-backed delivery evidence
   mapping the complete mandatory rules/evidence set computed from that dispatch's
   current authorized inputs to delivered content identities/digests and scope.
@@ -252,10 +260,18 @@ producer or benchmark conditions needed for #21 closure below.
   lanes, retain EVERY attempted repetition including unfavorable/failing results,
   and report dispersion/cache/environment. Differences within observed variation
   remain inconclusive/indicative, not established causal savings.
-  Freeze invalidation/exclusion rules as well. Lane-attributable mandatory loss,
-  coverage failure, fallback or execution failure is that lane's failure/safety
-  regression, never a neutral excluded confound. Report every invalidation by lane
-  and run order. ANY required repetition failing coverage, delivery, quality or
+  Freeze invalidation/exclusion rules with distinct outcome axes for both lanes:
+  measurement-invalid (coverage gap, unknown model/effort, native fallback/compaction
+  or unowned attach interval) makes comparison unavailable, never a task-success,
+  quality or safety score; execution failure (crash, timeout or budget exhaustion)
+  is that lane's failure under the frozen acceptance tests; safety/quality regression
+  (mandatory delivery loss, gate/freshness bypass, oracle miss or actual safety
+  failure) is scored from its real evidence and prevents acceptance. Measurement
+  failure is not proof of execution failure or safety loss. Known native provider-
+  load fallback can be an environmental confound, not attributed to reduction
+  without evidence. Report all axes and invalidations by lane/run order. Baseline
+  failure never becomes an enabled safety advantage. None are neutral omissions.
+  ANY required repetition failing coverage, delivery, quality or
   comparison conditions prevents a whole-run causal savings/equivalence claim.
   Qualified survivor cohorts are descriptive only; retaining failures in an appendix
   does not permit savings on a favorable subset or lost counterbalance. Preserve
@@ -364,6 +380,14 @@ Unknown effective effort/model can produce an explicitly non-comparable native
 result rather than fabricated certainty. Missing required token measurements,
 unverified feature-sensitive oracle coverage or observed safety/quality regression
 still leave their acceptance conditions unmet.
+An unknown consuming model/tokenizer leaves token units unqualified and their
+minimum token-comparison acceptance OPEN; it cannot use this non-comparable-outcome
+exception. Unknown effective effort alone prevents a causal claim while retaining
+otherwise qualified model/unit measurements. Show paired input, output/reasoning
+and cost-where-available changes together; input savings alone is never net savings.
+Delivery metadata stores bounded identities/digests, not forbidden prompt contents.
+For non-omitting ordering/cache features, coverage checks ordering/content equivalence
+and the whole-workload sensitive oracle rather than inventing a content omission.
 TUI rendering and final16 whole-MVP dogfood are separate; neither is falsely claimed
 by API implementation. Use one linear schema history coordinated with19, reject
 unknown/future formats without downgrade, and test every real predecessor.
@@ -415,6 +439,10 @@ Further reporting mutants must reject survivor-only savings after an enabled-lan
 invalid pair; end-to-end credit when any exercised feature lacks a sensitive oracle;
 exclusive uncached change relabeled logical reduction; and a loader reclassifying
 a policy-mandatory item as optional or counting stale prior delivery after loss.
+Also reject replacing/dropping an unfavorable predecessor plan at the actual closure
+report consumer, and scoring a baseline coverage gap as a safety/task failure or
+enabled quality advantage. Restored controls must distinguish measured invalidity,
+actual execution failure and independently verified safety/quality regression.
 
 Run relevant state/provider/context/workflow regressions, fmt/clippy/build, exact
 Linux/macOS CI and independent source reviews. Update master design/README only to

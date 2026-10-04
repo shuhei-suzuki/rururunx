@@ -72,3 +72,15 @@ separate and unverified, never a substitute or an OS internal-attention claim.
 Unknown effort/model produces honest non-comparability rather than requiring a
 positive causal savings outcome; required token/quality/safety evidence remains.
 Req4 review pending; no runtime/source or benchmark acceptance is claimed.
+
+Req4 363b91b CI37196429498 passed all Linux/macOS steps. Both independent native
+Req4 reviewers completed with actual owned cleanup verified, each requesting one
+verified Medium correction. Req5 requires registered append-only plan/run history,
+including aborted/superseded unfavorable plans, justified successor scope and no
+silent unchanged-source plan shopping. It also corrects Req4's overly broad
+failure/safety wording: measurement-invalid is NOT task/safety/quality failure;
+actual execution and verified safety/quality have distinct evidence/score axes.
+Either lane's measurement invalidity blocks whole-run claims without awarding the
+other quality credit. Unknown model/tokenizer cannot satisfy qualified token units;
+unknown effort alone permits honest non-causal reporting. Real closure/report
+mutants cover the new distinctions. Req5 review pending; no source changed.
