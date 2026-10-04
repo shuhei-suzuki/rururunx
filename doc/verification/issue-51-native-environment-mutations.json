@@ -674,5 +674,95 @@
         "reviewed_blob": "38bb794dc14eee7957573c9ff12bd18156295b57"
       }
     }
+  },
+  "separate_low_refinement_source": {
+    "base_source_head": "77b11868f6b851fffd4de1b11157affccebafd48",
+    "runs": [
+      {
+        "operator": "L1",
+        "kind": "resume-selected-map",
+        "base_source_head": "77b11868f6b851fffd4de1b11157affccebafd48",
+        "mutant_head": "824c83b5bdfffa20b66ba86534c285582e6108fd",
+        "patch": "diff --git a/crates/rrx/src/adapter/grok/mod.rs b/crates/rrx/src/adapter/grok/mod.rs\nindex c4c241d..9bfe4a5 100644\n--- a/crates/rrx/src/adapter/grok/mod.rs\n+++ b/crates/rrx/src/adapter/grok/mod.rs\n@@ -690,7 +690,7 @@ impl AgentAdapter for GrokAdapter {\n                     agent: self.agent.clone(),\n                     executable: self.executable.clone(),\n                     request,\n-                    environment,\n+                    environment: self.baseline.clone(),\n                     environment_admission,\n                     snapshot,\n                     session: session.clone(),\n",
+        "patch_sha256": "0802842a9d8b99732c03117163083a821aaaa24e88e4cb2c6a61a03770986ab0",
+        "target": "adapter::grok::environment_tests::owning_reference_refresh_and_existing_consultant_reservation_guards_remain_required",
+        "compiled": true,
+        "exit": 101,
+        "assertion_killed": true,
+        "credit": "actual_resumed_child_canary",
+        "elapsed_seconds": 7.39,
+        "elapsed_scope": "cargo invocation including compile",
+        "log": "/private/tmp/rururunx-issue51-low-L1.log",
+        "log_sha256": "d84e63299cbc5ac7fe7483f0de53f08c709c37f425eae4b71684c601e8d68d9a",
+        "assertion_excerpt": [
+          "thread 'adapter::grok::environment_tests::owning_reference_refresh_and_existing_consultant_reservation_guards_remain_required' (229818958) panicked at crates/rrx/src/adapter/grok/environment_tests.rs:40:5:",
+          "thread 'adapter::grok::environment_tests::ownership_child' (229818960) panicked at crates/rrx/src/adapter/grok/environment_tests.rs:97:5:",
+          "synthetic child canary was not written for current attempt"
+        ]
+      },
+      {
+        "operator": "L2",
+        "kind": "initial-own-validation",
+        "base_source_head": "77b11868f6b851fffd4de1b11157affccebafd48",
+        "mutant_head": "2252629e2ecdced29371e5d6c82ac8c5f0457f8a",
+        "patch": "diff --git a/crates/rrx/src/adapter/grok/environment.rs b/crates/rrx/src/adapter/grok/environment.rs\nindex 1382f39..d1c69ca 100644\n--- a/crates/rrx/src/adapter/grok/environment.rs\n+++ b/crates/rrx/src/adapter/grok/environment.rs\n@@ -27,7 +27,7 @@ pub(super) fn select(\n     adapter: &GrokAdapter,\n     request: &LaunchRequest,\n ) -> AdapterResult<(BTreeMap<String, String>, EnvironmentAdmission)> {\n-    validate_environment_references(&request.project.environment_refs).map_err(|_| {\n+    validate_environment_references(&[]).map_err(|_| {\n         failure(\n             ErrorKind::InvalidConfiguration,\n             \"owning environment references invalid\",\n",
+        "patch_sha256": "eb972040e9226767faa5d6f45af5e760590a50483d2893f1ca1a8bd71f2e9893",
+        "target": "adapter::grok::environment_tests::initial_and_resume_selection_keep_invalid_and_live_ownership_guards",
+        "compiled": true,
+        "exit": 101,
+        "assertion_killed": true,
+        "credit": "initial_error_text_only_defence_in_depth",
+        "elapsed_seconds": 2.4,
+        "elapsed_scope": "cargo invocation including compile",
+        "log": "/private/tmp/rururunx-issue51-low-L2.log",
+        "log_sha256": "818f72d841363b2a082218767d30d0260d748049556638c36e5446eb7a2e1216",
+        "assertion_excerpt": [
+          "thread 'adapter::grok::environment_tests::initial_and_resume_selection_keep_invalid_and_live_ownership_guards' (229819712) panicked at crates/rrx/src/adapter/grok/environment_tests.rs:40:5:",
+          "thread 'adapter::grok::environment_tests::selection_child' (229819714) panicked at crates/rrx/src/adapter/grok/environment_tests.rs:232:9:",
+          "  left: \"native environment authority unavailable\"",
+          " right: \"owning environment references invalid\""
+        ]
+      },
+      {
+        "operator": "L3",
+        "kind": "store-own-validation",
+        "base_source_head": "77b11868f6b851fffd4de1b11157affccebafd48",
+        "mutant_head": "3afa0de79ffd0f5a4666694c7a9576535bca0f9b",
+        "patch": "diff --git a/crates/rrx/src/state/environment.rs b/crates/rrx/src/state/environment.rs\nindex 8f7f937..97abd30 100644\n--- a/crates/rrx/src/state/environment.rs\n+++ b/crates/rrx/src/state/environment.rs\n@@ -94,9 +94,8 @@ fn refs(\n fn own_refs(connection: &Connection, owner: ProjectId) -> Result<BTreeSet<String>> {\n     let mut names = BTreeSet::new();\n     refs(connection, owner, true, |name| {\n-        if !environment_name_valid(name)\n-            || environment_name_forbidden(name)\n-            || !names.insert(name.to_owned())\n+        names.insert(name.to_owned());\n+        if false\n         {\n             bail!(StateGuardError::EnvironmentAuthority);\n         }\n",
+        "patch_sha256": "bbedb4a799953745cdbe91de03dec6393da54216877cbf5a6309751480888068",
+        "target": "state::native_dispatch_tests::environment_transaction_rejects_invalid_own_names_independently_of_caller_subset",
+        "compiled": true,
+        "exit": 101,
+        "assertion_killed": true,
+        "credit": "atomic_store_consumer_invalid_own_admission_no_native_child",
+        "elapsed_seconds": 1.76,
+        "elapsed_scope": "cargo invocation including compile",
+        "log": "/private/tmp/rururunx-issue51-low-L3.log",
+        "log_sha256": "f490e404eb57ae244acb95eab72c7748a7fb9a826cf72549dfbad5f4f1270b09",
+        "assertion_excerpt": [
+          "thread 'state::native_dispatch_tests::environment_transaction_rejects_invalid_own_names_independently_of_caller_subset' (229820169) panicked at crates/rrx/src/state/native_dispatch_tests.rs:553:10:",
+          "called `Result::unwrap_err()` on an `Ok` value: 2"
+        ]
+      }
+    ],
+    "counts": {
+      "compiled_runs": 3,
+      "distinct_operators": 3,
+      "actual_resumed_child_canary_kill": 1,
+      "actual_initial_api_error_text_only": 1,
+      "atomic_store_consumer_no_native_child": 1,
+      "masked_or_compile_failure_credit": 0
+    },
+    "restored_controls": {
+      "head": "77b11868f6b851fffd4de1b11157affccebafd48",
+      "focused_individual_checks": 4,
+      "full_default_workspace_claim": false,
+      "log_sha256": "40e6a68369d283968e5abbf44a8e4e1282b2032b8de44df2610ea70227b34f33"
+    },
+    "changed_test_blobs": {
+      "crates/rrx/src/adapter/grok/environment_tests.rs": "35a96977f47241f332b5d536bb786f3391db39ed",
+      "crates/rrx/src/state/native_dispatch_tests.rs": "235ce98943278f7a31f8c9baa42f1ddc426c1b03"
+    },
+    "production_delta_from_reviewed72f": "none; only two test sources and verification documentation changed"
   }
 }
