@@ -154,3 +154,16 @@ at283.380875ms. Ubuntu fmt/clippy passed, tests cancelled, builds skipped by
 fail-fast; macOS builds skipped. Failed log retained, no rerun or claimed causal
 fix. The related #55 cap-test/source component remains a separate integration gate;
 later green docs cannot erase this result. Design2 independent review pending.
+
+Design2 dfaa2e0 exact CI37203856158 passed Linux/macOS fmt, clippy, tests and
+debug/release builds (individual steps inspected); it does not repair earlier red
+cap-test evidence. Both independent native Design2 reviews completed request_changes
+with actual v3 owned cleanup verified and confirmed Design1 gaps closed. Verified
+remaining Medium classes: unowned interval continuity needs positive durable facts
+outside optional telemetry; reference apparatus must not warm lane provider caches;
+mandatory producer delivery evidence must be distinct from its optional projection,
+so dropping both re-delivery and its record cannot become measurement-unverified.
+Design3 defines those source/cutoff/order/safety distinctions and actual consumer
+controls/mutants. Native-configuration digests exclude credential/user-config files;
+missing attestation stays unknown. Design3 review pending; no Rust/producer/profile/
+native benchmark implementation or acceptance is claimed.

@@ -1,6 +1,6 @@
 # Issue 21: Qualified telemetry and native comparison
 
-Status: Design2, verified independent Design1 corrections; design/source gates pending.
+Status: Design3, verified independent Design1–Design2 corrections; design/source gates pending.
 Requirements8 at e001483 received two independent approvals, no findings, and
 verified owned cleanup. This document proposes APIs/storage; none is implemented.
 Baseline main80452f4/schema3; required native/context producers remain pending.
@@ -40,6 +40,10 @@ Task, actual native operation and input/attempt identity, runtime instance, adap
 implementation/profile, source revision, operation purpose and beneficiary links.
 Capture effective reduction-feature, Project-policy and native-configuration digests
 from the actual runtime composition at that dispatch, separately from plan claims.
+The native-configuration digest covers only rrx-owned launch/profile/composition
+parameters and allowlisted observed protocol facts, never credential/user-native
+configuration files. Missing attestation keeps configuration measurement unverified;
+an optional projection failure cannot imply agreement with the plan.
 Task dispatches derive generation/index/phase/context/round/slot from the actual
 owning Workflow/ReviewSet transaction; callers cannot supply attribution labels.
 Task-free and helper operations have explicit purposes rather than fake Tasks.
@@ -80,6 +84,14 @@ gap invalidates cumulative-derived attribution spanning that interval. Only coun
 whose native contract proves exact owned-turn scope remain qualified. Codex's replay
 of a previous owned total alone does not prove absence of intervening unowned turns.
 Unknown native-internal compaction/helper intervals also leave coverage unknown.
+Continuity requires POSITIVE durable evidence independent of optional telemetry:
+the actual ingress/attach producer's own grant/close records, complete adapter-owned
+turn identity boundaries excluding foreign turns, or a native contract proving the
+counter is scoped to the exact owned turn. Absence of interval/telemetry rows never
+proves continuity. Attach/input-capable windows without those records, and missing/
+overflowed interval projections without another complete owned source, are unprovable
+gaps for that session. Pending #6/#11/#15/#19/#58 ingress producers must actually
+provide these facts; otherwise cumulative-derived deltas remain unknown.
 
 ## Field normalization, model units and replay
 
@@ -122,6 +134,10 @@ and Session ID alone do not deduplicate distinct operations. Ordinals and versio
 are positive checked i64. Intermediate cumulative notifications update bounded,
 non-additive progress for that same turn; they do not consume finalized-observation
 slots. Accept one immutable final snapshot. A missing trustworthy final stays unknown.
+Each adapter CounterContract names and validates its actual terminal native event
+(for example Codex turn completion or Claude result), without accepting a status
+label or timeout as final. Grok remains unqualified until its own native contract
+and conformance establish these semantics.
 Each CounterContract selects exactly one effective value per operation, field and
 partition node: a qualified final cumulative snapshot supersedes progress, while
 incremental events sum only when native evidence proves disjointness. A snapshot
@@ -158,6 +174,20 @@ proven runtime-controlled retained content to the reduction-independent mandator
 set/policy digest. Native self-loaded rules remain separate exposure, with no
 internal attention proof. Own condensation/replacement requires mandatory delivery
 again; its omission is absolute safety loss, not merely unavailable measurement.
+The actual #19/#20 prompt/dispatch producer owns mandatory-content delivery evidence
+in its own admission/dispatch and wire/retention records under existing mandatory-
+context policy, outside optional telemetry tables. A prepared manifest or consumed
+authorization is not proof of sent bytes. Telemetry projects actual sent-item digests
+or proven controlled-retention references, never manufactures them. Its projection
+write failure leaves the producer facts intact and metric coverage unknown.
+If the runtime commits a next dispatch after its own condensation/replacement/
+selection/loader without the required producer re-delivery/retention record and
+delivery, score MandatoryDeliveryLoss as absolute safety failure; dropping BOTH the
+actual re-delivery and its record cannot become measurement-unverified. Independent
+known loss stays loss even if other evidence is missing. A mandatory-context refusal
+before dispatch retains its actual execution outcome. Unknown retention depending
+on unowned native behavior after recorded delivery stays safety-unverified and
+cannot certify acceptance; optional telemetry failures never ratify missing safety.
 
 All writes share the final composed Store writer epoch. Generic Record/Usage/audit
 writers cannot create private rows or reserved telemetry/benchmark events. Retire
@@ -232,9 +262,18 @@ evidence, freshness, admission, reviewer independence and completion/cleanup gat
 Fallback uses equivalent current authorized input or explicit native unsupported/
 error behavior. Cache performance is never evidence of logical input reduction.
 
-Register a measured single-reviewer reference as separate predeclared apparatus
+Register the single-reviewer reference descriptor as separate predeclared apparatus
 before lane execution, on the exact immutable review bundle and consuming model/
-unit/category definition. It cannot feed findings or gates. For each compatible
+unit/category definition, but run the reference ONLY AFTER all lane operations and
+repetitions it could warm have frozen outputs and passed their measurement cutoff.
+Pin this order in the plan; it cannot feed findings, gates or lane cache state.
+Any known earlier/concurrent reference with a potentially shared provider prefix
+marks affected attempts cache-confounded, preventing clean cost/cache/time claims;
+preserve that exposure in subsequent plans rather than assuming a fresh Session
+clears provider caches. An alternative order requires actual native proof of cache
+namespace/prefix separation, not distinct runtime Project labels. Record reference
+cache state as apparatus-only. Amplification uses inclusive logical input, so the
+reference's own cache hits do not shrink its denominator. For each compatible
 model group, amplification is actual independent-reviewer input divided by that
 measured single-reviewer reference; expose slot/count, shared/specific and cache/
 uncached components with coverage. Heterogeneous rosters need per-model references
@@ -336,6 +375,12 @@ mandatory-context behavior stays unchanged while coverage becomes unknown. Test
 cross-lane Pack/expansion/metrics refusal, mid-run policy drift, measured amplification
 references and current stable-prefix invalidation. Warm/cold/unavailable cache paths
 have the same actual freshness/admission/evidence/gate results.
+Lost/overflowed attach-interval projection still yields unknown cumulative attribution
+at the actual query/report, never inferred continuity. A deliberately early reference
+is refused or retained cache-confounded for every affected later lane/repetition.
+Dropping both actual mandatory re-delivery and its producer record after own
+condensation is scored safety loss at the real dispatch/report consumer; dropping
+only optional projection preserves producer safety evidence with unknown metrics.
 Use required native parser/transport conformance plus controlled deterministic cases;
 synthetic measurements cannot satisfy the native benchmark.
 
@@ -355,6 +400,10 @@ model for a native fallback, cross lane context/query scopes, certify actual con
 drift, and use cache presence to bypass freshness or mandatory evidence. Kill these
 at their real query/report/dispatch/context/certification consumers, not helper-only
 checks; restored positives must prove the relevant native/context prerequisites.
+Also mutate absence-of-interval-row into continuity, early apparatus warming into
+an unconfounded report, and simultaneous own re-delivery/record loss into mere
+measurement-invalid. Actual producer prerequisites distinguish safety loss from
+projection failure and prevent helper/timeout-only mutation credit.
 
 Run relevant native/context/Store/Workflow/registry regressions, fmt/clippy/tests,
 debug/release builds, exact Linux/macOS CI and two independent immutable source/
