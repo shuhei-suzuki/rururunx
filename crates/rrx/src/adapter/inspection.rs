@@ -546,16 +546,16 @@ mod tests {
         let retained = leader.group_owned;
         fixture.cleanup().await;
         assert!(
-            !selected.unwrap(),
-            "live selected group member must be visible"
+            retained,
+            "a zombie leader alone cannot release group ownership"
         );
         assert_eq!(
             result.unwrap_err().raw_os_error(),
             Some(rustix::io::Errno::PERM.raw_os_error())
         );
         assert!(
-            retained,
-            "a zombie leader alone cannot release group ownership"
+            !selected.unwrap(),
+            "live selected group member must be visible"
         );
     }
     #[tokio::test]
@@ -566,11 +566,11 @@ mod tests {
         let result = leader.kill_group();
         let retained = leader.group_owned;
         fixture.cleanup().await;
-        assert!(result.unwrap_err().to_string().contains("exit failed"));
         assert!(
             retained,
             "legacy selection cannot clear live group ownership"
         );
+        assert!(result.unwrap_err().to_string().contains("exit failed"));
     }
     #[tokio::test]
     async fn actual_selected_group_excludes_other_owned_group_and_accepts_only_all_zombies() {
