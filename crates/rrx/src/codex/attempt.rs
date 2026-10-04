@@ -200,6 +200,7 @@ impl Drop for CallerGuard {
     fn drop(&mut self) {
         if self.armed {
             self.control.preparation.cancel();
+            if let Some(task) = self.control.task.lock().unwrap().take() { task.abort(); }
         }
     }
 }
