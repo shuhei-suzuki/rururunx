@@ -65,7 +65,8 @@ fixed metadata makes that byte limit unreachable for current valid events; a fut
 event contract expansion must review these limits. History aggregate add/subtract
 uses checked arithmetic; fitting RetainedEvent lengths remain exactly to_vec lengths.
 
-Actual Store decode is `serde_json::from_str` (state/mod.rs:1418); installed
+Actual Store decode is `serde_json::from_str` (`state/mod.rs::decode`, line1435
+at Source2 `313adb9`; the Store round-trip controls are the operative proof); installed
 serde_json1.0.151 initializes remaining_depth128 and refuses when decrement reaches
 zero (de.rs:63,1375–1377): effective127 containers. The artifact cap120 deliberately
 leaves at least7 levels for the current persisted Record/ContextVersion envelope.

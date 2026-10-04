@@ -141,7 +141,7 @@ impl Fixture {
         // the actual trigger in the same transaction; no production writer is
         // allowed to mutate an immutable context.
         tx.execute_batch("DROP TRIGGER context_no_update").unwrap();
-        tx.execute(
+        let changed = tx.execute(
             "UPDATE context_versions SET body=?1 WHERE project_id=?2 AND owner=?3 AND version=?4",
             rusqlite::params![
                 body,
@@ -151,6 +151,7 @@ impl Fixture {
             ],
         )
         .unwrap();
+        assert_eq!(changed, 1, "negative fixture must change exactly its row");
         tx.execute_batch(&trigger).unwrap();
         tx.commit().unwrap();
         reference(context).unwrap()
@@ -180,13 +181,14 @@ impl Fixture {
         let body = serde_json::to_string(record).unwrap();
         assert!(body.len() < 8 * MAX_BYTES);
         // The SQL mutation is an owned negative fixture, never an append proof.
-        rusqlite::Connection::open(&self.db)
+        let changed = rusqlite::Connection::open(&self.db)
             .unwrap()
             .execute(
                 "UPDATE records SET body=?1 WHERE id=?2",
                 rusqlite::params![body, record.id.to_string()],
             )
             .unwrap();
+        assert_eq!(changed, 1, "negative fixture must change exactly its row");
         CheckpointRef {
             scope: record.scope.clone(),
             id: record.id,
@@ -233,18 +235,29 @@ async fn checkpoint_reader_guards_after_identity_before_digest_and_decode() {
             &f.task.scope(),
             session,
             None,
-            vec![HistoryEvent {
-                sequence: 1,
-                kind: EventKind::Transient,
-                text: "owned history".into(),
-            }],
+            vec![
+                HistoryEvent {
+                    sequence: 1,
+                    kind: EventKind::Transient,
+                    text: "owned history".repeat(100),
+                },
+                HistoryEvent {
+                    sequence: 2,
+                    kind: EventKind::Transient,
+                    text: "remaining history".into(),
+                },
+            ],
             HistoryPolicy {
-                recent_history_bytes: 4096,
+                recent_history_bytes: 256,
             },
         )
         .await
         .unwrap();
     let checkpoint = f.packs().load_checkpoint(&reference).unwrap();
+    assert_eq!(checkpoint.omitted_transient, 1);
+    assert_eq!(checkpoint.recent.len(), 1);
+    assert_eq!(checkpoint.recent[0].event.sequence, 2);
+    assert!(checkpoint.recent_bytes <= 256);
     assert_eq!(
         encoding::encoded_len(&checkpoint).unwrap(),
         serde_json::to_vec(&checkpoint).unwrap().len()
@@ -411,7 +424,12 @@ async fn typed_goal_reader_guards_before_digest_and_decode() {
         .context(&r.scope, Some(r.version))
         .unwrap()
         .unwrap();
+    reset();
     let pack = f.packs().goal_pack(&r).unwrap();
+    assert_eq!(
+        encoding::take_read_stages(),
+        encoding::CONTEXT_DIGEST | encoding::TYPED_DECODE
+    );
     assert_eq!(
         encoding::encoded_len(&pack).unwrap(),
         serde_json::to_vec(&pack).unwrap().len()
@@ -494,7 +512,9 @@ async fn phase_reader_and_capture_guard_before_artifact_clone() {
         .await
         .unwrap();
     let artifact = sources.pack_artifact(&source).unwrap().unwrap();
+    reset();
     workflow::validate_capture(&artifact, &source, Phase::Implement, &budget).unwrap();
+    assert_eq!(encoding::take_read_stages(), encoding::TYPED_DECODE);
     let control = ContextVersion {
         scope: source.scope.clone(),
         version: 1,
@@ -503,7 +523,9 @@ async fn phase_reader_and_capture_guard_before_artifact_clone() {
         data: json!({"task_pack":artifact,"phase":Phase::Implement,"budget":budget,
             "payload":source.payload,"source_payload_offset":0}),
     };
+    reset();
     let typed_artifact = workflow::context_artifact(&control).unwrap();
+    assert_eq!(encoding::take_read_stages(), encoding::TYPED_DECODE);
     assert_eq!(
         encoding::encoded_len(&typed_artifact).unwrap(),
         serde_json::to_vec(&typed_artifact).unwrap().len()
@@ -521,6 +543,42 @@ async fn phase_reader_and_capture_guard_before_artifact_clone() {
         "workflow phase pack is prepared only by its Engine"
     );
     assert_eq!(encoding::take_read_stages(), encoding::CONTEXT_DIGEST);
+    // Engine prepends mandatory rules outside the captured source artifact.
+    // The delivered frame fits its own cap while the complete row exceeds the
+    // artifact cap. This synthetic prefix is codec input, not launch authority.
+    let mut wide = control.clone();
+    let prefix = "r".repeat(MAX_BYTES - source.payload.len());
+    wide.data["payload"] = json!(format!("{prefix}{}", source.payload));
+    wide.data["source_payload_offset"] = json!(prefix.len());
+    assert_eq!(wide.data["payload"].as_str().unwrap().len(), MAX_BYTES);
+    assert!(serde_json::to_vec(&wide.data).unwrap().len() > MAX_BYTES);
+    bounded(&wide.data["task_pack"]).unwrap();
+    let wide_ref = f.corrupt(&wide);
+    reset();
+    f.packs().task_pack(&wide_ref).unwrap();
+    assert_eq!(
+        encoding::take_read_stages(),
+        encoding::CONTEXT_DIGEST | encoding::TYPED_DECODE
+    );
+    reset();
+    f.packs()
+        .load_context(&wide_ref, ContextRead::TaskProvenance)
+        .unwrap();
+    assert_eq!(encoding::take_read_stages(), encoding::CONTEXT_DIGEST);
+    let task = f.store.lock().unwrap().task(f.task.id).unwrap().unwrap();
+    f.packs()
+        .validate_task_reference(&task, &wide_ref)
+        .await
+        .unwrap();
+    let goal_ref = f
+        .packs()
+        .publish_goal(&f.goal.scope(), vec![], Default::default())
+        .await
+        .unwrap();
+    let goal_pack = f.packs().goal_pack(&goal_ref).unwrap();
+    assert!(goal_pack.tasks[0].typed_context);
+    assert_eq!(goal_pack.tasks[0].context, Some(wide_ref));
+    f.packs().validate_goal(&goal_ref).await.unwrap();
     let mut c = control.clone();
     c.data["task_pack"]["source_versions"]["negative:padding"] = json!("x".repeat(MAX_BYTES));
     c.source_hashes
@@ -531,6 +589,13 @@ async fn phase_reader_and_capture_guard_before_artifact_clone() {
     reset();
     refused(workflow::context_artifact(&c).bounded_err(), BYTES);
     let phase_reference = f.corrupt(&c);
+    reset();
+    refused(
+        f.packs()
+            .load_context(&phase_reference, ContextRead::TaskProvenance)
+            .bounded_err(),
+        BYTES,
+    );
     reset();
     refused(
         f.packs()
