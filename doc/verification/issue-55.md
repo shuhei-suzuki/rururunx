@@ -116,3 +116,36 @@ No source change/test execution or actual dispatched forcedUnknown acceptance ye
 Design3 independent fix re-reviews precede code. Raw resumed native usage/cost/duration
 attribution to Design2 is unverified; duration_api_ms is not measured wall time. Original
 #41 final red and all independent native/recovery/environment/binding gates remain open.
+
+
+## Design3 verified correction; proposed Design4
+
+Both native Design3 reviewers completed/cleaned at26dfc4c: receipt approved/noCHM,
+lifecycle requested one verified Medium. Ordered one-or-more trace blocks alone miss
+reconciliation verify_binding mislabelled InSessionBinding, because that block merges
+and a lone Reconciliation index remains. Design4 adds same-attempt block-size relations
+PreSpawn == Reconciliation == InSessionBinding+1 and NativeChild==1, with the actual
+reconcile-binding stage-swap mutant explicitly required. Receipt review's broader
+claim that order catches every swap was checked against actual source and not adopted.
+No test was run/no counterexample falsely claimed compiled at this design stage.
+
+Adopted Lows: trace append after flag push uses nonblocking/non-panicking try_lock with
+ignored poison/contention, unit equivalence controls; one shared test-only formatter/
+strict-state assertion helper used by external and in-crate consumers, fixed label/
+panic location/exact one-test failure Lost-vs-Failed oracle; individual external
+attachment remains source-only. Explicit macOS-only local before-spawn-stop trace
+consumer, external bothOS stop receipt-only credit. Local positive fake includes the
+owned RRX_FOREIGN canary and verifies denied write unchanged. No native credentials,
+config, inference, new runtime channel or production authority change.
+
+Exact docs-only26dfc4c CI37196875050 RED: macOS legacy inspection overflow wrapper
+stdout size InvalidData185.472708ms, stderr actual TimedOut277.761792ms;86PASS/1FAIL/
+1IGN. Ubuntu fail-fast CANCELLED. Original full log preserved at
+/private/tmp/rururunx-issue55-design3-ci-37196875050-failed.log; no historical cause
+attribution. After design approval, root authorizes normally integrating separately
+source-reviewed test-only3d303993 (verified parent6982708, one file37+/4-), excluding
+unmerged preparation-owner source, with full combined source review/cap-unit mutant/
+restored/default checks/exact bothOS CI. No acceptance rerun/deadline or latch relief.
+Inspection test correction cannot alone solve original41Grok retained-PID Unknown.
+Design4 independent fix re-reviews precede implementation. Design3 raw resumed native
+meters are attribution-unverified and not measured wall time.

@@ -1,9 +1,10 @@
 # Issue 55 design: Grok-local terminal cleanup receipt
 
-Risk: STRICT. Proposed Design3, no Issue55 implementation. Requirements2 approved immutable
+Risk: STRICT. Proposed Design4, no Issue55 implementation. Requirements2 approved immutable
 2ebbbfd. Two independent Design1 reviews requested changes at14050d3; Design2 fix reviews at
 b6c39ca verified those corrections and found stage-call-site coverage/assertion-message
-gaps. This design corrects both verified Mediums plus adopted Low refinements.
+gaps. Design3 receipt review approved; lifecycle review found a block-merge survivor.
+This design corrects that verified Medium plus adopted Low refinements.
 Unavailable shared cleanup cause remains explicitly unavailable. No schema/native environment/process-policy
 change. Public main80452f4 code is the baseline; source reviews must include full changed
 consumer/helper/test source after actual implementation, not this proposed design.
@@ -127,18 +128,34 @@ cfg(test), OwnedEntry supplies an Arc<Mutex<Vec<(input_version, OwnershipStage)>
 supervise installs that trace tagged with its existing PreparedInput.version. It never
 clears earlier entries; fresh-input resume versions already distinguish attempts. A
 checkpoint's separate ownership has no trace. No production field/API/environment,
-persisted ordinal, stage cursor or ownership authority is introduced. Test trace writes
+persisted ordinal, stage cursor or ownership authority is introduced. Test trace append happens AFTER the unchanged flag push and uses try_lock with
+discarded Result, ignoring poisoned/contended trace without blocking or panicking. A
+poison/held-lock unit control proves group still returns the identical flag and retain/
+total semantics. No unwrap on diagnostic trace. Test trace writes
 never set/clear flags, affect retain/total or authorize death; source review compares
-release/debug non-test paths. Trace exists only inside crate tests and is not emitted
+release/debug non-test paths. Trace exists only inside crate tests for the supervise attempt and is not emitted
 in audit or consumer failure logs.
 
 An actual in-crate supervise consumer filters the trace to the exact attempted input
 version and asserts the ordered full phase blocks: PreSpawn+, one NativeChild,
 InSessionBinding+, Reconciliation+ for the dispatched clean pair; PreSpawn+ only for
-before-spawn stop. The known-completed fake also exercises the full sequence. Each +
+before-spawn stop. The known-completed fake also exercises the full sequence. A separate macOS in-crate
+sanitized before-spawn-stop attempt uses the local owned fixture, calls stop immediately
+after start (as the existing external test), waits for actual Stopped terminal and reads
+this entry trace at that attempt input version. It expects PreSpawn+ only, no NativeChild/
+InSessionBinding/Reconciliation/Checkpoint. Trace consumers/creation-call-site mutants
+are macOS-only; external both-OS stop tests validate receipt only, never access this
+cfg(test) trace. Linux has no claimed trace credit. Each +
 is one-or-more flag creations from the actual bounded Git calls; order is strict and
-there can be no extra Checkpoint or out-of-order labels. This kills a non-native stage
-swap at the REAL supervise argument instead of only proving a helper copied its input.
+there can be no extra Checkpoint or out-of-order labels. Order alone would miss
+reconcile_binding mislabelled InSessionBinding, which merges into the previous block.
+Therefore also assert block sizes from this SAME role/scope/attempt: |PreSpawn| ==
+|Reconciliation| == |InSessionBinding| + 1 and |NativeChild| == 1. verify_git is the
+same n-child path at these three boundaries; preflight and reconciliation additionally
+run one index_digest each. Executor Task n=9 in current source (Reviewer adds status),
+but the relational oracle need not hardcode n. A compiled reconcile_binding ->
+InSessionBinding operator must be killed by this actual size-relation assertion.
+This observes the REAL supervise argument instead of only proving a helper copied it.
 Non-native-stage swaps then earn actual creation-call-site metadata credit; they still
 do not attest true Git uncertainty/reap failure. The forced plan affects only the native
 child. Native omission/mislabel likewise earns receipt metadata credit, never independent
@@ -187,12 +204,26 @@ message where it was; add no arbitrary new text. Projection Err cannot hide stat
 failure. Only afterward assert receipt presence/shape/vocabulary/equations. No whole
 Event JSON/child body/environment/path is added to receipt failure messages.
 
+Include one shared test-support file via include/path in both external tests/grok.rs
+and in-crate consumers, alongside the shared fake. It contains the closed projection
+formatter and STRICT state-assert helper (generic over the existing state values), with
+a fixed assertion label and panic location; no production dependency/public runtime API.
+All these consumers use the same formatter and state helper without changing predicates
+or ordering. State-helper mutation is observed by the actual control; attachment at
+individual other external sites remains source-review-only, not falsely killed by an
+in-crate-only seam. Transport/failure/PID predicates stay strict with shared formatted
+projection appended.
+
 A dedicated sanitized actual Failed-expected protocol attempt with forcedUnknown
 executes the existing strict state assertion (actual Lost) with projection and fails.
-Its owning parent verifies the bounded failure message contains allowlisted cleanup
-category/total/stages before treating this expected assertion failure as diagnostic
-control success. It must not call that child a passed cleanup/state attempt. A compiled
-projection-omission-at-state-assert operator kills that parent oracle. Keep this actual
+Its owning parent requires nonzero exit, exactly one executed test/one failure, the
+fixed state-assertion label and actual shared-helper panic location, and assert_eq
+left Lost/right Failed, PLUS bounded allowlisted cleanup category/total/stages in that
+same failure message. An earlier/shape/incidental-print panic cannot satisfy the oracle.
+Only then treat the expected STATE assertion failure as diagnostic control success. It must not call that child a passed cleanup/state attempt. A compiled
+projection-omission operator AT THE SHARED state helper/formatter kills that parent
+oracle after the actual state assertion; exact compiled panic/assertion location is
+recorded per baseline/mutant. Do not attribute per-external-call-site kills to it. Keep this actual
 message-consumer credit separate from cleanup-receipt removal mutants and true cleanup
 safety. Later loop modes are unobserved after panic. Durably retain verbatim/paraphrased
 failed CI fields, head/run/job/image and finite-retention log digests.
@@ -222,7 +253,10 @@ Build the dispatched in-crate fixture locally rather than reuse/modify the share
 Generic preflight_fixture: owned temporary canonical source+task worktree, repository_identity,
 committed own.txt, unseen.txt precreated BEFORE launch and baseline capture, file-backed
 Store and actual 40-hex HEAD input revision. Synthetic RRX_DATABASE/RRX_MODE/
-RRX_PROMPT_OBSERVED/RRX_PYTHON_OBSERVED live only in this owned fake test; no real
+RRX_PROMPT_OBSERVED/RRX_PYTHON_OBSERVED plus an owned temporary RRX_FOREIGN
+canary path live only in this owned fake test. The known-completed path dereferences
+that foreign canary unconditionally; assert its file is unchanged/not created after
+the denied write. These are synthetic fixture inputs only; no real
 auth/settings/config lookup. Generic preflight_fixture/fixture_request and all their
 existing callers retain their memory Store/empty commit/PATH contract unchanged.
 Separately sanitize each diagnostic attempt in its own owning child selected by a
@@ -301,7 +335,7 @@ Compile each operator, record exact patch/base/mutant/control/source restoration
 failure, then restore exact source/control and normally remove isolated worktrees.
 No diagnostic alone resolves real unclean native children or the current41red gate.
 
-Two independent immutable Design3 fix re-review approvals precede implementation. Then commit scoped
+Two independent immutable Design4 fix re-review approvals precede implementation. Then commit scoped
 code, targeted/default debug/release, fmt/all-target Clippy-Dwarnings, non-test builds,
 causal mutants, two independent full actual-source reviews and verified fix/rereview.
 Exact final Linux/macOS CI remains required. Preserve any genuine Unknown/timeout/latch/
@@ -327,3 +361,23 @@ permissions, budgets, reservations and process handling stay as in the supplied 
 | Audit append/paging | Store.audit state/mod.rs892; events976 and AuditEvent.sequence domain.rs442 | Existing best-effort event remains best-effort. No persistence API or SQL migration; diagnostics fail missing/duplicate/truncated event, never rebuild authority from status. Capture terminal upper watermark before next attempt; null/empty-prompt limitations remain explicit. |
 | Unknown test plan / owned cleanup | adapter/inspection.rs macOS-only plan; adapter.rs ProcessGroup::Drop/cleanup_group; sanitized parent mod.rs1290-1332 | No plan/shared process change. Explicit group KILL, Drop retry group KILL and Tokio leader kill; native descendant reap unobserved. Parent group cleanup covers parent only. Linux clean receipts; no claimed forced-category Linux proof. |
 | Integration/docs | requirements55, verification55 durable failed CI, doc/design/master/agent-adapter.md Grok terminal supervision section and README; #41/#14/#43/#51/#16 | Implementation PR writes current key set/vocabulary/stage semantics/measurement limits in the master terminal-supervision section without issue-number framing, plus pending integration links. Requirements2 accepted behavior unchanged; design refines diagnostic private operation lookup into a bounded window, not event ordinal. Original #41 red and actual recovery/binding/environment/native gates remain open. No diagnostics-only claim of solving retained child. |
+
+
+## Independently reviewed inspection test integration
+
+Root authorizes normal integration of the independently reviewed test-only commit
+3d3039932159400017fb1562b9df8484edd5da05 (parent6982708f1f98cb43b6536f1c52cdde8a9ca57f62)
+when this design gate resolves, not the unmerged full preparation-owner feature.
+The actual one-file inspection.rs delta has37 insertions/4 deletions, entirely inside
+cfg(test): separate oversized child-wrapper Unknown control (exact size OR actual timeout)
+from deterministic prepared Stream::drain cap unit at LIMIT+1 with all-Z prefix before
+hidden live row. Production250ms/1MiB/parsing/EOF/status/leader/latch/PID authority is
+unchanged. Original55Design3 CI37196875050 failed unchanged legacy wrapper on macOS:
+stdout InvalidData185.472708ms, stderr TimedOut277.761792ms,86PASS/1FAIL/1IGN;
+Ubuntu fail-fast CANCELLED. Original log retained, cause unspecified, no rerun.
+This is an independently meaningful test-boundary correction, not resolution of Grok
+retained PID or inspection Unknown. Source reviews must include the integrated exact
+inspection file and actual current cap-unit mutant/restored control, with wrapper
+Unknown/no-accepted-frame credit distinct from deterministic cap-unit causal credit.
+Default debug/release and final exact Linux/macOS CI cover the combined source. Its
+production blob is compared to reviewed46; no scheduling/deadline/serialization change.
