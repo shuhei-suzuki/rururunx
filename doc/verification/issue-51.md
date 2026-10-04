@@ -225,3 +225,22 @@ These proposed source precision refinements retain approved authority/requiremen
 Source gates must rereview actual refinements/implementation, not infer proof from docs.
 Issue55 design fix gate has priority; no concurrent Grok source edit. Pure helper work
 may proceed in approved51 scope while actual consumers/integration remain pending.
+
+
+## Initial pure registry extraction
+
+The first source step extracts existing environment-name grammar, routing/proxy policy
+and owning-reference validation from project.rs. Public environment_names retains its
+registered-source/filesystem checks and existing error precedence/text; the new pure
+helpers perform no environment, SQLite, Git, config or filesystem reads. Tests cover
+assignment/Unicode/leading-digit rejection, case-insensitive proxy suffix and reserved
+controls versus valid native credential-reference names, plus duplicate/invalid owning
+refs. This is helper-only progress, not a Grok start/resume/child isolation acceptance
+claim. No Store admission or native consumer changes yet. Commit precedes targeted
+checks; full source/mutation/native/CI gates remain pending.
+
+Shared Store integration is coordinated with root: preserve the complete schema3 native
+CAS precedence/factoring in source review. Future #19 schema6 migration must cover this
+writer's same-epoch transaction fence, managed-operation admission and own historical
+DENY semantics. Grok has no positive native ALLOW interception capability; no invented
+ALLOW evidence or permission-policy change belongs to this environment follow-up.

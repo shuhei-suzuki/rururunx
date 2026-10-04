@@ -378,83 +378,98 @@ pub fn scoped_file(store: &Store, id: ProjectId, reference: &Path) -> Result<Pat
     resolve_file(&project, reference)
 }
 
-fn validate_environment(project: &Project) -> Result<Vec<String>> {
+/// Registry name grammar only; no Project/state/filesystem or environment reads.
+pub(crate) fn environment_name_valid(name: &str) -> bool {
+    !name.is_empty()
+        && name
+            .bytes()
+            .enumerate()
+            .all(|(i, b)| b.is_ascii_alphabetic() || b == b'_' || (i > 0 && b.is_ascii_digit()))
+}
+
+fn environment_routing_forbidden(name: &str) -> bool {
+    matches!(
+        name,
+        "PATH"
+            | "HOME"
+            | "PWD"
+            | "OLDPWD"
+            | "SHELL"
+            | "CDPATH"
+            | "ENV"
+            | "BASH_ENV"
+            | "ZDOTDIR"
+            | "XDG_CONFIG_HOME"
+            | "XDG_STATE_HOME"
+            | "XDG_DATA_HOME"
+            | "CARGO_HOME"
+            | "RUSTUP_HOME"
+            | "CODEX_HOME"
+            | "CLAUDE_CONFIG_DIR"
+            | "PYTHONPATH"
+            | "NODE_OPTIONS"
+            | "NODE_PATH"
+            | "PYTHONHOME"
+            | "PYTHONSTARTUP"
+            | "EDITOR"
+            | "VISUAL"
+            | "PAGER"
+            | "SSH_ASKPASS"
+            | "SSH_AUTH_SOCK"
+            | "PERL5OPT"
+            | "RUBYOPT"
+            | "JAVA_TOOL_OPTIONS"
+            | "JDK_JAVA_OPTIONS"
+            | "TMPDIR"
+            | "TEMP"
+            | "TMP"
+            | "IFS"
+            | "PROMPT_COMMAND"
+            | "XDG_CACHE_HOME"
+            | "XDG_RUNTIME_DIR"
+            | "ANTHROPIC_BASE_URL"
+            | "OPENAI_BASE_URL"
+            | "OPENAI_API_BASE"
+            | "SSL_CERT_FILE"
+            | "SSL_CERT_DIR"
+            | "NODE_EXTRA_CA_CERTS"
+            | "REQUESTS_CA_BUNDLE"
+            | "CURL_CA_BUNDLE"
+    ) || [
+        "GIT_",
+        "LD_",
+        "DYLD_",
+        "RRX_",
+        "CLAUDE_",
+        "CODEX_",
+        "ANTHROPIC_AUTH_",
+        "BASH_FUNC_",
+    ]
+    .iter()
+    .any(|prefix| name.starts_with(prefix))
+}
+
+/// Registry routing policy shared with native name-only admission. Membership is
+/// independent of syntax; callers validate syntax separately before ownership.
+pub(crate) fn environment_name_forbidden(name: &str) -> bool {
+    environment_routing_forbidden(name) || name.to_ascii_uppercase().ends_with("_PROXY")
+}
+
+/// Pure owning-reference validation, also usable for inactive Project metadata.
+/// Public environment_names still performs its existing registered-source checks.
+pub(crate) fn validate_environment_references(names: &[String]) -> Result<Vec<String>> {
     let mut unique = BTreeSet::new();
-    for name in &project.environment_refs {
+    for name in names {
         ensure!(
-            !name.is_empty()
-                && name
-                    .bytes()
-                    .enumerate()
-                    .all(|(i, b)| b.is_ascii_alphabetic()
-                        || b == b'_'
-                        || (i > 0 && b.is_ascii_digit())),
+            environment_name_valid(name),
             "environment references must be names, never assignments/values"
         );
         ensure!(
-            !matches!(
-                name.as_str(),
-                "PATH"
-                    | "HOME"
-                    | "PWD"
-                    | "OLDPWD"
-                    | "SHELL"
-                    | "CDPATH"
-                    | "ENV"
-                    | "BASH_ENV"
-                    | "ZDOTDIR"
-                    | "XDG_CONFIG_HOME"
-                    | "XDG_STATE_HOME"
-                    | "XDG_DATA_HOME"
-                    | "CARGO_HOME"
-                    | "RUSTUP_HOME"
-                    | "CODEX_HOME"
-                    | "CLAUDE_CONFIG_DIR"
-                    | "PYTHONPATH"
-                    | "NODE_OPTIONS"
-                    | "NODE_PATH"
-                    | "PYTHONHOME"
-                    | "PYTHONSTARTUP"
-                    | "EDITOR"
-                    | "VISUAL"
-                    | "PAGER"
-                    | "SSH_ASKPASS"
-                    | "SSH_AUTH_SOCK"
-                    | "PERL5OPT"
-                    | "RUBYOPT"
-                    | "JAVA_TOOL_OPTIONS"
-                    | "JDK_JAVA_OPTIONS"
-                    | "TMPDIR"
-                    | "TEMP"
-                    | "TMP"
-                    | "IFS"
-                    | "PROMPT_COMMAND"
-                    | "XDG_CACHE_HOME"
-                    | "XDG_RUNTIME_DIR"
-                    | "ANTHROPIC_BASE_URL"
-                    | "OPENAI_BASE_URL"
-                    | "OPENAI_API_BASE"
-                    | "SSL_CERT_FILE"
-                    | "SSL_CERT_DIR"
-                    | "NODE_EXTRA_CA_CERTS"
-                    | "REQUESTS_CA_BUNDLE"
-                    | "CURL_CA_BUNDLE"
-            ) && ![
-                "GIT_",
-                "LD_",
-                "DYLD_",
-                "RRX_",
-                "CLAUDE_",
-                "CODEX_",
-                "ANTHROPIC_AUTH_",
-                "BASH_FUNC_"
-            ]
-            .iter()
-            .any(|prefix| name.starts_with(prefix)),
+            !environment_routing_forbidden(name),
             "unsafe environment routing reference {name}"
         );
         ensure!(
-            !name.to_ascii_uppercase().ends_with("_PROXY"),
+            !environment_name_forbidden(name),
             "unsafe proxy routing reference {name}"
         );
         ensure!(
@@ -462,7 +477,11 @@ fn validate_environment(project: &Project) -> Result<Vec<String>> {
             "duplicate environment reference {name}"
         );
     }
-    Ok(project.environment_refs.clone())
+    Ok(names.to_vec())
+}
+
+fn validate_environment(project: &Project) -> Result<Vec<String>> {
+    validate_environment_references(&project.environment_refs)
 }
 /// Resolve only a file inside this source root; validate symlinks before every read.
 pub(crate) fn resolve_file(project: &Project, reference: &Path) -> Result<PathBuf> {
@@ -575,4 +594,97 @@ pub fn default_state_path() -> Result<PathBuf> {
         return Ok(home.join(".local/state/rururunx/state.sqlite3"));
     }
     bail!("no runtime state location; supply --state")
+}
+
+#[cfg(test)]
+mod environment_policy_tests {
+    use super::*;
+
+    #[test]
+    fn names_only_grammar_rejects_assignments_unicode_and_invalid_leading_bytes() {
+        for valid in ["A", "_", "_1", "Project_A1", "TZ", "xai_token"] {
+            assert!(environment_name_valid(valid), "{valid}");
+        }
+        for invalid in ["", "1TOKEN", "A=B", "A\0B", "A B", "A-B", "é", "Ａ"] {
+            assert!(!environment_name_valid(invalid), "{invalid:?}");
+        }
+    }
+
+    #[test]
+    fn registry_control_and_proxy_policy_remains_distinct_from_credential_references() {
+        for control in [
+            "HOME",
+            "PATH",
+            "NODE_OPTIONS",
+            "NODE_PATH",
+            "NODE_EXTRA_CA_CERTS",
+            "GIT_DIR",
+            "LD_PRELOAD",
+            "DYLD_LIBRARY_PATH",
+            "RRX_MODE",
+            "CLAUDE_CONFIG_DIR",
+            "CODEX_HOME",
+            "ANTHROPIC_AUTH_TOKEN",
+            "BASH_FUNC_fixture",
+            "HTTP_PROXY",
+            "https_proxy",
+            "PRIVATE_PrOxY",
+        ] {
+            assert!(environment_name_forbidden(control), "{control}");
+            assert!(validate_environment_references(&[control.to_owned()]).is_err());
+        }
+        for reference in [
+            "TZ",
+            "XAI_API_KEY",
+            "GROK_PRIVATE_TOKEN",
+            "NODE_TLS_REJECT_UNAUTHORIZED",
+            "OPENSSL_CONF",
+            "BUN_OPTIONS",
+            "SSLKEYLOGFILE",
+            "PROJECT_A_TOKEN",
+        ] {
+            assert!(!environment_name_forbidden(reference), "{reference}");
+            assert_eq!(
+                validate_environment_references(&[reference.to_owned()]).unwrap(),
+                [reference]
+            );
+        }
+    }
+
+    #[test]
+    fn own_references_validate_every_entry_and_duplicates_without_source_io() {
+        assert_eq!(
+            validate_environment_references(&[]).unwrap(),
+            Vec::<String>::new()
+        );
+        let names = vec!["TZ".to_owned(), "XAI_API_KEY".to_owned()];
+        assert_eq!(validate_environment_references(&names).unwrap(), names);
+        let duplicate = vec!["TZ".to_owned(), "TZ".to_owned()];
+        assert!(
+            validate_environment_references(&duplicate)
+                .unwrap_err()
+                .to_string()
+                .starts_with("duplicate environment reference")
+        );
+        let assignment = vec!["TZ".to_owned(), "XAI_API_KEY=synthetic".to_owned()];
+        assert!(
+            validate_environment_references(&assignment)
+                .unwrap_err()
+                .to_string()
+                .starts_with("environment references must be names")
+        );
+        // Proxy errors keep the public registry's existing distinction.
+        assert_eq!(
+            validate_environment_references(&["https_proxy".to_owned()])
+                .unwrap_err()
+                .to_string(),
+            "unsafe proxy routing reference https_proxy"
+        );
+        assert_eq!(
+            validate_environment_references(&["HOME".to_owned()])
+                .unwrap_err()
+                .to_string(),
+            "unsafe environment routing reference HOME"
+        );
+    }
 }
