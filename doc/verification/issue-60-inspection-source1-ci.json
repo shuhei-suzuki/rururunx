@@ -1,0 +1,49 @@
+{
+  "run": 37227213174,
+  "trigger_head": "03cd688c86bbee561f51ee53330634f8181830e6",
+  "actual_checkouts": {
+    "check (macos-latest)": "7439d9d77ef26e57446fc59cf21b168167e4225b",
+    "check (ubuntu-latest)": "7439d9d77ef26e57446fc59cf21b168167e4225b"
+  },
+  "parents": [
+    "054aefd3a22a02951fa72b9fa397bed58d156bbf",
+    "03cd688c86bbee561f51ee53330634f8181830e6"
+  ],
+  "tested_tree": "35c8d5c362b43fdacf91204dfdbd0d7e8aff025a",
+  "trigger_tree": "35c8d5c362b43fdacf91204dfdbd0d7e8aff025a",
+  "tested_tree_equals_trigger": true,
+  "jobs": {
+    "check (macos-latest)": {
+      "conclusion": "success",
+      "steps": {
+        "Set up job": "success",
+        "Run actions/checkout@v4": "success",
+        "Run dtolnay/rust-toolchain@1.91.1": "success",
+        "Run cargo fmt --all -- --check": "success",
+        "Run cargo clippy --locked --workspace --all-targets -- -D warnings": "success",
+        "Run cargo test --locked --workspace": "success",
+        "Run cargo build --locked --workspace": "success",
+        "Run cargo build --locked --release --workspace": "success",
+        "Post Run actions/checkout@v4": "success",
+        "Complete job": "success"
+      }
+    },
+    "check (ubuntu-latest)": {
+      "conclusion": "success",
+      "steps": {
+        "Set up job": "success",
+        "Run actions/checkout@v4": "success",
+        "Run dtolnay/rust-toolchain@1.91.1": "success",
+        "Run cargo fmt --all -- --check": "success",
+        "Run cargo clippy --locked --workspace --all-targets -- -D warnings": "success",
+        "Run cargo test --locked --workspace": "success",
+        "Run cargo build --locked --workspace": "success",
+        "Run cargo build --locked --release --workspace": "success",
+        "Post Run actions/checkout@v4": "success",
+        "Complete job": "success"
+      }
+    }
+  },
+  "log_sha256": "6c43028185c95b5669ff323ac1b2dcdfd81d40d9256a25dff62144586d826aa5",
+  "scope": "Source1 published diagnostic component; full60 and native availability remain open"
+}

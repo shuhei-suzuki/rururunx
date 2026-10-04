@@ -1,0 +1,43 @@
+{
+  "head": "26de8da2d9bebc85280120f605f891f71aa0bb68",
+  "outcomes": {
+    "observation": "approve",
+    "lifetime": "approve"
+  },
+  "cleanup_verified": true,
+  "raw_result_sha256": {
+    "observation": "8d8c360e3d2c93fac092eb5f6953481d08ebf8566b1146d554ea4d4152a31f7a",
+    "lifetime": "8d322c02caa090e802bd8b8c10ee05fccfc000c4babd4505ad70529de0ae9f89"
+  },
+  "findings": [
+    {
+      "review": "observation",
+      "id": "R4-ENTRY-1",
+      "severity": "Low",
+      "verified": true,
+      "disposition": "Requirements5 explicit injection/nativecleanup inventory and gate-status precision; full TestPlan source-correction review pending"
+    },
+    {
+      "review": "observation",
+      "id": "R4-DOC-2",
+      "severity": "Low",
+      "verified": true,
+      "disposition": "Requirements5 explicit injection/nativecleanup inventory and gate-status precision; full TestPlan source-correction review pending"
+    },
+    {
+      "review": "lifetime",
+      "id": "R60I4-01",
+      "severity": "Low",
+      "verified": true,
+      "disposition": "Requirements5 explicit injection/nativecleanup inventory and gate-status precision; full TestPlan source-correction review pending"
+    },
+    {
+      "review": "lifetime",
+      "id": "R60I4-02",
+      "severity": "Low",
+      "verified": true,
+      "disposition": "Requirements5 explicit injection/nativecleanup inventory and gate-status precision; full TestPlan source-correction review pending"
+    }
+  ],
+  "source_correction": "Review packets omitted TestPlan definition. Actual TestPlan.inspect already invokes real inspection code with controlledprefix; reviewers and author falsely inferred fabricated observation from callsite. Requirement/disposition corrected before design; full source will be independently rereviewed."
+}
