@@ -1,0 +1,129 @@
+{
+  "format": "rrx.verification.owned-observation.v1",
+  "measured_observations": [
+    {
+      "argv": [
+        "-g",
+        "79918",
+        "-o",
+        "pid=,pgid=,stat="
+      ],
+      "environment": "only COMMAND_MODE=legacy",
+      "exit_code": 1,
+      "label": "legacy-rejected",
+      "outer_command": [
+        "/bin/sh",
+        [
+          "-c",
+          "exec /usr/bin/env -i COMMAND_MODE=legacy /bin/ps \"$0\" \"$@\"",
+          "-g",
+          "79918",
+          "-o",
+          "pid=,pgid=,stat="
+        ],
+        0
+      ],
+      "stderr_bytes": 190
+    },
+    {
+      "argv": [
+        "-g",
+        "79919",
+        "-o",
+        "pid=,pgid=,stat="
+      ],
+      "environment": "env_clear; COMMAND_MODE absent",
+      "exit_code": 0,
+      "explicit_environment_entries": 0,
+      "global_filtered_pids": [
+        79919,
+        79921
+      ],
+      "label": "zombie-leader-live-member",
+      "program": "/bin/ps",
+      "selected_rows": [
+        [
+          79919,
+          79919,
+          "Z"
+        ],
+        [
+          79921,
+          79919,
+          "S"
+        ]
+      ],
+      "stderr_bytes": 0
+    },
+    {
+      "argv": [
+        "-g",
+        "79917",
+        "-o",
+        "pid=,pgid=,stat="
+      ],
+      "environment": "env_clear; COMMAND_MODE absent",
+      "exit_code": 0,
+      "explicit_environment_entries": 0,
+      "global_filtered_pids": [
+        79917,
+        79920
+      ],
+      "label": "all-zombie-members",
+      "program": "/bin/ps",
+      "selected_rows": [
+        [
+          79917,
+          79917,
+          "Z"
+        ],
+        [
+          79920,
+          79917,
+          "Z"
+        ]
+      ],
+      "stderr_bytes": 0
+    },
+    {
+      "argv": [
+        "-g",
+        "79924",
+        "-o",
+        "pid=,pgid=,stat="
+      ],
+      "environment": "env_clear; COMMAND_MODE absent",
+      "exit_code": 0,
+      "explicit_environment_entries": 0,
+      "global_filtered_pids": [
+        79924,
+        79925
+      ],
+      "label": "excluded-other-live-group",
+      "program": "/bin/ps",
+      "selected_rows": [
+        [
+          79924,
+          79924,
+          "Z"
+        ],
+        [
+          79925,
+          79924,
+          "S"
+        ]
+      ],
+      "stderr_bytes": 0
+    }
+  ],
+  "provenance_annotations": {
+    "source_head_recorded_by_executor": "30e5e48",
+    "binary_revision_attested": false,
+    "basis": "parsed actual native fixture emission from committed-head targeted cargo test,8pass/default concurrency",
+    "log_sha256": "ed3525da2d92cb5b5e4e4c2f442634e2096381188c3d9dfc806c7d18ec1add83",
+    "argv_environment_basis": "Command getters capture actual outer constructed args and explicit environment entry count; env_clear and legacy exec env-i reset enforced by source, not kernel environment attestation",
+    "credential_scope": "same-UID directly-owned temporary leader/member fixtures; cross-credential proof not performed",
+    "historic_observation": "issue-46-observation.json retained historical recon, null exit/stderr fields remain honest",
+    "signal_authority": "owned unreaped Child handles, never global diagnostic rows"
+  }
+}
