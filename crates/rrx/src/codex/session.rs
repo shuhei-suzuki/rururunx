@@ -1,4 +1,6 @@
 //! Scoped native session supervision. Workflow verdicts remain caller-owned.
+#[cfg(test)]
+use super::attempt::{TestGates, TestPoint};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -124,6 +126,8 @@ pub struct CodexAdapter {
     store: SharedStore,
     sessions: Arc<Mutex<HashMap<SessionId, Entry>>>,
     runtime_broker: bool,
+    #[cfg(test)]
+    gates: Arc<TestGates>,
 }
 struct Entry {
     status: watch::Receiver<SessionStatus>,
@@ -395,8 +399,23 @@ impl Reservation {
                 error: Cause::Failed(error.kind, error.message),
             },
         };
-        let secondary = self.attempt.preparation.later_failures();
-        let _=self.store.lock().map_err(|_|()).and_then(|mut store| store.audit(&self.session.scope,"codex.preparation.finished",json!({"session_id":self.session.id,"cause":match &cause { Cause::Cancelled=>"cancelled",Cause::Failed(_,_)=>"failed" },"failure_kind":match &cause {Cause::Failed(kind,_)=>Some(kind),_=>None},"later_failure_kinds":secondary,"input_consumed":self.inference_started,"snapshot_published":outcome.snapshot().is_some()})).map_err(|_|()));
+        let secondary: Vec<_> = self
+            .attempt
+            .preparation
+            .later_failures()
+            .iter()
+            .map(|kind| format!("{kind:?}"))
+            .collect();
+        let _ = self.store.lock().map_err(|_|()).and_then(|mut store| {
+            store.audit(&self.session.scope,"codex.preparation.finished", json!({
+                "session_id":self.session.id,
+                "cause":match &cause {Cause::Cancelled=>"cancelled",Cause::Failed(_,_)=>"failed"},
+                "failure_kind":match &cause {Cause::Failed(kind,_)=>Some(format!("{kind:?}")),_=>None},
+                "later_failure_kinds":secondary,
+                "input_consumed":self.inference_started,
+                "snapshot_published":outcome.snapshot().is_some(),
+            })).map_err(|_|())
+        });
         let returned = outcome.error().unwrap_or(selected);
         self.attempt.finished(outcome);
         returned
@@ -651,6 +670,8 @@ impl CodexAdapter {
             store,
             sessions: Arc::new(Mutex::new(HashMap::new())),
             runtime_broker: false,
+            #[cfg(test)]
+            gates: Arc::new(TestGates::default()),
         })
     }
     /// Opt-in integration for a trusted runtime Approval Broker. Native policy
@@ -672,6 +693,8 @@ impl CodexAdapter {
             store: self.store.clone(),
             sessions: self.sessions.clone(),
             runtime_broker: self.runtime_broker,
+            #[cfg(test)]
+            gates: self.gates.clone(),
         }
     }
     fn register_fresh(
@@ -973,6 +996,8 @@ impl CodexAdapter {
             scope: registered.request.scope.clone(),
         };
         let control = registered.transition.control.clone();
+        #[cfg(test)]
+        self.gates.wait(TestPoint::BeforeStarting).await;
         let mut request = registered.request.clone();
         let context = (|| -> AdapterResult<_> {
             control.preparation.check()?;
@@ -1088,6 +1113,8 @@ impl CodexAdapter {
                 .verify_git_preparing(&request, &mut reservation.ownership, &control.preparation)
                 .await?;
             snapshot.recheck(&self.store, &request, &self.agent)?;
+            #[cfg(test)]
+            self.gates.wait(TestPoint::BeforeCheckpointCommit).await;
             // Registry -> admission -> Store, atomic request replacement and
             // exact restore. No current()/reference() reentry and no await.
             let mut sessions = self.registry()?;
@@ -1130,10 +1157,14 @@ impl CodexAdapter {
         if let Err(error) = validated {
             return Err(reservation.finish_preparation_error(error));
         }
+        #[cfg(test)]
+        self.gates.wait(TestPoint::AfterCheckpointCommit).await;
         control.finished(Outcome::CheckpointCommitted {
             input_version: request.input.version,
             snapshot: previous,
         });
+        #[cfg(test)]
+        self.gates.wait(TestPoint::AfterCheckpointFinished).await;
         // Drop restores the prior terminal control only by exact Arc identity.
         Ok(())
     }
@@ -1169,6 +1200,8 @@ impl CodexAdapter {
             .as_ref()
             .map(|status| status.session.clone());
         let control = registered.transition.control.clone();
+        #[cfg(test)]
+        self.gates.wait(TestPoint::BeforeStarting).await;
         let context = (|| -> AdapterResult<_> {
             control.preparation.check()?;
             if request.mode == LaunchMode::Interactive {
@@ -1340,6 +1373,8 @@ impl CodexAdapter {
         )
         .await?;
         super::protocol::verify_native_version(&version)?;
+        #[cfg(test)]
+        self.gates.wait(TestPoint::BeforeBootstrap).await;
         let mut discovery = NativeServer::launch_preparing(
             &executable,
             &request.worktree,
@@ -1475,6 +1510,8 @@ impl CodexAdapter {
                 return Err(failure(ErrorKind::OwnershipMismatch,"native workspace replaced during session initialization"));
             }
             snapshot.recheck(&self.store, &request, &self.agent)?;
+            #[cfg(test)]
+            self.gates.wait(TestPoint::BeforeDispatch).await;
             let turn = reservation
                 .dispatch(
                     &mut native.rpc,
@@ -1652,6 +1689,8 @@ impl AgentAdapter for CodexAdapter {
                 // queued through native turn acknowledgement/supervision.
                 let _ = control.stop.try_send(());
             }
+            #[cfg(test)]
+            self.gates.wait(TestPoint::StopWaiting).await;
             let outcome = control.wait_finished().await?;
             let snapshot = outcome.snapshot().cloned().ok_or_else(|| {
                 outcome.error().unwrap_or_else(|| {
@@ -4364,5 +4403,340 @@ mod tests {
         assert_eq!(tracker.turn_counters().unwrap().input, None);
         tracker.update(&json!({"threadId":"own","turnId":"current","tokenUsage":{"total":{"inputTokens":35},"last":{"inputTokens":5}}})).unwrap();
         assert_eq!(tracker.turn_counters().unwrap().input, None);
+    }
+    async fn bounded<T>(future: impl std::future::Future<Output = T>) -> T {
+        tokio::time::timeout(std::time::Duration::from_secs(10), future)
+            .await
+            .expect("owned fixture must complete within its unchanged deadline")
+    }
+    fn preparing_control(adapter: &CodexAdapter, id: SessionId) -> Arc<Control> {
+        adapter
+            .registry()
+            .unwrap()
+            .get(&id)
+            .unwrap()
+            .control
+            .clone()
+    }
+    fn bootstrap_fixture(owned: &Fixture) -> (PathBuf, PathBuf) {
+        use std::os::unix::fs::PermissionsExt;
+        let parent = owned.request.project.root.parent().unwrap();
+        let executable = parent.join("synthetic-codex");
+        let marker = parent.join("native-bootstrap-ready");
+        let quoted = format!("'{}'", marker.to_str().unwrap().replace('\'', "'\\''"));
+        std::fs::write(&executable,format!("#!/bin/sh\nif [ \"$1\" = '--version' ]; then printf '%s\\n' 'codex 0.160.0'; exit 0; fi\nprintf '%s' \"$$\" > {quoted}\nexec /bin/sleep 30\n")).unwrap();
+        std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o700)).unwrap();
+        (executable, marker)
+    }
+    async fn ready(marker: &std::path::Path) {
+        bounded(async {
+            while !marker.exists() {
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            }
+        })
+        .await;
+    }
+    fn assert_leader_reaped(marker: &std::path::Path) {
+        let pid = std::fs::read_to_string(marker).unwrap();
+        let output = std::process::Command::new("/bin/ps")
+            .args(["-p", &pid, "-o", "pid="])
+            .output()
+            .unwrap();
+        assert!(
+            output.stdout.is_empty(),
+            "owned bootstrap leader must be reaped before Finished"
+        );
+    }
+
+    #[tokio::test]
+    async fn registered_start_caller_drop_before_starting_does_not_write_or_spawn() {
+        let owned = Fixture::new(true);
+        let (executable, marker) = bootstrap_fixture(&owned);
+        let adapter =
+            Arc::new(CodexAdapter::new("codex".into(), executable, owned.store.clone()).unwrap());
+        let gate = adapter.gates.install(TestPoint::BeforeStarting);
+        let request = owned.request.clone();
+        let actor = adapter.clone();
+        let caller = tokio::spawn(async move { actor.start(request).await });
+        bounded(gate.reached()).await;
+        let (id, control) = {
+            let registry = adapter.registry().unwrap();
+            let (id, entry) = registry.iter().next().unwrap();
+            (*id, entry.control.clone())
+        };
+        let before = owned.store.lock().unwrap().session(id).unwrap();
+        caller.abort();
+        let _ = caller.await;
+        assert!(matches!(
+            control.preparation.state().unwrap(),
+            Admission::CancelledBeforeAdmission
+        ));
+        gate.release();
+        let outcome = bounded(control.wait_finished()).await.unwrap();
+        assert!(before.is_none());
+        assert!(matches!(
+            outcome,
+            Outcome::FreshUnpublished {
+                cause: Cause::Cancelled,
+                ..
+            }
+        ));
+        assert!(owned.store.lock().unwrap().session(id).unwrap().is_none());
+        assert!(!adapter.registry().unwrap().contains_key(&id));
+        assert!(!marker.exists());
+    }
+
+    #[tokio::test]
+    async fn actual_registered_fresh_bootstrap_stop_or_caller_drop_verifies_cleanup_before_failed()
+    {
+        for drop_caller in [false, true] {
+            let owned = Fixture::new(true);
+            let (executable, marker) = bootstrap_fixture(&owned);
+            let adapter = Arc::new(
+                CodexAdapter::new("codex".into(), executable, owned.store.clone()).unwrap(),
+            );
+            let actor = adapter.clone();
+            let request = owned.request.clone();
+            let caller = tokio::spawn(async move { actor.start(request).await });
+            ready(&marker).await;
+            let (id, reference) = {
+                let registry = adapter.registry().unwrap();
+                let (id, entry) = registry.iter().next().unwrap();
+                (*id, SessionRef::from(&entry.status.borrow().session))
+            };
+            let control = preparing_control(&adapter, id);
+            let starting = adapter.current(&reference).unwrap();
+            assert_eq!(starting.session.state, SessionState::Starting);
+            if drop_caller {
+                caller.abort();
+                let _ = caller.await;
+                let outcome = bounded(control.wait_finished()).await.unwrap();
+                assert!(matches!(
+                    outcome,
+                    Outcome::FailedBeforeAdmission {
+                        cause: Cause::Cancelled,
+                        ..
+                    }
+                ));
+            } else {
+                let stopped = bounded(adapter.stop(reference.clone())).await.unwrap();
+                assert_eq!(stopped.session.state, SessionState::Failed);
+                assert_eq!(
+                    bounded(caller).await.unwrap().unwrap_err().kind,
+                    ErrorKind::StateConflict
+                );
+            }
+            let snapshot = adapter.current(&reference).unwrap();
+            assert_eq!(snapshot.session.state, SessionState::Failed);
+            assert_eq!(snapshot.session.pid, None);
+            assert!(snapshot.session.recovery.get("dispatch_intent").is_none());
+            assert!(
+                snapshot
+                    .failure
+                    .as_deref()
+                    .unwrap()
+                    .contains("cancelled before admission")
+            );
+            assert_eq!(snapshot.exit_code, None);
+            assert_leader_reaped(&marker);
+            assert_eq!(
+                bounded(adapter.stop(reference.clone()))
+                    .await
+                    .unwrap()
+                    .session
+                    .state,
+                SessionState::Failed
+            );
+            adapter.release(reference).unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn actual_registered_resume_cancel_before_starting_restores_exact_snapshot_and_idle_stop()
+    {
+        let mut fixture = ApprovalFixture::new(true).await;
+        let (adapter, reference) = fixture.terminal_adapter();
+        let original = adapter.current(&reference).unwrap();
+        let mut input = fixture.authority.request.input.clone();
+        input.version += 1;
+        adapter
+            .checkpoint(reference.clone(), input.clone())
+            .await
+            .unwrap();
+        let gate = adapter.gates.install(TestPoint::BeforeStarting);
+        let actor = adapter.clone();
+        let target = reference.clone();
+        let caller = tokio::spawn(async move { actor.resume(target).await });
+        bounded(gate.reached()).await;
+        let control = preparing_control(&adapter, reference.id);
+        let actor = adapter.clone();
+        let target = reference.clone();
+        let stopper = tokio::spawn(async move { actor.stop(target).await });
+        bounded(async {
+            while !matches!(
+                control.preparation.state().unwrap(),
+                Admission::CancelledBeforeAdmission
+            ) {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await;
+        gate.release();
+        let launch_error = bounded(caller).await.unwrap().unwrap_err();
+        let stop_error = bounded(stopper).await.unwrap().unwrap_err();
+        assert_eq!(launch_error.kind, ErrorKind::StateConflict);
+        assert!(stop_error.message.contains("exact prior Session restored"));
+        assert!(matches!(
+            bounded(control.wait_finished()).await.unwrap(),
+            Outcome::RestoredBeforeAdmission {
+                cause: Cause::Cancelled,
+                ..
+            }
+        ));
+        assert_eq!(
+            serde_json::to_value(adapter.current(&reference).unwrap().session).unwrap(),
+            serde_json::to_value(&original.session).unwrap()
+        );
+        assert_eq!(
+            bounded(adapter.stop(reference.clone()))
+                .await
+                .unwrap()
+                .session
+                .state,
+            SessionState::Exited
+        );
+        assert!(fixture.evidence.lock().unwrap().completed);
+        assert_eq!(
+            adapter
+                .registry()
+                .unwrap()
+                .get(&reference.id)
+                .unwrap()
+                .request
+                .input
+                .version,
+            input.version
+        );
+        adapter.release(reference).unwrap();
+    }
+
+    #[tokio::test]
+    async fn actual_checkpoint_stop_has_both_linear_orders_and_finished_window_is_idle() {
+        for commit_first in [false, true] {
+            let mut fixture = ApprovalFixture::new(true).await;
+            let (adapter, reference) = fixture.terminal_adapter();
+            let original = adapter.current(&reference).unwrap();
+            let original_version = fixture
+                .reservation
+                .store
+                .lock()
+                .unwrap()
+                .session(reference.id)
+                .unwrap()
+                .unwrap()
+                .1;
+            let mut input = fixture.authority.request.input.clone();
+            input.version += 1;
+            let point = if commit_first {
+                TestPoint::AfterCheckpointCommit
+            } else {
+                TestPoint::BeforeCheckpointCommit
+            };
+            let gate = adapter.gates.install(point);
+            let actor = adapter.clone();
+            let target = reference.clone();
+            let updated = input.clone();
+            let caller = tokio::spawn(async move { actor.checkpoint(target, updated).await });
+            bounded(gate.reached()).await;
+            let control = preparing_control(&adapter, reference.id);
+            let stop_gate = adapter.gates.install(TestPoint::StopWaiting);
+            let actor = adapter.clone();
+            let target = reference.clone();
+            let stopper = tokio::spawn(async move { actor.stop(target).await });
+            bounded(stop_gate.reached()).await;
+            let admission = control.preparation.state().unwrap();
+            gate.release();
+            stop_gate.release();
+            let checkpoint = bounded(caller).await.unwrap();
+            let stop = bounded(stopper).await.unwrap();
+            if commit_first {
+                assert!(
+                    matches!(admission,Admission::CheckpointCommitted(version) if version==input.version)
+                );
+                checkpoint.unwrap();
+                assert_eq!(stop.unwrap().session.state, SessionState::Exited);
+                assert_eq!(
+                    adapter
+                        .registry()
+                        .unwrap()
+                        .get(&reference.id)
+                        .unwrap()
+                        .request
+                        .input
+                        .version,
+                    input.version
+                );
+            } else {
+                assert!(matches!(admission, Admission::CancelledBeforeAdmission));
+                assert_eq!(checkpoint.unwrap_err().kind, ErrorKind::StateConflict);
+                assert!(
+                    stop.unwrap_err()
+                        .message
+                        .contains("exact prior Session restored")
+                );
+                assert_eq!(
+                    adapter
+                        .registry()
+                        .unwrap()
+                        .get(&reference.id)
+                        .unwrap()
+                        .request
+                        .input
+                        .version,
+                    fixture.authority.request.input.version
+                );
+            }
+            let current = adapter.current(&reference).unwrap();
+            assert_eq!(
+                serde_json::to_value(current.session).unwrap(),
+                serde_json::to_value(&original.session).unwrap()
+            );
+            assert!(
+                fixture
+                    .reservation
+                    .store
+                    .lock()
+                    .unwrap()
+                    .session(reference.id)
+                    .unwrap()
+                    .unwrap()
+                    .1
+                    > original_version
+            );
+            assert_eq!(
+                bounded(adapter.stop(reference.clone()))
+                    .await
+                    .unwrap()
+                    .session
+                    .state,
+                SessionState::Exited,
+                "Store version increments do not change exact snapshot equality"
+            );
+            adapter.release(reference).unwrap();
+        }
+        let mut fixture = ApprovalFixture::new(true).await;
+        let (adapter, reference) = fixture.terminal_adapter();
+        let mut input = fixture.authority.request.input.clone();
+        input.version += 1;
+        let gate = adapter.gates.install(TestPoint::AfterCheckpointFinished);
+        let actor = adapter.clone();
+        let target = reference.clone();
+        let caller = tokio::spawn(async move { actor.checkpoint(target, input).await });
+        bounded(gate.reached()).await;
+        let idle = bounded(adapter.stop(reference.clone())).await;
+        gate.release();
+        bounded(caller).await.unwrap().unwrap();
+        assert_eq!(idle.unwrap().session.state, SessionState::Exited);
+        adapter.release(reference).unwrap();
     }
 }

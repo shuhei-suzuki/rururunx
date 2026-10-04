@@ -235,6 +235,62 @@ impl Drop for TaskGuard {
 }
 
 #[cfg(test)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub(super) enum TestPoint {
+    BeforeStarting,
+    BeforeBootstrap,
+    BeforeDispatch,
+    BeforeCheckpointCommit,
+    AfterCheckpointCommit,
+    AfterCheckpointFinished,
+    StopWaiting,
+}
+#[cfg(test)]
+#[derive(Default)]
+pub(super) struct TestGates(Mutex<std::collections::HashMap<TestPoint, Arc<TestGate>>>);
+#[cfg(test)]
+pub(super) struct TestGate {
+    reached: watch::Sender<bool>,
+    released: watch::Sender<bool>,
+}
+#[cfg(test)]
+impl TestGates {
+    pub fn install(&self, point: TestPoint) -> Arc<TestGate> {
+        let gate = Arc::new(TestGate {
+            reached: watch::channel(false).0,
+            released: watch::channel(false).0,
+        });
+        assert!(self.0.lock().unwrap().insert(point, gate.clone()).is_none());
+        gate
+    }
+    pub async fn wait(&self, point: TestPoint) {
+        let gate = self.0.lock().unwrap().remove(&point);
+        if let Some(gate) = gate {
+            gate.reached.send_replace(true);
+            TestGate::level(&gate.released).await;
+        }
+    }
+}
+#[cfg(test)]
+impl TestGate {
+    async fn level(sender: &watch::Sender<bool>) {
+        let mut receiver = sender.subscribe();
+        loop {
+            if *receiver.borrow_and_update() {
+                return;
+            }
+            receiver.changed().await.unwrap();
+        }
+    }
+    pub async fn reached(&self) {
+        Self::level(&self.reached).await;
+    }
+    pub fn release(&self) {
+        self.released.send_replace(true);
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
