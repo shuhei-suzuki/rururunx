@@ -23,9 +23,10 @@ provenance and factual Review Bundle. Two reviewers are first-class. The
 Claude/Codex/Grok triple is a preset; counts are never hard-coded to three.
 
 Each slot freezes a unique ID, agent, requested model/effort and independent native
-Session. All slots in a round consume the same Task context/locked revision
-concurrently, without incrementing Task.context_version or owner currency per
-reviewer. A reviewed explicit ReviewSet delegation owns the entire roster;
+Session. All slots consume the identical frozen Task context and locked revision
+without incrementing Task.context_version or owner currency per reviewer. Temporal
+concurrency is best effort within permits; queued/serialized members retain the
+same input exclusions and residual native filesystem visibility caveat. A reviewed explicit ReviewSet delegation owns the entire roster;
 existing single-actor context ownership cannot be bypassed by role or JSON claims.
 Executor, Consultant and ApprovalReviewer cannot impersonate a formal slot.
 
@@ -123,8 +124,11 @@ outcomes and verification/evidence references. It is evidence, not merge authori
 
 Provider transport diagnostics are a distinct verified channel from structured
 verdict/findings. Ambiguous assistant output is potential result content, not
-classified as harmless progress. Numerical modes are equivalent at boundaries:
-any = quorum1, all = quorumM; they differ in required approval count.
+classified as harmless progress. Required opinion approvals are M for all, N for quorum and 1 for any. In
+addition, F eligible non-author Session approvals are required (F=1 for
+QUICK/STANDARD, F=2 for STRICT), with no unresolved potential/verified blocker.
+Thus any=quorum(1) and all=quorum(M); all tolerates no failed/non-approving slot,
+and STRICT any still requires two eligible approvals.
 Default completion waits for every slot to settle. An explicit early-stop policy
 may cancel remaining work only after settled exact-round approvals meet BOTH the
 mode count and independent floor, with no unresolved potential/verified blocker.
@@ -137,8 +141,18 @@ never permits discarding inconvenient findings. Within-round retry is disabled i
 round, includes prior failure/attempt history and consumes the round limit.
 Each new round reruns the full frozen roster; approvals never carry across rounds
 or changed targets. Same-target retry/dismissal rounds consume a typed identity
-delta (baseline == new) with prior-round provenance; changed-target rounds consume
-an actual revision delta. Certificates contain outcomes from that exact round.
+delta (baseline tree == new tree, with both exact HEADs retained) and prior-round
+provenance; changed-target rounds consume
+an actual revision delta. Rerun authorization compares repository tree content, not
+HEAD alone: tree-identical commits are same-target for retry authority even while
+their exact new HEAD is retained in provenance. Autonomous changed-target rerun
+requires a nonempty source/artifact delta linked to a retained finding or explicit
+nonapproval concern with actual inspected locations/check evidence. An empty
+commit, unrelated change or cosmetic token delta alone is no authorization; a
+whitespace fix qualifies only with checked evidence for a specific formatting
+finding/concern. No supervisor model invents material relevance. Otherwise Human
+adjudication is required under the same lineage limit. Certificates contain
+outcomes from that exact round.
 
 Lost/uncertain rounds surface a durable Human attention item with exact ownership
 and blocker evidence. Trusted native recovery #14 must produce authoritative
@@ -161,8 +175,14 @@ Malformed/partial output needs independent inspection or a fresh successful roun
 with explicit resolution; an unknown suffix cannot be dismissed as failure-only.
 Native-admission startup timeout is 1–3600 seconds, default 60, beginning at
 permit acquisition before spawn/handshake/auth/capability checks. The separate
-review timeout is 1–3600 seconds after native admission, default 600. Both are
-frozen in policy; startup expiry is a distinct failure only after authoritative
+review timeout is 1–3600 seconds after native admission, default 600. A separate
+settlement deadline of 1–3600 seconds (default 30) starts at any cancellation,
+startup/review expiry or terminal cleanup request. All three are frozen in policy;
+missing authoritative terminal/cleanup evidence at settlement expiry becomes a
+durable uncertain/Lost Human hold, retaining permits/locks/owned supervisor
+bookkeeping. The owned operation remains supervised; expiry never drops its
+process-group owner or invents death. Timely safe settlement remains a distinct
+failure/cancellation outcome; startup expiry is a distinct failure only after authoritative
 safe cleanup, otherwise an uncertain/Lost hold. It never counts as approval. Resource-queue wait is a separate visible state with 1–3600-second
 attention threshold, default 600; exceeding it holds for Human without pretending
 a model timed out. Existing Runtime,
@@ -272,7 +292,7 @@ being counted as a model APPROVE. Repeated ESCALATE remains visible and may term
 without certificate. Authorized Set termination on Lost produces no certificate and
 releases no native ownership/lock; the Task remains WAITING_HUMAN until trusted
 restart/native recovery #14 proves cleanup. GitHub irreversible external outcome
-reconciliation13 is distinct. These future ports are not fabricated by this engine.
+reconciliation (#13) is distinct. These future ports are not fabricated by this engine.
 
 APPROVE with only nonblocking Low findings may count even before verification;
 those findings remain recorded and can be raised to a blocker on actual evidence.
@@ -311,14 +331,14 @@ round/byte counters and original outcomes.
 
 ## Consolidated acceptance
 
-These are the closing criteria. Items1–8 map to the public Issue #9 checkboxes;
-items9–16 are explicit added integrity/availability requirements. Every criterion
+These are the closing criteria. Items 1–8 map to the public Issue #9 checkboxes;
+items 9–16 are explicit added integrity/availability requirements. Every criterion
 needs actual consumer evidence; proposed tests and independent development reviews
 are not runtime proof.
 
 1. First-class two-reviewer and one/four-plus rosters run through real Store/Workflow
-   delegation, concurrently using one fixed Task context, exact locked revision and
-   independent member ownership. Reject0/33 slots, invalid parallelism and duplicate
+   delegation, using one fixed Task context, exact locked revision and
+   independent member ownership. Reject 0/33 slots, invalid parallelism and duplicate
    Session ownership.
 2. Two-of-three quorum counts exact-round APPROVE only; rejectN=0/N>M and quorum
    parameters on all/any. All, quorumM and any/quorum1 have equivalent boundary
@@ -382,7 +402,7 @@ are not runtime proof.
     without certificate. Remaining permits still serve unrelated Projects/Tasks;
     exhausted capacity is explicitly reported. Reviewer-mutation, drift, NeedsContext
     and queue holds require their recorded authorized exits. No fictitious cleanup.
-16. Actual reviewed #19/43 shared typed-input/member delegation and native #5/#6/#7 caller
+16. Actual reviewed #19/#43 shared typed-input/member delegation and native #5/#6/#7 caller
     contracts compose with the real Workflow consumer. Incompatible old writers,
     generic history/JSON authority fabrication and stale concurrent updates reject
     without evidence loss. Meaningful boundary mutants, independent requirements/
@@ -446,7 +466,7 @@ output or runtime-private DB/artifact paths is an independence violation holding
 certification; record exact scoped trace evidence. Missing native read visibility
 is explicitly unverifiable, never a proof that no read occurred. Real isolation
 confirmation remains #16. Parallel remediation in another worktree is not run by
-this engine: external fixing follows product #24's separate-worktree rule and
+this engine: external fixing follows product-requirements §24's separate-worktree rule and
 requires safe round settlement plus a verified committed target before new review.
 
 Additional acceptance clarifications:
@@ -466,8 +486,36 @@ Additional acceptance clarifications:
   reject before any member input. Delivery and native activation measurements
   remain distinct. A policy adding Low treats an unverified Low as a potential
   blocker rather than using the table's nonblocking-Low exception.
-- Every member certificate lists prior structured claims seen, author/text hashes,
+- Every per-member entry within the certificate lists prior structured claims seen, author/text hashes,
   trace-observed independence violations or native visibility unavailable. Test
   expansion request/byte/aggregate and lineage-quota boundaries with unchanged
   core/ContextVersion and retained evidence. The process stand-in flag accompanies
   actual registered-adapter two/quorum/Triple consumer fixtures.
+
+
+Cumulative authorship conservatively includes Task document-drafting families as
+well as implementation/fix families, including paths outside a phase's narrowly
+reviewed slice. It does not silently narrow author exclusions by artifact. A
+Claude document drafter plus Codex implementation author therefore leaves only
+one eligible fixed Triple slot for STRICT; reject with named exclusions or use an
+explicit eligible custom roster. Human authorship remains separately attributed.
+
+Closing acceptance also covers these cases:
+
+- An empty commit with identical tree stays same-target for retry authority;
+  unrelated or unexplained whitespace deltas cannot trigger another autonomous
+  sample after dissent. A checked formatting repair linked to the retained
+  concern can authorize a changed-target round; prior opinions never carry over.
+- Freeze and test startup/review/settlement deadline minima/maxima. After a stalled
+  cancellation expires, status exposes exact uncertain member ownership and
+  durable Human attention while the owned operation is still supervised and all
+  permits/locks remain held. Later observed cleanup does not fabricate an approval.
+- Custom two-reviewer and four-plus-reviewer rosters deliver distinct explicit
+  model/effort per slot. Known effective mismatch fails only that slot without
+  counting approval; require-verified-effective rejects unavailable measurements
+  before inference (safe startup may occur to resolve them). Formal None rejects;
+  advisory None records native defaults/unavailable facts separately. Result and
+  certificate retain requested, reported and unavailable fields distinctly.
+- Parallelism below roster size queues slots while preserving identical core
+  hashes, Task context and runtime-input exclusions. Document-only plus code author
+  families yield the stated named STRICT Triple rejection or custom-roster result.
