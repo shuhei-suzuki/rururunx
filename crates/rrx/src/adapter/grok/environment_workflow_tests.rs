@@ -141,13 +141,11 @@ async fn forwarding_child() {
                 .unwrap()
                 .is_empty()
         );
-        assert!(
-            !store
-                .events(&task.scope(), 0, 1024)
-                .unwrap()
-                .iter()
-                .any(|e| e.kind == "grok.process_spawned")
-        );
+        let events = store.events(&task.scope(), 0, 1024).unwrap();
+        assert!(!events.iter().any(|e| e.kind == "grok.process_spawned"));
+        assert!(events.iter().any(
+            |e| e.kind == "workflow.saved" && e.data["evidence"]["attempt"]["detail"] == reason
+        ));
         let records = store.records(&task.scope(), RecordKind::Workflow).unwrap();
         assert_eq!(records[0].data["history"][1]["detail"], reason);
     }
