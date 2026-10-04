@@ -43,8 +43,9 @@ remain authoritative. Reviewer or external mutation invalidates publication;
 attribute it to a slot only when actual evidence establishes that attribution.
 Formal gate review requires a clean committed target and an executor write lock
 for the immutable target;
-optional unlocked/advisory review is non-gating. Safe settlement or verified
-cancellation releases the round lock; uncertainty retains it. Source integrity
+optional unlocked/advisory review is non-gating. Safe WHOLE-round closure (every
+admitted member fully settled or safely cancelled and delegated phase closure
+recorded) releases the round lock; uncertainty retains it. Source integrity
 checks supplement that lock throughout. Dirty/advisory review cannot issue a gate certificate.
 
 The common factual core has one exact digest across slots. Declared specialization
@@ -231,8 +232,9 @@ provenance; changed-target rounds consume
 an actual revision delta. Rerun authorization compares repository tree content, not
 HEAD alone: tree-identical commits are same-target for retry authority even while
 their exact new HEAD is retained in provenance. Autonomous changed-target rerun
-requires a nonempty source/artifact delta linked to a retained finding or explicit
-nonapproval concern with actual inspected locations/check evidence. An empty
+requires the actual concern-bound verification predicate in 18.a over a nonempty
+source/artifact delta, retained finding or explicit nonapproval concern, exact
+inspected locations and concern-specific check evidence. An empty
 commit, unrelated change or cosmetic token delta alone is no authorization; a
 whitespace fix qualifies only with checked evidence for a specific formatting
 finding/concern. No supervisor model invents material relevance. Otherwise Human
@@ -907,6 +909,26 @@ explicit eligible custom roster. Human authorship remains separately attributed.
   unrelated or unexplained whitespace deltas cannot trigger another autonomous
   sample after dissent. A checked formatting repair linked to the retained
   concern can authorize a changed-target round; prior opinions never carry over.
+  Authorization records an immutable retained concern-root ID from an actual prior
+  nonapproval slot/finding, exact before/after target and delta hunk hashes, inspected
+  concern locations (or actual trusted impact-closure dependency locations), and
+  concern-bound check identity/inputs/outcomes. Location intersection, rename-only
+  edits and an unrelated passing check are insufficient. The actual trusted checker
+  method must demonstrate the specific failing concern before versus repaired outcome
+  after, or equivalent reviewed deterministic predicate over those artifacts, with
+  method/source/completeness provenance. Unknown semantic relevance requires trusted
+  Human authorization; executor claims or a supervisor LLM cannot attest it.
+  Actual #12/#60 verification/effect producers own this evidence; Issue9 closes its
+  typed checker/refusal contract, not a missing semantic producer. No producer proof
+  means no autonomous changed-target admission. At most ONE autonomous changed-target
+  candidate round per retained concern-root and inherited budget lineage is allowed
+  before trusted Human authorization; supersession/tree/slot/new finding IDs cannot
+  reset a concern's recorded ancestry. This allowance is distinct from same-tree 17.c
+  and transient retries and still charges 64 rounds. Test location-touching cosmetic/
+  rename with unrelated check refusal, exact concern-bound formatting repair success,
+  unknown linkage refusal and second per-concern candidate requiring Human. A failing
+  check or incomplete method never certifies clearance; the full fresh roster still
+  verifies/fixes and every blocker disposition remains independent.
 - **18.b** Freeze and test startup/review/settlement deadline minima/maxima. After a stalled
   cancellation expires, status exposes exact uncertain member ownership and
   durable Human attention while the owned operation is still supervised and all
@@ -997,6 +1019,25 @@ excluded with a visible note, or hold before input if mandatory. A committed cop
 doc/verification does not become eligible merely because Git tracks it. Unknown content is not
 claimed to be exhaustively recognized; native/source visibility limits are reported. Test
 committed copies, explicit requests and symlink aliases.
+
+**7.a — In-round mutation authorship.** Any reviewer/external mutation invalidates
+that entire round and retains observed tree/source/trace evidence, attribution or
+unknown-origin taint and actual ownership holds. Mere temporal overlap does not
+identify a native author. If a genuine owned restoration producer proves exact
+locked HEAD/tree AND all relevant dirty/ignored/governing-source bytes restored, and
+mutated bytes never became accepted Task artifacts/contributions, those discarded
+transient bytes do not add a Task delta-author family. They still remain invalid
+review history; proven native read-only violation revokes that actual profile
+qualification until genuine corrected conformance, and unknown native/resource
+cleanup stays held regardless restoration. Restoration is no cleanup certificate.
+If mutated bytes are retained in the next accepted target, actual proven native
+origin joins cumulative authors; retained unattributable bytes follow 12.d refusal/
+conservative exclusion. Accepted historical contributions remain cumulative even
+if later reverted, so reversion cannot launder an already accepted author. Unknown
+restoration/applicability cannot claim the discarded-transient exemption. Tests cover
+exact verified restoration, retained native bytes, retained unattributable overlapping
+mutation, earlier accepted-then-reverted contribution and uncertain cleanup; criterion
+20.b/21/#16 separately measures resulting zero-eligible frequency/Task impact.
 
 **12.d — Forged attribution.** Criterion 12/20 tests forged Git author/trailers: runtime-owned Codex dispatch/delta attribution
 keeps Codex excluded despite a commit string naming Human/Grok. Uncovered delta bytes require
@@ -1261,7 +1302,11 @@ certificates consuming a Human event bind its actual principal, invocation origi
 event/reason/evidence and immutable digest, and require that origin in the activated
 accepted-ingress set. Bare library/test-fixture origins are nongating; handler existence
 alone does not authorize an event. Test unaccepted library-origin activation/adjudication/
-supersession rejection plus accepted actual product-ingress success when implemented;
+supersession rejection. Issue9 closing Human-boundary positives for 2.a/3/11/9.c/d/i
+use its ACTUAL library-composition port with explicitly nongating origin and negative
+relabel tests; they prove the component, never product certificate authority. Actual
+product-ingress positive belongs to public #15/#24 under 21.e/i and remains a mandatory
+MVP enablement gate, not a conditional Issue9 library-test waiver;
 never accept native/controller/API origin relabeling.
 
 **8.e — All-slot no-show window.** With an allow-self author slot or a queued/
@@ -1495,6 +1540,20 @@ composition;9 library tests/measurements alone cannot satisfy MVP fairness. Test
 root-scoped holds while allowing truly disjoint progress when limits permit. Status
 and 16 distinguish actionable Human attention from recovery-pending/nonactionable holds.
 
+**8.i — Observed executor-conversation injection.** Actual observed native injection
+of raw executor/author conversational claims, verdict/tally or unapproved instructions
+OUTSIDE the authorized frozen factual bundle invalidates/holds the whole round; it
+cannot earn a certificate by declaring residual exposure. Extend 8.a actual trace
+violations to these proven channels and retain exact source/provenance separately
+from claims of mere capability. Authored code/requirements or actual governing rules
+intentionally included as authorized factual review material are not this prohibited
+conversation channel. Unknown/unobserved prior memory exposure remains classified
+under 8.h, never fabricated as observed injection or OS secrecy. After actual full
+settlement, any new full-roster round needs actual qualified channel/profile remedy
+and current source/policy, not Human permission to count contaminated approval.
+Test actual trace-observed executor-chat injection→hold versus authorized authored
+source delivery and disclosed unobserved prior history; #16 measures frequency/impact.
+
 **8.h — Prior verdict input exclusion.** Runtime member input/expansion excludes
 separate prior-round verdict/approval-tally/non-finding peer-opinion fields, including
 a same-tree transient retry after other prior slots APPROVEd. Mandatory finding
@@ -1599,17 +1658,20 @@ The canonical public handoff table below summarizes criterion21 ownership; indiv
 stable subcriteria still retain their exact stated acceptance. Quoting a gate never
 claims it complete or waives actual 9 core support prerequisites. Closure checks
 table completeness against EVERY stable ID naming an external owner; missing public
-owner quotes refuse closure, including the repeated-family positive obligations.
+owner quotes refuse closure, including the repeated-family positive obligations. For20.c/18.f, absence of a named
+public #5/#6/#7 or reviewed follow-up producer commitment is an explicit closure-blocking
+status with owner/required proof, not an implicit wait or fallback waiver. No commitment
+is claimed merely because this table names an Issue; it must actually be quoted publicly.
 
 | Stable acceptance keys | Public owner / actual responsibility |
 | --- | --- |
 | 11.b, 11.e, 18.b, 21.a/c/d/g | #14 exact held native/lineage/resource recovery; #27 fair admission; #16 scoped hold/availability measurements |
-| 8.g, 10.d | #20 production typed bundle/delta/coverage; #9 consumer contract; #12 actual complete delta impact-closure producer; #18 captured inputs; #16 actual full-fallback/delta-efficiency |
+| 8.g, 10.d, 18.a | #20 production typed bundle/delta/coverage; #9 consumer contract; #12 actual complete delta impact-closure producer; #18 captured inputs; #16 actual full-fallback/delta-efficiency |
 | 11.c/d, 21.h | #12 trusted applicability producer, #18/#20 inputs, #9 consumer; #16 actual disjoint/unknown/resource impact and pre12 author-growth/zero-eligible availability |
 | 1, 4/4.a, 12.b, 17.a, 18.f, 20.a/c, 16.b/c/d, 18.g, 14.g, 8.a/c, 21.f | #5/#6/#7 actual supported native/config/permission/cleanup and actual bounded retained-overhead declarations or tracked reviewed follow-up; #16 real enforcement/trace/default evidence |
-| 2.b, 18.h, 8.d/h, 12.j, 14.f, 16.a, 14.c/d/e, 17.c, 20.a/b, 21.b, 9.c/f, 14.h | #16 actual exposure, efficiency, finite delivered versus retained bytes, quotas/retries/eligibility/Human impact; #21 nullable native telemetry |
+| 2.b, 7.a, 18.h, 8.d/h/i, 12.j, 14.f, 16.a, 14.c/d/e, 17.c, 20.a/b, 21.b, 9.c/f, 14.h | #16 actual exposure, efficiency, finite delivered versus retained bytes, quotas/retries/eligibility/Human impact; #21 nullable native telemetry |
 | 3.b/c, 9.d/i, 21.e/i/j | #9 typed phase-policy/ingress/readiness consumer; #23 shared principal derivation; #15/#24 actual scoped product policy/Human handlers; #14/#27 actual recovery/admission |
-| 12.k | #60 actual owned deterministic-effect attribution producer; #12 inspected effect/source evidence; #9 checker; LLM/unknown origin refuses/conservative exclusion |
+| 12.k, 18.a | #60 actual owned deterministic-effect attribution producer; #12 inspected effect/source evidence; #9 checker; LLM/unknown origin refuses/conservative exclusion |
 | 13.a | #13 actual post-certificate irreversible reconciliation; no fabricated rollback or later certificate washing |
 
 **12.k — Actual deterministic runtime authorship.** A scoped trusted runtime effect
