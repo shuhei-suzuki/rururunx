@@ -1,22 +1,28 @@
 //! Native Grok private ACP supervisor. Grok owns inference, authentication and hooks.
 mod cleanup;
+mod environment;
+#[cfg(test)]
+mod environment_tests;
+#[cfg(test)]
+mod environment_workflow_tests;
 mod files;
-#[cfg(all(test, target_os = "macos"))]
+#[cfg(test)]
 #[path = "../../../tests/support/grok_fixture.rs"]
 mod fixture_support;
 mod ownership;
 mod protocol;
-#[cfg(all(test, target_os = "macos"))]
+#[cfg(test)]
 #[path = "../../../tests/support/grok_receipt.rs"]
 mod receipt_support;
 #[cfg(all(test, target_os = "macos"))]
 mod receipt_tests;
-#[cfg(all(test, target_os = "macos"))]
+#[cfg(test)]
 use crate::{
+    config::WorkflowClass,
     domain::{CompletionCriterion, Goal, Task},
     git as fixture_git,
 };
-#[cfg(all(test, target_os = "macos"))]
+#[cfg(test)]
 use std::collections::BTreeMap;
 mod schema;
 
@@ -28,11 +34,11 @@ use protocol::{Rpc, TurnEvidence};
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use tokio::sync::Notify;
 
-#[cfg(all(test, target_os = "macos"))]
+#[cfg(test)]
 pub(super) fn child_completed(name: &str) {
     eprintln!("grok_cleanup_child_completed {name}");
 }
-#[cfg(all(test, target_os = "macos"))]
+#[cfg(test)]
 #[track_caller]
 pub(super) fn assert_child_completed(stdout: &str, stderr: &str, name: &str) {
     assert!(
@@ -67,7 +73,16 @@ pub(super) fn failure(kind: ErrorKind, message: impl Into<String>) -> AdapterErr
     error(kind, message)
 }
 
+#[cfg(test)]
+type EnvironmentHook = Arc<dyn Fn(Arc<OwnedEntry>) -> AdapterFuture<'static, ()> + Send + Sync>;
+
 struct OwnedEntry {
+    #[cfg(test)]
+    before_environment_admission: Option<EnvironmentHook>,
+    #[cfg(test)]
+    checkpoint_environment: Option<EnvironmentHook>,
+    #[cfg(test)]
+    after_environment_admission: Option<EnvironmentHook>,
     #[cfg(all(test, target_os = "macos"))]
     ownership_trace: Arc<ownership::OwnershipTrace>,
     #[cfg(all(test, target_os = "macos"))]
@@ -105,6 +120,12 @@ impl Drop for Busy {
 
 /// Provider selection is explicit; neither agent names nor arbitrary argv select Grok.
 pub struct GrokAdapter {
+    #[cfg(test)]
+    before_environment_admission: Option<EnvironmentHook>,
+    #[cfg(test)]
+    checkpoint_environment: Option<EnvironmentHook>,
+    #[cfg(test)]
+    after_environment_admission: Option<EnvironmentHook>,
     #[cfg(all(test, target_os = "macos"))]
     process_inspection: Option<ProcessInspectionPlan>,
     agent: String,
@@ -140,7 +161,14 @@ impl GrokAdapter {
                 baseline.insert(key.to_owned(), value);
             }
         }
+        environment::admission(&baseline, std::iter::empty())?;
         Ok(Self {
+            #[cfg(test)]
+            before_environment_admission: None,
+            #[cfg(test)]
+            checkpoint_environment: None,
+            #[cfg(test)]
+            after_environment_admission: None,
             #[cfg(all(test, target_os = "macos"))]
             process_inspection: None,
             agent,
@@ -188,28 +216,24 @@ impl GrokAdapter {
         drop(transition);
         Ok(entry)
     }
-    fn environment(&self, request: &LaunchRequest) -> AdapterResult<BTreeMap<String, String>> {
-        let mut environment = self.baseline.clone();
-        for (key, value) in &request.environment {
-            if key.starts_with("GIT_")
-                || key.is_empty()
-                || key.contains(['=', '\0'])
-                || value.contains('\0')
-            {
-                return Err(failure(
-                    ErrorKind::InvalidInput,
-                    "invalid/leaking Git environment",
-                ));
-            }
-            if !ordinary_key(key) && (!baseline_key(key) || self.baseline.get(key) != Some(value)) {
-                return Err(failure(
-                    ErrorKind::InvalidConfiguration,
-                    "native auth/config/safety environment cannot replace intentional runtime baseline",
-                ));
-            }
-            environment.insert(key.clone(), value.clone());
-        }
-        Ok(environment)
+    fn environment(
+        &self,
+        request: &LaunchRequest,
+    ) -> AdapterResult<(BTreeMap<String, String>, crate::state::EnvironmentAdmission)> {
+        environment::select(self, request)
+    }
+    /// Explicit own-Project operator inspection. Only candidate names, never values
+    /// or foreign inventory/activity. May inspect Registered, Blocked or Removed.
+    pub fn environment_candidates(
+        &self,
+        project: crate::domain::ProjectId,
+    ) -> AdapterResult<BTreeSet<String>> {
+        let admission = environment::admission(&self.baseline, std::iter::empty())?;
+        self.store
+            .lock()
+            .map_err(|_| failure(ErrorKind::StateFailure, "state store poisoned"))?
+            .environment_candidates(project, &admission)
+            .map_err(state_error)
     }
     async fn launch(
         &self,
@@ -229,7 +253,7 @@ impl GrokAdapter {
             ));
         }
         let snapshot = ScopeSnapshot::capture(&self.store, &request, &self.agent)?;
-        let environment = self.environment(&request)?;
+        let (environment, environment_admission) = self.environment(&request)?;
         let session = Session {
             id: SessionId::new(),
             scope: request.scope.clone(),
@@ -256,6 +280,12 @@ impl GrokAdapter {
         };
         let (events, status) = watch::channel(initial);
         let entry = Arc::new(OwnedEntry {
+            #[cfg(test)]
+            before_environment_admission: self.before_environment_admission.clone(),
+            #[cfg(test)]
+            checkpoint_environment: self.checkpoint_environment.clone(),
+            #[cfg(test)]
+            after_environment_admission: self.after_environment_admission.clone(),
             #[cfg(all(test, target_os = "macos"))]
             ownership_trace: Arc::new(ownership::OwnershipTrace::default()),
             #[cfg(all(test, target_os = "macos"))]
@@ -293,6 +323,7 @@ impl GrokAdapter {
                 executable: self.executable.clone(),
                 request,
                 environment,
+                environment_admission,
                 snapshot,
                 session: session.clone(),
                 version,
@@ -313,43 +344,43 @@ impl GrokAdapter {
         Ok(session)
     }
 }
+const BASELINE_PREFIXES: &[&str] = &["GROK_", "XAI_", "DYLD_", "LD_", "NODE_", "BUN_", "OPENSSL_"];
+const BASELINE_NAMES: &[&str] = &[
+    "SSLKEYLOGFILE",
+    "BASH_ENV",
+    "ENV",
+    "SHELL",
+    "ZDOTDIR",
+    "HOME",
+    "PATH",
+    "TMPDIR",
+    "XDG_CONFIG_HOME",
+    "XDG_DATA_HOME",
+    "XDG_STATE_HOME",
+    "XDG_CACHE_HOME",
+    "NODE_OPTIONS",
+    "SSL_CERT_FILE",
+    "SSL_CERT_DIR",
+    "REQUESTS_CA_BUNDLE",
+    "CURL_CA_BUNDLE",
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "ALL_PROXY",
+    "NO_PROXY",
+    "http_proxy",
+    "https_proxy",
+    "all_proxy",
+    "no_proxy",
+];
 fn baseline_key(key: &str) -> bool {
-    ["GROK_", "XAI_", "DYLD_", "LD_", "NODE_", "BUN_", "OPENSSL_"]
+    BASELINE_PREFIXES
         .iter()
         .any(|prefix| key.starts_with(prefix))
-        || [
-            "SSLKEYLOGFILE",
-            "BASH_ENV",
-            "ENV",
-            "SHELL",
-            "ZDOTDIR",
-            "HOME",
-            "PATH",
-            "TMPDIR",
-            "XDG_CONFIG_HOME",
-            "XDG_DATA_HOME",
-            "XDG_STATE_HOME",
-            "XDG_CACHE_HOME",
-            "NODE_OPTIONS",
-            "SSL_CERT_FILE",
-            "SSL_CERT_DIR",
-            "REQUESTS_CA_BUNDLE",
-            "CURL_CA_BUNDLE",
-            "HTTP_PROXY",
-            "HTTPS_PROXY",
-            "ALL_PROXY",
-            "NO_PROXY",
-            "http_proxy",
-            "https_proxy",
-            "all_proxy",
-            "no_proxy",
-        ]
-        .contains(&key)
+        || BASELINE_NAMES.contains(&key)
 }
 // Additional scoped values have no native loader/auth/permission selector meaning.
 fn ordinary_key(key: &str) -> bool {
-    key.starts_with("RRX_")
-        || ["LANG", "LC_ALL", "LC_CTYPE", "TERM", "COLORTERM", "TZ"].contains(&key)
+    ["LANG", "LC_ALL", "LC_CTYPE", "TERM", "COLORTERM", "TZ"].contains(&key)
 }
 fn assert_saved(store: &SharedStore, session: &Session) -> AdapterResult<u64> {
     let store = store
@@ -566,6 +597,10 @@ impl AgentAdapter for GrokAdapter {
             snapshot
                 .verify_git(&request, &mut ownership, OwnershipStage::Checkpoint)
                 .await?;
+            #[cfg(test)]
+            if let Some(hook) = entry.checkpoint_environment.clone() {
+                hook(entry.clone()).await?;
+            }
             snapshot.recheck(&self.store, &request, &self.agent)?;
             let version = assert_saved(&self.store, &current)?;
             let mut next = current;
@@ -624,7 +659,7 @@ impl AgentAdapter for GrokAdapter {
                 .clone()
                 .ok_or_else(|| failure(ErrorKind::SessionLost, "native UUID unavailable"))?;
             let snapshot = ScopeSnapshot::capture(&self.store, &request, &self.agent)?;
-            let environment = self.environment(&request)?;
+            let (environment, environment_admission) = self.environment(&request)?;
             let version = assert_saved(&self.store, &session)?;
             session.state = SessionState::Starting;
             let transition = entry
@@ -656,6 +691,7 @@ impl AgentAdapter for GrokAdapter {
                     executable: self.executable.clone(),
                     request,
                     environment,
+                    environment_admission,
                     snapshot,
                     session: session.clone(),
                     version,
@@ -724,6 +760,7 @@ struct Actor {
     executable: PathBuf,
     request: LaunchRequest,
     environment: BTreeMap<String, String>,
+    environment_admission: crate::state::EnvironmentAdmission,
     snapshot: ScopeSnapshot,
     session: Session,
     version: u64,
@@ -759,6 +796,46 @@ impl Actor {
             .lock()
             .map_err(|_| failure(ErrorKind::StateFailure, "transition poisoned"))?;
         self.version = save_current(&self.store, &self.session, self.version, &self.snapshot)?;
+        self.events
+            .send_modify(|status| status.session = self.session.clone());
+        Ok(())
+    }
+    fn admit_environment(&mut self) -> AdapterResult<()> {
+        let entry = self.entry.clone();
+        let _transition = entry
+            .transition
+            .lock()
+            .map_err(|_| failure(ErrorKind::StateFailure, "transition poisoned"))?;
+        if self.stopped() {
+            return Err(failure(
+                ErrorKind::ProcessFailure,
+                "native stop before admission",
+            ));
+        }
+        let candidate = self.session.clone();
+        let version = self
+            .store
+            .lock()
+            .map_err(|_| failure(ErrorKind::StateFailure, "state store poisoned"))?
+            .put_session_with_environment_if_current(
+                &candidate,
+                self.version,
+                [
+                    self.snapshot.project.version,
+                    self.snapshot.goal.as_ref().expect("Task Goal").version,
+                    self.snapshot.task.as_ref().expect("Task").version,
+                ],
+                &self
+                    .snapshot
+                    .locks
+                    .iter()
+                    .map(|lock| (lock.id, lock.version))
+                    .collect::<Vec<_>>(),
+                &self.environment_admission,
+            )
+            .map_err(state_error)?;
+        self.version = version;
+        self.session = candidate;
         self.events
             .send_modify(|status| status.session = self.session.clone());
         Ok(())
@@ -1068,7 +1145,12 @@ async fn supervise(mut actor: Actor, load: Option<String>) {
         let mut command=Command::new(&actor.executable);
         command.args(["--disable-web-search","--sandbox",if decision{"read-only"}else{"strict"},"agent","--no-leader","--agent-profile"]).arg(&owned.path).arg("stdio")
             .current_dir(&actor.request.worktree).env_clear().envs(&actor.environment).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true).process_group(0);
-        actor.owner()?;if actor.stopped(){return Err(failure(ErrorKind::ProcessFailure,"native stop before spawn"));}
+        #[cfg(test)]
+        if let Some(hook)=actor.entry.before_environment_admission.clone(){hook(actor.entry.clone()).await?;}
+        actor.owner()?;actor.admit_environment()?;
+        #[cfg(test)]
+        if let Some(hook)=actor.entry.after_environment_admission.clone(){hook(actor.entry.clone()).await?;}
+        if actor.stopped(){return Err(failure(ErrorKind::ProcessFailure,"native stop before spawn"));}
         let child=ProcessGroup::new(command.spawn().map_err(|e|failure(if e.kind()==std::io::ErrorKind::NotFound {ErrorKind::ExecutableMissing}else{ErrorKind::LaunchFailure},"native Grok could not spawn"))?,ownership.group(OwnershipStage::NativeChild))?;
         #[cfg(all(test,target_os="macos"))]
         let child = { let mut child = child; child.inspection_plan = actor.entry.process_inspection.clone(); child };
@@ -1600,6 +1682,12 @@ mod registry_tests {
             failure: None,
         });
         let entry = Arc::new(OwnedEntry {
+            #[cfg(test)]
+            before_environment_admission: None,
+            #[cfg(test)]
+            checkpoint_environment: None,
+            #[cfg(test)]
+            after_environment_admission: None,
             #[cfg(all(test, target_os = "macos"))]
             ownership_trace: Arc::new(ownership::OwnershipTrace::default()),
             #[cfg(all(test, target_os = "macos"))]
@@ -1634,6 +1722,7 @@ mod registry_tests {
             executable: PathBuf::from("/bin/cat"),
             request,
             environment: BTreeMap::new(),
+            environment_admission: crate::state::EnvironmentAdmission::new([], []).unwrap(),
             snapshot,
             session: session.clone(),
             version,
@@ -1726,6 +1815,12 @@ mod registry_tests {
             failure: None,
         });
         let entry = Arc::new(OwnedEntry {
+            #[cfg(test)]
+            before_environment_admission: None,
+            #[cfg(test)]
+            checkpoint_environment: None,
+            #[cfg(test)]
+            after_environment_admission: None,
             #[cfg(all(test, target_os = "macos"))]
             ownership_trace: Arc::new(ownership::OwnershipTrace::default()),
             #[cfg(all(test, target_os = "macos"))]
