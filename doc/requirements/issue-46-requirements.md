@@ -24,10 +24,15 @@ inspection failure. A flag substitution alone does not close this safety gap.
 
 1. macOS inspection queries one exact owned process group with the absolute
    trusted `/bin/ps`, explicit leading-minus UNIX options and cleared environment.
+   UNIX2003 (`u03`) selection mode is a required precondition, established by
+   installed compat(5) and pinned Apple Libc for absent COMMAND_MODE, with explicit
+   leading-minus argv preventing legacy-option rewriting. Exact installed
+   acceptance uses this same argv/env_clear invocation; a deliberate legacy-mode
+   negative fixture cannot become death evidence.
    No `-a`, additional PID/group selector, inherited compatibility mode or shell
    expansion may broaden/change the selection. Numeric query hints do not confer
    signal authority; only the existing owned unreaped ProcessGroup can signal.
-   Selection must include every visible member regardless of real/effective/saved
+   Selection must include every live/zombie record returned by the XNU PGRP path regardless of real/effective/saved
    UID or controlling TTY, without implicit owner filtering. Verify pinned Apple
    selector/default-owner and XNU PGRP callback logic. Same-UID unprivileged
    fixtures cannot prove cross-credential visibility; that evidence is source-
@@ -55,7 +60,7 @@ inspection failure. A flag substitution alone does not close this safety gap.
    Trusted `/bin/ps` direct-child cleanup remains separate from supervised-agent
    group cleanup and must not recursively invoke its own inspection.
 5. Successful KILL and ESRCH behavior remains unchanged. macOS EPERM may be
-   treated as cleanup success only after the owned-group death proof above.
+   treated as cleanup success only after the bounded owned-group observation above.
    Unknown inspection preserves permission refusal, uncertainty and Lost
    reservation; never reset the latch or imply native turn completion from death.
    Unknown returns its bounded inspection error category (for example TimedOut);
@@ -75,7 +80,7 @@ inspection failure. A flag substitution alone does not close this safety gap.
    still being forked, then releases the lock before reading records. Fork/exit
    races can omit a newly created member while a sampled parent becomes zombie.
    The result is observational evidence under the existing fallback contract,
-   not atomic group-death or complete descendant-containment proof.
+   not atomic group-death or complete descendant-containment evidence.
 8. Actual isolated fixtures cover two independently owned groups, exact selected
    membership against a global diagnostic baseline, live members, zombie leader
    with live children, all-zombie owned group and absence/malformed/truncated/error
@@ -96,7 +101,7 @@ Successful killpg can signal only some members when credentials differ. Its
 existing success path is unchanged and is not covered by the new EPERM observation.
 Non-signalable survivors, the non-atomic fork/exit sampling window and intentional
 group/session escapes remain explicit residual limitations; this follow-up cannot
-claim whole-native-descendant containment or permission-proof atomic death.
+claim whole-native-descendant containment or permission-independent atomic death.
 
 No persisted schema, agent permissions/auth/hooks, native protocol, dispatch/retry
 policy or process containment claim changes. Detached sessions/daemons and unknown

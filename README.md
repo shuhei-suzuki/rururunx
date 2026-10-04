@@ -362,5 +362,7 @@ Removal remains blocked until those reservations are reconciled.
 
 Shared macOS owned-process inspection is under STRICT follow-up
 [Issue 46](doc/requirements/issue-46-requirements.md). The proposed exact-group,
-bounded-diagnostic and unreaped-leader proof remains pending review and native
-verification; existing timeout/uncertainty guards are preserved.
+bounded-diagnostic and unreaped-leader observation remains pending review and native
+verification; existing timeout/uncertainty guards are preserved. Non-atomic
+sampling and partial-success KILL with non-signalable survivors remain explicit
+limitations.

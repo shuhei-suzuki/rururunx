@@ -33,7 +33,7 @@ Immutable public `f844d4c` Requirements1 native session
 `f5c3cbdd-df13-437f-a863-92ef89f38e2c` completed request_changes; owned cleanup was
 verified. R46-1 High is a verified requirement omission: exact-group completeness
 must include cross-UID/non-TTY members, which same-UID fixtures cannot establish.
-Pinned Apple ps selector increments nselectors/xkeep_implied before default-owner
+Pinned Apple ps selector under UNIX2003 u03 increments nselectors/xkeep_implied before default-owner
 insertion; one-group optimization occurs afterward, then keepit bypasses UID
 filtering. XNU PGRP callback has UID/TTY check flags zero. This source-scoped
 verification is distinct from installed binary identity or privileged acceptance.
@@ -45,3 +45,18 @@ non-claim and R46-4 Low observable error-category precision are also included;
 inspection Unknown retains its category and maps to Lost, valid live returns
 EPERM, no raw stderr or additional durable permission data. No code or runtime
 evidence changed. Requirements2 delta re-review and design gate remain required.
+
+## Requirements2 mode refinement
+
+Public `7c9be4c` Requirements2 completed request_changes with verified cleanup.
+R46-5 Medium identifies a missing explicit u03 precondition/source explanation.
+Installed compat(5) and verified Apple Libc get_compat.c/h blobs establish
+UNIX2003 true when COMMAND_MODE is absent; leading-minus -g does not clear u03.
+The earlier fixture script actually used subprocess env={} for both query forms;
+the review lacked that source/provenance, so an inherited mode is not attributed
+to that observation. Exact argv/environment are now in the public historical
+observation artifact, with a script digest. No new privileged or production-helper
+acceptance is claimed. Legacy-mode negative acceptance remains required before
+implementation acceptance. R46-6 Low removes undefined visible-member wording;
+R46-7 Low aligns master/README observational and residual-limit language.
+Requirements3 delta re-review precedes design gate/code.

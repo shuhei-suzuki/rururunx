@@ -12,17 +12,20 @@ prevents PID/PGID reuse. The macOS EPERM resolver passes that owned leader to a
 private observer, which invokes `/bin/ps -g <decimal leader> -o pid=,pgid=,stat=`
 with env_clear, null stdin and piped stdout/stderr. No global `-a` flag or second
 selector remains. Cross-UID and non-TTY completeness is required: in the pinned
-ps source, `-g` increments nselectors and xkeep_implied; the owner-default list is
+ps source with UNIX2003 u03 true, `-g` increments nselectors and xkeep_implied; the owner-default list is
 inserted only when no selector was specified, before the single-group kernel
 optimization resets nselectors. Subsequent keepit bypasses UID filtering and
 xkeep avoids the TTY filter. The XNU PGRP path leaves uidcheck/ruidcheck/ttycheck
 zero and matches only p_pgrpid. This is published-source scoped evidence, not an
 actual privileged cross-UID fixture or installed binary/source identity proof. `-g` is process-group selection; `-G` is unrelated real-group
-selection. Leading-minus options avoid legacy mode and cleared environment avoids
-inherited CMD_ENV/COMPAT_MODE. The inspector is a trusted direct child, not an
+selection. UNIX2003 u03 is an explicit selection precondition. Installed compat(5) says
+absent COMMAND_MODE defaults unix2003, supported by pinned Apple Libc
+get_compat.c default true/check_env_var and get_compat.h macro. env_clear removes
+COMMAND_MODE, and leading-minus `-g` retains that mode through legacy-option
+rewriting. No additional configuration override is supplied. The inspector is a trusted direct child, not an
 agent and not a recursively supervised process group.
 
-Only this known unreaped ownership contract permits the expected leader proof.
+Only this known unreaped ownership contract permits the expected leader observation.
 Recovery APIs may not call it on persisted PID/PGID hints and convert absence into
 verified death. Missing leader is Unknown even after exit0. Successful kill/ESRCH
 paths need no added inspection, so Linux behavior and normal successful signals
@@ -54,7 +57,7 @@ then return false if any primary state is non-Z, otherwise true. An early live
 row must not mask malformed trailing data. State suffix compatibility is verified
 against installed man/source and actual installed fixtures before code.
 
-Any stderr byte rejects proof; no locale-specific parsing or raw diagnostic audit.
+Any stderr byte rejects observational success; no locale-specific parsing or raw diagnostic audit.
 Errors identify timeout/size/exit/diagnostic/missing-leader/framing categories.
 Primary installed macOS state characters are I/R/S/T/U/Z; documented suffixes
 are +, <, >, A, E, L, N, S, s, V, W and X. Source/installed compatibility must
@@ -81,6 +84,13 @@ byte-matched to the installed binary. Cached immutable blob provenance:
 - Apple [kern_proc.c](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_proc.c),
   blob `a08362b2e777ee607e226d869131efd5e164e526`: proc_iterate still allocates
   against global nprocs+1 and traverses global lists before adding filtered PIDs.
+- Apple [get_compat.c](https://github.com/apple-oss-distributions/Libc/blob/main/gen/get_compat.c),
+  blob `4a1f140f640ffff4817b15bd5a228768fa4de1cd`, and
+  [get_compat.h](https://github.com/apple-oss-distributions/Libc/blob/main/gen/get_compat.h),
+  blob `b26ae60c8b3ca9d44043a94e8f821c17d95060d2`: UNIX2003 defaults true;
+  only explicit COMMAND_MODE legacy disables it. Published
+  [compat.5](https://github.com/apple-oss-distributions/Libc/blob/main/gen/compat.5),
+  blob `1366bf160ac76501481195075d2989b49d1070cf`, agrees with installed manual.
 - Linux [procps ps manual source](https://gitlab.com/procps-ng/procps/-/blob/master/man/ps.1)
   has personality-sensitive selection. This change deliberately keeps existing
   Linux rustix cleanup; no BSD selector is introduced there.
@@ -108,7 +118,10 @@ is silently modified.
 Real owned-group acceptance compares selected membership with a global table only
 as diagnostic fixture evidence. It checks a second owned group is excluded,
 leader+live children refuse death, zombie leader+live children refuse death and
-owned zombie members accept proof while the leader remains unreaped. Failure
+owned zombie members satisfy observational acceptance while the leader remains unreaped.
+Record exact env_clear argv; a deliberate COMMAND_MODE=legacy diagnostic fixture
+must be rejected by missing leader/foreign frame or exit/diagnostic failure. It is
+not the production environment and must never signal its returned numeric hints. Failure
 fixtures exercise empty/exit0 stderr, timeout, both output overflows, incomplete
 and malformed rows, foreign groups, duplicate PIDs, absent leader, reader failure
 and fallible reader spawn. Direct-child cleanup is checked using its actual owned
