@@ -1,8 +1,8 @@
 # Issue 23: Goal authority, DAG and completion
 
-Status: Design4 f4b4926 approved with no Critical/High/Medium; source gates pending. Requirements3 `1fc82b1` independently approved; design
-review, source integration and acceptance remain pending. No implementation fact
-is claimed. Current main4851fcd has schema3 and generic Goal snapshots; the native
+Status: Design4 f4b4926 approved with no Critical/High/Medium; source gates pending. Requirements3 `1fc82b1` independently approved.
+Source integration/security review and implementation acceptance remain pending. No implementation fact
+is claimed. Baseline main4851fcd and integrated main80452f4 have schema3 and generic Goal snapshots; the native
 branches and proposed #19 schema6/private input projection must be composed before
 source acceptance. Allocate the final migration number in that combined revision.
 
@@ -162,8 +162,10 @@ generic path/branch reassignment. Workflow-owned atomic transitions retain their
 existing own-field authority and cannot weaken accepted policy. Inventory those
 pre-Workflow generic Task writers and migrate real Git and Issue binding consumers
 where necessary. Node creation and Task insertion share
-one transaction; existing unlisted same-scope legacy Tasks are explicitly reported
-and may be reconciled by controller adding that exact identity, after checks.
+one transaction. Existing unlisted legacy Tasks remain unverified under their
+unratified legacy Goal; authorized Fail/Cancel is their MVP reconciliation path.
+An unlisted row in a managed Goal is corruption/unsupported history: it blocks
+managed admission/completion, never automatic adoption or omission.
 Reject missing/foreign/duplicate nodes, self edges and duplicate ordered
 (prerequisite,dependent) pairs, regardless of hard/soft flag. No node removal,
 edge removal or hard-to-soft weakening. Edge additions or soft-to-hard changes
@@ -344,9 +346,8 @@ attestation DAG-drift mutant. Add a compiled pre-Workflow policy-downgrade mutan
 that reaches a reduced-gate prerequisite/Goal success consumer and fails an
 assertion, with real accepted policy and positive controls. Also refuse generic
 policy-origin/digest/minimum-gate rewrites; a compiled weaker-policy substitution
-mutant must reach the reduced-gate success consumer. Mutants must reach the intended consumer, compile
-and fail an assertion; setup
-refusal, timeout or unrelated safety guards provide no causal credit. Restore
+mutant must reach the reduced-gate success consumer. Mutants must compile and
+reach the intended assertion; setup refusal, timeout or unrelated safety guards provide no causal credit. Restore
 source and passing controls after each isolated mutation.
 
 No managed Goal dispatch is exposed before actual private settlement producers
