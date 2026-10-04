@@ -50,6 +50,8 @@ pub(super) struct Preparation {
     admission: Mutex<Admission>,
     cancelled: watch::Sender<bool>,
     later_failures: Mutex<Vec<ErrorKind>>,
+    // Private bounded cleanup detail; durable audit receives only kinds/reason.
+    cleanup_failure: Mutex<Option<String>>,
 }
 impl Preparation {
     pub fn new() -> Self {
@@ -58,6 +60,7 @@ impl Preparation {
             admission: Mutex::new(Admission::Preparing),
             cancelled,
             later_failures: Mutex::new(Vec::new()),
+            cleanup_failure: Mutex::new(None),
         }
     }
     pub fn cancel(&self) -> bool {
@@ -88,6 +91,13 @@ impl Preparation {
         }
     }
     pub fn failed(&self, error: AdapterError) -> AdapterError {
+        if error.kind == ErrorKind::SessionLost
+            && error.message.starts_with("owned cleanup unverified:")
+            && let Ok(mut detail) = self.cleanup_failure.lock()
+            && detail.is_none()
+        {
+            *detail = Some(error.message.chars().take(1024).collect());
+        }
         match self.admission.lock() {
             Ok(mut admission) => match &*admission {
                 Admission::Preparing => {
@@ -104,7 +114,15 @@ impl Preparation {
                     }
                     Cause::Cancelled.error()
                 }
-                Admission::Failing(cause) => cause.error(),
+                Admission::Failing(cause) => {
+                    if let Ok(mut later) = self.later_failures.lock()
+                        && later.len() < 8
+                        && error.kind != ErrorKind::StateConflict
+                    {
+                        later.push(error.kind);
+                    }
+                    cause.error()
+                }
                 Admission::Consumed | Admission::CheckpointCommitted(_) => error,
             },
             Err(_) => failure(ErrorKind::StateFailure, "native preparation cause poisoned"),
@@ -194,6 +212,12 @@ impl Preparation {
                 Err(error)
             }
         }
+    }
+    pub(super) fn cleanup_failure(&self) -> Option<String> {
+        self.cleanup_failure
+            .lock()
+            .ok()
+            .and_then(|detail| detail.clone())
     }
     pub(super) fn later_failures(&self) -> Vec<ErrorKind> {
         self.later_failures

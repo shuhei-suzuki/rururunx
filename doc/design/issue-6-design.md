@@ -606,3 +606,14 @@ it must not make every rejected grant fatal. Retain all new group flags in the
 Session owner throughout cancellation. A new unverified Git cleanup still ends
 the attempt as Lost; a scoped path/version rejection with confirmed cleanup keeps
 the native request pending and deniable without an accept intent or wire reply.
+
+The predecessor control must already be Finished before a terminal shared watch can
+admit a new checkpoint/resume. The sole final successful Store/watch publication
+has no later duplicate shared send. Starting publication is tracked per attempt,
+separately from the historical record version: a cancelled invocation that has
+not written Starting restores its exact previous private outcome without any
+Session CAS or audit write. Once supervision installs its new evidence journal,
+abnormal Reservation drop clears that same journal. First-cause classification
+remains independent from cleanup uncertainty; Lost preparation returns SessionLost
+and retains a bounded private cleanup diagnostic, while durable audit records
+only canonical uncertainty reasons, failure kinds and a detail-retained flag.

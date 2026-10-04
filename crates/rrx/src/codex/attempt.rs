@@ -174,6 +174,19 @@ impl Control {
         }
         Ok(())
     }
+    #[cfg(test)]
+    pub fn abort_owned_task(&self) {
+        let handle = {
+            let task = self.task.lock().unwrap();
+            match &*task {
+                TaskOwner::Running(task) => Some(task.abort_handle()),
+                _ => None,
+            }
+        };
+        if let Some(handle) = handle {
+            handle.abort();
+        }
+    }
     pub fn release_task(&self) {
         // Releasing one's own JoinHandle never aborts it or touches a replacement.
         let previous = {
@@ -264,6 +277,7 @@ impl Drop for TaskGuard {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub(super) enum TestPoint {
     BeforeStarting,
+    BeforeInitialPersist,
     BeforeBootstrap,
     BeforeDispatch,
     BeforeNativeCleanup,
@@ -271,6 +285,7 @@ pub(super) enum TestPoint {
     AfterCheckpointCommit,
     AfterCheckpointFinished,
     StopWaiting,
+    AfterTerminalPublication,
 }
 #[cfg(test)]
 #[derive(Default)]

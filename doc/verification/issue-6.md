@@ -511,3 +511,20 @@ Evidence: `/private/tmp/rururunx-issue6-f4-runtime-control.log`,
 `/private/tmp/rururunx-issue6-f4-mutation-results5.json`,
 `/private/tmp/rururunx-issue6-f4-M649-round5.log`,
 `/private/tmp/rururunx-issue6-f4-final-gates-result.json` (earlier `069fa88`).
+
+At clean `a7a219b9e5d274102154ecf1df436ff3f50d5a77`, full default-concurrency
+debug and release tests each pass **261 Rust tests plus two doctests**. Formatting,
+all-target Clippy with denied warnings and both builds pass. Exact Linux/macOS
+CI [37187319029](https://github.com/shuhei-suzuki/rururunx/actions/runs/37187319029)
+passes. Two peer-free native source reviews of its public-byte-verified complete
+production authorities both return request_changes, not approval. They identify
+the final-publication/next-attempt window, unnecessary pre-first-write restoration,
+lost cleanup diagnostics and the installed approval-journal pointer on abnormal
+drop. The following source stage addresses these defects with actual invocation
+fixtures; its compilation, controls, mutations and re-review are pending. Earlier
+checks apply only to their exact committed heads.
+
+Review evidence: `/private/tmp/rururunx-issue6-f4-review-A-result.json`,
+`/private/tmp/rururunx-issue6-f4-review-B-result.json`,
+`/private/tmp/rururunx-issue6-f4-public-manifest.json`,
+`/private/tmp/rururunx-issue6-f4-a7a219b-gates-result.json`.

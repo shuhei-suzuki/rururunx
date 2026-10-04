@@ -281,11 +281,14 @@ struct Reservation {
     store: SharedStore,
     session: Session,
     version: u64,
+    published_attempt: bool,
     ownership: ProcessOwnership,
     armed: bool,
     resume_publication: Option<ResumePublication>,
     inference_started: bool,
     attempt: Arc<Control>,
+    #[cfg(test)]
+    gates: Arc<TestGates>,
 }
 impl Reservation {
     fn finish_preparation_error(
@@ -293,14 +296,27 @@ impl Reservation {
         error: crate::adapter::AdapterError,
     ) -> crate::adapter::AdapterError {
         let selected = self.attempt.preparation.failed(error);
+        let cleanup_failure = self.attempt.preparation.cleanup_failure();
         let cause = self.attempt.preparation.cause(&selected);
         let previous = self
             .resume_publication
             .as_ref()
             .filter(|publication| publication.previous.terminal())
             .map(|publication| publication.previous.clone());
-        let unstarted = self.version == 0;
+        let unstarted = !self.published_attempt;
         let uncertain = self.ownership.uncertain() || self.inference_started;
+        let uncertainty_reason = match (self.ownership.uncertain(), self.inference_started) {
+            (true, true) => Some(
+                "owned process cleanup is unverified; consumed native input outcome is unobserved",
+            ),
+            (true, false) => Some("owned process cleanup is unverified"),
+            (false, true) => Some("consumed native input outcome is unobserved"),
+            (false, false) => None,
+        };
+        let uncertainty_detail = uncertainty_reason.map(|reason| match &cleanup_failure {
+            Some(detail) => format!("{reason}; cleanup: {detail}"),
+            None => reason.to_owned(),
+        });
         let mut status = if !uncertain {
             previous.clone().unwrap_or_else(|| {
                 let mut status = empty_status(self.session.clone());
@@ -322,7 +338,10 @@ impl Reservation {
             if self.inference_started {
                 status.session.recovery["native_dispatch_unobserved"] = json!(true);
             }
-            status.failure = Some(selected.to_string());
+            status.failure = Some(format!(
+                "{}; first cause: {selected}",
+                uncertainty_detail.as_deref().unwrap()
+            ));
             if let Some(publication) = &self.resume_publication
                 && let Ok(mut evidence) = publication.evidence.lock()
             {
@@ -331,7 +350,11 @@ impl Reservation {
             status
         };
         self.session = status.session.clone();
-        let publication = if unstarted {
+        let publication = if unstarted && previous.is_some() && !uncertain {
+            // No Starting was committed by this attempt. Its exact historical
+            // watch/Session needs no rollback write or additional CAS failure.
+            Ok(())
+        } else if unstarted {
             Err(failure(
                 selected.kind,
                 "initial native preparation was not published",
@@ -381,17 +404,35 @@ impl Reservation {
             .iter()
             .map(|kind| format!("{kind:?}"))
             .collect();
-        let _ = self.store.lock().map_err(|_|()).and_then(|mut store| {
+        if self.published_attempt || uncertain {
+            let _ = self.store.lock().map_err(|_|()).and_then(|mut store| {
             store.audit(&self.session.scope,"codex.preparation.finished", json!({
                 "session_id":self.session.id,
                 "cause":match &cause {Cause::Cancelled=>"cancelled",Cause::Failed(_,_)=>"failed"},
                 "failure_kind":match &cause {Cause::Failed(kind,_)=>Some(format!("{kind:?}")),_=>None},
                 "later_failure_kinds":secondary,
+                "uncertainty_reason":uncertainty_reason,
+                "cleanup_detail_retained":cleanup_failure.is_some(),
                 "input_consumed":self.inference_started,
                 "snapshot_published":outcome.snapshot().is_some(),
             })).map_err(|_|())
         });
-        let returned = outcome.error().unwrap_or(selected);
+        }
+        let returned = if uncertain {
+            let publication = outcome
+                .error()
+                .map(|error| format!("; publication: {error}"))
+                .unwrap_or_default();
+            failure(
+                ErrorKind::SessionLost,
+                format!(
+                    "{}; first cause: {selected}{publication}",
+                    uncertainty_detail.as_deref().unwrap()
+                ),
+            )
+        } else {
+            outcome.error().unwrap_or(selected)
+        };
         self.attempt.finished(outcome);
         returned
     }
@@ -475,6 +516,7 @@ impl Reservation {
         self.version = store
             .put_session(&self.session, self.version)
             .map_err(super::ownership::state_error)?;
+        self.published_attempt = true;
         // Preparation carries no new turn output. Its exact prior snapshot is
         // kept privately for rollback, rather than relabelled as current output.
         let status = empty_status(self.session.clone());
@@ -731,6 +773,12 @@ impl CodexAdapter {
             return Err(failure(
                 ErrorKind::StateConflict,
                 "native preparation requires a confirmed terminal Session",
+            ));
+        }
+        if !matches!(*entry.control.subscribe().borrow(), Phase::Finished(_)) {
+            return Err(failure(
+                ErrorKind::StateConflict,
+                "native predecessor has not finished its final publication",
             ));
         }
         // Registry -> Store, without current/reference reentry. No write or await.
@@ -1054,11 +1102,14 @@ impl CodexAdapter {
                 store: self.store.clone(),
                 session: status.session.clone(),
                 version,
+                published_attempt: false,
                 ownership: ProcessOwnership::default(),
                 armed: false,
                 resume_publication: Some(publication),
                 inference_started: false,
                 attempt: control.clone(),
+                #[cfg(test)]
+                gates: self.gates.clone(),
             };
             pin_starting_input(&mut reservation.session, &request, Some(&status.session))?;
             Ok((status, snapshot, reservation))
@@ -1080,6 +1131,8 @@ impl CodexAdapter {
             }
         };
         let validated = async {
+            #[cfg(test)]
+            self.gates.wait(TestPoint::BeforeInitialPersist).await;
             reservation.persist()?;
             reservation.armed = true;
             snapshot
@@ -1278,11 +1331,14 @@ impl CodexAdapter {
                 store: self.store.clone(),
                 session,
                 version: expected_version,
+                published_attempt: false,
                 ownership: ProcessOwnership::default(),
                 armed: false,
                 resume_publication,
                 inference_started: false,
                 attempt: control.clone(),
+                #[cfg(test)]
+                gates: self.gates.clone(),
             };
             Ok((snapshot, previous_cumulative, reservation))
         })();
@@ -1304,6 +1360,8 @@ impl CodexAdapter {
         };
         let prepared=async {
             control.preparation.check()?;
+        #[cfg(test)]
+        self.gates.wait(TestPoint::BeforeInitialPersist).await;
         reservation.persist()?;
         reservation.armed = true;
         let binding = snapshot
@@ -1551,6 +1609,9 @@ impl CodexAdapter {
                 ));
             }
             entry.evidence = evidence.clone();
+            if let Some(publication) = &mut reservation.resume_publication {
+                publication.evidence = evidence.clone();
+            }
             entry.reply = reply;
             entry.request = request.clone();
             entry.schema = schema;
@@ -2292,6 +2353,11 @@ async fn supervise(
     let publication_error = match reservation.publish(&sender, &mut status) {
         Ok(()) => {
             reservation.armed = false;
+            #[cfg(test)]
+            reservation
+                .gates
+                .wait(TestPoint::AfterTerminalPublication)
+                .await;
             None
         }
         Err(error) => {
@@ -2300,10 +2366,10 @@ async fn supervise(
             }
             status.session.state = SessionState::Lost;
             status.failure = Some(format!("native terminal persistence failed: {error}"));
+            sender.send_replace(status.clone());
             Some(Cause::Failed(error.kind, error.message))
         }
     };
-    sender.send_replace(status);
     // Drop's conservative publication, if required, is part of this attempt's
     // last act and precedes its own level-triggered Finished signal.
     drop(reservation);
@@ -2718,11 +2784,13 @@ mod tests {
                 store: owned.store.clone(),
                 session: status.session.clone(),
                 version: 0,
+                published_attempt: false,
                 ownership: ProcessOwnership::default(),
                 armed: false,
                 resume_publication: None,
                 inference_started: false,
                 attempt: Control::new(None).0,
+                gates: Arc::new(TestGates::default()),
             };
             reservation.persist().unwrap();
             reservation.session.state = if runtime_broker {
@@ -3294,6 +3362,7 @@ mod tests {
                 store: fixture.reservation.store.clone(),
                 session: previous.session.clone(),
                 version,
+                published_attempt: false,
                 ownership: ProcessOwnership::default(),
                 armed: false,
                 resume_publication: Some(ResumePublication {
@@ -3303,6 +3372,7 @@ mod tests {
                 }),
                 inference_started: !uncertain,
                 attempt: Control::new(None).0,
+                gates: Arc::new(TestGates::default()),
             };
             reservation.session.state = SessionState::Starting;
             reservation.session.pid = Some(42);
@@ -3560,11 +3630,13 @@ mod tests {
                     store: owned.store.clone(),
                     session,
                     version: 0,
+                    published_attempt: false,
                     ownership: ProcessOwnership::default(),
                     armed: false,
                     resume_publication: None,
                     inference_started: false,
                     attempt: Control::new(None).0,
+                    gates: Arc::new(TestGates::default()),
                 };
                 reservation.persist().unwrap();
                 let (mut rpc, mut wire, peer) = rpc_peer().await;
@@ -5073,12 +5145,344 @@ mod tests {
             loop {
                 let snapshot = status.borrow_and_update().clone();
                 if snapshot.terminal() {
+                    let control = adapter
+                        .registry()
+                        .unwrap()
+                        .get(&reference.id)
+                        .unwrap()
+                        .control
+                        .clone();
+                    control.wait_finished().await.unwrap();
                     return snapshot;
                 }
                 status.changed().await.unwrap();
             }
         })
         .await
+    }
+
+    #[tokio::test]
+    async fn terminal_publication_must_finish_before_next_attempt_and_has_no_late_watch_write() {
+        let owned = Fixture::new(true);
+        let (executable, directory) = wire_fixture(&owned, "complete");
+        let adapter =
+            Arc::new(CodexAdapter::new("codex".into(), executable, owned.store.clone()).unwrap());
+        let gate = adapter.gates.install(TestPoint::AfterTerminalPublication);
+        let session = bounded(adapter.start(owned.request.clone())).await.unwrap();
+        let reference = SessionRef::from(&session);
+        bounded(gate.reached()).await;
+        let control = preparing_control(&adapter, reference.id);
+        let mut watch = adapter.subscribe(reference.clone()).unwrap();
+        let final_a = watch.borrow_and_update().clone();
+        let version = owned
+            .store
+            .lock()
+            .unwrap()
+            .session(reference.id)
+            .unwrap()
+            .unwrap()
+            .1;
+        let mut input = owned.request.input.clone();
+        input.version += 1;
+        let checkpoint = adapter.checkpoint(reference.clone(), input.clone()).await;
+        let resume = adapter.resume(reference.clone()).await;
+        let before = owned
+            .store
+            .lock()
+            .unwrap()
+            .session(reference.id)
+            .unwrap()
+            .unwrap();
+        gate.release();
+        bounded(control.wait_finished()).await.unwrap();
+        let late_watch_write = watch.has_changed().unwrap();
+        assert_eq!(final_a.session.state, SessionState::Exited);
+        assert_eq!(checkpoint.unwrap_err().kind, ErrorKind::StateConflict);
+        assert_eq!(resume.unwrap_err().kind, ErrorKind::StateConflict);
+        assert_eq!(before.1, version);
+        assert_eq!(
+            serde_json::to_value(before.0).unwrap(),
+            serde_json::to_value(&final_a.session).unwrap()
+        );
+        assert!(
+            !late_watch_write,
+            "the final Store/watch publication is this attempt's last shared write"
+        );
+        assert_leader_reaped(&directory.join("leader"));
+        adapter.checkpoint(reference.clone(), input).await.unwrap();
+        bounded(adapter.resume(reference.clone())).await.unwrap();
+        let final_b = terminal_status(&adapter, &reference).await;
+        assert_eq!(final_b.session.state, SessionState::Exited);
+        assert_eq!(final_b.session.recovery["input_version"], 2);
+        adapter.release(reference).unwrap();
+    }
+
+    #[tokio::test]
+    async fn cancel_before_initial_resume_or_checkpoint_write_needs_no_restore_cas_or_audit() {
+        for resume in [false, true] {
+            let mut fixture = ApprovalFixture::new(true).await;
+            let (adapter, reference) = fixture.terminal_adapter();
+            let mut input = fixture.authority.request.input.clone();
+            input.version += 1;
+            if resume {
+                adapter
+                    .checkpoint(reference.clone(), input.clone())
+                    .await
+                    .unwrap();
+            }
+            let original = adapter.current(&reference).unwrap();
+            let version = fixture
+                .reservation
+                .store
+                .lock()
+                .unwrap()
+                .session(reference.id)
+                .unwrap()
+                .unwrap()
+                .1;
+            let events = fixture
+                .reservation
+                .store
+                .lock()
+                .unwrap()
+                .events(&reference.scope, 0, 1000)
+                .unwrap()
+                .len();
+            let db = fixture
+                .authority
+                .request
+                .project
+                .root
+                .parent()
+                .unwrap()
+                .join("state.sqlite3");
+            let writer = rusqlite::Connection::open(db).unwrap();
+            writer.execute_batch("CREATE TRIGGER reject_unnecessary_session_write BEFORE UPDATE ON records WHEN NEW.kind='session' BEGIN SELECT RAISE(ABORT,'unnecessary session write'); END;").unwrap();
+            let gate = adapter.gates.install(TestPoint::BeforeInitialPersist);
+            let actor = adapter.clone();
+            let target = reference.clone();
+            let caller = tokio::spawn(async move {
+                if resume {
+                    actor.resume(target).await.map(|_| ())
+                } else {
+                    actor.checkpoint(target, input).await
+                }
+            });
+            bounded(gate.reached()).await;
+            let control = preparing_control(&adapter, reference.id);
+            let actor = adapter.clone();
+            let target = reference.clone();
+            let stopper = tokio::spawn(async move { actor.stop(target).await });
+            bounded(async {
+                while !matches!(control.preparation.state().unwrap(), Admission::Cancelled) {
+                    tokio::task::yield_now().await;
+                }
+            })
+            .await;
+            gate.release();
+            let error = bounded(caller).await.unwrap().unwrap_err();
+            let stopped = bounded(stopper).await.unwrap().unwrap_err();
+            let outcome = bounded(control.wait_finished()).await.unwrap();
+            let (stored, after) = fixture
+                .reservation
+                .store
+                .lock()
+                .unwrap()
+                .session(reference.id)
+                .unwrap()
+                .unwrap();
+            let events_after = fixture
+                .reservation
+                .store
+                .lock()
+                .unwrap()
+                .events(&reference.scope, 0, 1000)
+                .unwrap()
+                .len();
+            assert_eq!(error.kind, ErrorKind::StateConflict);
+            assert!(stopped.message.contains("exact prior Session restored"));
+            assert!(matches!(
+                outcome,
+                Outcome::RestoredBeforeAdmission {
+                    cause: Cause::Cancelled,
+                    ..
+                }
+            ));
+            assert_eq!(after, version);
+            assert_eq!(events_after, events);
+            assert_eq!(
+                serde_json::to_value(stored).unwrap(),
+                serde_json::to_value(&original.session).unwrap()
+            );
+            assert!(fixture.evidence.lock().unwrap().completed);
+            assert_eq!(
+                bounded(adapter.stop(reference.clone()))
+                    .await
+                    .unwrap()
+                    .session
+                    .state,
+                SessionState::Exited
+            );
+            adapter.release(reference).unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn abnormal_supervisor_drop_clears_the_installed_live_approval_journal() {
+        let owned = Fixture::new(true);
+        let (executable, directory) = wire_fixture(&owned, "approval");
+        let adapter = CodexAdapter::new("codex".into(), executable, owned.store.clone())
+            .unwrap()
+            .with_runtime_broker();
+        let session = bounded(adapter.start(owned.request.clone())).await.unwrap();
+        let reference = SessionRef::from(&session);
+        let mut status = adapter.subscribe(reference.clone()).unwrap();
+        bounded(async {
+            loop {
+                if status.borrow_and_update().session.state == SessionState::WaitingApproval {
+                    break;
+                }
+                status.changed().await.unwrap();
+            }
+        })
+        .await;
+        let pending = bounded(adapter.pending_approvals(reference.clone()))
+            .await
+            .unwrap();
+        let (control, evidence) = {
+            let registry = adapter.registry().unwrap();
+            let entry = registry.get(&reference.id).unwrap();
+            (entry.control.clone(), entry.evidence.clone())
+        };
+        control.abort_owned_task();
+        bounded(control.wait_finished()).await.unwrap();
+        // Abrupt task destruction is Lost, not a normal verified cleanup. Keep
+        // the fixture runtime alive until its owned child's reaper completes.
+        bounded(async {
+            loop {
+                let pid = std::fs::read_to_string(directory.join("leader")).unwrap();
+                let output = std::process::Command::new("/bin/ps")
+                    .args(["-p", &pid, "-o", "pid="])
+                    .output()
+                    .unwrap();
+                if output.stdout.is_empty() {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        })
+        .await;
+        let current = adapter.current(&reference).unwrap();
+        let evidence = evidence.lock().unwrap();
+        assert_eq!(pending["requests"].as_array().unwrap().len(), 1);
+        assert_eq!(current.session.state, SessionState::Lost);
+        assert!(
+            evidence.pending.is_none(),
+            "Drop must clear the journal installed for this actual turn"
+        );
+        assert!(!evidence.completed);
+        drop(evidence);
+        assert!(
+            bounded(adapter.pending_approvals(reference.clone()))
+                .await
+                .is_err()
+        );
+        adapter.release(reference).unwrap();
+    }
+
+    #[tokio::test]
+    async fn preparation_cleanup_uncertainty_returns_lost_and_retains_first_cause_and_detail() {
+        for cancelled in [false, true] {
+            let mut fixture = ApprovalFixture::new(true).await;
+            let (adapter, reference) = fixture.terminal_adapter();
+            let previous = adapter.current(&reference).unwrap();
+            let reservation = &mut fixture.reservation;
+            reservation.resume_publication = Some(ResumePublication {
+                previous,
+                sender: fixture.sender.clone(),
+                evidence: fixture.evidence.clone(),
+            });
+            reservation.attempt = Control::new(None).0;
+            reservation.session.state = SessionState::Starting;
+            reservation.session.pid = Some(42);
+            reservation.persist().unwrap();
+            reservation.ownership.group().store(true, Ordering::SeqCst);
+            let primary = if cancelled {
+                assert!(reservation.attempt.preparation.cancel());
+                Cause::Cancelled.error()
+            } else {
+                reservation
+                    .attempt
+                    .preparation
+                    .failed(failure(ErrorKind::Timeout, "synthetic primary timeout"))
+            };
+            let composite = failure_after_cleanup(
+                primary,
+                Err(failure(
+                    ErrorKind::SessionLost,
+                    "synthetic selected-group inspection unavailable",
+                )),
+            );
+            let error = reservation.finish_preparation_error(composite);
+            let status = adapter.current(&reference).unwrap();
+            let outcome = reservation.attempt.wait_finished().await.unwrap();
+            let events = reservation
+                .store
+                .lock()
+                .unwrap()
+                .events(&reference.scope, 0, 1000)
+                .unwrap();
+            let audit = events
+                .iter()
+                .rev()
+                .find(|event| event.kind == "codex.preparation.finished")
+                .unwrap();
+            assert_eq!(error.kind, ErrorKind::SessionLost);
+            assert!(
+                error
+                    .message
+                    .contains("synthetic selected-group inspection unavailable")
+            );
+            assert!(
+                status
+                    .failure
+                    .as_deref()
+                    .unwrap()
+                    .contains("synthetic selected-group inspection unavailable")
+            );
+            assert_eq!(status.session.state, SessionState::Lost);
+            assert_eq!(status.session.pid, Some(42));
+            assert!(matches!(
+                outcome,
+                Outcome::Lost {
+                    publication_result: Ok(_),
+                    ..
+                }
+            ));
+            assert!(match outcome.cause().unwrap() {
+                Cause::Cancelled => cancelled,
+                Cause::Failed(kind, _) => !cancelled && *kind == ErrorKind::Timeout,
+            });
+            assert_eq!(
+                audit.data["uncertainty_reason"],
+                "owned process cleanup is unverified"
+            );
+            assert_eq!(audit.data["cleanup_detail_retained"], true);
+            assert!(
+                audit.data["later_failure_kinds"]
+                    .as_array()
+                    .unwrap()
+                    .contains(&json!("SessionLost"))
+            );
+            assert!(
+                !audit
+                    .data
+                    .to_string()
+                    .contains("synthetic selected-group inspection unavailable"),
+                "audit must not copy private error payloads"
+            );
+            adapter.release(reference).unwrap();
+        }
     }
 
     #[tokio::test]
