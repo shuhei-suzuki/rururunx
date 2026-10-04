@@ -123,6 +123,10 @@ profiles, has the same exact identity/input and lifetime binding requirements.
 Unverified or changed identities refuse before reservation when detectable by
 non-executing metadata; later detection requires actual private post-marker
 cleanup/settlement and never a retroactive readiness claim.
+Identity-set admission requires a published per-host owned conformance artifact
+covering the exact chain/digests, profile controls and delegation inventory. First
+production use, successful metadata startup and caller configuration cannot add
+an identity. A changed build remains typed held/unsupported until re-verified.
 Coverage/control evidence must come from enforceable native/kernel controls
 or a side-effect-free authoritative source bound to the exact effective inputs
 the native process consumes (user/project/managed/trust/profile/plugin/environment
@@ -173,6 +177,16 @@ deny under the actual enforced controls; any unclassified route is unsupported.
 List justified bounded request endpoints separately from persistent execution
 routes, including deferred file-mediated schedulers and autostart entries. A named
 daemon denylist alone is not a completeness proof.
+Inert work products awaiting a separately governed execution/publication consumer
+are not jobs already delegated by this attempt. Issue12 verification, Issue3 Git
+operations and Issue13 PR/CI orchestration must establish their own current workload
+ownership and command-safety gate before executing/publishing those artifacts;
+this attempt's cleanup does not certify that later execution. Executable Git
+hooks/config/hooksPath and similar surfaces are explicitly blocked by this profile
+or covered by that actual later consumer. Files consumed automatically by an
+external scheduler/service/autostart mechanism remain current delegation routes,
+not inert artifacts. An ungoverned consumer cannot earn this distinction. A real
+attempt-written hook/config fixture must exercise the later consumer's boundary.
 
 Before any native process may have executed, registered Preparing cleanup and
 exact historical rollback/factual failure remain authoritative. Once any native
@@ -223,10 +237,46 @@ cannot borrow a Workflow operation lease or silently use a generic legacy path.
 Here protected standalone means Task input with Issue19 typed pack ancestry/private
 prepared-frame authority launched outside the exact managed entry point, including
 start/resume/checkpoint and ReadOnly aliases. It does not mean every unprotected
-Project consultation is such a protected Task. Issue19 owns that private frame/lease
-extension; Issue6 owns its native adapter consumer and actual cleanup. Issue19's
+Project consultation is such a protected Task. Required protected Task execution,
+resume and checkpoint use the exact managed path; no future standalone lease
+extension is presumed or required to close this component. Issue19 owns the private
+managed frame/operation port; Issue6 owns its native consumer and actual cleanup. Issue19's
 minimum unsupported boundary is an interim safety gate, not acceptance of required
 native consultation or interactive attachment.
+
+The initial required native interactive route follows the scoped gateway contract:
+Project-only, text-only, decision-only Consult, one actual upstream actor and grant
+ledger. It cannot attach as an interactive conversion to a managed Executor,
+Reviewer or ApprovalReviewer attempt and cannot satisfy Workflow transport success
+or its receipt. Every frontend-originated inference input and approval passes the
+same exact current scope/Session admission/consumption and broker CAS before the
+native wire; native permission/settings expansion is refused. Human input has its
+own monotonic submission identity and current outcome, never the seed's completion.
+Task/Goal interactive conversion requires a separately approved Context/operation
+contract and is unavailable here. A real unadmitted-frontend-turn fixture must
+prove no inference or Workflow receipt can be certified from that turn.
+
+Operation-less Project Consult/attach requires its own genuine private owned hold
+and durable held-scope guard that generic Session relabel/deletion or operator JSON
+cannot clear. [Issue58](https://github.com/shuhei-suzuki/rururunx/issues/58) owns
+that non-Task retained ownership/settlement and primary/common-dir exclusion
+contract; Issues6/11 consume its actual private authority and Issue14 owns the
+separately reviewed audited recovery. Issue19 managed Task receipts do not supply
+this authority. Until those
+actual hold/release/recovery consumers compose, this profile is unsupported before
+effects and remains a native Core acceptance blocker, not a ready capability.
+The held extent includes the primary checkout and Git common directory, including
+shared refs/config/hooks and worktree lifecycle metadata. Default held behavior
+blocks primary-root execution, overlapping native launch, base update/merge,
+worktree create/remove and Project removal/rebinding until known cleanup and any
+required Lost recovery. Same-repository mutation may proceed only under a separately
+reviewed actual consumer that proves the held profile cannot write/interfere with
+that shared extent and preserves current ownership/currency. No such exception
+is assumed here. Independent work in another Project/disjoint repository may
+continue; a Task sharing this Git common directory is not automatically disjoint.
+A generic-relabel fixture and actual primary/common-Git mutation/removal consumers
+must prove the retained hold cannot be released by terminal labels or dead-parent
+hints. Restart preserves uncertainty; recorded IDs never recreate the private owner.
 
 No resume, checkpoint continuation, retry or fresh replacement may execute in the
 same Session/worktree/lock scope until the earlier workload's cleanup is proven
@@ -316,6 +366,8 @@ permission for privileged installation or silently change the required hosts.
   prove persistent Task work cannot start outside the profile's owned boundary.
   A guard-removal mutant exposes the rejection; enrolled descendants ending
   cannot certify a delegated job's cleanup.
+- A later execution consumer refuses attempt-written executable hook/config
+  artifacts without its own current ownership and command-safety admission.
 - Installed real native proof on BOTH required host families for nested child
   sessions, retained ownership during stop/caller drop, bounded uncertainty and
   exact private Issue 19 settlement composition. Issue 16 separately carries the
