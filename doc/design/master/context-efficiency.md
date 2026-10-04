@@ -376,8 +376,8 @@ separate digest. This check does not re-hash physical sources or attest native w
 
 Indexed own checkpoint heads, including explicit absence, bind same-Task preparation
 and first/new consumed publication. Same admitted observations retain historical
-pins. Higher terminal continuation installs new input and exact prewire restore
-proof before dispatch; no restoration is allowed after consumption/uncertainty.
+pins. Historical unmerged component5 terminal continuation installed fresh input/
+restore proof; proposed6 permits only receipt/registry-bound sealed managed Continue; no restoration is allowed after consumption/uncertainty.
 New irreversible claims compare live checkpoint head; historical admitted claims
 can finalize after a later append. Source change may restart a pre-effect generation
 or hold post-effect work for explicit external reconciliation. Native event
@@ -452,3 +452,10 @@ requires a separate owned current grant branch, fixture-only candidate persisten
 finite Workflow phase history and explicit unverified promoted role provenance.
 Actual main3/unmerged component5 defaults remain unchanged until composed release; future approval
 slot/native producer, recovery and Consultant ports are not available by this text.
+
+[Canonical schema6 writer table](../issue-19-design.md#canonical-schema6-native-writer-predicate-table)
+is the consolidated proposed transition authority; historical component5 examples
+are not generic managed permissions. [Design23](../issue-19-design.md#design23-complete-publication-bounds-maintenance-and-closed-receipt-binding)
+counts every Workflow context publication, requires actual maintenance effect
+reservation and sealed43 closed-receipt binding, and keeps60/14 producer/recovery
+and native acceptance explicitly pending. Actual main3/component5 state is unchanged.

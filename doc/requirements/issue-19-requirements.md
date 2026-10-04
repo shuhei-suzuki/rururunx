@@ -77,7 +77,8 @@ explicit recovery; a checkpoint arriving after the admitted claim is historical
 evidence and does not prevent terminal persistence after actual disposal.
 
 An admitted input's revision/version/byte count/source versions remain pinned
-through all Session observations. An owned terminal→Starting continuation may
+through all Session observations. Historical component5 continuation (not a
+schema6 exception; use the design canonical writer table): terminal→Starting may
 install a strictly higher input version after latest typed context/head validation.
 It first binds `pre_dispatch_restore_sha256` to SHA256 of the exact serialized
 prior terminal Session. Exact terminal restoration is allowed only before any
@@ -139,8 +140,10 @@ classify historical legacy envelopes by the explicit typed format. Pointer-only
 Goal contention is a typed SnapshotChanged on goals.context_version. Reserved
 preparation/index/selection audit events require their private producer paths.
 
-Blocked-owner Lost updates may add only native_dispatch_unobserved=true and clear
-PID while preserving exact actor, scope, input, restore proof and consumed intent.
+Historical component5 generic blocked-owner Lost could add only
+native_dispatch_unobserved=true and clear PID. Schema6 managed Lost requires the
+actual private owned observation, which may make that same conservative addition/
+PID clearing while preserving exact actor, scope, input, restore proof and consumed intent.
 This flag is conservative uncertainty, not a new dispatch admission. New
 checkpoints record their configured transient window; historical checkpoints with
 no recorded policy retain an explicit unknown value.
@@ -528,3 +531,15 @@ Session-less predecessor selects Fresh, refusal chain cannot be skipped. Workflo
 history256/generation64 and atomic phase-context publication bound retry growth.
 Promoted caller-classified Consultant history renders its unverified provenance.
 These are corrected pre-code contracts, not schema6 implementation/acceptance.
+
+
+The design canonical schema6 transition/writer table is the sole native permission
+inventory, superseding historical component5 generic terminal/continuation/Lost
+exceptions. Design23 caps EVERY Workflow ContextVersion publication256 (not just
+history/generation), adds actual retained maintenance reservations before Task Git
+effects (producer60 pending), and sealed exact closed-receipt late binding through
+sole43 record-only CAS with existing active-owner fences. Current grant head drift
+uses actual historical DENY/owned stop; Engine external observation stays pre-marker
+or in the actual effect-owned supervisor. Consumed-known-zero-wire stays held14;
+private event kinds share reserved rrx.private.* and every generic audit rejects it.
+All remain source/native integration gates, not an available managed/recovery API.

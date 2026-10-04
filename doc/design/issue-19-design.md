@@ -1,5 +1,46 @@
 # Issue 19 design: typed working context with explicit authority
 
+Status: actual main80452f4 is schema3; this unmerged component source is5. Proposed
+schema6 remains fixture-only/pre-code until its independent gate and actual composed
+source/native production release. No Phase::DecisionReview or native producer is
+created by prose. The schema6 canonical writer table below plus Design16–23 private
+port/bounds define proposed native authority. Earlier schema5 protocol examples are
+historical component context ONLY and cannot authorize a managed/public writer;
+artifact/encoding contracts continue where this table does not supersede them.
+
+## Canonical schema6 native writer predicate table
+
+Each managed row below requires actual nonserializable owned operation authority,
+exact scope/attempt/frame/pair/remembered Session version, complete pinned lock set,
+actor/worktree identity and the row-specific private producer. Public ScopeSnapshot,
+role, JSON, receipt ID or row existence is never an alternative credential. No generic
+write may bump an allocated managed Session even with identical body, including after
+phase closure. Existing activity/worktree/CAS restrictions remain; factual settlement
+is separately permitted under authorized lifecycle holds, never launch/ALLOW.
+
+| Transition | Only permitted writer | Additional authority / result |
+| --- | --- | --- |
+| Initial unmanaged Task or NoTask nonterminal Session | None | Unsupported before effects; future58 NoTask private port is separate |
+| Initial terminal unallocated factual history | Generic factual writer | Unverified captured classification, no launch/cleanup authority; no Lost or allocated-owner replacement |
+| Managed initial Starting / native setup binding | Actual operation-bound private preparation | Current full frame/head/lifecycle/CAS; monotonic requested→effective binding; effects_started before Session/effect |
+| First/new consumed input (including Starting→Starting) | Actual operation-bound NativeCAS | Current full CPP/head/frame/source + P/G/T/own Session/locks/activity; unique consumption committed before bytes |
+| Consumed Starting→Running acknowledgement | Actual owned historical acknowledgement | Exact current admitted tuple/consumed UUID, same attempt; no re-admission or new payload |
+| Admitted Waiting/pending permission or fixed DENY observation | Private Acked/DenyHistorical | Original input/actor pins and provider-specific activity; no prepared consumption or grant |
+| Tool/action ALLOW | Private AllowCurrent + actual trusted grant proof | Full current CPP/head/source/P/G/T/own Session/locks/activity before wire; no historical fallback |
+| Current managed non-Lost terminal / receipt | Actual owned supervisor settlement | Actual current native outcome or eligible NoCurrentDispatch + complete required owned cleanup; immutable exact receipt/body |
+| Exact prior terminal restoration before current dispatch | Actual private restoration producer | Exact private prior checksum, no current admit/consume/uncertainty; never current success |
+| Fresh higher-input continuation | Sealed managed Fresh/Continue selector + new operation | Exact latest closed predecessor/receipt; Continue actual registry proof; new context/frame/full current CAS |
+| Managed monotonic Lost diagnostics | Actual private owned observation | Actor/input/intent pinned, conservative flags only; held shares/locks, no receipt or completion |
+| Any Lost→non-Lost or consumed-uncertain release | None here | Actual14 recovery required; generic terminal labels and late diagnostics cannot release |
+| Workflow native SessionID None→Some binding | Sole private43 record-only binder | Exact allocation/private prep/admit OR sealed known-current closed-receipt proof; full active-owner CAS; no Session/Task/P/G/lock write |
+| Workflow closure/retry/escalate/invalidate/release | Exact private receipt predicate | Every allocated marked owner settled by required class; no label-only reset; #41 unmarked invocation-owner policy stays separate |
+
+All CPP/rule/source integrity checks are bounded observations outside SharedStore,
+followed by exact same-transaction authority revalidation; no OS-atomic FS claim.
+Unknown/absent authority refuses rather than selecting a historical generic branch.
+The same table is acceptance inventory for real Generic/Claude/Codex/Grok/Fake writers;
+synthetic no-subprocess proof is mechanics only, never a production native declaration.
+
 Use a `context_pack` library service backed by existing ContextVersion envelopes
 and scoped Checkpoint records. Pack data is typed and bounded; reads verify envelope
 scope/version/digest and exact pointer ownership before trusting it. Context bodies
@@ -150,8 +191,9 @@ an external gate is invoked. A preclaim change preserves the worktree and requir
 explicit recovery; a checkpoint arriving after the admitted claim is historical
 evidence and does not prevent terminal persistence after actual disposal.
 
-An admitted input's revision/version/byte count/source versions remain pinned
-through all Session observations. An owned terminal→Starting continuation may
+Historical schema5 continuation protocol (NOT a schema6 launch exception; use
+the canonical table below): an admitted input's revision/version/byte count/source
+versions remain pinned through observations. An owned terminal→Starting continuation may
 install a strictly higher input version after latest typed context/head validation.
 It first binds `pre_dispatch_restore_sha256` to SHA256 of the exact serialized
 prior terminal Session. Exact terminal restoration is allowed only before any
@@ -217,7 +259,9 @@ classify historical legacy envelopes by the explicit typed format. Pointer-only
 Goal contention is a typed SnapshotChanged on goals.context_version. Reserved
 preparation/index/selection audit events require their private producer paths.
 
-Blocked-owner Lost updates may add only native_dispatch_unobserved=true and clear
+Historical schema5 generic blocked-owner protocol; schema6 managed observations
+require the actual private handle (canonical table): Lost updates may add only
+native_dispatch_unobserved=true and clear
 PID while preserving exact actor, scope, input, restore proof and consumed intent.
 This flag is conservative uncertainty, not a new dispatch admission. New
 checkpoints record their configured transient window; historical checkpoints with
@@ -545,7 +589,8 @@ Every v6 Store connection registers a private zero-argument SQLite function
 BEFORE INSERT/UPDATE/DELETE fence triggers to EVERY application table: projects,
 goals, tasks, records, context_versions, usage, audit, checkpoint_heads,
 prepared_pack_inputs, session_input_acks, phase_session_owners,
-context_admission_epochs, native_phase_operations and native_phase_settlements.
+context_admission_epochs, native_phase_operations, native_phase_settlements and
+workflow_context_counters.
 This is the candidate6 component table inventory, not the first deployed composed
 schema inventory (Design21 below). Each requires this function to return
 6. Register UTF8|DETERMINISTIC|INNOCUOUS, never DIRECTONLY, and verify
@@ -615,8 +660,9 @@ native adapters call that helper rather than arbitrary recovery insertion order.
 not canonicalized JSON or transport envelopes.
 
 This contract fences Issue19 typed native inputs; generic Store history writes are
-not permission to launch a model. Project/Goal-only initial history records remain allowed
-for existing callers, with universal Lost observation/settlement restrictions, but Issue19 prepares no launchable Goal input or standalone
+not permission to launch a model. Initial TERMINAL Project/Goal-only factual history
+remains allowed, never nonterminal native ownership through a generic caller.
+Schema6 NoTask launch requires the future58 port, and Issue19 prepares no launchable Goal input or standalone
 consultation/ApprovalReviewer input. Current native caller ownership validation
 requires an actual Task/worktree. The future Broker decision-Task isolation remains
 a required integration, not a claim that generic history records enforce it today.
@@ -812,8 +858,9 @@ private safe-rollback certificate is introduced by this context contract.
 
 ### Native ownership, terminal uncertainty and factual checkpoint provenance
 
-For every persisted Lost Session, generic put_session/put_record permits only
-Lost-to-Lost diagnostic observations. Lost cannot exit to ANY other state,
+For every persisted Lost Session, Lost cannot transition to another state. Schema6
+managed diagnostic Lost-to-Lost requires the actual private owned observation;
+generic put_session/put_record cannot write a managed owner at all. Lost cannot exit to ANY other state,
 including Running, Waiting or terminal, regardless of historical admission. This
 absorbing predicate runs before every launch/outcome classification. For a protected or allocated Session
 with native_dispatch_unobserved=true, generic writes cannot manufacture terminal
@@ -823,8 +870,9 @@ completion. Issue14's future private owned-recovery transaction must verify
 authoritative native terminal or cleanup evidence before settling such ownership.
 No such port is advertised in this Issue. Succeeded/allocated closure therefore
 cannot obtain terminal proof by converting Lost/uncertain history through a
-generic write. Normal non-uncertain owned Starting/Running-to-terminal caller
-updates retain their native adapter protocol; Store does not attest arbitrary
+generic write. Historical schema5 normal non-uncertain Starting/Running-to-terminal
+caller updates retained their native protocol; schema6 managed terminal publication
+is ONLY the private owned settlement producer in the canonical table. In either case, Store does not attest arbitrary
 Session JSON as native output. Test allocated admitted Lost-to-Exited, Lost-to-Running-to-Exited and
 Lost-to-Waiting-to-Running-to-Exited rejection through independent connections
 and unchanged Workflow closure, including a mutant that removes the absorbing
@@ -1011,17 +1059,22 @@ native outcome proof.
 Universal Lost is an intentional new safety change, including unprotected legacy
 Task and Project/Goal-only history. The previous generic Lost-to-Stopped contract
 is NOT retained: neither runtime JSON nor a dead PID proves unknown native death.
-A Lost Goal/Project Session can hold Goal publication and Project removal until
-trusted Issue14 recovery; migration already refuses such ownership in every
-scope. Update actual existing Goal-publication, Git ownership and generic-adapter
-fixtures to assert the retained hold, instead of manually relabelling Lost as
-Stopped to continue. Initial legitimate terminal Consultant history remains
+An actual58-produced Lost Goal/Project owner will hold Goal publication/Project
+removal until trusted14 recovery. Candidate6 has no such positive producer: its
+Goal/Project fixtures reject initial nonterminal/Lost and terminal→Lost, and
+migration refuses old live/Lost unchanged. Only actual58 integration proves the
+positive NoTask hold; never seed a generic Starting owner or relabel Lost as Stopped.
+Initial legitimate terminal Consultant history remains
 recordable and may contribute factual history; it was never a persisted Lost
 owner and does not manufacture native completion. These availability changes
 are explicit, not an assertion that old source already enforced the rule.
 
 
-### Native CAS entry-point authority and complete input bounds
+### Historical schema5 Native CAS structure and complete input bounds
+
+This is the current unmerged component5 structure, NOT schema6 managed writer
+permission. The canonical table and handle-bound ports replace every generic
+positive exception; retained bounds/encoding constraints still apply.
 
 `Store::put_session_if_current` is the crate-private native Session publication
 port. Its existing Immediate transaction checks expected Session version, exact
@@ -2353,20 +2406,14 @@ create delivery. Test A→B(Continue refusal/Fresh-only)→C(pristine no Session
 unchanged chain budget/author/history, no registry/wire query for an older A bypass.
 
 Bound new post-epoch Workflow history to256 entries and64 generations, including
-native and EvidencePort attempts and failed/refused entries. The finite history
-bounds SQL history scans and Engine phase-context growth to at most256 fresh phase
-contexts (each at most1 MiB) for this Workflow. Each phase ContextVersion is published
-with its corresponding new attempt in the same atomic transition; no orphaned phase
-pack can grow through a failed reserve. Existing reentry never adds history/context.
-Check caps before new phase publication, reservation or marker/effects; overflow is
-a typed capacity hold with the prior state/owners/evidence unchanged, not an infinite
-source-drift retry loop or eviction. Legacy pre-epoch terminal histories stay read-only
-and cannot be adopted as new managed ownership. Scope reorganization never launders
-review obligations/exhausted lineage9 or physical holds. Controls at255/256/257
-history entries and63/64/65 generations prove no overflow ContextVersion/operation,
-retained exact history and no hidden reset; trigger work is O(256) worst case per
-Workflow update. Standalone Goal/artifact histories have their separate retention
-contracts; this cap does not claim a global DB size bound.
+native and EvidencePort attempts and failed/refused entries. This bounds SQL history
+scans, but history/generation caps alone DO NOT bound context publications. The separate
+canonical context counter below charges EVERY Workflow-owned ContextVersion, including
+escalation/invalidation/Cleanup publications without a new history entry. Legacy
+pre-epoch terminal history stays read-only, never adopts managed authority. Overflow
+holds with exact prior owners/evidence intact; reorganization never launders review9
+obligations/shared exhaustion or physical holds. Controls at255/256/257 history and
+63/64/65 generations prove no overflow marker/context/operation and no reset.
 
 Role-classified factual Consultant history is explicitly UNVERIFIED CALLER CLASSIFICATION.
 Every cross-Task promoted event includes that marker in the typed provenance and
@@ -2379,3 +2426,98 @@ Target accepted Goal/Task constraints remain authoritative and original scope/ha
 actor/event provenance remains immutable. Test a generically inserted Consultant
 terminal history promotes only with the explicit marker, and caller JSON/role change
 cannot render it as verified native evidence or clear a blocker.
+
+
+### Design23: complete publication bounds, maintenance and closed-receipt binding
+
+Add a private fenced workflow_context_counters row keyed by exact Workflow Record/
+Project/Goal/Task, initialized at0 for post-epoch ownership. It counts EVERY new
+Workflow-owned ContextVersion publication, including escalation, invalidation-only,
+retry, Cleanup/frozen terminal pack and source-change-before-dispatch replacements;
+no dependency on history append or generation rise. Cap256 and increment with the
+ContextVersion/Task pointer/Workflow/audit in the same Immediate transaction; rollback
+restores all. Include the table in candidate/composed all-table writer enumeration,
+FK/scope/immutability triggers and fresh/migrated schema goldens. Generic context/
+record/public metadata cannot install/reset it or bypass charging through another
+producer. Pre-epoch history remains immutable read-only; its contexts are not fabricated
+new counter entries. No-op escalation with identical effective risk/class/source/
+policy/budget reuses current context and changes no Task/Workflow authority/version;
+real changed context still charges. Tests repeat no-op escalation and exercise real
+escalation/invalidation publications at255/256/257, checking exact no overflow pointer,
+row/audit/history/operation and no ghost phase pack. This bounds fresh Workflow context
+history by256×1 MiB without claiming a bound on every standalone/Goal artifact.
+
+Task-worktree create/adopt/remove/maintenance effects require an ACTUAL durable
+exclusive maintenance reservation BEFORE external Git/fs effects. Its acquisition
+transaction checks exact Task/Project/physical identity, no open native operation,
+existing lock/admission conditions and the complete scoped lock set. Marker/native
+admission observes that same reservation and rejects; acquisition likewise rejects
+an already marked/open operation. Retain reservation throughout out-of-lock Git and
+actual owned settlement; timeout/uncertainty/crash retains it for14, not automatic
+Drop/error release. Only actual tracked no-effect refusal or owned effect cleanup
+can close it. Existing authorization/activity fences are not relaxed. Scope includes
+actual root/common-Git overlap where declared effect can touch shared metadata;
+composed58 physical reservations handle nested/cross-Project overlap as required.
+Independent-connection barrier races between maintenance reservation and marker
+prove exactly one wins BEFORE removal bytes/effects; no read-then-act precheck counts.
+The actual runtime Git/Generic/Evidence producer is pending
+[Issue60](https://github.com/shuhei-suzuki/rururunx/issues/60), including sessionless
+effects, not invented native19 settlement. Default3/component5 remain their actual
+baseline; candidate native dispatch with missing required producer is Unsupported.
+
+For receipt-sourced late binding, ONLY the sealed Store-derived ClosedSettlementBinding
+proof may supply the allocated Session ID to the same sole private43 binder. Derive
+inside its transaction from exact phase_session_owners + private operation + exact
+KnownCurrentTerminal receipt, current Session version/body checksum and complete
+current input/admit/consumed actor/frame pins. It is not caller SessionID/receipt JSON,
+returned native identity or a new live owner. Full current active P/G/T/Workflow Record,
+generation/index/context/dispatch marker, agent/native identity, lifecycle and pinned
+complete lock-set predicates stay identical to normal43 binding. Allowed writes are
+ONLY that exact active history.session_id None→allocated ID and bounded reserved audit;
+no Task/P/G/Session/lock body/version increments and no launch/ALLOW/resume permission.
+NoSession NoCurrentDispatch and restored-prior Exited are nonbinding. Dropped start
+future/restart with an exact settled successful receipt can then bind and close through
+ordinary current-success predicates without fabricating another dispatch; actual
+success still requires consumed current input+Exited+successful owned cleanup receipt.
+Failure/inactive owner/stale source-authority CAS keeps original claim/receipt; no
+inactive recovery binding exemption exists before a separately reviewed19/14/43 mode.
+Fixture actual supervisor completes receipt before start-result delivery, then drops
+that delivery and runs the actual private binder; foreign/stale/restored/missing owner
+mutants reject. A controlled fixture may not seed private SQL/claim success from labels.
+
+A live checkpoint append leaves admitted input unchanged but can invalidate an
+outstanding ALLOW. Stale-head grant sends zero ALLOW bytes and takes the existing
+handle-bound fixed DENY path if that provider's existing activity predicate permits;
+otherwise actual supervisor stop/cancel owns cleanup and receipt. No timeout-only
+idle permission waits are invented. Claude Blocked still cannot send prewire DENY;
+Codex unchanged Waiting Decline preserves its existing behavior. Cancellation with
+unknown native outcome/cleanup remains Lost/held, never fabricated failure receipt.
+Test live append→ALLOW reject→actual DENY/stop and its factual settlement/held outcome.
+
+All Engine-side native Git/filesystem source observation completes BEFORE marker.
+After marker the owned handle transfers directly to the actual supervisor; any required
+prewire re-capture/Git/native setup runs only after effects_started under that actual
+producer's retained effect ownership. Pure bounded Store revalidation remains inside
+the marker transaction; no external Git under the mutex. Source drift before marker
+may reject without a native operation; post-marker owned observation uncertainty
+cannot mint pristine refusal. Actual60 runtime-job reservations also cover pre-marker
+Git effects independently, no temporary operation-less exemption. A consumer mutant
+that runs Engine Git after marker must fail ownership/order fixture.
+
+Consumption-before-wire is authorization, never proof of delivery. Even producer-
+known zero bytes after consumption fits NEITHER existing receipt class: NoCurrentDispatch
+forbids current admission/consumption; KnownCurrentTerminal requires actual owned
+native outcome. This intentionally stays held with bounded zero-wire observation
+until the actual gated14 recovery port. No JSON never-sent flag, new receipt class,
+forced uncancellable wire or restoration/Succeeded shortcut is introduced. Required
+production recovery/profile gates explicitly include this boundary.
+
+All schema6 private producer events use ONE reserved rrx.private.* prefix, including
+preparation/allocation/admission/consumption, epochs/migration/refusal, continuation
+Fresh-only, grants/observations, operations/settlements and43 binding. Generic audit/
+audit_if_current rejects that prefix plus retained native.operation.* and native.
+settlement.* historical aliases. Enumerate all compiled private event constants and
+require reservation through every generic audit path; no look-alike admission kind
+is treated as trusted merely by public text. Existing ordinary session.saved etc
+are explicitly factual projections, not certificates. Actual audit/usage bounds
+remain and publication is atomic with its owning private write.
