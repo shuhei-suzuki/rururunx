@@ -307,43 +307,11 @@ compete on the latest ContextVersion head; identical publications reuse that hea
 Consumers of a Goal pack must validate its exact head/pointer/digest, independently
 of Goal semantic version. Goal packs are non-launchable summaries.
 
-New native admissions of typed Workflow frames require the current active Running,
-dispatch-started attempt with the exact context, phase and generation. Session
-publication also binds its owned Session ID. Inactive owners, terminal Tasks,
-frozen final packs and EvidencePort phases are non-launchable. Already-consumed
-observations retain their historical input instead of re-admitting it. Stable
-Project scoped references and Goal/Task instruction hashes are source authority;
-Goal criterion satisfaction, DAG progress and raw row counters are bookkeeping.
+### Native input authority
 
-Optional source sections use the smaller of the selected discretionary budget and
-the remaining absolute 1 MiB capacity after mandatory pack metadata and Engine
-rule bytes. Zero remaining optional bytes is valid; mandatory overflow still fails
-closed. The selected phase budget remains unchanged and reported. New generic
-Context writes reject reserved task_pack/frozen_task_pack envelopes. Readers
-classify historical legacy envelopes by the explicit typed format. Pointer-only
-Goal contention is a typed SnapshotChanged on goals.context_version. Reserved
-preparation/index/selection audit events require their private producer paths.
-
-Blocked-owner Lost updates may add only native_dispatch_unobserved=true and clear
-PID while preserving exact actor, scope, input, restore proof and consumed intent.
-This flag is conservative uncertainty, not a new dispatch admission. New
-checkpoints record their configured transient window; historical checkpoints with
-no recorded policy retain an explicit unknown value.
-
-A successful native actor acknowledgement may refresh only its Project/Goal CAS
-rows after sibling bookkeeping changes. It first verifies the exact unchanged
-Task/Workflow versions, active attempt/context/generation and stable semantic
-instruction hashes, with active lifecycle guards. Session ID publication then
-uses the new CAS in the same existing atomic Workflow transition. Changed
-constraints, scoped references, Task/attempt authority or paused owners remain
-fenced; acknowledgement is not another model dispatch. Legacy sources retain
-strict Project/Goal version equality.
-
-### Native input admission
-
-The context-efficiency contract owns private input-admission, semantic projection
-and persistence compatibility invariants. Goal progress/pointer publication cannot
-substitute for input or lifecycle authority. Native actor Session binding retains
-its exact immutable Task/attempt/context, and every typed actor uses its owned
-worktree. See [context-efficiency](context-efficiency.md#private-native-input-admission)
-for admission, terminal continuation and upgrade-drain rules.
+Goal progress/pointer publication cannot substitute for Task input or lifecycle
+authority. The context design owns complete frame publication, source/head currency,
+continuation and native ownership boundaries. See
+[context publication and native input authority](context-efficiency.md#17-context-publication-and-native-input-authority)
+for the normative contract and its implementation boundary; the Goal design does
+not duplicate those predicates.

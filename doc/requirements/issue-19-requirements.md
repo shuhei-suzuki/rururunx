@@ -325,3 +325,19 @@ private prep/admit ports; implementation-owned admission capability defaults abs
 and prevents preclaim/process launch before reviewed integration. Two separately
 identified old5 binaries prove writer exclusion; malformed non-integer legacy
 checkpoint authority refuses migration with unchanged state.
+
+
+Combined first-Running/first-consumption may bind initial None native fields once,
+with exact explicit Some pins and current frame/head/lifecycle/CAS. Typed native
+Succeeded unconditionally requires present allocation, bound exact owner, Exited,
+current admitted pair and consumed UUID; an absent owner never succeeds. Every
+new native retry/escalation/invalidation attempt has a consecutive higher owned
+phase context even for unchanged source; existing attempt observations stay frozen.
+
+Each production caller revalidates complete physical owned sources after startup
+and before consumed CAS/wire, including same-length dirty edits and ignored/rule/
+config bytes. Store itself proves DB authority only; external filesystem changes
+are not atomically fenced by SQLite. Upgrade past schema5 generic Lost settlement
+is explicitly operator-attested old cleanup history, not provable from terminal
+labels/audit JSON; newly persisted Lost remains absorbing. Actual binary identities
+and all Engine context consumers are part of impact and compatibility evidence.

@@ -64,8 +64,8 @@ Goal context references Task Context Packs rather than copying them wholesale.
 
 ## 4. Repository Map / Context Index
 
-Issue 18 implements the local Task-scoped `RepositoryContext` library and
-`repository-context` inspection example. It indexes exact bound worktrees with
+The local Task-scoped `RepositoryContext` library and
+`repository-context` inspection example index exact bound worktrees with
 SHA256 content/ignored-evidence/rule/config freshness, deterministic lexical
 ranking and expansion, and scoped selection evidence. Entire mandatory rules,
 evidence and requested expansions must fit; otherwise it returns `NeedsBudget`.
@@ -77,9 +77,9 @@ call's native error chain and distinguish an uncertainty latch set by a concurre
 call, which discards the current call's result without attributing the failure to it.
 Consumers should render the full error chain (`{:#}` or Debug).
 Cancellation may latch uncertainty without returning a diagnostic; verified cleanup
-and recovery remain Issue 14 responsibilities.
+and recovery require trusted native ownership reconciliation.
 
-Issue 19's `ContextPacks` service publishes typed Task and Goal artifacts atomically
+The `ContextPacks` service publishes typed Task and Goal artifacts atomically
 with their durable pointers and audit events. It captures primary Project sources
 read-only for Goal packs and retains terminal Task context refs as non-launchable
 history after cleanup. Goal Task refs carry explicit source-validation-required status during concurrent
@@ -141,7 +141,7 @@ Recent events remain verbatim for a configurable window.
 
 Condensation must be auditable and must not overwrite authoritative requirements/design artifacts.
 
-Issue 19 implements deterministic condensation over typed, consecutive events.
+Deterministic condensation operates over typed, consecutive events.
 Goals, decisions, completed work, failures, findings, next actions, constraints,
 critical references and verification remain intact across checkpoints. Only
 explicitly transient events leave the configurable serialized-byte tail, with
@@ -349,207 +349,54 @@ checkpoint reset; mandatory overflow requires decomposition into another Task.
 Native-source draft DTOs carry no Adapter launch version. Complete rendered pack
 estimates are audited independently of optional repository slice estimates.
 
-Issue 19's actual Workflow source port binds typed phase artifacts to exact
-Project/Goal/Task scope, owned HEAD/content hashes, payload digest and selected
-phase/budget. Engine alone publishes the phase ContextVersion and preserves the
-reserved artifact through actual Cleanup. Optional repository sections obey the
-discretionary budget; mandatory Task/Goal/checkpoint metadata and rules are counted
-separately, once, in total UTF-8 byte/token estimates. The complete typed native
-input remains hard-capped at 1 MiB; standalone explicit budgets cap their complete
-rendered input. Measurements remain nullable. Restart restores durable scoped
-facts/references, and Goal summaries atomically compare all owned Task membership
-and versions, including Tasks outside the DAG. Ordered v3→v4 checkpoint-head
-index migration fences older writers; native Starting/Running reservations compare
-the prepared own-head digest or explicit `none` before launch.
+## 17. Context publication and native input authority
 
-Irreversible PR/merge/Cleanup evaluation claims and first/new consumed native
-dispatch intents recheck the scoped indexed checkpoint head atomically. Same
-admitted input remains pinned through approval/human/Lost observations; terminal
-continuation requires a higher version and an immutable exact historical restore
-proof before wire delivery. Current checkpoint source invalidation is conservative:
-it can restart a pre-effect generation or hold post-PR work for Issue 13/23
-reconciliation. These core proofs do not claim automatic post-PR recovery or
-actual double/triple native runtime dogfood.
+The Workflow source port binds typed phase artifacts to exact Project/Goal/Task,
+owned HEAD/content hashes, payload digest and phase/budget. Engine owns phase
+ContextVersion publication and preserves the reserved artifact through Cleanup.
+Optional repository sections obey discretionary budget and remaining absolute
+capacity; mandatory Task/Goal/checkpoint facts and rules are counted separately,
+once. Complete phase input has a 1 MiB cap. Standalone explicit budgets constrain
+the complete rendered input. Provider measurements are nullable.
 
-Ordered schema 4→5 adds private immutable prepared-frame authority for standalone
-selection. Preparation publishes scope/context version/HEAD/source versions/UTF-8
-byte count/lowerhex SHA256 of the exact complete PreparedInput.payload in the
-same Immediate owner/source/head CAS and audit transaction. Up to 128 variants
-per context version are retained; prompt bodies are not duplicated. Generic audit
-or Record writes cannot fabricate this authority. Workflow authority uses its
-immutable ContextVersion.data.payload, including mandatory Engine rule prefix.
-Store::validate_context_input checks actual request bytes; Session admission pins
-input_sha256 and consumed intent must match that hash. Provider-specific RPC
-envelopes/fixed prefixes are a distinct transport digest, never this input hash.
-Older public schema 4 writers refuse schema 5. Existing schema4 standalone packs
-must be prepared again under the new private publication contract before launch.
+Goal summary publication compares all owned Task membership/versions, including
+Tasks outside its DAG. Goal semantic/lifecycle version is separate from the
+consecutive ContextVersion head and pointer CAS; pointer-only publication cannot
+roll back an older typed head or invalidate admitted semantic Task input. Goal
+packs and finalized Task references remain non-launchable history.
 
-New native admissions of typed Workflow frames require the current active Running,
-dispatch-started attempt with the exact context, phase and generation. Session
-publication also binds its owned Session ID. Inactive owners, terminal Tasks,
-frozen final packs and EvidencePort phases are non-launchable. Already-consumed
-observations retain their historical input instead of re-admitting it. Stable
-Project scoped references and Goal/Task instruction hashes are source authority;
-Goal criterion satisfaction, DAG progress and raw row counters are bookkeeping.
+Schema5 private prepared_pack_inputs stores standalone frame Scope/context version,
+HEAD/source versions, exact UTF-8 payload bytes/SHA and up to 128 variants without
+prompt duplication. Publication rechecks source/head/owner authority with audit in
+one Immediate transaction. Generic Records/audit cannot create frame authority.
+Workflow complete frame authority is immutable ContextVersion.data.payload,
+including the Engine rule prefix. validate_context_input compares actual request
+bytes against this database authority. Transport envelopes/fixed prefixes have a
+separate digest. This check does not re-hash physical sources or attest native wire.
 
-Optional source sections use the smaller of the selected discretionary budget and
-the remaining absolute 1 MiB capacity after mandatory pack metadata and Engine
-rule bytes. Zero remaining optional bytes is valid; mandatory overflow still fails
-closed. The selected phase budget remains unchanged and reported. New generic
-Context writes reject reserved task_pack/frozen_task_pack envelopes. Readers
-classify historical legacy envelopes by the explicit typed format. Pointer-only
-Goal contention is a typed SnapshotChanged on goals.context_version. Reserved
-preparation/index/selection audit events require their private producer paths.
-
-Blocked-owner Lost updates may add only native_dispatch_unobserved=true and clear
-PID while preserving exact actor, scope, input, restore proof and consumed intent.
-This flag is conservative uncertainty, not a new dispatch admission. New
-checkpoints record their configured transient window; historical checkpoints with
-no recorded policy retain an explicit unknown value.
-
-A successful native actor acknowledgement may refresh only its Project/Goal CAS
-rows after sibling bookkeeping changes. It first verifies the exact unchanged
-Task/Workflow versions, active attempt/context/generation and stable semantic
-instruction hashes, with active lifecycle guards. Session ID publication then
-uses the new CAS in the same existing atomic Workflow transition. Changed
-constraints, scoped references, Task/attempt authority or paused owners remain
-fenced; acknowledgement is not another model dispatch. Legacy sources retain
-strict Project/Goal version equality.
+Indexed own checkpoint heads, including explicit absence, bind same-Task preparation
+and first/new consumed publication. Same admitted observations retain historical
+pins. Higher terminal continuation installs new input and exact prewire restore
+proof before dispatch; no restoration is allowed after consumption/uncertainty.
+New irreversible claims compare live checkpoint head; historical admitted claims
+can finalize after a later append. Source change may restart a pre-effect generation
+or hold post-effect work for explicit external reconciliation. Native event
+normalization/scheduling, recovery and actual provider acceptance remain distinct
+integration responsibilities, not inferred from deterministic artifact fixtures.
 
 ### Private native input admission
 
-The reviewed-before-code schema6 contract adds one private Task-scoped admission
-digest per Session, atomically with validated Running persistence/audit. Production
-remains schema5 until that implementation is validated. Pending waiting input
-revalidates live frame/head; Lost is absorbing under generic writes; uncertainty is not consumption. New consumed intent always revalidates.
-Nonterminal admitted input cannot visit Starting to restore an older terminal
-frame. Exact prewire restore is denied after admission/consumption/uncertainty;
-owned higher-version terminal continuation binds fresh authority first. These are
-Store input-admission facts, separate from Workflow actor Session binding and
-provider wire-delivery evidence. Caller JSON/generic writes cannot assert them.
+Native Session publication has an Immediate scoped Session+Project/Goal/Task version
+and complete lock-set CAS primitive. Typed input source/hash checks and actor binding
+must compose with it; a generic history record is not model launch permission.
+Native adapters retain separate private UUID/Session ownership, before-wire protocol
+and terminal outcome evidence. A database input hash never certifies native delivery
+or arbitrary Session JSON as completion. Native/Git/filesystem work stays outside
+SharedStore; bounded observations precede exact version revalidation.
 
-Semantic instruction projection is versioned and exhaustively classifies each
-domain field; adding fields requires explicit authority review. Physical HEAD is source authority;
-Engine effective workflow/risk/budget belongs to immutable phase authority.
-Standalone frames additionally render and bind their Task policy/directive digest and admit
-only the exact Executor agent/role/worktree. Explicit idle consecutive republish
-provides migration/terminal-continuation versions without changing active input.
-Consultant history remains supported; live consultation needs a separate scoped
-frame port. Approval review uses an operation-free decision Task.
-
-Ordered5-to-6 migration installs a private registered SQLite writer function and
-additive INSERT/UPDATE/DELETE fences on every application table, retaining existing
-domain triggers. Thus old5 connections already open before migration also refuse
-writes, including metadata/audit. Actual compiled live-connection and fresh-open
-old-writer fixtures must prove refusal without state change. No historical input
-admission rows are synthesized. See Issue19 design for field inventory, exact
-transition predicates, canonical hashing and native proof requirements.
-
-All typed Workflow actors bind the actual Task worktree and one private Session
-allocation per immutable single-actor phase context. Future parallel review uses
-its own scoped roster authority. Semantic instruction changes are versioned;
-projection definitions never change silently. Persistence upgrade requires typed
-active/nonterminal unfinished Workflow, all live/Lost Session and active lock ownership to drain under the compatible old runtime
-before any migration mutation. Finalized immutable history remains available.
-
-Fresh admissions require permitted standalone Task states or the exact typed
-phase Task state/key. Task holds before first consumption/Running block admission;
-historical observations retain pins. Typed context publication cannot transform a
-live legacy Session's protection contract. Forced identical publication requires
-private validated preparation/admission and exact terminal input, not raw history
-JSON. Terminal non-owning cancelled Workflow history may migrate; active claims
-remain operational ownership even on terminal Tasks.
-
-
-Initial native actor binding is monotonic per input: requested None may bind one
-effective model/effort value, explicit Some cannot silently change, and a known
-native_ref remains immutable across the Session UUID. Exact admitted metadata
-pins and private same-attempt binding updates remain atomic. Higher-input fresh
-continuation resets requested model/effort before Starting and keeps exact prior
-terminal rollback proof. Claude5, Codex6 and Grok7 require reviewed complete prepared-frame preflight,
-input SHA/source pins before Starting, atomic consumed admission before wire,
-native binding compatibility and causal typed-frame caller fixtures before
-integrated acceptance.
-
-Private phase allocation covers initial INSERT and fresh terminal-to-Starting
-UPDATE; Engine binding/closure must use that exact allocated owner. Ordered
-migration preflight covers every older supported version, and an old Lost owner
-without verified recovery remains an explicit upgrade limitation. Existing
-checkpoint-v1 and terminal restore hash encodings remain byte-compatible. Backup
-rollback is permitted only before any post-upgrade application/external effect.
-
-The private admission index stores separate validated-preparation and admitted
-pairs. Starting prepares current input without asserting delivery; only validated
-Running/consumption admits it. Historical actor binding can update an admitted
-pair solely for permitted initial None-to-Some fields, never change its input.
-These facts cannot be synthesized from Session recovery JSON or generic audit.
-
-
-A typed irreversible claim must carry an explicit own checkpoint head; absence
-fails closed. Single-actor ownership survives the gap before Engine Session
-binding: an allocated live Reviewer prevents claim closure. The native dispatch
-intent denotes actual input delivery; an own-checkpoint append requires fresh
-higher-input continuation before another delivery. Historical observation alone
-sends no new model input. Variant-cap exhaustion supports explicit idle consecutive
-republish without discarding history. Idle unfinished Workflow hot-upgrade is not
-supported; compatible-runtime completion or explicit terminal cancellation is
-required, with remaining external effects reconciled.
-
-
-An allocated native owner is tied to its exact prepared input, not merely Session
-identity. Historical prewire restoration cannot certify a fresh phase. Pending
-preparation can bind actor identity; success also needs that input's private
-admission/consumption and Exited outcome. Semantic authority changes require both
-projection and persistence/writer-fence version changes.
-
-
-Persisted Lost is absorbing under generic writes; uncertain ownership cannot
-become terminal through generic history writes; trusted owned recovery remains Issue14. Private admission proves exact
-input, while native adapters retain their separate registry/terminal authority.
-Unregistered historical UUID/native_ref cannot authorize native resume. Pending
-initial actor binding refreshes preparation only after latest full-frame/head and
-lifecycle validation in the same transaction. Checkpoint facts remain explicitly
-caller-classified historical coordination evidence; Consultant facts are preserved
-without representing them as native transcript or completion proof. New claims
-retain live-head checks; already admitted claims retain their frozen provenance.
-Migration verifies every legacy typed checkpoint reference before mutation.
-
-
-Protected actor pins are checked on every Session update, not only launches.
-Historical initial binding requires the exact private admitted digest and updates
-its pair atomically; it cannot recover Lost. Admission encoding has explicit
-entry/string/aggregate bounds. Fresh and migrated schema authority constraints
-must match. Writer compatibility SQL fences state writes; old runtime/native/Git
-activity must be stopped and drained for supported upgrades.
-
-
-Universal absorbing Lost intentionally changes legacy history settlement, including
-Goal/Project-only Sessions; Goal publication/removal stays held until trusted #14
-recovery. Initial terminal Consultant facts remain allowed. A typed dispatch UUID
-is consumed once per Session/input version and privately indexed before wire.
-A second delivery at that version rejects; identical intent is observation only.
-Exhaustive Session field classification and common preparation/admission bounds
-prevent silent authority drift. Native callers share canonical restore hashing
-and compare exact private registry snapshots before continuation.
-
-
-Schema6 reserves private preparation/admission/allocation mutations to the native
-Session owner/version/complete-lock CAS port; generic history cannot seed them.
-Consumed DTO versions must equal current checked owner versions. Current-input
-binding and restored-not-admitted failure closure use distinct predicates, keeping
-an already bound owner immutable while refusing historical success. Input indices
-prove currency, not native terminal truth; Workflow retains adapter-owned outcome
-evidence. All complete typed native frames share a 1 MiB cap before selection or
-publication. Protected Session restore hashing is byte/depth/node bounded. The
-single-delivery count concerns PreparedInput frames; fixed protocol replies remain
-separate, and live free-text instruction shortcuts are unsupported.
-
-
-Exact prewire restoration precedes intent novelty checks. An older restored owner
-is frozen while its allocated attempt is open, keeping failure closure possible;
-separate diagnostic records remain allowed. Historical binding skips live head
-comparison while existing active-owner/lock CAS fences remain. All fresh Workflow
-native phases require actual typed authority, including generic/Fake/native caller
-migration and default-absent admission capability. Allocation applies only to
-Workflow native phases; standalone frames allow separately guarded new Sessions,
-and evidence/opaque history is never no-admission proof.
+The next authoritative admission/actor/allocation and incompatible-writer contract
+is specified in the [scoped pack design](../issue-19-design.md#private-input-admission-and-schema-6).
+Its source and actual native caller acceptance are separate gates; private admission
+rows, universal historical Lost settlement changes and allocation claims are not
+advertised as current schema5 implementation facts. Current source version and
+operational migration limits must match the validated implementation.

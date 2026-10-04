@@ -357,8 +357,8 @@ A Session restored to its older terminal snapshot after fresh prewire failure us
 an explicit closure-only `RestoredPriorNotAdmitted` predicate. In the same Workflow
 transaction require: allocation owner == the immutable already-bound session_id
 (if any); current persisted owner is terminal, non-Lost and non-uncertain; private
-preparation version == the attempt context version with the private immutable
-preparation digest; and neither an admitted pair nor consumed UUID exists for
+preparation version == the attempt context version with the current private preparation digest, frozen from restoration/terminal write until
+this allocated attempt closes; and neither an admitted pair nor consumed UUID exists for
 that attempt version. If the current terminal has that same input version, its
 exact tuple must match the preparation pair. For the older restored input, require
 a present private preparation_restore_sha256 equal to the canonical checksum of
@@ -892,7 +892,8 @@ Every protected Session update, regardless of target state, first compares its
 actor pins with the old persisted Session: model, effort and native_ref must remain
 exact. The only exceptions are a validated higher-input owned terminal-to-Starting
 continuation, exact private prewire restoration, pending initial binding with
-latest-frame/head/lifecycle validation, or BoundHistorical initial None-to-Some
+latest-frame/head/lifecycle validation, combined Validated first-Running/first-
+consumption monotonic initial binding, or BoundHistorical initial None-to-Some
 binding proved by the old exact admitted pair. BoundHistorical requires a nonterminal old state (Starting, Running,
 WaitingApproval or WaitingHuman), and may report an ordinary terminal outcome;
 terminal-to-terminal native binding is forbidden; it cannot
@@ -1169,3 +1170,75 @@ actual typed checkpoint bodies with distinct actionable migration refusal; this
 is malformed legacy authority outside the typed old producer, not permission to
 rewrite its chain. Preserve DB bytes/marker on refusal and compare valid native
 old5 checkpoint bytes/digests under both JSON feature configurations.
+
+
+### Combined binding, unconditional closure and consumption freshness
+
+Validated first-Running or first-consumption may combine monotonic initial binding
+with admission: old None may become one effective Some model/effort/native_ref,
+while every old explicit Some remains exact. This exception applies to both
+Starting→Starting consumption and Starting→Running. Latest frame/head/lifecycle
+and native owner/lock CAS are mandatory; atomically refresh preparation digest to
+digest(new) and write admitted pair=digest(new) plus consumed UUID if supplied.
+It does not permit arbitrary actor substitution or a later same-input Some change.
+Claude's actual combined native UUID/Running/consumption before-wire path need not
+insert a fictitious intermediate write. Test this actual caller order and a mutant
+removing monotonic checks ONLY from the combined first-consumption branch.
+
+For EVERY fresh typed Workflow native phase, Succeeded has an unconditional Store
+predicate: allocation PRESENT; attempt.session_id == that owner; persisted owner
+non-uncertain Exited; exact admitted digest/input version == attempt.context_version;
+and private consumed UUID for that input. Absence of allocation/session_id is NEVER
+success, even for a dispatch-started phase with no Session written. Failed/Interrupted
+with absent allocation follows the separately permitted owner/recovery policy; the
+absence reader does not itself release ownership or certify native death. EvidencePort
+phases retain their distinct actual-evidence predicate. Test no-allocation/no-bound-ID
+Succeeded rejection under every WorkflowAccess and mutate only that absence branch.
+
+Store Validated certifies current DATABASE authority, never physical filesystem
+freshness. Every native caller (Generic CLI, Claude, Codex and Grok) performs full
+bound-source revalidation outside SharedStore AFTER native setup and immediately
+BEFORE first/fresh consumed CAS and PreparedInput delivery: actual root/FD identity,
+HEAD, relevant dirty/admitted ignored bytes, rule/config bytes and all saved source
+hashes must match the privately published snapshot. Re-capture with the real context
+source validator, not HEAD-only verify_binding or caller JSON. Recheck scope/owner/
+versions/locks in the subsequent CAS; no inference/wire proceeds after mismatch.
+Record the observed snapshot identity/hash and ordering as provenance, not a JSON
+credential. A same-length dirty edit during setup and rule/config/ignored-byte edits
+must send zero PreparedInput frames for each production caller. Mutate each actual
+pre-consumption validator, not only its helper. Source checks are bounded observations;
+Store cannot atomically lock external filesystem mutations. The immutable review lock
+and native read-only/owned worktree permissions remain separate safeguards, and this
+contract never claims OS-atomic Git/filesystem plus SQLite transactions.
+
+All Workflow native context consumers are inventoried: initial reserve, next phase,
+explicit retry, escalation and source invalidation/generation restart, plus Cleanup's
+frozen evidence path. Every NEW native attempt publishes a forced consecutive owned
+phase ContextVersion, even for byte-identical unchanged source, before append. Existing
+attempt reentries/observations retain their exact version; EvidencePort transitions
+cannot manufacture native authority. Phase publication deliberately advances identity,
+whereas standalone idempotent source publication remains separate. Terminal previous
+native owners and actual claim/Task/source CAS must be checked first; no active input
+is rewritten. Tests cover unchanged-source retry/new-phase and escalated/invalidation
+paths, strictly greater versions, actual native allocation, failed-preparation closure
+and no same-version reuse. The default observer/owner-release policy remains #41's
+separate contract, not silently changed to satisfy these tests.
+
+Schema5 permitted generic Lost→Stopped settlement. Drain preflight can reject
+currently live/Lost owners but cannot authenticate old terminal history or prove an
+operator did not previously relabel Lost. Its session.saved audit contains declared
+states, not native cleanup truth; no audit JSON is a trusted recovery marker. Supported
+upgrade therefore explicitly requires operator-attested genuine old-runtime terminal/
+cleanup evidence and closed owned processes, including any earlier Lost history.
+A native schema5 Lost→Stopped fixture documents that migration sees terminal history
+and cannot infer verified recovery; preserve that limitation rather than claiming
+it is an enforced universal past-tense guarantee. New schema6 Lost transitions are
+absorbing and future trusted recovery remains required. No automated historical
+laundering detector or synthesized recovery certificate is advertised.
+
+Production source here means current implementation code, not a released deployment.
+There is no installed/deployed schema5 release asserted by this feature. The two
+public exact-source old-writer artifacts independently prove their stated builds;
+a future deployed hotfix/feature-set artifact must join the compatibility matrix
+with its own source tree/binary identity before supported upgrade. Never infer the
+identity of an operator's binary from a commit label.
