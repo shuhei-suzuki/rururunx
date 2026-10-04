@@ -394,10 +394,10 @@ fn environment_policy_keeps_blocked_lock_and_lost_guard_precedence() {
 #[test]
 fn own_environment_projection_rejects_invalid_authority_without_changing_native_precedence() {
     for projection in [
-        json!(["INVALID-NAME"]),
+        json!(["LANG", "INVALID-NAME"]),
         json!(["LANG", "LANG"]),
-        json!(["HOME"]),
-        json!(["GROK_SYNTHETIC_AUTH", "INVALID-NAME"]),
+        json!(["LANG", "HOME"]),
+        json!(["LANG", "GROK_SYNTHETIC_AUTH", "INVALID-NAME"]),
         json!({}),
         Value::Null,
     ] {
@@ -529,4 +529,32 @@ fn own_environment_projection_rejects_invalid_authority_without_changing_native_
         store.environment_candidates(project.id, &policy).unwrap(),
         std::collections::BTreeSet::from(["GROK_SYNTHETIC_AUTH".into()])
     );
+}
+
+#[test]
+fn environment_transaction_rejects_invalid_own_names_independently_of_caller_subset() {
+    let (_directory, mut store, mut project, goal, task, session) = fixture();
+    project.environment_refs = vec!["LANG".into(), "INVALID-NAME".into()];
+    store.put_project(&mut project).unwrap();
+    let expected = [project.version, goal.version, task.version];
+    let version = store
+        .put_session_if_current(&session, 0, expected, &[])
+        .unwrap();
+    let before = store.events(&task.scope(), 0, 100).unwrap().len();
+    // Caller LANG remains owned: only own-name validation rejects this authority.
+    let error = store
+        .put_session_with_environment_if_current(
+            &session,
+            version,
+            expected,
+            &[],
+            &environment_policy(),
+        )
+        .unwrap_err();
+    assert!(matches!(
+        error.downcast_ref::<StateGuardError>(),
+        Some(StateGuardError::EnvironmentAuthority)
+    ));
+    assert_eq!(store.session(session.id).unwrap().unwrap().1, version);
+    assert_eq!(store.events(&task.scope(), 0, 100).unwrap().len(), before);
 }

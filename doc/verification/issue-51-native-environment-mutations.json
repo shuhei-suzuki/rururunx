@@ -378,7 +378,7 @@
           "thread 'adapter::grok::environment_tests::unrelated_foreign_changes_do_not_revoke_start' (229674158) panicked at crates/rrx/src/adapter/grok/environment_tests.rs:40:5:",
           "thread 'adapter::grok::environment_tests::irrelevant_start_child' (229674160) panicked at crates/rrx/src/adapter/grok/environment_tests.rs:1056:9:"
         ],
-        "credit": "actual_grok_child_effect_consumer",
+        "credit": "actual_public_consumer_positive_rejection_not_child_effect",
         "cleanup_authority": "env-cleared owning test parent verified cleanup_group before leader reap before reporting intended child assertion",
         "elapsed_scope": "cargo invocation including any compilation, not native duration"
       },
@@ -401,7 +401,7 @@
           "thread 'adapter::grok::environment_tests::unrelated_foreign_changes_do_not_revoke_checkpoint' (229674451) panicked at crates/rrx/src/adapter/grok/environment_tests.rs:40:5:",
           "thread 'adapter::grok::environment_tests::irrelevant_checkpoint_child' (229674453) panicked at crates/rrx/src/adapter/grok/environment_tests.rs:1071:18:"
         ],
-        "credit": "actual_grok_child_effect_consumer",
+        "credit": "actual_public_consumer_positive_rejection_not_child_effect",
         "cleanup_authority": "env-cleared owning test parent verified cleanup_group before leader reap before reporting intended child assertion",
         "elapsed_scope": "cargo invocation including any compilation, not native duration"
       },
@@ -424,7 +424,7 @@
           "thread 'adapter::grok::environment_tests::unrelated_foreign_changes_do_not_revoke_resume' (229675038) panicked at crates/rrx/src/adapter/grok/environment_tests.rs:40:5:",
           "thread 'adapter::grok::environment_tests::irrelevant_resume_child' (229675040) panicked at crates/rrx/src/adapter/grok/environment_tests.rs:1096:13:"
         ],
-        "credit": "actual_grok_child_effect_consumer",
+        "credit": "actual_public_consumer_positive_rejection_not_child_effect",
         "cleanup_authority": "env-cleared owning test parent verified cleanup_group before leader reap before reporting intended child assertion",
         "elapsed_scope": "cargo invocation including any compilation, not native duration"
       },
@@ -623,10 +623,11 @@
     "counts": {
       "compiled_runs": 17,
       "distinct_operators": 11,
-      "actual_grok_child_effect_consumer_kills": 14,
+      "actual_grok_child_effect_consumer_kills": 11,
       "actual_public_start_error_category_only": 1,
       "pure_guard_unit_only": 2,
-      "masked_or_compile_failure_credit": 0
+      "masked_or_compile_failure_credit": 0,
+      "actual_public_consumer_positive_rejection_not_child_effect": 3
     },
     "compound_operator": "M11 removes both initial own-ref validation and shared own-ref validation; its second run is names-only candidate guard unit credit, not final Session-CAS wiring credit.",
     "restored_control": {
@@ -645,6 +646,33 @@
       "crates/rrx/src/adapter/grok/mod.rs": "2dafe3a6a93fb68ec04bfb262601eba05a1b50fc9a6d68b8ec146cecbd885a9f",
       "crates/rrx/src/adapter/grok/environment.rs": "5b34b689c6d0f4a6b1a291d6355da233d8bcb95d683f0cf68bbc2fbfb5209995",
       "crates/rrx/src/adapter/grok/ownership.rs": "ba80bc29f965ae6d5a67318506ffc924163bc822a97674c81b5cd489fe3876a3"
+    },
+    "reviewed_carryover": {
+      "head": "72f74b6ac9eb84920c3c219c26de3d9a618c18e6",
+      "delta_from_mutation_base": "documentation only",
+      "changed_paths": [
+        "doc/verification/issue-51-native-environment-mutations.json",
+        "doc/verification/issue-51.md"
+      ],
+      "production_and_test_diff_empty": true
+    },
+    "test_blob_identity_at_base_and_reviewed_head": {
+      "crates/rrx/src/adapter/grok/environment_tests.rs": {
+        "base_blob": "f626a1a03b463ecfde304183e24a887d99a2e233",
+        "reviewed_blob": "f626a1a03b463ecfde304183e24a887d99a2e233"
+      },
+      "crates/rrx/src/state/native_dispatch_tests.rs": {
+        "base_blob": "6c4beace83a94a7ddefe8d2afec45d82ee188a6d",
+        "reviewed_blob": "6c4beace83a94a7ddefe8d2afec45d82ee188a6d"
+      },
+      "crates/rrx/tests/support/grok_fixture.rs": {
+        "base_blob": "fe7b2a185585f900352da60fd41415856951009a",
+        "reviewed_blob": "fe7b2a185585f900352da60fd41415856951009a"
+      },
+      "crates/rrx/tests/support/grok_fake.py": {
+        "base_blob": "38bb794dc14eee7957573c9ff12bd18156295b57",
+        "reviewed_blob": "38bb794dc14eee7957573c9ff12bd18156295b57"
+      }
     }
   }
 }

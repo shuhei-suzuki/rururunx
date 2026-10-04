@@ -227,9 +227,15 @@ async fn selection_child() {
         let mut fixture = Fixture::new();
         own_refs(&mut fixture, &names);
         let adapter = fixture.adapter();
+        let error = rejected_start(&adapter, &fixture).await;
+        assert_eq!(error.kind, ErrorKind::InvalidConfiguration);
         assert_eq!(
-            rejected_start(&adapter, &fixture).await.kind,
-            ErrorKind::InvalidConfiguration
+            error.message,
+            if names.contains(&"NODE_TLS_REJECT_UNAUTHORIZED") {
+                "native control references are not scoped environment values"
+            } else {
+                "owning environment references invalid"
+            }
         );
         assert!(
             fixture
@@ -1302,9 +1308,14 @@ async fn ownership_child() {
         .request
         .environment
         .insert("TZ".into(), "synthetic-own-tz".into());
+    let observed = expect_environment(
+        &fixture,
+        json!({"TZ":"synthetic-own-tz","GROK_SYNTHETIC_AUTH":"synthetic-native-global"}),
+    );
     let adapter = fixture.adapter();
     let first = fixture.start(&adapter).await.unwrap();
     let status = terminal(&adapter, &fixture, &first).await;
+    assert_environment(&observed);
     assert!(
         adapter.transport_succeeded(&status),
         "initial owning continuation control failed"
@@ -1338,8 +1349,10 @@ async fn ownership_child() {
         .await
         .unwrap();
     fixture.request.input = input;
+    std::fs::remove_file(&observed).unwrap(); // Fresh resumed child must supply its own proof.
     let second = fixture.resume(&adapter, (&first).into(), 3).await.unwrap();
     let status = terminal(&adapter, &fixture, &second).await;
+    assert_environment(&observed);
     assert!(
         adapter.transport_succeeded(&status),
         "explicit fresh owning Project refresh did not restore continuation; {:?}; {}",
