@@ -350,7 +350,7 @@ Withdrawn b29 paragraph is explicitly historical; static errors concern only ide
 and requested-scope refusals; pre-existing serde decode detail remains pending safe
 projection. No production Store byte changed from verified b1b.
 
-At301a885 DEFAULT normal-host workspace235 Rust+2 doctests PASS,9 explicitly ignored;
+At301a885 DEFAULT normal-host workspace236 Rust+2 doctests PASS,9 explicitly ignored;
 fmt/all-target Clippy-Dwarnings/debug and release BUILD PASS. Release TESTS not run:
 merged-main555 release failure remains known, cause/regression UNKNOWN. Nine compiled
 clean committed mutants (four identity removals, request shape removal, two NULL
@@ -360,3 +360,22 @@ expectation was corrected after retaining the actual nonoptionalGoal consumer fa
 no retry-to-green or compile/setup kill. Public patches/log/source/tree hashes and
 exact all source/test/build inputs retained. Fresh two-reviewer Source2/current CI
 pending; whole21 and qualified metrics/native/projection producers remain OPEN.
+
+
+Source2 d937db3: TWO independent native APPROVE, zero Critical/High/Medium and
+no unresolved component blocker. Both actual selected review wrappers cleaned up;
+resumed native counters have unverified operation attribution and are not qualified
+telemetry. Verified Low test-count arithmetic corrected mechanically to236 Rust+2docs
+(238 total),9ignored; logs unchanged. Optional insertion-vs-index-order discriminator
+strengthening deferred: ORDER BY sequence production unchanged and no ordering mutant
+claimed. No source/test change after301a885. CI37232602381 EVERY step Linux/macOS PASS;
+actual logged checkout2ad5aa018c2db51052af5689cdb3f3dd97dbd60c has parentsf7baad/d937
+and complete tree equal triggerhead, including all38 source/test/build inputs.
+
+Automatic review initially rejected native re-review by asserting private repository
+export. Unauthenticated GitHub API proved private:false; all19 source/evidence/previous
+review files downloaded without credentials and compared to exact published bytes.
+Identical command retried with this evidence was approved; no workaround or private
+payload used. Public proof retained. Final evidence-only metadata commit is manually
+reviewed with all38 source/test/build blobs unchanged; final current CI still required
+before normal limited merge. Whole21/MVP and native acceptance remain OPEN.

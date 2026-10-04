@@ -238,13 +238,14 @@
     }
   ],
   "summary": {
-    "rust_tests_passed": 235,
+    "rust_tests_passed": 236,
     "doc_tests_passed": 2,
     "explicit_ignored": 9,
     "default_parallelism": true,
     "release_build": "PASS",
     "release_tests": "not run; known main555 release failure retained and unqualified",
-    "native_mvp_acceptance": false
+    "native_mvp_acceptance": false,
+    "arithmetic": "133+0+19+5+16+18+13+16+16=236 Rust; two trailing 1-test doctest targets=2"
   },
   "composition": {
     "main": "f7baad498bd36691e2bfbf8ba5d05ee1b3ae95ed",
