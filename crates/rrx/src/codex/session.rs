@@ -16,6 +16,7 @@ use tokio::sync::{mpsc, oneshot, watch};
 
 use super::{
     attempt::{CallerGuard, Control, Outcome, Phase, TaskGuard},
+    availability::{Availability, Site, UNAVAILABLE},
     ownership::{ProcessOwnership, ScopeSnapshot, filesystem},
     policy::{DecisionPolicy, native_environment, provider_environment, verify_auth_readiness},
     preparation::{Admission, Cause},
@@ -107,25 +108,13 @@ fn pin_starting_input(
     Ok(())
 }
 
-fn evict_one_terminal(sessions: &mut HashMap<SessionId, Entry>) {
-    if let Some(id) = sessions
-        .iter()
-        .filter(|(_, entry)| {
-            entry.status.borrow().terminal() && !entry.transition.load(Ordering::SeqCst)
-        })
-        .min_by_key(|(_, entry)| entry.status.borrow().session.started_at)
-        .map(|(id, _)| *id)
-    {
-        sessions.remove(&id);
-    }
-}
-
 pub struct CodexAdapter {
     agent: String,
     executable: PathBuf,
     store: SharedStore,
     sessions: Arc<Mutex<HashMap<SessionId, Entry>>>,
     runtime_broker: bool,
+    availability: Availability,
     #[cfg(test)]
     gates: Arc<TestGates>,
 }
@@ -140,7 +129,9 @@ struct Entry {
     schema: Option<Value>,
     control: Arc<Control>,
 }
+#[cfg(test)]
 struct TransitionClaim(Arc<AtomicBool>);
+#[cfg(test)]
 impl Drop for TransitionClaim {
     fn drop(&mut self) {
         self.0.store(false, Ordering::SeqCst);
@@ -444,6 +435,7 @@ impl Reservation {
         thread: &str,
         schema: Option<&Value>,
     ) -> AdapterResult<Value> {
+        rpc.require_dispatch()?;
         let mut parameters =
             json!({"threadId":thread,"input":[{"type":"text","text":request.input.payload}]});
         if let Some(schema) = schema {
@@ -685,6 +677,7 @@ impl CodexAdapter {
             store,
             sessions: Arc::new(Mutex::new(HashMap::new())),
             runtime_broker: false,
+            availability: Availability::default(),
             #[cfg(test)]
             gates: Arc::new(TestGates::default()),
         })
@@ -694,6 +687,11 @@ impl CodexAdapter {
     /// otherwise and launch fails explicitly before inference.
     pub fn with_runtime_broker(mut self) -> Self {
         self.runtime_broker = true;
+        self
+    }
+    #[cfg(test)]
+    fn component_fixture(self) -> Self {
+        self.availability.set_fixture_inputs(true, true);
         self
     }
     fn registry(&self) -> AdapterResult<std::sync::MutexGuard<'_, HashMap<SessionId, Entry>>> {
@@ -708,6 +706,7 @@ impl CodexAdapter {
             store: self.store.clone(),
             sessions: self.sessions.clone(),
             runtime_broker: self.runtime_broker,
+            availability: self.availability.clone(),
             #[cfg(test)]
             gates: self.gates.clone(),
         }
@@ -717,13 +716,17 @@ impl CodexAdapter {
         request: LaunchRequest,
         schema: Option<Value>,
     ) -> AdapterResult<Registered> {
+        self.availability.require()?;
         let session = fresh_session(&request, &self.agent);
         let (publisher, status) = watch::channel(empty_status(session.clone()));
         let (control, stopped) = Control::new(None);
         let (reply, _) = mpsc::channel(16);
         let mut sessions = self.registry()?;
         if sessions.len() >= RETAINED_TERMINALS {
-            evict_one_terminal(&mut sessions);
+            return Err(failure(
+                ErrorKind::StateConflict,
+                "unsettled native owner retention limit reached",
+            ));
         }
         sessions.insert(
             session.id,
@@ -755,6 +758,7 @@ impl CodexAdapter {
         })
     }
     fn register_existing(&self, reference: &SessionRef) -> AdapterResult<Registered> {
+        self.availability.require()?;
         let mut sessions = self.registry()?;
         let entry = sessions.get_mut(&reference.id).ok_or_else(|| {
             failure(
@@ -834,6 +838,7 @@ impl CodexAdapter {
         schema: Option<Value>,
         resume: Option<Session>,
     ) -> AdapterResult<Session> {
+        self.availability.require()?;
         let registered = if let Some(previous) = resume {
             self.register_existing(&SessionRef::from(&previous))?
         } else {
@@ -842,6 +847,7 @@ impl CodexAdapter {
         self.spawn_launch(registered).await
     }
     async fn spawn_launch(&self, registered: Registered) -> AdapterResult<Session> {
+        self.availability.require()?;
         let control = registered.transition.control.clone();
         let task_guard = TaskGuard(control.clone());
         let handles = self.owned_handles();
@@ -899,6 +905,7 @@ impl CodexAdapter {
             entry.reply.clone(),
         ))
     }
+    #[cfg(test)]
     fn claim(
         &self,
         reference: &SessionRef,
@@ -1012,6 +1019,7 @@ impl CodexAdapter {
         registered: Registered,
         input: PreparedInput,
     ) -> AdapterResult<()> {
+        self.availability.require()?;
         let session = SessionRef {
             id: registered.transition.id,
             scope: registered.request.scope.clone(),
@@ -1067,7 +1075,8 @@ impl CodexAdapter {
                 ));
             }
             request.project = project;
-            let snapshot = ScopeSnapshot::capture(&self.store, &request, &self.agent)?;
+            let snapshot =
+                ScopeSnapshot::capture(&self.store, &request, &self.agent, &self.availability)?;
             let (persisted, version) = self
                 .store
                 .lock()
@@ -1199,6 +1208,7 @@ impl CodexAdapter {
         registered: Registered,
         input: PreparedInput,
     ) -> AdapterResult<()> {
+        self.availability.require()?;
         let control = registered.transition.control.clone();
         let task_guard = TaskGuard(control.clone());
         let handles = self.owned_handles();
@@ -1219,6 +1229,7 @@ impl CodexAdapter {
         value?
     }
     async fn prepare_launch(&self, mut registered: Registered) -> AdapterResult<Supervision> {
+        self.availability.require()?;
         let request = registered.request.clone();
         let schema = registered.schema.clone();
         let resume = registered
@@ -1245,7 +1256,8 @@ impl CodexAdapter {
                     "native output schema must be a bounded JSON object",
                 ));
             }
-            let snapshot = ScopeSnapshot::capture(&self.store, &request, &self.agent)?;
+            let snapshot =
+                ScopeSnapshot::capture(&self.store, &request, &self.agent, &self.availability)?;
             // The baseline comes only from the owned supervisor, never caller JSON
             // or a native UUID hint. Missing history remains unknown on resume.
             let previous_cumulative = if let Some(previous) = &resume {
@@ -1368,8 +1380,10 @@ impl CodexAdapter {
             .verify_git_preparing(&request, &mut reservation.ownership, &control.preparation)
             .await?;
         snapshot.recheck(&self.store, &request, &self.agent)?;
+        self.availability.require()?;
+        self.availability.record(Site::ExecutableMetadata);
         let executable = self.executable.clone();
-        let executable = control.preparation.wait(filesystem(move || {
+        let executable = control.preparation.wait(filesystem(&self.availability, move || {
             use std::os::unix::fs::PermissionsExt;
             let metadata = executable.metadata().map_err(|_| {
                 failure(
@@ -1393,7 +1407,9 @@ impl CodexAdapter {
             &snapshot.project,
             &request.environment,
         )?;
+        self.availability.record(Site::Version);
         let version = super::preparation::bounded_git(
+            &self.availability,
             &executable,
             &request.worktree,
             &["--version".into()],
@@ -1407,6 +1423,7 @@ impl CodexAdapter {
         #[cfg(test)]
         self.gates.wait(TestPoint::BeforeBootstrap).await;
         let mut discovery = NativeServer::launch_preparing(
+            &self.availability,
             &executable,
             &request.worktree,
             None,
@@ -1453,6 +1470,7 @@ impl CodexAdapter {
             ));
         }
         let mut native = NativeServer::launch_preparing(
+            &self.availability,
             &executable,
             &request.worktree,
             Some(&policy),
@@ -1647,49 +1665,16 @@ impl CodexAdapter {
 
 impl AgentAdapter for CodexAdapter {
     fn capabilities(&self) -> BTreeSet<Capability> {
-        [
-            Capability::Execute,
-            Capability::Consult,
-            Capability::Review,
-            Capability::NonInteractive,
-            Capability::StructuredOutput,
-            Capability::UsageTelemetry,
-            Capability::PromptCacheTelemetry,
-            Capability::Resume,
-            Capability::ContextCheckpoint,
-            Capability::PermissionInterception,
-        ]
-        .into()
+        BTreeSet::new()
     }
     fn probe(&self) -> AdapterResult<AgentInfo> {
-        Ok(AgentInfo {
-            agent: self.agent.clone(),
-            provider: "codex".into(),
-            adapter_version: env!("CARGO_PKG_VERSION").into(),
-            executable: self.executable.clone(),
-            authenticated: None,
-            model_configuration: true,
-            effort_configuration: true,
-            capabilities: self.capabilities(),
-        })
+        Err(failure(ErrorKind::UnsupportedCapability, UNAVAILABLE))
     }
     fn start(&self, request: LaunchRequest) -> AdapterFuture<'_, Session> {
         Box::pin(self.launch(request, None, None))
     }
-    fn transport_succeeded(&self, status: &SessionStatus) -> bool {
-        self.observe_owned(&SessionRef::from(&status.session), |owned, evidence| {
-            Ok(evidence.completed
-                && evidence.turn.is_some()
-                && owned.session.native_ref.is_some()
-                && owned.session.state == SessionState::Exited
-                && owned.session.pid.is_none()
-                && owned.failure.is_none()
-                && status.failure.is_none()
-                && status.exit_code == owned.exit_code
-                && serde_json::to_value(&status.session).ok()
-                    == serde_json::to_value(&owned.session).ok())
-        })
-        .unwrap_or(false)
+    fn transport_succeeded(&self, _status: &SessionStatus) -> bool {
+        false
     }
     fn start_structured(
         &self,
@@ -1803,30 +1788,22 @@ impl AgentAdapter for CodexAdapter {
         })
     }
     fn attach(&self, _session: SessionRef) -> AdapterFuture<'_, ()> {
-        Box::pin(async {
-            Err(failure(
-                ErrorKind::UnsupportedCapability,
-                "native interactive connection requires a verified owned TUI lifecycle",
-            ))
+        Box::pin(async move {
+            self.availability.require()?;
+            Err(failure(ErrorKind::UnsupportedCapability, UNAVAILABLE))
         })
     }
     fn resume(&self, session: SessionRef) -> AdapterFuture<'_, Session> {
         Box::pin(async move {
+            self.availability.require()?;
             let registered = self.register_existing(&session)?;
             self.spawn_launch(registered).await
         })
     }
-    fn release(&self, session: SessionRef) -> AdapterResult<()> {
-        let (_claim, _, _) = self.claim(&session)?;
-        let status = self.current(&session)?;
-        if !status.terminal() {
-            return Err(failure(
-                ErrorKind::StateConflict,
-                "running native Session cannot be released",
-            ));
-        }
-        self.registry()?.remove(&session.id);
-        Ok(())
+    fn release(&self, _session: SessionRef) -> AdapterResult<()> {
+        // No current production or component observation proves whole workload
+        // settlement. Refuse before claiming/mutating a retained owner.
+        Err(failure(ErrorKind::UnsupportedCapability, UNAVAILABLE))
     }
     fn subscribe(&self, session: SessionRef) -> AdapterResult<watch::Receiver<SessionStatus>> {
         self.reference(&session).map(|(receiver, _, _, _)| receiver)
@@ -1880,6 +1857,7 @@ impl AgentAdapter for CodexAdapter {
     }
     fn submit_approval(&self, session: SessionRef, decision: Value) -> AdapterFuture<'_, ()> {
         Box::pin(async move {
+            self.availability.require()?;
             if serde_json::to_vec(&decision).map_or(true, |value| value.len() > 4096) {
                 return Err(failure(
                     ErrorKind::InvalidInput,
@@ -1930,6 +1908,7 @@ impl AgentAdapter for CodexAdapter {
     }
     fn checkpoint(&self, session: SessionRef, input: PreparedInput) -> AdapterFuture<'_, ()> {
         Box::pin(async move {
+            self.availability.require()?;
             let registered = self.register_existing(&session)?;
             self.spawn_checkpoint(registered, input).await
         })
@@ -1952,6 +1931,8 @@ async fn answer_approval(
     status: &mut SessionStatus,
     reply: Reply,
 ) -> AdapterResult<bool> {
+    native.require_dispatch()?;
+    let availability = native.availability();
     if reply.result.is_closed() {
         return Ok(false);
     }
@@ -2000,7 +1981,7 @@ async fn answer_approval(
         let preflight = async {
             let paths = operation_paths(&operation, &authority.request.worktree)?;
             let workspace = authority.request.worktree.clone();
-            filesystem(move || {
+            filesystem(&availability, move || {
                 use std::os::unix::fs::MetadataExt;
                 let canonical = workspace.canonicalize().map_err(|_| {
                     failure(
@@ -2109,6 +2090,7 @@ async fn answer_approval(
                 store.put_session(&reservation.session, reservation.version)
             }.map_err(|error| failure(ErrorKind::StateConflict, error.to_string()))?;
         }
+        native.record_grant();
         native.send(preview).await?;
         let empty = {
             let mut evidence = evidence.lock().map_err(|_| failure(ErrorKind::StateFailure, "native approval state poisoned"))?;
@@ -2252,13 +2234,16 @@ async fn supervise(
                 if error.kind == ErrorKind::UnsupportedCapability {
                     let _=reservation.store.lock().map_err(|_|failure(ErrorKind::StateFailure,"state store poisoned"))
                         .and_then(|mut store|store.audit(&reservation.session.scope,"codex.request.unsupported",json!({"session_id":reservation.session.id,"native_uuid":reservation.session.native_ref,"native_turn":turn,"request_id":id,"native_method":method,"params":params,"effect":"no_grant"})).map_err(|audit|failure(ErrorKind::StateFailure,audit.to_string())));
-                    let _=native.rpc.send(json!({"id":id,"error":{"code":-32601,"message":"Native request unsupported by this runtime route"}})).await;
+                    let _ = native
+                        .rpc
+                        .reply_unavailable(id, "Native request unsupported by this runtime route")
+                        .await;
                 }
                 break Err(error);
             }
             if let Some(deadline) = drain_deadline {
                 let declined = async {
-                    let response = evidence
+                    let _response = evidence
                         .lock()
                         .map_err(|_| {
                             failure(ErrorKind::StateFailure, "native approval state poisoned")
@@ -2274,7 +2259,7 @@ async fn supervise(
                         .audit(&reservation.session.scope, "codex.approval.interrupt_declined",
                             json!({"session_id":reservation.session.id,"native_turn":turn,"request_id":id,"effect":"no_grant"}))
                         .map_err(|error| failure(ErrorKind::StateFailure, error.to_string()))?;
-                    native.rpc.send(response).await?;
+                    native.rpc.decline_owned(id).await?;
                     evidence
                         .lock()
                         .map_err(|_| {
@@ -2672,6 +2657,152 @@ mod tests {
     use crate::domain::{ProjectId, Scope};
     use futures_util::{SinkExt, StreamExt};
 
+    fn assert_unavailable<T: std::fmt::Debug>(result: AdapterResult<T>) {
+        let error = result.unwrap_err();
+        assert_eq!(error.kind, ErrorKind::UnsupportedCapability);
+        assert_eq!(error.message, UNAVAILABLE);
+    }
+    fn no_effect_snapshot(adapter: &CodexAdapter, scope: &Scope) -> Value {
+        let sessions = adapter.registry().unwrap();
+        let store = adapter.store.lock().unwrap();
+        let registry: std::collections::BTreeMap<_,_> = sessions.iter().map(|(id,entry)| (id.to_string(),json!({
+            "control_identity":Arc::as_ptr(&entry.control) as usize,
+            "phase":format!("{:?}",*entry.control.subscribe().borrow()),
+            "transition":entry.transition.load(Ordering::SeqCst),
+            "session":entry.status.borrow().session,
+            "input_version":entry.request.input.version,
+            "input_revision":entry.request.input.revision,
+            "input_hash":format!("{:x}",Sha256::digest(entry.request.input.payload.as_bytes())),
+            "sources":entry.request.input.source_versions,
+            "schema":entry.schema,
+            "stop_capacity":entry.stop.capacity(),
+            "reply_capacity":entry.reply.capacity(),
+            "watch_changed":entry.status.has_changed().unwrap(),
+        }))).collect();
+        json!({
+            "registry":registry,
+            "sessions":store.records(scope, crate::domain::RecordKind::Session).unwrap(),
+            "events":store.events(scope,0,1000).unwrap(),
+            "sites":adapter.availability.sites(),
+        })
+    }
+
+    #[tokio::test]
+    async fn empty_boundary_and_each_missing_fixture_input_leave_every_public_route_unchanged() {
+        use std::os::unix::fs::PermissionsExt;
+        let owned = Fixture::new(false);
+        let parent = owned.request.project.root.parent().unwrap();
+        let executable = parent.join("no-native-effect");
+        let marker = parent.join("native-effect");
+        let git = parent.join("no-git-effect");
+        let git_marker = parent.join("git-effect");
+        for (path, target) in [(&executable, &marker), (&git, &git_marker)] {
+            std::fs::write(
+                path,
+                format!(
+                    "#!/bin/sh\nprintf invoked > '{}'\nexit 0\n",
+                    target.display()
+                ),
+            )
+            .unwrap();
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700)).unwrap();
+        }
+        let adapter = Arc::new(
+            CodexAdapter::new("codex".into(), executable, owned.store.clone())
+                .unwrap()
+                .with_runtime_broker(),
+        );
+        adapter.availability.set_git_input(git);
+        let unknown = SessionRef {
+            id: SessionId::new(),
+            scope: owned.request.scope.clone(),
+        };
+        let schema = json!({"type":"object","properties":{"ok":{"type":"boolean"}},"required":["ok"],"additionalProperties":false});
+        for (backend, producer) in [(false, false), (true, false), (false, true)] {
+            adapter.availability.set_fixture_inputs(backend, producer);
+            let before = no_effect_snapshot(&adapter, &owned.request.scope);
+            assert!(adapter.capabilities().is_empty());
+            assert_unavailable(adapter.probe());
+            let result = adapter.start(owned.request.clone()).await;
+            assert_eq!(no_effect_snapshot(&adapter, &owned.request.scope), before);
+            assert!(!marker.exists() && !git_marker.exists());
+            assert_unavailable(result);
+            let result = adapter
+                .start_structured(owned.request.clone(), schema.clone())
+                .await;
+            assert_eq!(no_effect_snapshot(&adapter, &owned.request.scope), before);
+            assert!(!marker.exists() && !git_marker.exists());
+            assert_unavailable(result);
+            assert_unavailable(adapter.resume(unknown.clone()).await);
+            assert_unavailable(
+                adapter
+                    .checkpoint(unknown.clone(), owned.request.input.clone())
+                    .await,
+            );
+            assert_unavailable(adapter.attach(unknown.clone()).await);
+            for decision in ["Approve", "Deny", "Cancel"] {
+                assert_unavailable(
+                    adapter
+                        .submit_approval(unknown.clone(), json!({"decision":decision}))
+                        .await,
+                );
+            }
+            assert_unavailable(adapter.release(unknown.clone()));
+            let dynamic: Arc<dyn AgentAdapter> = adapter.clone();
+            assert_unavailable(dynamic.start(owned.request.clone()).await);
+            assert_unavailable(
+                dynamic
+                    .start_structured(owned.request.clone(), schema.clone())
+                    .await,
+            );
+            assert_unavailable(dynamic.resume(unknown.clone()).await);
+            assert_unavailable(
+                dynamic
+                    .checkpoint(unknown.clone(), owned.request.input.clone())
+                    .await,
+            );
+            assert_unavailable(dynamic.attach(unknown.clone()).await);
+            assert_unavailable(
+                dynamic
+                    .submit_approval(unknown.clone(), json!({"decision":"Deny"}))
+                    .await,
+            );
+            assert_unavailable(dynamic.release(unknown.clone()));
+            assert_eq!(
+                adapter.status(unknown.clone()).await.unwrap_err().kind,
+                ErrorKind::SessionLost
+            );
+            assert_eq!(
+                adapter.stop(unknown.clone()).await.unwrap_err().kind,
+                ErrorKind::SessionLost
+            );
+            assert_eq!(
+                adapter.subscribe(unknown.clone()).unwrap_err().kind,
+                ErrorKind::SessionLost
+            );
+            assert_eq!(
+                adapter
+                    .usage(unknown.clone(), "review".into(), None)
+                    .await
+                    .unwrap_err()
+                    .kind,
+                ErrorKind::SessionLost
+            );
+            assert_eq!(
+                adapter
+                    .pending_approvals(unknown.clone())
+                    .await
+                    .unwrap_err()
+                    .kind,
+                ErrorKind::SessionLost
+            );
+            assert!(!adapter.transport_succeeded(&status()));
+            assert_eq!(no_effect_snapshot(&adapter, &owned.request.scope), before);
+            assert!(!marker.exists());
+            assert!(!git_marker.exists());
+        }
+    }
+
     #[tokio::test]
     async fn any_uncertain_owned_group_retains_lost_reservation_and_scoped_diagnostic() {
         use std::{os::unix::process::ExitStatusExt, sync::atomic::Ordering};
@@ -2767,7 +2898,13 @@ mod tests {
     impl ApprovalFixture {
         async fn new(runtime_broker: bool) -> Self {
             let owned = Fixture::new(true);
-            let snapshot = ScopeSnapshot::capture(&owned.store, &owned.request, "codex").unwrap();
+            let snapshot = ScopeSnapshot::capture(
+                &owned.store,
+                &owned.request,
+                "codex",
+                &crate::codex::availability::component_availability(),
+            )
+            .unwrap();
             let binding = snapshot
                 .verify_git(&owned.request, &mut ProcessOwnership::default())
                 .await
@@ -2872,7 +3009,8 @@ mod tests {
                     "/definitely-missing-codex".into(),
                     self.reservation.store.clone(),
                 )
-                .unwrap(),
+                .unwrap()
+                .component_fixture(),
             );
             let (stop, _) = mpsc::channel(1);
             let (reply, _) = mpsc::channel(16);
@@ -3036,11 +3174,11 @@ mod tests {
         }
     }
     #[tokio::test]
-    async fn workflow_completion_requires_private_owned_turn_and_verified_persisted_terminal() {
+    async fn selected_component_terminal_never_proves_whole_workload_completion() {
         let mut fixture = ApprovalFixture::new(true).await;
         let (adapter, reference) = fixture.terminal_adapter();
         let status = adapter.current(&reference).unwrap();
-        assert!(adapter.transport_succeeded(&status));
+        assert!(!adapter.transport_succeeded(&status));
         assert_eq!(status.exit_code, None);
         let mut fabricated = status.clone();
         fabricated.exit_code = Some(0);
@@ -3118,7 +3256,7 @@ mod tests {
         let release = tokio::spawn(async move { release_adapter.release(release_ref) });
         assert_eq!(
             release.await.unwrap().unwrap_err().kind,
-            ErrorKind::StateConflict
+            ErrorKind::UnsupportedCapability
         );
         assert_eq!(
             adapter.resume(reference.clone()).await.unwrap_err().kind,
@@ -3128,7 +3266,7 @@ mod tests {
             adapter.current(&reference).unwrap().session.state,
             SessionState::Exited
         );
-        evict_one_terminal(&mut adapter.registry().unwrap());
+        assert_eq!(adapter.registry().unwrap().len(), 1); // Unsettled owners are never evicted.
         assert!(
             adapter
                 .registry()
@@ -3139,12 +3277,15 @@ mod tests {
                 .load(Ordering::SeqCst)
         );
         drop(claim);
-        adapter.release(reference.clone()).unwrap();
+        assert_eq!(
+            adapter.release(reference.clone()).unwrap_err().kind,
+            ErrorKind::UnsupportedCapability
+        );
         assert_eq!(
             adapter.resume(reference).await.unwrap_err().kind,
-            ErrorKind::SessionLost
+            ErrorKind::StateConflict
         );
-        assert!(adapter.registry().unwrap().is_empty());
+        assert_eq!(adapter.registry().unwrap().len(), 1);
     }
     #[tokio::test]
     async fn checkpoint_and_resume_publish_fresh_input_before_reserving_and_restore_consumed_history()
@@ -3224,7 +3365,10 @@ mod tests {
             serde_json::to_value(adapter.current(&reference).unwrap().session).unwrap(),
             serde_json::to_value(original).unwrap()
         );
-        adapter.release(reference).unwrap();
+        assert_eq!(
+            adapter.release(reference).unwrap_err().kind,
+            ErrorKind::UnsupportedCapability
+        );
     }
     #[tokio::test]
     async fn failed_pre_inference_resume_restores_the_owned_terminal_record_and_watch() {
@@ -3246,7 +3390,10 @@ mod tests {
             );
             assert!(fixture.evidence.lock().unwrap().completed);
         }
-        adapter.release(reference).unwrap();
+        assert_eq!(
+            adapter.release(reference).unwrap_err().kind,
+            ErrorKind::UnsupportedCapability
+        );
     }
     #[tokio::test]
     async fn resume_never_replays_cached_prompt_and_checkpoint_refreshes_only_own_metadata() {
@@ -3294,7 +3441,10 @@ mod tests {
             adapter.current(&reference).unwrap().session.state,
             SessionState::Exited
         );
-        adapter.release(reference).unwrap();
+        assert_eq!(
+            adapter.release(reference).unwrap_err().kind,
+            ErrorKind::UnsupportedCapability
+        );
     }
     #[tokio::test]
     async fn checkpoint_rejects_stale_or_regressed_input_without_destroying_resume_state() {
@@ -3349,7 +3499,10 @@ mod tests {
             adapter.current(&reference).unwrap().session.state,
             SessionState::Exited
         );
-        adapter.release(reference).unwrap();
+        assert_eq!(
+            adapter.release(reference).unwrap_err().kind,
+            ErrorKind::UnsupportedCapability
+        );
     }
     #[tokio::test]
     async fn abandoned_resume_after_inference_or_uncertain_cleanup_publishes_its_real_outcome() {
@@ -3390,7 +3543,10 @@ mod tests {
                 if uncertain { Value::Null } else { json!(true) }
             );
             assert!(!fixture.evidence.lock().unwrap().completed);
-            adapter.release(reference).unwrap();
+            assert_eq!(
+                adapter.release(reference).unwrap_err().kind,
+                ErrorKind::UnsupportedCapability
+            );
         }
     }
     fn reply(
@@ -3429,7 +3585,16 @@ mod tests {
                 }
             }
         });
-        (NativeRpc::connect(client).await.unwrap(), receiver, peer)
+        (
+            NativeRpc::connect(
+                client,
+                &crate::codex::availability::component_availability(),
+            )
+            .await
+            .unwrap(),
+            receiver,
+            peer,
+        )
     }
 
     #[tokio::test]
@@ -3486,7 +3651,12 @@ mod tests {
                         .await;
                 }
             });
-            let rpc = NativeRpc::connect(client).await.unwrap();
+            let rpc = NativeRpc::connect(
+                client,
+                &crate::codex::availability::component_availability(),
+            )
+            .await
+            .unwrap();
             let native =
                 NativeServer::supervisor_fixture(rpc, fixture.reservation.ownership.group())
                     .unwrap();
@@ -3618,8 +3788,13 @@ mod tests {
                 owned.request.input.scope = owned.request.scope.clone();
                 owned.request.worktree = owned.request.project.root.clone();
                 owned.request.role = SessionRole::Consultant;
-                let authority =
-                    ScopeSnapshot::capture(&owned.store, &owned.request, "codex").unwrap();
+                let authority = ScopeSnapshot::capture(
+                    &owned.store,
+                    &owned.request,
+                    "codex",
+                    &crate::codex::availability::component_availability(),
+                )
+                .unwrap();
                 let mut session = status().session;
                 session.id = SessionId::new();
                 session.scope = owned.request.scope.clone();
@@ -4499,8 +4674,11 @@ mod tests {
     async fn registered_start_caller_drop_before_starting_does_not_write_or_spawn() {
         let owned = Fixture::new(true);
         let (executable, marker) = bootstrap_fixture(&owned);
-        let adapter =
-            Arc::new(CodexAdapter::new("codex".into(), executable, owned.store.clone()).unwrap());
+        let adapter = Arc::new(
+            CodexAdapter::new("codex".into(), executable, owned.store.clone())
+                .unwrap()
+                .component_fixture(),
+        );
         let gate = adapter.gates.install(TestPoint::BeforeStarting);
         let request = owned.request.clone();
         let actor = adapter.clone();
@@ -4540,7 +4718,9 @@ mod tests {
             let owned = Fixture::new(true);
             let (executable, marker) = bootstrap_fixture(&owned);
             let adapter = Arc::new(
-                CodexAdapter::new("codex".into(), executable, owned.store.clone()).unwrap(),
+                CodexAdapter::new("codex".into(), executable, owned.store.clone())
+                    .unwrap()
+                    .component_fixture(),
             );
             let actor = adapter.clone();
             let request = owned.request.clone();
@@ -4597,7 +4777,10 @@ mod tests {
                     .state,
                 SessionState::Failed
             );
-            adapter.release(reference).unwrap();
+            assert_eq!(
+                adapter.release(reference).unwrap_err().kind,
+                ErrorKind::UnsupportedCapability
+            );
         }
     }
 
@@ -4664,7 +4847,10 @@ mod tests {
                 .version,
             input.version
         );
-        adapter.release(reference).unwrap();
+        assert_eq!(
+            adapter.release(reference).unwrap_err().kind,
+            ErrorKind::UnsupportedCapability
+        );
     }
 
     #[tokio::test]
@@ -4769,7 +4955,10 @@ mod tests {
                 SessionState::Exited,
                 "Store version increments do not change exact snapshot equality"
             );
-            adapter.release(reference).unwrap();
+            assert_eq!(
+                adapter.release(reference).unwrap_err().kind,
+                ErrorKind::UnsupportedCapability
+            );
         }
         let mut fixture = ApprovalFixture::new(true).await;
         let (adapter, reference) = fixture.terminal_adapter();
@@ -4784,7 +4973,10 @@ mod tests {
         gate.release();
         bounded(caller).await.unwrap().unwrap();
         assert_eq!(idle.unwrap().session.state, SessionState::Exited);
-        adapter.release(reference).unwrap();
+        assert_eq!(
+            adapter.release(reference).unwrap_err().kind,
+            ErrorKind::UnsupportedCapability
+        );
     }
     #[tokio::test]
     async fn captured_stop_a_cannot_cancel_later_resume_b_or_adopt_its_status() {
@@ -4862,7 +5054,10 @@ mod tests {
         );
         assert_eq!(error_b.kind, ErrorKind::StateConflict);
         assert_leader_reaped(&marker);
-        adapter.release(reference).unwrap();
+        assert_eq!(
+            adapter.release(reference).unwrap_err().kind,
+            ErrorKind::UnsupportedCapability
+        );
     }
 
     #[tokio::test]
@@ -5162,11 +5357,107 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn empty_route_guards_preserve_real_started_terminal_and_live_pending_owners() {
+        for pending in [false, true] {
+            let owned = Fixture::new(pending);
+            let (executable, directory) =
+                wire_fixture(&owned, if pending { "approval" } else { "complete" });
+            let adapter = Arc::new(
+                CodexAdapter::new("codex".into(), executable, owned.store.clone())
+                    .unwrap()
+                    .component_fixture()
+                    .with_runtime_broker(),
+            );
+            let started = bounded(adapter.start(owned.request.clone())).await.unwrap();
+            let reference = SessionRef::from(&started);
+            let mut fresh = owned.request.input.clone();
+            fresh.version += 1;
+            fresh.payload = "explicit fresh synthetic current input".into();
+            let mut status = adapter.subscribe(reference.clone()).unwrap();
+            if pending {
+                bounded(async {
+                    while status.borrow_and_update().session.state != SessionState::WaitingApproval
+                    {
+                        status.changed().await.unwrap();
+                    }
+                })
+                .await;
+            } else {
+                terminal_status(&adapter, &reference).await;
+                preparing_control(&adapter, reference.id)
+                    .wait_finished()
+                    .await
+                    .unwrap();
+                bounded(adapter.checkpoint(reference.clone(), fresh.clone()))
+                    .await
+                    .unwrap();
+            }
+            let request = if pending {
+                Some(adapter.pending_approvals(reference.clone()).await.unwrap())
+            } else {
+                None
+            };
+            let captured = preparing_control(&adapter, reference.id);
+            adapter.availability.set_fixture_inputs(false, false);
+            let before = no_effect_snapshot(&adapter, &reference.scope);
+            let wire_before = journal_values(&directory);
+            let resume = adapter.resume(reference.clone()).await;
+            let mut effects = vec![no_effect_snapshot(&adapter, &reference.scope) != before];
+            let mut results = vec![resume.map(|_| ())];
+            fresh.version += 1;
+            let checkpoint = adapter.checkpoint(reference.clone(), fresh).await;
+            effects.push(no_effect_snapshot(&adapter, &reference.scope) != before);
+            results.push(checkpoint);
+            let release = adapter.release(reference.clone());
+            effects.push(no_effect_snapshot(&adapter, &reference.scope) != before);
+            results.push(release);
+            if let Some(request) = request {
+                for decision in ["Approve", "Deny", "Cancel"] {
+                    let decision = json!({"native_turn":request["native_turn"],"request_id":request["requests"][0]["id"],"operation_hash":request["requests"][0]["operation_hash"],"decision":decision});
+                    let result = adapter.submit_approval(reference.clone(), decision).await;
+                    effects.push(no_effect_snapshot(&adapter, &reference.scope) != before);
+                    results.push(result);
+                }
+            }
+            let wire_changed = journal_values(&directory) != wire_before;
+            let promoted = adapter.transport_succeeded(&status.borrow());
+            // Only the captured reducing path may now send interrupt/drain.
+            let cleanup = bounded(adapter.stop(reference.clone())).await;
+            if cleanup.is_err() && !matches!(*captured.subscribe().borrow(), Phase::Finished(_)) {
+                captured.preparation.cancel();
+                let _ = captured.stop.try_send(());
+                bounded(captured.wait_finished()).await.unwrap();
+            }
+            assert_leader_reaped(&directory.join("leader"));
+            // Cleanup precedes every assertion: effect-reaching mutants must
+            // not abandon their real seeded synthetic native owner.
+            assert!(
+                !effects.into_iter().any(|effect| effect),
+                "refused entry changed actual state/control/channel/site"
+            );
+            assert!(!wire_changed, "refused entry sent a native frame");
+            assert!(!promoted);
+            for result in results {
+                assert_unavailable(result);
+            }
+            assert!(
+                cleanup.is_ok(),
+                "synthetic captured stop must finish selected-owner cleanup: {cleanup:?}"
+            );
+            assert_eq!(adapter.registry().unwrap().len(), 1);
+            assert!(!adapter.transport_succeeded(&adapter.current(&reference).unwrap()));
+        }
+    }
+
+    #[tokio::test]
     async fn terminal_publication_must_finish_before_next_attempt_and_has_no_late_watch_write() {
         let owned = Fixture::new(true);
         let (executable, directory) = wire_fixture(&owned, "complete");
-        let adapter =
-            Arc::new(CodexAdapter::new("codex".into(), executable, owned.store.clone()).unwrap());
+        let adapter = Arc::new(
+            CodexAdapter::new("codex".into(), executable, owned.store.clone())
+                .unwrap()
+                .component_fixture(),
+        );
         let gate = adapter.gates.install(TestPoint::AfterTerminalPublication);
         let session = bounded(adapter.start(owned.request.clone())).await.unwrap();
         let reference = SessionRef::from(&session);
@@ -5214,7 +5505,10 @@ mod tests {
         let final_b = terminal_status(&adapter, &reference).await;
         assert_eq!(final_b.session.state, SessionState::Exited);
         assert_eq!(final_b.session.recovery["input_version"], 2);
-        adapter.release(reference).unwrap();
+        assert_eq!(
+            adapter.release(reference).unwrap_err().kind,
+            ErrorKind::UnsupportedCapability
+        );
     }
 
     #[tokio::test]
@@ -5323,7 +5617,10 @@ mod tests {
                     .state,
                 SessionState::Exited
             );
-            adapter.release(reference).unwrap();
+            assert_eq!(
+                adapter.release(reference).unwrap_err().kind,
+                ErrorKind::UnsupportedCapability
+            );
         }
     }
 
@@ -5333,6 +5630,7 @@ mod tests {
         let (executable, directory) = wire_fixture(&owned, "approval");
         let adapter = CodexAdapter::new("codex".into(), executable, owned.store.clone())
             .unwrap()
+            .component_fixture()
             .with_runtime_broker();
         let session = bounded(adapter.start(owned.request.clone())).await.unwrap();
         let reference = SessionRef::from(&session);
@@ -5388,7 +5686,10 @@ mod tests {
                 .await
                 .is_err()
         );
-        adapter.release(reference).unwrap();
+        assert_eq!(
+            adapter.release(reference).unwrap_err().kind,
+            ErrorKind::UnsupportedCapability
+        );
     }
 
     #[tokio::test]
@@ -5482,7 +5783,10 @@ mod tests {
                     .contains("synthetic selected-group inspection unavailable"),
                 "audit must not copy private error payloads"
             );
-            adapter.release(reference).unwrap();
+            assert_eq!(
+                adapter.release(reference).unwrap_err().kind,
+                ErrorKind::UnsupportedCapability
+            );
         }
     }
 
@@ -5492,7 +5796,9 @@ mod tests {
             let owned = Fixture::new(true);
             let (executable, directory) = wire_fixture(&owned, mode);
             let adapter = Arc::new(
-                CodexAdapter::new("codex".into(), executable, owned.store.clone()).unwrap(),
+                CodexAdapter::new("codex".into(), executable, owned.store.clone())
+                    .unwrap()
+                    .component_fixture(),
             );
             let pre_admission = adapter.gates.install(TestPoint::BeforeDispatch);
             let actor = adapter.clone();
@@ -5593,7 +5899,10 @@ mod tests {
                     .count(),
                 1
             );
-            adapter.release(reference).unwrap();
+            assert_eq!(
+                adapter.release(reference).unwrap_err().kind,
+                ErrorKind::UnsupportedCapability
+            );
         }
     }
 
@@ -5603,12 +5912,13 @@ mod tests {
         let (executable, directory) = wire_fixture(&owned, "complete");
         let adapter = CodexAdapter::new("codex".into(), executable, owned.store.clone())
             .unwrap()
+            .component_fixture()
             .with_runtime_broker();
         let session = bounded(adapter.start(owned.request.clone())).await.unwrap();
         let reference = SessionRef::from(&session);
         let first = terminal_status(&adapter, &reference).await;
         assert_eq!(first.session.state, SessionState::Exited);
-        assert!(adapter.transport_succeeded(&first));
+        assert!(!adapter.transport_succeeded(&first));
         std::fs::write(directory.join("mode"), "approval").unwrap();
         let mut input = owned.request.input.clone();
         input.version += 1;
@@ -5660,7 +5970,7 @@ mod tests {
             "transition releases with supervised installation, not terminal completion"
         );
         assert_eq!(second.session.recovery["input_version"], input.version);
-        assert!(adapter.transport_succeeded(&second));
+        assert!(!adapter.transport_succeeded(&second));
         assert!(
             bounded(adapter.submit_approval(reference.clone(), decision))
                 .await
@@ -5674,15 +5984,21 @@ mod tests {
             .collect();
         assert_eq!(starts.len(), 2);
         assert_eq!(starts[1]["params"]["input"][0]["text"], input.payload);
-        adapter.release(reference).unwrap();
+        assert_eq!(
+            adapter.release(reference).unwrap_err().kind,
+            ErrorKind::UnsupportedCapability
+        );
     }
 
     #[tokio::test]
     async fn post_consumption_caller_drop_keeps_the_registered_stop_channel_idle() {
         let owned = Fixture::new(true);
         let (executable, directory) = wire_fixture(&owned, "ack_hold");
-        let adapter =
-            Arc::new(CodexAdapter::new("codex".into(), executable, owned.store.clone()).unwrap());
+        let adapter = Arc::new(
+            CodexAdapter::new("codex".into(), executable, owned.store.clone())
+                .unwrap()
+                .component_fixture(),
+        );
         let gate = adapter.gates.install(TestPoint::BeforeDispatch);
         let actor = adapter.clone();
         let request = owned.request.clone();
@@ -5744,7 +6060,10 @@ mod tests {
                 .count(),
             1
         );
-        adapter.release(reference).unwrap();
+        assert_eq!(
+            adapter.release(reference).unwrap_err().kind,
+            ErrorKind::UnsupportedCapability
+        );
     }
     #[tokio::test]
     async fn actual_failed_admission_cas_latches_cause_before_cleanup_and_survives_stop_caller_drop()
@@ -5753,7 +6072,9 @@ mod tests {
             let owned = Fixture::new(true);
             let (executable, directory) = wire_fixture(&owned, "complete");
             let adapter = Arc::new(
-                CodexAdapter::new("codex".into(), executable, owned.store.clone()).unwrap(),
+                CodexAdapter::new("codex".into(), executable, owned.store.clone())
+                    .unwrap()
+                    .component_fixture(),
             );
             let admission_gate = adapter.gates.install(TestPoint::BeforeDispatch);
             let actor = adapter.clone();
@@ -5853,7 +6174,10 @@ mod tests {
                     .any(|event| event.kind == "codex.preparation.finished"
                         && event.data["cause"] == "failed")
             );
-            adapter.release(reference).unwrap();
+            assert_eq!(
+                adapter.release(reference).unwrap_err().kind,
+                ErrorKind::UnsupportedCapability
+            );
         }
     }
 
@@ -5861,8 +6185,11 @@ mod tests {
     async fn actual_resume_pre_admission_cancel_has_zero_new_wire_and_restores_prior_turn_output() {
         let owned = Fixture::new(true);
         let (executable, directory) = wire_fixture(&owned, "complete");
-        let adapter =
-            Arc::new(CodexAdapter::new("codex".into(), executable, owned.store.clone()).unwrap());
+        let adapter = Arc::new(
+            CodexAdapter::new("codex".into(), executable, owned.store.clone())
+                .unwrap()
+                .component_fixture(),
+        );
         let first = bounded(adapter.start(owned.request.clone())).await.unwrap();
         let reference = SessionRef::from(&first);
         let previous = terminal_status(&adapter, &reference).await;
@@ -5909,7 +6236,7 @@ mod tests {
             serde_json::to_value(&previous.session).unwrap()
         );
         assert_eq!(current.stdout, previous.stdout);
-        assert!(adapter.transport_succeeded(&current));
+        assert!(!adapter.transport_succeeded(&current));
         assert_eq!(
             journal_values(&directory)
                 .iter()
@@ -5931,7 +6258,10 @@ mod tests {
             .collect();
         assert_eq!(starts.len(), 2);
         assert_eq!(starts[1]["params"]["input"][0]["text"], input.payload);
-        adapter.release(reference).unwrap();
+        assert_eq!(
+            adapter.release(reference).unwrap_err().kind,
+            ErrorKind::UnsupportedCapability
+        );
     }
     #[tokio::test]
     async fn actual_registered_review_git_cancel_reaps_owned_hook_before_failed_without_native_spawn()
@@ -5966,8 +6296,11 @@ mod tests {
             .unwrap();
         assert!(configured.status.success());
         let (executable, native_marker) = bootstrap_fixture(&owned);
-        let adapter =
-            Arc::new(CodexAdapter::new("codex".into(), executable, owned.store.clone()).unwrap());
+        let adapter = Arc::new(
+            CodexAdapter::new("codex".into(), executable, owned.store.clone())
+                .unwrap()
+                .component_fixture(),
+        );
         let actor = adapter.clone();
         let request = owned.request.clone();
         let mut caller = tokio::spawn(async move { actor.start(request).await });
@@ -5995,15 +6328,21 @@ mod tests {
             "cancel during real Git preflight prevents later native bootstrap"
         );
         assert_eq!(adapter.current(&reference).unwrap().session.pid, None);
-        adapter.release(reference).unwrap();
+        assert_eq!(
+            adapter.release(reference).unwrap_err().kind,
+            ErrorKind::UnsupportedCapability
+        );
     }
 
     #[tokio::test]
     async fn actual_consumed_rpc_timeout_after_caller_drop_keeps_owned_task_and_lost_completion() {
         let owned = Fixture::new(true);
         let (executable, directory) = wire_fixture(&owned, "ack_timeout");
-        let adapter =
-            Arc::new(CodexAdapter::new("codex".into(), executable, owned.store.clone()).unwrap());
+        let adapter = Arc::new(
+            CodexAdapter::new("codex".into(), executable, owned.store.clone())
+                .unwrap()
+                .component_fixture(),
+        );
         let gate = adapter.gates.install(TestPoint::BeforeDispatch);
         let actor = adapter.clone();
         let request = owned.request.clone();
@@ -6084,7 +6423,10 @@ mod tests {
             "queued stop cannot send an interrupt before the unobserved ACK supplies a turn identity"
         );
         assert_leader_reaped(&directory.join("leader"));
-        adapter.release(reference).unwrap();
+        assert_eq!(
+            adapter.release(reference).unwrap_err().kind,
+            ErrorKind::UnsupportedCapability
+        );
     }
     #[tokio::test]
     async fn actual_admission_cas_holds_cancellation_order_through_a_second_sqlite_writer() {

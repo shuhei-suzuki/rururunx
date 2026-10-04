@@ -255,6 +255,7 @@ impl Preparation {
 /// Additive private helper: the shared adapter Git helper and its consumers stay
 /// unchanged. The five-second caller deadline and 250ms reap budget are retained.
 pub(super) async fn bounded_git(
+    availability: &super::availability::Availability,
     executable: &Path,
     cwd: &Path,
     args: &[String],
@@ -263,6 +264,8 @@ pub(super) async fn bounded_git(
     uncertain: Arc<AtomicBool>,
     preparation: &Preparation,
 ) -> AdapterResult<String> {
+    availability.require()?;
+    availability.record(super::availability::Site::GitExecution);
     preparation.check()?;
     if tokio::time::Instant::now() >= deadline {
         return Err(preparation.failed(failure(
@@ -427,6 +430,7 @@ mod tests {
             let ready = ready.clone();
             tokio::spawn(async move {
                 bounded_git(
+                    &crate::codex::availability::component_availability(),
                     Path::new("/bin/sh"),
                     &cwd,
                     &[
@@ -492,6 +496,7 @@ mod tests {
         preparation.cancel();
         let uncertain = Arc::new(AtomicBool::new(false));
         let error = bounded_git(
+            &crate::codex::availability::component_availability(),
             Path::new("/bin/sh"),
             directory.path(),
             &[

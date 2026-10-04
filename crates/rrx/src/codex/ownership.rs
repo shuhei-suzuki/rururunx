@@ -10,11 +10,13 @@ use std::{
 };
 use tokio::sync::Semaphore;
 
-use super::{preparation::Preparation, protocol::failure};
+use super::{
+    availability::{Availability, Site},
+    preparation::Preparation,
+    protocol::failure,
+};
 use crate::{
-    adapter::{
-        AdapterResult, ErrorKind, InputKind, LaunchRequest, SharedStore, resolve_executable,
-    },
+    adapter::{AdapterResult, ErrorKind, InputKind, LaunchRequest, SharedStore},
     domain::{
         Goal, GoalState, Project, ProjectState, Record, RecordKind, Session, SessionRole, Task,
         TaskState,
@@ -61,6 +63,7 @@ pub(super) struct ScopeSnapshot {
     pub goal: Option<Goal>,
     pub task: Option<Task>,
     locks: Vec<Record>,
+    availability: Availability,
 }
 
 pub(super) fn state_error(error: anyhow::Error) -> crate::adapter::AdapterError {
@@ -94,7 +97,10 @@ impl ScopeSnapshot {
         store: &SharedStore,
         request: &LaunchRequest,
         agent: &str,
+        availability: &Availability,
     ) -> AdapterResult<Self> {
+        availability.require()?;
+        availability.record(Site::ScopeAccess);
         if request.scope != request.input.scope
             || request.scope.project_id != request.project.id
             || (request.scope.task_id.is_some() && request.scope.goal_id.is_none())
@@ -283,6 +289,7 @@ impl ScopeSnapshot {
             goal,
             task,
             locks,
+            availability: availability.clone(),
         })
     }
 
@@ -314,7 +321,7 @@ impl ScopeSnapshot {
         agent: &str,
         environment_roster: bool,
     ) -> AdapterResult<()> {
-        let next = Self::capture(store, request, agent)?;
+        let next = Self::capture(store, request, agent, &self.availability)?;
         if self.goal.as_ref().map(|g| g.version) != next.goal.as_ref().map(|g| g.version)
             || self.task.as_ref().map(|t| t.version) != next.task.as_ref().map(|t| t.version)
             || self
@@ -372,16 +379,21 @@ impl ScopeSnapshot {
         ownership: &mut ProcessOwnership,
         preparation: &Preparation,
     ) -> AdapterResult<Value> {
+        self.availability.require()?;
         preparation.check()?;
         let project = self.project.clone();
         let workspace = request.worktree.clone();
+        self.availability.record(Site::Filesystem);
         let before = preparation
-            .wait(filesystem(move || {
+            .wait(filesystem(&self.availability, move || {
                 canonical_binding(&project.root, &workspace)
             }))
             .await?;
+        let availability = self.availability.clone();
         let executable = preparation
-            .wait(filesystem(|| resolve_executable("git")))
+            .wait(filesystem(&self.availability, move || {
+                availability.resolve_git()
+            }))
             .await?;
         let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
         let mut observe = |cwd: PathBuf, args: Vec<String>| {
@@ -389,6 +401,7 @@ impl ScopeSnapshot {
             let executable = executable.clone();
             async move {
                 super::preparation::bounded_git(
+                    &self.availability,
                     &executable,
                     &cwd,
                     &args,
@@ -469,7 +482,7 @@ impl ScopeSnapshot {
             };
             let project = self.project.clone();
             let task = task.clone();
-            filesystem(move || {
+            filesystem(&self.availability, move || {
                 crate::git::validate_worktree_ownership(&project, &task, facts)
                     .map(|_| ())
                     .map_err(|e| failure(ErrorKind::OwnershipMismatch, e.to_string()))
@@ -477,7 +490,7 @@ impl ScopeSnapshot {
             .await?;
         } else {
             let project = self.project.clone();
-            filesystem(move || {
+            filesystem(&self.availability, move || {
                 let common = PathBuf::from(common).canonicalize().map_err(|_| {
                     failure(
                         ErrorKind::OwnershipMismatch,
@@ -526,7 +539,7 @@ impl ScopeSnapshot {
         let project = self.project.clone();
         let workspace = request.worktree.clone();
         let after = preparation
-            .wait(filesystem(move || {
+            .wait(filesystem(&self.availability, move || {
                 canonical_binding(&project.root, &workspace)
             }))
             .await?;
@@ -542,8 +555,11 @@ impl ScopeSnapshot {
 
 /// Retained permits bound abandoned blocking work even after timeout/cancellation.
 pub(super) async fn filesystem<T: Send + 'static>(
+    availability: &Availability,
     action: impl FnOnce() -> AdapterResult<T> + Send + 'static,
 ) -> AdapterResult<T> {
+    availability.require()?;
+    availability.record(Site::Filesystem);
     let permit = FILESYSTEM_WORKERS
         .try_acquire()
         .map_err(|_| failure(ErrorKind::Timeout, "native filesystem worker limit reached"))?;
@@ -728,7 +744,13 @@ pub(super) mod tests {
     async fn primary_consultation_needs_no_worktree_namespace_and_keeps_exact_git_identity() {
         let mut fixture = Fixture::new(false);
         assert!(!fixture.request.project.worktree_root.exists());
-        let snapshot = ScopeSnapshot::capture(&fixture.store, &fixture.request, "codex").unwrap();
+        let snapshot = ScopeSnapshot::capture(
+            &fixture.store,
+            &fixture.request,
+            "codex",
+            &crate::codex::availability::component_availability(),
+        )
+        .unwrap();
         snapshot
             .verify_git(&fixture.request, &mut ProcessOwnership::default())
             .await
@@ -736,13 +758,19 @@ pub(super) mod tests {
         fixture.request.worktree = fixture.request.project.root.join("subdirectory");
         std::fs::create_dir(&fixture.request.worktree).unwrap();
         assert!(
-            matches!(ScopeSnapshot::capture(&fixture.store,&fixture.request,"codex"),Err(error) if error.kind==ErrorKind::OwnershipMismatch)
+            matches!(ScopeSnapshot::capture(&fixture.store,&fixture.request,"codex", &crate::codex::availability::component_availability()),Err(error) if error.kind==ErrorKind::OwnershipMismatch)
         );
     }
     #[tokio::test]
     async fn a_valid_same_head_worktree_replacement_cannot_reuse_the_initial_binding() {
         let fixture = Fixture::new(true);
-        let snapshot = ScopeSnapshot::capture(&fixture.store, &fixture.request, "codex").unwrap();
+        let snapshot = ScopeSnapshot::capture(
+            &fixture.store,
+            &fixture.request,
+            "codex",
+            &crate::codex::availability::component_availability(),
+        )
+        .unwrap();
         let mut ownership = ProcessOwnership::default();
         let binding = snapshot
             .verify_git(&fixture.request, &mut ownership)
@@ -777,7 +805,13 @@ pub(super) mod tests {
     #[tokio::test]
     async fn task_branch_common_directory_and_exact_prepared_head_are_required() {
         let mut fixture = Fixture::new(true);
-        let snapshot = ScopeSnapshot::capture(&fixture.store, &fixture.request, "codex").unwrap();
+        let snapshot = ScopeSnapshot::capture(
+            &fixture.store,
+            &fixture.request,
+            "codex",
+            &crate::codex::availability::component_availability(),
+        )
+        .unwrap();
         let mut ownership = ProcessOwnership::default();
         snapshot
             .verify_git(&fixture.request, &mut ownership)
@@ -813,10 +847,16 @@ pub(super) mod tests {
         fixture.request.role = SessionRole::Reviewer;
         fixture.request.input.kind = InputKind::ReviewBundle;
         assert!(
-            matches!(ScopeSnapshot::capture(&fixture.store,&fixture.request,"codex"),Err(error) if error.kind==ErrorKind::Locked)
+            matches!(ScopeSnapshot::capture(&fixture.store,&fixture.request,"codex", &crate::codex::availability::component_availability()),Err(error) if error.kind==ErrorKind::Locked)
         );
         fixture.review();
-        let snapshot = ScopeSnapshot::capture(&fixture.store, &fixture.request, "codex").unwrap();
+        let snapshot = ScopeSnapshot::capture(
+            &fixture.store,
+            &fixture.request,
+            "codex",
+            &crate::codex::availability::component_availability(),
+        )
+        .unwrap();
         snapshot
             .verify_git(&fixture.request, &mut ProcessOwnership::default())
             .await
@@ -869,19 +909,25 @@ pub(super) mod tests {
     #[test]
     fn persisted_authority_and_native_inputs_cannot_be_forged_or_silently_reused() {
         let mut fixture = Fixture::new(true);
-        let snapshot = ScopeSnapshot::capture(&fixture.store, &fixture.request, "codex").unwrap();
+        let snapshot = ScopeSnapshot::capture(
+            &fixture.store,
+            &fixture.request,
+            "codex",
+            &crate::codex::availability::component_availability(),
+        )
+        .unwrap();
         fixture
             .request
             .project
             .environment_refs
             .push("FOREIGN_SECRET".into());
         assert!(
-            matches!(ScopeSnapshot::capture(&fixture.store,&fixture.request,"codex"),Err(error) if error.kind==ErrorKind::StateConflict)
+            matches!(ScopeSnapshot::capture(&fixture.store,&fixture.request,"codex", &crate::codex::availability::component_availability()),Err(error) if error.kind==ErrorKind::StateConflict)
         );
         fixture.request.project = snapshot.project.clone();
         fixture.request.input.scope = Scope::project(fixture.request.project.id);
         assert!(
-            matches!(ScopeSnapshot::capture(&fixture.store,&fixture.request,"codex"),Err(error) if error.kind==ErrorKind::OwnershipMismatch)
+            matches!(ScopeSnapshot::capture(&fixture.store,&fixture.request,"codex", &crate::codex::availability::component_availability()),Err(error) if error.kind==ErrorKind::OwnershipMismatch)
         );
         fixture.request.input.scope = fixture.request.scope.clone();
         let mut store = fixture.store.lock().unwrap();
@@ -901,7 +947,7 @@ pub(super) mod tests {
         );
         fixture.request.input.revision = "main".into();
         assert!(
-            matches!(ScopeSnapshot::capture(&fixture.store,&fixture.request,"codex"),Err(error) if error.kind==ErrorKind::InvalidInput)
+            matches!(ScopeSnapshot::capture(&fixture.store,&fixture.request,"codex", &crate::codex::availability::component_availability()),Err(error) if error.kind==ErrorKind::InvalidInput)
         );
     }
     #[test]

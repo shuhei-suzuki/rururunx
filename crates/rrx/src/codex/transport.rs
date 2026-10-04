@@ -15,6 +15,7 @@ use tokio::{
 };
 
 use super::{
+    availability::{Availability, Site},
     policy::DecisionPolicy,
     preparation::Preparation,
     protocol::{NativeRpc, failure},
@@ -26,9 +27,9 @@ const CLEANUP_TIMEOUT: Duration = Duration::from_millis(250);
 const TAIL_LIMIT: usize = 64 * 1024;
 
 #[derive(Debug, Default, Clone)]
-pub struct OutputTail {
-    pub bytes: Vec<u8>,
-    pub truncated: bool,
+pub(super) struct OutputTail {
+    pub(super) bytes: Vec<u8>,
+    pub(super) truncated: bool,
 }
 struct Reader {
     task: JoinHandle<()>,
@@ -76,8 +77,8 @@ impl Drop for Reader {
     }
 }
 
-pub struct NativeServer {
-    pub rpc: NativeRpc,
+pub(super) struct NativeServer {
+    pub(super) rpc: NativeRpc,
     process: ProcessGroup,
     directory: tempfile::TempDir,
     socket: PathBuf,
@@ -95,6 +96,7 @@ impl NativeServer {
         rpc: NativeRpc,
         uncertain: Arc<AtomicBool>,
     ) -> AdapterResult<Self> {
+        rpc.require_dispatch()?;
         let directory = tempfile::Builder::new()
             .prefix("rrx-test-")
             .tempdir_in("/tmp")
@@ -132,24 +134,8 @@ impl NativeServer {
             pid,
         })
     }
-    pub async fn launch(
-        executable: &Path,
-        workspace: &Path,
-        policy: Option<&DecisionPolicy>,
-        environment: Vec<(OsString, OsString)>,
-        uncertain: Arc<AtomicBool>,
-    ) -> AdapterResult<Self> {
-        Self::launch_preparing(
-            executable,
-            workspace,
-            policy,
-            environment,
-            uncertain,
-            &Preparation::new(),
-        )
-        .await
-    }
     pub(super) async fn launch_preparing(
+        availability: &Availability,
         executable: &Path,
         workspace: &Path,
         policy: Option<&DecisionPolicy>,
@@ -157,6 +143,8 @@ impl NativeServer {
         uncertain: Arc<AtomicBool>,
         preparation: &Preparation,
     ) -> AdapterResult<Self> {
+        availability.require()?;
+        availability.record(Site::Transport);
         preparation.check()?;
         if !executable.is_absolute() || !workspace.is_absolute() || workspace.to_str().is_none() {
             return Err(failure(
@@ -241,7 +229,7 @@ impl NativeServer {
         };
         let initialized = preparation
             .wait(async {
-                let mut rpc = NativeRpc::connect(stream).await?;
+                let mut rpc = NativeRpc::connect(stream, availability).await?;
                 rpc.initialize().await?;
                 Ok::<_, crate::adapter::AdapterError>(rpc)
             })
@@ -266,30 +254,19 @@ impl NativeServer {
             pid,
         })
     }
-    pub fn pid(&self) -> u32 {
+    pub(super) fn pid(&self) -> u32 {
         self.pid
     }
-    pub fn socket(&self) -> AdapterResult<&Path> {
-        verify_directory(self.directory.path())?;
-        self.socket_binding.verify(&self.socket)?;
-        Ok(&self.socket)
-    }
-    pub fn stdout(&self) -> OutputTail {
-        self.stdout.snapshot()
-    }
-    pub fn stderr(&self) -> OutputTail {
+    pub(super) fn stderr(&self) -> OutputTail {
         self.stderr.snapshot()
     }
-    pub async fn observe_exit(&self) -> std::io::Result<()> {
-        self.process.observe_exit().await
-    }
-    pub async fn receive(&mut self) -> AdapterResult<super::protocol::Event> {
+    pub(super) async fn receive(&mut self) -> AdapterResult<super::protocol::Event> {
         tokio::select! {
             event = self.rpc.receive() => event,
             _ = self.process.observe_exit() => Err(failure(ErrorKind::ProcessFailure, "native server exited during its turn")),
         }
     }
-    pub async fn shutdown(self) -> AdapterResult<ExitStatus> {
+    pub(super) async fn shutdown(self) -> AdapterResult<ExitStatus> {
         // Drop IPC only after group cleanup has run on a blocking worker and the
         // still-owned leader has been reaped. Uncertainty remains armed on error.
         let Self {
@@ -722,6 +699,7 @@ mod tests {
             let ready = ready.clone();
             tokio::spawn(async move {
                 NativeServer::launch_preparing(
+                    &crate::codex::availability::component_availability(),
                     &executable,
                     &cwd,
                     None,

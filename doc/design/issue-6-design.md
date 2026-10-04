@@ -624,9 +624,11 @@ only canonical uncertainty reasons, failure kinds and a detail-retained flag.
 
 Requirements gate: exact `a79850c29dbbc0c43d4ba6fd33143b4f2554212c` passed two
 independent native requirements reviews with no Critical/High/Medium findings.
-Design10 is a proposed STRICT design; it is not source/backend/MVP approval.
-Production remains the unchanged `cab665d56f7032f086946c1acfce448f5b9d076d`
-selected-group/F4 component. This section supersedes earlier full-cleanup or
+Design10's Stage A received two independent no-CHM design approvals at public
+`6cf6adffa8770faa6bfd694d4d09babb2a0e8f2e`. Candidate Source A is under implementation
+and source gate; this is not source/backend/MVP approval. The historical
+`cab665d56f7032f086946c1acfce448f5b9d076d` selected-group/F4 component remains limited
+evidence. This section supersedes earlier full-cleanup or
 capability eligibility wording, without erasing that component's evidence.
 
 ### Verified gap and required acceptance
@@ -870,6 +872,47 @@ and both-OS CI are required. CI trigger head and actual checkout merge SHA/paren
 plus reviewed blob equality are separate facts. Historical cab macOS inspection
 timeout and later main21 Grok reconciliation red stay visible, with no deadline,
 default-concurrency or same-head-rerun waiver. Stage A cannot close Issue6 or MVP.
+
+### Candidate Source A implementation inventory
+
+The single gate precedes ANY registry/Store/SQLite read or lock and filesystem
+access; only pure argument checks could precede it. Unknown IDs on new dispatch,
+attach, approval and release have the fixed Unsupported reason. Unowned factual
+observers and stop remain SessionLost. No Preparation::new or caller flag can
+establish availability. Private RPC/ScopeSnapshot carry the same per-adapter clone;
+free creating helpers receive it explicitly, without global state or a production
+ready token.
+
+| Category | Actual own routes |
+| --- | --- |
+| Same gate before new state/job/resource/dispatch | launch/register_fresh/register_existing/spawn_launch/spawn_checkpoint/prepare_launch/prepare_checkpoint; ScopeSnapshot::capture/verify_git_preparing; Availability::resolve_git; filesystem/bounded_git; NativeServer::launch_preparing and private supervisor_fixture; NativeRpc::connect/send/call/initialize/dispatch_call; Reservation::dispatch and answer_approval |
+| Prior captured owner reducing/receive/cleanup only | NativeRpc::interrupt_turn (fixed turn/interrupt), reply_unavailable (bounded fixed error), decline_owned (fixed decline); receive/read/queue/control frames; NativeServer::shutdown and selected-group cleanup; public stop on its once-captured actual Control |
+| Pure values/observations or fixed refusal | new/with_runtime_broker; frame encoding/prepare_call; owned status/subscribe/usage/pending observation; EMPTY descriptors/probe; false transport completion; release refusal before claim |
+
+Receiving/reducing functions cannot encode ALLOW/new input. Reader and selected
+cleanup pieces remain component behavior, not a future all-job custodian. Their
+terminal/Stopped/exact prior-terminal restore labels authorize no shared hold
+release and cannot carry over as Stage B settlement.
+
+The cfg(test) Git resolve seam changes only a per-adapter executable input, never
+acceptance/refusal/routing. Its fields/methods are absent in ordinary builds. Real
+PATH resolution is covered by the ordinary subprocess PATH sentinel. Ordinary
+requests are effect-reaching registered canonical-root Project-only Consultant
+inputs with valid bounded frame/revision/schema. Snapshot/sentinel checks precede
+error strings, and mutant ledgers identify actual Starting or sentinel effects.
+
+Both examples now contain only a pure main returning the fixed typed refusal,
+without adapter/Store/fixture construction or execution code. Source inventory and
+actual debug/release execution check the refusal and absence of native/Git/fixture
+effects. Historical native artifacts remain unchanged.
+
+Every inner guard needs a direct private-route control or explicit redundant-
+survivor classification if another still-present guard prevents reaching it. This
+applies to all guards, not only inert attach/native-goal; no label-only kill credit.
+Pinned rustc-JSON probes compare COMPLETE per-snippet diagnostic sets, including
+any E0422/E0423/E0063 or uncoded errors empirically observed. The illustrative table
+is not a blanket accepted-code list; unrelated diagnostics fail against the exact
+positive/private/absence control.
 
 ### Stage B: required ready-backend source/conformance gates — OPEN
 

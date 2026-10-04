@@ -76,13 +76,13 @@ pub(super) fn failure(kind: ErrorKind, message: impl Into<String>) -> AdapterErr
 /// Native request IDs are opaque and must be returned without conversion.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 #[serde(untagged)]
-pub enum RpcId {
+pub(super) enum RpcId {
     Number(i64),
     Text(String),
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Event {
+pub(super) enum Event {
     Notification {
         method: String,
         params: Value,
@@ -167,7 +167,8 @@ impl Event {
 
 /// The owner verifies socket directory/inode/permissions before passing a stream.
 /// This client cannot connect to TCP or to a shared native daemon.
-pub struct NativeRpc {
+pub(super) struct NativeRpc {
+    availability: super::availability::Availability,
     socket: WebSocketStream<UnixStream>,
     next_id: i64,
     queued: VecDeque<(Event, usize)>,
@@ -179,7 +180,18 @@ pub(super) struct PreparedCall {
     text: String,
 }
 impl NativeRpc {
-    pub async fn connect(stream: UnixStream) -> AdapterResult<Self> {
+    pub(super) fn availability(&self) -> super::availability::Availability {
+        self.availability.clone()
+    }
+    pub(super) fn require_dispatch(&self) -> AdapterResult<()> {
+        self.availability.require()
+    }
+    pub(super) async fn connect(
+        stream: UnixStream,
+        availability: &super::availability::Availability,
+    ) -> AdapterResult<Self> {
+        availability.require()?;
+        availability.record(super::availability::Site::Connection);
         let config = WebSocketConfig::default()
             .max_message_size(Some(MAX_MESSAGE))
             .max_frame_size(Some(MAX_MESSAGE))
@@ -193,15 +205,45 @@ impl NativeRpc {
         .map_err(|_| failure(ErrorKind::Timeout, "native WebSocket handshake timed out"))?
         .map_err(|_| failure(ErrorKind::ParseFailure, "native WebSocket handshake failed"))?;
         Ok(Self {
+            availability: availability.clone(),
             socket,
             next_id: 1,
             queued: VecDeque::new(),
             queued_bytes: 0,
         })
     }
-    pub async fn send(&mut self, value: Value) -> AdapterResult<()> {
+    pub(super) async fn send(&mut self, value: Value) -> AdapterResult<()> {
+        self.availability.require()?;
+        self.availability.record(super::availability::Site::Frame);
         let text = Self::encode(value)?;
         self.send_text(text).await
+    }
+    pub(super) fn record_grant(&self) {
+        self.availability.record(super::availability::Site::Grant);
+    }
+    /// Reducing responses only, on this already-created private RPC owner.
+    /// Neither method can encode a grant or a new native input.
+    pub(super) async fn reply_unavailable(
+        &mut self,
+        id: &RpcId,
+        message: &str,
+    ) -> AdapterResult<()> {
+        if message.len() > 256 {
+            return Err(failure(
+                ErrorKind::InvalidInput,
+                "native decline message exceeds limit",
+            ));
+        }
+        self.send_text(Self::encode(
+            json!({"id":id,"error":{"code":-32601,"message":message}}),
+        )?)
+        .await
+    }
+    pub(super) async fn decline_owned(&mut self, id: &RpcId) -> AdapterResult<()> {
+        self.send_text(Self::encode(
+            json!({"id":id,"result":{"decision":"decline"}}),
+        )?)
+        .await
     }
     fn encode(value: Value) -> AdapterResult<String> {
         let text = serde_json::to_string(&value)
@@ -261,7 +303,7 @@ impl NativeRpc {
             }
         }
     }
-    pub async fn receive(&mut self) -> AdapterResult<Event> {
+    pub(super) async fn receive(&mut self) -> AdapterResult<Event> {
         if let Some((event, bytes)) = self.queued.pop_front() {
             self.queued_bytes -= bytes;
             return Ok(event);
@@ -283,7 +325,8 @@ impl NativeRpc {
     }
     /// For bootstrap/lifecycle RPCs. No target-operation approval is supplied here.
     /// Live callbacks are delivered by receive after the native turn is established.
-    pub async fn call(&mut self, method: &str, params: Value) -> AdapterResult<Value> {
+    pub(super) async fn call(&mut self, method: &str, params: Value) -> AdapterResult<Value> {
+        self.availability.require()?;
         let prepared = self.prepare_call(method, params)?;
         self.dispatch_call(prepared).await
     }
@@ -319,6 +362,8 @@ impl NativeRpc {
         })
     }
     pub(super) async fn dispatch_call(&mut self, prepared: PreparedCall) -> AdapterResult<Value> {
+        self.availability.require()?;
+        self.availability.record(super::availability::Site::Frame);
         let PreparedCall { id, method, text } = prepared;
         self.send_text(text).await?;
         let deadline = tokio::time::Instant::now() + RPC_TIMEOUT;
@@ -341,7 +386,11 @@ impl NativeRpc {
                     ));
                 }
                 Event::Request { id, .. } => {
-                    self.send(json!({"id":id,"error":{"code":-32601,"message":"Operation approval unavailable during runtime preflight"}})).await?;
+                    self.reply_unavailable(
+                        &id,
+                        "Operation approval unavailable during runtime preflight",
+                    )
+                    .await?;
                     return Err(failure(
                         ErrorKind::UnsupportedCapability,
                         "native callback requires an established scoped turn",
@@ -351,7 +400,8 @@ impl NativeRpc {
             }
         }
     }
-    pub async fn initialize(&mut self) -> AdapterResult<()> {
+    pub(super) async fn initialize(&mut self) -> AdapterResult<()> {
+        self.availability.require()?;
         let response = self.call("initialize", json!({"clientInfo":{"name":"rururunx","title":"rururunx scoped native session","version":env!("CARGO_PKG_VERSION")},"capabilities":{"experimentalApi":true}})).await?;
         // userAgent is not assumed to report a binary version or authenticate a
         // peer. The separate owned --version process and IPC peer check do that.
@@ -361,23 +411,23 @@ impl NativeRpc {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct PendingRequest {
-    pub id: RpcId,
-    pub method: String,
-    pub params: Value,
-    pub operation: Option<Value>,
-    pub operation_hash: String,
+pub(super) struct PendingRequest {
+    pub(super) id: RpcId,
+    pub(super) method: String,
+    pub(super) params: Value,
+    pub(super) operation: Option<Value>,
+    pub(super) operation_hash: String,
 }
 
 /// A reply can grant only the exact already pending operation once.
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
-pub enum OperationDecision {
+pub(super) enum OperationDecision {
     Approve,
     Deny,
     Cancel,
 }
 
-pub struct ApprovalLedger {
+pub(super) struct ApprovalLedger {
     thread: String,
     turn: String,
     pending: BTreeMap<RpcId, PendingRequest>,
@@ -386,7 +436,7 @@ pub struct ApprovalLedger {
     items: BTreeMap<String, Value>,
 }
 impl ApprovalLedger {
-    pub fn new(thread: String, turn: String) -> Self {
+    pub(super) fn new(thread: String, turn: String) -> Self {
         Self {
             thread,
             turn,
@@ -396,12 +446,12 @@ impl ApprovalLedger {
             items: BTreeMap::new(),
         }
     }
-    pub fn for_workspace(mut self, workspace: PathBuf) -> Self {
+    pub(super) fn for_workspace(mut self, workspace: PathBuf) -> Self {
         self.workspace = Some(workspace);
         self
     }
     /// Retain only bounded planned patches, without command output/history.
-    pub fn observe_item(&mut self, item: &Value) -> AdapterResult<()> {
+    pub(super) fn observe_item(&mut self, item: &Value) -> AdapterResult<()> {
         if item["type"] != "fileChange" {
             return Ok(());
         }
@@ -437,7 +487,7 @@ impl ApprovalLedger {
         self.items.insert(id.into(), operation);
         Ok(())
     }
-    pub fn insert(
+    pub(super) fn insert(
         &mut self,
         id: RpcId,
         method: String,
@@ -565,7 +615,11 @@ impl ApprovalLedger {
         self.pending.insert(id, request.clone());
         Ok(request)
     }
-    pub fn reply(&mut self, id: &RpcId, decision: OperationDecision) -> AdapterResult<Value> {
+    pub(super) fn reply(
+        &mut self,
+        id: &RpcId,
+        decision: OperationDecision,
+    ) -> AdapterResult<Value> {
         let request = self.pending.get(id).ok_or_else(|| {
             failure(
                 ErrorKind::OwnershipMismatch,
@@ -606,13 +660,13 @@ impl ApprovalLedger {
         };
         Ok(json!({"id":request.id,"result":{"decision":decision}}))
     }
-    pub fn is_empty(&self) -> bool {
+    pub(super) fn is_empty(&self) -> bool {
         self.pending.is_empty()
     }
-    pub fn pending(&self) -> Vec<PendingRequest> {
+    pub(super) fn pending(&self) -> Vec<PendingRequest> {
         self.pending.values().cloned().collect()
     }
-    pub fn request(&self, id: &RpcId) -> AdapterResult<PendingRequest> {
+    pub(super) fn request(&self, id: &RpcId) -> AdapterResult<PendingRequest> {
         self.pending.get(id).cloned().ok_or_else(|| {
             failure(
                 ErrorKind::OwnershipMismatch,
@@ -620,10 +674,10 @@ impl ApprovalLedger {
             )
         })
     }
-    pub fn retire(&mut self, id: &RpcId) -> Option<PendingRequest> {
+    pub(super) fn retire(&mut self, id: &RpcId) -> Option<PendingRequest> {
         self.pending.remove(id)
     }
-    pub fn retire_item(&mut self, item: &str) -> Vec<PendingRequest> {
+    pub(super) fn retire_item(&mut self, item: &str) -> Vec<PendingRequest> {
         let ids: Vec<_> = self
             .pending
             .iter()
@@ -633,11 +687,15 @@ impl ApprovalLedger {
         self.items.remove(item);
         ids.into_iter().filter_map(|id| self.retire(&id)).collect()
     }
-    pub fn retire_turn(&mut self) -> Vec<PendingRequest> {
+    pub(super) fn retire_turn(&mut self) -> Vec<PendingRequest> {
         self.items.clear();
         std::mem::take(&mut self.pending).into_values().collect()
     }
-    pub fn preview_reply(&self, id: &RpcId, decision: OperationDecision) -> AdapterResult<Value> {
+    pub(super) fn preview_reply(
+        &self,
+        id: &RpcId,
+        decision: OperationDecision,
+    ) -> AdapterResult<Value> {
         let mut preview = Self {
             thread: self.thread.clone(),
             turn: self.turn.clone(),
@@ -770,13 +828,13 @@ pub(super) fn operation_paths(
 
 /// Native cumulative counters are gauges, not deltas to add on each notification.
 #[derive(Debug, Default, Clone, PartialEq, Serialize)]
-pub struct TokenCounters {
-    pub input: Option<u64>,
-    pub cached_input: Option<u64>,
-    pub cache_write_input: Option<u64>,
-    pub output: Option<u64>,
-    pub reasoning_output: Option<u64>,
-    pub total: Option<u64>,
+pub(super) struct TokenCounters {
+    pub(super) input: Option<u64>,
+    pub(super) cached_input: Option<u64>,
+    pub(super) cache_write_input: Option<u64>,
+    pub(super) output: Option<u64>,
+    pub(super) reasoning_output: Option<u64>,
+    pub(super) total: Option<u64>,
 }
 impl TokenCounters {
     fn fields(&self) -> [Option<u64>; 6] {
@@ -807,7 +865,7 @@ impl TokenCounters {
             total,
         }
     }
-    pub fn from_native(value: &Value) -> AdapterResult<Self> {
+    pub(super) fn from_native(value: &Value) -> AdapterResult<Self> {
         let field = |name: &str| match value.get(name) {
             None | Some(Value::Null) => Ok(None),
             Some(v) => v
@@ -836,11 +894,11 @@ impl TokenCounters {
 /// runtime persists these snapshots by native thread/turn rather than summing
 /// repeated cumulative notifications (including notifications after resume).
 #[derive(Debug, Clone)]
-pub struct UsageTracker {
+pub(super) struct UsageTracker {
     thread: String,
     turn: String,
-    pub total: Option<TokenCounters>,
-    pub last: Option<TokenCounters>,
+    pub(super) total: Option<TokenCounters>,
+    pub(super) last: Option<TokenCounters>,
     // None denotes a newly created native thread, Some(None) an owned resume
     // whose previous cumulative gauge was unavailable. Never substitute zero
     // for missing native counters on resume.
@@ -849,7 +907,7 @@ pub struct UsageTracker {
     high_water: [Option<u64>; 6],
 }
 impl UsageTracker {
-    pub fn new(thread: String, turn: String) -> Self {
+    pub(super) fn new(thread: String, turn: String) -> Self {
         Self {
             thread,
             turn,
@@ -860,7 +918,7 @@ impl UsageTracker {
             high_water: [None; 6],
         }
     }
-    pub fn resumed(thread: String, turn: String, baseline: Option<TokenCounters>) -> Self {
+    pub(super) fn resumed(thread: String, turn: String, baseline: Option<TokenCounters>) -> Self {
         Self {
             high_water: baseline
                 .as_ref()
@@ -873,7 +931,7 @@ impl UsageTracker {
     /// A replayed owned prior turn can show that our shutdown-time gauge lagged.
     /// Never attribute the difference to the newly resumed turn. Once uncertain,
     /// this baseline stays unknown for the whole current turn.
-    pub fn verify_previous_total(&mut self, previous: &TokenCounters) {
+    pub(super) fn verify_previous_total(&mut self, previous: &TokenCounters) {
         if self
             .baseline
             .as_ref()
@@ -884,7 +942,7 @@ impl UsageTracker {
     }
     /// Entire current turn, including every native model call and tool cycle.
     /// `last` is a single model call and cannot represent a multi-call turn.
-    pub fn turn_counters(&self) -> Option<TokenCounters> {
+    pub(super) fn turn_counters(&self) -> Option<TokenCounters> {
         let current = self.total.as_ref()?.fields();
         let baseline = self.baseline.as_ref().map(|prior| {
             prior
@@ -903,7 +961,7 @@ impl UsageTracker {
             }
         })))
     }
-    pub fn update(&mut self, params: &Value) -> AdapterResult<bool> {
+    pub(super) fn update(&mut self, params: &Value) -> AdapterResult<bool> {
         if params["threadId"].as_str() != Some(self.thread.as_str())
             || params["turnId"].as_str() != Some(self.turn.as_str())
         {
@@ -948,6 +1006,79 @@ impl UsageTracker {
 mod tests {
     use super::*;
     use tokio_tungstenite::accept_async;
+
+    #[tokio::test]
+    async fn private_rpc_gates_refuse_connection_and_frames_before_classifying_errors() {
+        use crate::codex::availability::{Availability, component_availability};
+        for (backend, producer) in [(false, false), (true, false), (false, true)] {
+            let availability = Availability::default();
+            availability.set_fixture_inputs(backend, producer);
+            let (client, server) = UnixStream::pair().unwrap();
+            let peer = tokio::spawn(async move {
+                if let Ok(mut socket) = accept_async(server).await {
+                    while socket.next().await.is_some() {}
+                }
+            });
+            let result = NativeRpc::connect(client, &availability).await;
+            let error = match result {
+                Err(error) => Some(error),
+                Ok(rpc) => {
+                    drop(rpc);
+                    None
+                }
+            };
+            peer.await.unwrap();
+            assert_eq!(
+                availability.sites(),
+                [0; 10],
+                "empty gate reached connection work"
+            );
+            let error = error.expect("empty gate created a connection");
+            assert_eq!(error.kind, ErrorKind::UnsupportedCapability);
+        }
+        let availability = component_availability();
+        let (client, server) = UnixStream::pair().unwrap();
+        let peer = tokio::spawn(async move {
+            let mut socket = accept_async(server).await.unwrap();
+            let mut frames = Vec::new();
+            while let Some(Ok(frame)) = socket.next().await {
+                if let Ok(text) = frame.to_text() {
+                    let value: Value = serde_json::from_str(text).unwrap();
+                    if let Some(id) = value.get("id") {
+                        socket
+                            .send(Message::Text(
+                                json!({"id":id,"result":{}}).to_string().into(),
+                            ))
+                            .await
+                            .unwrap();
+                    }
+                    frames.push(value);
+                }
+            }
+            frames
+        });
+        let mut rpc = NativeRpc::connect(client, &availability).await.unwrap();
+        availability.set_fixture_inputs(false, false);
+        let before = availability.sites();
+        let send = rpc
+            .send(json!({"method":"synthetic/no-effect","params":{}}))
+            .await;
+        let call = rpc.call("synthetic/no-effect", json!({})).await;
+        let initialize = rpc.initialize().await;
+        let prepared = rpc.prepare_call("synthetic/no-effect", json!({})).unwrap();
+        let dispatch = rpc.dispatch_call(prepared).await;
+        drop(rpc);
+        let frames = peer.await.unwrap();
+        assert!(frames.is_empty(), "empty gate reached actual native frames");
+        assert_eq!(
+            availability.sites(),
+            before,
+            "empty gate entered a dispatch site"
+        );
+        for result in [send, call.map(|_| ()), initialize, dispatch.map(|_| ())] {
+            assert_eq!(result.unwrap_err().kind, ErrorKind::UnsupportedCapability);
+        }
+    }
 
     #[test]
     fn unverified_versions_and_invalid_initialize_contracts_never_reach_native_turns() {
@@ -1466,7 +1597,12 @@ mod tests {
                 .unwrap();
             tokio::time::sleep(Duration::from_millis(25)).await;
         });
-        let mut rpc = NativeRpc::connect(client).await.unwrap();
+        let mut rpc = NativeRpc::connect(
+            client,
+            &crate::codex::availability::component_availability(),
+        )
+        .await
+        .unwrap();
         assert_eq!(
             rpc.call("fixture", json!({})).await.unwrap(),
             json!({"ok":true})
@@ -1505,7 +1641,12 @@ mod tests {
                         .await;
                 }
             });
-            let mut rpc = NativeRpc::connect(client).await.unwrap();
+            let mut rpc = NativeRpc::connect(
+                client,
+                &crate::codex::availability::component_availability(),
+            )
+            .await
+            .unwrap();
             assert_eq!(
                 rpc.call("fixture", json!({})).await.unwrap_err().kind,
                 ErrorKind::ParseFailure

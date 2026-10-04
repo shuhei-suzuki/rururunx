@@ -251,7 +251,8 @@ matching inventory.
 
 The additive object-safe `AgentAdapter::start_structured(request, schema)` accepts
 caller-owned per-turn constraints. Its default returns UnsupportedCapability;
-native Codex and Grok explicitly implement it. Grok delegates the registry's trait
+Grok implements it; Codex now refuses Unsupported while workload ownership and
+dispatch producers are unavailable. Grok delegates the registry's trait
 dispatch to its existing bounded schema check and native launch path, preserving
 local enum, required-property and additional-property validation. Structured event
 collection alone does not establish support for arbitrary caller schemas. Review
@@ -373,69 +374,41 @@ CI timeouts or contain detached native descendants. Non-atomic fork/exit samplin
 KILL with non-signalable survivors remain residual limits; Linux cleanup semantics
 remain unchanged.
 
-## 16. Native Codex implementation in progress (Issue #6)
+## 16. Native Codex component boundary (Issue #6)
 
-The following records the earlier selected-group component baseline. Section17
-records the unresolved whole-workload eligibility limit: the current source remains
-unfixed for whole-workload ownership until its design/source/consumer gates finish.
-These implemented protocol pieces do not advertise a genuinely supported native
-production workload profile or satisfy mandatory both-host/native acceptance.
+The candidate Source A implementation advertises an EMPTY Codex capability set.
+Probe and every new public launch/structured/resume/checkpoint/attach/approval
+route return UnsupportedCapability with the fixed reason `native workload
+ownership and dispatch producer unavailable`, before registry/Store access or
+Git/filesystem/native/discovery work. Protocol and transport are module-private;
+external callers receive no raw server, socket or RPC dispatch path. Both native
+examples immediately refuse before creating any fixture. Generic factory/config
+integration and earlier Workflow capture/reservation are separate open consumers.
 
-The explicit `codex::CodexAdapter` uses an owned private Unix WebSocket app-server
-and native thread UUID. Noninteractive execute, consultation, structured review,
-owned resume, checkpoint and nullable token/cache usage are implemented. Exact
-Project/Goal/Task, canonical Git ownership, prepared HEAD, native CWD/profile and
-directory inode binding are rechecked before inference. Immutable review requires
-a clean locked worktree; source consultation requires the registered primary root.
+Pure adapter/broker construction does not establish readiness. A test-only pair of
+backend/producer inputs exercises the same gate; neither alone passes and ordinary
+construction remains EMPTY in tests. Executed ordinary-library debug/release controls
+and exact source/consumer/mutation/CI review are required for Source A acceptance.
+The currently edited source is not an approved ready backend or native profile.
 
-Native authentication/configuration/hooks/trust and unspecified model/effort
-remain authoritative. Executor selects the verified built-in local environment
-and its own writable worktree profile; decision roles have no execution
-environment or target operations. Native turn completion is separate from
-confirmed process-group cleanup and durable terminal state. Resume adopts only
-the current in-memory supervisor's exact owned UUID, never a persisted hint.
+Existing selected-group protocol components retain exact scope, Git/CWD binding,
+framing, nullable per-turn usage, private input CAS, continuation and cancellation
+regressions through that private component seam. Their Exited/Stopped/restore labels
+and journals are test-only component observations, never workload settlement or
+hold-release certificates. Public transport_succeeded is always false; public
+release refuses before transition mutation, and retention saturation refuses rather
+than evicting unsettled owners. No component label/journal carries over as Stage B
+settlement. Actual retained stop may only reduce its captured prior attempt via
+interrupt/decline/drain and preserve uncertainty; it cannot grant or create input.
+Unowned observers and stop return SessionLost, with historical reporting confined
+to the unchanged in-process Store path. PID/UUID/row hints never recreate an owner.
 
-Pending native approval callbacks expose exact identities, bounded operation
-contents and a reviewed-operation digest. Unknown patch facts and unscoped targets
-cannot be granted; resolved native requests retire without a runtime grant. The
-default Human route cannot be auto-granted. An explicit trusted runtime-broker
-integration requires the existing native client reviewer route and revalidates
-ownership before one-time audited replies; automatic/managed review is never
-replaced. Unknown/persistent/expanded grants are unsupported. Caller preparation,
-review quorum, cross-agent policy and command completion remain upstream concerns.
-
-Per-turn usage includes every native model/tool cycle, subtracting the previous
-owned cumulative gauge on resume without adding repeated notifications. Missing
-or reset counters and monetary cost stay null. Interactive/attach and final native
-source review/mutation/CI evidence are pending; this section does not claim Issue
-#6 completion. See [issue design](../issue-6-design.md).
-
-
-Codex experimental protocol conformance currently targets native CLI 0.160.0;
-unknown versions fail before inference. Selected native provider credential/header
-references are scoped to the owning Project without extracting native credentials.
-Native Codex input admission atomically checks owning Project/Goal/Task versions,
-the full scoped lock/version set and Session CAS with metadata-only consumed-input
-audit. Unobserved native outcomes retain Lost reservations even after confirmed
-process death; interrupt acknowledgement alone cannot authorize replay. A fresh
-continuation pins its new source metadata in Starting before dispatch.
-Owned resume requires a freshly checkpointed continuation rather than an implicit
-repeat of the old mutating prompt. Checkpoint can refresh mutable own Project
-metadata but cannot rebind its repository/worktree. Transport completion and
-telemetry compare the private owned turn journal with persisted Session authority;
-caller recovery metadata and a server's OS exit zero are never completion proof.
-
-Native Codex preparations install an exact per-attempt control before their first
-await or Starting write. Its independently owned task survives caller drop, keeps
-owned children through asynchronous cleanup, and publishes a level-triggered
-factual outcome only after final persistence or explicit publication failure.
-Cancellation and consumed-input/checkpoint CAS share one admission order. Stop
-captures that control once; queued interrupts retain the same receiver through
-native acknowledgement and supervision. A later registry attempt cannot steal the
-completion or receive the old stop. Exact Session snapshots distinguish restoration
-from advancement without treating Store version increments as different attempts.
-This implementation is under independent source review and does not resolve native
-descendant containment, decision CWD or configuration-provenance prerequisites.
+Historical native 0.160.0 and selected-group fixture artifacts remain evidence of
+those limited components. Native defaults/auth/hooks/trust and unspecified model/
+effort have not been changed. Whole-workload containment/settlement, actual owning
+19/58/60/14 producers, decision CWD, configuration provenance, native Task attachment,
+approval broker, both-host provider and four-plus concurrency acceptance remain
+mandatory/open. See [issue design](../issue-6-design.md).
 
 ## 17. Native workload ownership limit
 
@@ -443,12 +416,13 @@ Section16 records the selected-process-group component baseline. Current native
 whole-workload readiness and cleanup remain unproven: tools/helpers/hooks/frontend
 routes can create other groups/sessions or delegated work. Native terminal/interrupt
 ACK, empty native inventory and one selected group's death do not prove all such
-resources complete. Existing source capability flags are component claims, not
-whole-workload eligibility or a supported-platform release certificate.
+resources complete. Source A removes all advertised Codex capability flags; neither fixture inputs nor
+a selected-group journal establishes whole-workload eligibility or a supported-
+platform release certificate.
 
 The [strict ownership requirements](../../requirements/issue-6-requirements.md) and
 [proposed correction](../issue-6-design.md#f1-correction-owned-workload-and-real-consumer-gates-proposed)
-retain the implementation/backend/shared-consumer gates. The correction is
-unimplemented; existing generic terminal-label and Executor-only exclusion limits
-remain. No native defaults/hooks/auth are disabled, and required both-host native
+retain the implementation/backend/shared-consumer gates. Only the EMPTY/no-effect correction is being implemented for its independent
+source gate; ready-backend/settlement producers and existing generic terminal-label
+and Executor-only exclusion corrections remain unimplemented. No native defaults/hooks/auth are disabled, and required both-host native
 roles, continuation/stop/Task attachment and four-plus concurrency remain open.
