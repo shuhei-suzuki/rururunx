@@ -299,3 +299,13 @@ Six controlled body corruptions and invalid-scope checks exercise actual Store::
 Task/Goal/Project reads and unchanged history/owner/Session/audit snapshots. Source
 verification and independent review pending. No native execution/aggregation, private
 writer epoch, raw-metadata retirement, benchmark or whole21 acceptance is claimed.
+
+
+Legacy read component source b1b643bc8ac3b43c4c0affefa6d9e9a29b9debd1:
+all15 state integration tests PASS; fmt and locked all-target workspace Clippy
+-Dwarnings PASS. Five compiled clean isolated mutants remove each row/body identity
+check or the initial scope-shape check, and fail at the actual public Store::usage
+consumer. Exact full tree and source restored, focused control PASS; public patches,
+commit/tree/source/test/log hashes and observed assertion failures retained. No
+compiler/setup failure counted. Full regression/builds/CI and two independent source
+reviews remain pending; no qualified telemetry/native/whole21 acceptance claim.
