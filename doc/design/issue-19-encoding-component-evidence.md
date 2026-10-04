@@ -131,5 +131,32 @@ full-test output SHA256 `1bc715fd8d933573b37d9aab2055a3e5b544829d22cad3e30ea2e19
 is `/private/tmp/rururunx-issue19-encoding-integrated-tests.txt`.
 The whole branch includes unapproved schema5/native/prepared-ack/Workflow prototype
 code; a fulltree build or narrowly approved encoder NEVER qualifies PR39 for merge.
-Source2 component delta review and exact pushed-head Linux/macOS CI remain pending.
+Source2 at `313adb9` completed; both exact-head Linux/macOS CI jobs succeeded
+(run37233685058). Native session `d3f26c2a-89fd-4797-bde1-e50d8dd9cc4f` found
+no production defect,0C/H and one test-only Medium plus3 Low items. These results
+approve neither the broad prototype nor its native authority.
 The production #19/native/legacy/co-integration gates remain OPEN.
+
+
+Source2 test-only correction `8a21c3e` keeps production files unchanged. Actual
+phase callers now accept a fitting nested artifact when the complete ContextVersion
+exceeds1 MiB and its synthetic prefix plus source payload fits the separate1-MiB
+frame cap. TypedTask, TaskProvenance, validate_task_reference, Goal publication and
+validate_goal all consume that exact phase reference; Goal descriptor remains typed.
+Oversized nested phase artifacts refuse before digest on the provenance branch.
+The prefix/owned SQL corruption fixture is codec input, never an Engine/native
+publication or trusted rule/admission proof.
+
+Both negative SQL fixture UPDATEs assert exactly1 changed row. Fitting Goal,
+context_artifact and validate_capture controls positively observe their decode trace;
+checkpoint now genuinely drops1 of2 transient events under its256-byte window and
+checks exact retained encoding/accounting. Actual Store decode is cited by function
+and pinned source-head line. All16 focused tests and clippy passed on committed
+correction; two additional separately committed, compiled consumer mutants were killed:
+
+- phase-whole-row-guard: `18b09b177dca9ba820510d5d27d9b12316370f14`, exit101 at valid wide phase caller.
+- phase-unguarded-provenance: `1c79c555d2d4276ded900d78f883418b5f34af55`, exit101 at pre-digest provenance guard.
+
+This brings proof to22 causal mutants. Restored16 passed at clean detached
+`5ce3d336081f66f62ba63bf462f116533fd5ec40`. Source3 narrow correction review and
+final pushed-head CI are pending; whole #19 authority/native readiness remains OPEN.
