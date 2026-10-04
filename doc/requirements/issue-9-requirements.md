@@ -258,7 +258,7 @@ Runtime/Project/provider permits); record requested/effective values rather than
 rejecting policy parallelism above roster size. Reject 0/33; 64 cumulative rounds per immutable obligation-budget lineage,256
 findings per result,8192 UTF-8 bytes per COMPLETE encoded finding entry (identity,
 severity, original claim, locations, evidence references and framing INCLUDED),
-not8192 text bytes plus metadata; and1 MiB per COMPLETE prepared member
+not 8192 text bytes plus metadata; and1 MiB per COMPLETE prepared member
 frame (core+specialization+inline required claims+rules/wrapper) AND per result envelope.
 The core alone is not the combined-frame ceiling; no additional specialization bypass. Limits are simultaneous ceilings: maximum count does not promise every
 maximum-size text fits the envelope. No semantic truncation occurs. A 128 MiB
@@ -341,7 +341,7 @@ measures hook/tool-stage refusal, jitter-at-margin and residual normal/escaped h
 no percentile or arbitrary timeout substitutes for actual native producer conformance.
 The configured settlement deadline must cover that envelope plus required margin; if unavailable or too short, the preset refuses
 before member input. With default 30s/100ms margin, known 29.9 s accepts;
-29.901/29.999/30s or unknown refuses. Default30 is provisional, not
+29.901/29.999/30s or unknown refuses. Default 30 is provisional, not
 an asserted native guarantee.
 A supported explicit non-default deadline remains within 1–3600. OS/uncertain cases
 still yield the declared held outcome; a contract bound is not a universal deadline
@@ -498,7 +498,7 @@ refuse/inherit, never silently claim availability or wash the old uncertified hi
 Issue 9 owns the typed applicability consumer/checker and trusted verification boundary.
 Issue #12 owns the reviewed impact/applicability producer using #18/#20 exact source/
 artifact inputs. This ownership and conformance obligation must be publicly tracked
-under I9-AC-21.h before #9 closes, without a9→12 merge cycle. Until the actual reviewed producer/
+under I9-AC-21.h before #9 closes, without a 9→12 merge cycle. Until the actual reviewed producer/
 conformance exists, production applicability is UNKNOWN and inherits or refuses;
 9 Git-backed controlled consumer fixtures do not certify fresh-budget/disjoint
 production admission or close its MVP availability gate. A lexical RepoMap, filename
@@ -743,7 +743,7 @@ are not runtime proof.
    independent member ownership. Reject 0/33 slots, invalid parallelism and duplicate
    Session ownership. M=2/parallelism8 accepts with effective at most2; lower actual
    resource authority queues remaining slots without policy rewrite.
-   Explicit M=1 closing coverage is I9-AC-1.c; one eligible member within M=2
+   The separate M=1 Scope closing coverage is I9-AC-1.c; one eligible member within M=2
    does not prove the one-reviewer roster positive.
 2. Two-of-three quorum counts exact-round APPROVE only; reject N=0/N>M and quorum
    parameters on all/any. All, quorumM and any/quorum1 have equivalent boundary
@@ -810,6 +810,12 @@ are not runtime proof.
     Test refusal through the actual downstream certificate consumer, with independently
 reachable basis and readiness predicates as I9-AC-21.i specifies. Certificate is
     not merge permission;43 binding remains record-only, never a production-gate override.
+    The actual downstream consumer independently reports typed scope/phase/generation/
+    source-binding assessment EVEN when final gate permission refuses nongating basis.
+    Fitting nongating artifact reports binding-valid+permission-refused; drift/replay
+    reports its EXACT binding refusal+permission-refused. Mutation evidence must change
+    that actual binding assessment, never merely assert the always-refused permission.
+    This assessment cannot mint a certificate or bypass21.i/21.j readiness.
 14. Slots and local parallelism each reject 0/33 and accept 1/32 within policy;
     exercise 256 findings,8192-byte text,1-MiB envelopes, mandatory overflow,
     quota/round exhaustion, startup/review timeouts 1–3600 and queue-attention exits retain evidence
@@ -1302,7 +1308,10 @@ artifacts and their declared separately owned bounds, never hidden copies here.
 
 **16.c — Read-only proof basis.** Certificate basis is reviewed adapter contract
 plus runtime permission construction until #16 real native enforcement evidence;
-synthetic peers do not prove native enforcement. Result/certificate records that basis.
+synthetic peers do not prove native enforcement. Result/certificate and public
+checkbox annotation records `read_only_basis=contract+construction`, explicitly
+native-enforcement-pending16. Actual native memory/channel qualification remains
+mandatory here and is separate from this read-only enforcement basis.
 
 **8.d — Prior-round exposure.** A transient same-target retry with one prior
 non-result slot and completed peer findings delivers only permitted labelled prior
@@ -1345,7 +1354,7 @@ relabel tests; they prove the component, never product certificate authority. Ac
 product-ingress positive belongs to public #15/#24 under I9-AC-21.e, I9-AC-21.i and remains a mandatory
 MVP enablement gate, not a conditional Issue #9 library-test waiver;
 never accept native/controller/API origin relabeling. On actual23 composition, this interim
-derivation is REPLACED by importing the one canonical23 type/derivation, not wrapped
+derivation is REPLACED by importing the one canonical #23 type/derivation, not wrapped
 with a second independently trusted constructor. Convergence tests show identical
 principal/origin for identical accepted invocation and reject the removed interim
 constructor; trusted library origin remains nongating. No divergent derivation may
@@ -1732,6 +1741,8 @@ is claimed merely because this table names an Issue; it must actually be quoted 
 | I9-AC-18.c, I9-AC-14.j, I9-AC-14.h, I9-AC-21.l, I9-AC-13 | #5/#6/#7 actual requested/effective configuration; #60 actual between-round/source-capture effect ownership; #14/#27 retained-share recovery/admission; #15/#24 actual attention/termination ingress; #43 record-only boundary; #16 profile-availability and quota impact |
 | I9-AC-9.j | #10 recognized Human effects are not Broker/native authority; #15/#24 genuine origin negative controls; #23 canonical ingress |
 | I9-AC-18.j | #9 prior-target verification consumer; #12 searched evidence; #19/#60 actual attributed owned observations; claims cannot clear blockers |
+| I9-AC-8.m | #5/#6/#7 real native property qualification; #9 exact current scope/key/config instantiation; #16 representative user-scope proof |
+| I9-AC-21.o | #9 exact checkbox/mode proof; #5/#6/#7 actual channel profile; #16 native enforcement and representative dogfood |
 
 
 
@@ -1747,7 +1758,7 @@ Issue 9 closing evidence is the actual typed consumer/checker contract plus miss
 foreign/stale/unknown/LLM-origin refusal or conservative exclusion, not a fabricated
 positive RuntimeAuthor. Public #60/#12 MUST own I9-AC-12.k actual deterministic formatter
 producer/attribution positive under preserved defaults and actual native-source effect
-settlement; that positive remains a separate MVP gate, not an undeclared mandatory60
+settlement; that positive remains a separate MVP gate, not an undeclared mandatory #60
 merge for this checker. A controlled producer DTO/mechanical fixture does not grant
 production RuntimeAuthor. Until genuine #60 proof composes, RuntimeAuthor is unavailable
 and cannot restore eligibility. No source-execution or effect-ownership exemption is
@@ -1808,8 +1819,10 @@ request/diagnostic and visible reason/status.9 never mints a10 Broker ALLOW or f
 Human command authority; a request requiring unavailable product attention is explicitly
 nonactionable, not only a generic timeout. Actual provider owned historical observation/
 DENY contract and settlement remain mandatory; no label-based privilege or Lost release.
-Test reachable native request→zero ALLOW/action wire and visible typed denial/hold through
-the actual provider path, including existing provider-specific lifecycle write failures.
+Test reachable request→zero ALLOW/action wire and visible typed denial/hold through
+the actual PRODUCTION adapter with a controlled native peer, including existing
+provider-specific lifecycle write failures. This closes construction/path coverage,
+not real-native enforcement;16.b/16.c and21.o explicitly retain that mandatory16 gate.
 
 **14.i — Fixed shared reservation arithmetic.** Before each ACTUAL admitted round reserve full 8 MiB
 verification plus 4 MiB control allowances, including its 64-KiB attention margin, alongside
@@ -1861,7 +1874,7 @@ only actual Issue 14 recovery can release that owner, never vote count or truste
 **9.j — Recognized Human actions cannot be delegated to Broker.** Runtime-controlled
 Human dismissal/downgrade/authorship disposition, policy relaxation/activation,
 confirmer/roster redesignation, supersession/decomposition and termination actions
-require the genuine canonical23 Human ingress. Native/Workflow/Broker API or IPC
+require the genuine canonical #23 Human ingress. Native/Workflow/Broker API or IPC
 cannot acquire that provenance through an ALLOW, including a recognized command
 exposing one of those enrolled handlers. #10 must classify these recognized effects
 as Human-only, never deterministic-auto or cross-agent ALLOW;15/24 handlers refuse
@@ -1911,6 +1924,13 @@ admission, every frozen roster slot and its qualified schedule must be non-Lost-
 reachable; otherwise close the entirely queued proposal without round/retry spend,
 retaining charged proposal metadata and unrelated holds. This avoids burning a
 healthy lineage's budget against a known foreign Lost.
+A partially admitted round stopped by an unrelated retained Lost/unknown capacity
+cause has no autonomous cause(c) retry. After genuine #14 restores that capacity, its
+new full round still requires existing trusted Human/frozen authorized policy action
+under9.i; mere capacity return or unchanged wake cannot invent it. Until that product
+port exists, status is Human/recovery-pending with original charged history. #16
+reports this specific interruption/Task-time separately, never hides it as healthy
+contention or releases the foreign owner.
 
 If reachable capacity becomes insufficient AFTER first input, safely cancel never-
 started slots and settle/cancel genuine started owners, then close without certificate.
@@ -1931,7 +1951,7 @@ single-Reviewer fallback. Separately, a sealed fixed conformance ingress may exe
 NONCERTIFYING ReviewSet delegation through the SAME actual production Store/Workflow,
 native adapter/preparation/ownership and member-closure ports. This ingress ITSELF
 requires the actual controller-owned dedicated conformance-state/fixture provenance
-of21.m, before claim/reservation/native setup/input: owned freshly created fixture
+of 21.m, before claim/reservation/native setup/input: owned freshly created fixture
 repositories and state, genuine creation/root/common-Git identity and nonoverlap
 with registered user Projects. A public test-mode flag/path, existing user registry
 or native/API claim cannot mint that provenance. Direct calls on real-state/user-
@@ -2001,8 +2021,13 @@ Actual effect ownership/producer availability still obeys #60, not a byte-quota 
 multi-author STRICT positives remain actual Issue #9 closure gates, not refusal-only
 substitutes. After a recorded bounded supported-profile investigation (at most three
 candidate registered profiles per required configuration), emit explicit owner/evidence/
-missing-capability attention and a tracked scope/producers proposal. A trusted Human
-may make a separately reviewed public scope decision; this document does not pre-authorize
+missing-capability attention and a tracked scope/producers proposal. The controller
+must publish/link a named public feasibility/scope-decision tracking Issue with an
+actual owner, evidence links and due condition after the bounded investigation leaves every
+candidate infeasible/unknown. Public Issue9 displays its required4+/repeated-family
+item as distinctly BLOCKED, with that link, before source acceptance/closure; generic
+progress cannot obscure it. The trusted Human scope decision remains separately
+reviewed and explicit; this document does not pre-authorize
 one or close the required positive automatically. Preserve all holds/floors/defaults.
 Document drafting remains cumulative author contribution because its instructions and
 artifacts influence the implementation/security target even outside a narrow diff;
@@ -2081,12 +2106,18 @@ documentation. Actual native channel readiness still follows8.c/8.j/8.l, and #16
 reports this potential retention/residual independently from observed injection.
 
 
-Public checkboxes 1–8 close individually on their exact I9-AC-1–8 actual component
+**21.o — Public checkbox evidence mapping.** The eight original checkbox mappings
+are:1→I9-AC-1+1.a;2→2+2.a+2.b;3→3;4→4+4.a;5→5;6→6;7→7+7.a;8→8+8.g+10.d.
+All other stable criteria still independently block WHOLE Issue9 closure. In particular,
+M=1/4+ Scope positives1.c/1.b are separate from the two-reviewer checkbox.
+Public checkboxes1–8 close individually on those exact actual component
 consumer/production-port conformance evidence AND required registered native-profile
 proof, with separate annotations: `orchestration_transport=synthetic|real` and
-`profile_qualification=real-native(<exact evidence reference>)|pending`. Only actual
-qualified native-profile evidence permits a check mark; pending qualification cannot
-close it. Synthetic transport mechanics never imply synthetic profile qualification.
+`profile_qualification=real-native(<exact evidence reference>)|pending` and
+`read_only_basis=contract+construction; native-enforcement-pending16` until the
+actual #16 proof exists. Only actual
+qualified native-profile evidence permits a check mark. `pending` is ONLY an
+unticked status note and can NEVER accompany a ticked item. Synthetic transport mechanics never imply synthetic profile qualification.
 No checkbox is ticked solely by a proposed test, synthetic profile declaration or
 unready port. The annotation explicitly names representative real-model/formal
 acceptance as mandatory #16/MVP PENDING when not yet proved; component check marks do
@@ -2101,7 +2132,7 @@ formal certification. Original scope and checks stay unchanged and currently unc
 **1.b — Four-plus independent closing obligation.** First-class four-plus rosters
 retain the actual Store/Workflow delegation, slot-count and independence controls of1
 and18.f/20.c, including the required real registered repeated-family profile proof.
-Public checkbox1 closes on its two-reviewer evidence alone; Issue9 closure still
+Public checkbox1 closes on the exact two-reviewer IDs in I9-AC-21.o; Issue9 closure still
 requires this separate four-plus positive, with no unsupported-profile waiver.
 
 **8.k — Frozen qualified admission schedule.** The actual registered native channel
@@ -2127,8 +2158,8 @@ required global/Project/provider permits all-or-nothing: a waiting cohort retain
 ZERO partial member permits. A wholly unadmitted queued Set holds no round worktree
 lock; an already admitted round retains its existing lock/evidence obligations.
 Test two2-member cohorts competing for capacity3: exactly one admits2, the other
-queues with0, then progresses after genuine first-cohort settlement. Compile an
-incremental-permit-acquisition mutant. Actual failure during qualified cohort
+queues with0, then progresses after genuine first-cohort settlement. Verify that incremental partial holding cannot satisfy this acceptance;
+the concrete mutation belongs to design/source verification. Actual failure during qualified cohort
 startup makes the whole round non-certifying rather than serialized. Cohort capacity
 reservation is not a guarantee that every native startup physically succeeds. A mutant omitting this real queued-member check must fail.
 Actual default-preserving native producer evidence remains required, not a synthetic
@@ -2159,7 +2190,7 @@ late verification refusals; no supervisor model or deterministic proof for every
 semantic fix is required. #9 owns this consumer/evidence check; public #12 owns
 its searched scope/impact evidence and #19/#60 the actual attributed owned execution
 observations where native effects are claimed, with concrete handoffs under21.
-Those producer requirements do not create a9→12 implementation merge cycle.
+Those producer requirements do not create a 9→12 implementation merge cycle.
 
 **18.i — Nonblocking rerun limitation.** Concern-linked nonempty committed bytes plus
 a truthful unverified fix claim authorize bounded independent reruns under18.a, not
@@ -2178,6 +2209,24 @@ Reviewer accepts QUICK/STANDARD through the genuine fixed conformance consumer;
 formal eligibility requires mode and independent floorF=1. STRICT M=1 refuses
 before input becauseF=2, even with any/quorum1. Use21.m's separate transport/profile
 evidence annotations. M=2 with only one eligible member is not this positive.
+
+**8.m — Qualification template and actual-scope instantiation.** Qualification
+evidence binds an exact installed provider version, effective supported configuration,
+complete reachable channel inventory and concrete key-derivation/load-write predicates,
+proved by actual owned native fixture conformance. It is not permanently keyed to
+the fixture's literal repository ID, nor a blanket family/default assertion. Each
+actual round must instantiate those SAME proved predicates against its exact real
+Project/authorized reviewer workspace/source and native key scopes, frozen roster/
+schedule, current installed version/configuration and governing source. Unsupported
+key derivation, stale/changed configuration or unproved channel preconditions refuse
+BEFORE input. Fixture keys do not become user keys; an exact source-pin change never
+auto-refreshes qualification. Actual current-peer exclusion must follow the proved
+channel properties, not a string substitution or private user-memory inspection.
+Test one genuinely qualified property template on a second disjoint owned fixture
+scope, then different/unproved key/config/channel/schedule refusal. User Project
+instantiation uses those same private predicates; it is not an adversarial conformance
+run on a user Project. Missing actual native template/instantiation producer remains
+unready; #5/#6/#7 own its actual supported channel evidence and #9 its consumer.
 
 **8.l — Native channel feasibility and exposure reporting.** Before the formal
 design gate, record each required candidate family's feasibility under PRESERVED
@@ -2246,6 +2295,7 @@ owners/quotes come from those bodies and the canonical handoff table.
 | I9-AC-8.j | PRE #9; later MVP only as named in criterion |
 | I9-AC-8.k | PRE #9; later MVP only as named in criterion |
 | I9-AC-8.l | PRE #9; later MVP only as named in criterion |
+| I9-AC-8.m | PRE #9; later MVP only as named in criterion |
 | I9-AC-9.a | PRE #9; later MVP only as named in criterion |
 | I9-AC-9.b | PRE #9; later MVP only as named in criterion |
 | I9-AC-9.c | PRE #9; later MVP only as named in criterion |
@@ -2322,3 +2372,4 @@ owners/quotes come from those bodies and the canonical handoff table.
 | I9-AC-21.l | PRE #9; later MVP only as named in criterion |
 | I9-AC-21.m | PRE #9; later MVP only as named in criterion |
 | I9-AC-21.n | POST MVP |
+| I9-AC-21.o | PRE #9; later MVP only as named in criterion |
