@@ -202,13 +202,14 @@ unresolved #14 gap characterized by the preparation regression, not safe replay.
 
 Recovery references use function and test names rather than stale base line
 numbers. The post-start acknowledgement comment and unbound dispatch guard in
-release_terminal_reservation refer to native/owner recovery #14. Running
-EvidencePort observation, resume_gate and terminal-recovery unknown-outcome
-checks classify reversible claims as #14 and PrGate/MergeGate/Cleanup as #13
-from durable phase/state. Native no-Session observations do not assert
+release_terminal_reservation refer to native/owner recovery #14. poll Evaluating/Interrupted waits and the release_terminal_reservation
+unknown-outcome guard classify reversible claims as #14 and Pr/MergeGate/Cleanup
+as #13 from durable phase/state. resume_gate documents this split; Running
+EvidencePort poll retains its evaluate path. Native no-Session observations do not assert
 interruption. Actual external-effect drift retains #13. No production consumer
-parses these diagnostics. `known_irreversible_drift_holds_single_operation_and_cleanup_reuses_frozen_authority`
-and the terminal-recovery regressions test explicit recovery rather than the old
+parses these diagnostics. `cancelled_unknown_gate_keeps_project_reserved_after_goal_terminal` and
+`resumed_round_claim_never_replays_prior_outcome_during_poll_restart_or_cancel`
+test explicit recovery rather than the old
 `unknown external outcome` fragment. The existing
 `final_claim_cas_loss_recovers_only_proven_undispatched_reservations` now releases
 only the eligible agent claim, preserving the same EvidencePort attempt/history.
@@ -217,8 +218,8 @@ Existing Issue8 evidence remains historical.
 
 Project/Goal writer audit: ProjectRegistry::add writes initial registration,
 explicit validated recovery and changed name/config/rules/environment/namespace/
-capacity metadata ; reconcile writes Registered-to-Blocked for
-invalid inputs ; remove soft-removes when Store permits it .
+capacity metadata; reconcile writes Registered-to-Blocked for
+invalid inputs; remove soft-removes when Store permits it.
 ProjectRegistry::list and resolve/status invoke reconcile, so they can persist
 Blocked transitions and are not unconditional read-only paths. Store::project,
 projects, goal, goals and WorkflowEngine::read snapshot access are pure reads.

@@ -3,8 +3,9 @@
 Risk: STRICT for shared Workflow reservation ownership and release authority.
 The owned preparation implementation is committed. Documentation review is not
 runtime verification. Both first independent source reviews approved with Low
-refinements; their fixes and delta re-review remain pending. Exact-head CI failed
-as recorded below and is not counted as success.
+refinements; their verified fixes passed Source2 as recorded below. A narrow final optional
+delta review remains pending. Historical failed CI remains failed; exact bab6 CI
+is separately green and does not establish inspection-timeout causality.
 
 ## Provenance and formal gates
 
@@ -151,7 +152,7 @@ conflict recovery, report release-not-performed truthfully after terminal recove
 remove stale line references and distinguish mutation runs from operators. A new
 actual caller fixture covers assignment before and after refresh. The held-start
 fixture now asserts durable dispatch intent before observation or diagnostics;
-its marker-order mutant must be rechecked against that causal assertion.
+its marker-order mutant was rechecked as M06-r2 against that causal assertion.
 
 Exact `888d86d` CI run `37169413513` failed on macOS. fmt and Clippy passed;
 all 92 library tests, 19 adapter tests and 5 CLI tests passed. Context ran 5 passing
@@ -160,15 +161,16 @@ and 11 failing tests; the primary bounded-Git diagnostic reported
 Linux tests and debug build passed, but the release job was cancelled by matrix
 failfast, so neither the cancelled matrix nor macOS is a green final gate.
 No deadline, uncertainty latch or test concurrency was relaxed and no historical
-root cause is inferred. STRICT shared inspection follow-up #46 is required before
-fresh exact-head CI readiness; #43 native binding and #14 recovery remain explicit.
+root cause is inferred. STRICT shared inspection follow-up #46 remains separately required for shared
+inspection/native integration; #41 readiness depends on its own exact reviewed
+source and new exact CI. #43 native binding and #14 recovery remain explicit.
 
 The first Low-fix targeted run at `2b7f480` passed 17/18. Its new diagnostic
 assertion incorrectly expected the owner-local release wrapper at post-refresh
 terminal recovery, where marker publication rejects after eligibility is disabled.
 The fixture now checks the release diagnostic only before refresh and verifies
-unchanged recovered state plus absence of the false retained-claim diagnostic at
-both timings. No production boundary is weakened.
+unchanged recovered state at both timings. The final refinement asserts absence
+of the actual release wrapper after refresh rather than the old removed wording. No production boundary is weakened.
 
 ## Low-fix controls and mutation attribution
 
@@ -197,3 +199,27 @@ original unbound binding release, truthful terminal-recovery diagnostics, curren
 function-based impact audit and precise gate/mutation provenance. Independent
 immutable scoped Source2 must confirm them before readiness; #14/#43/#46 limitations
 remain explicit and no native Workflow completion acceptance is claimed.
+
+## Source2 and final precision delta
+
+Both independent Source2 native sessions completed approve at public `bab6f54`,
+with no Critical/High/Medium code findings and verified owned cleanup. Raw resumed
+native API/token/cost counters have unverified per-round attribution. The supplied
+immutable delta/full Workflow and Store plus exact fixture/regression excerpts
+confirmed release/marker/definitive boundaries and public mutation hashes.
+`7a8c0e5..bab6f54` changes documentation only; production and tests are byte-identical,
+so the67/default189 controls cover the reviewed code.
+
+Optional findings were verified: impact names the actual changed recovery tests
+and Evaluating/Interrupted classifier, master records late binding, the offset4
+comment names assigned-binding immutability before Task CAS, and the diagnostic
+fixture checks the actual wrapper absence after refresh. Observer's assessment
+called the late-binding rejection TaskCAS; owner identified the earlier immutable
+binding ensure correctly. No safety behavior changes. Final scoped delta review
+and targeted consumer verify these refinements.
+
+Exact `bab6f54` CI37175637709 has both required contexts SUCCESS:
+`check (ubuntu-latest)` job111357558406 and `check (macos-latest)` job111357558917.
+This new head run is separate from failed888 run, no old job rerun. Low fixes do
+not explain/repair ps timeout. #46 is a separate required follow-up, not an
+automatically inferred prerequisite for merging the independently green41 head.

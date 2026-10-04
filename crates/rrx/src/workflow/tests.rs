@@ -4327,10 +4327,11 @@ async fn preparation_pause_cancel_and_terminal_recovery_keep_owner_fenced() {
         let error = owner.await.unwrap().unwrap_err();
         if offset == 3 {
             assert!(error.to_string().contains("release not performed"));
+        } else {
+            // Terminal marker rejection is ineligible: it must not attempt
+            // owner-local release, even though recovered durable state is stable.
+            assert!(!error.to_string().contains("release not performed"));
         }
-        // Post-refresh terminal recovery rejects marker publication without
-        // entering owner-local release; neither case invents a retained claim.
-        assert!(!error.to_string().contains("reservation retained"));
         assert_eq!(fixture.durable(), before);
         assert!(fixture.executor.launches.lock().unwrap().is_empty());
     }
@@ -4873,7 +4874,8 @@ async fn preparation_unbound_to_bound_before_refresh_releases_for_new_reservatio
             assert_eq!(requests[0].worktree, task.worktree.unwrap());
         } else {
             // The post-refresh snapshot is still unbound. Its definitive missing-
-            // worktree fail publication loses Task CAS and cannot become a retry.
+            // worktree fail publication is rejected by Store assigned-binding
+            // immutability before Task CAS, with release eligibility disabled.
             assert_eq!(fixture.durable(), before);
             fixture.passive_observers(false).await;
         }
