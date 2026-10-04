@@ -136,7 +136,7 @@ identity and native provider family, and a two-confirmer pair must also differ f
 each other in both registered agent identity and native provider family; alias/allow-duplicate-agent permission cannot create dismissal independence.
 Confirmer designation for inherited findings is frozen at Set/obligation-lineage
 activation BEFORE ITS FIRST admitted round. Before a later round is not sufficient.
-Any later policy/roster designation requires trusted recorded Human/controller
+Any later policy/roster designation requires actual trusted Human-ingress
 supersession and is post-observation; a newly designated agent/slot that already
 expressed an opinion on that finding before designation cannot serve as its confirmer
 pair. Inherited finding designation/history cannot reset through successor Set/alias.
@@ -378,10 +378,11 @@ different alias of an author's family; with that permission its opinion never
 satisfies the independent floor or any blocker-resolution confirmation.
 Explicit policy may allow duplicate-agent fresh independent Sessions;
 that permission and provider/model diversity are visible in the result. A single
-Session cannot occupy two slots. The Triple preset ships the Claude/Codex/Grok roster and all-of-three policy,
+Session cannot occupy two slots. The shipped `triple-adversarial` preset has the Claude/Codex/Grok roster and all-of-three policy,
 without an implicit self-review exception. With an MVP executor in that roster,
-default selection rejects before input. An explicit visible allow-self independent-
-Session policy makes that same preset usable; the author slot is never eligible
+default selection rejects before input. The separately shipped `triple-adversarial-author-visible` variant explicitly activates
+allow-self independent Sessions before any opinion; actual8.c/18.g conformance makes
+that variant usable, not the default adversarial variant; the author slot is never eligible
 as a blocker-resolution confirmer. Acceptance exercises both default rejection
 and actual registered production-adapter explicit-policy consumer execution with a declared synthetic native transport peer, rather than calling the unresolved
 default a working configuration. Formal policies and the triple preset default require explicit
@@ -414,7 +415,8 @@ library ingress/controller composition, tested at that boundary without a CLI.
 It reuses the approved Issue23 application trust rule, not an absent implementation
 or a dependency on merging Issue23. A future CLI/controller caller must compose
 this actual port; native/Workflow/Broker runtime channels cannot expose it.
-Only that trusted ingress/controller composition can mint nonserializable authority,
+Only actual trusted Human ingress may mint Human-action authority; automated controller
+authority is separate and limited by9.i. This application composition records authority,
 with actual principal/origin and exact policy/target/evidence identity. Native,
 Workflow, agent output/proposal and Approval Broker runtime JSON/API/IPC channels
 cannot label themselves Human or obtain that authority. Broker decisions never
@@ -445,7 +447,7 @@ concurrent combined overflow, inherited author/veto union and no fresh-ID budget
 
 At most one nonterminal Review Set owns a current Task/Workflow review phase. A new
 Set cannot approval-shop by resetting blockers, holds, history, round count or
-artifact quota. Explicit trusted Human/controller supersession records authority/
+artifact quota. Explicit trusted Human-ingress supersession records authority/
 reason and
 inherits unresolved potential/verified blockers, adjudication and cumulative
 limits across roster, policy and generation changes. Target change never erases
@@ -617,6 +619,9 @@ Acceptance 12.d: test a policy attempting a nonconservative unknown-delta dispos
 a changed executor cannot silently self-confirm
 its own earlier changes.
 
+Individual actual native/resource permits release at each member's own full authoritative
+settlement PLUS exact member closure under18.h; a result/terminal event alone cannot
+release a retained server or unknown cohort. Round lock/evidence/budget remain independent.
 After ALL current-round owners actually settle and the exact delegated phase closure
 is recorded, release that round's lock/member delegation/resources. A nonterminal Set
 then retains only immutable findings/obligations/history/shared budgets; it has no
@@ -723,13 +728,13 @@ are not runtime proof.
 3. All-of-two requires both approvals. Exercise empty/nonblocking REQUEST_CHANGES,
    persistent nonapproval and audited Human relaxation/new-round or termination
    without fabricated approval.
-4. All-of-three Triple preset resolves actual registered production Claude (#5),
+4. Shipped all-of-three `triple-adversarial-author-visible` resolves actual registered production Claude (#5),
    Codex (#6) and Grok (#7) read-only declarations and supported explicit model/effort configurations.
    With each MVP executor-in-roster, prove default self-review rejection and explicit
    independent-Session permission success. An author opinion never satisfies the
    independent floor; reject a pure-author formal roster and STRICT with only one
    eligible independent approval. The two non-author Triple Sessions can meet the
-   STRICT floor while all three opinions must APPROVE under all mode. Unsupported/unregistered configurations
+   STRICT floor only with actual8.c current-roster profile conformance while all three opinions must APPROVE under all mode. Unsupported/unregistered configurations
    reject before any member input. Fixture-only registrations do not close this.
 5. Failure/timeout/safe cancellation never counts. Separate diagnostics from partial/
    malformed/overflow verdict/findings; ambiguous/unknown suffix holds for independent
@@ -825,8 +830,8 @@ or reset. Core closure reports these still-open MVP obligations explicitly.
 reviewed target. Later identity/short revision deltas never erase earlier native
 contributors or former executor families. Independent approval counts eligible
 Sessions, not distinct families: two separately owned Sessions from the remaining
-non-author family can meet STRICT when the frozen roster/duplicate-agent/diversity
-policy permits them. A fixed Triple roster with Claude and Codex as recorded
+non-author family can meet STRICT only with actual8.c registered-profile conformance for that exact
+roster/schedule/source scope AND the frozen roster/duplicate-agent/diversity policy. A fixed Triple roster with Claude and Codex as recorded
 authors has only one eligible slot and rejects before input, naming excluded
 families and the unmet floor; neither supersession nor relaxation can lower it.
 An explicitly allocated eligible custom roster can satisfy it, without treating
@@ -1005,7 +1010,7 @@ records the checked locations and N inspected / M changed, preserving scope and 
 provenance; synthetic facts do not claim exhaustive native inspection.
 
 **20.a — Strict roster availability.** STRICT fixed Triple is unavailable when document drafting and implementation have contributed
-two native families. Supported alternatives are an eligible custom roster meeting the same
+two native families. Supported alternatives are an eligible custom roster with actual8.c conformance meeting the same
 floor, or explicit Human adjudication selecting an eligible roster, termination without a certificate; allow-self never supplies the missing
 independent approval. #16 must exercise this availability limit alongside supported Triple
 configurations.
@@ -1068,7 +1073,13 @@ before input. Criterion 8 rejects owned executor/history reuse and unsupported
 fresh-session capability. Native auto-loaded global/user instruction files, memory and external history/context
 channels require concrete registered-profile evidence before they can support an
 independent-gate readiness claim. Preserve native auth/hooks/rules/default behavior.
-Classify each channel separately: actual observed current-peer injection, documented
+Classify each channel RELATIVE to the frozen roster, admission schedule and actual
+source scope/keys, across ANY provider families. Current-peer capability means a real
+current-round peer has a reachable write/load path before another member consumes it;
+shared family alone is not such proof, and different family alone is not isolation.
+A single-slot-per-family Triple still needs actual channel inventories/conformance: it
+admits only when they demonstrate no current-peer injection path for that roster/schedule,
+otherwise refuses before input. Classify actual observed current-peer injection, documented
 current-peer-capable channel, reachable channel with unknown scope/timing, or an actual
 supported profile whose reviewed source/control/conformance demonstrates its bounded
 current-round peer-free starting/input behavior. Family equality alone is no class.
@@ -1144,7 +1155,8 @@ content remains attributed even if later reachable upstream.
 
 **20.c — Certificate-capable exits.** Supported two-author-family STRICT exit explicitly permits an eligible custom
 roster of two fresh Sessions from the remaining non-author family when activated
-policy allows duplicate-agent identities or distinct registered aliases; mandatory
+policy allows duplicate-agent identities or distinct registered aliases AND actual8.c
+profile conformance for that exact roster/schedule/source scope is present; mandatory
 family diversity, if imposed by that policy, still applies. Otherwise use an actually
 supported non-author provider or terminate. Decomposition never recovers eligibility
 or exhausted quota. Tests distinguish certificate-capable roster selection from
@@ -1208,10 +1220,10 @@ Trusted #14 recovery is the only releasable exit, never a generic late terminal 
 **9.d — Human ingress provenance.** Native/Workflow/Broker model JSON, proposal,
 runtime API/IPC and ordinary persistence cannot mint Human dismissal, downgrade,
 authorship disposition, relaxation or policy activation; actor=Human is rejected
-with retained evidence. Actual trusted ingress/controller succeeds with exact
+with retained evidence. Actual trusted Human ingress succeeds with exact
 principal/origin/digest/evidence. Direct same-UID local binary/DB/machine action
 outside these APIs is explicitly outside the application guarantee, as in Issue23.
-The positive authority is the actual Issue9-owned library ingress/controller port,
+The positive authority is the actual Issue9-owned library Human-ingress port,
 not a mock actor field or an assumed future Issue23 implementation. Its evidence
 records origin=library-composition and proves that application port, not biological
 Human action; no CLI ingress is implemented or implied by this library fixture.
@@ -1407,6 +1419,13 @@ permission construction,16.d actual read-only permission-request DENY/zero-ALLOW
 and visible typed reason/hold through supported profiles, and 8.a available access traces. Public owner entries identify
 exact supported profiles and refusal limits before 9 closes. Existing declarations or
 synthetic fixtures do not assert these producers or real native acceptance complete.
+Actual8.c registered-profile conformance is a pre-closure positive prerequisite for
+EVERY floor-support case in1/4/12.b/17.a/18.f/20.a/20.c, not a tracked-follow-up waiver.
+Unproven repeated-family profiles are not advertised as a supported STRICT exit; use
+an actually eligible provider or terminate. Test real declared documented-capable
+duplicate roster refusal and single-slot-per-family Triple actual proven admission or
+explicit refusal. Source-control mechanics may be synthetic only where clearly labelled;
+no abstract inert profile substitutes for actual declared production conformance.
 Unknown actual overhead bounds refuse admission; tests use the real bounded producer
 DTO/output path and actual row-byte accounting, not library constants in place of a
 native declaration.16.b/14.g carry exact admitted/refused boundary evidence.
@@ -1498,6 +1517,10 @@ also remains DISABLED until21.i actual readiness, including14 retained-share rec
 and27 fair admission, composes; a synthetic library success or per-Project cap cannot erase held shares.
 Public Issue9 states that gate;21.g/#16 owns its actual cross-Project evidence.
 
+The pinned requirements file is the sole normative Issue9 requirements/acceptance
+source. Public Issue Goal/scope/user checks remain, and former refinement entries are
+archived as historical provenance, never competing current instructions. Numeric
+boundary examples specify observable accept/refuse outcomes, not implemented algorithms.
 The canonical public handoff table below summarizes criterion21 ownership; individual
 stable subcriteria still retain their exact stated acceptance. Quoting a gate never
 claims it complete or waives actual9 core support prerequisites.
@@ -1508,8 +1531,8 @@ claims it complete or waives actual9 core support prerequisites.
 | 8.g, 10.d | #20 production typed bundle/delta/coverage; #9 consumer contract; #12 actual complete delta impact-closure producer; #18 captured inputs; #16 actual full-fallback/delta-efficiency |
 | 11.c/d, 21.h | #12 trusted applicability producer, #18/#20 inputs, #9 consumer; #16 actual disjoint/unknown/resource impact and pre12 author-growth/zero-eligible availability |
 | 16.b/c/d, 18.g, 14.g, 8.a/c, 21.f | #5/#6/#7 actual supported native/config/permission/cleanup and actual bounded retained-overhead declarations or tracked reviewed follow-up; #16 real enforcement/trace/default evidence |
-| 2.b, 8.d/h, 12.j, 14.f, 16.a, 14.c/d/e, 17.c, 20.a/b, 21.b, 9.c/f, 14.h | #16 actual exposure, efficiency, finite delivered versus retained bytes, quotas/retries/eligibility/Human impact; #21 nullable native telemetry |
-| 3.b, 9.d, 21.e/i | #9 typed phase-policy/ingress/readiness consumer; #23 shared principal derivation; #15/#24 actual scoped product policy/Human handlers; #14/#27 actual recovery/admission |
+| 2.b, 18.h, 8.d/h, 12.j, 14.f, 16.a, 14.c/d/e, 17.c, 20.a/b, 21.b, 9.c/f, 14.h | #16 actual exposure, efficiency, finite delivered versus retained bytes, quotas/retries/eligibility/Human impact; #21 nullable native telemetry |
+| 3.b, 9.d/i, 21.e/i/j | #9 typed phase-policy/ingress/readiness consumer; #23 shared principal derivation; #15/#24 actual scoped product policy/Human handlers; #14/#27 actual recovery/admission |
 | 12.k | #60 actual owned deterministic-effect attribution producer; #12 inspected effect/source evidence; #9 checker; LLM/unknown origin refuses/conservative exclusion |
 | 13.a | #13 actual post-certificate irreversible reconciliation; no fabricated rollback or later certificate washing |
 
@@ -1537,11 +1560,20 @@ actual member admission atomically consumes the shared64-round count and applica
 autonomous retry/confirmation allowance, with current quota/source/context checks.
 If the proposal goes stale or expires before that, discard it without those count
 charges, preserve exact immutable target/policy/reason provenance and charge ALL
-actually retained proposal/artifact/metadata bytes to lineage128-MiB quota. No
+actually retained proposal identity/hash/revision/policy metadata bytes to lineage128-MiB
+quota AND a separate cumulative4-MiB never-admitted-proposal metadata allowance. Each
+proposal record is at most8192 bytes, at most512 such records per lineage. Never
+persist prepared member model frames/copies for an unadmitted proposal: reference
+existing immutable source/context with exact hashes; any volatile preparation is
+bounded and discarded if stale. Materialize/persist complete bounded frames only at
+first actual admission after revalidation and full reservation. Proposal limit reaches
+NeedsProposalCapacity with provenance/attention, NOT exhausted review-round/128-MiB
+lineage status; no counter reset or unsafe ownership release. When quota was otherwise
+available,512 stale proposals cannot burn more than4 MiB without admitting a review. No
 in-place target rebind or silent history pruning; a new proposal has a new identity.
 Pending proposals hold no native/context/round lock or review-round-count reservation.
-Actual source-capture effects still need60 ownership; storage overflow refuses new
-proposals. A frozen optional queue-expiry policy is Disabled by default or1–3600seconds per slot
+Actual source-capture effects still need60 ownership; proposal allowance/storage capacity refuses new proposals. Actual new
+full-round admission still obeys remaining128-MiB quota, never ignores retained bytes. A frozen optional queue-expiry policy is Disabled by default or1–3600seconds per slot
 measured from its enqueue;0/3601 reject. Expiry safely cancels an unstarted queued slot,
 terminates an already admitted round without certificate and retains its consumed count;
 if entirely queued it only closes the unadmitted proposal as specified above,
@@ -1553,7 +1585,10 @@ and15/24 actual trusted handlers remain pending where required. Tests cover enti
 queued/no lock, one started+queued/lock retained, expiry safe closure versus Lost held,
 permits returned after attention and target changes while ALL slots queue: no
 round/retry allowance spent, actual retained bytes remain charged, new identity and
-no silent target rewrite.16 reports these Task-times.
+no silent target rewrite. Test512 target changes: no copied prepared frame history,
+actual proposal metadata<=4 MiB and preserved remaining review capacity; next proposal
+holds NeedsProposalCapacity without claiming budget-lineage exhaustion. #16 reports
+queue staleness/proposal-capacity attention separately from admitted quota exhaustion.
 
 **20.d — Actual remediation handoff.** Two rounds around actual executor fix/commit
 must release only a completely settled round's lock/member delegation, return control
@@ -1597,13 +1632,18 @@ Each result may carry at most256 disposition entries, each at most8192 complete 
 UTF-8 bytes (identity, outcome, inspected locations/evidence included), separately from
 its256 NEW finding count; the combined entire result remains1 MiB. Result mandatory
 metadata has a frozen actual DTO upper bound at most64 KiB. Pre-input check each slot's
-required count<=256 AND count*8192+its metadata upper bound<=1 MiB with checked arithmetic;
-otherwise NeedsContext/trusted existing resolution or termination without certificate,
+required count<=256 AND count*8192+its metadata upper bound+65536<=1 MiB with checked arithmetic;
+65536 bytes reserve at least8 NEW full-size8192-byte findings separately from mandatory
+dispositions. More may fit only within the unchanged complete1-MiB envelope; result
+overflow is explicit bounded nonapproval, never instruction to omit a new finding.
+Otherwise NeedsContext/trusted existing resolution or termination without certificate,
 never send an impossible output obligation or omit a required finding. Maximum count
 never promises maximum bytes fit. Missing assigned dispositions holds; nonassigned
 Low/nonblocking disposition is optional within the same cap, not an approval hint.
 Test exact byte/count boundary,256 count simultaneous refusal when worst-case bytes
-cannot fit, accumulated claims across rounds, frozen eligibility and missing assigned
+cannot fit; at64-KiB mandatory metadata112 dispositions+8 new findings fits,113
+dispositions refuses before input. A new blocker in the reserved headroom is retained
+and vetoes certification; overflow is nonapproval. Test accumulated claims across rounds, frozen eligibility and missing assigned
 output→hold. Required output reservation uses these actual producer DTO bounds.
 
 **2.b — Quorum with retained uncertainty.** Quorum2/3 or any with enough settled
@@ -1611,6 +1651,47 @@ APPROVEs plus one Lost/uncertain member has NO certificate and remains recovery-
 even with early-stop. Quorum tolerates safely settled failures, never outstanding native
 effects/target-mutation taint. #16 publicly owns this availability frequency/Task-time;
 only actual14 recovery can release that owner, never vote count or trusted Human opinion.
+
+**9.i — Action authority and application origin.** These authorities remain separate:
+
+| Action | Required actual authority |
+| --- | --- |
+| Human fallback dismissal/downgrade/not-applicable/duplicate adjudication; policy relaxation; post-observation roster/confirmers change or supersession; Human authorship/unknown-origin disposition; decomposition | Actual trusted Human ingress with scoped principal/event/reason/evidence; automated controller cannot mint/borrow it |
+| Original eligible finder or frozen independent confirmer verification | Actual fresh owned verifier input/result/settlement provenance under9.a/e/g/h; never a controller-generated finding |
+| Initial activation under a Human-approved policy, frozen conditional branch, scheduling, verified bounded retry/fix/re-review progression | Separate automated controller under that exact activated policy, within immutable floor/lineage/designation; never post-opinion relaxation or approval shopping |
+| Genuine safe cancellation/termination without certificate allowed by frozen policy | Actual owned controller/supervisor cancellation and required settlement/closure; never Human clearance, approval or Lost release |
+
+The existing Human-ingress library composition tests its application boundary, not
+biological identity. A controller observing dissent cannot relabel itself Human,
+drop the dissenting roster, change all→quorum or redesignate favourable confirmers.
+Trusted Human action after dissent remains explicit history; frozen-policy automation
+still verifies/fixes/reviews autonomously within bounds. Actual15/24 public handoffs
+quote this split, including controller-origin negative tests through the actual port.
+Nonserializable types/producers and origin derivation, not JSON actor fields, enforce
+it when implemented. Same-UID arbitrary linked code/OS/DB remains the stated trust limit.
+
+**18.h — Individual settled resource release.** Each member releases ONLY its own
+actual provider/Project/global native permit after its genuine owner's COMPLETE
+required settlement and exact member closure. Native outcome/result/group label alone
+cannot release retained server/tool/unknown ownership. Keep round worktree lock/member
+input exclusion, finding/evidence obligations and byte reservation until whole-round
+safe closure. Lost/uncertain shares remain held for #14. Test two healthy Sets each
+with two slots competing for ONE provider permit: settled slot releases its permit,
+queued slot progresses, no healthy hold-and-wait or context bump. Real9/19/43 member
+closure producer remains an integration gate. Queue behind unrelated retained Lost
+capacity may still wait indefinitely with default-disabled expiry; record that explicit
+capacity availability limit and optional safe termination, never fictitious runnable
+success. #16 measures this wait separately from healthy scheduling and actual Lost
+recovery; public14/27 own its real recovery/admission.
+
+**21.j — Interim production refusal.** Until actual21.i readiness composes, the real
+production Workflow formal-review consumer returns typed ReviewGatingUnavailable before
+review claim/reservation/native dispatch. A nongating component result/certificate cannot
+satisfy its formal gate and legacy weaker single-Reviewer gating cannot substitute.
+Non-review factual/history operations keep their documented ownership rules. Actual
+consumer tests prove zero claim/dispatch and nongating/legacy fallback refusal; README/
+status state this temporary unready path. This is a staged deployment hold, never a
+waiver of wholeMVP's required actual native two/Triple and formal-review acceptance.
 
 Stable closure quotes use the explicit namespace I9-AC-<key>, for example
 I9-AC-16.a (this document's acceptance) versus GitHub Issue #16 (its public owner).
