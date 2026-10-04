@@ -422,7 +422,7 @@ mod tests {
         assert!(builtin("printf '42 42 Z\\n'").unwrap());
     }
     #[test]
-    fn each_output_stream_has_a_causal_size_failure() {
+    fn oversized_child_streams_remain_unknown_when_size_or_deadline_wins() {
         for (name, body) in [
             (
                 "stdout",
@@ -439,12 +439,45 @@ mod tests {
                 "isolated {name} overflow observation elapsed={:?} category={error}",
                 started.elapsed()
             );
+            // Process scheduling can exhaust the unchanged observation budget
+            // before the producer fills the pipe. This OS-wrapper control proves
+            // no accepted frame, not a causal byte-cap kill in that case.
             assert!(
-                error
-                    .to_string()
-                    .contains(&format!("{name} exceeds byte budget")),
+                error.kind() == io::ErrorKind::TimedOut
+                    || (error.kind() == io::ErrorKind::InvalidData
+                        && error
+                            .to_string()
+                            .contains(&format!("{name} exceeds byte budget"))),
                 "{error}"
             );
+        }
+    }
+    #[test]
+    fn prepared_stream_cap_rejects_complete_zombie_prefix_before_hidden_live_row() {
+        let directory = tempfile::tempdir().unwrap();
+        for name in ["stdout", "stderr"] {
+            let path = directory.path().join(name);
+            // The next real read ends a complete all-Z row exactly at LIMIT+1.
+            // Omitting the byte-cap check would accept this prefix and hide the
+            // following live row on its next zero-length read. The prepared bytes
+            // are a reader-boundary unit fixture, not an actual ps/pipe sample.
+            std::fs::write(&path, b"\n43 42 S\n").unwrap();
+            let category = if name == "stdout" {
+                "native inspection stdout exceeds byte budget"
+            } else {
+                "native inspection stderr exceeds byte budget"
+            };
+            let mut stream = Stream::new(File::open(&path).unwrap(), category).unwrap();
+            stream.bytes = b"42 42 Z".to_vec();
+            stream.bytes.resize(LIMIT, b' ');
+            let result = stream.drain(Instant::now() + BUDGET);
+            // The cut is otherwise valid death evidence. It must be refused by
+            // the actual drain cap, independently of framing/diagnostic barriers.
+            assert!(validate(&stream.bytes, 42).unwrap());
+            assert!(!stream.eof);
+            let error = result.expect_err("reader accepted a truncated all-Z prefix");
+            assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+            assert_eq!(error.to_string(), category);
         }
     }
     #[test]
