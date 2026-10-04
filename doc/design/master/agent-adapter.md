@@ -386,3 +386,34 @@ completion or receive the old stop. Exact Session snapshots distinguish restorat
 from advancement without treating Store version increments as different attempts.
 This implementation is under independent source review and does not resolve native
 descendant containment, decision CWD or configuration-provenance prerequisites.
+
+## 17. Proposed native/runtime workload correction (Issue6 F1)
+
+[Issue6 F1 requirements](../../requirements/issue-6-requirements.md) passed two
+independent requirements reviews at `a79850c`; the corresponding
+[proposed design](../issue-6-design.md#f1-correction-owned-workload-and-real-consumer-gates-proposed)
+remains a STRICT design gate, not implemented shared authority or platform acceptance.
+One selected parent process group cannot certify complete workload cleanup when
+native tools/helpers/hooks/frontend paths can start other groups, sessions or
+persistent delegated jobs. An actual private profile-bound owner must precede
+all enabled runtime/native execution; exact current outcome and complete enabled
+resource cleanup are separate settlement predicates. Unknown retains ownership
+and Lost/reservations; telemetry PID/JSON, terminal/interrupt ACK and empty native
+inventories never create death/adoption authority. No native defaults/hooks/auth
+are disabled to fit a smaller profile.
+
+[Issue60](https://github.com/shuhei-suzuki/rururunx/issues/60) is a pending producer
+for runtime Git/helper/Generic and12/13 jobs, including pre-marker source/context/
+admission/gate capture, status/TUI, registry and recovery outside native attempts.
+Those callers need strictly non-executing faithful scoped reads or actual own
+runtime reservation/settlement before first external execution; later native
+ownership cannot cover prior capture. Unknown filter/content identity cannot be
+published as current. All native/runtime parties need real continuous both-side
+compatibility and already-live peer→Lost protection, preserving four-plus product
+concurrency. These are pending consumer contracts, not available ports.
+
+Initial no-backend Unsupported is a safety checkpoint only. Required both-host
+native Executor/Reviewer/Consult/resume/stop/Task attach remains open, with actual
+#19 managed lifetime/input, #58 non-Task Consult, #9/#10 approval slot, #14 recovery,
+#15 callers and #16 aggregate acceptance separately composed. Metadata-only or
+synthetic selected-group proof cannot replace genuine native/platform acceptance.

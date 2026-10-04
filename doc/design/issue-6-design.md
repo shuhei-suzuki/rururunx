@@ -617,3 +617,253 @@ abnormal Reservation drop clears that same journal. First-cause classification
 remains independent from cleanup uncertainty; Lost preparation returns SessionLost
 and retains a bounded private cleanup diagnostic, while durable audit records
 only canonical uncertainty reasons, failure kinds and a detail-retained flag.
+
+## F1 correction: owned workload and real consumer gates (proposed)
+
+Requirements gate: exact `a79850c29dbbc0c43d4ba6fd33143b4f2554212c` passed two
+independent native requirements reviews (no Critical/High/Medium findings).
+This section is a proposed STRICT design, not source/backend acceptance. It
+supersedes earlier wording that treats the owned wrapper process group as the
+complete cleanup unit. F4's registered preparation/cancellation mechanisms remain
+component authority; they do not establish whole native workload cleanup.
+
+### Evidence and supported-profile floor
+
+Pinned Codex `rust-v0.160.0` source at
+`a956835d020762cb2b570053af06f643a11c0ecc` has native PTY `setsid` and shell
+TTY detachment. Its command termination/shutdown acknowledgements and logical
+background inventory do not export a retained whole-workload death authority.
+Primary pinned authorities: [PTY child terminal setup](https://github.com/openai/codex/blob/a956835d020762cb2b570053af06f643a11c0ecc/codex-rs/utils/pty/src/pty.rs#L645),
+[shell spawning](https://github.com/openai/codex/blob/a956835d020762cb2b570053af06f643a11c0ecc/codex-rs/core/src/spawn.rs#L101),
+[local termination](https://github.com/openai/codex/blob/a956835d020762cb2b570053af06f643a11c0ecc/codex-rs/utils/pty/src/process.rs),
+and [unified_exec outcome](https://github.com/openai/codex/blob/a956835d020762cb2b570053af06f643a11c0ecc/codex-rs/core/src/unified_exec/process.rs#L259).
+Owned finite standalone command probes observed a second-SID child continue after
+native command termination and separately after stdio-server exit. The child
+self-expired; only the actual unreaped server's selected group was independently
+inspected and reaped. This is no model/unified_exec/adapter acceptance proof.
+
+Current production profile readiness is unproven for both required hosts. The
+initial correction must have no production backend permit, and refuse affected
+execution before effects. It cannot replace macOS/Linux native Core with an
+unsupported-only release. Real both-host Executor/Reviewer/Consult, resume/stop,
+Task-native attach and four-plus concurrency remain required acceptance gates.
+
+The macOS26.6.2 sandbox-exec deny-fork singleton only proved direct-Rust-binary
+metadata initialize/config-read. The ordinary Node shim failed spawn; required
+hooks, Review and sandboxed ApplyPatch helper compatibility remain unproven. It is
+not an installed native general-profile permit. No required native hook/default
+is disabled, no Node launcher omission is silently generalized, and no platform
+version/privileged prerequisite is changed. Linux delegated cgroup-v2 is a design
+candidate, not an available macOS backend or verified Linux deployment.
+
+### Proposed private roles
+
+Use private, non-Serde roles; names below are proposed, not an existing API:
+
+- `ProfileBinding`: exact scope/repository/attempt, widest lifetime capability,
+  executable/launcher chain and digests, actual effective configuration/control
+  inputs, enabled setup/tool/frontend/service routes, completeness basis and
+  compatible shared-effect epoch. It contains no credential values or kill PIDs.
+- `ProfilePermit`: implementation-owned side-effect-free readiness for the exact
+  installed binding and required host, supported only by immutable owned
+  conformance. Caller flags, version strings, zero model tools, successful native
+  discovery and fixture JSON cannot create it. A changed/unbound identity or
+  input is Unsupported before reservation where detectable without execution.
+- `OwnedWorkload`: one actual backend anchor and enrolled enabled resource unit,
+  moved into the registered attempt and then sole supervision. It has no public
+  constructor from UUID/PID/rows, no Serde, and no independent-owner Clone. Arc
+  controls retain that same owner through Drop; they never duplicate grants.
+- `WorkloadCleanup`: private factual current cleanup observation created only by
+  that actual retained owner. Selected-group death is an explicitly smaller
+  observation; it cannot construct complete cleanup. Unknown retains the anchor.
+
+Do not add a public configurable `cleanup_verified`/`no_commands` switch or
+promote a native telemetry PID into ownership. No backend interface may expose
+an arbitrary adopt/kill(number) operation. Existing bounded ProcessGroup guards
+remain valuable for their actual selected owned groups, not the whole cohort.
+Every bound route must either enroll into the actual unit, have an explicit
+reviewed retained delegated-service owner, or be blocked before execution by an
+identity/input-bound effective control. Reachable uncovered/unblocked routes are
+Unsupported; parent/cohort emptiness cannot certify a delegated job's cleanup.
+
+The profile is fixed at acquisition to the widest reachable capability until
+settlement. Native permission replies, broker grants and frontend attach cannot
+expand it. A wider profile needs a fresh higher-version attempt after actual
+prior cleanup, source/current fences and the corresponding ownership contract.
+A no-command role is not a file-only Executor permit. Native setup/helpers,
+preserved hooks/MCP and frontend local commands are counted before their first
+execution, regardless of the model operation-tool count.
+
+### First-effect ordering and current consumers
+
+`CodexAdapter::probe` remains side-effect-free metadata. `capabilities` must not
+advertise executable/readiness-dependent capabilities as available without the
+implementation-owned bound permit. Missing native auth stays unknown unless an
+already-owned compatible route can inspect it; a version/auth/config probe must
+not bootstrap the ownership proof it needs. Pure filesystem/Store validation can
+resolve metadata/digests without invoking native or Git executables.
+
+Before start/start_structured, resume, executable checkpoint/recheck, grant or
+frontend action can run any process, the real consumer checks its exact permit
+and current ownership contract. With the initial empty production backend set,
+return typed UnsupportedCapability before a new reservation, Session Starting,
+Git/helper/native launch, connection, model frame or consumed-input publication.
+No builder/runtime flag/legacy start fallback may bypass this gate. Resume and
+checkpoint must leave the previous exact terminal input/history unchanged when
+refused before effects. The gate is separate from model-input CAS and must precede
+`ScopeSnapshot::verify_git_preparing`, configuration discovery and server startup.
+A permit is not a native outcome, input admission or settlement receipt.
+
+For future supported managed routes, the actual #19 implementation-owned profile
+gate runs before clear_hold/reserve/context. The successful exact reservation
+precedes atomic dispatch_started plus operation-lease publication. The actual
+private handle moves synchronously into the registered attempt before await; the
+attempt acquires its genuine workload owner before any runtime/native execution.
+A post-marker owner-acquisition failure needs the real pristine NoCurrentDispatch
+settlement; adapter historical restoration alone cannot erase a lease. Pure
+validation precedes effects where possible; actual effects_started precedes first
+Session publication, connection/process or resource effect. A boolean row is no
+pristine/no-effect proof. #19 Design22 is still an unapproved candidate with no
+production private port here; this section does not implement its marker or lease.
+Managed admission therefore also remains Unsupported until actual composition.
+
+Project/non-Task Consult requires #58's actual retained hold/common-dir exclusion
+and settlement contract; no such producer exists in this component. ApprovalReviewer
+requires #9/#10's actual retained decision-member/slot bound to the requesting
+operation/input/source and its own native lifetime. Formal Workflow Reviewer uses
+actual RequirementsReview/DesignReview/ImplementationReview/SecurityReview phases
+and #19 managed ownership; DecisionReview is conceptual-only. Required native
+Task attachment composes #6 frontend, #11 driver as applicable, #15 caller, #19
+managed Task/input and #14 recovery fences. Project-only attach is partial, never
+Task conversion through #58. Every missing composition is explicit before effects.
+
+### Runtime capture before the native marker
+
+Issue60 is the pending independent runtime Git/helper owner/reservation producer.
+All external runtime execution is covered, including adapter preflight/grant/status/
+cleanup, Issues18–20 source/context capture, #19 pre-marker physical/admission hashes,
+Workflow gate-claim/AllowCurrent capture, #15 status/TUI, #26 registry and #14
+recovery. Context capture that precedes a native marker cannot use a later native
+owner or invent an early native phase lease. The capture's own durable current
+conflict reservation and actual owner precede first Git/helper execution; known
+current outcome AND complete enabled runtime cleanup precede its settlement.
+Source digest/ContextVersion or gate publication success is never cleanup proof.
+Failure/Drop/timeout or uncertainty retains that runtime owner/hold and prevents
+conflicting capture/native admission/removal. Its own reviewed source producer is
+pending; no callable Issue60 port is created by this design.
+
+The alternative is strictly non-executing bounded scoped in-process reads that
+cannot invoke fsmonitor/hooks/filters/textconv/external helpers. A library label
+alone does not prove that property. Capture must define the exact authority it
+hashes and maintain the same content/source semantics at the native consumer.
+Configured attributes/clean-smudge/LFS/eol/ident/worktree-encoding that cannot be
+faithfully applied without prohibited execution make affected current facts
+Unknown. Refuse/hold current source publication with a typed content-identity
+reason, or use the actual owned executing route. Never publish filter-divergent
+facts as current or silently strip configuration to obtain a passing hash. Raw
+scoped bytes can be displayed with their explicit raw/historical identity but
+cannot substitute for native-equivalent admission authority. A real capture
+fixture with LFS/clean-filter paths must prove this distinction and kill a mutant
+that publishes unknown/divergent facts as current.
+
+During unresolved holds, bounded non-executing Store/filesystem observations may
+report factual historical/held state without cleanup/admission/freshness claims.
+Git-invoking observation needs its own actual owner/reservation plus continuously
+enforced compatibility with the held workload, including the primary root.
+Read-only purpose or argv is not nonconflict proof. Otherwise refuse that action
+with a held/unsupported reason while safe non-executing state reporting stays
+available. Existing context diff no-ext-diff/no-textconv arguments constrain those
+bound routes only, not all repository-configured activation routes.
+
+### Retention, outcome and cleanup consumers
+
+Store the real owner in the already-registered F4 attempt before any cancellable
+process action. Keep its ownership outside cancellation selects and move it with
+operation/stop receiver in the same Supervised installation critical section.
+Cancellation/timeout preserves the first factual cause before cleanup awaits.
+Drop cannot abort the retained preparation/supervisor and discard its anchor.
+Panic/runtime shutdown cannot mint completion; preserve conservative Lost/unpublished
+state, actual owner retention and the separately reviewed recovery requirement.
+
+Native exact-turn interrupt, bounded current-terminal drain and optional native
+scoped background cancellation can assist cleanup. Their acknowledgements/lists
+cannot settle it. Stop the actual complete enabled workload through its private
+backend/service anchors, verify its bounds/death/current identity and separately
+reap every owned startup/helper/frontend group. Preserve all existing deadlines.
+Inspection/event loss, truncation, binding drift, unexpected delegation or failed
+publication retains Unknown/Lost; numeric membership hints are never adopted.
+
+`Reservation::terminal`, `Evidence.completed`, `transport_succeeded`, continuation
+eligibility, stop/status publication and future private #19/#58 settlement must
+consume BOTH exact current native outcome AND actual entire enabled workload
+cleanup, plus exact current persisted scope/input/attempt/source authority.
+Known dead server PID may be cleared factually while uncertainty/reservation stays.
+An already-consumed/admitted zero-wire failure has no native terminal outcome:
+retain held authority pending actual separately reviewed #14 recovery, mint neither
+NoCurrentDispatch nor KnownCurrentTerminal, and do not replay. Lost remains absorbing
+under ordinary calls even when later cleanup facts become available. Human judgement
+or a manual label change is not a cleanup certificate or recovery grant.
+
+Previously running component Sessions have no newly constructed F1 owner. Status
+may expose their factual historical observations, but old `Evidence.completed` or
+selected-group terminal cannot authorize new completion, resume, release or removal
+under the corrected contract. Stop may assist only through still-actual retained
+owned handles and covered cleanup helpers; never adopt audit PID hints after restart.
+Until actual #14 recovery authority exists, such uncertainty remains held. No old
+source-level success flag is grandfathered into a whole-workload receipt.
+
+### Live effect contract and backend acceptance
+
+Providers5/6/7/Generic and all runtime Issue60/12/13/capture/status/registry/recovery
+profiles are actual both-side matrix parties, composed with #19/#58 epochs. The
+actual reviewed compatibility contract covers own-worktree/branch writes, atomic
+append-only shared objects or proved equivalent, shared executable/config/hook
+activation targets and bound current authority for the entire lifetime. Common-dir
+identity alone neither permits effects nor blanket-serializes live Tasks.
+Already-running B when A becomes Lost must be protected by B's real enforcement/
+settlement or proved noninterference. A new-admission-only refusal cannot stop B.
+New or changed native/Git/helper/profile identity re-verifies every applicable
+mixed combination against supported peers, including B-already-live→A-Lost, before
+advertising readiness. Positive same-repository Executors plus open Consult and
+required four-plus Task aggregate proof remain acceptance conditions, not inferred
+from a matrix table. No such producer is implemented by this proposal.
+
+Concrete configured automatic shared activation closure is bounded and pinned by
+executable/config/indirection inputs/digests; unknown/cyclic/truncated/unbounded
+closure makes the affected profile Unsupported. Direct hooksPath/entry targets
+stay protected. Ordinary code consumed only by a later fresh genuinely governed
+runtime action remains inert work product. Explicit independent user/IDE future
+execution is a documented application boundary, never an F1-owned future-process
+theorem. Reachable current service/deferred routes still require actual owners or
+bound pre-execution denial; the application boundary cannot omit them.
+
+Linux cgroup-v2 conformance would need private immutable handles, pre-exec exact
+owned enrollment, no foreign injection/same-UID migration/control-FD escape,
+bounded populated/death observation and complete current service coverage. Current
+Apple launchd same-group cleanup cannot cover the demonstrated second SID; ES
+candidates need independently validated platform/entitlement/safe API/death proof.
+No backend is installed/configured here. If no compatible backend is verified,
+retain the platform blocker and escalate only a concrete validated prerequisite/
+distribution decision; no generic permission or native-default waiver is implied.
+
+### Source and actual acceptance gates
+
+Requirements approval is not design approval. This proposed section plus master
+boundary must pass immutable independent native design reviews before source.
+Initial source may wire honest no-backend Unsupported gates and factual legacy
+uncertainty; it is a partial safety checkpoint, not native MVP completion. Fixture
+witnesses are private test-only finite/no-subprocess controls with actual retained
+owners, cannot create a production permit or certify actual installed Codex tools.
+
+Real caller controls/mutants must cover: probe-before-owner; first Git/preflight/
+config/native launch; every start/resume/checkpoint/grant/frontend bypass; post-marker
+failure/pristine versus effects; pre-marker source capture with fsmonitor/filter
+routes; divergent LFS/content facts; terminal/selected parent death with escaped
+workload; consumed zero-wire hold; old completion flags; cancel/Drop/publication
+failure; primary-root held observation; and both-side already-live peer→Lost matrix.
+An enum/descriptor-only unit test cannot replace the actual effect/publication
+consumer. Preserve default concurrency, deadlines, Unknown/Lost and source scope.
+Exact-head fmt/clippy/debug+release checks/builds, both-host CI, immutable source
+reviews and genuine installed both-host enabled-profile conformance are distinct
+gates. #16 aggregate native/runtime acceptance, F2 immutable decision cwd and IPC02
+environment provenance remain open and cannot be certified by this correction.
