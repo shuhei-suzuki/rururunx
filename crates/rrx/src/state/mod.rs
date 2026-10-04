@@ -918,8 +918,8 @@ impl Store {
             ensure!(
                 usage.scope.project_id.to_string() == project
                     && str_id(usage.scope.goal_id) == goal
-                    && true
-                    && usage.session_id.to_string() == session,
+                    && str_id(usage.scope.task_id) == task
+                    && true,
                 "usage row/body identity mismatch"
             );
             Ok(usage)
