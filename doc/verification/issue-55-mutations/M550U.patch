@@ -1,0 +1,13 @@
+diff --git a/crates/rrx/src/adapter/grok/mod.rs b/crates/rrx/src/adapter/grok/mod.rs
+index 6a3d925..529d3b8 100644
+--- a/crates/rrx/src/adapter/grok/mod.rs
++++ b/crates/rrx/src/adapter/grok/mod.rs
+@@ -1270,7 +1270,7 @@ async fn supervise(mut actor: Actor, load: Option<String>) {
+             ),
+         ));
+     }
+-    let _=actor.store.lock().map(|mut store|store.audit(&actor.session.scope,"grok.turn_observed",json!({"session":actor.session.id,"native":actor.session.native_ref,"prompt":actor.prompt,"completed":completed,"cleanup_verified":clean,"cleanup_receipt":cleanup_receipt,"reconciliation_attempted":reconciliation_attempted,"reconciliation_error":reconciliation_error,"exit_code":cleanup.as_ref().ok().copied().flatten(),"diagnostic":diagnostic.as_ref().map(ToString::to_string)})));
++    let _=actor.store.lock().map(|mut store|store.audit(&actor.session.scope,"grok.turn_observed",json!({"session":actor.session.id,"native":actor.session.native_ref,"prompt":actor.prompt,"completed":completed,"cleanup_verified":clean,"cleanup_receipt":null,"reconciliation_attempted":reconciliation_attempted,"reconciliation_error":reconciliation_error,"exit_code":cleanup.as_ref().ok().copied().flatten(),"diagnostic":diagnostic.as_ref().map(ToString::to_string)})));
+     let state = if !clean || (actor.dispatched && !actor.native_outcome) {
+         SessionState::Lost
+     } else if actor.stopped() {

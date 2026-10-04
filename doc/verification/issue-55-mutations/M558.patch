@@ -1,0 +1,13 @@
+diff --git a/crates/rrx/src/adapter/grok/mod.rs b/crates/rrx/src/adapter/grok/mod.rs
+index 6a3d925..cbcae8e 100644
+--- a/crates/rrx/src/adapter/grok/mod.rs
++++ b/crates/rrx/src/adapter/grok/mod.rs
+@@ -1154,7 +1154,7 @@ async fn supervise(mut actor: Actor, load: Option<String>) {
+                 }
+             }
+             Err(error) => {
+-                cleanup_state = CleanupState::GroupCleanupFailedUnclassified;
++                cleanup_state = CleanupState::ReapTimeout;
+                 Err(error)
+             }
+         }

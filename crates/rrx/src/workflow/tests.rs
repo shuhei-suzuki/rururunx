@@ -30,6 +30,8 @@ struct FakeAgent {
     native_completions: Mutex<BTreeSet<SessionId>>,
     launches: Mutex<Vec<LaunchRequest>>,
     statuses: Mutex<BTreeMap<SessionId, SessionStatus>>,
+    start_pause: Mutex<Option<Arc<Pause>>>,
+    start_error: AtomicBool,
 }
 impl FakeAgent {
     fn new(name: &str, store: SharedStore, review: bool) -> Self {
@@ -42,6 +44,8 @@ impl FakeAgent {
             native_completions: Mutex::new(BTreeSet::new()),
             launches: Mutex::new(vec![]),
             statuses: Mutex::new(BTreeMap::new()),
+            start_pause: Mutex::new(None),
+            start_error: AtomicBool::new(false),
         }
     }
 }
@@ -71,6 +75,13 @@ impl AgentAdapter for FakeAgent {
     fn start(&self, request: LaunchRequest) -> AdapterFuture<'_, Session> {
         Box::pin(async move {
             self.launches.lock().unwrap().push(request.clone());
+            let pause = self.start_pause.lock().unwrap().take();
+            if let Some(pause) = pause {
+                pause.hold().await;
+            }
+            if self.start_error.load(Ordering::SeqCst) {
+                return Err(adapter_error("fake start outcome unknown"));
+            }
             let session = Session {
                 id: SessionId::new(),
                 scope: request.scope,
@@ -190,6 +201,25 @@ impl AgentAdapter for FakeAgent {
         Box::pin(async { Err(adapter_error("usage")) })
     }
 }
+#[derive(Default)]
+struct Pause {
+    entered: Notify,
+    resume: Notify,
+}
+impl Pause {
+    async fn hold(&self) {
+        self.entered.notify_one();
+        self.resume.notified().await;
+    }
+    async fn wait(&self) {
+        tokio::time::timeout(std::time::Duration::from_secs(5), self.entered.notified())
+            .await
+            .expect("controlled operation reached pause");
+    }
+    fn release(&self) {
+        self.resume.notify_one();
+    }
+}
 type CaptureHook = Box<dyn FnOnce() + Send>;
 struct Sources {
     snapshot: Mutex<SourceSnapshot>,
@@ -197,6 +227,7 @@ struct Sources {
     captures: AtomicUsize,
     on_numbered_capture: Mutex<Option<(usize, CaptureHook)>>,
     capture_error: AtomicBool,
+    pauses: Mutex<BTreeMap<usize, Arc<Pause>>>,
 }
 impl Sources {
     fn new(scope: Scope) -> Self {
@@ -211,6 +242,7 @@ impl Sources {
             captures: AtomicUsize::new(0),
             on_numbered_capture: Mutex::new(None),
             capture_error: AtomicBool::new(false),
+            pauses: Mutex::new(BTreeMap::new()),
         }
     }
 }
@@ -224,6 +256,10 @@ impl WorkflowSources for Sources {
     ) -> WorkflowFuture<'_, SourceSnapshot> {
         Box::pin(async move {
             let number = self.captures.fetch_add(1, Ordering::SeqCst) + 1;
+            let pause = self.pauses.lock().unwrap().remove(&number);
+            if let Some(pause) = pause {
+                pause.hold().await;
+            }
             if self
                 .on_numbered_capture
                 .lock()
@@ -350,6 +386,9 @@ struct Fixture {
 }
 impl Fixture {
     fn new(class: WorkflowClass) -> Self {
+        Self::with_binding(class, true)
+    }
+    fn with_binding(class: WorkflowClass, bound: bool) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().canonicalize().unwrap();
         let mut store = Store::open(&dir.path().join("state.db")).unwrap();
@@ -380,8 +419,10 @@ impl Fixture {
         task.workflow = class;
         task.risk = RiskClass::R0;
         task.reviewers = vec!["reviewer".into()];
-        task.worktree = Some(project.worktree_root.join("task"));
-        task.branch = Some("feature/task".into());
+        if bound {
+            task.worktree = Some(project.worktree_root.join("task"));
+            task.branch = Some("feature/task".into());
+        }
         store.put_task(&mut task).unwrap();
         let store = Arc::new(Mutex::new(store));
         let executor = Arc::new(FakeAgent::new("executor", store.clone(), false));
@@ -3200,23 +3241,41 @@ async fn final_claim_cas_loss_recovers_only_proven_undispatched_reservations() {
             .await;
         let store = fixture.store.clone();
         let id = fixture.task.id;
+        let committed = Arc::new(Mutex::new(None::<WorkflowSnapshot>));
+        let committed_hook = committed.clone();
         let target = fixture.sources.captures.load(Ordering::SeqCst) + 4;
         *fixture.sources.on_numbered_capture.lock().unwrap() = Some((
             target,
             Box::new(move || {
                 let mut store = store.lock().unwrap();
                 let mut task = store.task(id).unwrap().unwrap();
+                let record = store
+                    .records(&task.scope(), RecordKind::Workflow)
+                    .unwrap()
+                    .remove(0);
+                *committed_hook.lock().unwrap() =
+                    Some(serde_json::from_value(record.data).unwrap());
                 task.next_action = Some("last window CAS race".into());
                 store.put_task(&mut task).unwrap();
             }),
         ));
         assert!(fixture.engine.step(id, BTreeMap::new()).await.is_err());
+        let committed = committed.lock().unwrap().take().unwrap();
+        if native {
+            fixture.assert_owned_release(&committed);
+        } else {
+            let held = fixture.engine.snapshot(id).unwrap();
+            assert_eq!(
+                serde_json::to_value(&held).unwrap(),
+                serde_json::to_value(&committed).unwrap(),
+                "EvidencePort must retain same history/retries/context/attempt before claim"
+            );
+        }
         let calls = fixture.gates.calls.lock().unwrap().len();
         let result = fixture.engine.step(id, BTreeMap::new()).await.unwrap();
         if native {
-            assert!(matches!(result, StepResult::Invalidated { .. }));
             assert!(matches!(
-                fixture.engine.step(id, BTreeMap::new()).await.unwrap(),
+                result,
                 StepResult::Started {
                     phase: Phase::Implement,
                     ..
@@ -3350,9 +3409,11 @@ async fn native_gate_requires_persisted_owned_status_and_sessionless_completion_
         target,
         Box::new(move || {
             let mut store = store.lock().unwrap();
-            let mut task = store.task(task_id).unwrap().unwrap();
-            task.next_action = Some("reserve without launch".into());
-            store.put_task(&mut task).unwrap();
+            let task = store.task(task_id).unwrap().unwrap();
+            let mut goal = store.goal(task.goal_id).unwrap().unwrap();
+            goal.objective
+                .push_str(" parent-version conflict without launch");
+            store.put_goal(&mut goal).unwrap();
         }),
     ));
     assert!(
@@ -3460,7 +3521,7 @@ async fn cancelled_unknown_gate_keeps_project_reserved_after_goal_terminal() {
             )
             .unwrap_err()
             .to_string()
-            .contains("unknown external outcome")
+            .contains("requires explicit recovery")
     );
     let mut store = fixture.store.lock().unwrap();
     let mut goal = store.goal(fixture.task.goal_id).unwrap().unwrap();
@@ -3621,7 +3682,7 @@ async fn resumed_round_claim_never_replays_prior_outcome_during_poll_restart_or_
                     )
                     .unwrap_err()
                     .to_string()
-                    .contains("unknown external outcome")
+                    .contains("requires explicit recovery")
             );
         }
         hold.notify_one();
@@ -3909,5 +3970,914 @@ async fn waiting_irreversible_hold_then_resume_does_not_orphan_owned_blocker() {
             .unwrap();
         assert_eq!(task.state, TaskState::Completed);
         assert!(task.blockers.is_empty());
+    }
+}
+
+// The barriers suspend actual capture/start consumers; no process-global timing hook.
+impl Fixture {
+    async fn ready_agent(review: bool) -> Self {
+        let fixture = Self::new(WorkflowClass::Quick);
+        fixture
+            .engine
+            .initialize(fixture.task.id, None)
+            .await
+            .unwrap();
+        fixture
+            .through(if review {
+                Phase::Tests
+            } else {
+                Phase::Worktree
+            })
+            .await;
+        fixture
+    }
+    fn fresh_engine(&self) -> Arc<WorkflowEngine> {
+        Arc::new(
+            WorkflowEngine::new(
+                self.store.clone(),
+                self.engine.registry.clone(),
+                self.config.clone(),
+                self.sources.clone(),
+                self.gates.clone(),
+            )
+            .unwrap(),
+        )
+    }
+    fn capture_pause(&self, offset: usize) -> Arc<Pause> {
+        let pause = Arc::new(Pause::default());
+        self.sources.pauses.lock().unwrap().insert(
+            self.sources.captures.load(Ordering::SeqCst) + offset,
+            pause.clone(),
+        );
+        pause
+    }
+    fn spawn_step(&self) -> tokio::task::JoinHandle<anyhow::Result<StepResult>> {
+        let engine = self.engine.clone();
+        let id = self.task.id;
+        tokio::spawn(async move { engine.step(id, BTreeMap::new()).await })
+    }
+    fn durable(&self) -> Value {
+        let store = self.store.lock().unwrap();
+        json!({"task":store.task(self.task.id).unwrap(),
+            "workflow":store.records(&self.task.scope(),RecordKind::Workflow).unwrap(),
+            "context":store.context(&self.task.scope(),None).unwrap(),
+            "audit":store.events(&self.task.scope(),0,1000).unwrap()})
+    }
+    async fn passive_observers(&self, dispatch: bool) {
+        let before = self.durable();
+        for engine in [self.engine.clone(), self.fresh_engine()] {
+            let StepResult::Waiting { reason, .. } =
+                engine.step(self.task.id, BTreeMap::new()).await.unwrap()
+            else {
+                panic!("observer must wait");
+            };
+            assert!(reason.contains(if dispatch {
+                "launch may still be active"
+            } else {
+                "preparation may still be active"
+            }));
+            assert!(reason.contains("#14"));
+            assert_eq!(
+                self.durable(),
+                before,
+                "observer cannot write or refresh ownership"
+            );
+        }
+    }
+    fn second_writer(&self) -> Store {
+        Store::open(&self.dir.path().join("state.db")).unwrap()
+    }
+    fn metadata_edit(&self, action: &str) {
+        let mut store = self.second_writer();
+        let mut task = store.task(self.task.id).unwrap().unwrap();
+        task.next_action = Some(action.into());
+        store.put_task(&mut task).unwrap();
+    }
+    fn set_goal(&self, state: GoalState) {
+        let mut store = self.second_writer();
+        let mut goal = store.goal(self.task.goal_id).unwrap().unwrap();
+        goal.state = state;
+        store.put_goal(&mut goal).unwrap();
+    }
+    fn assert_owned_release(&self, reserved: &WorkflowSnapshot) {
+        let after = self.engine.snapshot(self.task.id).unwrap();
+        let index = reserved.active.unwrap();
+        assert!(after.active.is_none());
+        assert_eq!(after.history[index].state, AttemptState::Failed);
+        assert!(!after.history[index].dispatch_started);
+        assert!(after.history[index].session_id.is_none());
+        assert_eq!(after.context_version, reserved.context_version);
+        assert_eq!(after.history.len(), reserved.history.len());
+        assert_eq!(after.retries.len(), reserved.retries.len() + 1);
+        assert_eq!(after.retries.last().unwrap().prior_attempt, index);
+        let mut expected = reserved.clone();
+        expected.active = None;
+        expected.history[index] = after.history[index].clone();
+        expected.retries = after.retries.clone();
+        assert_eq!(
+            serde_json::to_value(after).unwrap(),
+            serde_json::to_value(expected).unwrap()
+        );
+    }
+}
+
+#[tokio::test]
+async fn preparation_observers_preserve_both_capture_awaits_and_owned_single_launch() {
+    for review in [false, true] {
+        for offset in [3, 4] {
+            let fixture = Fixture::ready_agent(review).await;
+            let baseline = if review {
+                fixture.reviewer.launches.lock().unwrap().len()
+            } else {
+                fixture.executor.launches.lock().unwrap().len()
+            };
+            let pause = fixture.capture_pause(offset);
+            let owner = fixture.spawn_step();
+            pause.wait().await;
+            let reserved = fixture.engine.snapshot(fixture.task.id).unwrap();
+            fixture.passive_observers(false).await;
+            pause.release();
+            assert!(matches!(
+                owner.await.unwrap().unwrap(),
+                StepResult::Started {
+                    session: Some(_),
+                    ..
+                }
+            ));
+            let after = fixture.engine.snapshot(fixture.task.id).unwrap();
+            let index = reserved.active.unwrap();
+            assert_eq!(after.active, Some(index));
+            assert!(after.history[index].session_id.is_some());
+            assert!(after.history[index].dispatch_started);
+            assert_eq!(after.history.len(), reserved.history.len());
+            assert_eq!(after.retries.len(), reserved.retries.len());
+            let launches = if review {
+                fixture.reviewer.launches.lock().unwrap().len()
+            } else {
+                fixture.executor.launches.lock().unwrap().len()
+            };
+            assert_eq!(launches, baseline + 1);
+        }
+    }
+}
+
+#[tokio::test]
+async fn preparation_dispatched_observation_and_direct_store_terminal_fence() {
+    let fixture = Fixture::ready_agent(false).await;
+    let pause = Arc::new(Pause::default());
+    *fixture.executor.start_pause.lock().unwrap() = Some(pause.clone());
+    let owner = fixture.spawn_step();
+    pause.wait().await;
+    let launched = fixture.engine.snapshot(fixture.task.id).unwrap();
+    let attempt = &launched.history[launched.active.unwrap()];
+    assert!(
+        attempt.dispatch_started,
+        "durable marker must precede the actual adapter start await"
+    );
+    assert!(attempt.session_id.is_none());
+    assert_eq!(fixture.executor.launches.lock().unwrap().len(), 1);
+    fixture.passive_observers(true).await;
+    assert!(
+        fixture
+            .store
+            .lock()
+            .unwrap()
+            .records(&fixture.task.scope(), RecordKind::Session)
+            .unwrap()
+            .is_empty()
+    );
+    fixture
+        .engine
+        .cancel(fixture.task.id, "cancel held native start".into())
+        .unwrap();
+    let before = fixture.durable();
+    assert!(
+        fixture
+            .engine
+            .release_terminal_reservation(fixture.task.id, "not termination".into())
+            .is_err()
+    );
+    assert_eq!(fixture.durable(), before);
+    // Direct Store consumer bypasses the Engine fence: this independently verifies
+    // the Store guard. Native start has been called but no Session has been persisted.
+    let mut snapshot = fixture.engine.read(fixture.task.id).unwrap();
+    let index = snapshot.workflow.active.unwrap();
+    snapshot.workflow.active = None;
+    snapshot.workflow.history[index].state = AttemptState::Interrupted;
+    snapshot.workflow.history[index].completed_at = Some(now_ms());
+    snapshot.workflow.history[index].detail = Some("untrusted terminal recovery".into());
+    snapshot.record.data = serde_json::to_value(&snapshot.workflow).unwrap();
+    assert!(
+        fixture
+            .store
+            .lock()
+            .unwrap()
+            .put_workflow_transition(
+                &mut snapshot.task,
+                &mut snapshot.record,
+                None,
+                snapshot.project.version,
+                snapshot.goal.version,
+                WorkflowAccess::TerminalRecovery
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("unbound dispatch")
+    );
+    assert_eq!(fixture.durable(), before);
+    pause.release();
+    assert!(owner.await.unwrap().is_err());
+    let after = fixture.durable();
+    for key in ["task", "workflow", "context"] {
+        assert_eq!(
+            after[key], before[key],
+            "terminal and stale CAS overlap; no unique fence credit"
+        );
+    }
+    let prior = before["audit"].as_array().unwrap();
+    let events = after["audit"].as_array().unwrap();
+    assert!(events.starts_with(prior));
+    assert_eq!(events.len(), prior.len() + 1);
+    assert_eq!(events.last().unwrap()["kind"], "session.saved");
+    assert_eq!(
+        fixture
+            .store
+            .lock()
+            .unwrap()
+            .records(&fixture.task.scope(), RecordKind::Session)
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(fixture.executor.launches.lock().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn preparation_dropped_owner_is_not_released_by_a_fresh_engine() {
+    for offset in [3, 4] {
+        let fixture = Fixture::ready_agent(false).await;
+        let pause = fixture.capture_pause(offset);
+        let owner = fixture.spawn_step();
+        pause.wait().await;
+        let before = fixture.durable();
+        owner.abort();
+        assert!(owner.await.unwrap_err().is_cancelled());
+        fixture.passive_observers(false).await;
+        assert_eq!(fixture.durable(), before);
+        assert!(fixture.executor.launches.lock().unwrap().is_empty());
+    }
+}
+
+#[tokio::test]
+async fn preparation_capture_errors_release_only_current_owned_claim_and_preserve_metadata() {
+    for offset in [3, 4] {
+        let fixture = Fixture::ready_agent(false).await;
+        let pause = fixture.capture_pause(offset);
+        let owner = fixture.spawn_step();
+        pause.wait().await;
+        let reserved = fixture.engine.snapshot(fixture.task.id).unwrap();
+        fixture.metadata_edit("concurrent user decision");
+        fixture.sources.capture_error.store(true, Ordering::SeqCst);
+        pause.release();
+        let error = owner.await.unwrap().unwrap_err();
+        assert!(!error.to_string().contains("release not performed"));
+        fixture.assert_owned_release(&reserved);
+        let task = fixture
+            .store
+            .lock()
+            .unwrap()
+            .task(fixture.task.id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            task.next_action.as_deref(),
+            Some("concurrent user decision")
+        );
+        fixture.sources.capture_error.store(false, Ordering::SeqCst);
+        assert!(matches!(
+            fixture
+                .engine
+                .step(fixture.task.id, BTreeMap::new())
+                .await
+                .unwrap(),
+            StepResult::Started { .. }
+        ));
+        assert_eq!(fixture.executor.launches.lock().unwrap().len(), 1);
+    }
+}
+
+#[tokio::test]
+async fn preparation_pause_cancel_and_terminal_recovery_keep_owner_fenced() {
+    for offset in [3, 4] {
+        for cancel in [false, true] {
+            let fixture = Fixture::ready_agent(false).await;
+            let pause = fixture.capture_pause(offset);
+            let owner = fixture.spawn_step();
+            pause.wait().await;
+            if cancel {
+                fixture
+                    .engine
+                    .cancel(fixture.task.id, "cancel during capture".into())
+                    .unwrap();
+            } else {
+                fixture.set_goal(GoalState::Paused);
+            }
+            let before = fixture.durable();
+            pause.release();
+            assert!(owner.await.unwrap().is_err());
+            assert_eq!(fixture.durable(), before);
+            assert!(fixture.executor.launches.lock().unwrap().is_empty());
+            if cancel {
+                fixture
+                    .engine
+                    .release_terminal_reservation(
+                        fixture.task.id,
+                        "explicit committed terminal decision".into(),
+                    )
+                    .unwrap();
+                assert!(
+                    fixture
+                        .engine
+                        .snapshot(fixture.task.id)
+                        .unwrap()
+                        .active
+                        .is_none()
+                );
+            } else {
+                fixture.set_goal(GoalState::Created);
+                fixture.passive_observers(false).await;
+            }
+        }
+    }
+    for offset in [3, 4] {
+        let fixture = Fixture::ready_agent(false).await;
+        let pause = fixture.capture_pause(offset);
+        let owner = fixture.spawn_step();
+        pause.wait().await;
+        fixture
+            .engine
+            .cancel(fixture.task.id, "committed before recovery".into())
+            .unwrap();
+        fixture
+            .engine
+            .release_terminal_reservation(fixture.task.id, "explicit no-dispatch closure".into())
+            .unwrap();
+        let before = fixture.durable();
+        pause.release();
+        let error = owner.await.unwrap().unwrap_err();
+        if offset == 3 {
+            assert!(error.to_string().contains("release not performed"));
+        } else {
+            // Terminal marker rejection is ineligible: it must not attempt
+            // owner-local release, even though recovered durable state is stable.
+            assert!(!error.to_string().contains("release not performed"));
+        }
+        assert_eq!(fixture.durable(), before);
+        assert!(fixture.executor.launches.lock().unwrap().is_empty());
+    }
+}
+
+#[tokio::test]
+async fn preparation_lifecycle_aba_before_refresh_starts_same_claim_after_refresh_retains() {
+    for offset in [3, 4] {
+        let fixture = Fixture::ready_agent(false).await;
+        let pause = fixture.capture_pause(offset);
+        let owner = fixture.spawn_step();
+        pause.wait().await;
+        let reserved = fixture.engine.snapshot(fixture.task.id).unwrap();
+        fixture.set_goal(GoalState::Paused);
+        fixture.set_goal(GoalState::Created);
+        let before = fixture.durable();
+        pause.release();
+        let result = owner.await.unwrap();
+        if offset == 3 {
+            assert!(matches!(result.unwrap(), StepResult::Started { .. }));
+            let after = fixture.engine.snapshot(fixture.task.id).unwrap();
+            assert_eq!(after.active, reserved.active);
+            assert_eq!(after.history.len(), reserved.history.len());
+            assert_eq!(after.retries.len(), reserved.retries.len());
+            assert_eq!(fixture.executor.launches.lock().unwrap().len(), 1);
+        } else {
+            assert!(result.is_err());
+            assert_eq!(fixture.durable(), before);
+            fixture.passive_observers(false).await;
+            assert!(fixture.executor.launches.lock().unwrap().is_empty());
+        }
+    }
+}
+
+#[tokio::test]
+async fn preparation_parent_metadata_and_record_replacement_remain_reserved() {
+    for offset in [3, 4] {
+        for change in ["project", "goal", "record"] {
+            let fixture = Fixture::ready_agent(false).await;
+            let pause = fixture.capture_pause(offset);
+            let owner = fixture.spawn_step();
+            pause.wait().await;
+            match change {
+                "project" => {
+                    let mut store = fixture.second_writer();
+                    let mut project = store.project(fixture.project.id).unwrap().unwrap();
+                    project.name.push_str(" updated");
+                    store.put_project(&mut project).unwrap();
+                }
+                "goal" => {
+                    let mut store = fixture.second_writer();
+                    let mut goal = store.goal(fixture.task.goal_id).unwrap().unwrap();
+                    goal.objective.push_str(" updated");
+                    store.put_goal(&mut goal).unwrap();
+                }
+                _ => {
+                    let mut snapshot = fixture.engine.read(fixture.task.id).unwrap();
+                    fixture.engine.persist(&mut snapshot, None).unwrap();
+                }
+            }
+            let before = fixture.durable();
+            pause.release();
+            let result = owner.await.unwrap();
+            // Active parent metadata changed before refresh is explicitly adopted.
+            if offset == 3 && change != "record" {
+                assert!(matches!(result.unwrap(), StepResult::Started { .. }));
+            } else {
+                assert!(result.is_err());
+                assert_eq!(fixture.durable(), before);
+                fixture.passive_observers(false).await;
+                assert!(fixture.executor.launches.lock().unwrap().is_empty());
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn preparation_release_cas_and_executor_lost_fences_do_not_retry() {
+    for fence in ["cas", "running", "lost"] {
+        let fixture = Fixture::ready_agent(false).await;
+        let pause = fixture.capture_pause(3);
+        let owner = fixture.spawn_step();
+        pause.wait().await;
+        if fence == "cas" {
+            let path = fixture.dir.path().join("state.db");
+            let id = fixture.task.id;
+            *fixture.engine.hooks.before_release.lock().unwrap() = Some(Box::new(move || {
+                let mut store = Store::open(&path).unwrap();
+                let mut task = store.task(id).unwrap().unwrap();
+                task.next_action = Some("release second connection won".into());
+                store.put_task(&mut task).unwrap();
+            }));
+        } else {
+            let session = Session {
+                id: SessionId::new(),
+                scope: fixture.task.scope(),
+                agent: "executor".into(),
+                provider: "fake".into(),
+                role: SessionRole::Executor,
+                native_ref: None,
+                pid: None,
+                worktree: fixture.task.worktree.clone().unwrap(),
+                state: if fence == "lost" {
+                    SessionState::Lost
+                } else {
+                    SessionState::Running
+                },
+                model: None,
+                effort: None,
+                recovery: Value::Null,
+                started_at: now_ms(),
+            };
+            fixture.second_writer().put_session(&session, 0).unwrap();
+        }
+        fixture.sources.capture_error.store(true, Ordering::SeqCst);
+        pause.release();
+        let error = owner.await.unwrap().unwrap_err();
+        let snapshot = fixture.engine.snapshot(fixture.task.id).unwrap();
+        let index = snapshot.active.unwrap();
+        assert_eq!(snapshot.history[index].state, AttemptState::Running);
+        assert!(snapshot.retries.is_empty());
+        assert!(error.to_string().contains("release not performed"));
+        if fence == "cas" {
+            assert_eq!(
+                fixture
+                    .store
+                    .lock()
+                    .unwrap()
+                    .task(fixture.task.id)
+                    .unwrap()
+                    .unwrap()
+                    .next_action
+                    .as_deref(),
+                Some("release second connection won")
+            );
+        }
+        assert!(fixture.executor.launches.lock().unwrap().is_empty());
+    }
+}
+
+#[test]
+fn preparation_marker_classifier_requires_exact_table_and_owning_task_id() {
+    let id = TaskId::new();
+    for (table, other, expected) in [
+        ("tasks", false, true),
+        ("tasks", true, false),
+        ("records", false, false),
+        ("goals", false, false),
+        ("projects", false, false),
+    ] {
+        let error = anyhow::Error::new(crate::state::StateGuardError::SnapshotChanged {
+            table: table.into(),
+            id: if other { TaskId::new() } else { id }.to_string(),
+            expected: 1,
+        })
+        .context("transaction rollback");
+        assert_eq!(super::own_task_marker_rollback(&error, id), expected);
+    }
+    assert!(!super::own_task_marker_rollback(
+        &anyhow::anyhow!("SnapshotChanged tasks fabricated"),
+        id
+    ));
+}
+
+#[tokio::test]
+async fn preparation_reserve_loser_cannot_release_identical_winner_claim() {
+    let fixture = Fixture::ready_agent(false).await;
+    let other = fixture.fresh_engine();
+    *fixture.engine.hooks.attempt_started_at.lock().unwrap() = Some(42);
+    *other.hooks.attempt_started_at.lock().unwrap() = Some(42);
+    let first = Arc::new(Pause::default());
+    let second = Arc::new(Pause::default());
+    let hold = first.clone();
+    *fixture.engine.hooks.before_reserve.lock().unwrap() = Some(Box::pin(async move {
+        hold.hold().await;
+    }));
+    let hold = second.clone();
+    *other.hooks.before_reserve.lock().unwrap() = Some(Box::pin(async move {
+        hold.hold().await;
+    }));
+    let a = fixture.spawn_step();
+    first.wait().await;
+    let id = fixture.task.id;
+    let b = tokio::spawn(async move { other.step(id, BTreeMap::new()).await });
+    second.wait().await;
+    // Both prepared the same next context before either reservation committed.
+    let after_reserve = fixture.capture_pause(1);
+    first.release();
+    after_reserve.wait().await;
+    let before = fixture.durable();
+    second.release();
+    assert!(b.await.unwrap().is_err());
+    assert_eq!(
+        fixture.durable(),
+        before,
+        "loser cannot adopt the winner's committed token"
+    );
+    fixture.passive_observers(false).await;
+    after_reserve.release();
+    assert!(matches!(
+        a.await.unwrap().unwrap(),
+        StepResult::Started { .. }
+    ));
+    assert_eq!(fixture.executor.launches.lock().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn preparation_actor_override_uses_new_claim_before_launch_and_binding_is_immutable() {
+    for review in [false, true] {
+        for offset in [3, 4] {
+            let mut fixture = Fixture::ready_agent(review).await;
+            let alternate = Arc::new(FakeAgent::new("alternate", fixture.store.clone(), review));
+            let mut registry = AgentRegistry::default();
+            registry
+                .register("executor".into(), fixture.executor.clone())
+                .unwrap();
+            registry
+                .register("reviewer".into(), fixture.reviewer.clone())
+                .unwrap();
+            registry
+                .register("alternate".into(), alternate.clone())
+                .unwrap();
+            fixture.engine = Arc::new(
+                WorkflowEngine::new(
+                    fixture.store.clone(),
+                    Arc::new(registry),
+                    fixture.config.clone(),
+                    fixture.sources.clone(),
+                    fixture.gates.clone(),
+                )
+                .unwrap(),
+            );
+            let pause = fixture.capture_pause(offset);
+            let owner = fixture.spawn_step();
+            pause.wait().await;
+            let reserved = fixture.engine.snapshot(fixture.task.id).unwrap();
+            let mut store = fixture.second_writer();
+            let mut task = store.task(fixture.task.id).unwrap().unwrap();
+            if review {
+                task.reviewers = vec!["alternate".into()];
+            } else {
+                task.executor = "alternate".into();
+            }
+            store.put_task(&mut task).unwrap();
+            let mut invalid = task.clone();
+            invalid.worktree = Some(fixture.project.worktree_root.join("different"));
+            assert!(store.put_task(&mut invalid).is_err());
+            let mut invalid = task.clone();
+            invalid.branch = Some("feature/different".into());
+            assert!(store.put_task(&mut invalid).is_err());
+            pause.release();
+            assert!(owner.await.unwrap().is_err());
+            fixture.assert_owned_release(&reserved);
+            assert!(alternate.launches.lock().unwrap().is_empty());
+            assert!(matches!(
+                fixture
+                    .engine
+                    .step(fixture.task.id, BTreeMap::new())
+                    .await
+                    .unwrap(),
+                StepResult::Started { .. }
+            ));
+            assert_eq!(alternate.launches.lock().unwrap().len(), 1);
+            let snapshot = fixture.engine.snapshot(fixture.task.id).unwrap();
+            assert_eq!(
+                snapshot.history[snapshot.active.unwrap()].agent.as_deref(),
+                Some("alternate")
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn preparation_invalidation_internal_errors_release_before_publication_only() {
+    // Fresh-source branch constructs its pack in capture 4. Observed-source
+    // branch validates in capture 5 and constructs its pack in capture 6.
+    for (changed, internal) in [(3, 4), (4, 5), (4, 6)] {
+        for pause_owner in [false, true] {
+            let fixture = Fixture::ready_agent(false).await;
+            let initial = fixture.capture_pause(changed);
+            let nested = fixture.capture_pause(internal);
+            let owner = fixture.spawn_step();
+            initial.wait().await;
+            let reserved = fixture.engine.snapshot(fixture.task.id).unwrap();
+            fixture
+                .sources
+                .snapshot
+                .lock()
+                .unwrap()
+                .source_versions
+                .insert("requirements".into(), "changed".into());
+            initial.release();
+            nested.wait().await;
+            if pause_owner {
+                fixture.set_goal(GoalState::Paused);
+            }
+            fixture.sources.capture_error.store(true, Ordering::SeqCst);
+            let before = fixture.durable();
+            nested.release();
+            assert!(owner.await.unwrap().is_err());
+            if pause_owner {
+                assert_eq!(fixture.durable(), before);
+            } else {
+                fixture.assert_owned_release(&reserved);
+            }
+            assert!(fixture.executor.launches.lock().unwrap().is_empty());
+        }
+    }
+    let fixture = Fixture::ready_agent(false).await;
+    let initial = fixture.capture_pause(4);
+    let nested = fixture.capture_pause(5);
+    let owner = fixture.spawn_step();
+    initial.wait().await;
+    let reserved = fixture.engine.snapshot(fixture.task.id).unwrap();
+    fixture.sources.snapshot.lock().unwrap().revision = "changed-first".into();
+    initial.release();
+    nested.wait().await;
+    fixture.sources.snapshot.lock().unwrap().revision = "changed-second".into();
+    nested.release();
+    assert!(owner.await.unwrap().is_err());
+    fixture.assert_owned_release(&reserved);
+}
+
+#[tokio::test]
+async fn preparation_definitive_fail_and_both_invalidation_publication_conflicts_retain() {
+    for changed in [0, 3, 4] {
+        let fixture = Fixture::ready_agent(false).await;
+        if changed == 0 {
+            let mut store = fixture.second_writer();
+            let mut task = store.task(fixture.task.id).unwrap().unwrap();
+            task.executor = "missing-adapter".into();
+            store.put_task(&mut task).unwrap();
+        }
+        let publication = if changed == 4 { 6 } else { 4 };
+        let nested = fixture.capture_pause(publication);
+        let initial = if changed > 0 {
+            Some(fixture.capture_pause(changed))
+        } else {
+            None
+        };
+        let owner = fixture.spawn_step();
+        if let Some(initial) = initial {
+            initial.wait().await;
+            fixture
+                .sources
+                .snapshot
+                .lock()
+                .unwrap()
+                .source_versions
+                .insert("requirements".into(), "changed".into());
+            initial.release();
+        }
+        nested.wait().await;
+        fixture.metadata_edit("definitive publication conflict");
+        let before = fixture.durable();
+        nested.release();
+        assert!(owner.await.unwrap().is_err());
+        assert_eq!(
+            fixture.durable(),
+            before,
+            "definitive intent must not become automatic retry"
+        );
+        assert!(
+            fixture
+                .engine
+                .snapshot(fixture.task.id)
+                .unwrap()
+                .active
+                .is_some()
+        );
+        assert!(fixture.executor.launches.lock().unwrap().is_empty());
+        fixture.passive_observers(false).await;
+    }
+}
+
+#[tokio::test]
+async fn preparation_untyped_marker_failure_keeps_claim_even_when_start_never_called() {
+    let fixture = Fixture::ready_agent(false).await;
+    let pause = fixture.capture_pause(4);
+    let owner = fixture.spawn_step();
+    pause.wait().await;
+    let db = rusqlite::Connection::open(fixture.dir.path().join("state.db")).unwrap();
+    db.execute_batch("CREATE TRIGGER abort_owned_marker BEFORE UPDATE ON records
+        WHEN OLD.kind='workflow' AND
+        json_extract(OLD.body,'$.data.history[' || json_extract(OLD.body,'$.data.active') || '].dispatch_started')=0 AND
+        json_extract(NEW.body,'$.data.history[' || json_extract(NEW.body,'$.data.active') || '].dispatch_started')=1
+        BEGIN SELECT RAISE(ABORT,'fixture_marker_only_abort'); END;").unwrap();
+    let before = fixture.durable();
+    pause.release();
+    let error = owner.await.unwrap().unwrap_err();
+    assert!(format!("{error:#}").contains("fixture_marker_only_abort"));
+    assert_eq!(
+        fixture.durable(),
+        before,
+        "unknown error classification cannot authorize release"
+    );
+    assert!(fixture.executor.launches.lock().unwrap().is_empty());
+    db.execute_batch("DROP TRIGGER abort_owned_marker").unwrap();
+    fixture.passive_observers(false).await;
+}
+
+#[tokio::test]
+async fn preparation_post_dispatch_binding_cas_conflict_preserves_factual_session_and_claim() {
+    let fixture = Fixture::ready_agent(false).await;
+    let pause = Arc::new(Pause::default());
+    *fixture.executor.start_pause.lock().unwrap() = Some(pause.clone());
+    let owner = fixture.spawn_step();
+    pause.wait().await;
+    fixture.metadata_edit("post-dispatch user update");
+    let before = fixture.durable();
+    pause.release();
+    assert!(owner.await.unwrap().is_err());
+    let after = fixture.durable();
+    for key in ["task", "workflow", "context"] {
+        assert_eq!(after[key], before[key]);
+    }
+    let events = after["audit"].as_array().unwrap();
+    let prior = before["audit"].as_array().unwrap();
+    assert!(events.starts_with(prior));
+    assert_eq!(events.len(), prior.len() + 1);
+    assert_eq!(events.last().unwrap()["kind"], "session.saved");
+    fixture.passive_observers(true).await;
+    assert_eq!(fixture.executor.launches.lock().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn preparation_existing_explicit_retry_gap_is_characterized_not_recovery_proof() {
+    let fixture = Fixture::ready_agent(false).await;
+    fixture.executor.start_error.store(true, Ordering::SeqCst);
+    assert!(matches!(
+        fixture
+            .engine
+            .step(fixture.task.id, BTreeMap::new())
+            .await
+            .unwrap(),
+        StepResult::Failed { .. }
+    ));
+    let before = fixture.engine.snapshot(fixture.task.id).unwrap();
+    let attempt = &before.history[before.active.unwrap()];
+    assert!(attempt.dispatch_started);
+    assert!(attempt.session_id.is_none());
+    assert_eq!(fixture.executor.launches.lock().unwrap().len(), 1);
+    assert!(matches!(
+        fixture
+            .engine
+            .step(fixture.task.id, BTreeMap::new())
+            .await
+            .unwrap(),
+        StepResult::Failed { .. }
+    ));
+    assert_eq!(
+        fixture.executor.launches.lock().unwrap().len(),
+        1,
+        "ordinary observation does not replay"
+    );
+    // Existing explicit API admits this; Issue14 must close it with trusted
+    // outcome evidence. This characterization claims neither safety nor closure.
+    fixture
+        .engine
+        .retry(fixture.task.id, "existing explicit retry".into())
+        .unwrap();
+    assert!(
+        fixture
+            .engine
+            .snapshot(fixture.task.id)
+            .unwrap()
+            .active
+            .is_none()
+    );
+}
+
+#[tokio::test]
+async fn preparation_post_refresh_record_replacement_rejects_release_after_typed_task_marker_error()
+{
+    let fixture = Fixture::ready_agent(false).await;
+    let pause = fixture.capture_pause(4);
+    let owner = fixture.spawn_step();
+    pause.wait().await;
+    let mut replacement = fixture.engine.read(fixture.task.id).unwrap();
+    let original_attempt =
+        replacement.workflow.history[replacement.workflow.active.unwrap()].clone();
+    fixture.engine.persist(&mut replacement, None).unwrap();
+    assert_eq!(
+        serde_json::to_value(&original_attempt).unwrap(),
+        serde_json::to_value(&replacement.workflow.history[replacement.workflow.active.unwrap()])
+            .unwrap()
+    );
+    let before = fixture.durable();
+    pause.release();
+    let error = owner.await.unwrap().unwrap_err();
+    assert_eq!(
+        fixture.durable(),
+        before,
+        "changed committed Record token must retain the claim"
+    );
+    assert!(
+        matches!(error.downcast_ref::<crate::state::StateGuardError>(),
+        Some(crate::state::StateGuardError::SnapshotChanged { table, id, .. })
+            if table == "tasks" && *id == fixture.task.id.to_string())
+    );
+    fixture.passive_observers(false).await;
+    assert!(fixture.executor.launches.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn preparation_unbound_to_bound_before_refresh_releases_for_new_reservation() {
+    for offset in [3, 4] {
+        let fixture = Fixture::with_binding(WorkflowClass::Quick, false);
+        fixture
+            .engine
+            .initialize(fixture.task.id, None)
+            .await
+            .unwrap();
+        fixture.through(Phase::Worktree).await;
+        let pause = fixture.capture_pause(offset);
+        let owner = fixture.spawn_step();
+        pause.wait().await;
+        let reserved = fixture.engine.snapshot(fixture.task.id).unwrap();
+        let mut store = fixture.second_writer();
+        let mut task = store.task(fixture.task.id).unwrap().unwrap();
+        task.worktree = Some(fixture.project.worktree_root.join("late-bound"));
+        task.branch = Some("feature/late-bound".into());
+        store.put_task(&mut task).unwrap();
+        let before = fixture.durable();
+        pause.release();
+        assert!(owner.await.unwrap().is_err());
+        assert!(fixture.executor.launches.lock().unwrap().is_empty());
+        if offset == 3 {
+            fixture.assert_owned_release(&reserved);
+            assert!(matches!(
+                fixture
+                    .engine
+                    .step(fixture.task.id, BTreeMap::new())
+                    .await
+                    .unwrap(),
+                StepResult::Started { .. }
+            ));
+            let requests = fixture.executor.launches.lock().unwrap();
+            assert_eq!(requests.len(), 1);
+            assert_eq!(requests[0].worktree, task.worktree.unwrap());
+        } else {
+            // The post-refresh snapshot is still unbound. Its definitive missing-
+            // worktree fail publication is rejected by Store assigned-binding
+            // immutability before Task CAS, with release eligibility disabled.
+            assert_eq!(fixture.durable(), before);
+            fixture.passive_observers(false).await;
+        }
     }
 }

@@ -1,0 +1,13 @@
+diff --git a/crates/rrx/src/adapter/grok/ownership.rs b/crates/rrx/src/adapter/grok/ownership.rs
+index b120b8d..6b97b89 100644
+--- a/crates/rrx/src/adapter/grok/ownership.rs
++++ b/crates/rrx/src/adapter/grok/ownership.rs
+@@ -111,7 +111,7 @@ impl ProcessOwnership {
+         };
+         for (flag, stage) in &self.flags {
+             let value = flag.load(Ordering::SeqCst);
+-            sample.uncertain |= value;
++            sample.uncertain |= value && !matches!(stage, OwnershipStage::Checkpoint);
+             match stage {
+                 OwnershipStage::NativeChild => sample.stages.native_child |= value,
+                 OwnershipStage::PreSpawn => sample.stages.pre_spawn |= value,
