@@ -462,13 +462,25 @@ published as current. All native/runtime parties need real continuous both-side
 compatibility and already-live peer→Lost protection, preserving four-plus product
 concurrency. These are pending consumer contracts, not available ports.
 
-The proposed correction separates attempt-free readiness from attempt-bound permits,
-gates before registry mutation/effects, and retains unsettled actual owners in a
-bounded table independent of release/eviction/control replacement. Preparation error,
-checkpoint restoration, discovery and cleanup-helper execution also consume complete
-setup/resource cleanup authority; known selected-parent death cannot restore or release.
-Existing persisted terminal labels still release in generic consumers until actual
-Issues 19/58/60/14 integration; this design does not claim an implemented legacy hold.
+The proposed Design3 separates freshly revalidated non-executing pre-reservation
+readiness from attempt-bound permits. Flags also require the actual callable route
+producer/hold consumers; managed-only readiness cannot advertise legacy start. The
+managed operation/claim/control handoff is synchronous before the observation future
+or any await. A private table stores live/held conflict extents with guaranteed
+disjoint quotas; unknown cleanup retains anchors. Genuine complete cleanup may
+retire a resource anchor while the durable absorbing Lost hold remains. Session-less
+owners retain an operation-keyed private observation/cleanup route, never PID adoption.
+Admission checks overlapping held/unknown and unmatrixed live extents before marker.
+
+Adapter Git/helper execution is explicitly the pending #60 route with sealed job
+enrollment, bound executable/config closure and an actual settlement cleanup conjunct
+at native completion. Checkpoint-success needs separately composed #19 input-update
+publication plus #60 workload cleanup; refusal/terminal labels cannot mint it.
+Preparation/discovery/grant/inspection spawning requires genuine enrollment. Current
+source authority is `cab665d56f7032f086946c1acfce448f5b9d076d`, unchanged by these docs.
+Existing generic terminal-label and Executor-only role filters still bypass
+Reviewer/Consultant Lost until actual19/58/60/14 shared hold consumers compose.
+This design claims no implemented legacy or role-independent durable hold.
 
 Initial no-backend Unsupported is a safety checkpoint only. Required both-host
 native Executor/Reviewer/Consult/resume/stop/Task attach remains open, with actual
