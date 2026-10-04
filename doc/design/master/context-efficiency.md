@@ -458,3 +458,25 @@ live legacy Session's protection contract. Forced identical publication requires
 private validated preparation/admission and exact terminal input, not raw history
 JSON. Terminal non-owning cancelled Workflow history may migrate; active claims
 remain operational ownership even on terminal Tasks.
+
+
+Initial native actor binding is monotonic per input: requested None may bind one
+effective model/effort value, explicit Some cannot silently change, and a known
+native_ref remains immutable across the Session UUID. Exact admitted metadata
+pins and private same-attempt binding updates remain atomic. Higher-input fresh
+continuation resets requested model/effort before Starting and keeps exact prior
+terminal rollback proof. Codex6 and Claude5 require the documented coordinated
+caller compatibility changes and causal wire fixtures before integrated acceptance.
+
+Private phase allocation covers initial INSERT and fresh terminal-to-Starting
+UPDATE; Engine binding/closure must use that exact allocated owner. Ordered
+migration preflight covers every older supported version, and an old Lost owner
+without verified recovery remains an explicit upgrade limitation. Existing
+checkpoint-v1 and terminal restore hash encodings remain byte-compatible. Backup
+rollback is permitted only before any post-upgrade application/external effect.
+
+The private admission index stores separate validated-preparation and admitted
+pairs. Starting prepares current input without asserting delivery; only validated
+Running/consumption admits it. Historical actor binding can update an admitted
+pair solely for permitted initial None-to-Some fields, never change its input.
+These facts cannot be synthesized from Session recovery JSON or generic audit.

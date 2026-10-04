@@ -202,3 +202,19 @@ frame hashes are unchanged. Protection cannot change underneath a live legacy
 Session. Fabricated terminal history cannot unlock forced consecutive publication;
 private validated preparation/admission must bind the exact terminal input.
 Provider lifecycle/lock/version fences remain independent of semantic input checks.
+
+
+Initial native actor binding is monotonic per input: requested None may bind one
+effective model/effort value, explicit Some cannot silently change, and a known
+native_ref remains immutable across the Session UUID. Exact admitted metadata
+pins and private same-attempt binding updates remain atomic. Higher-input fresh
+continuation resets requested model/effort before Starting and keeps exact prior
+terminal rollback proof. Codex6 and Claude5 require the documented coordinated
+caller compatibility changes and causal wire fixtures before integrated acceptance.
+
+Private phase allocation covers initial INSERT and fresh terminal-to-Starting
+UPDATE; Engine binding/closure must use that exact allocated owner. Ordered
+migration preflight covers every older supported version, and an old Lost owner
+without verified recovery remains an explicit upgrade limitation. Existing
+checkpoint-v1 and terminal restore hash encodings remain byte-compatible. Backup
+rollback is permitted only before any post-upgrade application/external effect.

@@ -248,22 +248,28 @@ the actual persisted Session and Task. Project/Goal-only Sessions and unprotecte
 legacy inputs receive no admission row. Generic Records, audit events and caller
 JSON cannot create or update it.
 
-Hash a domain-tagged typed tuple: exact Scope, agent, provider, role, worktree, and
+Hash a domain-tagged typed tuple: exact Session ID, Scope, agent, provider, role,
+worktree, model, effort, native_ref, and
 input_version, input_revision, input_bytes, input_sha256 and source_versions. Parse
 those input fields into their bounded types; source_versions is a sorted BTreeMap.
-PID, Session state, response IDs and diagnostic fields are excluded. Do not hash
+PID, Session state, per-turn response IDs and diagnostic fields are excluded.
+Native session identity is distinct from per-turn response IDs. Do not hash
 arbitrary JSON serialization order. Only the previous persisted Session's digest matching the admitted pair
 can establish prior admission; a caller cannot install an ack by selecting fields
 that match an unrelated row.
 
 The launch guard returns a typed outcome: `Validated`, `ConsumedHistorical`,
-`Acked`, or `NotAdmission`. A changed/new actually consumed dispatch_intent ALWAYS
+`Acked`, `BoundHistorical`, or `NotAdmission`. A changed/new actually consumed dispatch_intent ALWAYS
 validates the latest frame/head first, even if the same input has an ack. For other
 admissions, actual consumed intent or a matching private row permits historical
 observation of the same pinned input. Otherwise Starting/Running validates current
 frame/head regardless of the previous waiting/Lost state. Waiting/Lost never writes
 an ack. A new or changed Running input writes its admitted pair only after `Validated` or
-`ConsumedHistorical`; `Acked` preserves the existing row. Row, Session and audit
+`ConsumedHistorical`; `Acked` preserves the existing row. `BoundHistorical` is
+the sole equal-version digest update: the persisted old digest must match the
+private admission row, every input/scope/actor pin remains exact, and only the
+initial monotonic native binding described below may change. It grants no new
+dispatch and never makes an unadmitted input historical. Row, Session and audit
 commit atomically, including rollback on a failing audit.
 
 Keep two distinct predicates: actual consumed intent authorizes historical
@@ -293,14 +299,22 @@ an operation-free decision Task through the Approval Broker.
 
 The single-actor Workflow port also allocates one private `phase_session_owners`
 row per (Project, Goal, Task, context_version), containing Session ID. Context
-version uniquely identifies the immutable phase attempt. First valid Starting or
-Running Session insertion allocates it atomically with Record/audit; later writes
+version uniquely identifies the immutable native phase attempt. Every first valid
+typed admission write allocates it atomically with Record/audit: INSERT or UPDATE
+to Starting/Running, or first/new consumed dispatch. This includes a terminal
+legacy Session updated to a fresh typed Starting. Later writes
 must be by that same Session. Another Session cannot reserve or consume the frame
 even before Engine binds attempt.session_id. Allocation is immutable across
 terminal history, foreign keys bind the Session and Task, and generic writes have
 no allocator API. A failed Session/audit transaction leaves no allocation. The atomic Workflow transition enforces that every newly appended attempt uses
-an owned context_version strictly greater than every prior attempt; a None-context
-transition cannot reuse an old version for a new attempt. Expose a pure scoped
+an owned context_version strictly greater than every prior native Executor/Reviewer
+attempt when appending a new native attempt; a None-context transition cannot
+reuse an old version for a new native attempt. EvidencePort phases retain their
+existing separately validated context contract. The same Workflow transition must
+check any attempt.session_id binding or closure against the private allocation
+in the same transaction. It cannot bind another terminal Session to close a
+claim while the allocated native owner is still Running/Lost. Unallocated native
+claims remain conservative; an invented terminal actor is never release proof. Expose a pure scoped
 allocation reader for explicit recovery. The recovery port must resolve an unbound
 claim using this private owner, actual persisted terminal Session and verified
 native cleanup; it must not invent another actor or clear Lost/uncertain ownership.
@@ -359,7 +373,9 @@ An operator Task hold after Starting but before first Running/new consumption fe
 the model input. Historical terminal/Lost diagnostics remain recordable.
 
 For standalone admission, additionally bind workflow/risk and its OWN Task
-blockers/next_action in a versioned policy digest. Thus a new
+blockers/next_action and standalone Task.artifacts in a versioned policy digest.
+Unlike Engine-owned artifacts, standalone artifacts may carry direct operator
+instructions. Thus a new
 operator directive on that standalone Task fences its pending input. Sibling
 Task status, Goal criterion satisfaction/DAG/followups and Project scheduling or
 label changes remain usable. Phase packs describe Engine-owned hold/blocker state
@@ -378,7 +394,11 @@ pack preparation/publication snapshot CAS, not pending-input admission.
 
 Standalone preparation renders the canonical instruction and policy digest map in
 its complete mandatory payload and privately publishes the same map with frame
-SHA256. The digest is therefore part of the immutable prepared bytes, preventing
+SHA256. The private transactional publisher itself derives these keys from the
+current typed owners and verifies the exact mandatory rendered header map against
+the published source map; it does not trust a service-supplied map. Header parsing
+is bounded, position-specific and format/version-tagged, never substring search.
+The digest is therefore part of the immutable prepared bytes, preventing
 same-payload old-schema collisions. Old pending inputs without these hashes fail
 closed. Add an explicit forced consecutive Task pack publication option (default
 idempotent reuse unchanged). It uses the existing idle/owner/source/head CAS and
@@ -403,10 +423,17 @@ history consistency and refuse contradictory/malformed ownership; never equate
 Task terminality with release of an active claim. No PID inference or automatic release is allowed. The operator must finish
 or explicitly cancel/drain using the compatible old runtime, retaining actual
 native terminal/cleanup evidence, then retry. Lost or orphan ownership requires
-verified recovery, not migration. An explicitly terminal Task's non-owning Workflow
+verified recovery, not migration. The current Core has no general verified Lost
+recovery port yet: an old database containing Lost ownership cannot upgrade until
+that port is implemented or the compatible runtime produces genuine authoritative
+terminal/cleanup evidence. Editing Lost to Stopped, relying on a dead PID, or
+manually deleting a lock is not a supported upgrade procedure. Fresh drained
+databases can use schema6 without claiming that recovery integration. An explicitly terminal Task's non-owning Workflow
 history is preserved and nonlaunchable. Existing terminal Goal/project-only Consultant
 history remains readable; live ownership in that scope must also drain. Apply the preflight to every
-older supported schema path that contains typed authority, not only direct5-to-6.
+older supported schema path (v1 through v5), regardless of whether it contains
+typed authority. Run it before any earlier migration in that same transaction,
+not only before direct5-to-6.
 Refusal rolls back without table/marker/audit changes and is tested on real old5
 Running-plus-checkpoint and pending/post-effect Workflow fixtures. This avoids
 both silently accepting old weaker projections and gratuitously invalidating an
@@ -470,15 +497,20 @@ Important guards receive caller-level mutation proof and immutable source review
 The private ack row additionally stores input_version and checks SHA length64.
 Its ADMITTED pair may be replaced only by Validated/ConsumedHistorical with a
 strictly higher input_version; equal matching metadata is idempotent, unequal
-equal-version admitted metadata is rejected. The preparation pair follows only a
+equal-version admitted metadata is rejected, except the explicit initial native
+binding transition below. The preparation pair follows only a
 freshly validated Starting/Running input. It may be refreshed for a legitimate
 new prewire continuation that restored an older terminal input; this never changes
 the admitted pair or creates historical-observation authority. There is no plural ack history: while higher input is pending,
 the single row still describes the previous admitted input until replacement.
-Canonicalize nested JSON keys before restore/checkpoint/instruction hashing. Keep
-the restore Session outer fixed serde field order for compatibility with the shared
-native helper; native adapters must call that helper instead of hashing arbitrary
-recovery insertion order. Payload SHA continues to hash exact actual input bytes,
+Checkpoint format-v1 hashes remain BYTE-IDENTICAL to the existing
+`serde_json::to_vec(Value)` compact UTF-8 encoding with its recursively sorted
+serde_json map keys. Do not apply RFC8785, normalize numbers, reorder arrays or
+change existing hash prefixes. Golden persisted chain/ref fixtures prove old
+checkpoint hashes still validate. New instruction/admission hashes use their own
+versioned typed encoding. Keep the restore Session outer fixed serde field order
+and nested serde_json map encoding byte-identical to the existing shared helper;
+native adapters call that helper rather than arbitrary recovery insertion order. Payload SHA continues to hash exact actual input bytes,
 not canonicalized JSON or transport envelopes.
 
 This contract fences Issue19 typed native inputs; generic Store history writes are
@@ -501,12 +533,76 @@ legacy Consultant to typed Workflow race using independent Store connections.
 The upgrade procedure supports no live hot migration. Close/drain owners under
 the compatible runtime, obtain a consistent backup with SQLite-aware backup or
 closed/WAL-checkpointed files, then open with the new runtime. Refusal makes no
-schema/state changes. An operator rollback restores that pre-upgrade backup and
-cannot retain subsequent v6 writes; automatic database copying/downgrade is outside
-this Store contract. Test cancelled terminal historical Workflow with active=None
+schema/state changes. Backup rollback is supported only immediately after migration and BEFORE any
+post-upgrade application write, native dispatch, worktree/source mutation or
+external PR/merge effect. It restores the complete consistent pre-upgrade state
+while every writer remains closed. Once such an effect occurs, this document
+authorizes no backup rollback: discarding its state would erase ownership/evidence
+and strand external effects; explicit recovery is required. Automatic database
+copying/downgrade is outside this Store contract. Test cancelled terminal historical Workflow with active=None
 as a successful migration, and terminal Task with active claim as refused.
 
 Provider full owner-version/lock CAS remains independent of semantic frame checks.
 Store frame usability after sibling bookkeeping is not a claim that every native
 approval/grant survives a concurrent owner-version change. No lifecycle authority
 or native cancellation boundary is weakened to provide that liveness.
+
+
+### Initial native binding and consumer compatibility
+
+Within each input attempt, model/effort/native_ref are actor metadata pins. A
+pending input may initially bind model or effort from None to one bounded Some
+value; explicit requested Some must remain exactly equal, and Some cannot change
+or clear. Initial native_ref None may bind one owned UUID/reference; once known,
+it is immutable for the Session UUID, including higher-input continuation. A
+late None-to-Some observation on an already admitted input is permitted only by
+BoundHistorical: exact old admitted digest, identical input and other actor pins,
+monotonic initial binding, and atomic updated Session/admitted digest/audit. It
+uses historical checkpoint authority, not a fresh launch exemption. A new
+consumed intent still takes the ordinary latest-head validation path. Diagnostic
+JSON cannot assert an admission or clear a binding.
+
+A genuine terminal-to-Starting continuation may reset model/effort to the newly
+requested values for its strictly higher input version. It retains known
+native_ref and the exact prior terminal snapshot checksum. Pending native binding
+then follows the same None-to-Some rule. Exact prewire restoration alone may
+restore that original terminal Session, including old model/effort metadata; the
+private preparation pair does not assert admission. Once dispatch/admission or
+uncertainty occurs, restoration is denied.
+
+Required coordinated Codex6 change: pin_starting_input resets Session.model/effort
+to request.model/request.effort BEFORE initial Starting persistence, retaining the
+exact original Session for rollback. Native thread/start or resume response may
+bind a default only when the request was None; a different response to explicit
+Some must reject before model input. Running keeps these effective fields pinned.
+The actual caller fixture must observe fresh Starting metadata before native
+setup, effective binding before dispatch, explicit mismatch rejection with no
+wire input, higher-input same-UUID continuation and exact prewire restoration.
+Issue19 cannot claim this consumer behavior merely from Store synthetic tests.
+
+Claude5 currently keeps requested model/effort unchanged, publishes native_ref
+with Running and consumed input before wire, and clears native_ref in resume
+Starting. Its coordinated compatibility change must retain the known owned UUID
+in fresh Starting instead of clearing it, with actual fresh/resume caller proof.
+Grok7 keeps requested model/effort and must retain its existing native identity
+semantics. Its current generic Starting records do not yet contain the complete
+protected input pins, and its dispatch intent is not the typed consumed contract.
+It must adopt exact full-frame preflight, SHA/source pins before Starting, and
+atomic consumed admission before actual wire delivery in its reviewed integration.
+All three providers require causal typed-frame caller fixtures. These are pending
+consumer changes until reviewed integration; this Issue does not edit another
+owned worktree or advertise generic fixture success as typed input acceptance.
+
+Recovery JSON keys cannot silently extend authoritative prepared input. Parse
+reserved input_* keys into the exact current typed namespace and reject unknown
+ones on protected input; newly authoritative fields require projection/schema
+and old-writer fence review. Unrelated bounded provider diagnostics remain allowed.
+The private publisher derives semantic hashes inside its transaction; adding an
+untrusted JSON field is never equivalent to extending the typed source contract.
+
+Boundary proofs additionally cover first allocation on terminal-to-Starting UPDATE,
+second actor rejection, fake terminal Session binding/closure, native-only context
+uniqueness, admitted metadata substitution, allowed initial binding, explicit Some
+mismatch, historical binding after checkpoint append and exact prewire rollback.
+An unbound failed native owner remains durably held for explicit Issue14 recovery;
+no automatic poll release or forged terminal actor is introduced here.
