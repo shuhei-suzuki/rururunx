@@ -55,7 +55,8 @@ estimator, then verify:
   the exact complete-frame cap.
 - A1-byte mandatory overflow and the larger reproduced overflow refuse before
   final preparation audit/private frame insert. Oversize controls compare exact
-  Task/Context snapshots and prepared-authority/audit counts without writes.
+  Task/Context snapshots and COMPLETE prepared-authority/final-audit rows without
+  writes, including raw source-version/audit JSON bytes and every persisted column.
   Source observation audits are separate and may still be recorded.
 
 Normal main63 integration was conflict-free; its usage/body diagnostics and
@@ -80,7 +81,7 @@ classification, not a Ready/native-boundary bypass.
 | Exclusive1MiB boundary |49d5c61b258ec96be1773f17b9823cea062d12b7|fitting mandatory exact-cap frame refused|
 | Permit1MiB+1 |a8d88a1402d58c0d60f493138eeb740d43ffcbae|cap+1 mandatory frame accepted|
 
-Actual parents205a80d645e14f5a5699aefcc77f00b161b15f56,
+Historical initial parents205a80d645e14f5a5699aefcc77f00b161b15f56,
 7948061d60d35552ea42c6b96a7db3d94bc03fff,
 e64722b3458281edfa8f866060c680a170cfe714 and
 88f640ce0be6de3be3e76889965fae2a95de35f6 all have crate subtree
@@ -89,6 +90,26 @@ Clean restored f9f870695e95bf2718aa4c0be779080e90d96d02 has that same subtree
 and all four controls PASS. Private saved manifest/logs:
 `/private/tmp/rururunx-issue19-frame-cap-mutations.json` and
 `rururunx-issue19-frame-cap-mutant-*.txt`; these are not native authority.
+
+Test-only ae1c14f strengthens refusal evidence from counts to complete persisted
+row snapshots. Its fmt/clippy/four focused controls PASS. Production cap bytes are
+unchanged from205a80d. All four mutants were then compiled/run AGAIN on the exact
+strengthened consumer tree; previous results above remain historical:
+
+| Current mutant | Exact committed head | Actual parent |
+| --- | --- | --- |
+| Omit frame clamp |fe92a8092b227725d2951b8f8ce91f6771f526e0|8c34da6bc190014d4487c9a444a957fecf638848|
+| Omit mandatory error (classification) |0081a88ea9f20213b47547a10bc6f557e62d7290|1420ef7ee04082685b2f800dee54324532f4628d|
+| Exclusive boundary |f60cfedf92a3a7b64e27a4380a13c705285d2566|69f2b213b1b30ecbc2c75edcaa4d0ea3e1ec54ce|
+| Permit cap+1 |83b1c76ef3d759469973b2006591b173c158ab6a|38b7c545594fbb85fa06df400db69eb1aafa9b84|
+
+All current parents and clean restored6bc1893dd9697db39f90869e0be4eb6e17cd679a
+have crate tree1d0c0b0618780b9dc0ff0d1a076a70605d632926, equal ae1c14f.
+Each current mutant compiled and failed at its same intended consumer cause;
+restored current tree passes all four controls. Current saved proof:
+`/private/tmp/rururunx-issue19-frame-cap-current-mutations.json` and
+`rururunx-issue19-frame-cap-current-restored.json`. Full335 at205a80d is distinguished
+from these newer focused checks; no unrun full current-head pass is assumed.
 
 ## Remaining qualification
 
