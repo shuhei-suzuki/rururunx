@@ -295,3 +295,145 @@ pub(super) fn validate(output: &[u8], leader: i32) -> io::Result<bool> {
     }
     Ok(all_zombies)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{io::Write, os::unix::fs::PermissionsExt, os::unix::net::UnixStream};
+
+    fn shim(temp: &tempfile::TempDir, name: &str, body: &str) -> std::path::PathBuf {
+        let path = temp.path().join(name);
+        std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
+        path
+    }
+    #[test]
+    fn complete_frame_requires_exact_leader_all_members_and_canonical_states() {
+        assert!(validate(b"42 42 Z\n43 42 ZNs+\n", 42).unwrap());
+        assert!(!validate(b"42 42 Z\n43 42 S<XEVLs+\n", 42).unwrap());
+        for frame in [
+            &b""[..],
+            b"\n",
+            b"42 42 Z",
+            b"43 42 Z\n",
+            b"42 99 Z\n",
+            b"42 42 Z\n42 42 Z\n",
+            b"0 42 Z\n",
+            b"+42 42 Z\n",
+            b"42 42 H\n",
+            b"42 42 ZN<\n",
+            b"42 42 ZE\n",
+            b"42 42 Zss\n",
+            b"42 42 Z+X\n",
+            b"42 42 Z extra\n",
+            b"42 42 R\nmalformed\n",
+            b"42 42 Z\n\xff\n",
+        ] {
+            assert!(
+                validate(frame, 42).is_err(),
+                "accepted malformed frame {frame:?}"
+            );
+        }
+    }
+    #[test]
+    fn actual_inspector_rejects_exit_zero_stderr_empty_and_incomplete_frames() {
+        let temp = tempfile::tempdir().unwrap();
+        for (name, body, category) in [
+            (
+                "diagnostic",
+                "printf '42 42 Z\\n'; printf 'sysctl diagnostic' >&2",
+                "diagnostics",
+            ),
+            ("empty", ":", "incomplete"),
+            ("partial", "printf '42 42 Z'", "incomplete"),
+            ("missing", "printf '43 42 Z\\n'", "leader missing"),
+            ("exit", "printf '42 42 Z\\n'; exit 1", "exit failed"),
+        ] {
+            let path = shim(&temp, name, body);
+            let error = inspect(&path, 42, |_| {}).unwrap_err();
+            assert!(error.to_string().contains(category), "{name}: {error}");
+        }
+        let good = shim(&temp, "good", "printf '42 42 Z\\n'");
+        assert!(inspect(&good, 42, |_| {}).unwrap());
+    }
+    #[test]
+    fn each_output_stream_has_a_causal_size_failure() {
+        let temp = tempfile::tempdir().unwrap();
+        let padding = " ".repeat(LIMIT);
+        for (name, body) in [
+            ("stdout", format!("printf '42 42 Z{padding}\\n'")),
+            (
+                "stderr",
+                format!("printf '42 42 Z\\n'; printf '{padding}x' >&2"),
+            ),
+        ] {
+            let path = shim(&temp, name, &body);
+            let started = Instant::now();
+            let error = inspect(&path, 42, |_| {}).unwrap_err();
+            eprintln!(
+                "isolated {name} overflow observation elapsed={:?} category={error}",
+                started.elapsed()
+            );
+            assert!(
+                error
+                    .to_string()
+                    .contains(&format!("{name} exceeds byte budget")),
+                "{error}"
+            );
+        }
+    }
+    #[test]
+    fn exited_inspector_retained_output_writer_is_unknown_and_watchdog_releases_mutants() {
+        let (reader, mut retained_writer) = UnixStream::pair().unwrap();
+        retained_writer.write_all(b"42 42 Z\n").unwrap();
+        let output = retained_writer.try_clone().unwrap();
+        let child = std::process::Command::new("/bin/true")
+            .env_clear()
+            .stdout(Stdio::from(OwnedFd::from(output)))
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let pid = rustix::process::Pid::from_raw(child.id() as i32).unwrap();
+        loop {
+            if rustix::process::waitid(
+                rustix::process::WaitId::Pid(pid),
+                rustix::process::WaitIdOptions::EXITED
+                    | rustix::process::WaitIdOptions::NOWAIT
+                    | rustix::process::WaitIdOptions::NOHANG,
+            )
+            .unwrap()
+            .is_some()
+            {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        let (send, receive) = std::sync::mpsc::channel();
+        let thread = std::thread::spawn(move || {
+            let mut inspector = Inspector {
+                child,
+                unreaped: true,
+                exit: None,
+            };
+            let stderr = inspector.child.stderr.take().unwrap();
+            let started = Instant::now();
+            let result = complete(
+                &mut inspector,
+                File::from(OwnedFd::from(reader)),
+                File::from(OwnedFd::from(stderr)),
+                started + BUDGET,
+            )
+            .and_then(|frame| validate(&frame.stdout, 42));
+            inspector.cleanup().unwrap();
+            send.send((result, started.elapsed())).unwrap();
+        });
+        let before_release = receive.recv_timeout(Duration::from_secs(5));
+        drop(retained_writer);
+        thread.join().unwrap();
+        // Cleanup and join precede the causal assertion, including hung mutations.
+        let (result, elapsed) =
+            before_release.expect("completion did not return before fixture release watchdog");
+        eprintln!("retained output endpoint observation elapsed={elapsed:?}");
+        assert_eq!(result.unwrap_err().kind(), io::ErrorKind::TimedOut);
+    }
+}
