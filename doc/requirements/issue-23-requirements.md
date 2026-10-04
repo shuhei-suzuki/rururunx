@@ -27,9 +27,11 @@ Source of truth: Issue23, Product Requirements sections4–7, and
   that exact Project/Goal scope; UUID/Issue/title similarity grants no ownership.
 - Persist and restore objective/title, explicit identifiable criteria, constraints,
   non-goals, source-of-truth refs, lifecycle, DAG, proposal disposition and context
-  reference/version. A Goal Context Pack reference identifies a real scoped
-  artifact/version; a caller-supplied integer alone proves nothing. Producing the
-  pack remains #19/#24 integration, not a placeholder acceptance result here.
+  reference/version. A Goal Context Pack reference identifies a typed scoped artifact/version. This
+  issue validates/persists that reference and its monotonic version; unresolved
+  producer references remain visibly unresolved and grant no readiness/completion
+  authority. #19/#24 must resolve the real artifact before pack use. A caller-
+  supplied integer alone proves nothing; no producer acceptance is claimed here.
 - Accepted writes use transactional current-version checks and scoped audit. A
   conflict or validation/audit/write failure changes no row, version or audit and
   does not silently retry with refreshed authority. Readiness is computed from a
@@ -47,6 +49,19 @@ Source of truth: Issue23, Product Requirements sections4–7, and
   Do not silently attach an unlisted Task or alter its owner/worktree/Workflow.
   Adding an accepted Task/node/dependencies must be atomic, without a durable
   intermediate foreign/orphaned node. Existing unrelated Tasks are not adopted.
+- Required Tasks are all actual Tasks in the exact Project/Goal scope, including
+  legacy Tasks absent from dag.nodes; completion/ownership scans never omit them.
+  A new managed Task must be atomically registered as a DAG node. Legacy unlisted
+  Tasks are reported as unresolved membership and need explicit validated
+  reconciliation, never automatic adoption or success. MVP has no implicit
+  descoping: node removal, edge removal and hard-to-soft weakening are unsupported
+  explicit errors. Failed/cancelled required Tasks keep the Goal incomplete.
+- Adding a hard dependency requires its dependent to be unstarted: Created, no
+  Workflow attempt/history, Session launch or dispatch/recovery ownership. Reject
+  retroactive prerequisites for running, preparing, Lost or terminal dependents;
+  neither a Human label nor an audit alone makes prior execution meet a new gate.
+  Edge identity is the endpoint pair, independent of the hard flag; parallel
+  hard/soft duplicates reject. Soft preferences cannot remove a required Task.
 - Hard edges require the prerequisite's verified success. Reject every hard-edge
   cycle on creation or modification, including through existing paths. Soft edges
   are explicitly advisory preferences; soft-only or mixed advisory cycles cannot
@@ -69,6 +84,15 @@ Source of truth: Issue23, Product Requirements sections4–7, and
 
 ## Explicit completion and lifecycle
 
+- Human criterion attestation and material/requiring-Human proposal disposition
+  require a dedicated Human-authority ingress, distinct from agent/native/Workflow
+  writers. Design must name the principal source and process/API boundary; record
+  origin class/principal and exact criterion/proposal identity plus version. Labels,
+  Git comments/trailers, agent output and generic persistence cannot mint Human
+  authority. Target changes invalidate the attestation. Automatic lifecycle policy
+  uses a separate trusted runtime-controller port, never fabricated Human origin.
+  Specify trust limits, including same-user machine/DB tampering; do not claim an
+  OS sandbox or biological identity proof from an in-process typed port.
 - Criteria have stable unique IDs, a nonempty description and a defined evaluator
   or explicit Human-attestation path. Each result references durable scoped
   evidence and its target/source versions. Unsupported evaluators and absent,
@@ -88,9 +112,24 @@ Source of truth: Issue23, Product Requirements sections4–7, and
   Cancelled/Failed states get an explicit legal transition contract. Ordinary
   persistence cannot forge Completed around the completion evaluator. Terminal
   Goals cannot silently reopen, change owners or regain native dispatch authority.
-  Pause/cancel/failure do not assert process death or release held resources;
+  Existing legacy terminal Goals remain terminal but completion-unverified; they
+  are quarantined from managed success/dispatch, never reopened or re-certified
+  from stale bits. Pause/cancel/failure do not assert process death or release held resources;
   #14 reconciles actual owned Sessions before release. Lifecycle controls remain
   explicit, independently audited authority changes.
+- Persisted lifecycle states are authority, distinct from computed progress.
+  Created/Analyzing/Running and explicit Blocked/WaitingHuman/Paused holds change
+  only through the trusted controller/Human ports with scoped policy and current
+  versions. Completed is evaluator-published; Cancelled/Failed use explicit
+  controller/Human authority. Generic persistence cannot change lifecycle.
+  Computed node/summary blocked or waiting-human reasons leave Goal Running:
+  resolving a Lost prerequisite or proposal can restore eligibility without a
+  manual Goal transition. A persisted whole-Goal hold instead requires its own
+  recorded authorized resolution before Running. Requiring-Human proposals block
+  acceptance/completion but do not automatically pause unrelated eligible work.
+  Goal.blockers strings are display-only claims, never authority to suppress or
+  permit work. Actual holds/reasons come from current typed scoped model facts;
+  recording/evaluating evidence and proposals does not mutate native currency.
 - Restart recomputes readiness/completion from durable facts. A stored ready list,
   stale criterion bit or native session hint does not substitute for evaluation.
   Source/criterion/DAG changes invalidate affected evaluation results. Agent
@@ -122,15 +161,23 @@ Use isolated Projects/SQLite connections. Cover persistence/reopen, independent
 ready nodes and a diamond graph, hard cycles/back-edge updates, advisory cycles,
 missing/duplicate/foreign references, failed dependencies, owner inactivity,
 preparing/Lost reservations, verified success versus Task Merged, stale evidence,
-criteria-not-satisfied despite completed Tasks, actual current completion and
+criteria-not-satisfied despite completed Tasks, one non-Human evaluator of actual
+verified required-Task success, current completion and
 terminal reopening refusal. Exercise transactional fault/CAS races with a second
 writer, idempotent proposal acceptance and material expansion requiring Human.
 Test two Projects with overlapping Issue numbers and unrelated DAGs/evidence.
+Refuse agent-originated Human attestation/disposition and lifecycle changes;
+exercise target-version invalidation, retroactive hard edges, removal/weakening,
+legacy unlisted/terminal-unverified records, and Lost-prerequisite resolution
+restoring readiness without changing a Running Goal. Display-only blockers
+cannot change completion/eligibility.
 
 Meaningful compiled mutants must reach actual graph/evaluation/Store consumers:
 remove cycle/scope/current-evidence checks; count Task completion as Goal
 completion; treat failed/Lost ownership as ready/success; duplicate an accepted
-proposal; publish observations by rewriting native-fenced Goal authority. Include
+proposal; accept an agent-originated Human decision; permit retroactive
+prerequisites/removal; treat display blockers as authority; publish observations
+by rewriting native-fenced Goal authority. Include
 passing controls and restored source, with no setup/compilation failure credit.
 
 Review requirements, then design, then immutable implementation/security scope.
