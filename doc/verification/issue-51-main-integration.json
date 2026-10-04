@@ -70,7 +70,7 @@
   "integrated_validation": {
     "source_head": "b90b59ab1395ffb8565e610caa6d75ae35b0f6b9",
     "merge_ready": false,
-    "blocking_gate": "Actual combined-source local default DEBUG failed; distinct release and public CI passes do not close it. Scoped causal investigation/fix is required before merge.",
+    "blocking_gate": "Historical actual local default DEBUG failed and remains unresolved shared inspection/runtime availability evidence. It is not reclassified as pass or a verified Issue51 environment regression.",
     "debug": {
       "result": "failed",
       "exit_code": 101,
@@ -147,6 +147,13 @@
       "local_release_log_sha256": "9daa4c06ab4c98ec2473e120c9231a5ac61a4cdf39c88c5fe8ee93834d342542"
     },
     "cause": "unmeasured; no environment, usage guard, peer workload, pipe-holder or underlying inspection attribution",
-    "policy": "No same-mode/head debug rerun, latch reset, deadline change, serialization or Unknown relaxation; PR53 remains draft/unmerged."
+    "policy": "No same-mode/head debug rerun, latch reset, deadline change, serialization or Unknown relaxation. Root reassessed Issue51 gates: b90 actual-tree public default DEBUG on both OS plus distinct local full RELEASE satisfy scoped debug/release coverage; final published outcome-head both-OS CI and root verification are still required. Shared inspection/#60 MVP acceptance remains open.",
+    "scope_reassessment": {
+      "authority": "root explicit scoped Issue51 gate reassessment",
+      "issue51_gate_coverage": "public both-OS default debug tests at actual b90-equivalent tree and distinct local full default release247Rust+2docs",
+      "historical_local_debug": "FAILED, unresolved, cause unknown; not repeated or counted as pass",
+      "shared_mvp": "inspection/runtime/#60 defect remains open; no whole native16/process-supervisor acceptance",
+      "final_outcome_ci": "pending; red final gate must not be ignored"
+    }
   }
 }
