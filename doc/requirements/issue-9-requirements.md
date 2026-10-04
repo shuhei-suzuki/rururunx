@@ -221,8 +221,29 @@ Policy bounds: 1–32 slots, 1–32 local parallel launches, 64 cumulative round
 findings per result, 8192 UTF-8 bytes per finding and 1 MiB per factual bundle/result
 envelope. Limits are simultaneous ceilings: maximum count does not promise every
 maximum-size text fits the envelope. No semantic truncation occurs. A 128 MiB
-cumulative Task/phase-lineage artifact quota prevents unbounded retained output; exhaustion holds
-with recorded byte/hash provenance and Human attention. Transport output is
+cumulative Task/phase-lineage artifact quota prevents unbounded retained output.
+Before any round input, reserve sufficient worst-case retained charge for every
+roster slot: actual frozen core/frame bytes plus each bounded result, diagnostic,
+expansion allowance, retained native Session/private owner/pair/operation/receipt/
+usage/audit row overhead from the actual reviewed producer contract, and shared
+verification/journal allowances. Missing/noncomputable profile bounds refuse before
+input. Stable source metadata can be charged by its known bytes; dynamic fields use
+their frozen upper bound. Numeric bounds are
+1 MiB result/acquired model-content prefix per slot, 64 KiB transport diagnostics
+per slot, 8 MiB verification/check artifacts and 4 MiB bounded control/adjudication/
+attention/manifests per round, plus core and member-frame bytes and the existing
+expansion ceilings. These are simultaneous bounds, not a promise every maximum
+configuration fits128 MiB. If remaining quota cannot cover the complete reservation,
+reject before input. In-flight admitted results/prefixes/diagnostics always fit the
+reservation; overflow records its bounded evidence and never counts as approval.
+Actual retained bytes consume quota; unused reservation can be released only after
+safe round closure, never by uncertain/Lost ownership. At a verification/journal
+allowance ceiling, reject new additions before action, retain mandatory bounded
+status/overflow provenance within a reserved 64 KiB control margin (part of that
+4 MiB allowance), and hold rather than
+lose existing evidence. External evidence stays exact-referenced under separately
+declared owner bounds. Exhaustion retains byte/hash provenance and Human attention.
+Transport output is
 bounded at acquisition, retaining the observed bounded prefix, exact byte count/
 retained-prefix digest and overflow reason; unseen suffix content is never treated as safe.
 Malformed/partial output needs independent inspection or a fresh successful round
@@ -231,7 +252,14 @@ Native-admission startup timeout is 1–3600 seconds, default 60, beginning at
 permit acquisition before spawn/handshake/auth/capability checks. The separate
 review timeout is 1–3600 seconds after native admission, default 600. A separate
 settlement deadline of 1–3600 seconds (default 30) starts at any cancellation,
-startup/review expiry or terminal cleanup request. All three are frozen in policy.
+startup/review expiry or terminal cleanup request. All three are frozen in policy. A profile
+requires reviewed normal post-result cleanup shape and observed/declared latency
+envelope from its actual production caller contract. The configured settlement
+deadline must exceed that envelope; if unavailable or too short, the preset refuses
+before member input. Default30 is provisional, not an asserted native guarantee.
+A supported explicit non-default deadline remains within1–3600. OS/uncertain cases
+still yield the declared held outcome; a contract bound is not a universal deadline
+guarantee or real-model timing proof.
 Terminal cleanup includes normal completion after a valid APPROVE: slow cleanup
 can still cause an absorbing Lost hold and prevent that otherwise successful round.
 Missing authoritative terminal/cleanup evidence at settlement expiry becomes a
@@ -315,7 +343,8 @@ infrastructure is implied or claimed here.
 
 At most one nonterminal Review Set owns a Task/Workflow phase lineage. A new
 Set cannot approval-shop by resetting blockers, holds, history, round count or
-artifact quota. Explicit Human/Workflow supersession records authority/reason and
+artifact quota. Explicit trusted Human/controller supersession records authority/
+reason and
 inherits unresolved potential/verified blockers, adjudication and cumulative
 limits across roster, policy and generation changes. Target change never erases
 unresolved findings; verification must explicitly resolve applicability or fixes.
@@ -381,7 +410,11 @@ inspections of different findings cannot authorize a second autonomous confirmat
 the same lineage/tree. Further same-tree confirmation needs explicit Human adjudication; an
 executor rationale alone is insufficient and remains
 a labelled claim; (b) a safely settled native failure/timeout/cancellation with only
-verified diagnostic progress, at most two such full-roster retry rounds per lineage
+verified diagnostic progress, only when every other settled slot APPROVEs and no
+slot has a potential/verified blocker or nonapproval. Mixed transient failure and
+REQUEST_CHANGES/ESCALATE cannot resample that dissent: cause(a) concern-linked
+inspection or explicit Human adjudication is required. At most two such
+full-roster retry rounds per lineage
 and at most one per provider-family/error-kind cause. They consume the same 64-round
 and artifact limits. A repeated proof/cause, exhausted retry allowance, unresolved
 partial result or Lost requires Human/recovery rather than another automatic sample.
@@ -404,7 +437,12 @@ round invalidates certificate publication. Findings may carry a typed upward ris
 signal to Workflow; no automatic downgrade. An upward signal immediately holds certification;
 already admitted peers settle normally as retained evidence, with no new input under obsolete
 currency. After settlement, Workflow applies the escalation and a new full-roster round must
-meet the escalated floor. Risk-escalation hold exits only through that settled escalation/new
+meet the escalated floor. If the frozen roster cannot meet it, hold for actual
+trusted Human roster selection or terminate without certificate. Post-opinion
+roster change/supersession requires that authority; automated Workflow cannot swap
+out a dissenting slot. A frozen pre-admission conditional branch may strengthen
+policy without changing the roster, retaining exact trigger/activation provenance.
+Risk-escalation hold exits only through that settled escalation/new
 round or termination without certificate, preserving native holds.
 
 Reviewer-assigned severity is immutable in the original finding. Any adjudication
@@ -514,7 +552,7 @@ are not runtime proof.
    Session ownership.
    One eligible non-author slot can pass QUICK/STANDARD; STRICT with one slot
    rejects before input because F=2, even if its mode would need only one opinion.
-2. Two-of-three quorum counts exact-round APPROVE only; rejectN=0/N>M and quorum
+2. Two-of-three quorum counts exact-round APPROVE only; reject N=0/N>M and quorum
    parameters on all/any. All, quorumM and any/quorum1 have equivalent boundary
    outcomes and retain every nonapproval/blocker.
 3. All-of-two requires both approvals. Exercise empty/nonblocking REQUEST_CHANGES,
@@ -628,7 +666,9 @@ stand-ins may replace only the native process/transport peer. Conformance eviden
 the exact reviewed #5/#6/#7 adapter contract fixture source commit/path/digest and the replayed
 or derived frame/error/exit shapes: startup and capability negotiation, requested/effective
 configuration, input, permission denial, auth/stderr-only failures, partial/overflow output,
-terminal response and stalled cancellation. Unsupported shapes reject rather than idealizing
+terminal response, normal post-result exit/cleanup ordering and its reviewed
+observed/declared latency envelope, and stalled cancellation. Conformance records
+configured settlement deadline and refuses unsupported/too-short configuration. Unsupported shapes reject rather than idealizing
 successful startup/read-only/settlement; the production registry, scoped Store,
 private input ports and Workflow consumer remain real. Every such evidence record
 states native_execution=synthetic, the stand-in identity and contract-fixture source digest.
@@ -665,6 +705,8 @@ requires safe round settlement plus a verified committed target before new revie
   until independent resolution. STRICT/security rejects enabling it.
 - **17.c** New concern-linked inspected verification authorizes only one autonomous confirmation round per lineage/tree. Sequential fresh inspections of different Low findings after nonblocking dissent reject a second automatic same-tree round; unrelated inspections and repeated rationale without new evidence reject. Two safely settled transient retry rounds consume
   lineage budgets; repeated causes/exhaustion/partial/Lost do not automatically retry.
+  Mixed diagnostic-only transient failure plus nonblocking REQUEST_CHANGES rejects
+  cause(b) autonomous retry; all-other-APPROVE diagnostic-only failure may permit it.
 - **17.d** Missing/unresolvable/undeliverable required review/security instructions or skills
   reject before any member input. Delivery and native activation measurements
   remain distinct. A policy adding Low treats an unverified Low as a potential
@@ -737,7 +779,8 @@ explicit eligible custom roster. Human authorship remains separately attributed.
     including accumulated claims), 20.a/20.b (two-author STRICT and zero-eligible
     roster availability), 21.b (partial-output early-stop/Human attention), and
     21.c/21.d (normal/cancel/timeout settlement holds, capacity and Task-time).
-    It additionally requires 11.d Project-wide ancestry-taint impact and
+    It additionally requires 9.f Human-only blocker clearance impact,
+    18.g normal cleanup bound/profile readiness, 11.d Project-wide ancestry-taint impact and
     round/artifact-quota exhaustion frequency, retained
     Task-time and decomposition/termination impact (14.e below). Branch blob URLs
     are not stable obligation owners; a permalink retains the gated SHA after
@@ -925,7 +968,9 @@ with retained evidence. Actual trusted ingress/controller succeeds with exact
 principal/origin/digest/evidence. Direct same-UID local binary/DB/machine action
 outside these APIs is explicitly outside the application guarantee, as in Issue23.
 The positive authority is the actual Issue9-owned library ingress/controller port,
-not a mock actor field or an assumed future Issue23 implementation.
+not a mock actor field or an assumed future Issue23 implementation. Its evidence
+records origin=library-composition and proves that application port, not biological
+Human action; no CLI ingress is implemented or implied by this library fixture.
 
 **8.e — All-slot no-show window.** With an allow-self author slot or a queued/
 duplicate slot still active after eligible peers finish, current-round findings
@@ -977,7 +1022,7 @@ rejected delta-only without baseline, unchanged-file coverage provenance, cumula
 multi-fix delta and full fallback. All actual deliveries charge frozen quotas.
 
 **8.g — Consumer contract ownership.** Actual Git-backed bundle, revision/identity
-delta and expansion fixtures conform to the typed consumer contract owned by9.
+delta and expansion fixtures conform to the typed consumer contract owned by #9.
 Foreign/stale/relabelled artifacts refuse through the actual consumer. Public #20
 acceptance must quote this conformance obligation before #9 closes; production
 #20 remains separately unimplemented, with no cyclic merge gate.
@@ -1011,7 +1056,43 @@ while mandatory metadata or required texts beyond capacity holds NeedsContext or
 terminates without certificate. #16 measures this availability outcome plus round/
 artifact-quota exhaustion frequency and its Task/decomposition/termination impact.
 
+**12.i — Supersession/risk roster authority.** Automated Workflow supersession to
+remove a nonblocking dissent rejects. Risk escalation from STANDARD to STRICT with
+one eligible slot holds for trusted Human roster selection or termination; it
+cannot silently relax the floor or create a new roster after opinions. All
+obligations/budgets/holds remain. A frozen stronger no-roster-change branch records
+its pre-admission activation and exact trigger.
+
+**14.g — Admission reservation and retention.** Reject a round before input when
+remaining lineage quota cannot cover its worst-case frozen reservation; an exact-
+reservation boundary admits and retains every bounded in-flight result/diagnostic/
+expansion. Test numeric diagnostic/model prefix and shared verification/journal
+ceilings, unknown suffix and reserved control margin. Held members retain unused
+reserved capacity; safe closure releases only unspent reserve, never actual history.
+
+**13.a — Post-certificate veto.** Later actual evidence raising a certificate-bound
+Low into the effective blocking set makes that original certificate stale/non-
+consumable while preserving it. A downstream actual review-gate consumer rejects
+it; already irreversible merge/PR outcomes stay factual for13 reconciliation, never
+fabricated rollback. A new certificate requires applicable current review authority.
+
+**9.f — Clearance availability.** If neither an eligible original finder nor a
+pair of diverse non-author confirmers exists, blocker clearance is trusted Human-
+only and holds until that adjudication or termination; quorum/allow-self cannot
+clear it. #16 measures this Human-interruption frequency/Task impact, distinct
+from independent approval-floor availability, under criterion21's canonical handoff.
+
+**18.g — Normal cleanup bound.** Actual5/6/7 caller conformance identifies normal
+post-result cleanup shape/envelope. A too-short/default30 or unknown envelope
+refuses before input; a supported configured longer bounded deadline can run. Repeat
+normal-completion expiry through actual owned supervision and expose held ownership.
+Before actual14 recovery and required production native proof, these library/synthetic
+certificates are integration evidence, not production merge gate readiness. The MVP
+still requires actual native acceptance; synthetic timing does not validate defaults.
+
 Every criterion and bold subcriterion ID above is a stable closure-evidence key.
+Absent suffixes are intentional reserved IDs; reordered subcriteria retain their
+stable IDs rather than renumber historical evidence.
 
 Fixture mechanism, private port layout, hashes/transaction algorithms and controlled
 transport barriers belong in Issue9 design; linked evidence must demonstrate these
