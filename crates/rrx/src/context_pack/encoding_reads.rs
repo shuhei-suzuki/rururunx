@@ -758,7 +758,11 @@ fn reject_body(
     let Err(error) = result else {
         panic!("inconsistent checkpoint body accepted: {message}")
     };
-    assert_eq!(error.root_cause().to_string(), message);
+    if message == "owned injected checkpoint audit failure" {
+        assert_eq!(error.to_string(), message);
+    } else {
+        assert_eq!(error.root_cause().to_string(), message);
+    }
     assert_eq!(record.version, 0);
     assert!(store.record(record.id).unwrap().is_none());
     assert_eq!(store.pack_checkpoint_head(&scope).unwrap(), head);
