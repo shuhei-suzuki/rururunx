@@ -232,7 +232,12 @@ async fn phase_reader_and_capture_guard_before_artifact_clone() {
         discretionary_tokens: 128,
     };
     let source = sources
-        .capture(&f.project, &f.task, Phase::Implement, &budget)
+        .capture(
+            f.project.clone(),
+            f.task.clone(),
+            Phase::Implement,
+            budget.clone(),
+        )
         .await
         .unwrap();
     let artifact = sources.pack_artifact(&source).unwrap().unwrap();
