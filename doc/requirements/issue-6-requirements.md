@@ -4,8 +4,14 @@ Workflow: STRICT (native authorization, process ownership and shared adapter API
 Dependency: Issue 4 is merged at `52e7bbb`; persistence, Git ownership and registry
 foundations are available. Issue 19's actual private native operation/settlement
 port is a managed-operation acceptance dependency; its composition is pending.
-Issue 14 owns subsequent audited recovery from held uncertainty. Issue 16 consumes
-the completed adapter in aggregate native dogfooding, rather than being a
+Issue 58's actual non-Task Consultant hold/settlement and Issue 14's audited
+recovery/fencing are acceptance dependencies, not authority inferred from Session
+labels. Issues 9–10 own the pending cross-agent decision-member/slot contract.
+Native Task attach requires the composed Issues 6/11/15 frontend/driver/caller,
+Issue 19 managed ownership/input and Issue 14 recovery contracts. Issues 3/12/13
+must enforce their own later-artifact execution/publication boundaries.
+Issue 16 consumes the completed adapter in aggregate native dogfooding, rather
+than being a
 prerequisite for publishing an adapter implementation checkpoint.
 Source: [Issue 6](https://github.com/shuhei-suzuki/rururunx/issues/6),
 product requirements and master Agent Adapter design.
@@ -182,11 +188,21 @@ are not jobs already delegated by this attempt. Issue12 verification, Issue3 Git
 operations and Issue13 PR/CI orchestration must establish their own current workload
 ownership and command-safety gate before executing/publishing those artifacts;
 this attempt's cleanup does not certify that later execution. Executable Git
-hooks/config/hooksPath and similar surfaces are explicitly blocked by this profile
-or covered by that actual later consumer. Files consumed automatically by an
-external scheduler/service/autostart mechanism remain current delegation routes,
-not inert artifacts. An ungoverned consumer cannot earn this distinction. A real
-attempt-written hook/config fixture must exercise the later consumer's boundary.
+hooks and shared/common-directory configuration that can execute commands must
+be blocked by bound, enforceable profile controls before the first native execution.
+These surfaces have standing ungoverned consumers, including user/IDE Git: hooks,
+core.hooksPath/fsmonitor/sshCommand, credential/filter/diff/merge helpers, shell
+aliases and executable include/includeIf configuration. A worktree-tracked script
+referenced by an existing hooksPath is also current delegation if an ungoverned
+consumer can read it. Later-consumer coverage applies only to inert/private
+artifacts read exclusively by governed rrx consumers; a shared path does not qualify.
+Files consumed automatically by an external scheduler/service/autostart mechanism
+remain current delegation routes. Preserve mandatory native hooks/settings; if
+their required shared writes cannot coexist with this boundary, the profile is
+unsupported and remains an MVP blocker, rather than disabling those hooks.
+A real attempted shared hook/config write plus ungoverned-reader fixture must
+prove the profile refuses the write. A separate private-artifact fixture exercises
+the later governed consumer's boundary.
 
 Before any native process may have executed, registered Preparing cleanup and
 exact historical rollback/factual failure remain authoritative. Once any native
@@ -229,6 +245,13 @@ non-success receipt can close a known failure/interruption, with exact authorita
 current native outcome and current whole-workload cleanup. Missing either remains
 Lost/held. Success additionally requires the port's success predicates. Neither
 receipt class substitutes for the other or turns an already Lost attempt releasable.
+Admission/consumption followed by a verified zero-wire local failure is not a
+native terminal outcome. Until a separately approved Issue19 receipt/recovery
+contract covers that exact case, retain the operation held, do not mint either
+receipt, and never replay the consumed input. Unknown delivery remains Lost;
+the current conservative consumed-boundary Lost treatment is not weakened by a
+claim of prewire failure. Proven cleanup alone cannot release an absorbing Lost
+attempt. This is an explicit pending integration boundary, not an invented receipt.
 Preparing rollback is an adapter-internal historical restoration, never a managed
 lease release. Unavailable proof retains the operation; Error/drop/terminal labels
 are not substitutes. Protected standalone native launch remains unsupported before
@@ -244,7 +267,22 @@ managed frame/operation port; Issue6 owns its native consumer and actual cleanup
 minimum unsupported boundary is an interim safety gate, not acceptance of required
 native consultation or interactive attachment.
 
-The initial required native interactive route follows the scoped gateway contract:
+Decision roles also require genuine retained native lifetime ownership. Formal
+Workflow DecisionReview uses the actual Issue19 typed managed phase and private
+operation/settlement authority. Cross-agent ApprovalReviewer requires Issues9/10's
+separately reviewed retained decision-member/slot authority bound to the original
+pending operation, request, input and sources, with its own native settlement.
+A leased DecisionTask is only a pending design candidate, not an approved callable
+producer. An operation-free decision means it cannot execute the reviewed action;
+it does not mean its native workload has no lifetime lease. Issue58 is Consultant-
+only and supplies neither decision role's authority. The requesting operation and
+affected scope remain held while a reviewer workload is live/unknown or Lost,
+until actual native cleanup and any separately approved recovery are established;
+a review result or parent terminal label cannot release them. Each reviewer also
+needs its own immutable decision CWD and F2 safety gate. Unsupported-before-effect
+remains mandatory until these actual consumers compose; Broker acceptance is open.
+
+The initial partial native interactive route follows the scoped gateway contract:
 Project-only, text-only, decision-only Consult, one actual upstream actor and grant
 ledger. It cannot attach as an interactive conversion to a managed Executor,
 Reviewer or ApprovalReviewer attempt and cannot satisfy Workflow transport success
@@ -252,8 +290,18 @@ or its receipt. Every frontend-originated inference input and approval passes th
 same exact current scope/Session admission/consumption and broker CAS before the
 native wire; native permission/settings expansion is refused. Human input has its
 own monotonic submission identity and current outcome, never the seed's completion.
-Task/Goal interactive conversion requires a separately approved Context/operation
-contract and is unavailable here. A real unadmitted-frontend-turn fixture must
+This Project-only route does not satisfy the product's required native Task attach:
+[product §34](product-requirements.md#34-cli-and-tui) requires `rrx attach <task>`
+to connect to the native session. Task attach remains a mandatory open integration
+blocker. Issue6 owns provider/frontend conformance; Issue11 the consult/attach driver
+as applicable; Issue15 the CLI/TUI caller; Issue19 exact managed Task ownership and
+phase-input authority; Issue14 restart/recovery/fencing. Their reviewed composed
+Task-attach contract must preserve the sole actor, current admission/consumption
+and grant ledger; neither input nor observed frontend output may bypass those
+guards or certify a phase receipt. Whether a route is observation-only or permits
+guarded submission requires that actual reviewed contract; neither is presumed
+implemented here. Task attach cannot be converted into Issue58 consultation.
+Native Goal support remains optional. A real unadmitted-frontend-turn fixture must
 prove no inference or Workflow receipt can be certified from that turn.
 
 Operation-less Project Consult/attach requires its own genuine private owned hold
@@ -283,13 +331,20 @@ same Session/worktree/lock scope until the earlier workload's cleanup is proven
 and, for Lost, Issue14's separately approved audited recovery has released it.
 Proven cleanup is necessary and never sufficient to release Lost.
 Known-alive, pending, incomplete and unknown cleanup all block same-scope execution.
+For Task Executor/reviewer workloads with reachable shared Git writes, the default
+held extent also includes the Git common directory and every shared ref/config/hook
+and worktree-lifecycle surface they can affect. Apply the same default primary/base
+update/merge, worktree lifecycle and overlapping same-repository mutation exclusion
+described above; a separate Task worktree is not automatically independent. A
+narrower exception requires separately approved, bound, enforced noninterference
+proof at the actual competing consumer, not merely different Task/branch IDs.
 Lost is absorbing under ordinary adapter calls. Escalate to Human and retain the
 reservation; a recorded human judgement, PID clearing or manual state change
 does not certify cleanup, settle the operation or authorize implicit replay.
 Later authority from the retained genuine owner may record factual cleanup; any
 new recovery/release policy belongs to Issue 14's separately reviewed audited
-contract and cannot be invented here from boot/PID hints. Other independent Tasks
-can progress without touching the held scope.
+contract and cannot be invented here from boot/PID hints. Independent work in
+another Project/disjoint repository can progress without touching the held scope.
 
 A backend acceptance claim requires first-party platform contracts, actual
 installed conformance and a private owned handle that cannot be deserialized or
@@ -316,8 +371,13 @@ explicit partial checkpoints with the unaccepted capabilities held/unsupported;
 they do not close Issue 6 or advertise complete Codex Core. Issue 6 capability
 completion requires both-host real native Executor/decision/Consult/resume/stop
 and owned native interactive/TUI attachment proof, in the scopes required by the
-product (native Goal support remains optional), and
-actual private Issue 19 composition. Issue 16 then verifies the whole multi-Project
+product: Project-native Consult and native Task attachment are required; native
+Goal support remains optional. Completion also requires actual private Issue19
+managed composition, Issue58 non-Task hold/settlement, Issue14 recovery/fencing,
+Issues9/10 retained approval-decision ownership, the Issues6/11/15/19/14 composed
+Task-attach contract, and Issues3/12/13 later-consumer execution/publication guards.
+These are acceptance dependencies, not implied existing ports. Issue 16 then
+verifies the whole multi-Project
 workflow using these real accepted routes. Neither Issue 6 nor Issue 16 can close
 on unsupported-only, singleton file-only or synthetic no-subprocess results.
 Recorded native limitations cannot waive a baseline host's required native
@@ -367,7 +427,18 @@ permission for privileged installation or silently change the required hosts.
   A guard-removal mutant exposes the rejection; enrolled descendants ending
   cannot certify a delegated job's cleanup.
 - A later execution consumer refuses attempt-written executable hook/config
-  artifacts without its own current ownership and command-safety admission.
+  private artifacts without its own current ownership and command-safety admission.
+  A separate attempted shared hook/config write with an ungoverned reader proves
+  pre-execution profile enforcement; a guard-removal mutant exposes the refusal.
+- A Lost Task workload with reachable common-Git writes prevents another Task's
+  actual shared-Git mutation/base/worktree-lifecycle consumer; removing that caller
+  hold guard must fail the fixture. Different Task IDs do not establish independence.
+- A Lost approval reviewer keeps its requesting operation and affected scope held
+  at the real broker/settlement consumer until actual native cleanup and separately
+  gated recovery; removing the retained member/slot guard must fail the fixture.
+- Real native Task attach on both required hosts satisfies product §34 through
+  the reviewed composed frontend/driver/caller/managed-input/recovery contract;
+  Project-only Consult attach and Unsupported cannot satisfy this requirement.
 - Installed real native proof on BOTH required host families for nested child
   sessions, retained ownership during stop/caller drop, bounded uncertainty and
   exact private Issue 19 settlement composition. Issue 16 separately carries the
