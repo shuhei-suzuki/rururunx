@@ -960,3 +960,81 @@ async fn checkpoint_append_binds_inner_identity_and_exact_mandatory_prefix() {
             .starts_with(&next.retained)
     );
 }
+
+#[tokio::test]
+async fn current_environment_writer_preserves_cpp_frame_guard_after_main_merge() {
+    // Component5 writer composition only. No native adapter/model dispatch or
+    // proposed6 preparation/operation authority is exercised or qualified.
+    let f = Fixture::new();
+    let (_, reference) = f.task_context().await;
+    let PreparedPack::Ready(input) = f
+        .packs()
+        .prepare_task(
+            &reference,
+            SelectionRequest::default(),
+            Budget {
+                bytes: MAX_BYTES,
+                estimated_tokens: MAX_BYTES,
+            },
+        )
+        .await
+        .unwrap()
+    else {
+        panic!("small fixture must fit its artifact budget")
+    };
+    let session = Session {
+        id: SessionId::new(),
+        scope: f.task.scope(),
+        agent: f.task.executor.clone(),
+        provider: "codec-fixture".into(),
+        role: SessionRole::Executor,
+        native_ref: None,
+        pid: None,
+        worktree: f.task.worktree.clone().unwrap(),
+        state: SessionState::Starting,
+        model: None,
+        effort: None,
+        recovery: json!({"input_version":input.version,"input_revision":input.revision,
+            "input_bytes":input.payload.len(),"input_sha256":format!("{:x}",Sha256::digest(input.payload.as_bytes())),
+            "source_versions":input.source_versions}),
+        started_at: now_ms(),
+    };
+    let admission = crate::state::EnvironmentAdmission::new(Vec::new(), Vec::new()).unwrap();
+    let mut store = f.store.lock().unwrap();
+    let expected = [
+        store.project(f.project.id).unwrap().unwrap().version,
+        store.goal(f.goal.id).unwrap().unwrap().version,
+        store.task(f.task.id).unwrap().unwrap().version,
+    ];
+    let locks = store
+        .records(&f.task.scope(), RecordKind::WorktreeLock)
+        .unwrap()
+        .into_iter()
+        .map(|r| (r.id, r.version))
+        .collect::<Vec<_>>();
+    let mut forged = session.clone();
+    forged.recovery["input_sha256"] = json!("0".repeat(64));
+    let before = store.events(&f.task.scope(), 0, 100).unwrap().len();
+    for with_environment in [false, true] {
+        let result = if with_environment {
+            store.put_session_with_environment_if_current(&forged, 0, expected, &locks, &admission)
+        } else {
+            store.put_session_if_current(&forged, 0, expected, &locks)
+        };
+        let Err(error) = result else {
+            panic!("current Session writer bypassed CPP prepared-frame guard")
+        };
+        assert_eq!(
+            error.root_cause().to_string(),
+            "native input has no exact privately prepared frame authority"
+        );
+        assert!(store.session(forged.id).unwrap().is_none());
+        assert_eq!(store.events(&f.task.scope(), 0, 100).unwrap().len(), before);
+    }
+    assert_eq!(
+        store
+            .put_session_with_environment_if_current(&session, 0, expected, &locks, &admission)
+            .unwrap(),
+        1
+    );
+}
