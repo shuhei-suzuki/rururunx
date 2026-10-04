@@ -162,7 +162,7 @@ impl RegisteredTransition {
             ));
         }
         self.control.supervised();
-        entry.transition.store(false, Ordering::SeqCst);
+        entry.transition.store(true, Ordering::SeqCst);
         self.active = false;
         Ok(())
     }
