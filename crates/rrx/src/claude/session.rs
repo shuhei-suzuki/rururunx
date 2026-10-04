@@ -2214,7 +2214,7 @@ for line in sys.stdin:
         let mut receiver = adapter.subscribe((&session).into()).unwrap();
         fixture_marker(&ready).await;
         let mut other = crate::state::Store::open(
-            fixture
+            &fixture
                 .request
                 .project
                 .root
