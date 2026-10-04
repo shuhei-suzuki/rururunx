@@ -1,0 +1,181 @@
+{
+  "baseline": "555098d4928936acd7ccea3b768d7247b7e3a017",
+  "scope": "10 compiled assertion-killed CASES, 6 actual consumers including 2 audit-only projections and 4 explicitly unit/fixture result guards; repeated attachment cases are not distinct operator families",
+  "mutants": [
+    {
+      "id": "M60-D01",
+      "path": "crates/rrx/src/adapter/inspection.rs",
+      "test": "adapter::inspection::tests::exited_inspector_retained_output_writer_is_unknown_and_watchdog_releases_mutants",
+      "credit": "fixture helper-result assertion after actual successful child settlement; not an OS wait-error simulation",
+      "operator_diff": "diff --git a/crates/rrx/src/adapter/inspection.rs b/crates/rrx/src/adapter/inspection.rs\nindex 376b655..8ee7761 100644\n--- a/crates/rrx/src/adapter/inspection.rs\n+++ b/crates/rrx/src/adapter/inspection.rs\n@@ -166,7 +166,7 @@ fn cleanup_failure(inspector: &mut Inspector, facts: &mut Collector) -> io::Resu\n     let started = Instant::now();\n     let result = inspector.cleanup_recorded(Some(facts));\n     facts.facts.cleanup_us = Some(diagnostics::micros(started.elapsed()));\n-    result\n+    result.and_then(|_| Err(io::Error::other(\"synthetic helper-result refusal after real settlement\")))\n }\n impl Drop for Inspector {\n     fn drop(&mut self) {\n",
+      "compiled": true,
+      "assertion_killed": true,
+      "exit": 101,
+      "private_mutant_head": "656b7a18d7b46c4d45b7e9cf32293851cc53d7b1",
+      "delta_sha256": "3204ed9a870199a26dcf6807594d2b137effd5a4d5fd61f45c1bf512ced6df97",
+      "raw_log_sha256": "872b610a9fc433731e2686abd0fad60b4dcaf8a06bbf74d3baf7622d2fcb3268",
+      "failure_excerpt": "crates/rrx/src/adapter/inspection.rs:793:57:\ncalled `Result::unwrap()` on an `Err` value: Custom { kind: Other, error: \"synthetic helper-result refusal after real settlement\" }\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\nthread 'adapter::inspection::tests::exited_inspector_retained_output_writer_is_unknown_and_watchdog_releases_mutants' (230606989) panicked at crates/rrx/src/adapter/inspection.rs:798:23:\ncalled `Result::unwrap()` on an `Err` value: Any { .. }\n\n\nfailures:\n    adapter::inspection::tests::exited_inspector_retained_output_writer_is_unknown_and_watchdog_releases_mutants\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 139 filtered out; finished in 0.26s\n\nerror: test failed, to rerun pass `-p rrx --lib`\n"
+    },
+    {
+      "id": "M60-D02",
+      "path": "crates/rrx/src/adapter/inspection/diagnostics.rs",
+      "test": "adapter::tests::generic_real_native_unknown_observation_keeps_durable_executor_reserved",
+      "credit": "actual Generic terminal failure transport",
+      "operator_diff": "diff --git a/crates/rrx/src/adapter/inspection/diagnostics.rs b/crates/rrx/src/adapter/inspection/diagnostics.rs\nindex 9b60786..b90adbc 100644\n--- a/crates/rrx/src/adapter/inspection/diagnostics.rs\n+++ b/crates/rrx/src/adapter/inspection/diagnostics.rs\n@@ -425,7 +425,7 @@ impl Collector {\n         super::IDLE.min(deadline.saturating_duration_since(Instant::now()))\n     }\n     pub(super) fn attach(&self, error: io::Error) -> io::Error {\n-        io::Error::new(error.kind(), Failure { facts: self.facts })\n+        error\n     }\n }\n #[derive(Debug)]\n",
+      "compiled": true,
+      "assertion_killed": true,
+      "exit": 101,
+      "private_mutant_head": "917bc03fd875fdee34310c3292099753ab84f3fc",
+      "delta_sha256": "73c125cce8655466e4d50cea7e64ee60403ec874d86e3f3f737f7c2c8edeeb36",
+      "raw_log_sha256": "1a7858345491adbdfbb88e7a52d7243cbeba46569833b73ea660f47dd96fff0b",
+      "failure_excerpt": "crates/rrx/src/adapter/inspection.rs:1154:9:\nSessionLost: native process group cleanup failed: native process inspection emitted diagnostics\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    adapter::tests::generic_real_native_unknown_observation_keeps_durable_executor_reserved\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 139 filtered out; finished in 1.43s\n\nerror: test failed, to rerun pass `-p rrx --lib`\n"
+    },
+    {
+      "id": "M60-D03",
+      "path": "crates/rrx/src/adapter/inspection/diagnostics.rs",
+      "test": "adapter::tests::generic_post_spawn_failure_audit_preserves_inspector_facts_and_lost_reservation",
+      "credit": "actual Generic returned SessionLost attachment; preceding assertion masks later audit in this broad omission; audit-only D09 supplies separate audit credit",
+      "operator_diff": "diff --git a/crates/rrx/src/adapter/inspection/diagnostics.rs b/crates/rrx/src/adapter/inspection/diagnostics.rs\nindex 9b60786..b90adbc 100644\n--- a/crates/rrx/src/adapter/inspection/diagnostics.rs\n+++ b/crates/rrx/src/adapter/inspection/diagnostics.rs\n@@ -425,7 +425,7 @@ impl Collector {\n         super::IDLE.min(deadline.saturating_duration_since(Instant::now()))\n     }\n     pub(super) fn attach(&self, error: io::Error) -> io::Error {\n-        io::Error::new(error.kind(), Failure { facts: self.facts })\n+        error\n     }\n }\n #[derive(Debug)]\n",
+      "compiled": true,
+      "assertion_killed": true,
+      "exit": 101,
+      "private_mutant_head": "da466a850555480f968a55a1afb87ee8a65c72ce",
+      "delta_sha256": "73c125cce8655466e4d50cea7e64ee60403ec874d86e3f3f737f7c2c8edeeb36",
+      "raw_log_sha256": "d64052f258995087a8791ca9367e2ee8450c87926c90f8069f4e4bf74e219994",
+      "failure_excerpt": "crates/rrx/src/adapter/inspection.rs:1154:9:\nInvalidInput: project is not registered/active; SessionLost: native process group cleanup failed: native process inspection emitted diagnostics; reservation retained\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    adapter::tests::generic_post_spawn_failure_audit_preserves_inspector_facts_and_lost_reservation\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 139 filtered out; finished in 0.74s\n\nerror: test failed, to rerun pass `-p rrx --lib`\n"
+    },
+    {
+      "id": "M60-D04",
+      "path": "crates/rrx/src/adapter/inspection/diagnostics.rs",
+      "test": "adapter::grok::receipt_tests::completed_turn_unknown_cleanup_transports_inspector_facts_without_changing_receipt",
+      "credit": "actual Grok status.failure attachment; preceding assertion masks later audit in this broad omission; audit-only D10 supplies separate audit credit",
+      "operator_diff": "diff --git a/crates/rrx/src/adapter/inspection/diagnostics.rs b/crates/rrx/src/adapter/inspection/diagnostics.rs\nindex 9b60786..b90adbc 100644\n--- a/crates/rrx/src/adapter/inspection/diagnostics.rs\n+++ b/crates/rrx/src/adapter/inspection/diagnostics.rs\n@@ -425,7 +425,7 @@ impl Collector {\n         super::IDLE.min(deadline.saturating_duration_since(Instant::now()))\n     }\n     pub(super) fn attach(&self, error: io::Error) -> io::Error {\n-        io::Error::new(error.kind(), Failure { facts: self.facts })\n+        error\n     }\n }\n #[derive(Debug)]\n",
+      "compiled": true,
+      "assertion_killed": true,
+      "exit": 101,
+      "private_mutant_head": "e8bdf2b253b09359b5b5b0ce23e72fac523bdf49",
+      "delta_sha256": "73c125cce8655466e4d50cea7e64ee60403ec874d86e3f3f737f7c2c8edeeb36",
+      "raw_log_sha256": "218fd17c18a7c25c06a737cdf2a27a7a5414917f5b96499f11d08f77aa106421",
+      "failure_excerpt": "crates/rrx/src/adapter/grok/receipt_tests.rs:48:9:\nowned sanitized fixture failed; \nrunning 1 test\ntest adapter::grok::receipt_tests::completed_unknown_cleanup_diagnostics_child ... FAILED\n\nfailures:\n\nfailures:\n    adapter::grok::receipt_tests::completed_unknown_cleanup_diagnostics_child\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 139 filtered out; finished in 1.03s\n\n; \nthread 'adapter::grok::receipt_tests::completed_unknown_cleanup_diagnostics_child' (230608841) panicked at crates/rrx/src/adapter/inspection.rs:1154:9:\nSessionLost: native process group cleanup failed: native process inspection emitted diagnostics\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    adapter::grok::receipt_tests::completed_turn_unknown_cleanup_transports_inspector_facts_without_changing_receipt\n\ntest result: FAILED. "
+    },
+    {
+      "id": "M60-D05",
+      "path": "crates/rrx/src/adapter/inspection/diagnostics.rs",
+      "test": "adapter::inspection::diagnostic_tests::unit_interrupted_read_result_is_pending_and_counter_saturates",
+      "credit": "prepared interrupted-read result UNIT, no kernel Interrupted claim",
+      "operator_diff": "diff --git a/crates/rrx/src/adapter/inspection/diagnostics.rs b/crates/rrx/src/adapter/inspection/diagnostics.rs\nindex 9b60786..164c80c 100644\n--- a/crates/rrx/src/adapter/inspection/diagnostics.rs\n+++ b/crates/rrx/src/adapter/inspection/diagnostics.rs\n@@ -220,7 +220,6 @@ pub(super) struct StreamFacts {\n impl StreamFacts {\n     pub(super) fn interrupted_read(&mut self) {\n         self.interrupted = self.interrupted.saturating_add(1);\n-        self.eof = Eof::Pending;\n     }\n }\n #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]\n",
+      "compiled": true,
+      "assertion_killed": true,
+      "exit": 101,
+      "private_mutant_head": "e58782936acc8049dce4625aba548bdd511d3036",
+      "delta_sha256": "86c7eb9bf4fa53ed3918c845dcec64617e11e19b9425be677712f7ae2b7247d7",
+      "raw_log_sha256": "4adf823e01c98deb76fdf59f6eccb1f1fa07103c8876e3af3be6dd553cffb402",
+      "failure_excerpt": "crates/rrx/src/adapter/inspection/diagnostic_tests.rs:596:5:\nassertion `left == right` failed\n  left: NotObserved\n right: Pending\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    adapter::inspection::diagnostic_tests::unit_interrupted_read_result_is_pending_and_counter_saturates\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 139 filtered out; finished in 0.00s\n\nerror: test failed, to rerun pass `-p rrx --lib`\n"
+    },
+    {
+      "id": "M60-D06",
+      "path": "crates/rrx/src/adapter/inspection/diagnostics.rs",
+      "test": "adapter::inspection::diagnostic_tests::unit_clock_watchdog_is_distinct_and_open_clock_keeps_idle_polling",
+      "credit": "private UNIT past-watchdog refusal; no owned child",
+      "operator_diff": "diff --git a/crates/rrx/src/adapter/inspection/diagnostics.rs b/crates/rrx/src/adapter/inspection/diagnostics.rs\nindex 9b60786..131c6fe 100644\n--- a/crates/rrx/src/adapter/inspection/diagnostics.rs\n+++ b/crates/rrx/src/adapter/inspection/diagnostics.rs\n@@ -374,7 +374,7 @@ impl Collector {\n         stream: StreamKind,\n     ) -> io::Result<()> {\n         #[cfg(test)]\n-        if !matches!(self.hooks.clock, Clock::Real)\n+        if false\n             && Instant::now()\n                 >= *self\n                     .hooks\n",
+      "compiled": true,
+      "assertion_killed": true,
+      "exit": 101,
+      "private_mutant_head": "a4cb31f7925ca3129f925f22c985b18d2bdd676c",
+      "delta_sha256": "65f432f0833024f8269541d67f2e724317c95f65da14129c581b41ad22390676",
+      "raw_log_sha256": "d000283d48b7e7597b1d7bb6e0477c044a4ba9d628379584156b3b8de8640f7f",
+      "failure_excerpt": "crates/rrx/src/adapter/inspection/diagnostic_tests.rs:576:14:\ncalled `Result::unwrap_err()` on an `Ok` value: ()\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    adapter::inspection::diagnostic_tests::unit_clock_watchdog_is_distinct_and_open_clock_keeps_idle_polling\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 139 filtered out; finished in 0.00s\n\nerror: test failed, to rerun pass `-p rrx --lib`\n"
+    },
+    {
+      "id": "M60-D07",
+      "path": "crates/rrx/src/adapter/inspection/diagnostics.rs",
+      "test": "adapter::inspection::diagnostic_tests::unit_clock_watchdog_is_distinct_and_open_clock_keeps_idle_polling",
+      "credit": "private UNIT open-clock idle polling",
+      "operator_diff": "diff --git a/crates/rrx/src/adapter/inspection/diagnostics.rs b/crates/rrx/src/adapter/inspection/diagnostics.rs\nindex 9b60786..2f43e19 100644\n--- a/crates/rrx/src/adapter/inspection/diagnostics.rs\n+++ b/crates/rrx/src/adapter/inspection/diagnostics.rs\n@@ -420,7 +420,7 @@ impl Collector {\n     pub(super) fn idle(&self, deadline: Instant) -> Duration {\n         #[cfg(test)]\n         if !matches!(self.hooks.clock, Clock::Real) {\n-            return super::IDLE;\n+            return Duration::ZERO;\n         }\n         super::IDLE.min(deadline.saturating_duration_since(Instant::now()))\n     }\n",
+      "compiled": true,
+      "assertion_killed": true,
+      "exit": 101,
+      "private_mutant_head": "55f8d80066027c21783e34843126e20d96654f33",
+      "delta_sha256": "ae663e169d87204e9867b80e1e08760240b9ed8a7929f6a5af373ba65c57ddf9",
+      "raw_log_sha256": "50d7c7b2fdaf8e2e83a527b53c48d0b242e9dec7b0c0c89d8010a644fde3e9e4",
+      "failure_excerpt": "crates/rrx/src/adapter/inspection/diagnostic_tests.rs:585:9:\nassertion `left == right` failed\n  left: 0ns\n right: 5ms\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    adapter::inspection::diagnostic_tests::unit_clock_watchdog_is_distinct_and_open_clock_keeps_idle_polling\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 139 filtered out; finished in 0.00s\n\nerror: test failed, to rerun pass `-p rrx --lib`\n"
+    },
+    {
+      "id": "M60-D08",
+      "path": "crates/rrx/src/adapter/inspection/diagnostics.rs",
+      "test": "adapter::inspection::tests::actual_inspector_rejects_exit_zero_stderr_empty_and_incomplete_frames",
+      "credit": "actual inspector incomplete-frame human prefix; appended incomplete_frame token unchanged",
+      "operator_diff": "diff --git a/crates/rrx/src/adapter/inspection/diagnostics.rs b/crates/rrx/src/adapter/inspection/diagnostics.rs\nindex 9b60786..5977543 100644\n--- a/crates/rrx/src/adapter/inspection/diagnostics.rs\n+++ b/crates/rrx/src/adapter/inspection/diagnostics.rs\n@@ -437,6 +437,7 @@ impl fmt::Display for Failure {\n     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {\n         let x = &self.facts;\n         let prefix = match x.refusal {\n+            Some(Refusal::Frame(Framing::Incomplete)) => \"native process inspection failed\",\n             Some(Refusal::Frame(c)) => c.message(),\n             Some(Refusal::Deadline) => \"native process inspection timed out\",\n             Some(Refusal::Allocation) => \"native inspection allocation failed\",\n",
+      "compiled": true,
+      "assertion_killed": true,
+      "exit": 101,
+      "private_mutant_head": "e65ffccb56c2b78af5c887c733d6b081b203eba6",
+      "delta_sha256": "d2527fb9799315896a9e2f5d41c14fc59a33105b7864b2c627d26c4d728abc3b",
+      "raw_log_sha256": "8c367cb23325e1bc77791060263d0bdc585b63411e8a8b0eb8b394a867214174",
+      "failure_excerpt": "crates/rrx/src/adapter/inspection.rs:671:17:\nempty: native process inspection failed; inspection_facts{site=frame_validation,stream=none,refusal=incomplete_frame,returned_io_kind=invalid_data,stdout_reads=3,stdout_bytes=0,stdout_would_block=2,stdout_interrupted=0,stdout_eof=observed,stderr_reads=3,stderr_bytes=0,stderr_would_block=2,stderr_interrupted=0,stderr_eof=observed,status_polls=3,status_pending=2,status_interrupted=0,status_errors=0,exit=success,status_source_io_kind=unavailable,validation=incomplete_frame,cleanup=reaped_by_status_observation,kill=not_requested,observation_us=12220,spawn_us=274,cleanup_us=unavailable}\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    adapter::inspection::tests::actual_inspector_rejects_exit_zero_stderr_empty_and_incomplete_frames\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 139 filtered out; finished in 0.03s\n\nerror: test failed, to"
+    },
+    {
+      "id": "M60-D09",
+      "path": "crates/rrx/src/adapter.rs",
+      "test": "adapter::tests::generic_post_spawn_failure_audit_preserves_inspector_facts_and_lost_reservation",
+      "credit": "actual audit projection only; preceding returned/status failure facts retained",
+      "operator_diff": "diff --git a/crates/rrx/src/adapter.rs b/crates/rrx/src/adapter.rs\nindex b960a24..84988e1 100644\n--- a/crates/rrx/src/adapter.rs\n+++ b/crates/rrx/src/adapter.rs\n@@ -998,7 +998,7 @@ fn audit_launch_failure(store: &SharedStore, session: &Session, pid: Option<u32>\n         let _ = store.audit(\n             &session.scope,\n             \"adapter.launch_failure\",\n-            json!({\"session_id\":session.id,\"pid\":pid,\"pgid\":pid,\"reason\":reason}),\n+            json!({\"session_id\":session.id,\"pid\":pid,\"pgid\":pid,\"reason\":reason.split(\"; inspection_facts{\").next().unwrap_or(reason)}),\n         );\n     }\n }\n",
+      "compiled": true,
+      "assertion_killed": true,
+      "exit": 101,
+      "private_mutant_head": "4914f99f036377fc57affb97692f3c2dcb4771bf",
+      "delta_sha256": "48076ef848667c54711e9dee139d488a83a5b8a6737ddb6cedc868fcfe3b87da",
+      "raw_log_sha256": "25e76ab25c75680417d471a340e64638f5b73b05241317bb71a569ce4464e0f1",
+      "failure_excerpt": "crates/rrx/src/adapter/inspection.rs:1154:9:\nInvalidInput: project is not registered/active; SessionLost: native process group cleanup failed: native process inspection emitted diagnostics\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    adapter::tests::generic_post_spawn_failure_audit_preserves_inspector_facts_and_lost_reservation\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 139 filtered out; finished in 0.74s\n\nerror: test failed, to rerun pass `-p rrx --lib`\n"
+    },
+    {
+      "id": "M60-D10",
+      "path": "crates/rrx/src/adapter/grok/mod.rs",
+      "test": "adapter::grok::receipt_tests::completed_turn_unknown_cleanup_transports_inspector_facts_without_changing_receipt",
+      "credit": "actual audit projection only; preceding returned/status failure facts retained",
+      "operator_diff": "diff --git a/crates/rrx/src/adapter/grok/mod.rs b/crates/rrx/src/adapter/grok/mod.rs\nindex 6a3d925..b862ccb 100644\n--- a/crates/rrx/src/adapter/grok/mod.rs\n+++ b/crates/rrx/src/adapter/grok/mod.rs\n@@ -1270,7 +1270,7 @@ async fn supervise(mut actor: Actor, load: Option<String>) {\n             ),\n         ));\n     }\n-    let _=actor.store.lock().map(|mut store|store.audit(&actor.session.scope,\"grok.turn_observed\",json!({\"session\":actor.session.id,\"native\":actor.session.native_ref,\"prompt\":actor.prompt,\"completed\":completed,\"cleanup_verified\":clean,\"cleanup_receipt\":cleanup_receipt,\"reconciliation_attempted\":reconciliation_attempted,\"reconciliation_error\":reconciliation_error,\"exit_code\":cleanup.as_ref().ok().copied().flatten(),\"diagnostic\":diagnostic.as_ref().map(ToString::to_string)})));\n+    let _=actor.store.lock().map(|mut store|store.audit(&actor.session.scope,\"grok.turn_observed\",json!({\"session\":actor.session.id,\"native\":actor.session.native_ref,\"prompt\":actor.prompt,\"completed\":completed,\"cleanup_verified\":clean,\"cleanup_receipt\":cleanup_receipt,\"reconciliation_attempted\":reconciliation_attempted,\"reconciliation_error\":reconciliation_error,\"exit_code\":cleanup.as_ref().ok().copied().flatten(),\"diagnostic\":diagnostic.as_ref().map(ToString::to_string).map(|text|text.split(\"; inspection_facts{\").next().unwrap_or(&text).to_owned())})));\n     let state = if !clean || (actor.dispatched && !actor.native_outcome) {\n         SessionState::Lost\n     } else if actor.stopped() {\n",
+      "compiled": true,
+      "assertion_killed": true,
+      "exit": 101,
+      "private_mutant_head": "fd8b702d06d13d4b94a23b9a5bfb3780ff994938",
+      "delta_sha256": "3c288d0123e5b137e85353614bb2013d12edf100943c2c94fb365428ccdc5188",
+      "raw_log_sha256": "23c8664d5ead9faaaed527a2d1cc712b801a6709625e5e9f61e1026379563e1d",
+      "failure_excerpt": "crates/rrx/src/adapter/grok/receipt_tests.rs:48:9:\nowned sanitized fixture failed; \nrunning 1 test\ntest adapter::grok::receipt_tests::completed_unknown_cleanup_diagnostics_child ... FAILED\n\nfailures:\n\nfailures:\n    adapter::grok::receipt_tests::completed_unknown_cleanup_diagnostics_child\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 139 filtered out; finished in 1.06s\n\n; \nthread 'adapter::grok::receipt_tests::completed_unknown_cleanup_diagnostics_child' (230689098) panicked at crates/rrx/src/adapter/inspection.rs:1154:9:\nSessionLost: native process group cleanup failed: native process inspection emitted diagnostics\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    adapter::grok::receipt_tests::completed_turn_unknown_cleanup_transports_inspector_facts_without_changing_receipt\n\ntest result: FAILED. "
+    }
+  ],
+  "restored_controls": [
+    {
+      "id": "delta-restored-grok-control",
+      "exit": 0,
+      "raw_log_sha256": "332dbe820ed1725bd0d9471cd4131386ebd72f8519c50f086e0e182e1aa981cf"
+    },
+    {
+      "id": "delta-restored-generic-control",
+      "exit": 0,
+      "raw_log_sha256": "771a709985014fc935bdd77070a93f45b068acd6c862614c35c854ffe7fca3fc"
+    },
+    {
+      "id": "delta-restored-fixture-control",
+      "exit": 0,
+      "raw_log_sha256": "e5915a7c38334244f875541f348d159b9df598ebfdaba589df35b0de9da1c89e"
+    },
+    {
+      "id": "M60-D09-restored-control",
+      "exit": 0,
+      "raw_log_sha256": "f77a64e15bb4df198b98cd75dace930879527730dc0cec1a7d764ac3d96d5e49"
+    },
+    {
+      "id": "M60-D10-restored-control",
+      "exit": 0,
+      "raw_log_sha256": "9f07de8c3323c63c2db49bcf60d3cb611d97ecbe1f7bf3874bd825b2c0beac04"
+    }
+  ],
+  "exact_source_restored": true,
+  "temporary_worktrees_normally_removed": true,
+  "limits": [
+    "D01 introduces helper Err only AFTER real child cleanup; not actual OS wait-error proof",
+    "D05 prepared Interrupted result, not actual kernel Interrupted",
+    "D06/D07 private clock UNIT, not native deadline evidence",
+    "D03/D04 broad omission reaches returned/status assertion before audit; D09/D10 isolate audit projections"
+  ]
+}

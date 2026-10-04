@@ -13,7 +13,7 @@ use crate::{
     },
     config::{Config, WorkflowClass},
     domain::*,
-    state::{Store, WorkflowAccess, goal_terminal, task_terminal},
+    state::{StateGuardError, Store, WorkflowAccess, goal_terminal, task_terminal},
 };
 
 pub type WorkflowFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
@@ -433,6 +433,46 @@ struct Snapshot {
     workflow: WorkflowSnapshot,
 }
 
+/// Invocation-local proof minted only from a successfully committed agent reservation.
+struct PreparationClaim {
+    scope: Scope,
+    record_id: RecordId,
+    record_version: u64,
+    generation: u64,
+    index: usize,
+    context_version: u64,
+    worktree: Option<std::path::PathBuf>,
+    branch: Option<String>,
+    attempt: PhaseAttempt,
+}
+impl PreparationClaim {
+    fn committed(snapshot: &Snapshot, index: usize) -> Self {
+        Self {
+            scope: snapshot.task.scope(),
+            record_id: snapshot.record.id,
+            record_version: snapshot.record.version,
+            generation: snapshot.workflow.generation,
+            index,
+            context_version: snapshot.workflow.context_version,
+            worktree: snapshot.task.worktree.clone(),
+            branch: snapshot.task.branch.clone(),
+            attempt: snapshot.workflow.history[index].clone(),
+        }
+    }
+}
+struct AgentPreparation {
+    context: ContextVersion,
+    config: Config,
+    environment: BTreeMap<String, String>,
+}
+#[cfg(test)]
+#[derive(Default)]
+struct EngineHooks {
+    before_release: std::sync::Mutex<Option<Box<dyn FnOnce() + Send>>>,
+    before_reserve: std::sync::Mutex<Option<Pin<Box<dyn Future<Output = ()> + Send>>>>,
+    attempt_started_at: std::sync::Mutex<Option<i64>>,
+}
+
 /// Raw Workflow Store mutation stays private to the engine implementation.
 /// ```compile_fail,E0624
 /// use rrx::state::Store;
@@ -447,6 +487,8 @@ pub struct WorkflowEngine {
     runtime: Config,
     sources: Arc<dyn WorkflowSources>,
     gates: Arc<dyn PhaseGates>,
+    #[cfg(test)]
+    hooks: EngineHooks,
 }
 impl WorkflowEngine {
     pub fn new(
@@ -463,6 +505,8 @@ impl WorkflowEngine {
             runtime,
             sources,
             gates,
+            #[cfg(test)]
+            hooks: EngineHooks::default(),
         })
     }
     pub fn snapshot(&self, task_id: TaskId) -> Result<WorkflowSnapshot> {
@@ -937,15 +981,129 @@ impl WorkflowEngine {
                 Actor::Reviewer => snapshot.task.reviewers.first().cloned(),
                 Actor::EvidencePort => None,
             },
-            started_at: now_ms(),
+            started_at: self.attempt_started_at(),
             completed_at: None,
             detail: None,
         });
         snapshot.workflow.active = Some(index);
+        #[cfg(test)]
+        {
+            let hook = self
+                .hooks
+                .before_reserve
+                .lock()
+                .expect("reserve hook")
+                .take();
+            if let Some(hook) = hook {
+                hook.await;
+            }
+        }
         self.reserve(&mut snapshot, &context, phase)?;
         if phase.actor() == Actor::EvidencePort {
             return self.evaluate(snapshot, index, None).await;
         }
+        let claim = PreparationClaim::committed(&snapshot, index);
+        let mut eligible = true;
+        let result = self
+            .prepare_agent(
+                snapshot,
+                AgentPreparation {
+                    context,
+                    config,
+                    environment,
+                },
+                &claim,
+                &mut eligible,
+            )
+            .await;
+        match result {
+            Err(error) if eligible => match self.release_preparation(&claim) {
+                Ok(()) => Err(error),
+                Err(release) => Err(error.context(format!(
+                    "owner-local preparation release not performed; unresolved claims require recovery (#14): {release:#}"
+                ))),
+            },
+            other => other,
+        }
+    }
+    fn attempt_started_at(&self) -> i64 {
+        #[cfg(test)]
+        if let Some(at) = *self.hooks.attempt_started_at.lock().expect("test clock") {
+            return at;
+        }
+        now_ms()
+    }
+    fn release_preparation(&self, claim: &PreparationClaim) -> Result<()> {
+        let mut snapshot = self.read(claim.scope.task_id.context("claim requires Task")?)?;
+        active(&snapshot.project, &snapshot.goal, &snapshot.task)?;
+        ensure!(
+            snapshot.task.scope() == claim.scope
+                && snapshot.record.id == claim.record_id
+                && snapshot.record.version == claim.record_version
+                && snapshot.workflow.generation == claim.generation
+                && snapshot.workflow.active == Some(claim.index)
+                && snapshot.workflow.context_version == claim.context_version
+                && claim
+                    .worktree
+                    .as_ref()
+                    .is_none_or(|path| snapshot.task.worktree.as_ref() == Some(path))
+                && claim
+                    .branch
+                    .as_ref()
+                    .is_none_or(|branch| snapshot.task.branch.as_ref() == Some(branch)),
+            "preparation claim changed"
+        );
+        let attempt = snapshot
+            .workflow
+            .history
+            .get_mut(claim.index)
+            .context("preparation attempt missing")?;
+        ensure!(
+            attempt.state == AttemptState::Running
+                && attempt.session_id.is_none()
+                && !attempt.dispatch_started
+                && serde_json::to_value(&*attempt)? == serde_json::to_value(&claim.attempt)?,
+            "preparation attempt no longer owned and undispatched"
+        );
+        let detail = "owned pre-dispatch preparation failed; no native dispatch";
+        attempt.state = AttemptState::Failed;
+        attempt.completed_at = Some(now_ms());
+        attempt.detail = Some(detail.into());
+        snapshot.workflow.retries.push(RetryEvent {
+            prior_attempt: claim.index,
+            reason: detail.into(),
+            at: now_ms(),
+        });
+        snapshot.workflow.active = None;
+        #[cfg(test)]
+        if let Some(hook) = self
+            .hooks
+            .before_release
+            .lock()
+            .expect("release hook")
+            .take()
+        {
+            hook();
+        }
+        // Fresh metadata is preserved; the existing immediate transaction checks
+        // owners, Task/Record CAS and all native executor/Lost closing fences.
+        self.persist(&mut snapshot, None)
+    }
+    async fn prepare_agent(
+        &self,
+        mut snapshot: Snapshot,
+        preparation: AgentPreparation,
+        claim: &PreparationClaim,
+        eligible: &mut bool,
+    ) -> Result<StepResult> {
+        let AgentPreparation {
+            context,
+            config,
+            environment,
+        } = preparation;
+        let index = claim.index;
+        let phase = claim.attempt.phase;
+        let class = snapshot.workflow.workflow;
         let (fresh_config, fresh_source, _, _) = self
             .inputs(&snapshot.project, &snapshot.task, phase, class)
             .await?;
@@ -975,6 +1133,7 @@ impl WorkflowEngine {
                 )
                 .await?;
             set_context(&mut snapshot, &context);
+            *eligible = false;
             self.persist(&mut snapshot, Some(&context))?;
             return Ok(StepResult::Invalidated {
                 reason: "sources changed before native dispatch".into(),
@@ -986,25 +1145,36 @@ impl WorkflowEngine {
             .await?;
         if !same_sources(&observed, &snapshot.workflow.sources) {
             return self
-                .invalidate_attempt(
+                .invalidate_attempt_preparation(
                     snapshot,
                     index,
                     observed,
                     "authority changed before native dispatch",
+                    Some(eligible),
                 )
                 .await;
         }
-        let agent = if phase.actor() == Actor::Reviewer {
-            match snapshot.task.reviewers.first() {
-                Some(agent) => agent.clone(),
-                None => return self.fail(snapshot, index, "reviewer not configured".into()),
-            }
+        let selected_agent = if phase.actor() == Actor::Reviewer {
+            snapshot.task.reviewers.first().cloned()
         } else {
-            snapshot.task.executor.clone()
+            Some(snapshot.task.executor.clone())
+        };
+        ensure!(
+            claim.attempt.agent == selected_agent
+                && snapshot.task.worktree == claim.worktree
+                && snapshot.task.branch == claim.branch,
+            "reserved agent or Task binding changed during preparation"
+        );
+        let Some(agent) = selected_agent else {
+            *eligible = false;
+            return self.fail(snapshot, index, "reviewer not configured".into());
         };
         let adapter = match self.registry.get(&agent) {
             Ok(adapter) => adapter,
-            Err(error) => return self.fail(snapshot, index, error.to_string()),
+            Err(error) => {
+                *eligible = false;
+                return self.fail(snapshot, index, error.to_string());
+            }
         };
         let needed = if phase.actor() == Actor::Reviewer {
             Capability::Review
@@ -1012,6 +1182,7 @@ impl WorkflowEngine {
             Capability::Execute
         };
         if !adapter.capabilities().contains(&needed) {
+            *eligible = false;
             return self.fail(snapshot, index, format!("agent {agent} lacks {needed:?}"));
         }
         let agent_config = config.agents.get(&agent);
@@ -1037,6 +1208,7 @@ impl WorkflowEngine {
             },
         };
         let Some(worktree) = snapshot.task.worktree.clone() else {
+            *eligible = false;
             return self.fail(
                 snapshot,
                 index,
@@ -1044,7 +1216,11 @@ impl WorkflowEngine {
             );
         };
         snapshot.workflow.history[index].dispatch_started = true;
-        self.persist(&mut snapshot, None)?;
+        *eligible = false;
+        if let Err(error) = self.persist(&mut snapshot, None) {
+            *eligible = own_task_marker_rollback(&error, snapshot.task.id);
+            return Err(error);
+        }
         let request = LaunchRequest {
             project: snapshot.project.clone(),
             scope: snapshot.task.scope(),
@@ -1077,7 +1253,7 @@ impl WorkflowEngine {
                 self.refresh_actor_ack(&mut snapshot, index)?;
                 snapshot.workflow.history[index].session_id = Some(session.id);
                 // Adapter may persist Session, never rewrite Task/history. CAS loss
-                // preserves the reservation; #13 reconciles the durable Session.
+                // preserves the reservation; #14 reconciles the durable Session.
                 self.persist(&mut snapshot, None)?;
                 Ok(StepResult::Started {
                     phase,
@@ -1157,7 +1333,10 @@ impl WorkflowEngine {
         ) {
             return Ok(StepResult::Waiting {
                 phase,
-                reason: "interrupted evidence evaluation needs explicit recovery (#13)".into(),
+                reason: format!(
+                    "evidence evaluation may still be active; unknown outcome requires explicit recovery ({})",
+                    recovery_issue(phase)
+                ),
             });
         }
         if attempt.state != AttemptState::Running {
@@ -1170,27 +1349,13 @@ impl WorkflowEngine {
             if phase.actor() == Actor::EvidencePort {
                 return self.evaluate(snapshot, index, None).await;
             }
-            if !attempt.dispatch_started {
-                let mut snapshot = snapshot;
-                self.refresh_owners(&mut snapshot)?;
-                snapshot.workflow.history[index].state = AttemptState::Failed;
-                snapshot.workflow.history[index].completed_at = Some(now_ms());
-                snapshot.workflow.history[index].detail =
-                    Some("native dispatch was not started; reservation safely reset".into());
-                snapshot.workflow.retries.push(RetryEvent {
-                    prior_attempt: index,
-                    reason: "verified undispatched native reservation".into(),
-                    at: now_ms(),
-                });
-                snapshot.workflow.active = None;
-                self.persist(&mut snapshot, None)?;
-                return Ok(StepResult::Invalidated {
-                    reason: "native dispatch was not started; next step can reserve afresh".into(),
-                });
-            }
             return Ok(StepResult::Waiting {
                 phase,
-                reason: "interrupted phase needs explicit recovery integration (#13)".into(),
+                reason: if attempt.dispatch_started {
+                    "native launch may still be active; unreconciled ownership requires recovery (#14)"
+                } else {
+                    "native preparation may still be active; abandoned ownership requires recovery (#14)"
+                }.into(),
             });
         };
         let agent = attempt
@@ -1343,11 +1508,17 @@ impl WorkflowEngine {
         let attempt = &mut snapshot.workflow.history[index];
         ensure!(
             attempt.state != AttemptState::Evaluating || known_gate_observation(attempt).is_some(),
-            "unknown external outcome requires explicit recovery (#13)"
+            "unknown {} outcome requires explicit recovery ({})",
+            if irreversible(attempt.phase) {
+                "external"
+            } else {
+                "reversible evaluation"
+            },
+            recovery_issue(attempt.phase)
         );
         ensure!(
             attempt.session_id.is_some() || !attempt.dispatch_started,
-            "unbound native dispatch requires explicit recovery (#13)"
+            "unbound native dispatch requires explicit recovery (#14)"
         );
         attempt.state = AttemptState::Interrupted;
         attempt.completed_at.get_or_insert_with(now_ms);
@@ -1440,16 +1611,30 @@ impl WorkflowEngine {
     }
     async fn invalidate_attempt(
         &self,
+        snapshot: Snapshot,
+        index: usize,
+        source: SourceSnapshot,
+        reason: &str,
+    ) -> Result<StepResult> {
+        self.invalidate_attempt_preparation(snapshot, index, source, reason, None)
+            .await
+    }
+    async fn invalidate_attempt_preparation(
+        &self,
         mut snapshot: Snapshot,
         index: usize,
         source: SourceSnapshot,
         reason: &str,
+        mut eligible: Option<&mut bool>,
     ) -> Result<StepResult> {
         if has_external_effect(&snapshot.workflow)
             || (irreversible(snapshot.workflow.history[index].phase)
                 && !snapshot.workflow.history[index].observations.is_empty())
         {
             let phase = snapshot.workflow.history[index].phase;
+            if let Some(eligible) = eligible.as_deref_mut() {
+                *eligible = false;
+            }
             return self.hold(
                 snapshot,
                 Some(index),
@@ -1505,13 +1690,17 @@ impl WorkflowEngine {
             )
             .await?;
         set_context(&mut snapshot, &context);
+        if let Some(eligible) = eligible {
+            *eligible = false;
+        }
         self.persist(&mut snapshot, Some(&context))?;
         Ok(StepResult::Invalidated {
             reason: reason.into(),
         })
     }
     /// Re-evaluate a known waiting gate without launching another native Session.
-    /// An unknown/interrupted evaluation still requires external recovery (#13).
+    /// Unknown irreversible evaluation needs outcome reconciliation (#13);
+    /// reversible owner/restart claims need explicit recovery (#14).
     pub async fn resume_gate(&self, task_id: TaskId) -> Result<StepResult> {
         let snapshot = self.read(task_id)?;
         active(&snapshot.project, &snapshot.goal, &snapshot.task)?;
@@ -2527,6 +2716,17 @@ pub(crate) fn validate_transition(
     }
     Ok(())
 }
+fn own_task_marker_rollback(error: &anyhow::Error, task_id: TaskId) -> bool {
+    matches!(
+        error.downcast_ref::<StateGuardError>(),
+        Some(StateGuardError::SnapshotChanged { table, id, .. })
+            if table == "tasks" && *id == task_id.to_string()
+    )
+}
+fn recovery_issue(phase: Phase) -> &'static str {
+    if irreversible(phase) { "#13" } else { "#14" }
+}
+
 fn owners(store: &Store, id: TaskId) -> Result<(Project, Goal, Task)> {
     let task = store.task(id)?.context("unknown Task")?;
     let project = store.project(task.project_id)?.context("unknown Project")?;

@@ -275,6 +275,8 @@ The command examples above describe the MVP target. Currently implemented:
   usage remains null. Provider adapters and execution/workflow CLI commands are
   still being implemented. See [adapter design](doc/design/issue-4-design.md).
 
+- Grok [terminal cleanup receipts](doc/design/issue-55-design.md) record bounded facts;
+  no process/PID/Lost safety change or native acceptance is claimed.
 
 ## License
 
@@ -304,9 +306,30 @@ checks; unknown outcomes keep recovery reservations. QUICK PR-created stays nont
 until requested merge/cleanup gates supply evidence. Cancellation preserves native
 reservations until verified termination.
 The generic CLI cannot review. Workflow CLI/TUI, independent review sets (#9),
-approval routing (#12), and recovery (#13) remain pending. Issue #19 typed phase
-publication is integrated; automatic native-event normalization remains separate.
-Issue #18 repository-context selection is also available independently. See [Workflow Engine](doc/design/master/workflow-engine.md).
+approval routing (#10), owner/restart recovery (#14), and production Context Pack publication (#19)
+remain pending. Issue #18 repository-context selection is available independently. See [Workflow Engine](doc/design/master/workflow-engine.md).
+The unmerged Issue19 component implements typed phase artifacts; production native
+input/settlement and incompatible-writer integration remain separate pending gates.
+
+Issue #41 implements passive observation of agent preparation reservations and
+release only by their committing owner after a verified eligible preparation error.
+Issue #14 must reconcile orphaned undispatched attempts, dropped futures/crashes,
+inactive-owner preparation errors, definitive-decision publication conflicts,
+marker Project/Goal-version conflicts (including Project/Goal metadata edits and
+lifecycle ABA), release-token Record-version mismatches, untyped/unknown marker
+errors, release CAS/executor-Lost fence failures, post-dispatch Session-binding
+conflicts and unknown reversible Evaluating claims.
+
+A marker without a Session does not prove launch began.
+Retaining a failed decision publication prevents turning an intended
+definitive failure/invalidation into automatic retry. Existing explicit terminal
+reservation recovery stays available under its terminal-Task/dispatch fences.
+External GitHub/irreversible gate outcomes are reconciled by #13.
+The existing explicit `retry` API can still close a Failed unbound dispatch marker
+without trusted native-outcome proof; #14 must address this gap. Ordinary observation
+does not replay it. Native provider integration also needs an atomic Session-binding
+publication (#43) that preserves the unchanged Task version; the current coordinated write
+increments it and can invalidate the provider's admitted snapshot.
 
 The repository pins Rust 1.91.1 (minimum supported Rust 1.91) with rustfmt/clippy.
 
@@ -378,9 +401,25 @@ Interrupted worktree creation or invalidated review locks can retain reservation
 explicit audited lock reconciliation CLI is pending in restart/recovery work.
 Removal remains blocked until those reservations are reconciled.
 
-Issue 19 typed native input validation binds actual request bytes to the complete
+Unmerged Issue19 component schema5 typed input validation binds actual request bytes to the complete
 immutable Workflow frame or a privately prepared standalone frame hash. Ordered
 schema 4→5 fences older writers. Provider adapters must call the pure scoped
 `Store::validate_context_input` check and preserve request-to-wire correspondence;
 Session metadata alone is not evidence of delivered model input. Conservative
 checkpoint invalidation and post-PR reconciliation still depend on Issues 13/23.
+
+Shared macOS owned-process inspection is under STRICT follow-up
+[Issue 46](doc/requirements/issue-46-requirements.md). The implementation uses exact-group,
+bounded-diagnostic and unreaped-leader observation, preserving existing timeout and
+uncertainty guards. Verification and independent review results are recorded in
+[Issue46 evidence](doc/verification/issue-46.md). Non-atomic
+sampling and partial-success KILL with non-signalable survivors remain explicit
+limitations.
+
+Inspector timeout diagnostics follow the approved STRICT [Issue60 component design](doc/design/issue-60-inspection-design.md).
+The diagnostic-only implementation adds finite failure facts while preserving existing
+cleanup/Unknown authority. Two independent Source2/Source3 approvals cover this
+diagnostic slice; final metadata-head CI remains pending under the recorded partial
+gate disposition. Local full release555 FAILED, cause and regression status unknown.
+No backend availability fix or owned-reader/workload settlement is claimed; full #60
+and native acceptance remain open.
