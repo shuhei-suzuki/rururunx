@@ -3734,9 +3734,8 @@ mod tests {
             pending_before
         );
         assert_unavailable(dispatched);
-        assert_eq!(
-            answered.unwrap(),
-            false,
+        assert!(
+            !answered.unwrap(),
             "unavailable reply must preserve pending turn"
         );
         assert_unavailable(response.unwrap());
@@ -5532,10 +5531,8 @@ mod tests {
         let wire_changed = journal_values(&directory) != wire_before;
         // A compiled remove-bound/restore-eviction mutant can create another
         // genuine synthetic peer. Finish those actual handles before asserting.
-        for result in [&first, &second] {
-            if let Ok(session) = result {
-                terminal_status(&adapter, &SessionRef::from(session)).await;
-            }
+        for session in [&first, &second].into_iter().flatten() {
+            terminal_status(&adapter, &SessionRef::from(session)).await;
         }
         assert_leader_reaped(&directory.join("leader"));
         assert!(

@@ -863,10 +863,7 @@ async fn structured_schema_rejection_precedes_all_session_and_spawn_effects() {
         let mut fixture = Fixture::new();
         fixture.review();
         let marker = fixture.directory.path().join("structured-spawn-observed");
-        fixture
-            .request
-            .environment
-            .insert("RRX_SPAWN_OBSERVED".into(), marker.to_str().unwrap().into());
+        fixture.synthetic("RRX_SPAWN_OBSERVED", marker.to_str().unwrap().into());
         let adapter = Arc::new(fixture.adapter());
         let mut registry = AgentRegistry::default();
         registry.register("grok".into(), adapter.clone()).unwrap();
