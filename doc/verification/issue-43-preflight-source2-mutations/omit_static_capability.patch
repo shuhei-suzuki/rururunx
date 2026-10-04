@@ -1,0 +1,11 @@
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -1111,7 +1111,7 @@
+         })?;
+         let capabilities = adapter.capabilities();
+         for required in [needed, Capability::PreparedInputAdmission] {
+-            if !capabilities.contains(&required) {
++            if false {
+                 return Err(NativePreflightRefusal::MissingCapability(required).into());
+             }
+         }

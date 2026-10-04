@@ -1,0 +1,20 @@
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -1110,7 +1110,7 @@
+             anyhow::Error::new(error).context(NativePreflightRefusal::AdapterUnavailable)
+         })?;
+         let capabilities = adapter.capabilities();
+-        for required in [needed, Capability::PreparedInputAdmission] {
++        for required in [needed] {
+             if !capabilities.contains(&required) {
+                 return Err(NativePreflightRefusal::MissingCapability(required).into());
+             }
+@@ -1121,7 +1121,7 @@
+         if info.agent != *agent || info.provider.trim().is_empty() {
+             return Err(NativePreflightRefusal::IdentityMismatch.into());
+         }
+-        for required in [needed, Capability::PreparedInputAdmission] {
++        for required in [needed] {
+             if !info.capabilities.contains(&required) {
+                 return Err(NativePreflightRefusal::MissingCapability(required).into());
+             }

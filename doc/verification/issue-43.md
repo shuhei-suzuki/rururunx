@@ -309,3 +309,17 @@ owned metadata/helper probe without blocking unrelated work or detaching jobs on
 cancellation. Adding spawn_blocking plus a timeout alone would detach an unfinished
 job and cannot satisfy #60's ownership contract, so that suggested shortcut is not
 adopted. This stage stays unmergeable, with no real native availability claim.
+
+
+Fixed staged source c95ac88d4dcd7bbaaccedecd1799784f10e4ffec: three focused
+controls PASS (eight descriptor/probe cases inside one actual step control), fmt,
+all-target workspace Clippy -Dwarnings, debug/release builds PASS with Rust1.91.1.
+Seven compiled consumer mutants are killed: admission/static/probed capability,
+identity, preflight-after-reservation, missing composition guard and missing typed
+probe-error classification. Each runs from its own clean committed isolated tree;
+no compiler/setup failure earns kill credit. Exact source AND complete tree restored,
+three controls PASS, patches/commit/tree/source/test/log hashes and observed failing
+assertions retained. These replace no prior failed test/native/cleanup evidence and
+cannot qualify genuine private admission or native availability. Source2 independent
+review is pending. Full legacy positive fixture/CI/native/co-integration gates stay
+OPEN; whole #43 remains unready for merge.

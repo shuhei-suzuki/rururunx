@@ -1,0 +1,27 @@
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -943,11 +943,6 @@
+                 reason: "revision/source/rules changed; stale evidence invalidated".into(),
+             });
+         }
+-        let selected = if phase.actor() == Actor::EvidencePort {
+-            PhaseAdapterSelection::EvidencePort
+-        } else {
+-            PhaseAdapterSelection::Native(self.preflight_native_adapter(&snapshot.task, phase)?)
+-        };
+         clear_hold(&mut snapshot);
+         let context = self
+             .prepare_pack(
+@@ -997,6 +992,12 @@
+             }
+         }
+         self.reserve(&mut snapshot, &context, phase)?;
++        let selected = if phase.actor() == Actor::EvidencePort {
++            PhaseAdapterSelection::EvidencePort
++        } else {
++            PhaseAdapterSelection::Native(self.preflight_native_adapter(&snapshot.task, phase)?)
++        };
++
+         let selected = match selected {
+             PhaseAdapterSelection::EvidencePort => {
+                 return self.evaluate(snapshot, index, None).await;

@@ -1,0 +1,26 @@
+{
+  "source_commit": "c95ac88d4dcd7bbaaccedecd1799784f10e4ffec",
+  "toolchain": "Rust/cargo1.91.1",
+  "fmt_check": "pass, unchanged source",
+  "logs": {
+    "control": {
+      "sha256": "20cf1f7aa2b5d3f5fb5801be48e4c0ff131be7ddb05d87835313f50ba4e032c9",
+      "passed": true
+    },
+    "clippy": {
+      "sha256": "873c6f93c127f80b1d0ad7a09fe7e12fe2ce9fdd52148f6f46f9446165f33496",
+      "passed": true
+    },
+    "debug-build": {
+      "sha256": "c92508a29848820f033cd2ea015c85dde0953c88b07cc967ce34b7c08f610549",
+      "passed": true
+    },
+    "release-build": {
+      "sha256": "7a442ed9e70a12fcfccb9961b2fbb2a45d9cdb6273b708acb159cf78d8cf4793",
+      "passed": true
+    }
+  },
+  "source_sha256": "a0597abd2e9f154dd20fe635cc7e82a58bff63cdbf21e34dde11c2972a4a35c7",
+  "tests_sha256": "c03ed25fb67350262f5ed704f293d40d8bacf664687f2074f3b08b2b15ffb1d3",
+  "scope": "focused negative preflight component, not full suite/CI/native readiness"
+}

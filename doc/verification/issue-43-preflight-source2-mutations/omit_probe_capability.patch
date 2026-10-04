@@ -1,0 +1,11 @@
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -1122,7 +1122,7 @@
+             return Err(NativePreflightRefusal::IdentityMismatch.into());
+         }
+         for required in [needed, Capability::PreparedInputAdmission] {
+-            if !info.capabilities.contains(&required) {
++            if false {
+                 return Err(NativePreflightRefusal::MissingCapability(required).into());
+             }
+         }

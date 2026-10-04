@@ -1,0 +1,135 @@
+{
+  "baseline": "c95ac88d4dcd7bbaaccedecd1799784f10e4ffec",
+  "baseline_tree": "f3bf39945aedb55e1a662576020a5ff9729209ab",
+  "scope": "negative preflight component only, no native/private admission readiness",
+  "source_sha256": "a0597abd2e9f154dd20fe635cc7e82a58bff63cdbf21e34dde11c2972a4a35c7",
+  "test_sha256": "c03ed25fb67350262f5ed704f293d40d8bacf664687f2074f3b08b2b15ffb1d3",
+  "mutations": [
+    {
+      "mutation": "omit_prepared_admission",
+      "head": "773f1941fccea37a5efc0502667d291dd09b58e3",
+      "tree": "b29c166009741bf8a069640ec853f2b461c59eac",
+      "compiled": true,
+      "failed_consumer": "native_preflight_refuses_before_context_reservation_or_session_writes",
+      "exit": 101,
+      "source_sha256": "903765dadc1992216196afeb7a4e9fd496b4bcaf318c2a9003341c4b061e1624",
+      "patch_sha256": "aba5430f894e5a97f7fabca13dd054e9b74c269e5e6b5769526e73ae3094057f",
+      "log_sha256": "49d92b634f593f0939e5c118b6ba5eb97d19bf701f21ad9a7a0c8a74d1eac024",
+      "observed_assertions": [
+        "thread 'workflow::tests::native_preflight_requires_selected_reviewer_and_implementation_admission' (230548249) panicked at crates/rrx/src/workflow/tests.rs:712:5:",
+        "assertion `left == right` failed",
+        "thread 'workflow::tests::native_preflight_refuses_before_context_reservation_or_session_writes' (230548247) panicked at crates/rrx/src/workflow/tests.rs:554:9:",
+        "assertion `left == right` failed: managed native binding and private admission are not composed",
+        "thread 'workflow::tests::native_preflight_rejects_contradictory_probe_without_durable_mutation' (230548248) panicked at crates/rrx/src/workflow/tests.rs:650:9:",
+        "assertion `left == right` failed: case 4: managed native binding and private admission are not composed"
+      ]
+    },
+    {
+      "mutation": "preflight_after_reservation",
+      "head": "d5ef904d1d26c30ec8bb403fa36eafd3058afdd9",
+      "tree": "3b3af915243be7a06bd7ca6ec335f006ff617a13",
+      "compiled": true,
+      "failed_consumer": "native_preflight_refuses_before_context_reservation_or_session_writes",
+      "exit": 101,
+      "source_sha256": "5ae005fa7f7a15d18673421026a1d1cc2ed48a690e14e3eb915422a1f26c93cf",
+      "patch_sha256": "be97e0eb21313ec3c066d5dd7a45dc361ebc17285204d969ecee7dd2afdbbab5",
+      "log_sha256": "6efae9eb9e9f58ebc4de4cf57b53dff768b6a8ab771354beedd3330791a3e286",
+      "observed_assertions": [
+        "thread 'workflow::tests::native_preflight_rejects_contradictory_probe_without_durable_mutation' (230548727) panicked at crates/rrx/src/workflow/tests.rs:661:9:",
+        "assertion `left == right` failed: case 0 must not reserve or launch",
+        "thread 'workflow::tests::native_preflight_refuses_before_context_reservation_or_session_writes' (230548726) panicked at crates/rrx/src/workflow/tests.rs:561:9:",
+        "assertion `left == right` failed: refusal must leave all durable facts unchanged"
+      ]
+    },
+    {
+      "mutation": "omit_probe_identity",
+      "head": "11003b461e6c105ed4ec8231e0d8eddc9ac77da3",
+      "tree": "12ed56d7cb0cfedf0e840f5142dbd10b0e3fa462",
+      "compiled": true,
+      "failed_consumer": "native_preflight_rejects_contradictory_probe_without_durable_mutation",
+      "exit": 101,
+      "source_sha256": "7106031be1890cd820de4a51f91986e9085cfbb8bfb07b835c49dd142fe19a4b",
+      "patch_sha256": "6ef367e03400af872c701c231df564c97473282b4a4b1acfc2f71bfe0a420dc5",
+      "log_sha256": "2f442ed29cca1525f0298d016fdd86debe909e4bd8d764c3a5805914579b7e47",
+      "observed_assertions": [
+        "thread 'workflow::tests::native_preflight_rejects_contradictory_probe_without_durable_mutation' (230549201) panicked at crates/rrx/src/workflow/tests.rs:650:9:",
+        "assertion `left == right` failed: case 0: managed native binding and private admission are not composed"
+      ]
+    },
+    {
+      "mutation": "omit_static_capability",
+      "head": "bc3d674fa38234f1e3f6e743e7854927749bdbca",
+      "tree": "6b86f448aaac89c2c42bc19c1b4013e101b521f0",
+      "compiled": true,
+      "failed_consumer": "native_preflight_refuses_before_context_reservation_or_session_writes",
+      "exit": 101,
+      "source_sha256": "8de0c0f616cc54ca9b9783487ca03761ac584e512971ced1039dfb293f3e16d4",
+      "patch_sha256": "1010525055cfbe014fa58cf84ef018aa726ec3c3f60ac15eb7cbf3b671ea04be",
+      "log_sha256": "ae8947e38392ba8dd231b6a822d4561ec714c290e3e6ff55a15e0d74bf3944c3",
+      "observed_assertions": [
+        "thread 'workflow::tests::native_preflight_refuses_before_context_reservation_or_session_writes' (230549706) panicked at crates/rrx/src/workflow/tests.rs:568:9:",
+        "assertion `left == right` failed: unsupported implementation must refuse before probing helpers",
+        "thread 'workflow::tests::native_preflight_rejects_contradictory_probe_without_durable_mutation' (230549707) panicked at crates/rrx/src/workflow/tests.rs:650:9:",
+        "assertion `left == right` failed: case 3: managed native binding and private admission are not composed"
+      ]
+    },
+    {
+      "mutation": "omit_probe_capability",
+      "head": "e9c4ea36da08ee2f24fb30d64a48870ff6224157",
+      "tree": "d47d577aea5b62df1dd20590b30142a2544e6e06",
+      "compiled": true,
+      "failed_consumer": "native_preflight_rejects_contradictory_probe_without_durable_mutation",
+      "exit": 101,
+      "source_sha256": "5c8bcfb24b150250e1dadfd5155812dcad569a0e682570cff8b9220a20933a24",
+      "patch_sha256": "a1ebfda3830fe9c11893527c245093845d8d17b7a9995da2a49ba528a79540ff",
+      "log_sha256": "2ad9da6bfe7d7f5f95f18ab985aba886bf6b955f96eab367c552b302cfb216f7",
+      "observed_assertions": [
+        "thread 'workflow::tests::native_preflight_rejects_contradictory_probe_without_durable_mutation' (230550155) panicked at crates/rrx/src/workflow/tests.rs:650:9:",
+        "assertion `left == right` failed: case 2: managed native binding and private admission are not composed"
+      ]
+    },
+    {
+      "mutation": "omit_composition_guard",
+      "head": "c4870cb04e2921e667db1345b7bf4b0430d5762a",
+      "tree": "2b59ec8c85fbb0c41df920479669238e8db07eb9",
+      "compiled": true,
+      "failed_consumer": "native_preflight_rejects_contradictory_probe_without_durable_mutation",
+      "exit": 101,
+      "source_sha256": "6456990d38a1a272eb136564991d47f8cb54e7259dcfb66d297ca9dee6432348",
+      "patch_sha256": "9e7e85a599cde3e5658e26f49cdc7dd8ed159760ad611517359817304be33d4b",
+      "log_sha256": "a61fda430bfac67a8efe4e4a9d3b69e33a42aa60d22d8f33c9b1d066443566ec",
+      "observed_assertions": [
+        "thread 'workflow::tests::native_preflight_rejects_contradictory_probe_without_durable_mutation' (230550645) panicked at crates/rrx/src/workflow/tests.rs:649:14:",
+        "called `Result::unwrap_err()` on an `Ok` value: Started { phase: Implement, session: Some(SessionId(8544ed8c-416c-4194-be62-7f52f142372e)) }"
+      ]
+    },
+    {
+      "mutation": "omit_probe_failure_classification",
+      "head": "7112e8ed2a632d367a151c293a7f170fdde5cd68",
+      "tree": "4a4e8c90aa34d52ee43044e6cbfd4f811ce6ee70",
+      "compiled": true,
+      "failed_consumer": "native_preflight_rejects_contradictory_probe_without_durable_mutation",
+      "exit": 101,
+      "source_sha256": "9bdd7461465177182ba808f9751b60118a10174e4383493d705d3d00dbb82ec3",
+      "patch_sha256": "57c095da38f0577bfa7696b6f11c37c1bd68fd7846a5de4377a39b232b5a2085",
+      "log_sha256": "8a1fe6b1360c7682759bd2fb45a3b72b48a855417012ed3966fe11290a381c95",
+      "observed_assertions": [
+        "thread 'workflow::tests::native_preflight_rejects_contradictory_probe_without_durable_mutation' (230551125) panicked at crates/rrx/src/workflow/tests.rs:650:9:",
+        "assertion `left == right` failed: case 7: UnsupportedCapability: controlled probe failure"
+      ]
+    }
+  ],
+  "control": {
+    "exit": 0,
+    "tests": 3,
+    "log_sha256": "533ae4091584275f0990c9607e5b7d6785196356613d09be5dc6d59ba518004b"
+  },
+  "restored": {
+    "head": "bb968de629c3f5732ba6e8ff1de14f4353ec0ede",
+    "tree": "f3bf39945aedb55e1a662576020a5ff9729209ab",
+    "exit": 0,
+    "tests": 3,
+    "source_sha256": "a0597abd2e9f154dd20fe635cc7e82a58bff63cdbf21e34dde11c2972a4a35c7",
+    "log_sha256": "79498929196775c51584719b6f6d759884fce9e43c1b6c2acbefa3b08fdceaa0"
+  }
+}
