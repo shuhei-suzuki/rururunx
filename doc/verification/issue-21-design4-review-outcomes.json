@@ -1,0 +1,33 @@
+{
+  "head": "8a4016a8782ae5061293d7f34f9dbfe53c1d5695",
+  "stage": "design-only",
+  "reviews": [
+    {
+      "section": "design4a",
+      "native_session": "2a6c09af-9d2b-49b3-a999-43c9fa16fc8e",
+      "review": {
+        "verdict": "approve",
+        "findings": [],
+        "assessment": "Design4 resolves R21-D3-01.\n- Every PriceSchedule threshold and rate now declares its billing evaluation unit and counter basis.\n- A tier applies only where the CounterContract scope proves that exact unit, or where a complete disjoint partition proves each included call's tier.\n- Aggregate tokens crossing a per-request threshold can never put all calls at that tier, and average-call, worst-tier and requested-model substitutes are excluded.\n- A uniform tier needs contract or partition evidence that every billing unit occupies it, including helper models and category overlap. Without that evidence, computed cost is unavailable even when turn tokens are qualified.\n- The two-call control and its compiled mutants target the real cost and report consumers.\n\nThis closes the lane-asymmetric mis-tiering path, and stays compatible with the Req8 rules for where-available cost, a pinned schedule and no default price. A below-threshold aggregate that provably bounds every included call of the same basis is valid uniform-tier evidence; the design permits that conservatively and does not require it.\n\nBoth adopted Low items are sound:\n- Mutable producer outcomes are now read at pinned row versions or immutable versioned projections, with refusal rather than mixed states across pages, and a mutant covers it.\n- Provider cache warmth between lanes and between repetitions is reported alongside apparatus exposure, using observed cache-read counters and the pinned counterbalanced order. Distinct sessions or Projects are not treated as proof of a cold cache.\n\nThe delta introduces no regression in the earlier Design1-3 corrections or in Req8 coverage. Approval covers the design only. Implementation of the private telemetry/Store/epoch changes, the native, context, ingress and recovery producers (#5/6/7, #9/10, #14, #18/19/20, #23/24, #58, #60), the native benchmark and the final #16 evidence all remain pending. The historical red cap-test CI evidence is recorded honestly and is not repaired by later green runs.",
+        "unresolved_blockers": []
+      },
+      "cleanup_verified": true,
+      "public_prompt_sha256": "665d0cdc852ac87081a443e6241f9dfc57fe966b17f6a0bf0ec861e00dd42c47"
+    },
+    {
+      "section": "design4b",
+      "native_session": "9bb0a908-1ece-4fc0-881d-ef923090903e",
+      "review": {
+        "verdict": "approve",
+        "findings": [],
+        "assessment": "The Design4 delta closes the verified pricing-unit gap and is coherent with Req8 and with the Design1–Design3 corrections it keeps. Every PriceSchedule threshold and rate now declares its billing evaluation unit and counter basis, such as each native model request rather than a turn or invocation. A tier applies only when the CounterContract scope proves that exact unit, or a complete disjoint partition proves the eligible tier of every included call. A multi-call aggregate that crosses a per-request threshold cannot be priced at that tier, and average-call, worst-tier and requested-model substitutes are refused. A uniform tier needs evidence that all billing units occupy it, including helper models and category overlap; otherwise computed cost is unavailable even when turn tokens are qualified. This fits the existing rules that computed cost is a separate, nullable, where-available estimate, that both lanes pin one schedule, and that asymmetric coverage is not comparable, so a lane whose tier eligibility cannot be proven cannot yield a fabricated cost comparison. Real cost/report controls and compiled mutants, covering request tiers applied to an unpartitioned multi-call aggregate and comparison of that fabricated cost, are required. The adopted Low items are also sound: pinning producer row versions for mutable outcomes alongside append high-water marks, refusing unavailable history instead of mixing later status changes across pages (with a mutant), and reporting lane-to-lane and repetition provider cache warmth, actual cache-read observations and pinned counterbalanced order, without treating distinct runtime sessions or Projects as proof of cold caches. No source, Store or native benchmark implementation is claimed. Shared private, native, context and recovery producers remain required, and the CI history, including the older cap-test reds and the separately merged #55, is recorded honestly. No new causal Critical, High or Medium defect found. Optional precision, non-blocking: (a) the inference that an aggregate below a per-request threshold puts every call below it is valid only when the contract proves the aggregate is a disjoint sum over billing units on the same counting basis as the schedule's threshold, for example whether cache reads and writes count toward the threshold. State that explicitly so implementations neither over-refuse nor infer wrongly. (b) Pinned producer outcome versions require the #19/#58/#9/#10 producers to keep readable versioned outcome history; until they do, queries spanning such rows will honestly return StaleCursor or refuse. Record that as a producer dependency rather than a #21 workaround.",
+        "unresolved_blockers": []
+      },
+      "cleanup_verified": true,
+      "public_prompt_sha256": "f51fac0197ed0a52a9af3479a2cc72fccdd199a71d384e73a8669de38ee3d97a"
+    }
+  ],
+  "ci_run": 37205121902,
+  "ci_conclusion": "success",
+  "source_acceptance": false
+}

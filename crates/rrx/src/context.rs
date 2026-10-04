@@ -1437,22 +1437,26 @@ mod tests {
         .await
         .unwrap();
         assert!(control.starts_with("git version"));
+        let plan = crate::adapter::ProcessInspectionPlan::unknown(
+            crate::adapter::UnknownObservation::Diagnostics,
+        );
         let result = git_value_owned(
             &executable,
             temp.path(),
             &["--version"],
             deadline(),
             latch.clone(),
-            Some(crate::adapter::ProcessInspectionPlan::unknown(
-                crate::adapter::UnknownObservation::Diagnostics,
-            )),
+            Some(plan.clone()),
         )
         .await;
         let cause = format!("{:#}", result.unwrap_err());
         assert!(
-            cause.contains("SessionLost") && cause.contains("diagnostics"),
+            cause.contains("SessionLost") && cause.contains("inspection_facts{"),
             "{cause}"
         );
+        // Shared test assertion independently captures the original IO kind before
+        // real inspector/resolver/Git transport; it never trusts site to select a branch.
+        plan.assert_diagnostics_transport(&cause);
         assert!(latch.load(Ordering::SeqCst));
         let later = git_value_owned(
             &executable,
@@ -1468,6 +1472,10 @@ mod tests {
             later
                 .to_string()
                 .contains("further context Git launches blocked")
+        );
+        assert!(
+            !format!("{later:#}").contains("inspection_facts{"),
+            "derived refusal fabricated a fresh sample"
         );
     }
     use super::*;

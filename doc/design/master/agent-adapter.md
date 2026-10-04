@@ -308,6 +308,32 @@ Blocked Project native ownership metadata. Preflight/cancelled Lost may lack
 native PID evidence; generic reconnection is unsupported and explicit recovery
 remains necessary.
 
+### Inspector failure diagnostics: source gates pending
+
+[Issue60 diagnostic requirements](../../requirements/issue-60-inspection-requirements.md)
+have two narrowed approvals; [component design](../issue-60-inspection-design.md) has
+two independent Design2 approvals. The diagnostic-only implementation now attaches
+finite value-free site/stream/EOF/status/cleanup facts at common inspector error exits,
+preserving selected argv/env,250ms observation, Unknown and original authority.
+Source2 twice approved scoped source with no C/H/M; final gates remain pending.
+Local release555 FAILED (inspector deadline, stdout EOF pending) remains open;
+cause and regression status unknown; not repaired.
+Wrapped inspector syscall errors now render static site text plus facts, preserve kind
+and have raw_os_error()=None. Inner Complete/Stream/validate and valid-live resolver
+PERM retain raw values. Fact assertions target actual Context, Generic terminal/
+launch-failure audit, and Grok completed-turn cleanup diagnostic/runtime failure.
+Grok earlier primary errors still mask cleanup text. Generic preflight bounded-Git,
+Grok pre-spawn/binding ownership/index Git and reconciliation_error host-Git remain
+source-forwarding-only, unasserted routes without a stage seam. The unknown-dispatch
+wrapper's cleanup-selected form has the existing native-child seam but no dedicated
+fixture/fact assertion. Incidental release555 pre-spawn failure facts
+are uncontrolled observation, not fixture assertion. No universal sink/counter
+coverage: positive WouldBlock/status pending/interrupted counts, pending stderr and
+Interrupted drain-site wiring have residual unit gaps; helper ISR test is prepared
+result credit only.
+Reader/driver retention and every existing Drop/reap gap remain separate/open. The
+Grok receipt below stays unclassified; facts cannot grant cleanup or alter clean.
+
 ### Grok terminal supervision receipts
 
 The existing scoped `grok.turn_observed` event carries `cleanup_receipt` after
@@ -324,8 +350,9 @@ reservation release or transport completion.
 is `not_found`, `permission_denied`, `interrupted`, `invalid_input`, `invalid_data`,
 `timed_out`, `would_block`, `unexpected_eof`, `broken_pipe`, `out_of_memory`,
 `write_zero`, or `other`. No error body/debug rendering is copied. Group-cleanup
-failure cause is unclassified because the shared helper erases its structured cause;
-message parsing cannot recover authority.
+failure cause stays unclassified as policy until a separately reviewed typed consumer
+exists. The shared helper erases its structured cause; bounded inspector fact text may
+remain in diagnostics, but message parsing cannot recover or grant authority.
 
 `stderr_drain_state` is `not_started`, `joined_returned`, `joined_panic`,
 `joined_cancelled`, or `budget_elapsed_abort_requested`. `stderr_read_error` is

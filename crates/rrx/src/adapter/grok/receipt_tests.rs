@@ -470,3 +470,60 @@ async fn state_assertion_child() {
 async fn positive_parent_rejects_zero_matched_child_after_owned_cleanup() {
     sanitized("adapter::grok::receipt_tests::nonexistent_child", false).await;
 }
+
+#[tokio::test]
+async fn completed_turn_unknown_cleanup_transports_inspector_facts_without_changing_receipt() {
+    sanitized(
+        "adapter::grok::receipt_tests::completed_unknown_cleanup_diagnostics_child",
+        false,
+    )
+    .await;
+}
+#[tokio::test]
+#[ignore = "only its env-cleared owning parent enters this synthetic case"]
+async fn completed_unknown_cleanup_diagnostics_child() {
+    let fixture = synthetic_fixture("good");
+    let mut adapter = fixture.adapter();
+    let plan = ProcessInspectionPlan::unknown(UnknownObservation::Diagnostics);
+    adapter.process_inspection = Some(plan.clone());
+    let session = fixture.start(&adapter).await.unwrap();
+    let status = terminal(&adapter, &session, &fixture).await;
+    let observation = fixture.observation(&status);
+    receipt_support::assert_receipt(&observation.receipt);
+    let projection = fixture.receipt_message(&status);
+    let receipt = observation.receipt.as_ref().unwrap();
+    assert_eq!(receipt["dispatched"], true, "{projection}");
+    assert_eq!(receipt["native_outcome"], true, "{projection}");
+    assert_eq!(receipt["cleanup_ok"], false, "{projection}");
+    assert_eq!(
+        receipt["cleanup_state"], "group_cleanup_failed_unclassified",
+        "{projection}"
+    );
+    assert_eq!(receipt["ownership_uncertain"], true, "{projection}");
+    assert_eq!(status.session.state, SessionState::Lost, "{projection}");
+    assert!(!adapter.transport_succeeded(&status), "{projection}");
+    assert!(
+        crate::git::executor_reserved(observation.saved.as_ref().unwrap()),
+        "{projection}"
+    );
+    let turn = observation
+        .events
+        .iter()
+        .find(|event| event["kind"] == "grok.turn_observed")
+        .unwrap();
+    assert_eq!(turn["data"]["cleanup_verified"], false, "{projection}");
+    assert_eq!(turn["data"]["completed"], false, "{projection}");
+    assert_eq!(
+        turn["data"]["reconciliation_attempted"], false,
+        "{projection}"
+    );
+    assert!(
+        turn["data"]["reconciliation_error"].is_null(),
+        "{projection}"
+    );
+    // Result succeeded, so existing priority selects the cleanup failure. The older
+    // predispatch/unowned-read cases correctly keep their earlier primary errors.
+    plan.assert_diagnostics_transport(status.failure.as_ref().unwrap());
+    plan.assert_diagnostics_transport(turn["data"]["diagnostic"].as_str().unwrap());
+    child_completed("adapter::grok::receipt_tests::completed_unknown_cleanup_diagnostics_child");
+}

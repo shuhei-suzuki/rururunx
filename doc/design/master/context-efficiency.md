@@ -230,6 +230,19 @@ When exposed by native agents/providers, record:
 
 Metrics should be attributable by Task, phase, and agent.
 
+Implemented legacy storage boundary: Store::put_usage rejects any of its six typed
+integer fields above i64::MAX before Usage/audit writes; valid values and missing
+values are preserved without clamping or zero substitution. Arbitrary cache_metadata
+integers remain unguarded/unqualified. This check does not qualify raw observations
+or provide phase/round provenance, aggregation, native counters or benchmark results;
+those remain open under #21's approved requirements/design and actual producer gates.
+The legacy read component validates the requested Scope shape and requires decoded
+Project/Goal/Task/Session identities to equal their selected SQLite row columns before
+returning history; any mismatch refuses the whole read without repairing state.
+This is an isolation/integrity check, not bounded raw-metadata retirement or a
+qualified measurement/query capability. Details: [legacy scope component](../issue-21-legacy-scope.md).
+
+
 ## 13. Invalidation and freshness
 
 Context artifacts must carry enough metadata to detect staleness.

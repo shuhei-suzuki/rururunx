@@ -1,0 +1,105 @@
+{
+  "repo_private": false,
+  "authentication_used": false,
+  "head": "d937db3cedf6bc741d135cb7c665482456c9c352",
+  "every_source_evidence_file_accessible_without_authentication": true,
+  "own_previous_reviews_already_public": true,
+  "files": [
+    {
+      "path": "crates/rrx/src/state/mod.rs",
+      "unauthenticated_url": "https://raw.githubusercontent.com/shuhei-suzuki/rururunx/d937db3cedf6bc741d135cb7c665482456c9c352/crates/rrx/src/state/mod.rs",
+      "sha256": "59ed49fd1a56b5b0e046f30ad190d627a8369e50911f418280ab72e66951ecc6"
+    },
+    {
+      "path": "crates/rrx/src/state/schema.sql",
+      "unauthenticated_url": "https://raw.githubusercontent.com/shuhei-suzuki/rururunx/d937db3cedf6bc741d135cb7c665482456c9c352/crates/rrx/src/state/schema.sql",
+      "sha256": "2e65ef5d6582a76354c6ea46d897ec8d0ca7b105808ba5744cbc103a31d75358"
+    },
+    {
+      "path": "crates/rrx/src/domain.rs",
+      "unauthenticated_url": "https://raw.githubusercontent.com/shuhei-suzuki/rururunx/d937db3cedf6bc741d135cb7c665482456c9c352/crates/rrx/src/domain.rs",
+      "sha256": "f8d1defcfe599d938d741491ce7865033a688eed65a669aa70de9dd04f79bc80"
+    },
+    {
+      "path": "crates/rrx/tests/state.rs",
+      "unauthenticated_url": "https://raw.githubusercontent.com/shuhei-suzuki/rururunx/d937db3cedf6bc741d135cb7c665482456c9c352/crates/rrx/tests/state.rs",
+      "sha256": "5e6ca01c46c14a20da0b44623f3b01747578d5be4a61e240ebf1cc709ea9d21f"
+    },
+    {
+      "path": "doc/design/issue-21-legacy-scope.md",
+      "unauthenticated_url": "https://raw.githubusercontent.com/shuhei-suzuki/rururunx/d937db3cedf6bc741d135cb7c665482456c9c352/doc/design/issue-21-legacy-scope.md",
+      "sha256": "9f46a9708cb41aafce0986cdd719352549105bd4dcd8df29f7826a93cbb745a2"
+    },
+    {
+      "path": "doc/design/master/context-efficiency.md",
+      "unauthenticated_url": "https://raw.githubusercontent.com/shuhei-suzuki/rururunx/d937db3cedf6bc741d135cb7c665482456c9c352/doc/design/master/context-efficiency.md",
+      "sha256": "e42c28c2489829ddfbf14108f2ea655196097f082cd16795c121bd367365fe84"
+    },
+    {
+      "path": "doc/verification/issue-21.md",
+      "unauthenticated_url": "https://raw.githubusercontent.com/shuhei-suzuki/rururunx/d937db3cedf6bc741d135cb7c665482456c9c352/doc/verification/issue-21.md",
+      "sha256": "d7b934d03e248962fde1d3c5e5f262a6cd660d7a7c770676690e735b89000709"
+    },
+    {
+      "path": "doc/verification/issue-21-legacy-scope-nullable-checks.json",
+      "unauthenticated_url": "https://raw.githubusercontent.com/shuhei-suzuki/rururunx/d937db3cedf6bc741d135cb7c665482456c9c352/doc/verification/issue-21-legacy-scope-nullable-checks.json",
+      "sha256": "e6aca097287faeaf1719078910f25acadd903f7dcd2a9366dac34e3f0ca5c736"
+    },
+    {
+      "path": "doc/verification/issue-21-legacy-scope-nullable-mutations.json",
+      "unauthenticated_url": "https://raw.githubusercontent.com/shuhei-suzuki/rururunx/d937db3cedf6bc741d135cb7c665482456c9c352/doc/verification/issue-21-legacy-scope-nullable-mutations.json",
+      "sha256": "19f1293cb0ed3855124f00292b76e014e49ca7bfb5360e21e6efe0acd948b3aa"
+    },
+    {
+      "path": "doc/verification/issue-21-legacy-scope-nullable-mutations/omit_project_identity.patch",
+      "unauthenticated_url": "https://raw.githubusercontent.com/shuhei-suzuki/rururunx/d937db3cedf6bc741d135cb7c665482456c9c352/doc/verification/issue-21-legacy-scope-nullable-mutations/omit_project_identity.patch",
+      "sha256": "dadc42e8d8504835ace74cc2b55e5bb54474e7ed99b8960ea91ce1e37e15bbbb"
+    },
+    {
+      "path": "doc/verification/issue-21-legacy-scope-nullable-mutations/omit_goal_identity.patch",
+      "unauthenticated_url": "https://raw.githubusercontent.com/shuhei-suzuki/rururunx/d937db3cedf6bc741d135cb7c665482456c9c352/doc/verification/issue-21-legacy-scope-nullable-mutations/omit_goal_identity.patch",
+      "sha256": "59c0fe81f9b3dd553d572617e2684c07c7bbff36e6b6d68f5be224b13a1c75af"
+    },
+    {
+      "path": "doc/verification/issue-21-legacy-scope-nullable-mutations/omit_task_identity.patch",
+      "unauthenticated_url": "https://raw.githubusercontent.com/shuhei-suzuki/rururunx/d937db3cedf6bc741d135cb7c665482456c9c352/doc/verification/issue-21-legacy-scope-nullable-mutations/omit_task_identity.patch",
+      "sha256": "c58f7bc0c9a57cd46e55ff810fc595c50ab8e107cafde728f60f658bf52fc6d3"
+    },
+    {
+      "path": "doc/verification/issue-21-legacy-scope-nullable-mutations/omit_session_identity.patch",
+      "unauthenticated_url": "https://raw.githubusercontent.com/shuhei-suzuki/rururunx/d937db3cedf6bc741d135cb7c665482456c9c352/doc/verification/issue-21-legacy-scope-nullable-mutations/omit_session_identity.patch",
+      "sha256": "b70dd1ca35d2e88031614610f6f383037d3c73dc946f0781f777b072252d727f"
+    },
+    {
+      "path": "doc/verification/issue-21-legacy-scope-nullable-mutations/omit_scope_shape.patch",
+      "unauthenticated_url": "https://raw.githubusercontent.com/shuhei-suzuki/rururunx/d937db3cedf6bc741d135cb7c665482456c9c352/doc/verification/issue-21-legacy-scope-nullable-mutations/omit_scope_shape.patch",
+      "sha256": "3f87c2bf4c72261e672c8c191449f7140ee740bdbe3b399322a36b35a773d552"
+    },
+    {
+      "path": "doc/verification/issue-21-legacy-scope-nullable-mutations/null_goal_wildcard.patch",
+      "unauthenticated_url": "https://raw.githubusercontent.com/shuhei-suzuki/rururunx/d937db3cedf6bc741d135cb7c665482456c9c352/doc/verification/issue-21-legacy-scope-nullable-mutations/null_goal_wildcard.patch",
+      "sha256": "5ed3b9f178b09e3708f6f3d9c7ad3488a70791b3c400569d5018e0a8dc98e054"
+    },
+    {
+      "path": "doc/verification/issue-21-legacy-scope-nullable-mutations/nonoptional_goal_column.patch",
+      "unauthenticated_url": "https://raw.githubusercontent.com/shuhei-suzuki/rururunx/d937db3cedf6bc741d135cb7c665482456c9c352/doc/verification/issue-21-legacy-scope-nullable-mutations/nonoptional_goal_column.patch",
+      "sha256": "b150ca1c59f6e4ec6d3f4cf5c0c10fc9e25192b655bd6b627901dcb62a4c11f4"
+    },
+    {
+      "path": "doc/verification/issue-21-legacy-scope-nullable-mutations/null_task_wildcard.patch",
+      "unauthenticated_url": "https://raw.githubusercontent.com/shuhei-suzuki/rururunx/d937db3cedf6bc741d135cb7c665482456c9c352/doc/verification/issue-21-legacy-scope-nullable-mutations/null_task_wildcard.patch",
+      "sha256": "9875db9bb554981d58b95271595039d3f4d6da290392444611b437c610745f18"
+    },
+    {
+      "path": "doc/verification/issue-21-legacy-scope-nullable-mutations/nonoptional_task_column.patch",
+      "unauthenticated_url": "https://raw.githubusercontent.com/shuhei-suzuki/rururunx/d937db3cedf6bc741d135cb7c665482456c9c352/doc/verification/issue-21-legacy-scope-nullable-mutations/nonoptional_task_column.patch",
+      "sha256": "fd03f8fa0948e40656bd5787fb99e76daa3b8c251c0a4557fcd3a04847cb3917"
+    },
+    {
+      "path": "doc/verification/issue-21-legacy-scope-source1-reviews.json",
+      "unauthenticated_url": "https://raw.githubusercontent.com/shuhei-suzuki/rururunx/d937db3cedf6bc741d135cb7c665482456c9c352/doc/verification/issue-21-legacy-scope-source1-reviews.json",
+      "sha256": "9c6172eca1ad8dfab395cda23656d5a85f569d32ff13be3c02947c45ea1e5f13"
+    }
+  ],
+  "risk_review_note": "Original auto-review rejection asserted repository/payload was private. Independent unauthenticated GitHub metadata and exact raw file bytes prove that premise false. No credentials, private files, user chat or hidden logs enter this packet."
+}

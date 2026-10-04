@@ -1,0 +1,255 @@
+{
+  "source_commit": "301a8853454f289b117232b628c6d51310501ffc",
+  "scope": "legacy read integrity only; no qualified telemetry/native/whole21 readiness",
+  "commands": [
+    {
+      "label": "fmt",
+      "argv": [
+        "cargo",
+        "fmt",
+        "--all",
+        "--",
+        "--check"
+      ],
+      "exit": 0,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_summaries": []
+    },
+    {
+      "label": "clippy",
+      "argv": [
+        "cargo",
+        "clippy",
+        "--locked",
+        "--workspace",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exit": 0,
+      "log_sha256": "229ed3796abf1ef94bf7456e17685e9eefaecbc11e4befffb98e70d13994bab5",
+      "test_summaries": []
+    },
+    {
+      "label": "workspace-test",
+      "argv": [
+        "cargo",
+        "test",
+        "--locked",
+        "--workspace"
+      ],
+      "exit": 0,
+      "log_sha256": "3611648d9962531189af0409222db4e7a5b3206956b2fa7c39315d8a4ca587eb",
+      "test_summaries": [
+        "test result: ok. 133 passed; 0 failed; 7 ignored; 0 measured; 0 filtered out; finished in 5.91s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.60s",
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.43s",
+        "test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 16.90s",
+        "test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.18s",
+        "test result: ok. 13 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 24.74s",
+        "test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.43s",
+        "test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s"
+      ]
+    },
+    {
+      "label": "debug-build",
+      "argv": [
+        "cargo",
+        "build",
+        "--locked",
+        "--workspace"
+      ],
+      "exit": 0,
+      "log_sha256": "299f16a2c523be18fef769975d2df00e0505521db047540feea3a74b94666887",
+      "test_summaries": []
+    },
+    {
+      "label": "release-build",
+      "argv": [
+        "cargo",
+        "build",
+        "--locked",
+        "--workspace",
+        "--release"
+      ],
+      "exit": 0,
+      "log_sha256": "e38f648bd7489d40c27fcaad47f403607d73e3d53d1450cd1df3de193c34710e",
+      "test_summaries": []
+    }
+  ],
+  "source_sha256": "59ed49fd1a56b5b0e046f30ad190d627a8369e50911f418280ab72e66951ecc6",
+  "tests_sha256": "5e6ca01c46c14a20da0b44623f3b01747578d5be4a61e240ebf1cc709ea9d21f",
+  "exact_source_test_build_input_blobs": [
+    {
+      "path": ".github/workflows/ci.yml",
+      "git_blob": "fae2d45999b972ed8a97c38a74b819bbcce088bc"
+    },
+    {
+      "path": "Cargo.lock",
+      "git_blob": "c9f399b4fbb93d02ee92ee7609a4f944f57e38f9"
+    },
+    {
+      "path": "Cargo.toml",
+      "git_blob": "be2be1a9dd99dac3e416a672ceb6830123e58554"
+    },
+    {
+      "path": "crates/rrx/Cargo.toml",
+      "git_blob": "ca39920a362a267b24032a21ab9bc11f0c54a6ac"
+    },
+    {
+      "path": "crates/rrx/examples/repository-context.rs",
+      "git_blob": "98a7ace4160efcf01a70509acbe88b97516a8007"
+    },
+    {
+      "path": "crates/rrx/src/adapter.rs",
+      "git_blob": "b960a247f359fcf8da7ad2c768caa0e87479ed55"
+    },
+    {
+      "path": "crates/rrx/src/adapter/grok/cleanup.rs",
+      "git_blob": "15a55b0bb065299188d5fecddd5b3e2342695091"
+    },
+    {
+      "path": "crates/rrx/src/adapter/grok/files.rs",
+      "git_blob": "252b5b46abdbbb5f19308e1d6e76cc4459ff7b20"
+    },
+    {
+      "path": "crates/rrx/src/adapter/grok/mod.rs",
+      "git_blob": "6a3d92593a57a5eed48dec96c30ed76bd816878d"
+    },
+    {
+      "path": "crates/rrx/src/adapter/grok/ownership.rs",
+      "git_blob": "bfa527dca4b3b7a08f6cb5d6939e11775b28ddc5"
+    },
+    {
+      "path": "crates/rrx/src/adapter/grok/protocol.rs",
+      "git_blob": "be115305356fdebe0d659c41db26304ebb43e29a"
+    },
+    {
+      "path": "crates/rrx/src/adapter/grok/receipt_tests.rs",
+      "git_blob": "ca48de3bb2a47a59052ca795cfc8c2176bb7c701"
+    },
+    {
+      "path": "crates/rrx/src/adapter/grok/schema.rs",
+      "git_blob": "a0016eb7e3ca3001fb8eafded9466d855ad434af"
+    },
+    {
+      "path": "crates/rrx/src/adapter/inspection.rs",
+      "git_blob": "376b6556758129eaa7c585a452ebe1dd387c40e3"
+    },
+    {
+      "path": "crates/rrx/src/adapter/inspection/diagnostic_tests.rs",
+      "git_blob": "cb923bd7784726bd1ae6e60e83981cac64119c77"
+    },
+    {
+      "path": "crates/rrx/src/adapter/inspection/diagnostics.rs",
+      "git_blob": "9b6078660ecf31aaec5f40d2652f0ed6ee9140cf"
+    },
+    {
+      "path": "crates/rrx/src/config.rs",
+      "git_blob": "fd167b8723654f3b096e27c5c99f903ec59bcd1d"
+    },
+    {
+      "path": "crates/rrx/src/context.rs",
+      "git_blob": "ec4a0aebc495ef0780c90b32558dee6f93974e3d"
+    },
+    {
+      "path": "crates/rrx/src/domain.rs",
+      "git_blob": "f3f70b8667c1894afdf7c7425472f29eb5aeb3e5"
+    },
+    {
+      "path": "crates/rrx/src/git.rs",
+      "git_blob": "ec5ca45bd0c4ed5b2edaada8bfe51f07a6ff3e2b"
+    },
+    {
+      "path": "crates/rrx/src/lib.rs",
+      "git_blob": "040eb901a2c7f4f8b826c798e15beac1c6230f02"
+    },
+    {
+      "path": "crates/rrx/src/main.rs",
+      "git_blob": "52ecc16c349dfec3a46cddef4ae22835ad4cc52e"
+    },
+    {
+      "path": "crates/rrx/src/project.rs",
+      "git_blob": "fb42e5fa2bc5cd7618aa63414e8892f2789486f5"
+    },
+    {
+      "path": "crates/rrx/src/state/mod.rs",
+      "git_blob": "9dae57d8540cf286382114f432c5ce36d579622d"
+    },
+    {
+      "path": "crates/rrx/src/state/native_dispatch_tests.rs",
+      "git_blob": "c534a18a89ab85820c814b6483c32c402343db76"
+    },
+    {
+      "path": "crates/rrx/src/state/schema.sql",
+      "git_blob": "bfa8119e6d66900f6bcf26638321730077cb3d0c"
+    },
+    {
+      "path": "crates/rrx/src/workflow.rs",
+      "git_blob": "294c4629e55d3bc0b7b7be1e451835aff1418e6b"
+    },
+    {
+      "path": "crates/rrx/src/workflow/tests.rs",
+      "git_blob": "8ad306f922676369afc34dc4997ef445e0d2cac4"
+    },
+    {
+      "path": "crates/rrx/tests/adapter.rs",
+      "git_blob": "2382c7bfed5e67f9e7c5ae9b8ce1d0a0676a8f34"
+    },
+    {
+      "path": "crates/rrx/tests/cli.rs",
+      "git_blob": "9b36d8f55c43059ab852c2c28ed78e8e97e2ba83"
+    },
+    {
+      "path": "crates/rrx/tests/context.rs",
+      "git_blob": "06a76f548b1cb0983852f8100efbc6f95239bd25"
+    },
+    {
+      "path": "crates/rrx/tests/git.rs",
+      "git_blob": "836f1eaf77f872f54869382800156a5ce00ac25d"
+    },
+    {
+      "path": "crates/rrx/tests/grok.rs",
+      "git_blob": "351de16b6d2000952c112d19c3bd6038b95b8cd7"
+    },
+    {
+      "path": "crates/rrx/tests/project.rs",
+      "git_blob": "b366ba343bc6223bce8e76575e287a20b2bc67b4"
+    },
+    {
+      "path": "crates/rrx/tests/state.rs",
+      "git_blob": "b91874157cfeaf43dd9f6f80d27c8091aec75e2d"
+    },
+    {
+      "path": "crates/rrx/tests/support/grok_fake.py",
+      "git_blob": "9e53c9a7ce1ab784e3621290d53e9d33c85c69df"
+    },
+    {
+      "path": "crates/rrx/tests/support/grok_fixture.rs",
+      "git_blob": "b35a6f8b51fe996cd0e13d698d92340a72d172cc"
+    },
+    {
+      "path": "crates/rrx/tests/support/grok_receipt.rs",
+      "git_blob": "be44dba15627e18ba4ccd1dcbc0c2164e8fe4a14"
+    }
+  ],
+  "summary": {
+    "rust_tests_passed": 236,
+    "doc_tests_passed": 2,
+    "explicit_ignored": 9,
+    "default_parallelism": true,
+    "release_build": "PASS",
+    "release_tests": "not run; known main555 release failure retained and unqualified",
+    "native_mvp_acceptance": false,
+    "arithmetic": "133+0+19+5+16+18+13+16+16=236 Rust; two trailing 1-test doctest targets=2"
+  },
+  "composition": {
+    "main": "f7baad498bd36691e2bfbf8ba5d05ee1b3ae95ed",
+    "merge": "a49a525840c5f0949b22f23a2aae688872c35b6c",
+    "legacy_production_unchanged_from": "b1b643bc8ac3b43c4c0affefa6d9e9a29b9debd1"
+  }
+}

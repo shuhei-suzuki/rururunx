@@ -596,3 +596,387 @@ fn context_versions_reject_sql_update_delete_and_replace() {
         "a"
     );
 }
+
+#[test]
+fn usage_integer_overflow_cannot_publish_rows_or_audit_or_change_owners() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut store = Store::memory().unwrap();
+    let p = project(&mut store, "usage-range", temp.path());
+    let g = goal(&mut store, &p);
+    let mut t = task(&mut store, &p, &g);
+    t.worktree = Some(p.worktree_root.join("task-worktree"));
+    t.branch = Some("feature/usage-range".into());
+    store.put_task(&mut t).unwrap();
+    let s = session(&t, t.worktree.clone().unwrap());
+    store.put_session(&s, 0).unwrap();
+    let maximum = u64::try_from(i64::MAX).unwrap();
+    let valid = Usage {
+        scope: t.scope(),
+        session_id: s.id,
+        agent: s.agent.clone(),
+        phase: "legacy-unqualified".into(),
+        review_round: None,
+        input_tokens: Some(maximum),
+        cached_input_tokens: Some(0),
+        output_tokens: Some(maximum),
+        estimated_cost: None,
+        context_pack_version: Some(maximum),
+        context_pack_size: Some(maximum),
+        repo_map_size: Some(maximum),
+        cache_metadata: json!({"legacy":true}),
+        missing_reason: Some("legacy observations have no qualified counter contract".into()),
+    };
+    // The exact representable boundary and a real zero are persisted unchanged.
+    store.put_usage(&valid).unwrap();
+    let saved = store.usage(&t.scope()).unwrap();
+    assert_eq!(saved.len(), 1);
+    assert_eq!(saved[0].input_tokens, Some(maximum));
+    assert_eq!(saved[0].cached_input_tokens, Some(0));
+    assert_eq!(saved[0].output_tokens, Some(maximum));
+    assert_eq!(saved[0].context_pack_version, Some(maximum));
+    assert_eq!(saved[0].context_pack_size, Some(maximum));
+    assert_eq!(saved[0].repo_map_size, Some(maximum));
+    let before = serde_json::to_value((
+        store.project(p.id).unwrap(),
+        store.goal(g.id).unwrap(),
+        store.task(t.id).unwrap(),
+        store.session(s.id).unwrap(),
+        saved,
+        store.events(&t.scope(), 0, 100).unwrap(),
+    ))
+    .unwrap();
+    // Independent fields must each refuse at the actual write consumer, even
+    // when the other fields and genuine existing Session are otherwise valid.
+    for field in [
+        "input_tokens",
+        "cached_input_tokens",
+        "output_tokens",
+        "context_pack_version",
+        "context_pack_size",
+        "repo_map_size",
+    ] {
+        for overflow in [maximum + 1, u64::MAX] {
+            let mut body = serde_json::to_value(&valid).unwrap();
+            body[field] = json!(overflow);
+            let invalid: Usage = serde_json::from_value(body).unwrap();
+            let error = store
+                .put_usage(&invalid)
+                .expect_err(&format!("overflow stored for {field}"));
+            assert!(
+                error.to_string().contains("supported storage range"),
+                "{field}: {error}"
+            );
+            let after = serde_json::to_value((
+                store.project(p.id).unwrap(),
+                store.goal(g.id).unwrap(),
+                store.task(t.id).unwrap(),
+                store.session(s.id).unwrap(),
+                store.usage(&t.scope()).unwrap(),
+                store.events(&t.scope(), 0, 100).unwrap(),
+            ))
+            .unwrap();
+            assert_eq!(after, before, "overflow published data for {field}");
+        }
+    }
+}
+
+// Snapshot all persisted usage and audit rows, including Project/foreign events.
+// Refusal must neither repair history nor append a diagnostic event.
+fn legacy_usage_rows_snapshot(raw: &rusqlite::Connection) -> serde_json::Value {
+    let mut usage = raw.prepare("SELECT sequence,project_id,goal_id,task_id,session_id,body FROM usage ORDER BY sequence").unwrap();
+    let usage = usage
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, Option<String>>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, String>(5)?,
+            ))
+        })
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    let mut audit = raw
+        .prepare(
+            "SELECT sequence,project_id,goal_id,task_id,kind,at,data FROM audit ORDER BY sequence",
+        )
+        .unwrap();
+    let audit = audit
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, Option<String>>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, i64>(5)?,
+                row.get::<_, String>(6)?,
+            ))
+        })
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    json!({"usage":usage, "audit":audit})
+}
+
+#[test]
+fn legacy_usage_query_checks_row_body_identity_and_invalid_scope_without_writes() {
+    let temp = tempfile::tempdir().unwrap();
+    let db = temp.path().join("usage-scope.db");
+    let mut store = Store::open(&db).unwrap();
+    let p = project(&mut store, "usage-scope", &temp.path().join("one"));
+    let g = goal(&mut store, &p);
+    let mut t = task(&mut store, &p, &g);
+    t.worktree = Some(p.worktree_root.join("task-worktree"));
+    t.branch = Some("feature/usage-scope".into());
+    store.put_task(&mut t).unwrap();
+    let s = session(&t, t.worktree.clone().unwrap());
+    store.put_session(&s, 0).unwrap();
+    let valid = Usage {
+        scope: t.scope(),
+        session_id: s.id,
+        agent: s.agent.clone(),
+        phase: "legacy-unqualified".into(),
+        review_round: None,
+        input_tokens: Some(7),
+        cached_input_tokens: None,
+        output_tokens: Some(3),
+        estimated_cost: None,
+        context_pack_version: None,
+        context_pack_size: None,
+        repo_map_size: None,
+        cache_metadata: json!({"legacy":true}),
+        missing_reason: Some("legacy history is unqualified".into()),
+    };
+    store.put_usage(&valid).unwrap();
+    let foreign_p = project(&mut store, "foreign-usage-scope", &temp.path().join("two"));
+    let foreign_g = goal(&mut store, &foreign_p);
+    let foreign_t = task(&mut store, &foreign_p, &foreign_g);
+    // Both legitimate Tasks have Issue42, but distinct Project identities.
+    assert_eq!(foreign_t.issue, t.issue);
+    let views = [
+        t.scope(),
+        Scope {
+            project_id: p.id,
+            goal_id: Some(g.id),
+            task_id: None,
+        },
+        Scope {
+            project_id: p.id,
+            goal_id: None,
+            task_id: None,
+        },
+    ];
+    for scope in &views {
+        assert_eq!(
+            serde_json::to_value(store.usage(scope).unwrap()).unwrap(),
+            json!([valid])
+        );
+    }
+    let raw = rusqlite::Connection::open(&db).unwrap();
+    let snapshot = || {
+        json!({"persisted_rows":legacy_usage_rows_snapshot(&raw),"project":store.project(p.id).unwrap(),
+            "goal":store.goal(g.id).unwrap(),"task":store.task(t.id).unwrap(),
+            "session":store.session(s.id).unwrap(),
+            "audit":store.events(&t.scope(),0,1000).unwrap()})
+    };
+    for field in [
+        "project",
+        "goal",
+        "task",
+        "session",
+        "missing_goal",
+        "missing_task",
+    ] {
+        let mut corrupt = valid.clone();
+        match field {
+            "project" => corrupt.scope.project_id = foreign_p.id,
+            "goal" => corrupt.scope.goal_id = Some(foreign_g.id),
+            "task" => corrupt.scope.task_id = Some(foreign_t.id),
+            "session" => corrupt.session_id = SessionId::new(),
+            "missing_goal" => corrupt.scope.goal_id = None,
+            "missing_task" => corrupt.scope.task_id = None,
+            _ => unreachable!(),
+        }
+        assert_eq!(
+            raw.execute(
+                "UPDATE usage SET body=?1",
+                [serde_json::to_string(&corrupt).unwrap()]
+            )
+            .unwrap(),
+            1
+        );
+        let before = snapshot();
+        for scope in &views {
+            let error = store.usage(scope).unwrap_err();
+            assert_eq!(
+                error.to_string(),
+                "usage row/body identity mismatch",
+                "field {field}"
+            );
+            assert_eq!(
+                snapshot(),
+                before,
+                "query must not change corrupt history or owners: {field}"
+            );
+        }
+    }
+    raw.execute(
+        "UPDATE usage SET body=?1",
+        [serde_json::to_string(&valid).unwrap()],
+    )
+    .unwrap();
+    let before = snapshot();
+    let invalid = Scope {
+        project_id: p.id,
+        goal_id: None,
+        task_id: Some(t.id),
+    };
+    assert_eq!(
+        store.usage(&invalid).unwrap_err().to_string(),
+        "task scope requires goal identity"
+    );
+    assert_eq!(snapshot(), before);
+    for scope in &views {
+        assert_eq!(
+            serde_json::to_value(store.usage(scope).unwrap()).unwrap(),
+            json!([valid])
+        );
+    }
+}
+
+#[test]
+fn legacy_usage_query_preserves_null_scopes_and_refuses_null_column_wildcards() {
+    let temp = tempfile::tempdir().unwrap();
+    let db = temp.path().join("usage-null-scope.db");
+    let mut store = Store::open(&db).unwrap();
+    let p = project(&mut store, "usage-null-scope", temp.path());
+    let g = goal(&mut store, &p);
+    let t = task(&mut store, &p, &g);
+    let project_scope = Scope {
+        project_id: p.id,
+        goal_id: None,
+        task_id: None,
+    };
+    let goal_scope = Scope {
+        project_id: p.id,
+        goal_id: Some(g.id),
+        task_id: None,
+    };
+    let mut sessions = Vec::new();
+    let mut valid = Vec::new();
+    // Public Store writers accept non-executor Project/Goal observations. These
+    // remain unqualified legacy history, with no native/private ownership claim.
+    for scope in [project_scope.clone(), goal_scope.clone(), t.scope()] {
+        let mut s = session(&t, p.worktree_root.join("legacy-review"));
+        s.scope = scope.clone();
+        s.role = SessionRole::Reviewer;
+        store.put_session(&s, 0).unwrap();
+        let usage = Usage {
+            scope,
+            session_id: s.id,
+            agent: s.agent.clone(),
+            phase: "legacy-unqualified".into(),
+            review_round: None,
+            input_tokens: Some(7),
+            cached_input_tokens: None,
+            output_tokens: Some(3),
+            estimated_cost: None,
+            context_pack_version: None,
+            context_pack_size: None,
+            repo_map_size: None,
+            cache_metadata: json!({"legacy":true}),
+            missing_reason: Some("legacy history is unqualified".into()),
+        };
+        store.put_usage(&usage).unwrap();
+        sessions.push(s);
+        valid.push(usage);
+    }
+    let raw = rusqlite::Connection::open(&db).unwrap();
+    let snapshot = || {
+        json!({
+            "persisted_rows":legacy_usage_rows_snapshot(&raw),
+            "project":store.project(p.id).unwrap(), "goal":store.goal(g.id).unwrap(),
+            "task":store.task(t.id).unwrap(),
+            "sessions":sessions.iter().map(|s|store.session(s.id).unwrap()).collect::<Vec<_>>()
+        })
+    };
+    let before = snapshot();
+    // Return every selected row unchanged and in insertion order, including NULL
+    // row identities. Reading NULL as String must fail this positive consumer.
+    assert_eq!(
+        serde_json::to_value(store.usage(&project_scope).unwrap()).unwrap(),
+        json!(valid)
+    );
+    assert_eq!(
+        serde_json::to_value(store.usage(&goal_scope).unwrap()).unwrap(),
+        json!([valid[1], valid[2]])
+    );
+    assert_eq!(
+        serde_json::to_value(store.usage(&t.scope()).unwrap()).unwrap(),
+        json!([valid[2]])
+    );
+    assert_eq!(snapshot(), before);
+    for (index, field) in [(0, "goal"), (1, "task")] {
+        let mut corrupt = valid[index].clone();
+        if field == "goal" {
+            corrupt.scope.goal_id = Some(g.id);
+        } else {
+            corrupt.scope.task_id = Some(t.id);
+        }
+        assert_eq!(
+            raw.execute(
+                "UPDATE usage SET body=?1 WHERE session_id=?2",
+                rusqlite::params![
+                    serde_json::to_string(&corrupt).unwrap(),
+                    corrupt.session_id.to_string()
+                ]
+            )
+            .unwrap(),
+            1
+        );
+        let before = snapshot();
+        for view in [&project_scope, &goal_scope, &t.scope()] {
+            // Filtering uses row columns. The other rows remain readable when
+            // the corrupt NULL-scoped row is outside the requested view.
+            let selects_corrupt = view.goal_id.is_none() || (index == 1 && view.task_id.is_none());
+            if selects_corrupt {
+                assert_eq!(
+                    store.usage(view).unwrap_err().to_string(),
+                    "usage row/body identity mismatch",
+                    "NULL {field}"
+                );
+            } else if view.task_id.is_some() {
+                assert_eq!(
+                    serde_json::to_value(store.usage(view).unwrap()).unwrap(),
+                    json!([valid[2]])
+                );
+            } else {
+                assert_eq!(
+                    serde_json::to_value(store.usage(view).unwrap()).unwrap(),
+                    json!([valid[1], valid[2]])
+                );
+            }
+            assert_eq!(
+                snapshot(),
+                before,
+                "refusal or filtered read wrote history: NULL {field}"
+            );
+        }
+        raw.execute(
+            "UPDATE usage SET body=?1 WHERE session_id=?2",
+            rusqlite::params![
+                serde_json::to_string(&valid[index]).unwrap(),
+                valid[index].session_id.to_string()
+            ],
+        )
+        .unwrap();
+    }
+    assert_eq!(snapshot(), before);
+    assert_eq!(
+        serde_json::to_value(store.usage(&project_scope).unwrap()).unwrap(),
+        json!(valid)
+    );
+}

@@ -1,0 +1,12 @@
+diff --git a/crates/rrx/src/state/mod.rs b/crates/rrx/src/state/mod.rs
+index 0a023c0..1bf9c47 100644
+--- a/crates/rrx/src/state/mod.rs
++++ b/crates/rrx/src/state/mod.rs
+@@ -834,7 +834,6 @@ impl Store {
+             [
+                 usage.input_tokens,
+                 usage.cached_input_tokens,
+-                usage.output_tokens,
+                 usage.context_pack_version,
+                 usage.context_pack_size,
+                 usage.repo_map_size,
