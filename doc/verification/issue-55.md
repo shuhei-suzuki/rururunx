@@ -82,3 +82,37 @@ not measured wall time; cost/usage facts cannot substitute for acceptance.
 
 Exact docs-only14050d3 CI37195099963 bothOS passed; no Issue55 implementation or native
 provenance acceptance. #41 final3d844 red is preserved, with no diagnosis-only closure.
+
+
+## Design2 verified corrections; proposed Design3
+
+Both native fix re-reviewers completed request_changes atb6c39ca, owned cleanup verified
+(92947/74381 closed), same independent UUIDs as Design1. Prior five Medium corrections
+were accepted. Two additional Mediums verified: helper tests cannot observe a wrong
+stage argument chosen in supervise; a safe projection only on PID assertion remains
+hidden by earlier Failed/Exited/Stopped-vs-Lost state failures. Proposed Design3 adds
+cfg(test)-only append-only stage-creation trace tagged existing input_version with actual
+supervise sequence oracle, preserving all flags/authority. True non-native Git uncertainty
+remains uncovered; creation-label mutants earn metadata credit only. All existing
+strict state/transport/failure/PID assertions keep order/predicates and gain the same
+projection Result or fixed unavailable reason before separate receipt shape assertions.
+An actual sanitized Failed-expected/forcedUnknown control must expose projection on
+its first state failure; its parent can earn message-oracle credit, never call that
+child a passed cleanup attempt.
+
+Verified Low refinements: current durable dispatch evidence requires this input_version
+and in-window session.saved; prior resume recovery is insufficient. Independent
+prerequisites use saved/marker/fs event ONLY, with unseen read succeeded=true/effect=false;
+existing turn completed=false belongs to receipt assertion. New local file-backed fixture
+has committed own.txt/precreated unseen.txt/canonical repository/actual HEAD; shared
+Generic memory fixture stays untouched. Independently sanitized cases avoid one clean
+panic suppressing forced observation. One additive env-gated fake line attests actual
+sys.executable/version_info with revised digest, all other script behavior unchanged.
+Master adapter terminal supervision schema/limits ships with implementation, without
+issue-specific framing. Four-stage OR matches total for supervise receipts; standalone
+Checkpoint projection remains authoritative all-flags OR without that equality claim.
+
+No source change/test execution or actual dispatched forcedUnknown acceptance yet.
+Design3 independent fix re-reviews precede code. Raw resumed native usage/cost/duration
+attribution to Design2 is unverified; duration_api_ms is not measured wall time. Original
+#41 final red and all independent native/recovery/environment/binding gates remain open.

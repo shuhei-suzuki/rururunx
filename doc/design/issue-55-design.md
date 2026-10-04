@@ -1,8 +1,9 @@
 # Issue 55 design: Grok-local terminal cleanup receipt
 
-Risk: STRICT. Proposed Design2, no Issue55 implementation. Requirements2 approved immutable
-2ebbbfd. Two independent Design1 reviews requested changes at14050d3. This design
-corrects their verified five Medium findings and adopts their Low precision refinements.
+Risk: STRICT. Proposed Design3, no Issue55 implementation. Requirements2 approved immutable
+2ebbbfd. Two independent Design1 reviews requested changes at14050d3; Design2 fix reviews at
+b6c39ca verified those corrections and found stage-call-site coverage/assertion-message
+gaps. This design corrects both verified Mediums plus adopted Low refinements.
 Unavailable shared cleanup cause remains explicitly unavailable. No schema/native environment/process-policy
 change. Public main80452f4 code is the baseline; source reviews must include full changed
 consumer/helper/test source after actual implementation, not this proposed design.
@@ -118,14 +119,37 @@ single sample is not kernel death proof. Native flag remains correlated with cle
 reap failure. A true other-stage flag may explain unclean despite native cleanup success,
 without claiming an unavailable native IO cause.
 
-Grok-local call-site tests execute successful preflight, owned native construction,
-in-session verify and reconciliation helpers and inspect the last retained entry's
-label before later group() drops its false flag. Non-native-stage omission/mislabel
-operators earn unit/call-site credit only: the existing forced plan affects only the
-native child, not Git helpers. A native-stage omission/mislabel can earn actual receipt
-metadata credit on the dispatched forcedUnknown path; cleanup Err already forces
-Lost, so it earns no independent clean/false-death safety credit. No new Git inspection
-seam is introduced solely to overstate coverage.
+Helper-level stage tests alone earn UNIT threading/projection credit. They cannot
+observe a wrong stage argument at supervise, and their passing result must not be
+called supervise call-site credit. Add a cfg(test)-only append-only creation trace in
+ProcessOwnership::group(stage), completely separate from flags/retain/sampling. Under
+cfg(test), OwnedEntry supplies an Arc<Mutex<Vec<(input_version, OwnershipStage)>>>;
+supervise installs that trace tagged with its existing PreparedInput.version. It never
+clears earlier entries; fresh-input resume versions already distinguish attempts. A
+checkpoint's separate ownership has no trace. No production field/API/environment,
+persisted ordinal, stage cursor or ownership authority is introduced. Test trace writes
+never set/clear flags, affect retain/total or authorize death; source review compares
+release/debug non-test paths. Trace exists only inside crate tests and is not emitted
+in audit or consumer failure logs.
+
+An actual in-crate supervise consumer filters the trace to the exact attempted input
+version and asserts the ordered full phase blocks: PreSpawn+, one NativeChild,
+InSessionBinding+, Reconciliation+ for the dispatched clean pair; PreSpawn+ only for
+before-spawn stop. The known-completed fake also exercises the full sequence. Each +
+is one-or-more flag creations from the actual bounded Git calls; order is strict and
+there can be no extra Checkpoint or out-of-order labels. This kills a non-native stage
+swap at the REAL supervise argument instead of only proving a helper copied its input.
+Non-native-stage swaps then earn actual creation-call-site metadata credit; they still
+do not attest true Git uncertainty/reap failure. The forced plan affects only the native
+child. Native omission/mislabel likewise earns receipt metadata credit, never independent
+false-death safety credit because cleanup Err already forces Lost.
+
+Actual supervise receipts additionally assert total_uncertain equals OR of their four
+stage booleans. Checkpoint/future unprojected true labels inside supervise thereby fail
+the diagnostic oracle while remaining counted by the AUTHORITATIVE all-flags total.
+Standalone projection units include Checkpoint and assert the broader authoritative
+OR; they do not claim four-stage equality for a non-supervise instance. No new Git
+inspection seam is introduced to fabricate true other-stage evidence.
 
 Existing result diagnostic priority (result, cleanup, reconciliation) and subsequent
 unknown-dispatch wrapper remain byte-for-byte semantic equivalents. The independent
@@ -143,34 +167,71 @@ observation watermark BEFORE any next launch/resume. Paginate Store.events(scope
 truncation or an exceeded safety bound rather than silently accepting partial results.
 Filter exact scope/kind/Session and window (before_launch, terminal_observed]. Require
 exactly one event. No positional event ordinal; missing best-effort prior audit cannot
-shift identity. Empty prompt is absent. Prompt equality is an additional check only
-when durable prompt_id is known, since actor.prompt may exist even when dispatching
-publish failed. Resume cannot match a prior or later receipt.
+shift identity. Empty prompt is absent. Prompt equality is an additional check only for a CURRENT durable prompt: saved
+dispatch_intent.input_version equals this attempt input version and matching
+session.saved dispatch_intent evidence exists inside this same attempt window. Resume
+before session/load can retain prior recovery prompt/dispatching/intent; those are not
+current reachability or prompt-equality evidence. If current durable evidence is absent,
+skip prompt equality and retain exact Session+window lookup. actor.prompt may exist
+when dispatching publish failed. Resume cannot match a prior or later receipt.
 
-Build allowlisted projection lookup/shape as a Result, without asserting or panicking
-first. Run the existing strict pid.is_none assertion FIRST, with either the safe receipt
-and fixed own state or fixed missing/duplicate/invalid reason. Then separately assert
-receipt presence, exact key sets/vocabulary and equation. A missing/invalid receipt
-must never hide the concrete PID assertion. Never include arbitrary diagnostic/
-reconciliation text, whole Event JSON or child output in that failure projection.
-Later modes remain unobserved after a panic. Durably retain verbatim/paraphrased failed
-CI fields, head/run/job/image and finite-retention log digests.
+Immediately after terminal observation/window capture, build allowlisted projection
+lookup/shape as a Result, without asserting/panicking first. Preserve the ORDER and
+strict predicates of every existing state, transport, failure-present, PID and related
+per-attempt assertion; append the same safe projection or fixed missing/duplicate/
+invalid reason to EACH message. Include external negative, execute/structured/stop/
+parent-replacement consumers and in-crate cat/dispatched attempts. A Failed/Exited/
+Stopped-expected case with actual Lost must expose the same receipt at its EARLIER
+state assertion, not wait for the PID assertion. Keep any existing primary diagnostic
+message where it was; add no arbitrary new text. Projection Err cannot hide state/PID
+failure. Only afterward assert receipt presence/shape/vocabulary/equations. No whole
+Event JSON/child body/environment/path is added to receipt failure messages.
+
+A dedicated sanitized actual Failed-expected protocol attempt with forcedUnknown
+executes the existing strict state assertion (actual Lost) with projection and fails.
+Its owning parent verifies the bounded failure message contains allowlisted cleanup
+category/total/stages before treating this expected assertion failure as diagnostic
+control success. It must not call that child a passed cleanup/state attempt. A compiled
+projection-omission-at-state-assert operator kills that parent oracle. Keep this actual
+message-consumer credit separate from cleanup-receipt removal mutants and true cleanup
+safety. Later loop modes are unobserved after panic. Durably retain verbatim/paraphrased
+failed CI fields, head/run/job/image and finite-retention log digests.
 
 ## Fixture isolation and dispatch coverage
 
 Existing macOS sanitized parent remains env_clear: owned temp HOME, PATH=/usr/bin:/bin,
 existing private entry marker only; no ambient variable/config/auth passthrough. Resolve
 python3 only under that PATH. On macOS /usr/bin/python3 can be a CLT/xcrun shim;
-record the interpreter identity that actually ran as fixture provenance, independently
-of env_clear. Shim failure/prompt blocks the fixture; never widen ambient settings.
+Add one explicitly test-fixture-only line to the shared fake, gated by an owned
+RRX_PYTHON_OBSERVED marker path, writing only sys.executable and sys.version_info to
+that owned file. This observes the actual attempt interpreter independently of env_clear,
+not a separate probe or process inventory. Record that additive line and new script
+digest; all original protocol/shebang/argv behavior stays unchanged when absent. Shim failure/prompt blocks the fixture; never widen ambient settings.
 Fake ACP runs in owned temp executable/worktree/file-backed
 Store with synthetic data. Do not run installed Grok/model/auth. Put the dispatch-capable
 fake source in a shared test fixture file consumed by external tests and in-crate cfg(test)
-consumer, preserving script bytes/protocol/argv; report content digest/source provenance.
+consumer; the sole additive interpreter-marker line is the documented script-byte
+change. Verify all other original script bytes/protocol/argv, and report both old/new
+digests/source provenance.
 Current fixture RRX metadata is only owned synthetic test data; migrate if normally
 integrated Issue51 rejects it, without reopening a public runtime env channel. No new
 Grok production environment policy belongs here. If interpreter/dispatch cannot run in
 this isolation, leave acceptance blocked/source-only rather than widen ambient input.
+
+Build the dispatched in-crate fixture locally rather than reuse/modify the shared
+Generic preflight_fixture: owned temporary canonical source+task worktree, repository_identity,
+committed own.txt, unseen.txt precreated BEFORE launch and baseline capture, file-backed
+Store and actual 40-hex HEAD input revision. Synthetic RRX_DATABASE/RRX_MODE/
+RRX_PROMPT_OBSERVED/RRX_PYTHON_OBSERVED live only in this owned fake test; no real
+auth/settings/config lookup. Generic preflight_fixture/fixture_request and all their
+existing callers retain their memory Store/empty commit/PATH contract unchanged.
+Separately sanitize each diagnostic attempt in its own owning child selected by a
+fixed test name, using existing parent env_clear/home/PATH/entry marker and cleanup
+pattern. Cat, clean dispatched, forced dispatched and expected-state-failure diagnostic
+controls have separate results. A clean-pair panic cannot prevent observing the forced
+consumer in a different test. Default harness concurrency stays unchanged; no broad
+suite serialization or acceptance rerun. If an attempt did not run/pass its prerequisites,
+report that independently rather than credit a later receipt.
 
 The in-crate consumer uses the existing private ProcessInspectionPlan. On forcedUnknown
 it delivers real KILL to the exact owned, still-unreaped PGID, then a forced Unknown
@@ -188,15 +249,21 @@ credit); dispatch-capable unowned-read/result failure with normally verified cle
 and the same dispatched result failure with forcedUnknown cleanup. BEFORE ANY receipt
 assertion in BOTH dispatched consumers, assert independent reachability: the owned
 RRX_PROMPT_OBSERVED marker exists (actual fake received prompt); saved Session recovery
-has dispatch_state=dispatching with durable prompt_id matching the own turn event; and
-exactly one own grok.fs_observed event in the same attempt window matches Session,
-prompt and the unseen.txt fs/read_text_file before evidence.callback rejects it.
+has dispatch_state=dispatching with CURRENT durable prompt_id/input_version and
+matching session.saved evidence in the attempt window; and exactly one own
+grok.fs_observed event in that window matches Session, durable prompt, unseen.txt,
+method fs/read_text_file, succeeded=true and effect_may_have_occurred=false BEFORE
+evidence.callback rejects it. No turn_observed/cleanup_receipt lookup participates
+in these prerequisites; all asserted turn data belongs to the subsequent receipt
+oracle. This prevents a missing unseen.txt read (succeeded=false/continued native
+response) from earning result-error reachability credit.
 The private Actor.dispatched flag alone attests durable intent plus attempted send,
 not wire receipt; those independent facts must also pass in every credited mutant run.
 No receipt-derived dispatch fact can serve as its own removal-mutant reachability oracle.
 
 ForcedUnknown must reach actor.dispatched=true/native_outcome=false and existing
-unknown-outcome rewrite. Assert group_cleanup_failed_unclassified, native-stage
+unknown-outcome rewrite, existing turn completed=false and receipt native_outcome=false.
+Assert group_cleanup_failed_unclassified, native-stage
 uncertainty and clean=false, while retaining original protocol denial in the existing
 diagnostic. Assert durable executor reservation, transport refusal and exact equation.
 The clean pair may still be Lost because native outcome is unknown; clean=true only
@@ -234,7 +301,7 @@ Compile each operator, record exact patch/base/mutant/control/source restoration
 failure, then restore exact source/control and normally remove isolated worktrees.
 No diagnostic alone resolves real unclean native children or the current41red gate.
 
-Two independent immutable Design2 fix re-review approvals precede implementation. Then commit scoped
+Two independent immutable Design3 fix re-review approvals precede implementation. Then commit scoped
 code, targeted/default debug/release, fmt/all-target Clippy-Dwarnings, non-test builds,
 causal mutants, two independent full actual-source reviews and verified fix/rereview.
 Exact final Linux/macOS CI remains required. Preserve any genuine Unknown/timeout/latch/
@@ -251,12 +318,12 @@ permissions, budgets, reservations and process handling stay as in the supplied 
 
 | Target / input | Existing consumers | Impact and handling policy |
 | --- | --- | --- |
-| ProcessOwnership flags/group/uncertain (ownership.rs29-44) | ownership.rs332-361 verify_binding/verify_git observe closure; mod.rs513 checkpoint, 998/999 preflight,1011 native construction,1038 in-session binding,1101/1107 reconciliation,1274-1283 index_digest | Private compatibility signature changes: required stage everywhere, retain true Arc/label pairs, authoritative OR independent of label. Checkpoint explicit unprojected variant. Actual non-native helper labels tested at call sites; flags/process semantics unchanged by proof/tests, not an assumed no-impact claim. |
-| supervise cleanup/drain/clean/event (mod.rs1067-1180) | ProcessGroup cleanup_group (adapter.rs1430-1455), reap (adapter.rs group implementation), drain (adapter.rs1457-1492), completion/status/terminal save and Grok transport_succeeded | Diagnostic measurement added at existing branches/final clean point. Match same errors/results, preserve output_verified, priority, unknown rewrite, watch/save ordering. No added mutation/permission/terminal authority or schema because only existing event JSON grows. Shared helpers are read-only dependencies, not edited. |
-| grok.turn_observed event shape | tests/grok.rs450 external hook_failure kind-only find; negative PID test381-486; in-crate mod.rs1290-1414 cat/unknown consumers; new dispatched consumer | Diagnostic compatibility: migrate all these lookups to exact scope+Session+bounded attempt window/complete paging, preserve original PID/state asserts before projection errors. Existing runtime has no receipt consumer; prove by source search rather than infer event data is harmless. |
+| ProcessOwnership flags/group/uncertain (ownership.rs29-44) | ownership.rs332-361 verify_binding/verify_git observe closure; mod.rs513 checkpoint, 998/999 preflight,1011 native construction,1038 in-session binding,1101/1107 reconciliation,1274-1283 index_digest | Private compatibility signature changes: required stage everywhere, retain true Arc/label pairs, authoritative OR independent of label. Checkpoint explicit unprojected variant. Helper threading is unit-only; cfg(test) append-only trace checks actual supervise argument order; flags/process semantics unchanged by proof/tests, not an assumed no-impact claim. |
+| supervise cleanup/drain/clean/event (mod.rs1067-1180) | ProcessGroup cleanup_group (adapter.rs1430-1455), reap (adapter.rs group implementation), drain (adapter.rs1457-1492), completion/status/terminal save and Grok transport_succeeded; cfg(test) OwnedEntry creation trace | Diagnostic measurement added at existing branches/final clean point. Match same errors/results, preserve output_verified, priority, unknown rewrite, watch/save ordering. No added mutation/permission/terminal authority or schema because only existing event JSON grows. Shared helpers are read-only dependencies, not edited. |
+| grok.turn_observed event shape | tests/grok.rs450 external hook_failure kind-only find; negative PID test381-486; in-crate mod.rs1290-1414 cat/unknown consumers; new dispatched consumer | Diagnostic compatibility: migrate all these lookups to exact scope+Session+bounded attempt window/complete paging, preserve original predicate/order and attach bounded projection to ALL existing per-attempt state/transport/failure/PID assertion messages before separate shape assertions. Existing runtime has no receipt consumer; prove by source search rather than infer event data is harmless. |
 | grok.fs_observed / saved recovery / marker | mod.rs882 fs audit before callback;1043-1046 dispatching publish/send; tests/grok.rs215 prompt marker and248 unowned_read | Test reachability dependency, no source behavior change there. Independent marker+durable dispatch+exact fs event precede mutated receipt assertion. Actor.dispatched alone is not wire proof. |
-| Shared FAKE source move | tests/grok.rs171-264 constant and all external Fixture::new/adapter/mode consumers; new in-crate file-backed fake fixture | Test-fixture compatibility: include one shared fixture file, preserve script bytes/protocol/shebang/argv, publish digest and compare full existing consumers. No production executor factory/channel added. Existing RRX_ metadata remains synthetic until normal #51 integration; migration cannot expand caller environment grants. |
-| Constants/non-code inputs | existing250ms reap mod.rs1072 and stderr join1087; shared250ms/1MiB inspection; PATH=/usr/bin:/bin, temp HOME/private parent entry marker mod.rs1294-1305; fake RRX_DATABASE/RRX_FOREIGN/RRX_MODE/RRX_PROMPT_OBSERVED | No budget/deadline/latch/serialization change. Parent env_clear preserves same intentional minimum; fixture has owned temporary script/CWD/database/canaries only. Record actual interpreter identity. File-backed Store mandatory because fake SQLite reads dispatch_intent; in-memory preflight fixture cannot silently substitute. No ambient auth/config/env inheritance or installed model test. |
+| Shared FAKE source move | tests/grok.rs171-264 constant and all external Fixture::new/adapter/mode consumers; new in-crate file-backed fake fixture | Test-fixture compatibility: include one shared fixture file, one additive env-gated interpreter marker line; all other script bytes/protocol/shebang/argv unchanged. Publish old/new digest and compare all existing consumers. No production executor factory/channel added. Existing RRX_ metadata remains synthetic until normal #51 integration; migration cannot expand caller environment grants. |
+| Constants/non-code inputs | existing250ms reap mod.rs1072 and stderr join1087; shared250ms/1MiB inspection; PATH=/usr/bin:/bin, temp HOME/private parent entry marker mod.rs1294-1305; fake RRX_DATABASE/RRX_FOREIGN/RRX_MODE/RRX_PROMPT_OBSERVED/RRX_PYTHON_OBSERVED; shared Generic adapter.rs1719-1799 preflight_fixture/fixture_request and their generic/oldcat callers | No budget/deadline/latch/serialization change. Parent env_clear preserves same intentional minimum; fixture has owned temporary script/CWD/database/canaries only. Record actual interpreter identity. New Grok-local canonical file-backed fixture with committed own.txt/precreated unseen.txt/actual HEAD. Shared Generic memory/empty-commit/PATH builders and all their consumers are read-only dependencies, unchanged; never silently substitute them. No ambient auth/config/env inheritance or installed model test. |
 | Audit append/paging | Store.audit state/mod.rs892; events976 and AuditEvent.sequence domain.rs442 | Existing best-effort event remains best-effort. No persistence API or SQL migration; diagnostics fail missing/duplicate/truncated event, never rebuild authority from status. Capture terminal upper watermark before next attempt; null/empty-prompt limitations remain explicit. |
 | Unknown test plan / owned cleanup | adapter/inspection.rs macOS-only plan; adapter.rs ProcessGroup::Drop/cleanup_group; sanitized parent mod.rs1290-1332 | No plan/shared process change. Explicit group KILL, Drop retry group KILL and Tokio leader kill; native descendant reap unobserved. Parent group cleanup covers parent only. Linux clean receipts; no claimed forced-category Linux proof. |
-| Integration/docs | requirements55, verification55 durable failed CI, master adapter/README; #41/#14/#43/#51/#16 | Requirements2 accepted behavior unchanged; design refines diagnostic private operation lookup into a bounded window, not event ordinal. Original #41 red and actual recovery/binding/environment/native gates remain open. No diagnostics-only claim of solving retained child. |
+| Integration/docs | requirements55, verification55 durable failed CI, doc/design/master/agent-adapter.md Grok terminal supervision section and README; #41/#14/#43/#51/#16 | Implementation PR writes current key set/vocabulary/stage semantics/measurement limits in the master terminal-supervision section without issue-number framing, plus pending integration links. Requirements2 accepted behavior unchanged; design refines diagnostic private operation lookup into a bounded window, not event ordinal. Original #41 red and actual recovery/binding/environment/native gates remain open. No diagnostics-only claim of solving retained child. |
