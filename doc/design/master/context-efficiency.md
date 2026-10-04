@@ -410,3 +410,8 @@ idle/removal and Goal completion consumer uses the receipt; Lost or restart-unkn
 ownership remains held for private Issue14 recovery. This is a pre-code design gate,
 not current schema5/native acceptance. Issue41 claim-owner release and Issue43
 record-only binding compose separately without JSON credentials or fake SQL proofs.
+The revised producer contract additionally pins all managed Session writes to the
+private operation port, freezes exact receipt/body/version until phase closure and
+includes lock/executor reservation consumers. Unsupported native profiles refuse
+before marker; synthetic producers do not prove native containment. Managed Goal
+Completed needs actual Issue23 authority, while cancellation retains native leases.

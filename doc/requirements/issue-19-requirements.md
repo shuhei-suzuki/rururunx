@@ -395,6 +395,24 @@ preparation/admission/consumed pins. Known no-current-dispatch and known current
 native terminal settlement are separate outcomes. Unknown/Lost, timeout, a returned
 start error, PID absence, public terminal JSON or a dropped future never settles an
 operation. Publication conflicts retain real owned bookkeeping and the durable lease.
+Store enforces marker↔exact operation insertion and allocator/preparation/admission→
+existing unsettled exact operation in the same transaction. Missing operation for
+a marked/allocated post-epoch native phase is corruption, never legacy fallback.
+All generic writes to an open managed operation's Session reject, including exact
+restoration, terminal labels, same-body updates, diagnostics and Lost. Actual owned
+nonterminal/uncertain observations use the narrow private operation port; terminal/
+restoration publication uses only actual owned settlement with the receipt. Usage/
+audit remain separate. Every lock/executor/worktree/reservation/idle/removal consumer
+counts operation ownership independently of Session labels.
+
+After receipt, the complete Session body and Record version remain frozen until
+that exact Workflow phase closes. Closure matches both recorded version/checksum
+and private input pins; diagnostics cannot wedge or relabel the receipt. The closure
+transaction alone marks that phase closed. An unbound/unallocated post-marker
+operation with an actual matching no-Session NoCurrentDispatch receipt may close
+Failed/Interrupted or explicit retry/TerminalRecovery, never Succeeded. Without
+that receipt it remains held; ordinary polling never releases it. Drop/abandonment
+records bounded best-effort attention, never cleanup or release authority.
 
 All managed/allocated native closure, replacement, retry, escalation, invalidation,
 terminal reservation release, idle/publication/removal and managed Goal completion
@@ -406,9 +424,14 @@ certify native death. Retained native service ownership never releases operation
 Goal/removal or capacity; managed MVP Codex receipts require actual server cleanup
 and owned tool/setup settlement. A selected dead process group does not certify
 escaped descendant cleanup; unresolved actual native containment is a producer
-readiness gate, not waived by terminal labels. Actual Generic/Claude/
-Codex/Grok and controlled owned Fake producers, including failure before first Session,
-must compose with this contract before integrated readiness. Private Issue14 recovery
+readiness gate, not waived by terminal labels. Every actual Generic/Claude/
+Codex/Grok profile composes by either verified real managed producer support or
+tested unsupported rejection before reservation/marker/process, with no fallback.
+Synthetic controlled no-subprocess/Fake producers prove actual port mechanics only,
+including failure before first Session; they never prove production containment.
+Readiness reports supported/refused profiles explicitly. Real native Executor/MVP
+acceptance remains dependent on actual native6 containment and Issue16 evidence.
+Private Issue14 recovery
 remains necessary for Lost/restart-unknown operations; Issue41 invocation-owner release
 is unchanged and Issue43 binding remains a separate exact same-tx predicate.
 
@@ -420,3 +443,8 @@ definitions remain immutable under Issue23; lifecycle holds or validated additiv
 graph updates must not rewrite their objective/criteria/evaluators/constraints.
 Standalone capture status is labelled as-of metadata, and semantic Store validity
 does not promise native liveness where full raw P/G/T version CAS still fences.
+Generic managed Goal Completed publication needs actual private Issue23 accepted-
+definition/gates/evidence/receipt completion authority and is unavailable until
+that consumer exists. Cancelled/Failed lifecycle dispositions may revoke admission
+while operations remain owned, but never release their resources or certify native
+death. Actual private factual settlement does not alter the terminal Goal decision.

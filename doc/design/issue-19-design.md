@@ -394,10 +394,14 @@ operation can still own native startup/setup before a first Session. Release als
 requires the actual operation settlement receipt or the separately applicable
 pre-marker invocation-owner proof; absence never settles native setup. Explicit recovery can use applicable absence to prove no typed admission, while
 an allocated Starting/Running/Lost or uncertain owner remains held until genuine
-terminal/cleanup evidence. Current unbound post-marker failure may remain held
-until the explicit recovery port is integrated; this is an availability limit,
-not a claim that absence means unknown model dispatch. No new automatic release
-policy is introduced by the index.
+terminal/cleanup evidence. An unbound post-marker failure without its exact managed
+NoCurrentDispatch receipt remains held until actual settlement/private recovery;
+with that no-Session receipt the explicit non-success closure row below applies.
+This is an availability limit,
+not a claim that absence means unknown model dispatch. This index alone introduces
+no automatic release policy. The separate managed settlement closure row below
+allows exact no-Session NoCurrentDispatch receipt closure; without it an unbound
+post-marker operation remains held for private recovery.
 Future
 multi-reviewer rounds require their own reviewed slot authority; they cannot use
 this single-actor allocation as a blanket role bypass.
@@ -714,8 +718,9 @@ second actor rejection, fake terminal Session binding/closure, native-only conte
 uniqueness, admitted metadata substitution, allowed initial binding, explicit Some
 mismatch, historical binding after checkpoint append and exact prewire rollback.
 An allocated unbound failed native owner remains durably held until verified
-terminal/cleanup evidence. An unallocated post-marker failure follows the existing
-release policy and may need explicit recovery; no automatic poll release or forged
+terminal/cleanup evidence. An unallocated post-marker failure follows the exact
+managed no-Session receipt row below; without a receipt it remains held. Pre-marker
+release follows the existing invocation-owner policy; no automatic poll release or forged
 terminal actor is introduced here.
 
 
@@ -1045,10 +1050,13 @@ phase allocation and BoundHistorical row mutation, including the frozen prior
 terminal restore checksum. They may retain exact privately
 indexed historical observations, monotonic conservative Lost diagnostics,
 permitted terminal observations, or exact no-dispatch prewire restoration without
-changing any private pair/allocation. Initial legitimate terminal history remains
+changing any private pair/allocation, for standalone or unmanaged historical
+Sessions only. An open managed operation prohibits all generic Session writes;
+its private observation/settlement and post-receipt freeze rules below apply first.
+Initial legitimate terminal history remains
 recordable without private rows, never binding a fresh Workflow owner. Generic
 fresh typed Starting/Running is rejected rather than implicitly reserving a frame.
-A real provider's generic terminal observation does not require live head currency;
+A real provider's unmanaged historical terminal observation does not require live head currency;
 it cannot grant another PreparedInput dispatch. Test initial creation and UPDATE
 paths with independent connections, stale DTO versions and unchanged-head variants;
 assert Session/rows/allocation/audit unchanged on rejection. Mutate only the mode
@@ -1193,7 +1201,9 @@ predicate: allocation PRESENT; attempt.session_id == that owner; persisted owner
 non-uncertain Exited; exact admitted digest/input version == attempt.context_version;
 and private consumed UUID for that input. Absence of allocation/session_id is NEVER
 success, even for a dispatch-started phase with no Session written. Failed/Interrupted
-with absent allocation follows the separately permitted owner/recovery policy; the
+with absent allocation requires the exact managed no-Session NoCurrentDispatch
+receipt for post-marker closure; before marker the separate invocation-owner
+policy applies. The
 absence reader does not itself release ownership or certify native death. EvidencePort
 phases retain their distinct actual-evidence predicate. Test no-allocation/no-bound-ID
 Succeeded rejection under every WorkflowAccess and mutate only that absence branch.
@@ -1487,6 +1497,11 @@ pub(crate) fn publish_native_settlement(
     &mut self, proof: OwnedNativeSettlement,
 ) -> Result<SettlementReceiptId>;
 
+// Exact supervisor-owned nonterminal/uncertain observation, never settlement.
+pub(crate) fn observe_managed_native(
+    &mut self, operation: &OwnedNativeOperation, observation: OwnedNativeObservation,
+) -> Result<OwnedObservationVersion>;
+
 // Pure reader of this transaction; never observes processes or grants admission.
 pub(super) fn validate_phase_settlement_tx(
     tx: &Transaction<'_>, scope: &Scope, context_version: u64,
@@ -1505,11 +1520,27 @@ P/G/T/Workflow/lock-set CAS, after actual implementation-owned admission/settlem
 capability validation and before adapter startup. There is no IO under this
 transaction. The context must be post-epoch typed native authority. No operation
 exists for EvidencePort or historical/unmanaged Consultant records.
+These are Store invariants, not just promises of Engine control flow. Ordinary
+Workflow writes cannot set a post-epoch native marker without the dedicated private
+managed-dispatch transaction. A false→true dispatch_started transition inserts
+exactly one scoped operation in that transaction; operation uniqueness covers
+(Workflow Record,generation,index,phase,context_version). Marked native attempts
+must reference that exact operation on every later Store write. Preparation,
+allocation and admission require this existing unsettled operation and bind its
+Session once in the same transaction; missing/settled/foreign operation rejects.
+Allocation present with missing operation is corruption, never unmanaged fallback.
+Every marker/allocation/operation row rolls back together on Session/audit/CAS error.
 
 The private native_phase_operations row contains operation UUID, runtime-instance
 UUID, exact P/G/T, Workflow Record ID, immutable attempt fields and successful
 reservation token, context version, full authoritative payload SHA256/bytes,
-revision and canonical complete source-map digest. It references the immutable
+revision and canonical complete source-map digest. It also pins registered agent,
+implementation-owned provider family/profile-contract digest, role, exact worktree,
+launch mode and requested model/effort. They derive from the validated runtime
+selection and exact managed request, never from returned Session JSON. Explicit
+requested Some pins remain exact; the separately validated initial None→effective
+Some binding belongs to the private input pair and never changes requested pins.
+It references the immutable
 ContextVersion rather than duplicating prompt/source text. Its optional Session ID
 is bound once in the same first private preparation/allocation transaction. This
 operation exists before the first Session: an adapter error or dropped future with
@@ -1517,6 +1548,41 @@ no Session does not make a dispatch-marked operation absent. It remains an owned
 lease until the actual tracked startup invocation settles. All Task/Project idle,
 pack force/publication, removal and fresh-phase admission checks include outstanding
 operations, so a generic forged terminal label cannot release the same worktree.
+The row additionally has a monotonic operation version, its current privately
+persisted Session Record version when bound, and phase_closed=false. Native private
+observation/admission updates the remembered Session/operation versions together.
+The only later phase_closed false→true update is the successful exact receipt-checked
+Workflow closure transaction; immutable identity/frame/claim fields never change.
+Receipts settle native ownership but do not silently close an active Workflow claim.
+Both unsettled operation leases and receipt-pending open phase ownership are exposed
+distinctly in status. Fresh native entry does not interpret either as legacy history.
+
+All generic Session/Record writers, including public scoped CAS paths with ordinary
+ObservationOnly access, reject every write to a Session bound to an open managed
+operation, even an identical body that would bump its Record version. This includes
+state, diagnostics, actor fields, recovery journals, terminal observations,
+RestoredPrior and Lost updates. Separate Usage/audit remain allowed and bounded.
+The actual supervisor uses observe_managed_native for nonterminal historical Acked
+observations, pending permission/decision publication, fixed DENY reentry and
+monotonic uncertain/Lost diagnostics. This private nonserializable observation is
+bound to the exact operation/Session/remembered versions and unchanged prepared or
+admitted actor/input pins. It cannot create admission, consumption, allocation,
+terminal restoration or settlement. Those use their dedicated private ports.
+Post-consumption ALLOW still needs full-current NativeCAS/Broker before wire; private
+historical DENY preserves each provider's existing activity/write constraints and
+does not grant authority. No broad ProjectBlocked/lifecycle exemption is added.
+All five managed writers migrate every Session publication, not just first admission.
+
+Operation-aware reservation checks are mandatory independently of labels: worktree
+lock acquisition, validate_worktree_exclusion, every executor_reserved/Lost consumer,
+Git worktree create/adopt/remove/ownership validation, Task/Project idle and registry
+remove, context/checkpoint prepare/force/publication, competing native admission,
+Workflow bind/close/replace and Goal terminal/completion surfaces. Native observation
+does not remove an operation lease. A lock cannot be acquired around a managed
+Executor startup merely because someone attempted to restore an Exited body.
+Inventory source call sites exhaustively; pure session-label helpers cannot remain
+the sole authority for a scoped ownership decision. Actual FS/Git/cleanup stays
+outside SharedStore; transaction readers use the durable operation facts.
 
 The operation handle transfers into the actual owned supervisor before startup
 work. It is not Clone; any internal shared bookkeeping stays private and cannot
@@ -1528,6 +1594,11 @@ any Session/process/native connection, a supervisor may certify NoCurrentDispatc
 only from its tracked invocation's actual no-dispatch/settled-setup state. Absence
 of Session, PID or allocation is insufficient. After preparation, this class also
 requires no current private admitted/consumed input and no dispatch uncertainty.
+Dropping the handle before supervisor transfer or while still unsettled emits a
+bounded best-effort native.operation.abandoned audit/attention record, never a
+receipt or release. Lock poisoning/publication failure cannot erase the operation;
+status derives durable attention from the outstanding operation even if the Drop
+audit itself fails. A cancelled-before-transfer controlled case proves this path.
 
 KnownCurrentTerminal requires the exact privately owned current native outcome,
 known end of Task inference and completed owned resource cleanup/settlement.
@@ -1564,10 +1635,32 @@ the only binding mutation and requires the allocator's exact private same-tx pro
 Receipts and epoch rows reject UPDATE, DELETE and INSERT OR REPLACE; inserts require
 their private producer and one scoped unique identity, in addition to every
 table's v6 writer fence. One receipt is not a new native input/permission grant.
+The receipt also freezes canonical complete terminal Session-body SHA256 and the
+exact resulting persisted Record version. From receipt publication until that
+exact phase closure, ALL Session-body writes are rejected, including private
+terminal diagnostics/relabels, generic same-body updates and fresh continuation.
+Usage/audit are separate. Closure requires current Record version == receipt version,
+complete body checksum == receipt checksum and current applicable preparation/
+admission/restore pins == receipt pins. Version equality is explicit, not inferred
+from an Exited label. After successful phase_closed=true, immutable receipt/history
+remain frozen but a legitimate higher-input continuation can use a new operation.
+Historical receipts are not compared to that later current Session body.
+
+Operation/receipt source digests use SHA256 over explicit compact UTF-8 typed
+encoding with domain rrx.native-phase-source-map and encoding_version=2, exact
+sorted-key source map and explicit scope/revision. No normalization, arbitrary
+Value key ordering or floating fields enter this encoding. Operation/frame identity
+encoding is domain rrx.native-phase-operation version2 with exact typed fields;
+complete restored Session bodies use the existing canonical restore encoder.
+The golden projection/schema pair includes these domains and versions; an authority
+encoding change requires the reviewed projection and writer-schema bump together.
 
 Settlement publication performs the exact remembered operation/Session Record
 version and input/actor/preparation/admission/consumed pins CAS, then publishes the
-actual terminal observation and receipt atomically. A no-Session receipt requires
+actual terminal observation and receipt atomically. The private port is the sole
+managed terminal/RestoredPrior writer and permits those only after actual tracked
+settlement proof. Conservative Lost observation remains private and yields no receipt.
+A no-Session receipt requires
 no allocator owner and the actual tracked no-dispatch proof. A generic concurrent
 terminal write or newer/foreign attempt cannot be adopted; conflicts retain the
 operation and require attention/recovery. Publication may record actual cleanup
@@ -1588,6 +1681,22 @@ or unknown external side effect. Already closed historical receipts retain froze
 provenance when that Session UUID later has a legitimate higher-input attempt;
 new-open-attempt validation never substitutes a historical receipt for current pins.
 
+| Exact managed phase state | Allowed closure/replacement |
+| --- | --- |
+| Pre-marker, no operation | Separately reviewed Issue41 invocation-owner rule only; never receipt fiction |
+| Post-marker, no Session/allocation, matching NoCurrentDispatch receipt | Failed/Interrupted non-success closure, explicit retry replacement or TerminalRecovery; same-tx exact operation/claim/frame and no owner. Succeeded impossible |
+| Post-marker, no Session/allocation, no receipt | Held for actual supervisor settlement or private Issue14 recovery |
+| Allocated current failed preparation with NoCurrentDispatch receipt | Non-success closure with exact frozen preparation/terminal receipt body |
+| Allocated older restored terminal with NoCurrentDispatch receipt | RestoredPriorNotAdmitted failure/interruption only; exact frozen checksum and no current admitted/consumed input |
+| Allocated known current terminal receipt | Existing metadata/claim checks; Succeeded additionally bound Exited + actual successful outcome + exact current admitted/consumed pair |
+| Missing operation for marked/allocated post-epoch native context, stale/foreign receipt, Lost/uncertain owner | Corruption/hold; never generic label fallback |
+
+The no-Session receipt row explicitly updates retry and TerminalRecovery's old
+session_id.is_some() || !dispatch_started check: accept this exact non-success
+receipt alternative in the same transaction, and nothing weaker. No automatic
+ordinary-observer release is added. Original #41 pre-marker reserve-owner policy
+is not a substitute or prohibition for this post-marker managed receipt row.
+
 The same transaction predicate is mandatory for every allocated/managed native
 attempt removal, replacement or operational release under every WorkflowAccess:
 ordinary completion/failure, retry (including Waiting), escalate/invalidate,
@@ -1600,6 +1709,14 @@ pre-marker release still requires that invocation's exact successful reserve tok
 and unchanged committed Record version; this receipt does not weaken it. A
 post-marker startup failure needs actual tracked settlement, including before a
 first Session. Unknown external EvidencePort gates keep their separate reconciliation.
+Generic put_goal is explicitly inventoried: Completed is unavailable for managed
+Goals through a generic row update and needs the actual private Issue23 completion
+consumer with current accepted policy/criteria/gates, exact required receipts and
+no outstanding operations. Cancelled/Failed lifecycle dispositions can revoke
+admission while native operations still exist, but never release their claims,
+locks/capacity or certify native completion. The owned factual cleanup receipt
+may still publish without altering that terminal Goal disposition. Issue23's
+managed success extractor remains a separate actual integration gate.
 
 After restart, durable receipts remain usable as scoped immutable historical proof.
 An outstanding operation from another runtime is unknown even if its Session is
@@ -1621,7 +1738,34 @@ FakeAgent uses a controlled owned transport/task with real preparation/admission
 and settlement callbacks; neither a raw seeded receipt nor terminal JSON passes.
 Its post-preparation/pre-return barrier independently exercises Issue43 binding CAS.
 
-Acceptance and causal mutants cover all five actual callers: no-Session startup
+Readiness is explicit per provider/profile. Arbitrary Generic CLI and unproven
+tool-running native profiles do not advertise managed admission/settlement and
+reject before clear_hold/reserve/context/marker/Session/process/model input, with
+no legacy start fallback. Their tested unsupported negative path proves correct
+composition, not a positive receipt or native runtime readiness. Native6 F1's
+actual detached heartbeat surviving native terminate plus stdio-server closure is
+an unresolved concrete negative; selected group Dead does not weaken it. Synthetic
+scoped no-subprocess peers, identified by reviewed controlled fixture code and
+declared no-subprocess contract, may prove producer/Store/consumer mechanics but
+are labelled synthetic and never promoted to native production containment proof.
+
+A production positive profile must have reviewed implementation-owned operation
+cohort/cleanup authority and actual causal evidence for its stated tools/setup/native
+tasks: admission→tracked cohort→known outcome→all relevant owned task/resource
+settlement→receipt. Unknown/untracked escaped work is unsupported/held. The profile's
+cohort, concrete cleanup primitive, permission boundary and residual visibility are
+public acceptance artifacts before enabling the capability; a configuration label,
+native terminal/list/cleanup ACK or caller PID hint cannot supply it. This design
+does not invent a sandbox/OS mechanism or claim current native6 can satisfy F1.
+Final real native Executor/MVP readiness remains gated on that actual containment
+correction and Issue16 evidence. Report which exact profiles can issue success
+receipts and which refuse; Issue19's deterministic acceptance cannot close these
+separate native/MVP obligations or claim all production profiles positive.
+
+For each enabled profile, acceptance and causal mutants cover actual callers;
+unsupported profiles instead prove the pre-marker refusal and remain unready.
+Positive mechanics use real controlled owned producers, never seeded rows:
+no-Session startup
 failure, failed setup after preparation, partial/uncertain dispatch (held), current
 known terminal (receipt), prior restored terminal (non-success only), consumed
 interruption with no authoritative terminal (held), publication failure (retain
@@ -1632,6 +1776,13 @@ Each predicate mutant must reach the real consumer; SQL row seeding or an earlie
 startup rejection cannot prove a later guard. Protected terminal_input uses a
 reachable unprotected-era Interactive Consultant now protected by a ReadOnly frame
 or a narrow actual entry guard seam, with an unchanged unprotected positive control.
+Additional cases: live setup→generic exact restoration/terminal/diagnostic attempt
+rejects and cannot acquire a lock; subsequent real settlement succeeds. Post-receipt
+generic/private Session body updates reject until exact phase closure while Usage/
+audit remain recordable. Independently remove marker/operation, allocator/operation,
+operation-aware lock/executor checks, receipt Session-version/body pin and closure
+row predicates; record killed and redundant-guard survivors honestly. Allocation-
+without-operation is corruption, never a permissive unmanaged path.
 
 ### Remaining capture and scope precision
 
