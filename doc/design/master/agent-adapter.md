@@ -364,3 +364,67 @@ traverses/allocates against global processes. This contract does not explain pri
 CI timeouts or contain detached native descendants. Non-atomic fork/exit sampling and existing partial-success
 KILL with non-signalable survivors remain residual limits; Linux cleanup semantics
 remain unchanged.
+
+### Proposed retained Consultant lifetime (#58; not implemented)
+
+Approved [Requirements8](../../requirements/issue-58-requirements.md) and proposed
+[Design6 partial proposal](../issue-58-design.md) require a genuine nonserializable lifetime owner
+before Task-free native startup/probe/input. Session-less setup, a live server after
+a turn and Lost/unknown cleanup retain physical root/common-Git exclusion. Public
+Session/Record/PID labels and generic CAS cannot mint/admit/release that authority.
+Every generic nonterminal Task-free Session write and owner-bound factual overwrite
+is fenced in the composed #19/#23/#43/#58/#60 writer epoch, including old connections.
+
+All executing runtime Git/helper/Evidence/verification and observation/capture paths
+require their actual #60 effect owner BEFORE execution, checked symmetrically against
+Consultant/Task/runtime holds. A later native owner does not cover pre-acquisition
+Git; native cleanup cannot settle helper jobs. Pure bounded held-state reporting is
+available without executing Git or claiming transformed-content freshness. Actual
+continuous profile compatibility is required for intersecting parallel work and for
+already-admitted peers when one becomes Lost; labels/separate worktrees are insufficient.
+
+Current input/ALLOW/input-capable attach/continuation revalidate lifecycle and full
+original source/Session/lock frame; owner factual observation, historic DENY and
+cleanup have separate nongrant predicates. Reuse #6's single-actor Project-only TUI
+submission gateway. Required Task attach and native4+Task parallelism remain open.
+Only actual #14 exclusive owned/fenced full-union successor recovery can adopt
+uncertain former-instance and prior-recovery effects without release. A pending
+replacement cannot revoke a still-live prior owner's settlement CAS. Real native
+F1/#60/recovery producers, bounded actual consumer controls/mutants and independent
+source gates remain required; no row-based cleanup or permanent Unsupported waiver.
+
+Design2 further requires retained pure/executing capture read protection through
+atomic current-admission handoff, cross-kind canonical/dev-inode domain overlaps,
+scoped complete physical indexing/capacity/recovery reserves and schema-level writer
+epoch fences for old open connections. Private pre-effect replacement claims cannot
+block their exact live prior's adoption/helper reservations/settlement; they never
+have effect authority. Actual put_goal terminal and registry/rules/Grok capture callers
+are explicit migration consumers. These remain proposed, unimplemented contracts.
+
+Design3 distinguishes physical overlap from actual exclusion edges so compatible
+shared native stores do not become global quota/adoption holds. Actual compatibility
+must survive Lost AND successor effects. Replacement Pending has no effect authority;
+genuine #14 non-label former-instance exclusion/authorized shutdown grants OWNED
+physical fencing, whose complete proof is required before adoption. Instance lease/
+epoch exclusion alone is not resource cleanup. Required actual producers remain open.
+
+
+Issue58 partial Design6 covers every generic native-effect trait entry with private
+Task-scoped types, including native-goal/attach/checkpoint/approval. Task-free effect
+entry requires the actual consuming/borrowed retained-owner handle; public execution
+references are observations only. Unified first-level and replacement recovery needs
+genuine ended/revoked exact-supervisor or dead-instance authorization before owned
+fencing, full physical proof before adoption. Actual producers/legacy drain/profile
+conformance remain absent; these proposals do not qualify native or optional25 support.
+
+The proposed live-registry recovery witness covers complete nested async/blocking
+workers and pins a co-resident claimant which genuinely receives retained handles.
+Top-level join is insufficient. Every pure/pre-transfer capability registers its exact
+no-effect abandonment state for bounded outside-lock CAS; effect holders stay owned.
+Design5's legacy unrecorded-helper residual is withdrawn: unchanged Requirements8
+requires genuine older-owner drain before upgrade. No actual sealed schema3 legacy
+producer is available; write/read epoch fences cannot revoke cached roots/old WAL
+snapshots or prove helper death. Design6 remains partial with this verified design
+blocker, not approved source/profile readiness. Structured workload closes registration
+before all joins and witness; unopened workers cancel/join, and static raw spawn/fs
+inventory is mandatory. Actual structured-workload/legacy/native gates remain required.

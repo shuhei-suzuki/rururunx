@@ -1,0 +1,37 @@
+{
+  "head": "9756d58a102cff681cc90e6ccb5ef3f6a25eda03",
+  "stage": "proposal design only; legacy blockers open",
+  "reviews": [
+    {
+      "reviewer": "a",
+      "native_session": "d3342e9f-2ec4-4596-b513-9455af27a733",
+      "verdict": "request_changes",
+      "finding_severities": [
+        "Medium",
+        "Low"
+      ],
+      "unresolved_blockers": [
+        "D5-M1 recorded legacy Lost/uncertain owners have no section 6 authorization or physical-proof producer, so any database containing one stays permanently unready, contradicting the mandatory supported legacy upgrade"
+      ],
+      "cleanup_verified": true,
+      "private_result_sha256": "723cac05652233869a8fa08ce7fc5b160ba0f7f332c996fe0aa9378615e215bb"
+    },
+    {
+      "reviewer": "b",
+      "native_session": "0a32e2ea-cf7b-4164-9133-4a4787b4da8e",
+      "verdict": "request_changes",
+      "finding_severities": [
+        "Medium",
+        "Low",
+        "Low",
+        "Low"
+      ],
+      "unresolved_blockers": [
+        "D5-M1: the legacy upgrade fences only old writes; pre-opened schema3 readers can drive post-upgrade unreserved executing Git on held roots, and the design-level residual narrows Requirements8 without a requirements revision"
+      ],
+      "cleanup_verified": true,
+      "private_result_sha256": "6314860aa945a4b51cf745a65f731b52923fc655a2516f8290c32c3c374c48fb"
+    }
+  ],
+  "meter_scope": "raw_native_resumed_session_attribution_unverified"
+}

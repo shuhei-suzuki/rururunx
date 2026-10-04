@@ -1,0 +1,52 @@
+{
+  "head": "8facb8de63b25d5b43f6e1516278afafcf96723b",
+  "stage": "requirements-only",
+  "reviews": [
+    {
+      "section": "requirements8a",
+      "native_session": "330acd7a-4549-4e1f-b4a6-09cb279fb03d",
+      "review": {
+        "verdict": "approve",
+        "findings": [
+          {
+            "id": "R8-L1",
+            "severity": "Low",
+            "file": "doc/requirements/issue-58-requirements.md",
+            "line": 205,
+            "claim": "A successor may now reserve replacement of a prior recovery intent before any fencing, and that reservation explicitly proves nothing about whether the prior recovery owner is dead. The text does not say what a pending replacement does to a prior recovery owner that is in fact still live and legitimate. If the reservation invalidates the prior owner's private CAS, any successor can stall an active recovery with a row-level reservation, and competing successors can repeatedly displace each other. If it does not, the 'EXCLUSIVE' wording is ambiguous for that window. Holds are retained either way, so safety is not affected. Liveness and exclusivity semantics are left to design.",
+            "evidence": "req 195 ('separate EXCLUSIVE successor protocol'); 201-205 (reserve replacement referencing the exact prior intent and versions; 'Reserving replacement does not prove the prior recovery owner dead or settled'); 207-210 (a still-live legitimate instance is a conflict unless reviewed #14 policy authorizes its controlled shutdown); 222-227 (only the actually owned and fenced successor protocol replaces an old intent); the controls 'Refuse a live/unfenced prior recovery'.",
+            "fix": "State that a replacement reservation is a pending claim. It neither invalidates nor preempts a still-live prior recovery owner's private CAS, and it takes effect only after the actual #6/#60 profile genuinely fences that owner. A live prior recovery owner keeps exclusivity, and the pending reservation is refused or withdrawn with attention, so successors cannot repeatedly displace it. Add a control in which a live prior recovery completes and settles despite a concurrent replacement attempt."
+          }
+        ],
+        "assessment": "R7-M1 is closed. One reviewed #14 successor intent now covers the complete bounded closure and every involved former runtime instance/epoch, including a crashed prior recovery intent and its partial fence or reconciliation effects as retained, recoverable owners. Replacement happens only through the private CAS that references the exact prior intent and versions, without releasing, adopting or granting authority before genuine per-owner #6/#60 fencing. Adoption covers the union of genuine per-instance proofs, all-or-nothing with no release. Live, unfenced, outside-proof and truncated closures still refuse, and an old exclusive row cannot block recovery forever (195-235). Controls and mutants cover crashes at intent, partial fence and partial reconciliation, two crashed compatible former instances, live/unfenced prior recovery refusal, missing prior-owner fencing, dropped or released prior members, row-only replacement and bounded exhaustion (344-352). No contradiction with the unchanged baseline was found. Line 114's adopted-scope cross-reference, single composed epoch, two-sided runtime/observation parties, Task attach/fence and 4+parallel obligations are intact. There is no OS-identity, native-default/auth/model/effort/hook, private-input or approval/cost-cap overreach, and the verification doc records results honestly. Only a Low remains: how a pending replacement interacts with a still-live prior recovery owner. Exact APIs and bounds are Design work, and actual #14 readiness remains a mandatory production gate.",
+        "unresolved_blockers": []
+      },
+      "cleanup_verified": true
+    },
+    {
+      "section": "requirements8b",
+      "native_session": "bed93db3-d78c-40fd-a16a-2e0edce52c5e",
+      "review": {
+        "verdict": "approve",
+        "findings": [
+          {
+            "id": "R58-REQ8-L1",
+            "severity": "Low",
+            "file": "doc/requirements/issue-58-requirements.md",
+            "line": 201,
+            "claim": "Replacing a prior recovery intent is now well defined for a crashed prior recoverer. It is not defined for a prior recoverer that is merely slow and still live. If the replacement reservation (L201-205) revokes or bumps the prior intent's private CAS before any genuine fence exists, a live, legitimate prior recoverer can no longer publish its own settlement. The new successor must then refuse, because 'a still-live legitimate instance is a conflict'. Both would stay wedged until the prior instance exits or authorized shutdown happens. Safety holds, since nothing is released; this is a liveness and precision gap.",
+            "evidence": "L201-203 let the successor 'atomically reserve their replacement\u2026 referenc[ing] exact prior intent/versions and extend[ing] the retained exclusive scope'. L205 says 'Reserving replacement does not prove the prior recovery owner dead or settled'. L207-210 make a still-live legitimate instance a conflict unless reviewed #14 policy authorizes its controlled shutdown. The controls 'Refuse a live/unfenced prior recovery' but do not say whether the live prior recoverer can still finish and settle afterwards, or what happens to the refused successor's own reservation.",
+            "fix": "In Design, state the order: a replacement reservation does not revoke the prior intent's settlement authority until a genuine per-instance fence proof for that prior owner has committed. A successor that finds the prior recoverer live releases its own replacement reservation as no-effect, by its exact owner. Add a control: a live slow prior recoverer plus an attempted successor; the prior completes and settles normally, and the successor withdraws without touching any original hold."
+          }
+        ],
+        "assessment": "Requirements8 closes my Req7 Medium (R58-REQ7-01). Checked against the delta:\n- The exclusive successor intent now covers the complete bounded closure and every former runtime instance/epoch involved, retaining every original hold (L197-199).\n- A crashed prior recovery intent and its partial fence/inspection/reconciliation effects are explicitly retained, recoverable owners (L199-200).\n- Only the reviewed #14 private CAS can reserve their replacement. That CAS references exact prior intent/versions, releases and adopts nothing, grants no native or job authority, cannot be satisfied by a caller label, and does not prove the prior owner dead (L201-205).\n- Each former supervisor/workload, including the prior recovery owner and its effects, is genuinely fenced through its own #6/#60 profile plus the private epoch CAS.\n- Adoption takes the full closed set covered by the union of per-instance proofs, all-or-nothing and without release.\n- Another former instance is no longer a conflict once its exact effects are proven inside the intent, so an old exclusive row cannot block recovery forever.\n- Live, unfenced or truncated members still refuse. Closure and proofs must fit finite bounds; exhaustion keeps holds with attention rather than truncating or triggering a global fence.\n- Controls cover a recovery crashing after intent/partial fence and after partial reconciliation, two crashed compatible former instances, and refusal of a live/unfenced prior recovery. Mutants cover missing prior-owner fencing, silently omitted or released prior-intent members, and row-only replacement at actual consumers.\n\nSafety invariants are intact: no release before atomic complete adoption, no label-, PID- or epoch-only fence, no Lost-compatible exemption, and #14 conformance remains a mandatory production readiness gate.\n\nAll prior obligations are retained:\n- two-sided runtime, Consult, native, Evidence and observation parties;\n- non-executing bootstrap identity;\n- the single composed epoch;\n- per-grant lifecycle revalidation;\n- Task attach still mandatory and open;\n- no parallelism credit from serialization;\n- unchanged native defaults, auth, model, effort and hooks;\n- no per-run approval or cost cap.\n\nThe remaining item is a non-blocking Low: replacement semantics against a still-live prior recoverer, which belongs in Design.\n\nThe verification note is accurate and keeps the earlier red run. That unexplained failure still deserves its own tracking issue.\n\nThis approves Requirements8 only. Design and Source gates, the actual #14/#19/#60/#6/#23/#43 producers and profiles, exact CI and immutable source reviews all remain pending.",
+        "unresolved_blockers": []
+      },
+      "cleanup_verified": true
+    }
+  ],
+  "ci_trigger_run": 37208015937,
+  "ci_conclusion": "failure",
+  "tested_checkout_context": "PR merge; exact checkout provenance pending",
+  "source_acceptance": false
+}
