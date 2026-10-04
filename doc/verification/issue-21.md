@@ -318,11 +318,11 @@ branch/environment, not these tests. Public zero-context patches reproduce ident
 executed mutant hashes and retain original private patch hashes; apply with
 `git apply --unidiff-zero`.
 
-Further read review found agreeing corrupted row/body can both omit Goal while
-retaining Task. The component now validates decoded Scope shape after identity
-matching, with a real Project query control and complete row-column snapshot. This
-preserves old identity-mismatch priority and valid NoTask shape. New-source regression,
-mutation and review remain pending; previous checks are not claimed for changed bytes.
+Historical b29aee8 attempt (SUPERSEDED AND WITHDRAWN, see below): read review
+proposed agreeing corrupted row/body could both omit Goal while retaining Task. That
+attempt added decoded Scope shape validation after identity matching, a Project query
+control and complete row-column snapshot. Its checks failed during fixture setup;
+none of that attempt earned consumer, mutation or regression credit.
 
 
 The b29aee8 agreeing-malformed-scope addition is WITHDRAWN. Both its attempted
