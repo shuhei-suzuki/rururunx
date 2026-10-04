@@ -393,8 +393,14 @@ This master describes the current single-Reviewer implementation only.
 The provider-neutral [Issue9 design candidate](../issue-9-design.md) separates
 the immutable ReviewSet roster, actual member ownership/settlement and native
 profile qualification from opinion tally. It supplies no compiled N-way native
-delegation or weaker formal fallback; the actual19/23/43 integration design and
+delegation or weaker formal fallback; the actual19/43/native integration design and
 required production native profile evidence remain open before source acceptance.
+23 composition later replaces the interim9 nongating library-ingress derivation;
+it is not an additional9 source merge prerequisite. The implementing co-integration
+must withdraw legacy single-reviewer Passed as authority for formal PR/MergeGate/
+finalization and hold/drain pre-epoch Evaluating owners unchanged (I9-AC-21.k).
+This proposed withdrawal can hold existing work; current merged behavior remains
+historical until that actual source is implemented and deployed.
 
 
 Formal multi-reviewer gating and accepted Review policy configuration remain
