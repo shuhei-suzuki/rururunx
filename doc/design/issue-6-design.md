@@ -909,19 +909,29 @@ effects. Historical native artifacts remain unchanged.
 Every inner guard needs a direct private-route control or explicit redundant-
 survivor classification if another still-present guard prevents reaching it. This
 applies to all guards, not only inert attach/native-goal; no label-only kill credit.
-The Source2 correction adds controls for ScopeSnapshot capture, actual Reservation
-dispatch and an unavailable approval reply, in addition to the filesystem, Git,
+The Source3 correction adds controls for ScopeSnapshot capture, actual Reservation
+dispatch and unavailable Approve/Deny/Cancel replies on separate fresh fixtures,
+in addition to the filesystem, Git,
 native launch, RPC connect and wire-send controls. A reply refusal completes its
 own result with Unsupported and preserves the pending turn. A refusal immediately
 after registration reuses the existing no-work outcome to restore the exact prior
 control (or remove a fresh unpublished entry); this is not a settlement receipt.
+Fresh registration controls separately check the factual FreshUnpublished outcome.
+Checkpoint controls use an advanced, distinct input and observe the pre-capture
+Project/Store access site; unchanged snapshots alone cannot observe a read.
 
 | Inner-guard evidence class | Routes and limit |
 | --- | --- |
-| Direct controls | filesystem, bounded_git, NativeServer::launch_preparing, NativeRpc::connect/send/dispatch_call; added ScopeSnapshot::capture, Reservation::dispatch and answer_approval controls require Source2 execution/mutation gates |
+| Direct controls | filesystem, bounded_git, NativeServer::launch_preparing, NativeRpc::connect/send/dispatch_call; added ScopeSnapshot::capture, Reservation::dispatch and three-decision answer_approval controls require Source3 execution/mutation gates |
 | Compiled redundant survivors in Source1 | register_fresh (outer launch gate remains); NativeRpc::call and initialize (lower dispatch gates remain) |
 | Remaining redundancy classification requires scoped mutation evidence | public launch/resume/checkpoint/submit/attach; register_existing; spawn/prepare launch/checkpoint; verify_git_preparing, resolve_git and metadata/version helpers. Their surrounding controls do not independently establish an omitted inner guard kill |
 | Fixed refusal or inert operation | attach/release/native-goal paths cannot acquire a new resource; an inert omission is not an effect-assertion kill |
+
+Source2's answer_approval omission survived only its Approve control, because that
+decision takes a lower filesystem preflight. Deny/Cancel skip that preflight and
+can reach audit, Session CAS and Grant accounting before the lower send gate.
+That survivor never establishes redundancy for all decisions. Source3 records
+the Store/session/ledger and RPC Grant/Frame counters for all three decisions.
 
 The saturation control seeds all 32 retained entries through actual public start,
 waits for each selected synthetic group to be reaped, claims an actual terminal

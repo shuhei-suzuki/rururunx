@@ -1085,6 +1085,7 @@ impl CodexAdapter {
             request.input = input;
             // An explicit fresh checkpoint may refresh mutable Project metadata,
             // but may never rebind the owned repository/worktree identity.
+            self.availability.record(Site::ScopeAccess);
             let project = self
                 .store
                 .lock()
@@ -3652,76 +3653,41 @@ mod tests {
 
     #[tokio::test]
     async fn empty_scope_and_operation_helpers_preserve_store_ledger_and_native_frames() {
-        let mut fixture = ApprovalFixture::new(true).await;
-        let availability = Availability::default();
-        let scope = fixture.reservation.session.scope.clone();
-        let store = fixture.reservation.store.clone();
-        let store_snapshot = || {
-            let store = store.lock().unwrap();
-            json!({"sessions":store.records(&scope,crate::domain::RecordKind::Session).unwrap(),"events":store.events(&scope,0,1000).unwrap()})
-        };
-        let before = store_snapshot();
-        let capture = ScopeSnapshot::capture(
-            &fixture.reservation.store,
-            &fixture.authority.request,
-            "codex",
-            &availability,
-        );
-        assert_eq!(
-            availability.sites(),
-            [0; 10],
-            "empty capture entered Store access"
-        );
-        assert_eq!(store_snapshot(), before);
-        assert_unavailable(capture.map(|_| ()));
-        // Complete the existing synthetic RPC peer before assertion failures;
-        // this is a direct helper control, not a public-start ownership seed.
-        let (mut rpc, mut frames, peer) = rpc_peer().await;
-        rpc.availability().set_fixture_inputs(false, false);
-        let input_before = serde_json::to_value(&fixture.reservation.session).unwrap();
-        let version_before = fixture.reservation.version;
-        let pending_before = json!(
-            fixture
-                .evidence
-                .lock()
-                .unwrap()
-                .pending
-                .as_ref()
-                .unwrap()
-                .pending()
-        );
-        let dispatched = fixture
-            .reservation
-            .dispatch(
-                &mut rpc,
-                &fixture.authority.snapshot,
+        for decision in [
+            OperationDecision::Approve,
+            OperationDecision::Deny,
+            OperationDecision::Cancel,
+        ] {
+            let mut fixture = ApprovalFixture::new(true).await;
+            let availability = Availability::default();
+            let scope = fixture.reservation.session.scope.clone();
+            let store = fixture.reservation.store.clone();
+            let store_snapshot = || {
+                let store = store.lock().unwrap();
+                json!({"sessions":store.records(&scope,crate::domain::RecordKind::Session).unwrap(),"events":store.events(&scope,0,1000).unwrap()})
+            };
+            let before = store_snapshot();
+            let capture = ScopeSnapshot::capture(
+                &fixture.reservation.store,
                 &fixture.authority.request,
-                "thread",
-                None,
-            )
-            .await;
-        let (reply, result) = reply(OperationDecision::Approve, "turn");
-        let answered = fixture.answer(&mut rpc, reply).await;
-        let response = result.await;
-        drop(rpc);
-        bounded(peer).await.unwrap();
-        assert!(
-            frames.try_recv().is_err(),
-            "empty helper sent a native frame"
-        );
-        assert_eq!(
-            store_snapshot(),
-            before,
-            "empty helper changed Session/audit"
-        );
-        assert_eq!(
-            serde_json::to_value(&fixture.reservation.session).unwrap(),
-            input_before
-        );
-        assert_eq!(fixture.reservation.version, version_before);
-        assert!(!fixture.reservation.inference_started);
-        assert_eq!(
-            json!(
+                "codex",
+                &availability,
+            );
+            assert_eq!(
+                availability.sites(),
+                [0; 10],
+                "empty capture entered Store access"
+            );
+            assert_eq!(store_snapshot(), before);
+            assert_unavailable(capture.map(|_| ()));
+            // Complete the existing synthetic RPC peer before assertion failures;
+            // this is a direct helper control, not a public-start ownership seed.
+            let (mut rpc, mut frames, peer) = rpc_peer().await;
+            rpc.availability().set_fixture_inputs(false, false);
+            let rpc_sites_before = rpc.availability().sites();
+            let input_before = serde_json::to_value(&fixture.reservation.session).unwrap();
+            let version_before = fixture.reservation.version;
+            let pending_before = json!(
                 fixture
                     .evidence
                     .lock()
@@ -3730,15 +3696,62 @@ mod tests {
                     .as_ref()
                     .unwrap()
                     .pending()
-            ),
-            pending_before
-        );
-        assert_unavailable(dispatched);
-        assert!(
-            !answered.unwrap(),
-            "unavailable reply must preserve pending turn"
-        );
-        assert_unavailable(response.unwrap());
+            );
+            let dispatched = fixture
+                .reservation
+                .dispatch(
+                    &mut rpc,
+                    &fixture.authority.snapshot,
+                    &fixture.authority.request,
+                    "thread",
+                    None,
+                )
+                .await;
+            let (reply, result) = reply(decision, "turn");
+            let answered = fixture.answer(&mut rpc, reply).await;
+            let response = result.await;
+            let rpc_sites_after = rpc.availability().sites();
+            drop(rpc);
+            bounded(peer).await.unwrap();
+            assert!(
+                frames.try_recv().is_err(),
+                "empty helper sent a native frame"
+            );
+            assert_eq!(
+                store_snapshot(),
+                before,
+                "empty helper changed Session/audit"
+            );
+            assert_eq!(
+                serde_json::to_value(&fixture.reservation.session).unwrap(),
+                input_before
+            );
+            assert_eq!(fixture.reservation.version, version_before);
+            assert!(!fixture.reservation.inference_started);
+            assert_eq!(
+                json!(
+                    fixture
+                        .evidence
+                        .lock()
+                        .unwrap()
+                        .pending
+                        .as_ref()
+                        .unwrap()
+                        .pending()
+                ),
+                pending_before
+            );
+            assert_eq!(
+                rpc_sites_after, rpc_sites_before,
+                "empty approval changed native Grant/Frame sites"
+            );
+            assert_unavailable(dispatched);
+            assert!(
+                !answered.unwrap(),
+                "unavailable reply must preserve pending turn"
+            );
+            assert_unavailable(response.unwrap());
+        }
     }
 
     #[tokio::test]
@@ -5574,20 +5587,15 @@ mod tests {
             adapter.availability.set_fixture_inputs(true, true);
             let registered = adapter.register_existing(&reference).unwrap();
             let attempt = registered.transition.control.clone();
+            let mut advanced = owned.request.input.clone();
+            advanced.version += 1;
+            advanced.payload = "explicit fresh checkpoint, never replay prior input".into();
             adapter.availability.set_fixture_inputs(false, false);
             let result = match route {
                 0 => adapter.spawn_launch(registered).await.map(|_| ()),
                 1 => adapter.prepare_launch(registered).await.map(|_| ()),
-                2 => {
-                    adapter
-                        .spawn_checkpoint(registered, owned.request.input.clone())
-                        .await
-                }
-                _ => {
-                    adapter
-                        .prepare_checkpoint(registered, owned.request.input.clone())
-                        .await
-                }
+                2 => adapter.spawn_checkpoint(registered, advanced).await,
+                _ => adapter.prepare_checkpoint(registered, advanced).await,
             };
             let outcome = bounded(attempt.wait_finished()).await.unwrap();
             assert_eq!(no_effect_snapshot(&adapter, &reference.scope), before);
@@ -5601,6 +5609,42 @@ mod tests {
                 }
             ));
             assert!(bounded(adapter.stop(reference.clone())).await.is_ok());
+        }
+    }
+
+    #[tokio::test]
+    async fn postregistration_fresh_empty_refusal_records_factual_unpublished_outcome() {
+        let owned = Fixture::new(false);
+        let (executable, directory) = wire_fixture(&owned, "complete");
+        let adapter = Arc::new(
+            CodexAdapter::new("codex".into(), executable, owned.store.clone())
+                .unwrap()
+                .component_fixture(),
+        );
+        let before = no_effect_snapshot(&adapter, &owned.request.scope);
+        let wire_before = journal_values(&directory);
+        for route in 0..2 {
+            adapter.availability.set_fixture_inputs(true, true);
+            let registered = adapter.register_fresh(owned.request.clone(), None).unwrap();
+            let attempt = registered.transition.control.clone();
+            adapter.availability.set_fixture_inputs(false, false);
+            let result = if route == 0 {
+                adapter.spawn_launch(registered).await.map(|_| ())
+            } else {
+                adapter.prepare_launch(registered).await.map(|_| ())
+            };
+            let outcome = bounded(attempt.wait_finished()).await.unwrap();
+            assert_eq!(no_effect_snapshot(&adapter, &owned.request.scope), before);
+            assert_eq!(journal_values(&directory), wire_before);
+            assert!(
+                !directory.join("leader").exists(),
+                "fresh refusal spawned a peer"
+            );
+            assert_unavailable(result);
+            assert!(
+                matches!(outcome, Outcome::FreshUnpublished { cause: Cause::Failed(ErrorKind::UnsupportedCapability, ref message), .. } if message==UNAVAILABLE),
+                "fresh no-work outcome must retain factual Unsupported cause"
+            );
         }
     }
 

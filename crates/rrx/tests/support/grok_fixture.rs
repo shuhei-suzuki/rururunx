@@ -125,7 +125,12 @@ impl Fixture {
         let path = self.executable.with_extension("json");
         let mut metadata: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
         metadata[key] = json!(value);
-        std::fs::write(path, serde_json::to_vec(&metadata).unwrap()).unwrap();
+        use std::io::Write;
+        let mut replacement = tempfile::NamedTempFile::new_in(path.parent().unwrap()).unwrap();
+        replacement
+            .write_all(&serde_json::to_vec(&metadata).unwrap())
+            .unwrap();
+        replacement.persist(path).unwrap();
     }
     pub(super) fn synthetic_value(&self, key: &str) -> String {
         let metadata: Value =
@@ -143,6 +148,35 @@ impl Fixture {
         }
         self.synthetic("RRX_MODE", mode.into());
     }
+}
+
+#[test]
+fn synthetic_sidecar_stays_complete_for_actual_concurrent_reader() {
+    let fixture = Fixture::new();
+    let barrier = std::sync::Barrier::new(2);
+    std::thread::scope(|scope| {
+        let reader = scope.spawn(|| {
+            barrier.wait();
+            for _ in 0..2000 {
+                let bytes = std::fs::read(fixture.executable.with_extension("json")).unwrap();
+                let metadata: Value = serde_json::from_slice(&bytes)
+                    .expect("atomic sidecar reader observed incomplete JSON");
+                assert!(metadata["RRX_DATABASE"].is_string());
+                assert!(metadata["RRX_FOREIGN"].is_string());
+                std::thread::yield_now();
+            }
+        });
+        barrier.wait();
+        for version in 0..200 {
+            fixture.synthetic("RRX_CONCURRENT", format!("{version}:{}", "x".repeat(4096)));
+        }
+        reader.join().unwrap();
+    });
+    assert!(
+        fixture
+            .synthetic_value("RRX_CONCURRENT")
+            .starts_with("199:")
+    );
 }
 
 impl Fixture {
