@@ -290,8 +290,8 @@ The generic CLI cannot review. Workflow CLI/TUI, independent review sets (#9),
 approval routing (#10), owner/restart recovery (#14), and production Context Pack publication (#19)
 remain pending. Issue #18 repository-context selection is available independently. See [Workflow Engine](doc/design/master/workflow-engine.md).
 
-Issue #41's reviewed requirements specify passive observation of agent preparation
-reservations and release only by their committing owner; implementation is pending.
+Issue #41 implements passive observation of agent preparation reservations and
+release only by their committing owner after a verified eligible preparation error.
 Issue #14 must reconcile orphaned undispatched attempts, dropped futures/crashes,
 inactive-owner preparation errors, definitive-decision publication conflicts,
 marker Project/Goal-version conflicts (including Project/Goal metadata edits and
@@ -304,6 +304,11 @@ Retaining a failed decision publication prevents turning an intended
 definitive failure/invalidation into automatic retry. Existing explicit terminal
 reservation recovery stays available under its terminal-Task/dispatch fences.
 External GitHub/irreversible gate outcomes are reconciled by #13.
+The existing explicit `retry` API can still close a Failed unbound dispatch marker
+without trusted native-outcome proof; #14 must address this gap. Ordinary observation
+does not replay it. Native provider integration also needs an atomic Session-binding
+publication (#43) that preserves the unchanged Task version; the current coordinated write
+increments it and can invalidate the provider's admitted snapshot.
 
 The repository pins Rust 1.91.1 (minimum supported Rust 1.91) with rustfmt/clippy.
 

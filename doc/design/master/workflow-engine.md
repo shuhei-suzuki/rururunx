@@ -343,7 +343,7 @@ a Goal becomes paused or a Project Blocked; observation does not authorize compl
 A same-generation source rebind requires target-producing completion, and unknown
 Evaluating reservations cannot be released by changing generation. An immutable native
 dispatch marker records whether launch may have begun; it does not prove owner
-absence. Issue #41 specifies passive Waiting observation for agent Running
+absence. Issue #41 implements passive Waiting observation for agent Running
 attempts without a Session, before or after that marker. Such observation changes
 no Task/Workflow/context/audit state. Only the invocation whose reserve committed
 may release its own proven pre-dispatch preparation error, using its exact
@@ -409,3 +409,13 @@ in flight. A marker without a Session may precede any native launch and does not
 prove launch occurred. #13 remains responsible for irreversible
 Pr/MergeGate/Cleanup outcomes.
 See [Issue #41 design](../issue-41-design.md).
+
+Two existing integration gaps are explicit. `retry` admits Failed unbound
+dispatch markers without native-outcome evidence when no Session is persisted;
+Issue #14 must fence this explicit API, while ordinary observation never replays.
+The current successful native Session-binding publication writes an unchanged
+Task via the coordinated transition and increments its raw version. Providers
+admitted under that Task version can then reject their own completion/approval.
+A separate atomic Record-only binding contract (#43) must preserve exact owner/context/
+Session identity guards without incrementing unchanged Task fields; Issue #41
+does not introduce that shared integration API.

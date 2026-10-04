@@ -1,7 +1,8 @@
 # Issue 41 verification
 
 Risk: STRICT for shared Workflow reservation ownership and release authority.
-Implementation is pending; documentation review is not runtime verification.
+The owned preparation implementation is committed. Documentation review is not
+runtime verification; final independent source review and exact-head CI are pending.
 
 ## Provenance and formal gates
 
@@ -58,12 +59,61 @@ push is used.
 
 ## Required implementation evidence
 
+Clean runtime head `1418b36` passed all 65 Workflow regressions, all-target
+Clippy with warnings denied, workspace debug/release builds and the full SERIAL
+workspace: 187 Rust tests and 2 doctests, with 2 installed-native Grok tests
+intentionally ignored. Serial execution is constrained local evidence; default
+Linux/macOS CI remains required. The first full-test escalation timed out before
+approval and was retried once successfully; no test process started on that timeout.
+
+Seventeen new preparation regressions drive actual synthetic captures/start and
+independent SQLite connections. They cover both main capture awaits, both internal
+invalidation branches, same/fresh observers, dropped owners, pre-commit competitor
+barriers with identical proposed timestamps/context, actor overrides, immutable
+assigned bindings, pause/cancel/recovery/ABA, parent and Record replacement,
+release CAS/executor/Lost fences, typed owning marker rollback, definitive
+publication conflicts, untyped marker abort and post-dispatch binding conflicts.
+The existing EvidencePort race now verifies unchanged history/retries/context
+before evaluating the same attempt. Hooks and timestamps are per Engine/fixture.
+
+The first focused run passed 8/9: the held-start test incorrectly expected the
+entire audit unchanged after the adapter persisted its factual owned Session.
+It now verifies unchanged Task/Workflow/context plus exactly one `session.saved`
+event. Terminal and stale binding fences overlap, so no single-fence credit is
+claimed. The first full Workflow run passed 63/65; two tests matched an obsolete
+diagnostic string. Recovery now names #13/#14 from the durable phase, and tests
+verify explicit recovery rather than deriving ownership from human reason text.
+All 65 subsequently passed. Test-only `46dd6f0` orders durable retained-state
+assertions before diagnostics for causal release-CAS mutation attribution.
+
+The existing `retry` API admits Failed+dispatch_started+no-Session with no native
+outcome proof. A direct passing characterization confirms both that ordinary
+observation does not replay and that explicit retry still closes it. This is an
+unresolved #14 acceptance gap, not safe recovery evidence or a #41 API fix.
+Independent native #5 integration review also exposed that successful Workflow
+Session binding writes an unchanged Task through `put_task_tx`, incrementing its
+raw version and invalidating provider admission. Source inspection confirms only
+the Workflow `session_id` changes after the marker; no existing Record-only API
+permits Running native binding with the required guards. Shared binding integration
+is pending in #43, and this issue claims synthetic adapter coverage, not native Workflow
+completion acceptance.
+
 Controlled source-capture/start suspension must prove passive same/fresh-Engine
 observation, exact committed Record-version ownership, no reserve-loser release,
 metadata-preserving eligible release and conservative retained conflicts. Direct
 Store and actual Engine consumers must distinguish causal fence mutants from
 masked defense-in-depth cases. Every native/fixture operation uses an isolated
 owned repository/Store and bounded synchronization. Committed targeted and full
-Workflow/shared-state regressions, fmt/clippy/debug/release and exact Linux/macOS
-CI, compiled assertion mutations/restored controls and immutable independent
-source fix/re-review are pending; none is claimed passed by these formal gates.
+Workflow/shared-state regressions and fmt/clippy/debug/release passed as reported
+above. Exact Linux/macOS CI and immutable independent source fix/re-review remain
+pending; no runtime success is inferred from formal documentation approval.
+
+The detached `46dd6f0` mutation worktree compiled all 18 candidates. Fifteen actual
+consumer mutations were assertion-killed (including two combined defects), and
+the exact owning-ID classifier mutation was killed only by its direct unit test,
+with defense-in-depth credit. Pre-commit loser token alone and Engine-only
+TerminalRecovery-fence removal survived because Record-version and Store fences
+mask them; no kill credit is assigned. Restored source was clean and all 16 then-
+present preparation regressions passed. A separate post-refresh Record replacement
+test pins its actual typed owning Task-row marker error, so token-version credit
+can be verified independently at both capture timings.

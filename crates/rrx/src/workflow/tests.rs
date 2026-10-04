@@ -4782,3 +4782,36 @@ async fn preparation_existing_explicit_retry_gap_is_characterized_not_recovery_p
             .is_none()
     );
 }
+
+#[tokio::test]
+async fn preparation_post_refresh_record_replacement_rejects_release_after_typed_task_marker_error()
+{
+    let fixture = Fixture::ready_agent(false).await;
+    let pause = fixture.capture_pause(4);
+    let owner = fixture.spawn_step();
+    pause.wait().await;
+    let mut replacement = fixture.engine.read(fixture.task.id).unwrap();
+    let original_attempt =
+        replacement.workflow.history[replacement.workflow.active.unwrap()].clone();
+    fixture.engine.persist(&mut replacement, None).unwrap();
+    assert_eq!(
+        serde_json::to_value(&original_attempt).unwrap(),
+        serde_json::to_value(&replacement.workflow.history[replacement.workflow.active.unwrap()])
+            .unwrap()
+    );
+    let before = fixture.durable();
+    pause.release();
+    let error = owner.await.unwrap().unwrap_err();
+    assert_eq!(
+        fixture.durable(),
+        before,
+        "changed committed Record token must retain the claim"
+    );
+    assert!(
+        matches!(error.downcast_ref::<crate::state::StateGuardError>(),
+        Some(crate::state::StateGuardError::SnapshotChanged { table, id, .. })
+            if table == "tasks" && *id == fixture.task.id.to_string())
+    );
+    fixture.passive_observers(false).await;
+    assert!(fixture.executor.launches.lock().unwrap().is_empty());
+}
