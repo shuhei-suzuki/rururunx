@@ -161,3 +161,18 @@ mechanics updated to remove after-marker lock capture, return-only/independent-s
 and overbroad historical Running observations. Actual #19/#23/#14/source/native ports
 remain unimplemented/mandatory; Design5 review pending. TriggerCI37211388550 is green,
 with tested checkout/source provenance still to be captured; no prior failure repaired.
+
+
+Design5 at e8907b2 received two independent fresh native request_changes, both actual
+cleanup/reap verified (A2M3L; B1H2M2L). Verified readiness retirement/global cap/held
+busy-loop, marker-frame insertion/resulting-version mismatch, pre-dispatch fresh scope
+adoption and missing restart instance predicates are addressed in proposed Design6.
+Readiness now derives from durable operation facts with no extra binder write;
+actual per-Project open-operation capacity reserved before41claim; parked Held hints
+are non-authoritative. Immutable nativeop marker columns use checked resulting Task/W
+versions and full locks; every native caller receives that original sealed frame.
+Actual current-row CAS for genuine pre-input NoCurrentDispatch closure never refreshes
+admission. Private audit prefix/field list, same-operation AlreadyBound Started and
+ordinary diagnostic CAS are aligned. Each verified class has actual controls/mutants
+required, not executed or accepted source. Design6 independent review and all combined
+source/native/recovery gates remain pending. Requirements9 is unchanged.

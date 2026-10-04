@@ -1,6 +1,6 @@
 # Issue 43 design: record-only native Session binding
 
-Status: proposed Design5 from approved Requirements9 at91d4f34; independent STRICT
+Status: proposed Design6 from approved Requirements9 at91d4f34; independent STRICT
 design/source and actual composed producer/native/recovery gates pending. No implementation.
 Requirements: [issue-43-requirements.md](../requirements/issue-43-requirements.md).
 This supplements [the shared Issue43 design](issue-43-design.md). Both describe
@@ -70,10 +70,11 @@ scope consumers, including inactive historical lock records. Retain it in the
 private binding expectation; no lock is created or adopted by this capture.
 
 After successful start, create the candidate Workflow data by setting only the
-captured active attempt's absent Session ID. Call private
-`Store::bind_workflow_session` with the captured Project/Goal/Task snapshots,
-the expected Workflow record and candidate, the captured lock set, and this
-binding identity. Do not
+original active attempt's absent Session ID inside the binder. Call private
+`Store::bind_workflow_session` with the genuine private operation identity and
+NormalReturned identity (or the private ClosedSettlement variant). The transaction
+reads its sole expected tuple from the immutable Store-derived marker frame; caller
+values only cross-check this tuple and cannot replace it. Do not
 refresh owners, recapture a newer Task version or retry this call on CAS failure:
 that would silently accept revocation during native start. On success update only
 the caller's Workflow record to the committed version and return Started. Keep
@@ -92,10 +93,10 @@ writers across connections. All checks and the one Workflow/audit write use its
 Transaction; a failed check, write or audit rolls back everything. Update the
 caller's mutable Record only after successful commit.
 
-1. Read captured Project, Goal and Task by their exact IDs. Validate their owning
-   edges, exact versions, Registered Project, active Goal and nonterminal Task.
-   Compare the full Task serialization with the captured Task; candidate binding
-   cannot carry an in-memory Task change. No Project/Goal/Task write follows.
+1. Read the immutable private marker frame and its Project, Goal and Task by exact
+   IDs. Validate their owning edges, frame versions, Registered Project, active Goal
+   and nonterminal Task. Caller snapshots can only cross-check this frame; no
+   caller-supplied Task change is admitted. No Project/Goal/Task write follows.
 2. Read the existing Workflow by ID and require exact kind, Scope, version and
    unchanged Record identity/timestamps. Require exactly one Workflow in the Task
    scope. Decode with existing Workflow validation, check Task workflow/risk,
@@ -104,7 +105,8 @@ caller's mutable Record only after successful commit.
    dispatch_started, expected agent, and no completion or finished authority.
 3. Clone the complete previous JSON data and replace exactly
    `history[active].session_id` with the returned ID. Require this Value to equal
-   the supplied candidate data, including every other known or unknown field.
+   the internally constructed candidate data, including every other known or unknown
+   field. The caller supplies no mutable candidate or alternate expected tuple.
    Run the ordinary structural validator on the unchanged previous Workflow and
    explicit private binding validation on the candidate. The ordinary validator
    must reject this ID change, so do not introduce a caller-supplied bypass flag.
@@ -168,11 +170,11 @@ Reuse `put_record_tx`'s record CAS/version validation, immutable scope/kind,
 worktree exclusion and serialization path. Introduce a private typed audit choice
 only if needed to supply the binding fact: the existing helper delegates to the
 same internal record writer with its current default audit, while this one caller
-selects `workflow.session_bound`. It replaces the default workflow.saved audit
+selects `rrx.private.workflow.session_bound`. It replaces the default workflow.saved audit
 for this call, rather than adding a second event. Preserve every other caller's
 existing event name/payload and write behavior.
 
-Reserve the exact `workflow.session_bound` event name in `reserved_audit_kind`:
+Reserve the exact `rrx.private.workflow.session_bound` event name in `reserved_audit_kind`:
 public `audit` and `audit_if_current` must refuse it. Primary inspection found
 the current reserved list includes .saved and workflow.gate_observed, but would
 allow this new name unless extended. Test both APIs and kill the omitted-guard
@@ -444,7 +446,7 @@ until native matrix, typed integration and merge criteria are actually satisfied
 
 Both Design4 reviewers approved77da799. The following actual-consumer details
 remain mandatory source work, with independent immutable source review: Fake
-captures before its existing pre-preparation pause and adds a second post-
+receives the original marker frame before its existing pre-preparation pause and adds a second post-
 preparation/pre-return barrier for binder P/G/T/Workflow/full-lock CAS mutations.
 Injection before preparation earns only start-admission refusal, no binder kill.
 A protected terminal_input guard mutant needs a reachable native entry: an
@@ -453,19 +455,39 @@ Reviewer frame, or the actual native-entry guard seam with retained owned termin
 Startup rejection cannot itself kill an omitted terminal_input guard. The source
 review must resolve the reachable construction rather than count setup failures.
 
-## Design5: one immutable marker frame and receipt-sourced route
+## Design6: one immutable marker frame and receipt-sourced route
 
 Approved Requirements9 is authoritative. The marker transaction itself constructs
-and privately persists `DispatchBindingFrame`: resulting POST-marker P/G/T versions,
-post-marker Workflow ID/version/generation/active index/context/source/marker tuple,
-selected registered actor/provider/role/worktree and complete scoped WorktreeLock
-ID/version set. Capture that full set INSIDE the SAME Immediate marker transaction.
+and privately persists `DispatchBindingFrame` in immutable #19 native-operation
+marker_P/G/T/W_version columns plus full sorted scoped lock IDs/versions/digest,
+Workflow generation/active index/context/source/marker tuple and registered actor/
+provider/role/worktree. The composed marker still advances Task and Workflow versions
+once, preserving current marker behavior. Build an exact checked deterministic write
+plan under Immediate: unchanged parent versions, Task+1 and W+1. INSERT the operation
+with these resulting versions BEFORE Workflow marker UPDATE, then execute the planned
+Task/Workflow writes and assert every resulting version/full frame before commit.
+The marker trigger verifies the resulting Workflow row against that inserted operation.
+Any overflow, unplanned write or mismatch rolls back all rows. Never UPDATE an
+immutable operation frame after insertion or save pre-marker versions as expectations.
+Capture the full lock set INSIDE this SAME transaction; proposed #19 Design31 supplies
+the matching producer contract, not an already implemented schema or source port.
 The normal returned-Session and late receipt-sourced binder read exactly this frame;
 no later lock read/current-version refresh or #19 bookkeeping refresh replaces it.
 Marker/owner provenance is actual private operation evidence; DTO labels/JSON cannot
-construct it. Scope, context and source remain immutable. Any strict mismatch,
-including sibling Goal metadata version change, holds without automatic fail/retry/
-release; actual #14 recovery is required. This availability limit does not waive
+construct it.
+Carry this sealed nonserializable frame in genuine `ManagedPhaseLaunch` to EVERY
+provider entry and to first preparation, first/new consumption and AllowCurrent.
+Start-entry ScopeSnapshot must equal the marker frame before any native effect or
+PreparedInput bytes. The original frame supplies expected P/G/T/full locks throughout
+the operation, never a fresh start capture. Pre-effect/pre-consumption drift can use
+only genuine pristine/NoCurrentDispatch refusal with full owned cleanup and #19's
+non-success closure: current rows supply closure-write CAS only, preserve current
+lifecycle/decision and immutable original provenance, never renew a grant. That may
+retire the exact Interrupted/Failed phase under #23 policy; any fresh retry is a new
+independent admission. Consumed or uncertain operations remain held for actual #14. Scope, context and
+source remain immutable. A strict mismatch in either binder, including sibling Goal
+metadata movement, holds without automatic fail/retry/release; the separately proven
+pre-input NoCurrentDispatch closure above is not a binder authority refresh. This availability limit does not waive
 native multi-Task acceptance. No unrelated-parent tolerance is introduced.
 
 The sole binder takes a private binding request variant, NormalReturned or
@@ -480,39 +502,64 @@ restored prior terminal, NoSession/NoCurrentDispatch never binds. Both variants 
 all original frame/current activity, full locks, context, immutable Session identity
 and latest native UUID uniqueness predicates; no public receipt IDs manufacture
 native evidence. Both write only absent active Session ID, ordinary Record version/
-updated_at and ONE reserved factual audit. Add bounded proof_source enum normal_return
-or closed_settlement plus exact private operation/receipt references (receipt absent
-for normal return); maximum audit4KiB. No native output/error/prompt or outcome claim.
+updated_at and ONE reserved factual audit. The single exact4KiB binding audit field list is Design section11; mechanics use
+those fields, including normal_return/closed_settlement and exact operation/receipt
+references (receipt absent for normal return). No native output/error/prompt or outcome claim.
 Binding proves identity only; #19 current-success closure is independently necessary.
 
 If a delayed normal return races late binding, exactly one succeeds/audits. A loser
 writes nothing and keeps original actual owner/claim/receipt; AlreadyBound may only
 report a SAME private bound operation fact, never infer it from a matching public ID.
-No retry, fail or native dispatch follows a lost binder race.
+AlreadyBound for that SAME genuine private operation returns Started to a losing
+normal invocation. No retry, fail, release or native dispatch follows a lost race.
 
-## Design5: managed launch endings and durable readiness
+## Design6: managed launch endings and durable readiness
 
 Introduce private Engine `reconcile_settled_native_binding` called ONLY by the
 actual #23 authoritative active Task driver and that managed invocation's post-marker
 start-Err path. Passive #41 step/poll/status observers never call it. Managed invocation
 ownership lives in actual runtime launch supervision independently of droppable Engine
 futures; caller abort/drop is an observed ending, not the sole destructor callback.
-Marker commit registers private durable pending binding readiness in the SAME Tx.
-Actual #19 settlement publishes its genuine receipt and readiness before/atomically
-in the same settlement transaction. This flag/queue is scheduling ONLY; every binder
-re-derives sealed proof under Immediate. Closed/full/lost/duplicate notification never
-manufactures success or becomes the only progress source.
+Readiness is a DERIVED level predicate over actual durable #19 facts: a dispatch-
+marked operation, phase_open and absent active Session ID is pending; a genuine
+current receipt makes it a candidate for proof. There is no separate persistent
+ready/retirement row or notification-authority flag. Normal/late binding removes the
+unbound predicate; every real NoCurrentDispatch/failure/TerminalRecovery phase closure
+removes phase_open. A retry uses a new operation. Receipt publication commits in the
+real settlement transaction; duplicate/full/lost notification is only a wake hint.
+Binder re-derives sealed proof under Immediate and preserves its exact existing write
+set. Derived readiness does not add a binder, diagnostic or closure write.
 
-Driver registers its event wait then rechecks durable ready/pending state. Every active
-Task evaluation and managed launch ending re-derives actual private state. Proposed
-finite timer fallback: at least100ms and at most5s adaptive backoff per runtime wake,
-fair round-robin at most64 pending members per pass with a4096 pending-entry cap;
-no high-frequency busy loop or passive observer writes. Capacity is pre-admission,
-never drop a pending obligation; preserve disjoint progress through #23 scheduling.
-Real #23 timer/queue implementation and actual controlled wake/lost-notification
-fixtures must prove eventual progress within these configured finite policies;
-numbers are policy bounds, not real-time/OS deadline claims. Required native effect
-cleanup deadlines are unchanged. Reset/wake scheduling does not refresh authority.
+Actual #19/#23 open-operation capacity and native permits are reserved per Project
+BEFORE #41's dispatch claim, in the same actual admission orchestration. Proposed
+4096 open marked operations per Project is finite policy, not a runtime-wide history
+quota; genuinely closed/bound operations cannot leak pending slots. The sealed owned
+capacity reservation guarantees the marker transaction does not discover a new quota
+race after claim. If its producer/token is unavailable, refuse before #41 claim and
+effects. Real operation closure retires its own capacity under #19/#23, never drops
+an unknown operation. #14-held A entries cannot consume B's per-Project slots; actual
+global native resource limits still use #23 fair scheduling. No extra43binderwrite or
+generic marker-error release exception is introduced. These actual producer changes
+must co-integrate; a public count/token or seeded SQL row is not admission evidence.
+
+Driver registers its event wait then rechecks derived state with read-only bounded
+queries, never an Immediate transaction just to poll. At most64 eligible members per
+fair round-robin pass; proposed100ms–5s adaptive fallback, unchanged native cleanup
+deadlines. A conservative refusal parks an in-memory non-authoritative Held hint keyed
+by observed P/G/T/W/full-lock versions, lifecycle, operation/receipt and #14 proof
+identity. Unchanged Held entries issue ZERO repeated Immediate binder transactions
+across timer/notification/evaluation wakes. Relevant changes invalidate the hint and
+recheck actual proof; restart performs a bounded cold read then parks unsupported
+entries. Hints grant nothing and persistence is unnecessary. Per-Project fair cursors
+prevent parked A entries consuming all B work. The genuine runtime driver and wait-
+register/recheck sequence recover lost notifications without a busy loop; numbers are
+finite policy bounds, not OS real-time guarantees or implemented-source claims.
+
+BOTH driver candidate predicate AND binder transaction compare invoking genuine
+runtime-instance ownership to operation/receipt instance. A different instance requires
+sealed authentic #14 fencing/restore proof before registration; otherwise Held with
+zero writes and no repeated Immediate retries. Persisted UUID/receipt/readiness alone
+cannot mint that proof. Same-instance matching is necessary, not a cleanup substitute.
 
 Post-marker outcomes: genuine current successful receipt -> binder route; pending/
 unknown -> held under existing real supervisor; NoCurrentDispatch -> its #19 proven
@@ -525,7 +572,7 @@ success. Restart requires authentic durable frame/current-success evidence AND a
 Actual #19/#23/#43/#14 producer ancestry co-integration is the merge vehicle; no
 completed-merge cycle or SQL-seeded/direct-binder-only acceptance.
 
-## Design5: separate record-only bound-live diagnostics
+## Design6: separate record-only bound-live diagnostics
 
 Current d87faec bound `poll` writes Task through refresh_owners + ordinary persist on
 adapter.status error and validate_persisted_status mismatch. Replace ONLY those arms
@@ -536,8 +583,9 @@ identity, not parent authority recapture. Return latest committed Workflow Recor
 
 Allowed delta is solely active.detail -> allowlisted reason status_unavailable or
 persisted_status_mismatch with bounded fact fields (total128UTF-8 bytes), plus checked
-Wversion/updated_at and one bounded reserved workflow.native_diagnostic event. Audit
-maximum4KiB; public audit APIs refuse this kind. Compare complete previous/candidate
+Wversion/updated_at and one bounded reserved rrx.private.workflow.native_diagnostic event. Audit
+maximum4KiB; both public audit APIs refuse this kind. Enumerate both exact compiled
+private constants in reserved_audit_kind under the composed rrx.private.* prefix. Compare complete previous/candidate
 JSON and Record metadata, rejecting every extra field including unknown fields.
 Identical diagnostic is true no-write/no-audit; no infinite repeat history list.
 No Task/P/G/Session/full-lock body/version write, private input/owner/admission pin
@@ -547,10 +595,10 @@ under Store. Stale Workflow or missing exact private proof holds/refuses unchang
 
 An accepted bound-live diagnostic is a Workflow factual revision only. It never
 updates the immutable marker frame or native currency. #19/#23 terminal/PhaseGates
-consumers must accept the resulting current Workflow Record only through this exact
-record-only diagnostic lineage while still checking unchanged private native pins,
-actual current source/owners and genuine settlement/outcomes; they cannot refresh
-admission authority or discard existing evidence. Diagnostic replay/races do not bind
+consumers use ordinary current Workflow Record CAS plus unchanged private native
+pins and genuine receipts. No diagnostic lineage journal/replay or frame refresh is
+needed. They still check actual current source/owners and settlement/outcomes, cannot
+renew admission authority or discard existing evidence. Diagnostic replay/races do not bind
 or close anything. Inventory every actual Workflow persist/refresh_owners call at the
 source revision: marker pre-admission; binding sole private ID writer; these diagnostic
 arms record-only; unbound poll passive; genuine terminal/evaluation transitions normal
@@ -558,7 +606,7 @@ with private settlement; authorized cancel/fail/lifecycle revoke authority and r
 ownership; other Source/retry/recovery transitions retain separate reviewed gates.
 Unclassified live bookkeeping cannot claim native-currency preservation.
 
-## Design5: extended actual consumer controls and mutations
+## Design6: extended actual consumer controls and mutations
 
 Keep all prior concrete provider/ordinary-access/private publication matrices.
 Add genuine managed controls: normal and late paths use exact marker frame/full locks;
@@ -571,7 +619,7 @@ original frame all hold without binding. Known current failure independently use
 #19 non-success closure and never becomes success or absent-ID binding.
 
 Kill fresh-recaptured-frame, notification-only, missing real driver lookup, fail-retry,
-and missing durable registration/wake mutants. The latter keeps normal evaluation/
+and missing derived-readiness/wake mutants. The latter keeps normal evaluation/
 launch-ending rederivation and notification wakes, so late settlement AFTER a pending
 Err/drop plus lost notification must expose stranding, not a weaker mutant that drops
 all evaluation. Timer/wait registration/recheck controls must exercise real #23 driver.
@@ -587,3 +635,29 @@ normal terminal and authorized revocation negatives, restore exact passing sourc
 Actual default native5/6/7 conformance, required restart and co-integrated producer
 controls remain mandatory; synthetic callback/SQL/direct binder alone does not count.
 No implementation/native/profile acceptance is claimed by these design documents.
+
+
+## Design6: additional genuine consumer controls
+
+Run more than4096 sequential normal dispatch/bind/closure cycles without history slot
+leak; Held Project A does not block B. Capacity-race injection refuses before41claim
+with zero effects and no stranded claim. Across N unchanged Held wakes observe zero
+repeated Immediate binder transactions, while a relevant real receipt/recovery change
+causes one recheck. Mutate readiness derivation, capacity ownership/preclaim ordering,
+and Held parking at the actual driver, with restored controls.
+
+Immediately after the real marker, normal binding passes using checked resulting
+Task/W versions. A pre-marker-frame mutant fails this positive consumer. Change EACH
+P/G/T and a lock-only row between marker and adapter entry: zero PreparedInput/effect
+and genuine closable NoCurrentDispatch. A fresh-capture mutant must reach the actual
+consumer and fail that zero-effect/closure expectation; post-consumption negatives
+stay held without authority refresh. Persist genuine ready/receipt state, restart a
+different actual runtime instance: zero binding until genuine14proof. Omit the driver
+and binder runtime-instance checks independently and kill each at its real consumer.
+
+Both public audit APIs refuse EACH reserved private name; Workflow saved/bound count
+consumers use the exact private binding constant. Same-operation late bind then normal
+return yields Started, exactly one audit and no retry/fail/release. Diagnostics retain
+the full original frame and ordinary current-Record CAS, not durable lineage replay.
+All controls require actual co-integrated19/23/43/14 producers; isolated SQL/direct
+binder tests and this proposed design do not qualify production/native acceptance.

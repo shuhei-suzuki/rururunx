@@ -445,3 +445,12 @@ pins, coalesces repeated diagnostics, and grants no binding/outcome/retry/releas
 fresh authority. Actual managed held-turn controls and branch-specific Task-rewrite
 mutants are required. This port/source is unimplemented, not part of merged #41;
 terminal/authorized lifecycle/unknown recovery transitions retain their own gates.
+
+
+Issue43 proposed Design6 additionally carries one immutable resulting marker frame
+through actual native preparation/consumption/AllowCurrent, derives binding readiness
+from marked/unbound/phase-open private operations, reserves per-Project operation
+capacity before41claim and parks unchanged Held observations without repeated binder
+transactions. Driver and binder independently require actual runtime-instance match
+or genuine14restore proof. These19/23/43/14 contracts remain unimplemented proposals;
+merged41observer behavior and normal lifecycle authority are unchanged.
