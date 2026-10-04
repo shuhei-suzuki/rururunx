@@ -307,3 +307,14 @@ private owned turn-completion journal after verified cleanup/terminal persistenc
 without fabricating exit codes or trusting caller recovery JSON. Workflow verifies
 saved SessionId/Scope/actor/role/worktree before consulting this provider method;
 transport completion never replaces review/test/acceptance gate evidence.
+
+### Pending bounded macOS owned-group proof (Issue #46)
+
+STRICT [requirements](../../requirements/issue-46-requirements.md) and
+[design](../issue-46-design.md) propose one exact owned process-group query with
+bounded stderr and expected unreaped-leader evidence. Empty/error/malformed or
+incomplete observations must remain Unknown; exit0 alone is insufficient.
+250ms, uncertainty and kill-before-reap remain authoritative. Published XNU still
+traverses/allocates against global processes. This is pending formal/implementation
+verification and makes no claim to explain prior CI timeouts or contain detached
+native descendants; Linux cleanup semantics remain unchanged.
