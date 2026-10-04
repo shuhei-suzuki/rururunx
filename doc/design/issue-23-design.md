@@ -1,6 +1,6 @@
 # Issue 23: Goal authority, DAG and completion
 
-Status: proposed Design3. Requirements3 `1fc82b1` independently approved; design
+Status: proposed Design4. Requirements3 `1fc82b1` independently approved; design
 review, source integration and acceptance remain pending. No implementation fact
 is claimed. Current main4851fcd has schema3 and generic Goal snapshots; the native
 branches and proposed #19 schema6/private input projection must be composed before
@@ -140,7 +140,24 @@ Workflow/Session/lock/evidence scans, never recursion or model calls.
 Graph nodes are actual same-scope Tasks. Generic put_task cannot insert into a
 managed Goal or change any Task Project/Goal scope. Only the typed graph/accepted-
 proposal port creates such Tasks and nodes atomically, preserving existing
-Workflow-owned field fences for updates. Node creation and Task insertion share
+Workflow-owned field fences for updates. Managed Task policy is authority even
+before the first Workflow record: generic put_task cannot change workflow class,
+risk, executor, worktree/branch, lifecycle or accepted purpose/acceptance fields.
+The graph/proposal port derives class/risk and minimum gate set from the approved
+proposal and exact active Human-approved policy, records origin and canonical
+policy digest for that Task, and retains the single Task row as authoritative.
+Workflow creation and WorkflowSuccessProof compare that accepted policy and
+mandatory gate set; a reduced caller preset cannot become successful proof.
+An audited typed policy port may strengthen risk/class/gates monotonically, never
+weaken them in MVP, including under a Human edit request. Retain prior required
+gates across escalation. Executor changes require authorized provider selection
+under approved policy and settled prior native ownership; preserve cumulative
+Task author provenance for #9. Worktree creation/binding/cleanup use actual typed
+Git ownership ports with exact scope/version checks and retained history, never
+generic path/branch reassignment. Workflow-owned atomic transitions retain their
+existing own-field authority and cannot weaken accepted policy. Inventory those
+pre-Workflow generic Task writers and migrate real Git and Issue binding consumers
+where necessary. Node creation and Task insertion share
 one transaction; existing unlisted same-scope legacy Tasks are explicitly reported
 and may be reconciled by controller adding that exact identity, after checks.
 Reject missing/foreign/duplicate nodes, self edges and duplicate ordered
@@ -314,13 +331,25 @@ terminal reopening and observation writes invalidating sibling native currency.
 Include a generic DAG-write mutant making a formerly blocked dependent ready,
 an omitted managed-Goal hold/proof predicate at actual native wire, omitted
 hard-prerequisite/listed-membership admission at actual native/Workflow consumers,
-forged generic managed Task insertion (no row/version/audit), and ignored
-attestation DAG-drift mutant. Mutants must reach the intended consumer, compile
+forged generic managed Task insertion (no row/version/audit), generic pre-Workflow
+class/risk downgrade and executor/worktree/branch/accepted-purpose reassignment,
+and ignored
+attestation DAG-drift mutant. Add a compiled pre-Workflow policy-downgrade mutant
+that reaches a reduced-gate prerequisite/Goal success consumer and fails an
+assertion, with real accepted policy and positive controls. Mutants must reach the intended consumer, compile
 and fail an assertion; setup
 refusal, timeout or unrelated safety guards provide no causal credit. Restore
 source and passing controls after each isolated mutation.
 
-Requirements passed independently; Design3 now needs delta review before source.
+No managed Goal dispatch is exposed before actual private settlement producers
+and epoch/writer gates are composed. Capacity checks occur under the same
+IMMEDIATE admission transaction; exhaustion permits authorized Fail/Cancel, not
+history pruning or repeated hot retries. Output received during a Goal hold may
+be retained as factual owned observation, but progression/accepted completion
+waits for authorized resolution and fresh input currency; test that distinction.
+Goal/project Consultant planning still rejects unverified/terminal/held Goals.
+
+Requirements passed independently; Design4 now needs delta review before source.
 Source updates Goal master design/README to actual behavior, runs full appropriate
 shared-state/native/Workflow regressions plus fmt/clippy/build and exact Linux/
 macOS CI, independently reviews the immutable source/security scope, and composes

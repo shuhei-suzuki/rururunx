@@ -78,3 +78,13 @@ settlement producer integration necessary for the WorkflowSuccessProof. No exist
 cleanup certificate, schema addition or native outcome proof is falsely claimed.
 #19 owns that shared design/source; its exact durable callback/receipt and #41/#14
 claim consumer gates remain pending.
+
+Design3 38417d4 completed with owned cleanup verified: D4 closed, one verified
+Medium D5 remained. Before Workflow creation, generic put_task could lower class/
+risk or change executor/worktree ownership; primary owns_workflow-only fence
+confirms it. Design4 pins accepted Task policy before any Workflow, rejects those
+generic changes, binds real Workflow success to the approved minimum gates, and
+allows only audited strengthening/provider/Git ownership transitions. Actual
+pre-Workflow downgrade consumer controls and compiled mutation remain required.
+No managed dispatch precedes composed private settlement/epoch integration.
+Exact Design3 CI37190102126 succeeded; individual jobs still to be checked.
