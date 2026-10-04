@@ -116,8 +116,9 @@ launch/operation consumer. ANY role with a reachable command/helper/hook/MCP or
 frontend path that can create arbitrary processes requires ownership of that
 entire enabled path, including arbitrary child group/session creation. A native
 read-only filesystem profile does not imply no-command execution.
-Decision Review, ApprovalReviewer and no-command Consult can use a smaller
-profile only when its enforceable no-command inventory and its actual setup,
+Formal Reviewer phases (RequirementsReview, DesignReview, ImplementationReview,
+SecurityReview), ApprovalReviewer under the pending Issues9/10 authority, and
+no-command Consult can use a smaller profile only when its enforceable no-command inventory and its actual setup,
 hook, MCP and helper lifecycle are independently covered. Profiles reduce enabled
 capability classes, never cleanup strength for an enabled class. A zero model-tool
 count cannot prove startup cleanup. Mandatory hooks and rules stay preserved;
@@ -192,19 +193,28 @@ hooks and shared/common-directory configuration that can execute commands must
 be blocked by bound, enforceable profile controls before the first native execution.
 These surfaces have standing ungoverned consumers, including user/IDE Git: hooks,
 core.hooksPath/fsmonitor/sshCommand, credential/filter/diff/merge helpers, shell
-aliases and executable include/includeIf configuration. Trace concrete configured
-automatic activation edges, including hooksPath and its transitive commands/targets.
-An existing ambient activation edge does not become inert merely because its target
-is Task code. Ordinary worktree code/scripts/build.rs stored for a later genuinely
-governed runtime operation are inert work products; that operation must freshly
-validate exact sources/current authority and own its actual workload. F1 covers
-runtime-owned workload/resource lifetime, not all future execution of generated
-code. Task worktrees are not claimed OS-private from the same user. Mere user/IDE
-readability does not classify every file as current delegation; independent
-same-UID user/IDE actions outside rrx are explicit application-boundary limits,
-not a universal future-code containment guarantee. Concrete existing automatic
-activation/conflict surfaces must still be covered or blocked; an independent
-action cannot be used to disguise a route already delegated by this attempt.
+aliases and executable include/includeIf configuration. Protect concrete configured
+shared Git/hooks and ambient direct entry targets, including hooksPath indirection,
+even when the directly named entry script is Task code. Classify further edges by
+their actual trigger, not arbitrary tracing depth or mere file readability.
+Automatic activation without a new governed runtime action (for example background
+IDE/status fsmonitor, schedulers or autostart) requires a bounded complete closure
+of its resolved executable/config/indirection edges, bound to actual inputs and
+source digests. Unknown, cyclic, unbounded or truncated automatic closure is
+Unsupported for the affected surface/profile; a traversal cutoff cannot certify
+completeness. No current resolution/enforcement producer is assumed here.
+For an explicit independent outside-runtime user Git/build action, its configured
+hook/direct entry target remains protected, while transitive ordinary source,
+tests or build.rs are not recursively reclassified merely because that action could
+execute them. Their future execution is an explicit application-boundary limit.
+Ordinary worktree code/scripts/build.rs stored for a later genuinely governed
+runtime operation are inert work products; that operation freshly validates exact
+sources/current authority and owns its actual workload. Runtime/native-triggered
+Git/build execution stays governed by actual admission/cohort and the continuous
+effect contract below. F1 covers runtime-owned workload/resource lifetime, not
+external user/IDE-created future processes. Task worktrees are not claimed OS-private
+from the same user. An independent action cannot disguise an already automatic
+activation route, and no broad native-default/hook disable establishes acceptance.
 Files consumed automatically by an external scheduler/service/autostart mechanism
 remain current delegation routes. Preserve mandatory native hooks/settings; if
 their required shared writes cannot coexist with this boundary, the profile is
@@ -216,9 +226,14 @@ write restriction before any later attempted activation change. A native tool
 denial is not proof of cleanup or a fabricated terminal outcome. Record the
 specific capability limit and settle/hold using actual outcome and cleanup rules.
 A real attempted shared hook/config write plus ungoverned-reader fixture must
-prove the profile refuses the write, including a concrete hook executing an
-otherwise ordinary editable non-hook target. A separate ordinary-code persistence
-and later governed execution fixture exercises fresh admission at that consumer.
+prove the profile refuses direct/automatic activation changes, including hooksPath
+indirection to a non-hook direct entry script and a bounded automatic transitive
+target. A separate explicit-user-trigger hook→ordinary-code fixture proves the
+documented classification boundary without claiming that external execution owned.
+Ordinary-code persistence followed by actual governed runtime/native execution
+exercises fresh/current admission and owned cohort at that consumer. Required
+target/dogfood surfaces whose closure or compatible enforcement is unresolved
+remain MVP blockers, not a silent general Executor support claim.
 
 Before any native process may have executed, registered Preparing cleanup and
 exact historical rollback/factual failure remain authoritative. Once any native
@@ -360,9 +375,12 @@ ref/config/hook and worktree-lifecycle surface. Apply the same new-conflicting-e
 exclusion above; a separate Task worktree is not automatically independent. This
 uncertainty rule does not serialize all live owned work by common-directory identity.
 
-Issue6 F1 owns the required reviewed live compatibility matrix and continuously
-enforced effect contract, with Issue3 Git/Issue19 managed-operation consumers and
-Issue58's Consultant conflict contract. It must cover own-branch/worktree effects,
+Issue6 F1 coordinates the required provider-neutral reviewed live compatibility
+matrix and continuously enforced effect contract, with Issue3 Git/Issue19 managed-
+operation consumers and Issue58's Consultant conflict contract. Issues5/6/7 and
+Issue4 Generic must supply each supported profile's own continuous enforcement
+and both sides' protection/settlement; Codex-only proof does not cover another
+provider. It must cover own-branch/worktree effects,
 atomic append-only shared objects or a proven equivalent, shared executable surface
 protection and current currency, from the first effect throughout native lifetime.
 Different Task/branch IDs or Git locking alone do not prove those restrictions.
@@ -374,7 +392,8 @@ already-admitted Task B when Task A becomes Lost: prevent conflicting B effects
 under its own enforcement/settlement path, or prove their continued noninterference.
 Rejecting new rrx admission cannot stop already-running native B writes, and a Lost
 label cannot retroactively do so. Require both positive same-repository live
-Executors plus open Consult concurrency, and B-already-live→A-Lost conformance.
+Executors plus open Consult concurrency, and mixed-provider B-already-live→A-Lost
+conformance across every supported required provider/profile combination.
 Lost is absorbing under ordinary adapter calls. Escalate to Human and retain the
 reservation; a recorded human judgement, PID clearing or manual state change
 does not certify cleanup, settle the operation or authorize implicit replay.
@@ -413,7 +432,8 @@ Goal support remains optional. Completion also requires actual private Issue19
 managed composition, Issue58 non-Task hold/settlement, Issue14 recovery/fencing,
 Issues9/10 retained approval-decision ownership, the Issues6/11/15/19/14 composed
 Task-attach contract, and Issues3/12/13 later-consumer execution/publication guards.
-The Issue6 F1 live compatibility/enforcement matrix composed with Issues3/19/58
+The provider-neutral live compatibility/enforcement matrix supplied by each actual
+Issues5/6/7/Generic supported profile and composed with Issues3/19/58
 must also meet product §31's four-plus simultaneous Task requirement; an unresolved
 concurrency boundary is a Core blocker, not permission to serialize the product.
 These are acceptance dependencies, not implied existing ports. Issue 16 then
@@ -470,9 +490,10 @@ permission for privileged installation or silently change the required hosts.
   private artifacts without its own current ownership and command-safety admission.
   A separate attempted shared hook/config write with an ungoverned reader proves
   pre-execution profile enforcement; a guard-removal mutant exposes the refusal.
-  Include a transitive configured hook target and ordinary persisted code consumed
-  later under a genuinely fresh governed operation. Same-user readability alone
-  must not classify every worktree file as ambient delegation.
+  Include direct hooksPath indirection, bounded automatic activation closure,
+  explicit independent user-triggered hook→ordinary-code classification and actual
+  governed runtime/native execution of ordinary persisted code. Unknown automatic
+  closure refuses; same-user readability alone cannot classify every file as delegation.
 - A Lost Task workload with reachable common-Git writes prevents another Task's
   actual shared-Git mutation/base/worktree-lifecycle consumer; removing that caller
   hold guard must fail the fixture. Different Task IDs do not establish independence.
@@ -480,7 +501,8 @@ permission for privileged installation or silently change the required hosts.
   actual compatibility matrix. With B already admitted/running when A becomes Lost,
   actual enforcement prevents conflicting B effects or proves noninterference;
   a caller/enforcement mutation fails this fixture. A new-admission-only test cannot
-  certify the existing native workload. Issue16 retains aggregate four-plus proof.
+  certify the existing native workload. Exercise mixed required provider/profile
+  pairs in both roles. Issue16 retains aggregate four-plus proof.
 - A Lost approval reviewer keeps its requesting operation and affected scope held
   at the real broker/settlement consumer until actual native cleanup and separately
   gated recovery; removing the retained member/slot guard must fail the fixture.
