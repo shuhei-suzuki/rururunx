@@ -270,3 +270,20 @@ cleanup proof. Original failure is retained; no same-session result is fabricate
 Fresh independent review of the complete public component/evidence is required.
 TriggerCI37211035771 at8918130 is green; actual checkout proof not inferred from its
 trigger SHA. Earlier fully compared reviewed-source CI remains the qualified record.
+
+Final complete-public-component Source3 at78676c9 received TWO fresh independent
+native approvals, no C/H/M/blockers; both actual v3 owned cleanup/reap verified.
+A's one optional Low is resolved in this final evidence: every control/mutant records
+retained log SHA256, observed compile/test summary, executed count and the exact
+observed failing assertion separately from intended_kill. All seven are actual
+compiled consumer assertions, not compiler/setup101 credit; restored controls pass.
+No Rust/test bytes changed since b47b773. Final evidence publication is metadata only.
+
+CI37212685260 passed every individual Linux/macOS fmt/clippy/test/debug/release-build
+step. Actual synthetic checkoutffa074e27f7e68db184f1747c05013f3142bcd36 parentsd87/786,
+full tree equal to reviewed786 and all36source/test/build inputs individually compared.
+The complete public provenance is retained. Final metadata CI remains a distinct gate.
+This approves ONLY the legacy six typed integer Store boundary; whole21 stays open.
+Qualified provenance/raw retirement/native counters/price/report/benchmark/epoch and
+#16 acceptance are still mandatory. No failed review/cleanup or earlier CI failure
+was relabeled. This scoped component may merge without closing the tracking issue.

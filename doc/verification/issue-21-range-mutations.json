@@ -23,7 +23,11 @@
       "path_sha256": {
         "crates/rrx/src/state/mod.rs": "fffde33dd0dda236680b5fe0aa8e6fd70a2d8ce4187a5308f55f546704559641",
         "crates/rrx/tests/state.rs": "d6619dd93db60ed224561eda0d0cf2ac79d88b90bed67c217178dab82f5a81d0"
-      }
+      },
+      "log_sha256": "47f32605409de3c5710421cc77ad2652b3e0191c2a814a41b04ac5b77a40a1f9",
+      "compiled": true,
+      "executed_tests": 1,
+      "observed_test_summary": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 13 filtered out; finished in 0.01s"
     },
     {
       "label": "input_tokens",
@@ -37,7 +41,13 @@
       "path_sha256": {
         "crates/rrx/src/state/mod.rs": "6a034119b93843c556a7314fdf6b7bcde332d446a054569455b0bad56430c246",
         "crates/rrx/tests/state.rs": "d6619dd93db60ed224561eda0d0cf2ac79d88b90bed67c217178dab82f5a81d0"
-      }
+      },
+      "log_sha256": "fb31311e80261a52599a89b8a75c5ab3e47f2c0b24cb27c153c62e34dea91ea4",
+      "compiled": true,
+      "executed_tests": 1,
+      "observed_test_summary": "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 13 filtered out; finished in 0.01s",
+      "observed_assertion": "overflow stored for input_tokens: ()",
+      "observed_kill": true
     },
     {
       "label": "cached_input_tokens",
@@ -51,7 +61,13 @@
       "path_sha256": {
         "crates/rrx/src/state/mod.rs": "de4f330e98d4f8b098f1be2a50df8a468d9167e60d23d8fc0782cbef30af4a2b",
         "crates/rrx/tests/state.rs": "d6619dd93db60ed224561eda0d0cf2ac79d88b90bed67c217178dab82f5a81d0"
-      }
+      },
+      "log_sha256": "56d11a1b928e8d5749c9867051e78fd19189ea820e8a50ffe9da6c15f4b207df",
+      "compiled": true,
+      "executed_tests": 1,
+      "observed_test_summary": "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 13 filtered out; finished in 0.01s",
+      "observed_assertion": "overflow stored for cached_input_tokens: ()",
+      "observed_kill": true
     },
     {
       "label": "output_tokens",
@@ -65,7 +81,13 @@
       "path_sha256": {
         "crates/rrx/src/state/mod.rs": "27fbd149ba0759854dd8a7f78aa442bb3ff04b1e1fa8f834a36c9abd1191cf2f",
         "crates/rrx/tests/state.rs": "d6619dd93db60ed224561eda0d0cf2ac79d88b90bed67c217178dab82f5a81d0"
-      }
+      },
+      "log_sha256": "17b998b2ce4201534dd708ec1272b41b2108cdbb1e797af59ccb2d10077b5a9f",
+      "compiled": true,
+      "executed_tests": 1,
+      "observed_test_summary": "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 13 filtered out; finished in 0.01s",
+      "observed_assertion": "overflow stored for output_tokens: ()",
+      "observed_kill": true
     },
     {
       "label": "context_pack_version",
@@ -79,7 +101,13 @@
       "path_sha256": {
         "crates/rrx/src/state/mod.rs": "ed846ea1be450a2592ec97bb407ed9f27a3fcd3b97763b66ef3ebf3bbc168209",
         "crates/rrx/tests/state.rs": "d6619dd93db60ed224561eda0d0cf2ac79d88b90bed67c217178dab82f5a81d0"
-      }
+      },
+      "log_sha256": "5a16503a2d6c92b4c063d1f54f0f1e6e5753e54d69a6c3e62de7e64ebbb5e74b",
+      "compiled": true,
+      "executed_tests": 1,
+      "observed_test_summary": "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 13 filtered out; finished in 0.01s",
+      "observed_assertion": "overflow stored for context_pack_version: ()",
+      "observed_kill": true
     },
     {
       "label": "context_pack_size",
@@ -93,7 +121,13 @@
       "path_sha256": {
         "crates/rrx/src/state/mod.rs": "a8e6d0cfa7bf9de7d416c8302ffabb47bfc8f3c97912d021a58f5d4382348a2b",
         "crates/rrx/tests/state.rs": "d6619dd93db60ed224561eda0d0cf2ac79d88b90bed67c217178dab82f5a81d0"
-      }
+      },
+      "log_sha256": "4cda96b637bb4f4c596479ba3b70f6b9465036a39ddc0674db6d8898536afd0c",
+      "compiled": true,
+      "executed_tests": 1,
+      "observed_test_summary": "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 13 filtered out; finished in 0.01s",
+      "observed_assertion": "overflow stored for context_pack_size: ()",
+      "observed_kill": true
     },
     {
       "label": "repo_map_size",
@@ -107,7 +141,13 @@
       "path_sha256": {
         "crates/rrx/src/state/mod.rs": "e58170211862c2f7ea9f650a3d7d4bec0be29db66c4629399628a750599e7c02",
         "crates/rrx/tests/state.rs": "d6619dd93db60ed224561eda0d0cf2ac79d88b90bed67c217178dab82f5a81d0"
-      }
+      },
+      "log_sha256": "a921ee32b5d4960f6bc87f73530d2a3ac9d815a3e4bc0a34d7e5574bbee70efc",
+      "compiled": true,
+      "executed_tests": 1,
+      "observed_test_summary": "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 13 filtered out; finished in 0.01s",
+      "observed_assertion": "overflow stored for repo_map_size: ()",
+      "observed_kill": true
     },
     {
       "label": "control-restored",
@@ -119,7 +159,11 @@
       "path_sha256": {
         "crates/rrx/src/state/mod.rs": "fffde33dd0dda236680b5fe0aa8e6fd70a2d8ce4187a5308f55f546704559641",
         "crates/rrx/tests/state.rs": "d6619dd93db60ed224561eda0d0cf2ac79d88b90bed67c217178dab82f5a81d0"
-      }
+      },
+      "log_sha256": "51f8aee51c04a4fd55899051616d8e0ff1106e016ef8315630c5cf2f0ed3e580",
+      "compiled": true,
+      "executed_tests": 1,
+      "observed_test_summary": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 13 filtered out; finished in 0.01s"
     },
     {
       "label": "ordering",
@@ -133,7 +177,13 @@
       "seconds": 4.531,
       "log": "rururunx-issue21-range-ordering.log",
       "intended_assertion": "overflow published data for input_tokens",
-      "intended_kill": true
+      "intended_kill": true,
+      "log_sha256": "defb81edbd5fa4564d8e91fd849b7c2f7d6ffef6197be22b3759dc149d490456",
+      "compiled": true,
+      "executed_tests": 1,
+      "observed_test_summary": "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 13 filtered out; finished in 0.01s",
+      "observed_assertion": "assertion `left == right` failed: overflow published data for input_tokens",
+      "observed_kill": true
     },
     {
       "label": "ordering-restored",
@@ -145,7 +195,11 @@
       },
       "exit_code": 0,
       "seconds": 2.088,
-      "log": "rururunx-issue21-range-ordering-restored.log"
+      "log": "rururunx-issue21-range-ordering-restored.log",
+      "log_sha256": "e9f462452f6e822920076c3c56c83f540bdadd38cf1fb7af5e04dc56dc0bf16b",
+      "compiled": true,
+      "executed_tests": 1,
+      "observed_test_summary": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 13 filtered out; finished in 0.01s"
     }
   ],
   "whole_issue_acceptance": false,
