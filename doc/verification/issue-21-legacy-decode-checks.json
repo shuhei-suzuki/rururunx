@@ -1,0 +1,249 @@
+{
+  "source_commit": "c44cbc792c0e8dd231305a9455262028c0a52fef",
+  "scope": "legacy Usage body decode error projection only; no qualified query or telemetry/native/whole21 readiness",
+  "commands": [
+    {
+      "label": "fmt",
+      "argv": [
+        "cargo",
+        "fmt",
+        "--all",
+        "--",
+        "--check"
+      ],
+      "exit": 0,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_summaries": []
+    },
+    {
+      "label": "clippy",
+      "argv": [
+        "cargo",
+        "clippy",
+        "--locked",
+        "--workspace",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exit": 0,
+      "log_sha256": "d1918ac8e69e26bffd76f41201345531e38df338045665d39e5c40d965f348e0",
+      "test_summaries": []
+    },
+    {
+      "label": "workspace-test",
+      "argv": [
+        "cargo",
+        "test",
+        "--locked",
+        "--workspace"
+      ],
+      "exit": 0,
+      "log_sha256": "6eb482e8c64cfd44d805bed3112e1c7970446405765ea097f6d314db5914841c",
+      "test_summaries": [
+        "test result: ok. 133 passed; 0 failed; 7 ignored; 0 measured; 0 filtered out; finished in 5.81s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.50s",
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.41s",
+        "test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 15.60s",
+        "test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.38s",
+        "test result: ok. 13 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 20.29s",
+        "test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.06s",
+        "test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s"
+      ]
+    },
+    {
+      "label": "debug-build",
+      "argv": [
+        "cargo",
+        "build",
+        "--locked",
+        "--workspace"
+      ],
+      "exit": 0,
+      "log_sha256": "8c233a54790c4800d3dd585436af679aa838da259bfdb129412e2d51cdb75cdc",
+      "test_summaries": []
+    },
+    {
+      "label": "release-build",
+      "argv": [
+        "cargo",
+        "build",
+        "--locked",
+        "--workspace",
+        "--release"
+      ],
+      "exit": 0,
+      "log_sha256": "c9b240d950a76d0dea98eace6c03f4570290bbd07e3d473aac758dd854672bc2",
+      "test_summaries": []
+    }
+  ],
+  "source_sha256": "662ba433f06de59ee0129ac44888e4fd51c3be0fec450da3108f6a5f02510a99",
+  "tests_sha256": "6041ece1179a59deee12ca2749b7a5ec16c7ae2b3832a4a2238fac1b791dd30c",
+  "summary": {
+    "rust_tests_passed": 237,
+    "doc_tests_passed": 2,
+    "ignored": 9,
+    "default_parallelism": true,
+    "release_build": "PASS",
+    "release_tests": "not run; main555 historical failure remains unqualified",
+    "native_or_full21_acceptance": false
+  },
+  "exact_input_blobs": [
+    {
+      "path": ".github/workflows/ci.yml",
+      "blob": "fae2d45999b972ed8a97c38a74b819bbcce088bc"
+    },
+    {
+      "path": "Cargo.lock",
+      "blob": "c9f399b4fbb93d02ee92ee7609a4f944f57e38f9"
+    },
+    {
+      "path": "Cargo.toml",
+      "blob": "be2be1a9dd99dac3e416a672ceb6830123e58554"
+    },
+    {
+      "path": "crates/rrx/Cargo.toml",
+      "blob": "ca39920a362a267b24032a21ab9bc11f0c54a6ac"
+    },
+    {
+      "path": "crates/rrx/examples/repository-context.rs",
+      "blob": "98a7ace4160efcf01a70509acbe88b97516a8007"
+    },
+    {
+      "path": "crates/rrx/src/adapter.rs",
+      "blob": "b960a247f359fcf8da7ad2c768caa0e87479ed55"
+    },
+    {
+      "path": "crates/rrx/src/adapter/grok/cleanup.rs",
+      "blob": "15a55b0bb065299188d5fecddd5b3e2342695091"
+    },
+    {
+      "path": "crates/rrx/src/adapter/grok/files.rs",
+      "blob": "252b5b46abdbbb5f19308e1d6e76cc4459ff7b20"
+    },
+    {
+      "path": "crates/rrx/src/adapter/grok/mod.rs",
+      "blob": "6a3d92593a57a5eed48dec96c30ed76bd816878d"
+    },
+    {
+      "path": "crates/rrx/src/adapter/grok/ownership.rs",
+      "blob": "bfa527dca4b3b7a08f6cb5d6939e11775b28ddc5"
+    },
+    {
+      "path": "crates/rrx/src/adapter/grok/protocol.rs",
+      "blob": "be115305356fdebe0d659c41db26304ebb43e29a"
+    },
+    {
+      "path": "crates/rrx/src/adapter/grok/receipt_tests.rs",
+      "blob": "ca48de3bb2a47a59052ca795cfc8c2176bb7c701"
+    },
+    {
+      "path": "crates/rrx/src/adapter/grok/schema.rs",
+      "blob": "a0016eb7e3ca3001fb8eafded9466d855ad434af"
+    },
+    {
+      "path": "crates/rrx/src/adapter/inspection.rs",
+      "blob": "376b6556758129eaa7c585a452ebe1dd387c40e3"
+    },
+    {
+      "path": "crates/rrx/src/adapter/inspection/diagnostic_tests.rs",
+      "blob": "cb923bd7784726bd1ae6e60e83981cac64119c77"
+    },
+    {
+      "path": "crates/rrx/src/adapter/inspection/diagnostics.rs",
+      "blob": "9b6078660ecf31aaec5f40d2652f0ed6ee9140cf"
+    },
+    {
+      "path": "crates/rrx/src/config.rs",
+      "blob": "fd167b8723654f3b096e27c5c99f903ec59bcd1d"
+    },
+    {
+      "path": "crates/rrx/src/context.rs",
+      "blob": "ec4a0aebc495ef0780c90b32558dee6f93974e3d"
+    },
+    {
+      "path": "crates/rrx/src/domain.rs",
+      "blob": "f3f70b8667c1894afdf7c7425472f29eb5aeb3e5"
+    },
+    {
+      "path": "crates/rrx/src/git.rs",
+      "blob": "ec5ca45bd0c4ed5b2edaada8bfe51f07a6ff3e2b"
+    },
+    {
+      "path": "crates/rrx/src/lib.rs",
+      "blob": "040eb901a2c7f4f8b826c798e15beac1c6230f02"
+    },
+    {
+      "path": "crates/rrx/src/main.rs",
+      "blob": "52ecc16c349dfec3a46cddef4ae22835ad4cc52e"
+    },
+    {
+      "path": "crates/rrx/src/project.rs",
+      "blob": "fb42e5fa2bc5cd7618aa63414e8892f2789486f5"
+    },
+    {
+      "path": "crates/rrx/src/state/mod.rs",
+      "blob": "39cbcf2e6ac775fc1126c6d9d46cee779b08879e"
+    },
+    {
+      "path": "crates/rrx/src/state/native_dispatch_tests.rs",
+      "blob": "c534a18a89ab85820c814b6483c32c402343db76"
+    },
+    {
+      "path": "crates/rrx/src/state/schema.sql",
+      "blob": "bfa8119e6d66900f6bcf26638321730077cb3d0c"
+    },
+    {
+      "path": "crates/rrx/src/workflow.rs",
+      "blob": "294c4629e55d3bc0b7b7be1e451835aff1418e6b"
+    },
+    {
+      "path": "crates/rrx/src/workflow/tests.rs",
+      "blob": "8ad306f922676369afc34dc4997ef445e0d2cac4"
+    },
+    {
+      "path": "crates/rrx/tests/adapter.rs",
+      "blob": "2382c7bfed5e67f9e7c5ae9b8ce1d0a0676a8f34"
+    },
+    {
+      "path": "crates/rrx/tests/cli.rs",
+      "blob": "9b36d8f55c43059ab852c2c28ed78e8e97e2ba83"
+    },
+    {
+      "path": "crates/rrx/tests/context.rs",
+      "blob": "06a76f548b1cb0983852f8100efbc6f95239bd25"
+    },
+    {
+      "path": "crates/rrx/tests/git.rs",
+      "blob": "836f1eaf77f872f54869382800156a5ce00ac25d"
+    },
+    {
+      "path": "crates/rrx/tests/grok.rs",
+      "blob": "351de16b6d2000952c112d19c3bd6038b95b8cd7"
+    },
+    {
+      "path": "crates/rrx/tests/project.rs",
+      "blob": "b366ba343bc6223bce8e76575e287a20b2bc67b4"
+    },
+    {
+      "path": "crates/rrx/tests/state.rs",
+      "blob": "0c096ee3d3221b01e757277f8168a74755f0f17c"
+    },
+    {
+      "path": "crates/rrx/tests/support/grok_fake.py",
+      "blob": "9e53c9a7ce1ab784e3621290d53e9d33c85c69df"
+    },
+    {
+      "path": "crates/rrx/tests/support/grok_fixture.rs",
+      "blob": "b35a6f8b51fe996cd0e13d698d92340a72d172cc"
+    },
+    {
+      "path": "crates/rrx/tests/support/grok_receipt.rs",
+      "blob": "be44dba15627e18ba4ccd1dcbc0c2164e8fe4a14"
+    }
+  ]
+}
