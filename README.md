@@ -360,6 +360,14 @@ Interrupted worktree creation or invalidated review locks can retain reservation
 explicit audited lock reconciliation CLI is pending in restart/recovery work.
 Removal remains blocked until those reservations are reconciled.
 
+Shared macOS owned-process inspection is under STRICT follow-up
+[Issue 46](doc/requirements/issue-46-requirements.md). The implementation uses exact-group,
+bounded-diagnostic and unreaped-leader observation, preserving existing timeout and
+uncertainty guards. Verification and independent review results are recorded in
+[Issue46 evidence](doc/verification/issue-46.md). Non-atomic
+sampling and partial-success KILL with non-signalable survivors remain explicit
+limitations.
+
 Grok native environment reference isolation has an MVP-blocking follow-up
 [Issue51 requirements](doc/requirements/issue-51-requirements.md): synthetic foreign
 Project references reached an owned fake ACP child. Global native auth/settings/hooks
