@@ -3,7 +3,7 @@
 Status: actual merged main is schema3; this unmerged component source is5. Proposed
 schema6 remains fixture-only/pre-code until its independent gate and actual composed
 source/native production release. No Phase::DecisionReview or native producer is
-created by prose. The schema6 canonical writer table below plus named Design16 and Design18–35 private
+created by prose. The schema6 canonical writer table below plus named Design16 and Design18–36 private
 port/bounds define proposed native authority. Earlier schema5 protocol examples are
 historical component context ONLY and cannot authorize a managed/public writer;
 artifact/encoding contracts continue where this table does not supersede them.
@@ -1580,18 +1580,22 @@ Deserialize. Store/producer helpers and receipt predicates are crate-private.
 
 ```rust
 // Only the Engine's successful exact dispatch-marker transaction creates this.
-pub struct ManagedPhaseLaunch { request: LaunchRequest, operation: OwnedNativeOperation,
+pub struct ManagedPhaseLaunch { request: LaunchRequest, marker: OriginalMarkerFrame,
     continuation: ManagedContinuation /* private Fresh or validated Continue */ }
+// Owned by the retained supervisor; adapter only borrows this setup surface.
+pub struct ManagedSetup { /* private actor/lifetime-bound operation access */ }
 // Runtime-owned supervisor identity; cannot be reconstructed from persisted JSON.
 pub struct OwnedNativeOperation { /* private operation, runtime and claim pins */ }
 pub struct OwnedNativeSettlement { /* private supervisor outcome and captured pins */ }
 
 // Additive adapter entry point: default Unsupported; legacy start is not a fallback.
-fn start_managed(&self, launch: ManagedPhaseLaunch) -> AdapterFuture<'_, Session>;
+fn start_managed<'a>(
+    &'a self, launch: ManagedPhaseLaunch, setup: &'a mut ManagedSetup,
+) -> AdapterFuture<'a, Session>;
 
 // One Immediate transaction: exact owned observation + receipt + bounded audit.
 pub(crate) fn publish_native_settlement(
-    &mut self, proof: OwnedNativeSettlement,
+    &mut self, proof: &OwnedNativeSettlement,
 ) -> Result<SettlementReceiptId>;
 
 // Exact supervisor-owned nonterminal/uncertain observation, never settlement.
@@ -2042,12 +2046,14 @@ requires exact required receipts, no outstanding/open operations and current acc
 criteria/evidence/policy; durable classification is necessary, not sufficient.
 
 **Publication and observation are distinguished from new dispatch.**
-A bounded same-Task checkpoint append may occur while a managed native operation
-is live: append immutable provenance and advance checkpoint head, without rewriting
-that admitted operation's frame/pair/receipt. Its historical acknowledgement and
-terminal cleanup remain pinned. New prepare/force/context publication and new
-native claims still require operation-aware idle/current-head fences. Test live
-append positive, exact unchanged admitted pins, and rejected stale new admission.
+During an open managed phase, capture bounded attributable condensation events as
+staged evidence ONLY; do not append a same-Task checkpoint or advance its live head.
+Publish the checkpoint through current atomic head/source/semantic CAS only after
+genuine native settlement AND exact phase_closed. Admitted frame/pair/history stays
+immutable, so own staging cannot self-revoke AllowCurrent/HostCallbackCurrent.
+New preparation still requires the latest genuinely published checkpoint head.
+Design36 supplies the actual stage/publish consumer controls; earlier live-head
+append positives are historical component5 evidence, not managed acceptance.
 
 Private historical observation mirrors the existing target-state activity check.
 Registered Project normally permits it. For Blocked Project, only the existing
@@ -3797,7 +3803,8 @@ by the named port are included, never all historical Sessions/contexts:
 | Current Workflow Record | One;8 MiB body; exact current version and complete allowed projection |
 | Exact owned launch/latest ContextVersion needed by port | At most two;8 MiB each; never scan historical packs or all Tasks' contexts |
 | Exact own Session | One;4 MiB body,3 MiB recovery/depth32/node32768 limits retained |
-| Exact private operation / frozen receipt | One each when applicable;4 MiB EACH complete row, including source/lock/actor provenance; referenced native-result bytes separate≤1 MiB |
+| Exact private operation | One when applicable;4 MiB complete row including source/lock/actor provenance; referenced native-result bytes separate≤1 MiB |
+| Exact frozen receipt | One when applicable;64 KiB COMPLETE row including every identity/attribution/continue_refusal field; no4-MiB receipt allowance |
 | Private preparation / admission / phase owner | One each when applicable;2 MiB EACH complete authority tuple (existing source-map/string limits retained) |
 | Exact consumed dispatch DTO | One;8192 complete bytes, never full duplicate payload |
 | Exact counters/quota/epoch/pending-request rows | Closed typed scalar metadata≤4096 bytes each; actual needed rows count in compact128-proof budget |
@@ -3943,3 +3950,179 @@ retry/round refund. Unknown or revoked closure remains held14. Final genuine clo
 atomically releases ONLY unused ledger reservation; spent retained bytes/facts stay
 charged. A held phase retains its reservation. Actual65 identical-Wait→Passed,99/100,
 hold8/9, cancellation and consumed-unknown controls/mutants are S6-09/13/16.
+
+### Design36: retained preparation and finite D35 corrections
+
+Status: proposed correction of verified D35 H/M and current43 obligations, not a
+new requirements policy, compiled API or available native producer. Merged main is
+schema3; this unmerged component is5; proposed6 remains unavailable. This section
+supersedes the by-value operation in Design16 and the live checkpoint-head append
+example. Other original frame/current grants/strict consumed-failure holds remain.
+
+**Sole owner stays in the supervisor.** The actual runtime transfers the marker's
+non-Clone OwnedNativeOperation into a retained supervisor before the first await.
+That supervisor's private custody entry owns its preparation state and resource/job
+inventory outside the adapter/start/caller future. ManagedPhaseLaunch carries only
+immutable request/continuation/original marker descriptor, never the sole operation.
+The adapter receives the borrowed actor/lifetime-bound ManagedSetup surface shown
+in Design16. It cannot reconstruct/clone custody or move it into its returned future.
+Default Unsupported and every pure pre-effect Err drop only the borrow. The real
+supervisor still has Pristine and can use the genuine no-effect refusal port; an
+error value, missing Session or durable false flag is not that proof.
+
+Setup access registers an actual job/resource with that SAME retained supervisor
+BEFORE its effect, commits effects_started before first Session/process/native IO,
+and checks the exact immutable original frame/actor/lifetime at every private setup
+use. After the boundary, failures are tracked NotCreated/Partial/Unknown outcomes
+only from actual owned producers, never inferred from std spawn Err. Cancellation
+closes admission of NEW setup effects and revokes borrowed access; it retains ALL
+already-started jobs/resources through their actual cleanup/observation. Job joins,
+reader handles, callbacks and cleanup workers remain in the genuine inventory even
+when the adapter future is dropped, panics, returns Err or its waiting caller ends.
+A closed borrow is neither complete cleanup nor receipt. The actual actor cannot
+admit another job while settlement is being derived. Runtime teardown/restart or a
+lost observer without genuine custody proof retains durable ownership/attention14;
+no row, runtime UUID or late selected-group observation reconstructs it.
+
+Only the retained supervisor's genuine complete outcome/inventory observation can
+construct OwnedNativeSettlement. Pristine before effects uses the existing genuine
+no-Session NoCurrentDispatch rule. After effects_started, every actual job/callback/
+resource and relevant native outcome must be known and fully settled under its
+supported profile. Any unknown/escaped/unjoined resource or consumed-zero-wire state
+keeps the existing held14 outcome. NoCurrentDispatch is not available after input
+admission/consumption. KnownCurrentTerminal does not become success/Passed merely
+from native transport; original claim/frame/gate/23 predicates still apply.
+
+The next source-ready LIFETIME component is this retained custody/borrow/cancel/job
+mechanism, with no public authority constructor, schema migration, receipt or
+advertised ready backend. Its actual private setup path owns real closed-inventory
+synthetic jobs in isolated fixtures to prove errors/caller Drop cannot erase custody,
+registration precedes effects and cancel retains jobs until observed settlement.
+Such fixtures do not mint production native cohort/operation certificates. Real
+19 marker/allocation/native/receipt/23/43 integration stays a separate source gate;
+backend absence refuses before effect rather than routing through a legacy adapter.
+The component may not count an unused helper or SQL-seeded operation as this proof.
+
+Coordination evidence at this draft: native6 c8ce5a86ebc2278ed6ca9e4ecdf7d127e5628f18
+has private production availability EMPTY, no callable managed backend/cohort; its
+F4 controlled setup custody is selected-group mechanics only.60
+Requirements4 at a8e8a8b21b9f11c68f12d1ade51ad5c8c14fe81a is approved; its proposed
+Reader Design1 at8f95adbb8198c1c7d2a35f11fb172bca541b5a49 is UNAPPROVED and has no
+source port. Private GitPool/OpReservation/OpTicket/OpAssets proposals retain actual
+std Child/native worker/readers and a per-operation runtime,4 jobs from global64,
+with nonblocking caller-Drop cancellation. Existing bounded_git_raw byte-vector +
+Arc<AtomicBool> compatibility has no exported setup-cap or durable owner callback.
+Selected-child/readers custody and the retained Unknown latch do NOT grant19
+preparation/settlement authority; neither that API's returned bytes nor its bool
+can manufacture a managed setup/settlement proof. Existing Git
+and native probes need their ACTUAL60/effect/profile reservation before execution;
+no borrowing a phase marker or pretending a local Child holder covers default hooks,
+escaped native PTY descendants or unknown tools. Later concrete interfaces compose
+ONE operation supervisor with those actual producers, not two competing owners.
+
+**Receipt replay is exact and non-writing.** The supervisor fixes one receipt UUID
+and complete canonical bounded proof BEFORE its first publication, retaining it
+across every Store outcome. publish_native_settlement BORROWS that retained proof,
+not consumes its only copy on an error. Its Immediate transaction may return the
+existing receipt only for the SAME UUID/operation AND byte-identical full immutable
+pins/class/body/version/attribution. That exact replay is no-write/no-audit; a
+same-operation differing UUID or body is contradiction, never success/replacement.
+On uncertain commit, reconcile that exact identity/body read-only before any new
+publication or uncertainty classification. A differing durable result stays held.
+Known rollback/transient Busy/storage errors retain this same proof and use bounded
+fair100ms–5s retry of publication, never dispatch or a new receipt identity. Storage
+failure alone is NOT native uncertainty and cannot mint Lost. Genuine native outcome/
+cleanup uncertainty, declared timeout or already published Lost stays held14; this
+retry relaxes no profile deadline, native custody or current closure predicate.
+
+The complete receipt bound is64KiB including ALL compact source/actor/frame references,
+Session/body/version/restore pins, native attribution and continue_refusal. Full source/lock bodies stay in their exact
+referenced immutable authority; no hidden duplicated body bypass. The operation
+bound is4MiB; no receipt inherits it. Tail/quota reservation and byte-first
+SQL/encoder goldens use the64KiB actual complete bound. At64KiB+1 refuse BEFORE the
+producer's irreversible effect through its existing reserved-headroom contract;
+never drop mandatory terminal facts or silently trim attribution after cleanup.
+
+**Condensation stages until phase closure.** Actual same-Task live condensation may
+capture attributable bounded events/compact proposal into its operation's existing
+charged evidence/headroom without advancing checkpoint_heads, rewriting admitted
+ContextVersion or changing current CPP/governing source. Staging is not a checkpoint
+reference, input grant or publicly forged history authority. Mandatory events remain
+complete; insufficient existing reservation holds before the governed effect rather
+than silently losing facts. All source capture still uses its actual60 owner.
+
+Only after the SAME operation genuinely settles AND its exact phase_closed commits
+may the actual typed checkpoint producer revalidate current source/semantic state,
+Session provenance and latest own head, then append the staged ordered mandatory
+history with atomic checkpoint/head/audit CAS. If another closed attempt advances
+that head, stale publication refuses and rederives from exact current facts; no
+snapshot rebinding or automatic receipt reuse. Cross-Task promotion remains an
+explicit immutable closed historical snapshot; no promotion/head publication while
+a governed open phase pins it. New preparation consumes the latest published head.
+Actual own-stage→ALLOW and Grok host-read controls must preserve immutable grant
+predicates; rule/HEAD/revocation drift still refuses. This design does not relax
+AllowCurrent's head check to accept arbitrary same-UID writes or new input.
+
+**Factual UUID negative lookup is separate.** Current43R9 rejects ANY distinct
+Session in the exact scope with the same factual provider/native UUID, including
+unallocated history or Lost. Add a bounded generated/typed body-derived lexical
+negative identity lookup, with equality to the actual bounded body, covering ALL
+such factual strings. It grants no private native owner and imposes no global UUID
+uniqueness. At most2 compact indexed matches suffice to detect another Session;
+unknown/malformed/nonindexable relevant legacy scope refuses conservatively, never
+means empty index proves no conflict. D35's genuine managed-owner index remains
+SEPARATE positive authority, requiring actual provider registry/allocator/native
+binding. Raw body/index disagreement or replace cannot hide a factual duplicate.
+No existing index/helper or source acceptance is claimed here.
+
+**Maintenance and pending authority keep safe availability.** Actual58/60 conflict
+producers declare physical read/write/effect scopes including per-worktree content,
+its common-Git admin entry and shared refs/objects/index. Separation is allowed ONLY
+when actual native/default-effect inventory proves it; unknown effects retain full
+root/common-Git scope. Worktree provision/disposal may coexist with another Task's
+operation only on that genuine nonconflicting proof, never a Task name or read-only
+label. Required actual four-Task parallel/provision/disposal controls remain open.
+
+Genuinely conflicting maintenance uses the existing bounded typed pending-request/
+drain pattern with reciprocal same-transaction marker checks and fair actual27/60
+selection: activation stops new overlapping claims, existing owners settle, full
+scope drain precedes effect reservation/apply. It changes no governing definition,
+current raw owner version or release authority merely by queueing. A proposal behind
+actual held14 ownership remains recorded NONactive with bounded attention, so it
+cannot install a new active whole-Project/Goal freeze while that drain is impossible.
+The same classification applies to accepted Goal/Project change proposals: record
+NONactive with no definition/source/P/G/T version change while held ownership prevents
+activation; current genuinely revoked grants and all physical holds remain. When
+activation is possible, actual trusted policy activates a drain barrier, prevents
+new applicable claims, waits for EVERY applicable open phase to close and applies
+under full expected source/definition/lifecycle CAS. No held operation is excluded
+from drain, re-adopted or silently refreshed; accepted Goal definitions stay immutable.
+Unknown physical scope still refuses, not disjoint admission. This is a safe recorded
+proposal/attention exit, not completed27/58/60 fairness or guaranteed14 recovery.
+
+**Causal controls and remaining limits.** S6-03/08/16 use default Unsupported and
+pure validation Err AFTER an actual fixture marker to show retained Pristine then
+one genuine no-effect receipt/non-success closure; omitted retained-owner/borrow
+controls must strand or lose the actual owner at that consumer. Source of marker
+and proof is the actual fixture-private producer, never inserted SQL evidence.
+After-effect setup failure and caller Drop retain each actual closed-inventory job;
+premature receipt/permit release fails until genuine observed cleanup. Actual native
+positive needs its production cohort producer, not the synthetic selected group.
+
+S6-07/08 controls inject rollback and uncertain COMMIT AFTER receipt durability:
+exact UUID/body replay is one receipt/audit, contradictory replay refuses, no spurious
+Lost; omitted reconciliation/replay reaches that consumer. S6-12 controls hold a live
+head/pair unchanged during own staging, reject public live append, preserve ALLOW/
+host read and immutable-source negative controls, then actual close→checkpoint
+append enables the next new preparation. S6-10 includes historical/Lost factual UUID
+duplicate negatives separate from genuine managed-owner positives and malformed
+scope/Replace/equality controls. Bounds64KiB receipt/4MiB operation are independent.
+
+S6-14/16 require actual conflicting healthy maintenance drain and disjoint physical
+controls, held14 NONactive proposal plus unaffected existing Task progress, no
+accepted-definition/current-authority rewrite and later genuine full drain/apply.
+Missing real producer keeps these positives OPEN. Consumed KnownCurrentFailure under
+revoked predicates remains safe held14, not a new tolerance. A closed pristine
+Session-less refusal intentionally makes the next selector Fresh: it cannot skip
+the latest closed operation to adopt an older receipt. Record that availability cost;
+no hidden older-UUID resume or lineage/budget laundering is introduced.

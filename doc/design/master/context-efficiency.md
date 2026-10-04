@@ -394,3 +394,10 @@ current grants, compact bounded evidence and real19/23/43/60/native composition.
 JSON, terminal labels and synthetic fixture proofs never confer production ownership,
 cleanup or review independence. Candidate schema6 is not implemented or an ordinary
 user upgrade; migration and supported native readiness are separate pending gates.
+
+The pending Design36 correction keeps the sole preparation/operation in its genuine
+supervisor across adapter errors and caller Drop; adapters borrow setup access.
+Managed condensation stages evidence without changing the live checkpoint head,
+then publishes only after genuine settlement and phase closure. Receipt64KiB and
+operation4MiB are distinct complete-row limits. Local selected-child/reader custody
+in60 and the unavailable native6 backend do not themselves produce that authority.
