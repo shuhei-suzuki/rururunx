@@ -117,3 +117,15 @@ mask them; no kill credit is assigned. Restored source was clean and all 16 then
 present preparation regressions passed. A separate post-refresh Record replacement
 test pins its actual typed owning Task-row marker error, so token-version credit
 can be verified independently at both capture timings.
+
+
+Final targeted head `5835702` passed all 17 preparation controls and all-target
+Clippy. M19 independently removed the Record-token-version check for the
+post-refresh consumer: it compiled and failed the durable state equality,
+confirming actual typed owning Task-marker rollback does not waive the changed
+Record token. The earlier M04 independently killed the pre-refresh consumer.
+Across 19 compiled candidates: 16 actual consumer kills, 1 defense-in-depth unit
+kill and 2 documented masked survivors. Exact final restored source was clean,
+17 controls passed, and the detached mutation worktree was normally removed.
+The machine-readable [mutation ledger](issue-41-mutants.json) preserves local
+committed heads and outcomes. No compile error is counted as a kill.
