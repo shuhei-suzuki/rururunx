@@ -254,6 +254,8 @@ impl Preparation {
 
 /// Additive private helper: the shared adapter Git helper and its consumers stay
 /// unchanged. The five-second caller deadline and 250ms reap budget are retained.
+// Keep availability and retained preparation ownership explicit at this effect boundary.
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn bounded_git(
     availability: &super::availability::Availability,
     executable: &Path,
