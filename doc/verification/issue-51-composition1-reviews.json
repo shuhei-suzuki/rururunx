@@ -1,0 +1,126 @@
+{
+  "reviewed_head": "8f560f293b6c10a82d8d496e7263aeb384ff5200",
+  "scope": "Finite composition only: approved51 native environment plus61 diagnostic-only observer sinks plus62 independent legacy usage READ",
+  "reviews": [
+    {
+      "section": "composition1-policy",
+      "head": "8f560f293b6c10a82d8d496e7263aeb384ff5200",
+      "native_session": "139c716e-dfa4-477c-8c11-4c07d258ee97",
+      "review": {
+        "verdict": "approve",
+        "assessment": "Finite composition review of public 8f560f2: Issue51 environment admission plus the merged Issue61 inspector diagnostics plus the Root62 legacy Store::usage read slice. I found no Critical, High or Medium defect within the Issue51 scope.\n\n1) Producer/consumer join. The new Issue61 test completed_unknown_cleanup_diagnostics_child (receipt_tests.rs:474-529) calls synthetic_fixture(\"good\"). The composed helper (receipt_tests.rs:121-150, the only receipt-helper difference from main f7) writes RRX_PROMPT_OBSERVED and RRX_PYTHON_OBSERVED through fixture.synthetic into the sidecar JSON. The fake reads them from there (grok_fake.py:3,52). The LaunchRequest environment stays the empty Fixture::new map (grok_fixture.rs:103), so select() never sees a reserved caller key. Had the pre-51 main helper survived the merge, its RRX_ caller keys would fail selection with InvalidConfiguration and fixture.start(...).unwrap() at receipt_tests.rs:489 would panic. The composed pass therefore evidences the correct helper. The sanitized parent supplies only HOME, PATH and RRX_INSPECTION_FIXTURE_CHILD, so the frozen baseline holds only controls and no synthetic or credential names.\n\n2) Issue51 authority is unchanged. The ledgered blobs are byte-identical: Grok mod.rs, environment.rs, environment_tests.rs, ownership.rs, state/environment.rs, native_dispatch_tests.rs, the fixture, the fake, receipt support and tests/grok.rs. The incoming adapter.rs delta is test-only, and the production state_error still maps EnvironmentAuthority to InvalidConfiguration (adapter.rs:1010). Store's Session CAS, guard and write path is untouched. The only Store change is the read-only usage identity check (state/mod.rs:949-981). It has no production caller and is not reached by admission, CAS, dispatch or environment code.\n\n3) Privacy and classification at the new diagnostic callers. The inspector runs env_clear with null stdin (inspection.rs:447,459). Failure Display writes only static strings, enum names and integers (diagnostics.rs:436-518): no Grok-selected environment values, paths, PIDs, raw child bytes or foreign identities. The facts reach only existing A-scoped sinks: SessionStatus.failure and grok.turn_observed.diagnostic. The session.saved projection and the cleanup_receipt schema are unchanged, and the receipt stays group_cleanup_failed_unclassified with Lost and executor_reserved.\n\nThe environment admission/error classification is unaffected:\n- Admission happens before spawn, with no ProcessGroup and therefore no inspector.\n- Native cleanup failures remain SessionLost through cleanup_group (adapter.rs:1442).\n- Pre-spawn Git preflight failures occur before admission and keep their existing precedence.\n- No fact is parsed into cleanup, permission, environment or replay authority.\n- TestPlan.original_kind and the plan hooks are cfg(test, macos) only, so no production bypass or channel is added.\n\n4) Gates as stated. 068 passed full default debug and distinct release runs, each 260 Rust tests + 2 doctests with 24 explicit ignores. CI 37232520918 succeeded on both OSes; its actual checkout 8c343e2 has parents f7/068 and a tree equal to the trigger. The 9bb state target passed 16/16 and its CI succeeded. Final CI for 8f560f2 is pending.\n\nThese passes do not identify a cause, repair or availability change for the historical 18c macOS Context timeout, the b90 local debug timeout, the main054 Grok reconciliation uncertainty or the 555 local release failure. Native auth/model/multi-Project (#16), #43, #14, #19, #11, F1 and full #60 remain open. The acknowledged Issue21 legacy usage decode-quoting limitation carries no environment values and grants no environment authority.",
+        "findings": [
+          {
+            "id": "C51-01",
+            "severity": "Low",
+            "file": "doc/verification/issue-51-diagnostic-composition.json",
+            "line": 8,
+            "claim": "The composition ledgers record identity for a selected file subset, not the complete changed-path inventory per hop. The 'only test/diagnostic/usage Rust changes' claim is therefore verifiable from the separately supplied diff but not from the ledgers alone. The key f7\u2192068 receipt-helper join is also not recorded.",
+            "evidence": "diagnostic-composition.json source_identity omits crates/rrx/src/adapter.rs (production unchanged; only tests changed, 3a95dba\u2192748e71b) and crates/rrx/src/adapter/grok/receipt_tests.rs. It also does not record the composed synthetic_fixture difference against main f7, which is exactly the producer/consumer join reviewed here. legacy-read-composition.json:10-51 lists ten blobs but not ownership.rs, grok_fixture.rs, grok_fake.py, grok_receipt.rs, tests/grok.rs or diagnostic_tests.rs. No ledger records 9bb\u21928f560f2. The exhaustive Rust delta supplied in this packet shows no hidden change, so this is a provenance-precision gap only.",
+            "fix": "Optional, non-blocking: add to each composition ledger the exact `git diff --name-status` path set for 18c\u2192068, 068\u21929bb and 9bb\u21928f560f2, and the blob pair for receipt_tests.rs. Include the f7\u2192068 receipt_tests.rs composed hunk (synthetic_fixture sidecar migration) as the recorded join evidence. Keep the existing historical entries intact."
+          }
+        ],
+        "unresolved_blockers": [
+          "Final public CI for metadata head 8f560f2 (run 37233836203) must finish green on both OSes, with the trigger head versus the actual PR-merge checkout SHA, parents and tree recorded. Any final red remains a merge blocker.",
+          "A full default release test was not re-run at 9bb or 8f560f2; release coverage there is the 068 local run, the 9bb state target and the CI release build. Root must decide under its gate policy whether 068's full debug/release evidence plus the read-only usage slice's targeted and CI checks suffice, or whether a release test at the final head is required."
+        ]
+      },
+      "cleanup_verified": true,
+      "raw_result_sha256": "ce7bbbf5b0fcf25e4f0adecde0b466fafada9869764643ed35a9b4c04558edd4",
+      "public_manifest_sha256": "99ebeb2a899789466f3601fbc1c1288c60feb320a99feef3eff020d049d4dec7",
+      "input_prompt_sha256": "93863952e78cdd39af243d780991fd1fc5466b5a51b10b704fd3955f021b61f4",
+      "finding_disposition": "Verified attribution-only Low: exhaustive hop inventories, missing consumer blob triplets and recorded f7 receipt-helper join now added; no requirements/production/test change. Pending CI observation closed by8f actual-checkout allsteps. Release mode scope/disposition separately recorded, no invented full current-head run."
+    },
+    {
+      "section": "composition1-lifecycle",
+      "head": "8f560f293b6c10a82d8d496e7263aeb384ff5200",
+      "native_session": "9af5aa79-0ff4-42e2-89f0-b0049d61b240",
+      "review": {
+        "verdict": "approve",
+        "assessment": "Finite composition review of public head 8f560f2: the 51 environment-admission source joined with the reviewed Issue61 diagnostics through merge 068ad6a, then the independent read-only Store::usage slice at 9bb6b9e. The review covers only the paths the composition actually reaches.\n\n1. **Source identity.** All 51 authority sources are unchanged from 18c117a: state/environment.rs, native_dispatch_tests.rs, grok/mod.rs, grok/environment.rs, ownership.rs, environment_tests.rs, environment_workflow_tests.rs, tests/grok.rs, and the fixture, fake and receipt support files. state/mod.rs is byte-identical through 068. Its only later difference is the 27-line read-only Store::usage row/body identity guard. That guard has no Session/CAS/environment writer reach, and Grok's provider usage() is the separate trait method. put_session_current, put_session_with_environment_if_current and evaluate are untouched.\n\n2. **The new producer/consumer join.** The incoming completed_unknown_cleanup_diagnostics_child calls 51's synthetic_fixture. The f7\u2192current helper difference shows the composed receipt_tests.rs (d0dd5ba) keeps 51's fixture.synthetic and synthetic_value sidecar writes for RRX_PROMPT_OBSERVED and RRX_PYTHON_OBSERVED. It does not use f7's request.environment.insert, which 51's select() would now reject as a caller RRX_ key. The rest of the file differs from 18c only by the appended test, so automatic merge composed the non-overlapping hunks correctly. The fake (38bb794) reads exactly those sidecar keys. The child runs under the env-cleared sanitized parent: its baseline is HOME/PATH controls only and its caller map is empty. It therefore passes selection and final admission, completes a good turn, and only then reaches the injected cleanup route. That route is the KILL+PERM signal, then the real inspect_with_prefix shim, then the resolver, then cleanup_group returning SessionLost.\n\n3. **Lifecycle preservation in Grok supervise.**\n- Priority is unchanged: result is Ok, so the cleanup error is selected. dispatched and native_outcome are both true, so the unknown-dispatch rewrite does not fire.\n- The receipt is unchanged: cleanup_state group_cleanup_failed_unclassified, cleanup_ok false, ownership_uncertain via native_child, reconciliation not attempted.\n- The session ends Lost with the executor reservation retained and transport_succeeded false.\n- The facts appear only in SessionStatus.failure and turn_observed.diagnostic, never in session.saved.\n- The Drop retry's second inspection cannot overwrite the first recorded original kind (the is_none guard).\n- Inspector changes are confined to the macOS inspection module. kill_group, ProcessGroup, cleanup_group, the resolver and Generic production are unchanged, and the inspector's Ok(bool) outcomes are unchanged. Error kind and priority are preserved, and the cleanup-uncertain text survives via the WaitFailed rendering.\n- No fact grants cleanup, release, replay or permission authority.\n\n4. **Compatibility with the 51 contract.**\n- The facts are counters, enums and durations only. They contain no environment values, names, paths, PIDs or child bytes, so 51 requirement 8 holds; the test asserts the raw shim stderr does not leak.\n- No 51 exact-string assertion can absorb the facts text. The admission tests assert fixed EnvironmentAuthority or StateConflict strings that occur before or independently of any inspector route.\n- Pre-spawn bounded Git errors still precede admission, with no spawn, so they cannot alter admission semantics.\n\n5. **Gates, correctly scoped.**\n- 068: debug and release each 260 Rust tests + 2 doctests passed, with 24 ignored; fmt, all-target Clippy and both builds passed.\n- CI 37232520918 passed on both OSes. The actual checkout 8c343e2 has parents f7/068 and a tested tree equal to the trigger tree.\n- 9bb: the state target passed 16/16 and CI 37233688773 succeeded.\n\nThe historical 18c, b90, main054 and 555 failures remain unrepaired and unattributed. The new passes establish no availability, cause, native auth or model acceptance. No concrete Critical, High or Medium defect was found on the newly affected paths.",
+        "findings": [
+          {
+            "id": "I51-C1-01",
+            "severity": "Low",
+            "file": "doc/verification/issue-51-diagnostic-composition.json",
+            "line": 8,
+            "claim": "The 068 composition ledger's source_identity omits the files where the actual three-way join happened: crates/rrx/src/adapter/grok/receipt_tests.rs (51's 18c helper plus 61's appended diagnostic test) and crates/rrx/src/adapter.rs (61's additive Generic tests). The join is described only in prose (composition_detail).",
+            "evidence": "source_identity (lines 8-73) lists 51 files and the four incoming 61 files whose blobs are unchanged, but not receipt_tests.rs or adapter.rs, which are the only composed-with-change consumers. Their 068 blobs (d0dd5ba, 748e71b) appear only later, in issue-51-legacy-read-composition.json lines 19-38. Reconstructing the join from it requires the f7\u2192current helper diff supplied with this review. The composition itself is verified correct, so this affects attribution precision only.",
+            "fix": "Add receipt_tests.rs and adapter.rs entries to the 068 ledger with old18c (f53ed5b / 3a95dba), incoming-main-f7 (ca48de3 / the f7 adapter blob) and composed (d0dd5ba / 748e71b) blobs. Record explicitly that the composed helper equals the 18c sidecar helper plus the appended 61 test, with no manual resolution."
+          }
+        ],
+        "unresolved_blockers": [
+          "Final public CI on current metadata head 8f560f2 (run 37233836203) is in progress. A success result must record the actual PR-merge checkout SHA, parents and tested tree versus trigger before merge. Any final red remains a merge blocker."
+        ]
+      },
+      "cleanup_verified": true,
+      "raw_result_sha256": "74c229cb7b83332384b72320e6b29b0f86b8b905eabf6b281df9c8502b486eb5",
+      "public_manifest_sha256": "7d81dae93347cbe3625f987382f9c332b1e0491629abb803ed1846b35b96ad81",
+      "input_prompt_sha256": "45df0edc9523f54f53a698833accf5570d8723ead6327c47da9df0a37e18a131",
+      "finding_disposition": "Verified attribution-only Low: exhaustive hop inventories, missing consumer blob triplets and recorded f7 receipt-helper join now added; no requirements/production/test change. Pending CI observation closed by8f actual-checkout allsteps. Release mode scope/disposition separately recorded, no invented full current-head run."
+    }
+  ],
+  "current_reviewed_head_ci": {
+    "run": 37233836203,
+    "trigger_head": "8f560f293b6c10a82d8d496e7263aeb384ff5200",
+    "actual_checkouts": {
+      "check (ubuntu-latest)": "5ee8128abc504cc9b2f0260f3fd7e3ce8bee27be",
+      "check (macos-latest)": "5ee8128abc504cc9b2f0260f3fd7e3ce8bee27be"
+    },
+    "parents": [
+      "b8b1906b30f428bcc38d447f3d08d13eb6bb921a",
+      "8f560f293b6c10a82d8d496e7263aeb384ff5200"
+    ],
+    "tested_tree": "5c28e40b8cf4b24062eaae76afc7bd4e68d96d11",
+    "trigger_tree": "5c28e40b8cf4b24062eaae76afc7bd4e68d96d11",
+    "tested_tree_equals_trigger": true,
+    "jobs": {
+      "check (ubuntu-latest)": {
+        "conclusion": "success",
+        "steps": {
+          "Set up job": "success",
+          "Run actions/checkout@v4": "success",
+          "Run dtolnay/rust-toolchain@1.91.1": "success",
+          "Run cargo fmt --all -- --check": "success",
+          "Run cargo clippy --locked --workspace --all-targets -- -D warnings": "success",
+          "Run cargo test --locked --workspace": "success",
+          "Run cargo build --locked --workspace": "success",
+          "Run cargo build --locked --release --workspace": "success",
+          "Post Run actions/checkout@v4": "success",
+          "Complete job": "success"
+        }
+      },
+      "check (macos-latest)": {
+        "conclusion": "success",
+        "steps": {
+          "Set up job": "success",
+          "Run actions/checkout@v4": "success",
+          "Run dtolnay/rust-toolchain@1.91.1": "success",
+          "Run cargo fmt --all -- --check": "success",
+          "Run cargo clippy --locked --workspace --all-targets -- -D warnings": "success",
+          "Run cargo test --locked --workspace": "success",
+          "Run cargo build --locked --workspace": "success",
+          "Run cargo build --locked --release --workspace": "success",
+          "Post Run actions/checkout@v4": "success",
+          "Complete job": "success"
+        }
+      }
+    },
+    "log_sha256": "7945ca1103fee61b026eac995f1e65736fd4b159bd511ba70ede3644ef8b2120",
+    "scope": "Finite composition51 environment authority+61 observable diagnostics+62 readonly legacy usage; full default DEBUG TEST/release BUILD CI, not release TEST or native availability"
+  },
+  "affected_release_target": {
+    "head": "8f560f293b6c10a82d8d496e7263aeb384ff5200",
+    "command": "cargo test --locked --release -p rrx --test state",
+    "passed": 16,
+    "failed": 0,
+    "raw_log_sha256": "e6fd135acb1a813242dbea93be016f6d59612ec27c00940093c9fcdc7a99533a",
+    "scope": "New27line readonly legacy Storeusage consumer in release. Full260Rust+2docs release execution remains068, not8f."
+  },
+  "root_coverage_disposition": {
+    "decision_date": "2026-10-05 JST",
+    "scope": "Same51 native production/consumer inputs exactly068 full260DEBUG+RELEASEPASS; independent62 readonlyUsage twoAPPROVE/current9bbState16DEBUG plus bothOSfullDEBUG/releaseBUILD and actual8fState16RELEASE qualify readonly composition; no fullfinalRELEASETESTclaim. Finite provenance docs-only correction after two approvals needs manualdiff/sourceidentity and finalCI, no extra native review absent changed normative/source/blocker. ClosingReferences must be empty; whole51/native/F1/16 acceptance stays OPEN if fullcriteriaunready."
+  },
+  "source_delta_after_review": "Documentation/provenance only; source/tests/Cargo/.github unchanged; final metadata CI/source equivalence remains required",
+  "retained_limits": "Old18c finalCI RED, b90 localDEBUG FAILED, main054Grok reconciliation uncertainty, diagnostic555 localRELEASE FAILED; cause AND regression UNKNOWN. No oldhead rerun, inspector deadline/latch/Unknown/defaultconcurrency relaxation; full60/Git reader lifetime/EOF/availability/F1/native16/fullnative release readiness OPEN."
+}

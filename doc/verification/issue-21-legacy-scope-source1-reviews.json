@@ -1,0 +1,108 @@
+{
+  "reviewed_head": "f7457dfa284b658369fad041bda9cac0dd97dff8",
+  "round": "source1",
+  "independent": true,
+  "source_scope": "limited legacy read identity component only",
+  "reviews": [
+    {
+      "head": "f7457dfa284b658369fad041bda9cac0dd97dff8",
+      "native_session": "4c2889c8-e103-4938-86a9-beb57b2eb976",
+      "review": {
+        "verdict": "request_changes",
+        "findings": [
+          {
+            "id": "S1A-M1",
+            "severity": "Medium",
+            "file": "crates/rrx/tests/state.rs",
+            "line": 747,
+            "claim": "Only one direction of the stated contract that optional Goal/Task identity 'must preserve None exactly' is controlled. The same is true of the claim that NoTask history 'retains existing representation'. Every fixture row has non-NULL goal_id/task_id columns, so only the case of a body None against a row Some is exercised. Consider a plausible compiled mutant that treats a NULL row column as a wildcard, for example `&& (goal.is_none() || str_id(usage.scope.goal_id) == goal)` and the same for task. It mirrors the adjacent SQL filter `?2 IS NULL OR goal_id=?2`. It survives this test and, with high confidence, the whole suite. Under that mutant a Project- or Goal-scoped row whose body claims a narrower or foreign Goal/Task is returned. No test reads a legitimate Goal- or Project-scoped usage row through Store::usage at all.",
+            "evidence": "tests/state.rs:747-764: all six corruptions rewrite only the body of the single Task-scoped row, whose row columns p/g/t/s are all non-NULL. 'missing_goal' and 'missing_task' cover only body None against row Some. Every usage row in tests/state.rs (restart, missing-usage, overflow and the new test) is written with t.scope(), and no other test corrupts usage. The production equality at mod.rs:920-921 is symmetric Option equality, so the current code is correct. However, the five recorded mutants (mutations.json) do not include the row-NULL direction. issue-21-legacy-scope.md:18-22 asserts None-exactness and NoTask preservation as part of the contract.",
+            "fix": "(a) Add a legitimate Goal-scoped usage row: a Goal-scoped Reviewer Session via put_session, then put_usage. Assert exact positive reads under the Goal and Project views and an empty Task view. (b) Add reverse-direction corruptions where the row column is NULL and the body is Some. Use raw `UPDATE usage SET task_id=NULL`, or `goal_id=NULL, task_id=NULL`; both are CHECK-compatible. Alternatively, give the Goal row a body Some(task). Expect `usage row/body identity mismatch` on every view that selects the row, with a per-view expectation that the Task view returns Ok([]) once the row is filtered out. (c) Record compiled row-NULL-wildcard mutants for goal and task in the mutation ledger, with kills and exact restoration."
+          },
+          {
+            "id": "S1A-L1",
+            "severity": "Low",
+            "file": "doc/verification/issue-21.md",
+            "line": 321,
+            "claim": "The ledger contains a present-tense claim that is false at HEAD. The master wording is ambiguous about which Scope is validated.",
+            "evidence": "issue-21.md:321-323 says 'The component now validates decoded Scope shape after identity matching, with a real Project query control and complete row-column snapshot'. That change was withdrawn, and HEAD mod.rs validates only the request scope. The withdrawal paragraph follows, but the earlier text is not marked superseded. context-efficiency.md:240 says 'validates Scope shape'. That reads naturally as validating the decoded body scope, which was the withdrawn b29 behavior. The word 'staged' there is process/state wording in a master document.",
+            "fix": "Annotate issue-21.md:321-323 inline as superseded and withdrawn, citing the b29aee8 withdrawal, without deleting the history. In the master, write 'validates the requested Scope shape' and drop 'staged'."
+          },
+          {
+            "id": "S1A-L2",
+            "severity": "Low",
+            "file": "crates/rrx/tests/state.rs",
+            "line": 738,
+            "claim": "The no-write snapshot is narrower than the claimed 'exact persisted usage/owner/Session/audit snapshots'. It would not detect a refusal path that inserted a usage row or appended a Project-scoped or foreign audit event.",
+            "evidence": "The snapshot closure at 738-746 reads only the first usage body via query_row. It records no row count, sequence or identity columns. Audit is read only through events(&t.scope(),...), which filters goal_id and task_id, so Project-scope audit (including during the Project-view iteration) and foreign-project audit are invisible. The 'complete row-column snapshot' added at b29 was discarded together with the withdrawn guard. Production usage() has no execute path, so this is evidence precision rather than a defect.",
+            "fix": "Snapshot all rows with `SELECT sequence,project_id,goal_id,task_id,session_id,body FROM usage ORDER BY sequence`. Snapshot audit at Scope::project(p.id) and Scope::project(foreign_p.id), or use the global audit COUNT/MAX(sequence)."
+          },
+          {
+            "id": "S1A-L3",
+            "severity": "Low",
+            "file": "doc/design/issue-21-legacy-scope.md",
+            "line": 20,
+            "claim": "The statement 'Error messages contain only static codes/text, not the foreign body' holds only for the identity-mismatch error. It does not hold for decode failures inside the same read.",
+            "evidence": "usage() calls decode(body)?, and decode wraps serde_json::Error with .context(\"invalid persisted snapshot\"). serde invalid-type errors render the offending value, for example `invalid type: string \"\u2026\", expected u64`. That text appears in the anyhow chain under `{:#}` or Debug, which master \u00a74 recommends for consumers. This behavior predates this component and is shared by every read.",
+            "fix": "Narrow the sentence to the identity-mismatch error. Note that decode-chain detail is pre-existing and deferred to the bounded safe-projection gate. Alternatively, map usage() decode failures to a static error without a source chain."
+          }
+        ],
+        "assessment": "This is a read-only review based only on the supplied full public file contents; no tools were executed. Correctness of the slice was verified as follows. validate_scope runs before prepare and rejects a Task-without-Goal request. The SQL filters and ORDER BY sequence are byte-identical to the baseline. The projected column types match schema3 nullability: project_id and session_id are NOT NULL String, goal_id and task_id are Option. Exact string equality against Display output matches put_usage's to_string encoding, and any non-canonical representation fails closed. collect into Result short-circuits; with the current single-row fixture, any skip, filter or take_while variant would still yield Ok and be killed by unwrap_err. The function has no write path, the mismatch error is static, and valid values are returned unchanged. Under the request filter plus four-way body equality, every returned body lies within the requested Project and, when requested, Goal/Task. The withdrawal reasoning was verified: the usage CHECK(task_id IS NULL OR goal_id IS NOT NULL) plus exact identity equality implies a valid decoded shape. initialize() states that migrations leave the SQL layout intact, so a separate body-shape guard is redundant for supported schema3. Mutant evidence was verified: patch line numbers 897 and 919-922 match the HEAD layout, and the observed panics at state.rs:775:44 and 800:31 are the intended unwrap_err sites in the real Store::usage consumer. Each identity mutant is killed by its own dedicated corruption. The check arithmetic matches: workspace summaries total 224 = 222 Rust + 2 doctests, with 8 ignored, and the state suite has 15 tests. Manifest blobs for mod.rs, state.rs, schema.sql and domain.rs equal the checks.json input list. No regression was found for existing consumers, all of which query with a full Task scope. Remaining gap: the NULL-row-column direction of the exact-None contract, and legitimate NoTask history, have no control, and a plausible wildcard mutant survives (M1). Multi-row ordering is unchanged SQL and is not separately controlled. Scope disclaimers are honest and consistent; whole #21 is not claimed.",
+        "unresolved_blockers": [
+          "S1A-M1"
+        ]
+      },
+      "cleanup_verified": true,
+      "meter_scope": "raw_native_fresh_session_fields_unverified_operation_inventory"
+    },
+    {
+      "head": "f7457dfa284b658369fad041bda9cac0dd97dff8",
+      "native_session": "bd6a3359-b32f-4708-94ba-22e7c275f31b",
+      "review": {
+        "verdict": "request_changes",
+        "findings": [
+          {
+            "id": "M1-null-scope-identity-uncontrolled",
+            "severity": "Medium",
+            "file": "crates/rrx/tests/state.rs",
+            "line": 684,
+            "claim": "The component claims 'Optional Goal/Task identity must preserve None exactly' and that valid NoTask history keeps its existing representation. No executed control covers a usage row whose goal_id or task_id column is NULL, in either direction. Plausible compiled mutants of the changed NULL path survive every recorded control.",
+            "evidence": "Every usage row written in tests/state.rs is Task-scoped. This covers the restart test (task.scope()), the missing-usage test (task.scope()), the overflow test (t.scope()) and the new test (t.scope()). All six corruptions keep the row's goal_id and task_id non-NULL. They only cover body Some(foreign) vs row Some, and body None vs row Some. The reverse case, a NULL row column against a body that claims Some, is never exercised. A legitimate Goal- or Project-scoped row is never read either. Such rows are legal: put_usage accepts any session.scope == usage.scope, and non-executor Sessions may be Goal- or Project-scoped. Two mutants of mod.rs:908-909/920-921 pass the whole suite. The first treats a NULL column as a wildcard, mirroring the SQL '?2 IS NULL OR' idiom in the same function: `goal.as_ref().is_none_or(|g| str_id(usage.scope.goal_id).as_ref()==Some(g))`. This would let a Goal-scoped row whose body claims a Task, or a Project-scoped row whose body claims a Goal, through Goal/Project views. That is the foreign-identity exposure class this slice exists to block. The second reads the column non-optionally (`Some(row.get::<_,String>(1)?)`), which refuses all legitimate NoTask history. Neither mutant is in the five-mutant ledger, and both are \u00ab\u5b58\u5728\u30c1\u30a7\u30c3\u30af\u00bb comparisons that the project's rules require to be mutation-tested.",
+            "fix": "Add a non-executor Session scoped to g.scope() (and optionally to Scope::project(p.id)) with matching usage rows, so the goal_id and/or task_id columns are NULL. Assert that the Goal and Project views return all rows exactly, in sequence order. Then corrupt the NULL-row body to carry a same-Project task_id (and goal_id for a Project row), and assert the exact 'usage row/body identity mismatch' refusal through every applicable view. Extend snapshot() to capture all usage bodies, since query_row only reads the first row. Record compiled NULL-as-wildcard (goal, task) and non-optional-get mutants that fail at this real Store::usage consumer, then a restored passing control."
+          },
+          {
+            "id": "L1-ledger-withdrawn-present-tense",
+            "severity": "Low",
+            "file": "doc/verification/issue-21.md",
+            "line": 321,
+            "claim": "The ledger states in present tense that 'The component now validates decoded Scope shape after identity matching, with a real Project query control and complete row-column snapshot.' That describes the withdrawn b29aee8 bytes, not current source.",
+            "evidence": "Current mod.rs Store::usage has no post-identity shape check. The test snapshot holds only the usage body plus P/G/T/Session/audit, not a complete row-column snapshot. Only the following paragraph says the change was WITHDRAWN.",
+            "fix": "Mark the paragraph inline as describing b29aee8 (withdrawn, see below), or put it in past tense, so a reader of that paragraph alone is not misled."
+          },
+          {
+            "id": "L2-static-error-claim-scope",
+            "severity": "Low",
+            "file": "doc/design/issue-21-legacy-scope.md",
+            "line": 20,
+            "claim": "'Error messages contain only static codes/text, not the foreign body' holds for the identity-mismatch and validate_scope refusals only. It does not hold for a malformed body.",
+            "evidence": "decode() wraps serde_json::from_str with context 'invalid persisted snapshot'. Its source chain keeps serde detail, for example invalid type: string \"...\" or unknown field names, which can quote body fragments. Master \u00a74 tells consumers to render the full chain with {:#}. This behaviour is pre-existing and unchanged here, but the sentence reads as covering the component's whole read path.",
+            "fix": "Restrict the sentence to the identity and scope refusals. State that malformed-body decode detail remains pending the approved bounded safe-code projection."
+          }
+        ],
+        "assessment": "I reviewed this statically from the supplied materials only, because tools are disabled. I did not recompute log hashes and did not execute anything.\n\nProduction slice correctness verified by reading: validate_scope runs before any SQL. One SELECT keeps the unchanged filters and ORDER BY sequence. All four body identities are compared against the same row using canonical Uuid Display strings, which put_usage also uses to write the columns. NULL columns map to None, and str_id(None)==None. collect into Result<Vec> short-circuits, so no partial vector is returned. The read is &self, so there are no writes or audit. The mismatch text is static. The CHECK(task_id IS NULL OR goal_id IS NOT NULL) argument for body shape is sound for supported schema3 once all identities match.\n\nTest and evidence consistency verified: the Task/Goal/Project views catch request-scope-only comparison mutants. Six exact-string refusals keep unrelated failures from earning credit. The cited panic locations state.rs:775:44 and 800:31 match the source. The patch hunks at mod.rs 897 and 919\u2013922 match the current source. Patch sha256 values, source/test sha256 values and blobs agree across the manifest, the mutation ledger, the checks ledger and the withdrawn ledger. The restored tree equals the baseline tree. Workspace summaries sum to 222 plus 2 extra one-test results, with 8 ignored.\n\nThe only material gap is M1. The NULL-column branch of the changed comparison has no positive or negative control, and plausible mutants survive. The fix is small and test-and-evidence-only, with no production change expected. L1 and L2 are wording issues.\n\nOut of scope, as stated: session-scope authority, raw cache_metadata retirement, bounded projections and pagination, epoch, native telemetry, and whole-#21 acceptance.",
+        "unresolved_blockers": [
+          "M1: add valid NULL-scope rows and reverse-direction (row NULL / body Some) refusal controls, with recorded compiled NULL-wildcard and non-optional-get mutant kills and a restored control"
+        ]
+      },
+      "cleanup_verified": true,
+      "meter_scope": "raw_native_fresh_session_fields_unverified_operation_inventory"
+    }
+  ],
+  "verified_disposition": {
+    "medium_NULL_controls": "verified: supported schema3 allows Project/Goal rows; previous Task-only fixtures do not cover row NULL/body Some or optional decoding. Add positive and reverse-direction consumer controls plus compiled wildcard/nonoptional mutants; no production change.",
+    "ledger": "verified present-tense withdrawn paragraph: explicitly mark historical superseded attempt",
+    "snapshot": "verified narrow snapshot: capture every usage column/row and global audit rows",
+    "static_error": "verified overbroad wording: narrow to identity/request-scope refusals; preexisting serde decode chain deferred to full projection gate",
+    "native": "review guardian cleanup refers only selected wrapper; no F1/backend or qualified telemetry acceptance"
+  }
+}

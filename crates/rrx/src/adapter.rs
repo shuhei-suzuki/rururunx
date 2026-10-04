@@ -213,6 +213,14 @@ pub trait AgentAdapter: Send + Sync {
             && status.failure.is_none()
             && status.exit_code == Some(0)
     }
+    /// Provider-native per-turn schema; callers own its review/approval semantics.
+    fn start_structured(
+        &self,
+        _request: LaunchRequest,
+        _schema: Value,
+    ) -> AdapterFuture<'_, Session> {
+        Box::pin(async { Err(unsupported(Capability::StructuredOutput)) })
+    }
     fn status(&self, session: SessionRef) -> AdapterFuture<'_, SessionStatus>;
     fn stop(&self, session: SessionRef) -> AdapterFuture<'_, SessionStatus>;
     fn attach(&self, session: SessionRef) -> AdapterFuture<'_, ()>;
@@ -227,6 +235,9 @@ pub trait AgentAdapter: Send + Sync {
         review_round: Option<u32>,
     ) -> AdapterFuture<'_, Usage>;
     fn submit_approval(&self, _session: SessionRef, _decision: Value) -> AdapterFuture<'_, ()> {
+        Box::pin(async { Err(unsupported(Capability::PermissionInterception)) })
+    }
+    fn pending_approvals(&self, _session: SessionRef) -> AdapterFuture<'_, Value> {
         Box::pin(async { Err(unsupported(Capability::PermissionInterception)) })
     }
     fn checkpoint(&self, _session: SessionRef, _input: PreparedInput) -> AdapterFuture<'_, ()> {
@@ -311,8 +322,8 @@ struct Reservation {
 }
 
 /// Owns the unreaped leader so PGID cannot be recycled before group cleanup.
-struct ProcessGroup {
-    child: Child,
+pub(crate) struct ProcessGroup {
+    pub(crate) child: Child,
     #[cfg(all(test, target_os = "macos"))]
     inspection_plan: Option<ProcessInspectionPlan>,
     pid: Pid,
@@ -324,7 +335,7 @@ struct ProcessGroup {
     process_uncertain: Arc<AtomicBool>,
 }
 impl ProcessGroup {
-    fn new(child: Child, process_uncertain: Arc<AtomicBool>) -> AdapterResult<Self> {
+    pub(crate) fn new(child: Child, process_uncertain: Arc<AtomicBool>) -> AdapterResult<Self> {
         let raw = child
             .id()
             .filter(|pid| *pid > 1)
@@ -345,7 +356,7 @@ impl ProcessGroup {
             process_uncertain,
         })
     }
-    async fn observe_exit(&self) -> std::io::Result<()> {
+    pub(crate) async fn observe_exit(&self) -> std::io::Result<()> {
         let mut signals = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::child())?;
         loop {
             match waitid(
@@ -404,7 +415,7 @@ impl ProcessGroup {
         }
         result
     }
-    async fn reap(&mut self) -> std::io::Result<std::process::ExitStatus> {
+    pub(crate) async fn reap(&mut self) -> std::io::Result<std::process::ExitStatus> {
         let result = self.child.wait().await;
         if result.is_ok() {
             self.process_uncertain.store(false, Ordering::SeqCst);
@@ -1007,6 +1018,7 @@ fn state_error(error_value: anyhow::Error) -> AdapterError {
     let kind = match error_value.downcast_ref::<StateGuardError>() {
         Some(StateGuardError::WorktreeLocked) => ErrorKind::Locked,
         Some(StateGuardError::ProjectInactive) => ErrorKind::InvalidInput,
+        Some(StateGuardError::EnvironmentAuthority) => ErrorKind::InvalidConfiguration,
         Some(StateGuardError::ExecutorReserved | StateGuardError::SnapshotChanged { .. }) => {
             ErrorKind::StateConflict
         }
@@ -1427,7 +1439,7 @@ async fn read_git_output(reader: impl AsyncRead + Unpin) -> AdapterResult<Vec<u8
     }
     Ok(bytes)
 }
-async fn cleanup_group(mut child: ProcessGroup) -> AdapterResult<ProcessGroup> {
+pub(crate) async fn cleanup_group(mut child: ProcessGroup) -> AdapterResult<ProcessGroup> {
     #[cfg(test)]
     if child.fail_cleanup {
         child.forbidden_cleanup_thread = Some(std::thread::current().id());
@@ -1636,10 +1648,9 @@ mod tests {
             let mut adapter =
                 GenericCliAdapter::new("fake".into(), vec!["/bin/cat".into()], store.clone())
                     .unwrap();
+            let plan = ProcessInspectionPlan::unknown(UnknownObservation::Diagnostics);
             if unknown {
-                adapter.process_inspection = Some(ProcessInspectionPlan::unknown(
-                    UnknownObservation::Diagnostics,
-                ));
+                adapter.process_inspection = Some(plan.clone());
             }
             let reference = adapter
                 .start(fixture_request(project, &task, worktree))
@@ -1676,7 +1687,9 @@ mod tests {
             );
             assert_eq!(saved.state, status.session.state);
             if unknown {
-                assert!(status.failure.unwrap().contains("SessionLost"));
+                let diagnostic = status.failure.as_ref().unwrap();
+                assert!(diagnostic.contains("SessionLost"));
+                plan.assert_diagnostics_transport(diagnostic);
                 assert!(
                     crate::git::WorktreeManager::lock_review(
                         &mut store.lock().unwrap(),
@@ -1688,6 +1701,63 @@ mod tests {
                 );
             }
         }
+    }
+    #[cfg(target_os = "macos")]
+    #[tokio::test]
+    async fn generic_post_spawn_failure_audit_preserves_inspector_facts_and_lost_reservation() {
+        let (_temp, store, project, task, worktree) = preflight_fixture();
+        let mut adapter =
+            GenericCliAdapter::new("fake".into(), vec!["/bin/cat".into()], store.clone()).unwrap();
+        let plan = ProcessInspectionPlan::unknown(UnknownObservation::Diagnostics);
+        adapter.process_inspection = Some(plan.clone());
+        let spawned = Arc::new(tokio::sync::Notify::new());
+        let proceed = Arc::new(tokio::sync::Notify::new());
+        adapter.before_running_write = Some((
+            spawned.clone(),
+            proceed.clone(),
+            Arc::new(std::sync::atomic::AtomicU32::new(0)),
+        ));
+        let request = fixture_request(project, &task, worktree);
+        let mut launch = tokio::spawn(async move { adapter.start(request).await });
+        let reached = tokio::time::timeout(Duration::from_secs(5), spawned.notified()).await;
+        let blocked = if reached.is_ok() {
+            let mut state = store.lock().unwrap();
+            let mut project = state.project(task.project_id).unwrap().unwrap();
+            project.state = ProjectState::Blocked;
+            project.blocked_reason = Some("scoped synthetic post-spawn barrier".into());
+            state.put_project(&mut project)
+        } else {
+            Ok(())
+        };
+        // Release/settle the owned launch before any assertion, including an early
+        // fixture error. Abort+join preserves the existing future's Drop bookkeeping.
+        proceed.notify_one();
+        let finished = tokio::time::timeout(Duration::from_secs(10), &mut launch).await;
+        let outcome = match finished {
+            Ok(value) => value,
+            Err(_) => {
+                launch.abort();
+                let _ = launch.await;
+                panic!("owned synthetic launch watchdog elapsed")
+            }
+        };
+        reached.unwrap();
+        blocked.unwrap();
+        let error = outcome.unwrap().unwrap_err();
+        assert_eq!(error.kind, ErrorKind::SessionLost);
+        plan.assert_diagnostics_transport(&error.message);
+        let state = store.lock().unwrap();
+        let records = state.records(&task.scope(), RecordKind::Session).unwrap();
+        let saved: Session = serde_json::from_value(records[0].data.clone()).unwrap();
+        assert_eq!(saved.state, SessionState::Lost);
+        assert!(crate::git::executor_reserved(&saved));
+        let events = state.events(&task.scope(), 0, 100).unwrap();
+        let audit = events
+            .iter()
+            .find(|e| e.kind == "adapter.launch_failure")
+            .expect("launch failure audit absent");
+        let reason = audit.data["reason"].as_str().unwrap();
+        plan.assert_diagnostics_transport(reason);
     }
     use super::*;
     use crate::domain::{CompletionCriterion, Goal, Task};

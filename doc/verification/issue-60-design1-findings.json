@@ -1,0 +1,114 @@
+{
+  "head": "ab2ac23e329d858b44bae5b19e4226368010af00",
+  "outcomes": {
+    "facts": "request_changes",
+    "authority": "request_changes"
+  },
+  "cleanup_verified": true,
+  "raw_result_sha256": {
+    "facts": "d3299b838eae876cf81906de1926782aedb4cf7e1b81b3040bfaf1dcdd0324ba",
+    "authority": "f4328c43560130e220890eb382e07a63e3debbac12bf3427974ae8f94b704e01"
+  },
+  "findings": [
+    {
+      "review": "facts",
+      "id": "D1-M1-deferred-validation-site",
+      "severity": "Medium",
+      "verified": true,
+      "disposition": "Design2 narrow clarification; independent delta re-review pending"
+    },
+    {
+      "review": "facts",
+      "id": "D2-M2-exact-facts-untestable-on-real-route",
+      "severity": "Medium",
+      "verified": true,
+      "disposition": "Design2 narrow clarification; independent delta re-review pending"
+    },
+    {
+      "review": "facts",
+      "id": "D3-L-formatting-failure-mechanism",
+      "severity": "Low",
+      "verified": true,
+      "disposition": "Design2 narrow clarification; independent delta re-review pending"
+    },
+    {
+      "review": "facts",
+      "id": "D4-L-status-seam-strands-child",
+      "severity": "Low",
+      "verified": true,
+      "disposition": "Design2 narrow clarification; independent delta re-review pending"
+    },
+    {
+      "review": "facts",
+      "id": "D5-L-production-entry-hop-uncovered",
+      "severity": "Low",
+      "verified": true,
+      "disposition": "Design2 narrow clarification; independent delta re-review pending"
+    },
+    {
+      "review": "facts",
+      "id": "D6-L-master-rationale-update",
+      "severity": "Low",
+      "verified": true,
+      "disposition": "Design2 narrow clarification; independent delta re-review pending"
+    },
+    {
+      "review": "facts",
+      "id": "D7-L-sync-git-inventory-omitted",
+      "severity": "Low",
+      "verified": true,
+      "disposition": "Design2 narrow clarification; independent delta re-review pending"
+    },
+    {
+      "review": "authority",
+      "id": "D60-M1",
+      "severity": "Medium",
+      "verified": true,
+      "disposition": "Design2 narrow clarification; independent delta re-review pending"
+    },
+    {
+      "review": "authority",
+      "id": "D60-M2",
+      "severity": "Medium",
+      "verified": true,
+      "disposition": "Design2 narrow clarification; independent delta re-review pending",
+      "qualification": "Fixture-stranding defect verified; proposed numeric-callback PID rescue rejected. Actual Child settled BEFORE synthetic branch, recorded testops afterwards; unit-only evidence."
+    },
+    {
+      "review": "authority",
+      "id": "D60-M3",
+      "severity": "Medium",
+      "verified": true,
+      "disposition": "Design2 narrow clarification; independent delta re-review pending"
+    },
+    {
+      "review": "authority",
+      "id": "D60-L1",
+      "severity": "Low",
+      "verified": true,
+      "disposition": "Design2 narrow clarification; independent delta re-review pending"
+    },
+    {
+      "review": "authority",
+      "id": "D60-L2",
+      "severity": "Low",
+      "verified": true,
+      "disposition": "Design2 narrow clarification; independent delta re-review pending"
+    },
+    {
+      "review": "authority",
+      "id": "D60-L3",
+      "severity": "Low",
+      "verified": true,
+      "disposition": "Design2 narrow clarification; independent delta re-review pending"
+    },
+    {
+      "review": "authority",
+      "id": "D60-L4",
+      "severity": "Low",
+      "verified": true,
+      "disposition": "Design2 narrow clarification; independent delta re-review pending"
+    }
+  ],
+  "source_verification": "Deferred validate220-222; split pass-through wrappers adapter388-431; unowned stdChild after statuserror54-65; nondeterministic loops107-173; exactread raw ISDIR unit566-567, livePERM control735-736; sharedformat1435-1454; actual master/Context/Grok sinks."
+}

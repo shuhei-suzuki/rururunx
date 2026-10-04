@@ -1,0 +1,13 @@
+diff --git a/crates/rrx/src/adapter/grok/ownership.rs b/crates/rrx/src/adapter/grok/ownership.rs
+index b120b8d..52097a9 100644
+--- a/crates/rrx/src/adapter/grok/ownership.rs
++++ b/crates/rrx/src/adapter/grok/ownership.rs
+@@ -93,7 +93,7 @@ impl ProcessOwnership {
+         }
+     }
+     pub fn group(&mut self, stage: OwnershipStage) -> Arc<AtomicBool> {
+-        self.flags.retain(|(flag, _)| flag.load(Ordering::SeqCst));
++        self.flags.retain(|(flag, _)| !flag.load(Ordering::SeqCst));
+         let flag = Arc::new(AtomicBool::new(false));
+         self.flags.push((flag.clone(), stage));
+         #[cfg(all(test, target_os = "macos"))]

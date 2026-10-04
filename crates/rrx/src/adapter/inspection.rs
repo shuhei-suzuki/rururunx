@@ -10,13 +10,17 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[cfg(test)]
+mod diagnostic_tests;
+mod diagnostics;
+use diagnostics::{
+    Cleanup, Collector, Eof, Exit, Framing, Kill, Refusal, Site, StreamKind, Validation, framing,
+};
+
 const LIMIT: usize = 1024 * 1024;
 const BUDGET: Duration = Duration::from_millis(250);
 const IDLE: Duration = Duration::from_millis(5);
 
-fn framing(message: &'static str) -> io::Error {
-    io::Error::new(io::ErrorKind::InvalidData, message)
-}
 fn timed_out() -> io::Error {
     io::Error::new(
         io::ErrorKind::TimedOut,
@@ -37,46 +41,132 @@ struct Inspector {
     child: Child,
     unreaped: bool,
     exit: Option<ExitStatus>,
+    // Private fixture safety survives facts removal/Drop during guard mutants.
+    // It is set only after this exact Child actually returned Some from try_wait.
+    #[cfg(test)]
+    settled_fixture: Option<ExitStatus>,
 }
 impl Inspector {
-    fn observe(&mut self) -> io::Result<()> {
+    fn observe(&mut self, facts: &mut Collector) -> io::Result<()> {
         if self.exit.is_some() {
             return Ok(());
         }
-        match self.child.try_wait() {
+        let status = facts.facts.status.get_or_insert_with(Default::default);
+        status.calls = status.calls.saturating_add(1);
+        let result = self.child.try_wait();
+        #[cfg(test)]
+        let mut result = result;
+        #[cfg(test)]
+        if facts.hooks.status_error_after_reap
+            && let Ok(Some(exit)) = result
+        {
+            // Only an actual reaped Child can enter this synthetic error branch.
+            facts.hooks.actual_reaped = Some(exit);
+            self.settled_fixture = Some(exit);
+            result = Err(io::Error::from(io::ErrorKind::PermissionDenied));
+        }
+        match result {
             Ok(Some(exit)) => {
+                status.exit = Exit::observed(exit);
                 self.unreaped = false;
                 self.exit = Some(exit);
                 Ok(())
             }
-            Ok(None) => Ok(()),
-            Err(error) if error.kind() == io::ErrorKind::Interrupted => Ok(()),
-            Err(_) => {
+            Ok(None) => {
+                status.pending = status.pending.saturating_add(1);
+                Ok(())
+            }
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => {
+                status.interrupted = status.interrupted.saturating_add(1);
+                Ok(())
+            }
+            Err(error) => {
+                status.errors = status.errors.saturating_add(1);
+                status.source_kind = Some(error.kind());
                 self.unreaped = false;
-                Err(io::Error::other(
-                    "native inspector reap ownership uncertain",
-                ))
+                let error = io::Error::other("native inspector reap ownership uncertain");
+                facts.fail(
+                    Site::Status,
+                    StreamKind::None,
+                    Refusal::Io(error.kind()),
+                    error.kind(),
+                );
+                Err(error)
             }
         }
     }
     fn cleanup(&mut self) -> io::Result<()> {
+        self.cleanup_recorded(None)
+    }
+    fn cleanup_recorded(&mut self, mut facts: Option<&mut Collector>) -> io::Result<()> {
         if !self.unreaped {
+            if let Some(facts) = &mut facts {
+                facts.facts.cleanup = if self.exit.is_some() {
+                    Cleanup::ReapedByStatus
+                } else {
+                    Cleanup::Relinquished
+                };
+            }
             return Ok(());
         }
         // The leader remains our unreaped Child even if it exited between polls.
         // A kill error must not skip mandatory wait; wait can resolve that race.
-        let _kill = self.child.kill();
+        #[cfg(test)]
+        let already_reaped = self.settled_fixture;
+        #[cfg(test)]
+        let kill = if already_reaped.is_some() {
+            if let Some(facts) = &mut facts {
+                facts.hooks.synthetic_kills += 1;
+            }
+            Ok(())
+        } else {
+            self.child.kill()
+        };
+        #[cfg(not(test))]
+        let kill = self.child.kill();
+        if let Some(facts) = &mut facts {
+            facts.facts.kill = match kill {
+                Ok(()) => Kill::Ok,
+                Err(ref e) => Kill::Error(e.kind()),
+            };
+        }
         let result = loop {
-            match self.child.wait() {
+            #[cfg(test)]
+            let wait = if let Some(exit) = already_reaped {
+                if let Some(facts) = &mut facts {
+                    facts.hooks.synthetic_waits += 1;
+                }
+                Ok(exit)
+            } else {
+                self.child.wait()
+            };
+            #[cfg(not(test))]
+            let wait = self.child.wait();
+            match wait {
                 Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
                 result => break result,
             }
         };
         self.unreaped = false;
+        if let Some(facts) = &mut facts {
+            facts.facts.cleanup = if result.is_ok() {
+                Cleanup::KillThenReaped
+            } else {
+                Cleanup::WaitFailed
+            };
+        }
         result
             .map(|exit| self.exit = Some(exit))
             .map_err(|_| io::Error::other("native inspector cleanup/reap uncertain"))
     }
+}
+/// Both real observation failure and the settled-child synthetic unit fixture use
+/// this exact helper. Cleanup timing never replaces the frozen observation facts.
+fn cleanup_failure(inspector: &mut Inspector, facts: &mut Collector) -> io::Result<()> {
+    let started = Instant::now();
+    let result = inspector.cleanup_recorded(Some(facts));
+    facts.facts.cleanup_us = Some(diagnostics::micros(started.elapsed()));
+    result
 }
 impl Drop for Inspector {
     fn drop(&mut self) {
@@ -89,10 +179,10 @@ struct Stream {
     file: File,
     bytes: Vec<u8>,
     eof: bool,
-    overflow: &'static str,
+    overflow: Framing,
 }
 impl Stream {
-    fn new(file: File, overflow: &'static str) -> io::Result<Self> {
+    fn new(file: File, overflow: Framing) -> io::Result<Self> {
         let flags = rustix::fs::fcntl_getfl(&file)?;
         rustix::fs::fcntl_setfl(&file, flags | rustix::fs::OFlags::NONBLOCK)?;
         Ok(Self {
@@ -102,34 +192,88 @@ impl Stream {
             overflow,
         })
     }
-    /// One bounded chunk lets the other stream, status and deadline progress.
+    #[cfg(test)]
     fn drain(&mut self, deadline: Instant) -> io::Result<bool> {
-        current(deadline)?;
+        self.drain_recorded(deadline, &mut Collector::new(), StreamKind::Stdout)
+    }
+    /// One bounded chunk lets the other stream, status and deadline progress.
+    fn drain_recorded(
+        &mut self,
+        deadline: Instant,
+        facts: &mut Collector,
+        stream: StreamKind,
+    ) -> io::Result<bool> {
+        facts.deadline(deadline, Site::DrainDeadline, stream)?;
         if self.eof {
             return Ok(false);
         }
         let mut chunk = [0; 8192];
         let maximum = chunk.len().min(LIMIT + 1 - self.bytes.len());
-        match self.file.read(&mut chunk[..maximum]) {
+        #[cfg(test)]
+        let injected = facts.inject(Site::Read, stream).err();
+        #[cfg(not(test))]
+        let injected: Option<io::Error> = None;
+        let read = injected.map_or_else(
+            || {
+                if let Some(s) = facts.stream(stream) {
+                    s.calls = s.calls.saturating_add(1);
+                }
+                self.file.read(&mut chunk[..maximum])
+            },
+            Err,
+        );
+        match read {
             Ok(0) => {
+                if let Some(s) = facts.stream(stream) {
+                    s.eof = Eof::Observed;
+                }
                 self.eof = true;
                 Ok(false)
             }
             Ok(count) => {
-                self.bytes
-                    .try_reserve(count)
-                    .map_err(|_| io::Error::other("native inspection allocation failed"))?;
+                if let Some(s) = facts.stream(stream) {
+                    s.bytes = s.bytes.saturating_add(count as u64);
+                    s.eof = Eof::Pending;
+                }
+                #[cfg(test)]
+                facts.inject(Site::Allocation, stream)?;
+                self.bytes.try_reserve(count).map_err(|_| {
+                    let e = io::Error::other("native inspection allocation failed");
+                    facts.fail(Site::Allocation, stream, Refusal::Allocation, e.kind());
+                    e
+                })?;
                 self.bytes.extend_from_slice(&chunk[..count]);
-                current(deadline)?;
+                facts.deadline(deadline, Site::AfterReadDeadline, stream)?;
                 if self.bytes.len() > LIMIT {
-                    Err(framing(self.overflow))
+                    let e = framing(self.overflow);
+                    facts.fail(
+                        Site::Budget,
+                        stream,
+                        Refusal::Frame(self.overflow),
+                        e.kind(),
+                    );
+                    Err(e)
                 } else {
                     Ok(true)
                 }
             }
-            Err(error) if error.kind() == io::ErrorKind::WouldBlock => Ok(false),
-            Err(error) if error.kind() == io::ErrorKind::Interrupted => Ok(true),
-            Err(error) => Err(error),
+            Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                if let Some(s) = facts.stream(stream) {
+                    s.would_block = s.would_block.saturating_add(1);
+                    s.eof = Eof::Pending;
+                }
+                Ok(false)
+            }
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => {
+                if let Some(s) = facts.stream(stream) {
+                    s.interrupted_read();
+                }
+                Ok(true)
+            }
+            Err(error) => {
+                facts.fail(Site::Read, stream, Refusal::Io(error.kind()), error.kind());
+                Err(error)
+            }
         }
     }
 }
@@ -141,20 +285,39 @@ struct Frame {
     stderr: Vec<u8>,
     exit: ExitStatus,
 }
+#[cfg(test)]
 fn complete(
     inspector: &mut Inspector,
     stdout: File,
     stderr: File,
     deadline: Instant,
 ) -> io::Result<Frame> {
-    let mut stdout = Stream::new(stdout, "native inspection stdout exceeds byte budget")?;
-    let mut stderr = Stream::new(stderr, "native inspection stderr exceeds byte budget")?;
+    complete_recorded(inspector, stdout, stderr, deadline, &mut Collector::new())
+}
+fn complete_recorded(
+    inspector: &mut Inspector,
+    stdout: File,
+    stderr: File,
+    deadline: Instant,
+    facts: &mut Collector,
+) -> io::Result<Frame> {
+    // Both endpoints are available before either nonblocking setup is attempted.
+    let _ = facts.stream(StreamKind::Stdout);
+    let _ = facts.stream(StreamKind::Stderr);
+    let mut setup = |file, overflow, stream| {
+        #[cfg(test)]
+        facts.inject(Site::Setup, stream)?;
+        Stream::new(file, overflow)
+            .inspect_err(|e| facts.fail(Site::Setup, stream, Refusal::Io(e.kind()), e.kind()))
+    };
+    let mut stdout = setup(stdout, Framing::StdoutBudget, StreamKind::Stdout)?;
+    let mut stderr = setup(stderr, Framing::StderrBudget, StreamKind::Stderr)?;
     loop {
-        current(deadline)?;
-        let stdout_progress = stdout.drain(deadline)?;
-        let stderr_progress = stderr.drain(deadline)?;
-        inspector.observe()?;
-        current(deadline)?;
+        facts.deadline(deadline, Site::LoopDeadline, StreamKind::None)?;
+        let stdout_progress = stdout.drain_recorded(deadline, facts, StreamKind::Stdout)?;
+        let stderr_progress = stderr.drain_recorded(deadline, facts, StreamKind::Stderr)?;
+        inspector.observe(facts)?;
+        facts.deadline(deadline, Site::AfterStatusDeadline, StreamKind::None)?;
         if stdout.eof
             && stderr.eof
             && let Some(exit) = inspector.exit
@@ -167,10 +330,9 @@ fn complete(
                 exit,
             });
         }
-        // No sleep while data flows: a small pipe otherwise throttles a 1MiB
-        // writer past the unchanged deadline. Idle EOF waits remain bounded.
+        // No sleep while data flows; keep the unchanged native polling boundary.
         if !stdout_progress && !stderr_progress {
-            std::thread::sleep(IDLE.min(deadline.saturating_duration_since(Instant::now())));
+            std::thread::sleep(facts.idle(deadline));
         }
     }
 }
@@ -207,26 +369,81 @@ fn inspect_command(
     leader: i32,
     observed: impl FnOnce(u32),
 ) -> io::Result<bool> {
+    inspect_command_recorded(command, leader, observed, Collector::new())
+}
+fn inspect_command_recorded(
+    command: std::process::Command,
+    leader: i32,
+    observed: impl FnOnce(u32),
+    mut facts: Collector,
+) -> io::Result<bool> {
     if leader <= 1 {
-        return Err(framing("invalid owned inspection leader"));
+        let e = framing(Framing::InvalidLeader);
+        facts.fail(
+            Site::Input,
+            StreamKind::None,
+            Refusal::Frame(Framing::InvalidLeader),
+            e.kind(),
+        );
+        return Err(facts.attach(e));
     }
-    let (frame, deadline) = observe_command(selected_command(command, leader), observed)?;
+    let (frame, deadline, mut facts) =
+        observe_command_recorded(selected_command(command, leader), observed, facts)?;
     if !frame.exit.success() {
-        return Err(framing("native process inspection exit failed"));
+        let e = framing(Framing::Exit);
+        facts.fail(
+            Site::Exit,
+            StreamKind::None,
+            Refusal::Frame(Framing::Exit),
+            e.kind(),
+        );
+        return Err(facts.attach(e));
     }
     if !frame.stderr.is_empty() {
-        return Err(framing("native process inspection emitted diagnostics"));
+        let e = framing(Framing::Stderr);
+        facts.fail(
+            Site::Stderr,
+            StreamKind::Stderr,
+            Refusal::Frame(Framing::Stderr),
+            e.kind(),
+        );
+        return Err(facts.attach(e));
     }
     let result = validate(&frame.stdout, leader);
-    current(deadline)?;
-    result
+    facts.facts.validation = match &result {
+        Ok(true) => Validation::Dead,
+        Ok(false) => Validation::Live,
+        Err(e) => Validation::Refused(diagnostics::refusal(e)),
+    };
+    // This deadline masks the validation result exactly as before. Freeze only the
+    // actually returned error, keeping validation separately for diagnosis.
+    if let Err(e) = facts.deadline(deadline, Site::AfterValidationDeadline, StreamKind::None) {
+        return Err(facts.attach(e));
+    }
+    result.map_err(|e| {
+        facts.fail(
+            Site::Validation,
+            StreamKind::None,
+            diagnostics::refusal(&e),
+            e.kind(),
+        );
+        facts.attach(e)
+    })
 }
-// Frame collection owns the identical stdio, environment, budget and cleanup
-// boundary. Test-only callers inspect metadata without weakening production gates.
+#[cfg(test)]
 fn observe_command(
-    mut command: std::process::Command,
+    command: std::process::Command,
     observed: impl FnOnce(u32),
 ) -> io::Result<(Frame, Instant)> {
+    observe_command_recorded(command, observed, Collector::new())
+        .map(|(frame, deadline, _)| (frame, deadline))
+}
+// Frame collection owns the identical stdio, environment, budget and cleanup boundary.
+fn observe_command_recorded(
+    mut command: std::process::Command,
+    observed: impl FnOnce(u32),
+    mut facts: Collector,
+) -> io::Result<(Frame, Instant, Collector)> {
     command.env_clear();
     #[cfg(test)]
     let command_metadata = (
@@ -237,77 +454,110 @@ fn observe_command(
             .collect(),
         command.get_envs().count(),
     );
+    let spawn_started = Instant::now();
     let child = command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .spawn()?;
-    let deadline = Instant::now() + BUDGET;
+        .spawn();
+    // Start the same post-spawn deadline before recording spawn timing.
+    let spawned_at = Instant::now();
+    let deadline = spawned_at + BUDGET;
+    facts.started = Some(deadline - BUDGET);
+    facts.facts.spawn_us = Some(diagnostics::micros(
+        spawned_at.duration_since(spawn_started),
+    ));
+    let child = match child {
+        Ok(child) => child,
+        Err(e) => {
+            facts.started = None;
+            facts.fail(
+                Site::Spawn,
+                StreamKind::None,
+                Refusal::Io(e.kind()),
+                e.kind(),
+            );
+            return Err(facts.attach(e));
+        }
+    };
     let mut inspector = Inspector {
         child,
         unreaped: true,
         exit: None,
+        #[cfg(test)]
+        settled_fixture: None,
     };
     observed(inspector.child.id());
     let result = (|| {
-        let stdout = inspector
-            .child
-            .stdout
-            .take()
-            .ok_or_else(|| io::Error::other("missing inspection stdout"))?;
-        let stderr = inspector
-            .child
-            .stderr
-            .take()
-            .ok_or_else(|| io::Error::other("missing inspection stderr"))?;
-        complete(
+        #[cfg(test)]
+        facts.inject(Site::Endpoint, StreamKind::Stdout)?;
+        let stdout = inspector.child.stdout.take().ok_or_else(|| {
+            let e = io::Error::other("missing inspection stdout");
+            facts.fail(
+                Site::Endpoint,
+                StreamKind::Stdout,
+                Refusal::MissingEndpoint,
+                e.kind(),
+            );
+            e
+        })?;
+        let _ = facts.stream(StreamKind::Stdout);
+        #[cfg(test)]
+        facts.inject(Site::Endpoint, StreamKind::Stderr)?;
+        let stderr = inspector.child.stderr.take().ok_or_else(|| {
+            let e = io::Error::other("missing inspection stderr");
+            facts.fail(
+                Site::Endpoint,
+                StreamKind::Stderr,
+                Refusal::MissingEndpoint,
+                e.kind(),
+            );
+            e
+        })?;
+        let _ = facts.stream(StreamKind::Stderr);
+        complete_recorded(
             &mut inspector,
             File::from(OwnedFd::from(stdout)),
             File::from(OwnedFd::from(stderr)),
             deadline,
+            &mut facts,
         )
     })();
     match result {
         Ok(frame) => {
+            facts.facts.cleanup = Cleanup::ReapedByStatus;
             #[cfg(test)]
             let frame = {
                 let mut frame = frame;
                 frame.command = Some(command_metadata);
                 frame
             };
-            Ok((frame, deadline))
+            Ok((frame, deadline, facts))
         }
         Err(original) => {
-            // Endpoints were dropped before mandatory wait, outside the observation
-            // budget. Preserve the original bounded category on reap uncertainty.
-            if inspector.cleanup().is_err() {
-                return Err(io::Error::new(
-                    original.kind(),
-                    format!("{original}; native inspector cleanup/reap uncertain"),
-                ));
-            }
-            Err(original)
+            // Endpoints drop before mandatory wait, outside the observation budget.
+            // Facts freeze at the first failure and do not promote cleanup authority.
+            let _ = cleanup_failure(&mut inspector, &mut facts);
+            Err(facts.attach(original))
         }
     }
 }
 
 fn positive(field: &str) -> io::Result<i32> {
     if field.is_empty() || !field.bytes().all(|b| b.is_ascii_digit()) {
-        return Err(framing("invalid native inspection PID/group"));
+        return Err(framing(Framing::Identifier));
     }
     field
         .parse::<i32>()
         .ok()
         .filter(|n| *n > 0)
-        .ok_or_else(|| framing("invalid native inspection PID/group"))
+        .ok_or_else(|| framing(Framing::Identifier))
 }
 fn zombie(state: &str) -> io::Result<bool> {
     let mut bytes = state.bytes();
-    let primary = bytes
-        .next()
-        .ok_or_else(|| framing("missing native process state"))?;
+    let primary = bytes.next().ok_or_else(|| framing(Framing::MissingState))?;
     if !matches!(primary, b'I' | b'R' | b'S' | b'T' | b'U' | b'Z') {
-        return Err(framing("unknown native process state"));
+        return Err(framing(Framing::UnknownState));
     }
     let suffix: Vec<_> = bytes.collect();
     let mut cursor = 0;
@@ -317,47 +567,46 @@ fn zombie(state: &str) -> io::Result<bool> {
     for flag in [b'X', b'E', b'V', b'L', b's', b'+'] {
         if suffix.get(cursor) == Some(&flag) {
             if flag == b'E' && primary == b'Z' {
-                return Err(framing("invalid zombie process state suffix"));
+                return Err(framing(Framing::ZombieSuffix));
             }
             cursor += 1;
         }
     }
     if cursor != suffix.len() {
-        return Err(framing("invalid native process state suffix"));
+        return Err(framing(Framing::StateSuffix));
     }
     Ok(primary == b'Z')
 }
 
 pub(super) fn validate(output: &[u8], leader: i32) -> io::Result<bool> {
     if leader <= 1 || output.is_empty() || output.last() != Some(&b'\n') {
-        return Err(framing("incomplete native process inspection frame"));
+        return Err(framing(Framing::Incomplete));
     }
-    let text =
-        std::str::from_utf8(output).map_err(|_| framing("invalid native inspection UTF-8"))?;
+    let text = std::str::from_utf8(output).map_err(|_| framing(Framing::Utf8))?;
     let mut pids = BTreeSet::new();
     let mut has_leader = false;
     let mut all_zombies = true;
     for row in text.lines().filter(|row| !row.trim().is_empty()) {
         let mut fields = row.split_whitespace();
-        let pid = positive(fields.next().ok_or_else(|| framing("missing native PID"))?)?;
+        let pid = positive(fields.next().ok_or_else(|| framing(Framing::MissingPid))?)?;
         let group = positive(
             fields
                 .next()
-                .ok_or_else(|| framing("missing native process group"))?,
+                .ok_or_else(|| framing(Framing::MissingGroup))?,
         )?;
         let dead = zombie(
             fields
                 .next()
-                .ok_or_else(|| framing("missing native process state"))?,
+                .ok_or_else(|| framing(Framing::MissingRowState))?,
         )?;
         if fields.next().is_some() || group != leader || !pids.insert(pid) {
-            return Err(framing("unexpected/duplicate native inspection row"));
+            return Err(framing(Framing::UnexpectedRow));
         }
         has_leader |= pid == leader;
         all_zombies &= dead;
     }
     if !has_leader {
-        return Err(framing("native inspection expected leader missing"));
+        return Err(framing(Framing::MissingLeader));
     }
     Ok(all_zombies)
 }
@@ -418,11 +667,17 @@ mod tests {
         ] {
             let error = builtin(body).unwrap_err();
             assert!(error.to_string().contains(category), "{name}: {error}");
+            if name == "empty" || name == "partial" {
+                assert!(
+                    error.to_string().starts_with(Framing::Incomplete.message()),
+                    "{name}: {error}"
+                );
+            }
         }
         assert!(builtin("printf '42 42 Z\\n'").unwrap());
     }
     #[test]
-    fn each_output_stream_has_a_causal_size_failure() {
+    fn oversized_child_streams_remain_unknown_when_size_or_deadline_wins() {
         for (name, body) in [
             (
                 "stdout",
@@ -439,12 +694,53 @@ mod tests {
                 "isolated {name} overflow observation elapsed={:?} category={error}",
                 started.elapsed()
             );
+            // Process scheduling can exhaust the unchanged observation budget
+            // before the producer fills the pipe. This OS-wrapper control proves
+            // no accepted frame, not a causal byte-cap kill in that case.
             assert!(
-                error
-                    .to_string()
-                    .contains(&format!("{name} exceeds byte budget")),
+                error.kind() == io::ErrorKind::TimedOut
+                    || (error.kind() == io::ErrorKind::InvalidData
+                        && error
+                            .to_string()
+                            .contains(&format!("{name} exceeds byte budget"))),
                 "{error}"
             );
+        }
+    }
+    #[test]
+    fn prepared_stream_cap_rejects_complete_zombie_prefix_before_hidden_live_row() {
+        let directory = tempfile::tempdir().unwrap();
+        for name in ["stdout", "stderr"] {
+            let path = directory.path().join(name);
+            // The next real read ends a complete all-Z row exactly at LIMIT+1.
+            // Omitting the byte-cap check would accept this prefix and hide the
+            // following live row on its next zero-length read. The prepared bytes
+            // are a reader-boundary unit fixture, not an actual ps/pipe sample.
+            std::fs::write(&path, b"\n43 42 S\n").unwrap();
+            let category = if name == "stdout" {
+                "native inspection stdout exceeds byte budget"
+            } else {
+                "native inspection stderr exceeds byte budget"
+            };
+            let mut stream = Stream::new(
+                File::open(&path).unwrap(),
+                if name == "stdout" {
+                    Framing::StdoutBudget
+                } else {
+                    Framing::StderrBudget
+                },
+            )
+            .unwrap();
+            stream.bytes = b"42 42 Z".to_vec();
+            stream.bytes.resize(LIMIT, b' ');
+            let result = stream.drain(Instant::now() + BUDGET);
+            // The cut is otherwise valid death evidence. It must be refused by
+            // the actual drain cap, independently of framing/diagnostic barriers.
+            assert!(validate(&stream.bytes, 42).unwrap());
+            assert!(!stream.eof);
+            let error = result.expect_err("reader accepted a truncated all-Z prefix");
+            assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+            assert_eq!(error.to_string(), category);
         }
     }
     #[test]
@@ -479,27 +775,52 @@ mod tests {
                 child,
                 unreaped: true,
                 exit: None,
+                #[cfg(test)]
+                settled_fixture: None,
             };
             let stderr = inspector.child.stderr.take().unwrap();
             let started = Instant::now();
-            let result = complete(
+            let mut facts = Collector::new();
+            facts.started = Some(started);
+            let result = complete_recorded(
                 &mut inspector,
                 File::from(OwnedFd::from(reader)),
                 File::from(OwnedFd::from(stderr)),
                 started + BUDGET,
+                &mut facts,
             )
             .and_then(|frame| validate(&frame.stdout, 42));
-            inspector.cleanup().unwrap();
-            send.send((result, started.elapsed())).unwrap();
+            cleanup_failure(&mut inspector, &mut facts).unwrap();
+            send.send((result, started.elapsed(), facts.facts)).unwrap();
         });
         let before_release = receive.recv_timeout(Duration::from_secs(5));
         drop(retained_writer);
         thread.join().unwrap();
         // Cleanup and join precede the causal assertion, including hung mutations.
-        let (result, elapsed) =
+        let (result, elapsed, facts) =
             before_release.expect("completion did not return before fixture release watchdog");
         eprintln!("retained output endpoint observation elapsed={elapsed:?}");
         assert_eq!(result.unwrap_err().kind(), io::ErrorKind::TimedOut);
+        assert!(facts.site.is_some_and(|site| matches!(
+            site,
+            Site::LoopDeadline
+                | Site::DrainDeadline
+                | Site::AfterReadDeadline
+                | Site::AfterStatusDeadline
+        )));
+        let stdout = facts.stdout.unwrap();
+        assert_ne!(stdout.eof, Eof::Observed, "fixture still owns its writer");
+        if stdout.bytes > 0 {
+            assert_eq!(stdout.eof, Eof::Pending);
+        }
+        if let Some(status) = facts.status {
+            assert!(status.calls > 0);
+            if status.exit == Exit::Success {
+                assert_eq!(facts.cleanup, Cleanup::ReapedByStatus);
+            }
+        }
+        // Scheduling may expire before status/stderr/bytes are reached; no exact
+        // EOF, throughput or cleanup classification is invented in that case.
     }
     #[test]
     fn actual_read_error_reaps_the_owned_inspector_without_accepting_a_frame() {
@@ -516,6 +837,8 @@ mod tests {
             child,
             unreaped: true,
             exit: None,
+            #[cfg(test)]
+            settled_fixture: None,
         };
         let stderr = inspector.child.stderr.take().unwrap();
         // A safe owned directory FD exercises the actual read syscall's error
@@ -800,6 +1123,8 @@ pub(crate) enum UnknownObservation {
 #[derive(Clone)]
 pub(crate) struct TestPlan {
     mode: TestMode,
+    // Independent original-kind test observation, before AdapterError erases it.
+    original_kind: std::sync::Arc<std::sync::Mutex<Option<io::ErrorKind>>>,
 }
 #[cfg(test)]
 #[derive(Clone)]
@@ -812,13 +1137,72 @@ impl TestPlan {
     pub(crate) fn unknown(observation: UnknownObservation) -> Self {
         Self {
             mode: TestMode::KillAndUnknown(observation),
+            original_kind: Default::default(),
         }
     }
     // Only this module's owned-boundary fixtures may construct a no-KILL plan.
     fn observe_only(legacy: bool) -> Self {
         Self {
             mode: TestMode::ObserveOnly { legacy },
+            original_kind: Default::default(),
         }
+    }
+    pub(crate) fn original_error_kind(&self) -> Option<io::ErrorKind> {
+        self.original_kind.lock().ok().and_then(|kind| *kind)
+    }
+    pub(crate) fn assert_diagnostics_transport(&self, diagnostic: &str) {
+        assert!(diagnostic.contains("inspection_facts{"), "{diagnostic}");
+        match self
+            .original_error_kind()
+            .expect("real inspector did not run")
+        {
+            io::ErrorKind::InvalidData => {
+                assert!(
+                    diagnostic.contains("site=stderr_guard,stream=stderr,refusal=stderr_nonempty"),
+                    "{diagnostic}"
+                );
+                for fact in [
+                    "stdout_eof=observed",
+                    "stderr_eof=observed",
+                    "stderr_bytes=18,",
+                    "exit=success",
+                    "validation=not_reached",
+                    "cleanup=reaped_by_status_observation",
+                    "kill=not_requested",
+                ] {
+                    assert!(diagnostic.contains(fact), "{fact}: {diagnostic}");
+                }
+            }
+            io::ErrorKind::TimedOut => assert!(
+                diagnostic.contains("site=deadline_") && diagnostic.contains("refusal=deadline"),
+                "{diagnostic}"
+            ),
+            kind => panic!("unexpected original inspector kind {kind:?}: {diagnostic}"),
+        }
+        let count = |key: &str| -> Option<u64> {
+            diagnostic
+                .split_once(&format!("{key}="))?
+                .1
+                .split([',', '}'])
+                .next()?
+                .parse()
+                .ok()
+        };
+        for stream in ["stdout", "stderr"] {
+            if let Some(reads) = count(&format!("{stream}_reads")) {
+                let would_block = count(&format!("{stream}_would_block")).unwrap();
+                let interrupted = count(&format!("{stream}_interrupted")).unwrap();
+                let eof = u64::from(diagnostic.contains(&format!("{stream}_eof=observed")));
+                assert!(reads >= would_block + interrupted + eof, "{diagnostic}");
+            }
+        }
+        if let Some(polls) = count("status_polls") {
+            assert!(polls > 0, "{diagnostic}");
+        }
+        assert!(
+            !diagnostic.contains("fixture diagnostic"),
+            "raw child stderr leaked"
+        );
     }
     pub(super) fn signal(&self, pid: rustix::process::Pid) -> Result<(), rustix::io::Errno> {
         match self.mode {
@@ -857,11 +1241,17 @@ impl TestPlan {
                 "printf '%s %s Z' \"$1\" \"$1\""
             }
         };
-        Some(inspect_with_prefix(
+        let result = inspect_with_prefix(
             Path::new("/bin/sh"),
             &["-c".into(), body.into()],
             leader,
             |_| {},
-        ))
+        );
+        if let Ok(mut kind) = self.original_kind.lock()
+            && kind.is_none()
+        {
+            *kind = result.as_ref().err().map(io::Error::kind);
+        }
+        Some(result)
     }
 }

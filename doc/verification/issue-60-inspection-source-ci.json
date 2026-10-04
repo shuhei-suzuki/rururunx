@@ -1,0 +1,49 @@
+{
+  "run": 37226585207,
+  "trigger_head": "6db2cc1a45d68dede8d5c52b70efa4693fae2255",
+  "actual_checkouts": {
+    "check (macos-latest)": "f536deba297dca5ef27353199e65573d150c073d",
+    "check (ubuntu-latest)": "f536deba297dca5ef27353199e65573d150c073d"
+  },
+  "parents": [
+    "054aefd3a22a02951fa72b9fa397bed58d156bbf",
+    "6db2cc1a45d68dede8d5c52b70efa4693fae2255"
+  ],
+  "tested_tree": "32a498dd4fa4f20821367613c31b875ada9d654e",
+  "trigger_tree": "32a498dd4fa4f20821367613c31b875ada9d654e",
+  "tested_tree_equals_trigger": true,
+  "jobs": {
+    "check (macos-latest)": {
+      "conclusion": "success",
+      "steps": {
+        "Set up job": "success",
+        "Run actions/checkout@v4": "success",
+        "Run dtolnay/rust-toolchain@1.91.1": "success",
+        "Run cargo fmt --all -- --check": "success",
+        "Run cargo clippy --locked --workspace --all-targets -- -D warnings": "success",
+        "Run cargo test --locked --workspace": "success",
+        "Run cargo build --locked --workspace": "success",
+        "Run cargo build --locked --release --workspace": "success",
+        "Post Run actions/checkout@v4": "success",
+        "Complete job": "success"
+      }
+    },
+    "check (ubuntu-latest)": {
+      "conclusion": "success",
+      "steps": {
+        "Set up job": "success",
+        "Run actions/checkout@v4": "success",
+        "Run dtolnay/rust-toolchain@1.91.1": "success",
+        "Run cargo fmt --all -- --check": "success",
+        "Run cargo clippy --locked --workspace --all-targets -- -D warnings": "success",
+        "Run cargo test --locked --workspace": "success",
+        "Run cargo build --locked --workspace": "success",
+        "Run cargo build --locked --release --workspace": "success",
+        "Post Run actions/checkout@v4": "success",
+        "Complete job": "success"
+      }
+    }
+  },
+  "log_sha256": "0971fed1b2684165a18e5dec8287af0912fda1c3c7c51499bd387e0f55fe5df5",
+  "scope": "diagnostic source/default CI only; no timeout cause or availability/nativeF1/reader acceptance"
+}

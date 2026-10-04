@@ -1,0 +1,13 @@
+diff --git a/crates/rrx/src/adapter/grok/mod.rs b/crates/rrx/src/adapter/grok/mod.rs
+index 21502c8..a4a0169 100644
+--- a/crates/rrx/src/adapter/grok/mod.rs
++++ b/crates/rrx/src/adapter/grok/mod.rs
+@@ -1160,7 +1160,7 @@ async fn supervise(mut actor: Actor, load: Option<String>) {
+                     &actor.request,
+                     &mut ownership,
+                     binding.as_ref().expect("owned binding"),
+-                    OwnershipStage::Reconciliation,
++                    OwnershipStage::InSessionBinding,
+                 )
+                 .await?;
+             let current_index = index_digest(

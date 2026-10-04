@@ -47,6 +47,12 @@ Suggested fields:
 - completed_at
 - audit metadata
 
+Task nodes/edges, active Task IDs and per-Task progress/timestamps are derived
+from Task-scoped records. Updating these views or collecting each Task event
+must not routinely rewrite the shared Goal row. Goal Context Pack publication
+must likewise respect the Workflow CAS constraint in section 14; this design
+does not establish a separate semantic-version policy.
+
 ## 3. Goal states
 
 ```text
@@ -107,7 +113,7 @@ Schedule ready Tasks
    ↓
 Collect Task/review/approval events
    ↓
-Update Goal context/progress
+Update derived Task-scoped progress / publish Goal context with CAS coordination
    ↓
 Discover required follow-up work if any
    ↓
@@ -260,6 +266,13 @@ On restart:
 3. recompute graph readiness
 4. re-evaluate completion criteria
 5. resume or move to BLOCKED/WAITING_HUMAN as appropriate
+
+Workflow checks Project/Goal row versions in marker, definitive-publication and
+post-dispatch Session-binding CAS. Per-Task
+progress should use Task-scoped records rather than bumping the shared Goal row
+on every step; otherwise concurrent sibling preparation claims can remain
+reserved and require Issue #14 recovery. This is a current ownership constraint,
+not a new semantic Goal-version policy.
 
 ## 15. Performance
 
