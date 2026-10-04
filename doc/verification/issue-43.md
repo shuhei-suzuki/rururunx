@@ -108,3 +108,16 @@ error-route controls and causal mutants are required. Delta review pending; thes
 ports, durable frame, native/recovery conformance and source remain unimplemented.
 Exact Req5 CI37204736754 passed Linux/macOS fmt/clippy/tests and debug/release
 builds (individual steps inspected); this validates the existing code baseline only.
+
+Requirements6 20f0424 completed native A request_changes (one Medium) and B approve
+(zero findings), both with actual v3 owned cleanup verified. Repository verification
+confirms the current Engine awaits start inside a droppable future; an edge-only
+settlement notification can precede that drop or be lost without an Err handler.
+Requirements7 therefore makes actual #23 driver readiness durable and level-based,
+with notification only a hint and genuine launch-ending supervision. It requires
+early/lost/duplicate notification controls at the actual driver and a notification-
+only consumer mutant. Optional precision pins resulting post-marker P/G/T and full
+locks atomically for BOTH bind paths and names the co-integration/recovery gates.
+Prior strict original-frame currency remains; no current-row recapture, source/native
+producer implementation, restart acceptance or automatic held-success release.
+Requirements7 independent review pending.

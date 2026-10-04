@@ -2,7 +2,7 @@
 
 Workflow: STRICT. Requirements baseline `d8c5266` approved by native independent
 requirements re-review4; joint item6/Design4 approved at `77da799` by two independent
-reviewers. Requirements6 corrects receipt-sourced authority and production caller;
+reviewers. Requirements7 corrects durable trigger ordering and shared marker-frame capture;
 independent requirements/design delta and all implementation gates remain pending.
 
 ## Problem and MVP relationship
@@ -106,8 +106,8 @@ input, native outcome and complete settlement; factual binding alone cannot pass
 a phase or complete a Goal.
 
 For this late path, expected authority is the IMMUTABLE durable dispatch binding
-frame captured at marker commit: original P/G/T versions, post-marker Workflow
-Record version/marker tuple, context/source and complete scoped lock-set versions/
+frame captured atomically at marker commit: resulting post-commit P/G/T versions,
+post-marker Workflow Record version/marker tuple, context/source and complete scoped lock-set versions/
 identities, plus pinned registered actor/provider/role/worktree. Derive it inside
 the transaction from #19's private operation/marker provenance, not a later caller's
 read of current rows. Receipt, preparation/consumption and current Session must
@@ -118,9 +118,22 @@ reviewed recovery. No implicit tolerance for unrelated metadata or weakened CAS.
 
 The sole late-binding production route is proposed private Engine
 reconcile_settled_native_binding, invoked by the authoritative #23 active Task
-driver on the exact #19 settled-operation notification, and by that same managed
-launch invocation's post-marker start-Err handling. The driver/notification/private
-proof must actually compose in the source PR; a test-only direct binder call cannot
+driver from durable current-operation readiness, and by that same managed launch
+invocation's post-marker start-Err handling. Settlement notification is only a wake
+hint: correctness cannot depend on its timing or delivery. The driver re-derives
+the marked unbound attempt's actual private settlement whenever it evaluates the
+active Task and after an owned launch invocation ends without binding, including
+Err, abort/drop, timeout or cancel. Its actual launch supervision must observe those
+endings independently of a dropped Engine future; Drop cannot be its only callback.
+Register durable pending reconciliation with the actual active-driver readiness
+queue so a closed/full/lost notification cannot strand it; use event-driven readiness
+and restart/resume re-evaluation, not a passive poll side effect or busy loop.
+Driver restart still requires the authentic #14 protocol below. Duplicate hints and
+early hints while start is in flight converge on the same durable readiness.
+Both normal returned-Session and late receipt-sourced paths use this SAME atomically
+captured original marker frame, including the complete scoped lock set captured in
+that transaction; a later read of locks/current versions cannot replace it.
+The driver/notification/private proof must actually compose in the source PR; a test-only direct binder call cannot
 close this acceptance. Passive #41 step/poll observers, status and ordinary record
 reads never invoke it or bind. It is a narrowly permitted factual Workflow write,
 not release/retry/adoption or a new-input progression grant. Generic caller JSON
@@ -161,7 +174,11 @@ restored-prior or inactive evidence, broaden writes, or infer success from bindi
 each must reach its intended assertion with actual passing producer prerequisites.
 Controlled fixtures must create proof through real private ports, never seed SQL.
 Drive the actual managed Engine start-error and #23 driver-notification routes
-after real supervisor success, plus actual restart protocol where claimed; assert
+after real supervisor success, plus actual restart protocol where claimed;
+include settlement/notification BEFORE dropping the still-pending start future,
+a lost/full/closed notification channel and duplicate notifications. Drive the actual
+active-driver durable readiness and require exactly one binding/audit, with no
+fail/retry/second dispatch; kill notification-only/no durable re-derivation mutants. Assert
 no Failed closure, retry or second dispatch and passive observers remain unchanged.
 Independently change each P/G/T version and a lock-only frame after marker commit,
 then require rejection with no row/audit mutation and preserved receipt. Kill
@@ -242,8 +259,16 @@ restore exact bytes and pass controls. A merely mirrored helper test is insuffic
 ## Limits
 
 Arbitrary parent bookkeeping during a live turn is not authorized by this primitive.
-Actual identity drift still requires explicit recovery; this issue does not guess
-ownership or adopt PID/UUID hints. Restart, unknown dispatch,
+Actual identity drift still requires explicit recovery; strict equality also holds
+known success after sibling Project/Goal bookkeeping movement, with attention and
+no automatic success/fail/retry/release. Actual #14 must resolve those retained cases;
+this common multi-Task availability limit cannot waive required parallelism.
+The source merge vehicle co-integrates #19/#23/#43 private producer/driver ancestries
+and actual #14 restore/recovery ports needed for claimed restart acceptance; it does
+not require each missing component to have been independently completed/merged.
+Until a real required port composes, its path remains held/Unsupported and whole
+issue closure stays open. No standalone binder positive closes it. This issue
+does not guess ownership or adopt PID/UUID hints. Restart, unknown dispatch,
 explicit retry with unbound markers, Review Set slots, scheduler and external side
 effects retain their separate issue contracts.
 The receipt-sourced active-driver route above composes authentic settled-current
