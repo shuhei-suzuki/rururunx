@@ -2,7 +2,8 @@
 
 Status: Design4 approved at8a4016a by two independent native reviewers; source gates pending.
 Requirements8 at e001483 received two independent approvals, no findings, and
-verified owned cleanup. This document proposes APIs/storage; none is implemented.
+verified owned cleanup. This document proposes the qualified APIs/storage; they
+remain unimplemented. The initial legacy integer guard is recorded in verification.
 Baseline main80452f4/schema3; required native/context producers remain pending.
 
 ## Existing interfaces and integration boundary

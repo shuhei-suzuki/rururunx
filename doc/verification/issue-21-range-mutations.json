@@ -1,0 +1,86 @@
+{
+  "baseline": "b47b7739e33f9cf2b79f8831b0ec1e7f98e7d94f",
+  "source_sha256": "fffde33dd0dda236680b5fe0aa8e6fd70a2d8ce4187a5308f55f546704559641",
+  "command": [
+    "cargo",
+    "test",
+    "--locked",
+    "--workspace",
+    "--test",
+    "state",
+    "usage_integer_overflow_cannot_publish_rows_or_audit_or_change_owners",
+    "--",
+    "--exact"
+  ],
+  "checks": [
+    {
+      "label": "control-before",
+      "head": "b47b7739e33f9cf2b79f8831b0ec1e7f98e7d94f",
+      "exit_code": 0,
+      "seconds": 8.761,
+      "log": "rururunx-issue21-range-control-before.log"
+    },
+    {
+      "label": "input_tokens",
+      "head": "523f378fd0b3b7fd443b745c4f4ba10315e1e82c",
+      "exit_code": 101,
+      "seconds": 2.475,
+      "log": "rururunx-issue21-range-input_tokens.log",
+      "intended_assertion": "overflow stored for input_tokens",
+      "intended_kill": true
+    },
+    {
+      "label": "cached_input_tokens",
+      "head": "5aa1bcf04e824ddc592a9e5f9f2a6987e7a258f7",
+      "exit_code": 101,
+      "seconds": 4.15,
+      "log": "rururunx-issue21-range-cached_input_tokens.log",
+      "intended_assertion": "overflow stored for cached_input_tokens",
+      "intended_kill": true
+    },
+    {
+      "label": "output_tokens",
+      "head": "920d8d4f2cc1437c3ebb44712d41e7593f33681b",
+      "exit_code": 101,
+      "seconds": 2.853,
+      "log": "rururunx-issue21-range-output_tokens.log",
+      "intended_assertion": "overflow stored for output_tokens",
+      "intended_kill": true
+    },
+    {
+      "label": "context_pack_version",
+      "head": "8ab25520f79f0a124e2b9e5acaa05eee66966bc5",
+      "exit_code": 101,
+      "seconds": 2.356,
+      "log": "rururunx-issue21-range-context_pack_version.log",
+      "intended_assertion": "overflow stored for context_pack_version",
+      "intended_kill": true
+    },
+    {
+      "label": "context_pack_size",
+      "head": "6ea19bfae10b5e2d0935e2008558d28aaddf6128",
+      "exit_code": 101,
+      "seconds": 4.924,
+      "log": "rururunx-issue21-range-context_pack_size.log",
+      "intended_assertion": "overflow stored for context_pack_size",
+      "intended_kill": true
+    },
+    {
+      "label": "repo_map_size",
+      "head": "d59d24595195a5e4c321a60b0b42d3d4cfe7fecb",
+      "exit_code": 101,
+      "seconds": 2.56,
+      "log": "rururunx-issue21-range-repo_map_size.log",
+      "intended_assertion": "overflow stored for repo_map_size",
+      "intended_kill": true
+    },
+    {
+      "label": "control-restored",
+      "head": "5ef12f677a99a725e5985b6795eab7a350fd8a3a",
+      "exit_code": 0,
+      "seconds": 2.492,
+      "log": "rururunx-issue21-range-control-restored.log"
+    }
+  ],
+  "whole_issue_acceptance": false
+}

@@ -192,3 +192,44 @@ builds (all individual steps inspected). Historical reds remain unchanged.
 Approval is design only. Private producer/Store/epoch integrations, coherent
 versioned producer outcomes, actual native counters/benchmark and #16 remain pending.
 No helper, unavailable measurement or fixture can close the whole telemetry issue.
+
+## Initial source component: legacy integer storage boundary
+
+Source b47b773 adds only a pre-write signed-i64 range guard to the existing legacy
+Store::put_usage for token counts, artifact bytes and context version. Values at
+i64::MAX and observed zero remain exact; each field at i64::MAX+1 or u64::MAX
+rejects before any Usage/audit or P/G/T/Session mutation. No clamp/cast/relabeling.
+Legacy Usage, collection-time phase/round and arbitrary cache_metadata remain
+UNQUALIFIED; this narrow component neither measures native tokens nor completes21.
+Raw-writer retirement, typed operation provenance, bounded projections/queries and
+all coordinated private producer/epoch/native benchmark gates remain pending.
+
+Actual consumer inventory at the integrated main d87faec: domain::Usage;
+AgentAdapter::usage and Generic/Grok implementations; Store::put_usage/usage/audit;
+state integration tests and Generic adapter's Store persistence test; external
+Grok usage tests read adapter counters but never write Store. There is currently
+no production runtime caller of put_usage or aggregation/query/report/benchmark.
+Unmerged Claude f9b671f claude/{protocol,session} distinguishes invocation counters
+and resumed gauges; unmerged Codex native code codex/{protocol,session} preserves
+turn identity/baseline/reset distinctions. Neither collector-provided labels nor
+those unmerged sources constitute the planned managed operation/CounterContract.
+Current main remains schema3; no telemetry schema or private owner is introduced.
+
+Three initial fixture preparation failures are retained: exploratory missing Task
+worktree binding; committed5a2f47a lacked paired branch; committedc0267f4 used a path
+outside Project.worktree_root. Each failed before the intended numeric assertion
+and earns no control/mutation/native credit. The corrected actual put_task/session
+fixture at b47b773 passed all14 state tests. Full default workspace tests passed
+221 Rust tests plus2 doctests,8 deliberately ignored native/owned entry points;
+fmt, all-target clippy -D warnings and debug/release builds passed. Raw logs were
+retained; no real native inference was run.
+
+Six isolated compiled mutants each omit one field from the actual Store guard,
+with clean private commits and a separate Cargo target. Every mutant reaches its
+field-named 'overflow stored for ...' assertion after the real positive prerequisites
+and fails; original source/tree bytes are restored and the same control passes.
+Public patches and structured outcomes accompany this ledger. These are actual
+legacy Store consumer kills, not qualified telemetry/report/native benchmark tests.
+The normal main55/41 integration commit63a6a29 has CI37207493561 all steps green
+on both OS; that precedes this new source and does not test its guard. Independent
+source component review and new CI remain pending; no whole21 source acceptance.
