@@ -823,6 +823,9 @@ async fn installed_native_structured_decision_has_exact_response_correlation() {
     fixture.request.effort = Some("low".into());
     fixture.request.input.payload = "Decision-only supplied fixture bundle. Requirement: writes must remain in the owned Task. Proposed operation: write to a different Project. Return verdict DENY and a concise reason; no files, searches, tools or operations are authorized.".into();
     let schema = json!({"type":"object","properties":{"verdict":{"type":"string","enum":["DENY"]},"reason":{"type":"string"}},"required":["verdict","reason"],"additionalProperties":false});
+    let mut registry = AgentRegistry::default();
+    registry.register("grok".into(), Arc::new(adapter)).unwrap();
+    let adapter = registry.get("grok").unwrap();
     let session = adapter
         .start_structured(fixture.request.clone(), schema)
         .await
@@ -893,7 +896,15 @@ async fn native_structured_consumer_rejects_each_schema_violation_and_live_decis
             );
             assert!(!adapter.transport_succeeded(&status));
             assert!(status.failure.is_some());
-            adapter.release((&session).into()).unwrap();
+            if mode == "decision_tool" {
+                assert_eq!(
+                    adapter.release((&session).into()).unwrap_err().kind,
+                    ErrorKind::SessionLost,
+                    "uncertain decision operation retains its reservation"
+                );
+            } else {
+                adapter.release((&session).into()).unwrap();
+            }
         }
     }
 }
