@@ -7,7 +7,8 @@ changed by this requirements-only head.
 
 ## Verified problem and evidence limits
 
-The actual public GrokAdapter from main4851fcd (unchanged at docs-only d56f2bf) was
+The executor reports using public GrokAdapter source from main4851fcd (unchanged at
+docs-only d56f2bf); the compiled binary's revision was not independently attested. It was
 launched with an exclusively synthetic constructor environment and a real isolated
 fake ACP child. Corrected fixture7356fa4 persisted Project B with TZ and
 XAI_PROJECT_B_CANARY references and verified them through public environment_names;
@@ -45,8 +46,11 @@ contracts, not universal provider safety evidence.
    falls under requirement 3. Skipping a record never grants its references.
    Provide a separately Project-scoped operator diagnostic for that Project's own
    conflicting reference names only; never copy it into A's context/audit or expose
-   values/foreign identity in A's error. Explain the existing clear/reactivate remedy
-   for an inactive/Removed declaring Project, without weakening its lifecycle guards.
+   values/foreign identity in A's error. This diagnostic comes from explicit state-only
+   operator evaluation or inventory maintenance, never another Project's launch activity,
+   counts or timestamps. Explain clear/reactivate when the declaring source remains valid,
+   or removing the variable from the runtime environment and reconstructing the adapter
+   when that source is gone; lifecycle guards remain authoritative.
 2. Preserve the registry's RRX_ reserved-name prohibition. Caller RRX_ keys and routing/
    loader/native-control names are rejected, even with identical baseline values.
    No new runtime bypass/channel is added. Existing fake ACP metadata must move to the
@@ -69,9 +73,13 @@ contracts, not universal provider safety evidence.
    invalid persisted control reference) neither strips nor replaces its baseline value.
    Caller rejection and baseline protection use the same reviewed set. Include every
    registry-forbidden name that can enter the baseline, including prefix-only
-   NODE_EXTRA_CA_CERTS/NODE_PATH; credential-bearing or credential-locating names must
-   never be reclassified as controls. Ambiguous names cannot be silently stripped as
-   credentials or accepted as controls.
+   NODE_EXTRA_CA_CERTS/NODE_PATH. Membership is a predicate, not an exhaustive finite
+   list: named controls, LD_/DYLD_ prefixes, baseline names forbidden by the registry,
+   and the reviewed finite additions. Registry-forbidden names have control precedence
+   because no valid Project can own them. The credential-bearing/locating prohibition
+   applies to registry-valid names; existing HOME/XDG identity controls remain global.
+   Ambiguous registry-valid names cannot be silently stripped as credentials or accepted
+   as controls. Reuse the registry predicate or verify drift explicitly.
 4. For any non-control baseline name referenced by another Project but not A, reject
    A's pre-spawn admission if the retained baseline contains it. Do not silently remove
    an auth key and fall back to cached/default auth/config. This includes example names
@@ -93,7 +101,12 @@ contracts, not universal provider safety evidence.
    non-declaring Grok Projects. Supported multi-Project setups retain intentional
    undeclared global native auth, or explicitly share the same runtime references/value
    among all Grok-using Projects; ordinary own scoped caller values remain isolated.
-   Do not co-declare another Project's private credential as a workaround. Distinct
+   Here native/baseline names include every baseline_key name declared by any Project
+   for any provider, including NODE_/BUN_/OPENSSL_ names used privately by Claude/Codex.
+   Such private references can make a multi-Project Grok configuration unsupported.
+   Do not co-declare another Project's private credential as a workaround: this is
+   operator configuration guidance, not an enforceable private/shared flag in the
+   existing plain environment_refs list. Distinct
    Project-native credential/value sources need a separate reviewed future contract.
    #16 still requires actual 2+ Projects/4+ Tasks/all three native agents under supported
    configurations; this limit does not waive its multi-Project acceptance criterion or
@@ -157,4 +170,5 @@ consumer/transaction design coordinated with shared Store/provider owners. Exist
 native permission/hooks/auth controls remain authoritative. Dependencies #7; reviewed
 #5/#6 policies may be reused only after normal integration; #16 must dogfood the fixed
 provider isolation. Root owns merge/close. Issue46 cleanup implementation has priority
-when its formal design gate approves; this worktree stays requirements-only meanwhile.
+when its formal design gate approves; this worktree contains proposed documentation only
+until its own design gate approves.

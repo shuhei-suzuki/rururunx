@@ -40,6 +40,12 @@
       "session_state": "Exited"
     },
     "compiled_rrx_revision_observed_from_build_metadata": null,
-    "fixture_revision_full": "7356fa4 (historical fixture commit label; author provenance, not binary attestation)"
+    "fixture_revision_full": "7356fa4 (historical fixture commit label; author provenance, not binary attestation)",
+    "artifact_form": "structured transcription of historical raw fixture output; unchanged fixture emits original flat shape",
+    "field_mapping": {
+      "measured": "raw canaries, exit_code and failure unchanged",
+      "asserted": "literal/asserted constants moved into author_or_asserted_conditions; fixture/test labels are annotations",
+      "compiled_binary_revision": "null; unattested"
+    }
   }
 }

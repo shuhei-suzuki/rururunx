@@ -364,3 +364,5 @@ Grok native environment reference isolation has an MVP-blocking follow-up
 [Issue51 requirements](doc/requirements/issue-51-requirements.md): synthetic foreign
 Project references reached an owned fake ACP child. Global native auth/settings/hooks
 remain intentional; requirements/design/source gates precede the environment fix.
+The [proposed design](doc/design/issue-51-design.md) specifies actual pre-spawn admission
+and explicit availability limits; no environment fix is implemented by these documents.

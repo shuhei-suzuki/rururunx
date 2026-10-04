@@ -317,4 +317,6 @@ installed native Grok or real credentials. Issue51 requires owning caller declar
 foreign-reference filtering and fresh registered-inventory admission, preserving global
 native auth/hooks/config/safety and immutable controls. Requirements/design/source gates
 are pending; #5/#6 patterns are comparison inputs, not universal safety acceptance.
-No child isolation fix or schema change is claimed in the current baseline.
+No child isolation fix or schema change is claimed in the current baseline. The proposed
+[Issue51 design](../issue-51-design.md) adds pure registry/control predicates and exact
+reference-roster CAS before actual native spawn; approval/source implementation is pending.
