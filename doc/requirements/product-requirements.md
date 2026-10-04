@@ -612,7 +612,8 @@ same-user filesystem visibility stated separately rather than an invented sandbo
 The existing Claude + Codex + Grok Triple Adversarial Review is provided as a preset, not hard-coded into the runtime.
 STRICT fixed Triple is unavailable when cumulative document drafting and implementation
 include two native author families: only one eligible independent slot remains. An
-eligible custom roster or explicit Human adjudication is required; allow-self opinions
+eligible custom roster is required for a certificate; Human may select that roster
+or terminate without a certificate, but never replace the independent floor; allow-self opinions
 do not meet the independent approval floor. Issue #16 must measure this availability
 boundary alongside supported native Triple configurations.
 
@@ -1265,3 +1266,10 @@ Review roster examples including the current executor or any cumulative author f
 require explicit allow-self independent Sessions; those opinions never meet the
 independent approval floor. Default selection rejects before member input. Actual
 registered-adapter synthetic consumer proof is distinct from real native #16 success.
+
+Review completion holds on unresolved potential blockers in the effective blocking
+set as well as verified blockers; quorum/any tolerate only settled failures and
+nonblocking dissent. If all three MVP provider families are cumulative authors, no
+formal class has an eligible native approval from those families. Use an eligible
+registered non-author provider if actually supported, or terminate without a
+certificate. Human adjudication cannot mint a below-floor Review-Set certificate.

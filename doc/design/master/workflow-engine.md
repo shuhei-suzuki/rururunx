@@ -384,3 +384,9 @@ Review roster examples including the current executor or any cumulative author f
 require explicit allow-self independent Sessions; those opinions never meet the
 independent approval floor. Default selection rejects before member input. Actual
 registered-adapter synthetic consumer proof is distinct from real native #16 success.
+
+Review policy completion additionally holds on unresolved potential blockers in the
+effective blocking set. Human adjudication does not replace the independent floor.
+An all-author native roster is unready and cannot mint a certificate. Fresh native
+review Sessions are required; auto-loaded native context visibility is separately
+declared/unverifiable and tested in #16, not attested by runtime-input checks.

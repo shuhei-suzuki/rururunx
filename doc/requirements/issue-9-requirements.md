@@ -516,7 +516,7 @@ tested here. Declaration-only or
 fixture-only adapter success cannot close these items. This proves deterministic
 runtime plumbing, not real native-model acceptance reserved for #16.
 
-Expansion has frozen per-slot request limit 1–64 (default 8) and cumulative byte
+Expansion has frozen per-(round, slot) request limit 1–64 (default 8) and cumulative byte
 budget 1–8 MiB (default 1 MiB), with at most 1 MiB per returned artifact and 32 MiB
 aggregate expansion bytes per round. Every expansion artifact/manifest counts
 against the 128-MiB lineage quota. Exhaustion holds NeedsContext with recorded
@@ -632,7 +632,7 @@ provenance; synthetic facts do not claim exhaustive native inspection.
 
 STRICT fixed Triple is unavailable when document drafting and implementation have contributed
 two native families. Supported alternatives are an eligible custom roster meeting the same
-floor, or explicit Human adjudication/termination; allow-self never supplies the missing
+floor, or explicit Human adjudication selecting an eligible roster, Human-authorized decomposition, or termination without a certificate; allow-self never supplies the missing
 independent approval. #16 must exercise this availability limit alongside supported Triple
 configurations.
 
@@ -663,3 +663,38 @@ concern-linked inspection confirmation for APPROVE with a potential Medium block
 it still requires independent blocker resolution and rejects a second same-tree
 autonomous confirmation. Criterion 21's #16 handoff must include settlement-expiry
 Lost frequency and retained capacity/Task-time, not only inference timeout counts.
+
+Human adjudication never substitutes for the mandatory independent approval floor
+and never mints a formal Review-Set certificate below F. It may select an eligible
+roster, authorize decomposition preserving obligations, or terminate without a
+certificate. Any future Human-only Workflow gate override is a distinct typed
+policy outcome owned by #8/#10, not an Issue 9 certificate. Criteria 12/20 test
+two-author-family STRICT Triple plus Human adjudication: still no certificate.
+
+When all three MVP native families are cumulative authors, every class has zero
+eligible reviewers within that provider set. QUICK and STRICT reject before input
+with named exclusions; allow-self, decomposition and Human opinion never restore
+eligibility. Supported exits are an eligible registered non-author provider that
+meets the same capabilities/floors, or termination without a certificate. Such a
+fourth provider is not promised by this MVP. Criteria 17/20 cover this unready state;
+criterion 21 requires #16 to report its frequency and availability/Human impact.
+
+Every member in every round requires a freshly created native Session, never an
+executor Session, a resumed native history or a prior-round native Session. A new
+runtime UUID alone is insufficient: the actual adapter startup contract must
+guarantee fresh native creation and reject conflicting resume/continue configuration
+before input. Criterion 8 rejects owned executor/history reuse and unsupported
+fresh-session capability. Native auto-loaded global/user instruction files, memory
+and external history/context channels are distinct residual channels, listed as
+declared-by-adapter or unverifiable in result/certificate. Runtime-controlled input
+independence never certifies those channels; default auth/hooks/rules are preserved.
+Criterion 21's #16 isolation handoff requires observing/testing native auto-injection
+separately from passive filesystem/tool-read visibility.
+
+Expansion request/slot byte allowances reset only for a newly admitted (round,slot);
+per-round aggregate and inherited lineage quota never reset by slot renewal.
+Criterion 17 tests that accounting across two rounds. Human blocker adjudication is
+an explicit authority exemption from native author exclusions, but certificate
+evidence flags self-adjudication when that Human authored the reviewed delta.
+Criteria 9/19 preserve actor/reason/evidence and this flag, never present it as an
+independent model confirmation or approval.
