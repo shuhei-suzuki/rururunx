@@ -397,7 +397,6 @@ impl ScopeSnapshot {
                     .iter()
                     .map(|r| (r.id, r.version))
                     .collect::<Vec<_>>()
-
         {
             return Err(failure(
                 ErrorKind::StateConflict,
