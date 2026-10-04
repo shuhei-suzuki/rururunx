@@ -297,6 +297,17 @@ Goal may continue automatically only inside those boundaries.
 - optional native-goal adapter capability
 - provider-independent continuation
 
+Current proposed19/43 exact native/marker authority uses raw Goal versions. The
+mandatory 4+ parallel Tasks/follow-up/two-Project availability gate is not met merely
+by safe stale-version refusal. Candidate23/24 controller composition derives factual
+progress from Task facts/separate bounded Records, avoiding Goal-row rewrites on
+every poll/completion; ready accepted Tasks may run concurrently. Authoritative
+DAG/follow-up acceptance queues until applicable genuine owned-turn settlement or
+deliberately revokes under existing admission gates. It does not refresh original
+marker pins or exempt external bookkeeping. Actual composed controller/native tests
+must demonstrate progress, exact currency and safe held/recovery outcomes before
+whole-source/MVP acceptance; this proposed path is not an implemented controller.
+
 Typed Goal context publication has separate metadata authority: `Goal.version`
 tracks semantic/lifecycle changes, while `ContextVersion.version` is a consecutive
 immutable head and the Goal's context pointer changes in the same Immediate

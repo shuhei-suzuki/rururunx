@@ -654,3 +654,24 @@ Persisted new observation/result blobs have128-MiB aggregate perWorkflow quota, 
 before every effect with final factual-settlement/tail capacity protected. Structural
 bounds precede Lost classification and settlement-only restoration dispatch. All are
 S6 source/native controls pending actual composed implementation, not a synthetic proof.
+
+
+### Managed host-effect and Goal availability acceptance
+
+Actual host callbacks require bounded private admission/outcome provenance before IO,
+256 effects maximum per operation and complete known settlement for every admitted
+effect before any native settlement receipt. Unknown/unjoined host work remains owned
+even after native terminal; public request/terminal labels cannot certify it. Tests
+include limit+quota refusal before IO, duplicate zero-repeat, uncertain blocking-worker
+outcome, forged settlement and actual causal consumer mutations. Candidate6 source
+will include these tables in every writer/migration/golden fence.
+
+Exact raw native/marker Goal authority stays enforced; safe stale-version refusal
+does not prove mandatory parallel Goal/follow-up availability. Actual23/24 composition
+may derive progress from Task facts/separate bounded Records without per-poll Goal
+rewrites, and queue authoritative DAG/follow-up changes until applicable genuine
+settlement or deliberately revoke through existing gates. Actual 4+ Tasks/two Projects
+and follow-up progress with full19/23/43 authority remains an acceptance gate; no
+docs-only policy or fixture proves it. Protected standalone checkpoint success stays
+Unsupported before effects until its separately reviewed real19/60 ownership and
+atomic no-dispatch publication producer composes.
