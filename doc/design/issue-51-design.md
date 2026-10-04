@@ -85,10 +85,17 @@ admission; no values, foreign identities, Project versions or raw roster are per
 or emitted. The selected environment remains private. Remove ScopeSnapshot.projects: capture/checkpoint/Actor.owner read only own Project/
 Goal/Task/lock authority, never fully decode or retain foreign Project bodies/roots/
 display names. Launch/resume selection alone obtains a temporary environment_refs
-projection from persisted Project JSON; use a bounded per-name projection, not
-store.projects() full Project decoding. Malformed unrelated foreign fields do not block
-A. Malformed/missing reference projection has no reference authority; valid string
-entries in mixed lists still contribute per-name under the existing rule;
+projection from persisted Project JSON; one identical projection serves initial
+selection and the final transaction, never store.projects() full Project decoding.
+Malformed unrelated foreign fields do not block A. Missing, unreadable or non-array
+environment_refs is relevant unknown authority and denies A with the fixed opaque
+EnvironmentAuthority category. An array contributes EVERY valid string entry per name
+even if other elements are invalid; no foreign-list count/name truncation. Stream all
+entries and retain only membership against the bounded frozen baseline set. Names
+longer than256 bytes cannot match those bounded baseline names; skipping a nonmatching
+name is not skipping a potentially relevant record. Test a valid oversized list with
+the conflicting name last and a non-array projection through Store and actual no-spawn
+consumers. Foreign corruption denial is distinct from irrelevant metadata changes;
 foreign record order, identities and versions are not authority tokens. Final admission
 reevaluates the same pure environment decision against current references inside SQLite.
 Only an actual relevant conflict denies A. Registering/removing/replacing unrelated names,
@@ -114,7 +121,9 @@ environment decision. Existing consumers retain identical behavior. In the same 
 transaction, validate exact own versions/ownership/activity/nullable scope/lock set,
 validate expected Session version/ownership/activity/exclusion before the
 environment decision so existing stale Session guards retain precedence,
-fully validate current owning refs, read current foreign refs name-only, reevaluate
+validate current owning refs using only registry syntax/forbidden/unique rules
+(equivalent under own-Project CAS; no separate mutant credit), read current foreign
+refs via the shared projection, reevaluate
 caller ownership and foreign retained-baseline conflicts, then perform ordinary Session
 CAS/guards/audit. A relevant conflict returns one fixed opaque typed guard without
 foreign IDs, names, values or inventory/version details. All writes roll back on failure.
@@ -123,9 +132,13 @@ before implementation; full helper and actual consumers enter source reviews.
 
 Initial selection and Starting reservation preserve current authority. Git/filesystem/
 profile preflight stays outside Store. At the last state boundary before spawn, Actor's
-existing capture-based Actor.owner() remains immediately before the new private
+before-admission hook (outside locks, await allowed) runs after final preflight, THEN
+existing capture-based Actor.owner() immediately before the new private
 `admit_environment`; preserve its non-executor reserved-Session checks, with a Task-
-Consultant executor-reserved-during-preflight no-spawn regression. `admit_environment`
+Consultant executor-reserved-during-preflight no-spawn regression injected through
+the before-admission hook. No await from owner() through admission; non-executor
+reservation exclusion remains the existing owner-only check, not newly atomic in the
+environment fence. Closing that existing scope race needs separate reviewed authority. `admit_environment`
 takes entry.transition and follows Actor.publish's exact
 ownership protocol: build candidate from its current session without mutating private
 state first; check stopping; execute full atomic helper using current Actor.version and
@@ -233,17 +246,30 @@ current step API accepts a new map each invocation, and public snapshot()/Phase.
 allow a caller to prepare a phase-specific map; it does not mandate one fixed map for
 an entire mixed-provider Task. Such caller preparation is not an atomic provider-bound
 input token or an implemented runtime driver. A driver reusing one baseline map across
-providers is unsupported. Add a real Generic-executor/Grok-reviewer forwarding negative:
-Grok rejects InvalidConfiguration before any native reservation/child; Workflow already
-created its attempt reservation/dispatch_started marker and its start-error branch
-returns StepResult::Failed with no Session binding. Assert that actual outcome, never
-claim a typed AdapterError is returned directly by engine.step or that no Workflow
-reservation existed. A fresh appropriate per-phase map has a separate forwarding
-positive: assert actual StepResult::Started/native Session binding, not complete native
-review or transport success. Current unchanged-Task binding increments raw Task version
-and can invalidate the running provider (#43); full mixed native Workflow completion
-remains blocked on that independently reviewed binding integration. Do not weaken
-provider CAS or claim this forwarding positive closes #43.
+providers is unsupported. Primary actual Workflow forwarding uses a Grok-executor
+Task's FIRST agent phase (following only fixture evidence ports), supplied a reused
+Generic-shaped HOME/PATH map with known synthetic baseline-equal values. Grok rejects
+InvalidConfiguration before native reservation/child. Workflow has already created its
+attempt/dispatch_started marker; its actual start-error branch returns StepResult::Failed,
+with persisted attempt Failed/dispatch_started=true/session_id=None, Task WaitingHuman
+and fixed opaque blocker/detail/workflow.saved reason, no Grok Session or spawn. Test
+those actual outcomes rather than typed AdapterError directly or no Workflow marker.
+A separate Task/control at the SAME reachable phase with empty/own ordinary map must
+return Started and own Session binding matching expected phase/agent. It proves only
+forwarding admission, not complete native turn/transport success. Current unchanged-Task
+binding increments raw Task version and may invalidate a running provider (#43); full
+native Workflow completion remains blocked on that separately reviewed integration.
+Do not weaken provider CAS or use an earlier failed Task's implicit retry as the control.
+Natural Generic-executor-to-Grok-reviewer completion is not claimed. If a seeded reviewer
+variant is added, use private checked workflow transition in the in-crate fixture with
+exact active review lock at context.revision; label it seeded, not natural progression.
+Caller phase prediction is unsupported as an atomic provider contract. A Generic map
+mispredicted into Grok fails closed; Grok-shaped empty input mispredicted into Generic
+may launch without intentional baseline because Generic does not enforce it. This
+existing reverse-direction baseline-obligation gap requires future provider-bound
+driver input/Generic enforcement outside51; no supported automatic mixed driver is
+claimed. Every forwarding positive asserts actual Started phase AND Session.agent match
+the map's intended provider.
 Future runtime/provider-aware driver integration must reconcile normally merged #5/#6
 caller contracts before #16; native constructor-owned baseline plus empty/eligible
 ordinary maps may avoid this Generic-specific conflict, but no native3 support is
@@ -258,7 +284,7 @@ update the fixture file before its new owned process starts. Preserve existing a
 Store/preflight/permission/continuation tests rather than deleting failing consumers.
 
 Define cfg(test)-only per-adapter/per-Actor awaitable hooks: before admission runs
-after final preflight but BEFORE entry.transition acquisition; after admission runs
+after final preflight but BEFORE Actor.owner()/entry.transition acquisition; after admission runs
 after transition/Store release BEFORE final stopping load; checkpoint runs after
 capture/verify_git BEFORE recheck and its Session CAS; retained invocation-private handles only,
 not process-global state, public runtime fields, environment or argv channels. Put new

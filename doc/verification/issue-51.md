@@ -182,3 +182,29 @@ only own-ref removal earns no credit), correct installed test RRX migration and 
 prior-intent preservation. Design3 remains proposed; no Rust/test changes or performed
 consumer/mutant/native acceptance. Optional finer runtime driver issue is coordinated
 with root; no blanket native3 impossibility/availability waiver is claimed.
+
+
+## Design3 verified correction before Design4
+
+Selection Design3 approved0e75efd with optional precision; transaction Design3 requested
+changes at the same immutable head. Both native reviewers completed/owned cleanup
+verified; raw resumed meters remain per-round unverified. Both corrected their earlier
+whole-Task incompatibility overclaim. Verified Medium D3-01 closes proposed fail-open
+projection wording: same projection at selection/transaction, every foreign array entry
+streamed with no truncation, malformed/missing/non-array refs opaque failclosed while
+unrelated body fields remain irrelevant. Last-conflict oversized-list and malformed
+actual-consumer/Store tests are required. Medium D3-02 replaces unreachable natural
+Generic-to-Grok reviewer progression with the first actual Grok executor phase receiving
+a Generic-shaped map, realFailed/WaitingHuman/dispatchstarted/noNativeSession oracle
+and separate reachable Started positive. Private reviewer seed requires exact lock and
+is explicitly seeded; #43 full completion remains blocked.
+
+Low refinements pin hook before owner (no await owner-to-admission), existing non-atomic
+Consultant reservation check unchanged, registry-only equivalent own-ref tx validation,
+actual phase/agent positive matching and unsupported reverse Generic baseline prediction
+gap as future driver work. No Rust/test execution. Design4 two immutable fix reviews
+precede source. Docs-only0e75efd CI37194593829 failed macOS legacy wrapper442: stdout
+size190.943416ms, stderr actualTimedOut251.411959ms, library86passed/1failed/1ignored.
+Original `/private/tmp/rururunx-issue51-ci-37194593829-failed.log` retained; no retry,
+historical PS cause or acceptance success inferred. Reviewed41 test correction is
+a future meaningful dependency integration, not this head's performed provider fix.
