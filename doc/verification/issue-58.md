@@ -146,3 +146,14 @@ settlement CAS and uses the claimant's genuine no-effect withdrawal. Actual prod
 migration inventory and causal control/mutant families cover each side/consumer;
 source, native profiles, required compatible parallelism/Task attach and #14 recovery
 remain pending. Main Rust/schema bytes unchanged; Design1 review pending.
+
+Design1 7806dfb completed two independent native request_changes reviews, A3Medium/
+3Low and B1High/2Medium/3Low, both actual v3 owned cleanup/reap verified. Root verified
+capture-to-admission ABA and actual missing Goal/registry/rules/Grok consumers in
+supplied main source. Design2 uses retained private capture read protection through
+same-Tx handoff, cross-kind typed physical domains/profile inventory, scoped complete
+index/capacity/recovery reserve, database epoch triggers for old connections and a
+private pre-effect replacement class which does not impede the exact live prior.
+Own factual settlement does not compare competing pre-effect claims. Typed Consult
+entry is explicit; genuine native/resource/recovery producers remain unimplemented.
+Independent Design2 review pending; prior Generic timeout red remains preserved.

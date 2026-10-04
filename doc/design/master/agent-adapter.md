@@ -368,7 +368,7 @@ remain unchanged.
 ### Proposed retained Consultant lifetime (#58; not implemented)
 
 Approved [Requirements8](../../requirements/issue-58-requirements.md) and proposed
-[Design1](../issue-58-design.md) require a genuine nonserializable lifetime owner
+[Design2](../issue-58-design.md) require a genuine nonserializable lifetime owner
 before Task-free native startup/probe/input. Session-less setup, a live server after
 a turn and Lost/unknown cleanup retain physical root/common-Git exclusion. Public
 Session/Record/PID labels and generic CAS cannot mint/admit/release that authority.
@@ -392,3 +392,11 @@ uncertain former-instance and prior-recovery effects without release. A pending
 replacement cannot revoke a still-live prior owner's settlement CAS. Real native
 F1/#60/recovery producers, bounded actual consumer controls/mutants and independent
 source gates remain required; no row-based cleanup or permanent Unsupported waiver.
+
+Design2 further requires retained pure/executing capture read protection through
+atomic current-admission handoff, cross-kind canonical/dev-inode domain overlaps,
+scoped complete physical indexing/capacity/recovery reserves and schema-level writer
+epoch fences for old open connections. Private pre-effect replacement claims cannot
+block their exact live prior's adoption/helper reservations/settlement; they never
+have effect authority. Actual put_goal terminal and registry/rules/Grok capture callers
+are explicit migration consumers. These remain proposed, unimplemented contracts.

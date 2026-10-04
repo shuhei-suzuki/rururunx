@@ -1,6 +1,6 @@
 # Issue 58 design: retained Task-free native consultation ownership
 
-Status: Design1 proposed; Requirements8 approved at8facb8d. No source/profile,
+Status: Design2 proposed; Requirements8 approved at8facb8d. No source/profile,
 recovery, native TUI or whole-issue acceptance is claimed. STRICT.
 Source baseline: integrated main d87faec/schema3, branch f84c94e; approved
 [requirements](../requirements/issue-58-requirements.md) remain authoritative.
@@ -19,8 +19,16 @@ biological Human test, is the boundary.
 Coordinate one linear schema/writer epoch with #19 managed Task authority, #23
 Goal writers, #43 binding and #60 runtime effect ownership. Final version is selected
 by that composed migration, not an independent #58 schema number. Every table write
-including generic/private APIs and already-open connections checks this epoch under
-the same transaction; migration preflight drains actual legacy owners and requires
+including generic/private APIs and already-open connections is database-fenced. The
+composed migration installs BEFORE INSERT/UPDATE/DELETE triggers on EVERY mutable
+table (including Projects, Goals, Sessions, audit and new private tables). Triggers
+require the actual per-connection current-epoch application function registered ONLY
+by current Store composition, not supplied JSON. Old schema3 connections have no such
+function and fail after SQLite schema-cookie reload; a Rust-only check is insufficient.
+Private authority functions additionally require the actual private write context;
+generic current writers cannot fake private ports by knowing the epoch. Migration
+uses its own reviewed private transaction context. Inventory all table names and
+trigger coverage in the composed source. Migration preflight drains actual legacy owners and requires
 reviewed #14 recovery for uncertainty. Failed migration preserves schema/data/history
 bytes. Terminal labels, inactive rows or an epoch retag do not prove physical fencing.
 #58 cannot precede #19 Task-scope fences or #60 reverse producers in production.
@@ -29,35 +37,71 @@ production profiles unready, and do not waive mandatory Consult/attach/recovery.
 
 ## 2. Physical scope and bounded complete inventory
 
-Represent `PhysicalScope` with canonical Project root, canonical common Git directory,
-registered repository identity and the complete effect domains of the actual profile.
-Two roots conflict if equal or ancestor/nested; any shared common directory conflicts
-unless actual reviewed continuously enforced compatibility proves those effects safe.
-Compare all retained holds and reservations across ALL Project states, including
-Blocked/Removed and uncertain historical instances. IDs/worktree names/role labels
-never imply physical independence. Project root/identity/registration mutations use
-this same inventory and cannot introduce overlap around an existing owner.
+Represent `PhysicalScope` as bounded typed canonical domains: Project root, worktree
+namespace, gitdir/common directory and EACH actual native/runtime profile filesystem,
+hook/helper/delegate domain. ANY cross-kind domain pair equal or ancestor/nested is
+an overlap: common-dir inside another root/namespace and root inside another common-
+dir are conflicts too. Use opened dev/ino identity chains plus canonical paths;
+case-insensitive/firmlink aliases cannot be accepted from string-prefix comparison.
+Profile inventory classifies external native config/session-store/HOME/temp and shared
+Git objects/alternates/hooksPath/includes: genuinely isolated, continuously enforced
+compatible shared use, or Unsupported before effects. Never ignore them or make HOME
+an implicit global exclusive lock. Mandatory defaults/hooks cannot be disabled to
+produce the proof. Complete bounded current effective profile inventory is a readiness
+gate; unknown config/delegation domains are Unsupported, not assumed inert.
+Compare all retained holds/reservations across ALL Project states, including Blocked/
+Removed and uncertain historical instances. IDs/worktree labels never imply physical
+independence. Registration/reactivation/root/identity changes use this same cross-kind
+predicate and actual current domain inventory before introducing any overlap.
 
 Bootstrap ONLY bounded non-executing in-process path/canonical metadata and Git
 layout reads: plain primary .git directory or a validated bounded gitdir/commondir
 layout. Bound each metadata file to16KiB, paths to4096UTF-8 bytes, link/file hops to32
-and aggregate bootstrap data to256KiB. Unprovable/changing/unsupported layout refuses
+and aggregate bootstrap data to256KiB. Enumerate bounded alternates/hooksPath/includes
+without execution or refuse the layout/profile; verify opened physical identity chains
+and changing aliases before effects. Unprovable/changing/unsupported layout refuses
 before external Git; no guessed candidate reservation around a Git-first probe.
 Source equivalence is a separate condition: raw files cannot impersonate filtered/
 attribute-transformed Git content. Pure capture returns typedUnknown/refuses where
 configured transforms prevent equivalent current source. No implicit config bypass.
 
-One Immediate transaction reads the complete coherent exclusion inventory plus
-current P/G/T/Session/full scoped lock versions applicable to the action. Proposed
-bounds:4096 registered/history Project identities;16384 active retained owners and
-reservations;4096 members per recovery closure;64 physical domains per owner;
-64KiB encoded owner/receipt;64KiB bounded audit body;128 submissions per lifetime,
-256 operation references;nesting16. Every counter/version uses checked arithmetic
-within signed-i64 storage range. Validate total serialized size before insertion.
-Hit any bound: explicit Capacity/NeedsAttention BEFORE acquisition/effects; never
-LIMIT/page/truncate a scan and infer idle. Recovery over these bounds remains held,
-with bounded non-executing attention. No overflow clamp or unbounded provenance list.
-These are initial finite policy limits, not OS/RAM/performance proofs.
+One Immediate transaction reads the COMPLETE indexed intersection inventory and
+current P/G/T/Session/full scoped lock versions applicable to the action. Maintain a
+private physical-domain/ancestor identity index atomically with every registry/hold
+mutation, across every retained state. Query every domain-pair overlap, never only a
+Project-ID partition. Settled Removed history stays immutable/readable in historical
+tables but leaves this active index ONLY when a private atomic retirement proves no
+retained owner/reservation/recovery/reference requiring exclusion; no FK deletion or
+terminal-label retirement. Reactivation re-enters through full overlap admission.
+Missing/inconsistent index or unknown physical identity refuses, not truncated idle.
+
+Proposed finite limits:4096 active indexed Project identities (new registration may
+refuse at capacity, existing disjoint Projects remain runnable);64 effect domains per
+owner;32 ordinary owner/reservation members per registered Project;4096 TOTAL members
+in any intersecting physical connected closure, including all former instances,
+recovery intents/partial effects and additional128 reserved successor/cleanup members.
+Admission computes actual merged overlap closure and required profile worst-case
+recovery headroom BEFORE effects, refusing if ordinary admission would consume that
+reserve or exceed4096. Each permitted recovery effect counts its actual bounded new
+owners/intents in that same invariant; actual successors adopt and consolidate fully
+fenced prior members without dropping obligations. Unknown/unfenced members are never
+compacted. Finite exhaustion holds with attention; real at-bound admission-refusal plus
+successful actual successor recovery controls are mandatory. Unlimited arbitrary
+crash chains are not promised by finite storage, but admitted ordinary workloads and
+required crash-at-fence/reconciliation cases must retain adequate recovery capacity.
+
+There is NO runtime-global retained-owner pool which Project A's uncertainty can
+exhaust to deny an already-registered physically disjoint B. A quota is charged to
+its exact Project plus affected physical closure; cross-scope transfers/registration
+merges recompute the full invariant. Indexed intersection query at most4096 members;
+no LIMIT/truncate and idle inference. The global DB may retain historical records;
+it is not all decoded into a fixed global owner arena. Source must prove index/query
+completeness and scoped costs, including retired history and concurrent reactivation.
+64KiB encoded owner/receipt,64KiB bounded audit,128 submissions per lifetime,
+256 operation references and nesting16 remain limits. Checked counters/versions fit
+signed-i64; total encoded size validated before insertion. Any affected cap refuses
+before effects without clamping. Numbers are policy bounds, not OS/RAM performance
+proof; a same-scope exhausted case never earns native parallelism or recovery credit.
 
 ## 3. Persisted owner and transaction API
 
@@ -67,7 +111,12 @@ actor/mode, input/source pins, actual native identities when known and checked v
 Store minimal allowlisted IDs/digests/version numbers/reason codes, never environment
 values, prompts/native transcripts, credentials or raw configuration. States distinguish
 ReservedSetup, OwnedLive, HeldUncertain and Settled; native turn state is separate.
-A Session-less ReservedSetup hold already excludes competing effects.
+A Session-less ReservedSetup hold already excludes competing effects. Actual Task-free
+entry is typed start_consult(owner: ConsultLifetimeOwner, ...), consuming the owner
+by value. Runtime dispatcher/registry-facing generic start rejects Task-free scopes
+for EVERY registration; AgentAdapter labels/public registration cannot replace the
+actual typed entry. Implemented providers must migrate every direct entry, including
+Session-less launch/probe paths; no Session write is needed to trigger that guard.
 
 Proposed private operations, all epoch-fenced and with bounded audit in the same Tx:
 
@@ -89,10 +138,28 @@ release, resume or mint an owner. #19 supplies corresponding managed Task fences
 Metrics/audit observers never grant ownership or input. Private ports verify actual
 capability identity, not merely matching public IDs/versions.
 
-No native/Source/Git call occurs under SQLite/SharedStore locks. Capture immutable
-expected action/frame under lock, perform only genuinely reserved or pure work
-outside, then atomically recheck the ORIGINAL expected frame. Stale results hold/refuse;
-never refresh a frame to make already-executed effects current. Supervisor ownership
+No native/Source/Git call occurs under SQLite/SharedStore locks. Capture uses an
+actual private `CaptureReadOwner` reservation over complete physical/governing domains
+BEFORE even pure in-process source reads. Executing capture ALSO requires its own
+#60 effect owner/profile. The reservation prevents intersecting mutator admission
+and remains retained THROUGH acquisition/admission/continuation handoff. Actual #60
+capture outcome/full cleanup must already be proved, but its exclusion reservation
+is not released before handoff. In the SAME Immediate transaction, recheck original
+input/source/P/G/Session/lock/physical frame and exact CaptureReadOwner, atomically
+consume its known-settled capture witness into lifetime/current input admission and
+retire only that capture read protection. No gap permits a mutator to reserve/mutate/
+settle between capture and admission; a prior idle/version pin is not enough. Drop
+or failed handoff retains protection until its exact owned no-effect/settled closure.
+
+Pure capture has local nonserializable read authority, not fake native/helper cleanup.
+Already-live native/runtime work must have a reviewed continuously enforced compatible
+capture relationship which stabilizes governing domains; otherwise capture/admission
+returns held/Unsupported. Post-acquisition executing revalidation uses a named reviewed
+Consultant-self #60 capture compatibility profile plus the same retained handoff; own
+Consultant recognition is not a bypass. Native-mutated target bytes are not silently
+recaptured as governing input. External independent user/IDE writes remain outside
+application authority; actual source-currency rechecks still refuse stale facts.
+Supervisor ownership
 is independent of droppable caller futures. Drop only posts bounded in-memory hint;
 no blocking Store IO/destructor release. Failed publication retains actual ownership
 and attention; in-memory/watch terminal success cannot override retained durable hold.
@@ -173,7 +240,19 @@ Pending replacement of a prior recovery intent reserves only a private competing
 intent and retains all original obligations. It MUST NOT bump/revoke the still-live
 prior owner's settlement CAS before actual fencing. A live prior may finish normally;
 new claimant withdraws only its own proved no-effect pending claim, atomically, without
-releasing prior holds. Failed withdrawal remains owned/held. Competing replacement
+releasing prior holds. Pending claims are a PRIVATE explicitly pre-effect class: no
+native/helper/inspection/fence authority; excluded ONLY from the EXACT prior intent’s
+adoption, owned #60 recovery reservation and settlement conflict predicates. They
+remain irrelevant to ordinary admission because original holds still block it.
+Prior adoption/settlement atomically invalidates claims pinned to superseded prior
+versions. A crashed claim provably still in private pre-effect state may be discarded
+by that exact prior/successor without physical fencing; public inactive labels cannot
+prove this state. Pending-to-fencing CAS is possible ONLY with actual separately
+authorized genuine prior-owner fencing proof and reviewed #14 authority. Its effect
+reservation remains retained thereafter. Settlement/withdrawal CAS pins own exact
+rows/identity/current versions and required outcome/cleanup; never compares competing
+pre-effect pending rows as a reason to invalidate a live prior. Active adoption still
+checks every actual effectful/live/uncertain outside owner. Competing replacement
 claimants CAS on their exact private pending authority; no public successor label.
 
 A crashed recovery's intent, partially fenced resources and partial reconciliation
@@ -202,12 +281,16 @@ attention/read-only status, and production profile readiness remains unfulfilled
 | context::capture/validate/select and #18–20 packs/gate claims, workflow::Source capture | pure equivalent reads or actual #60 observation; include Consultant pre-acquisition and per-input calls |
 | Generic/Grok startup/preflight; pending Claude/Codex consult/TUI and #11 driver | genuine retained owner before any probe/spawn/input; exact private publication/cleanup ports; no caller future ownership |
 | #12/#13/#60 verification/Evidence/test/expanded/mutation/browser/STG | own reverse effect reservation and real settlement, continuously protect admitted peers |
-| #15 status/TUI/attach; #23 Goal completion/cancel/fail/pack publication | pure held status; fresh-grant versus factual ports; no logical close release |
+| Store::put_goal and #23 Goal completion/cancel/fail/pack publication | same Immediate Tx refuses Completed with ANY unsettled Goal-scoped hold; Cancel/Fail retain holds and deny fresh authority; no public terminal bypass |
+| #15 status/TUI/attach | pure non-writing held status; fresh-grant versus factual ports |
+| workflow::inputs/load_rules; project::resolve_file/git_metadata/validate_namespace/validate_inputs/validate/effective_config/scoped_file/environment_names | pure equivalent reads or OWN actual #60 reservation BEFORE each executing Git route, including rule-ref-directory rev-parse |
+| ProjectRegistry::resolve/list/reconcile and cwd WorktreeManager::status | separate pure held report from executing validation/reconcile; process each Project independently; held/Unsupported A cannot fail B status/removal or become Blocked from an unexecuted check |
+| Grok checkpoint verify_git; supervise verify_binding/index_digest at PreSpawn/InSessionBinding/Reconciliation | actual own #60 effect/capture owner and cleanup, stable handoff/compatibility with native hold; native-only owner cannot settle helper |
 | #14 recovery; #26 Project registry | actual exclusive intent/fence/full-union adoption; no public-row producer |
 
 Current main has generic Task reservation and #41 owned attempt diagnostics, not these
 Consultant/runtime/recovery ports. Unmerged provider/operation plans do not prove
-implementation. Source acceptance must enumerate every actual call site, including
+implementation. The pre-source inventory above includes actual current callers; source acceptance re-inventories every call site, including
 wrappers/delegates, and remove every unreserved effect route. A safe pure status path
 cannot silently substitute for required effectful freshness. Unsupported before effects
 is temporary truthful readiness, not final MVP acceptance.
@@ -227,7 +310,10 @@ Controls use real private acquisition/supervisor/consumer APIs, not seeded SQL/r
 | compatibility | actual same-Project compatible profiles and conflict negatives; already-admitted peer protected when either becomes Lost; omit continuous enforcement / trust path/role |
 | successor | actual partial removal + Consult + revalidation holds; fence/full-union adopt without release; live/unfenced outside peer negatives; omit physical fence / partial adoption / premature release / Lost-compatible bypass |
 | repeated recovery | crash after intent/partial fence AND during reconciliation; next owner fences originals + prior effects; two former instances; slow live prior completes while claimant withdraws no-effect; omit prior fence / revoke prior CAS / lose prior members / row-only replacement |
-| bounds/migration | every proposed cap/checked overflow refuses before effects; complete scan under concurrent registration; old open generic/private connection writes fenced; legacy uncertainty migration fails with byte-identical history; remove scan completeness/epoch fence |
+| bounds/migration | Project A quota/Lost while disjoint B still acquires; retired settled Removed history does not exhaust current scans; actual closure-at-bound refuses ordinary effects but successor recovers; complete index under reactivation/alias/domain merges; actually pre-opened schema3 put_project(Removed)/put_session/put_goal and all private writes fail DB epoch triggers; mutation omits trigger/index/quota-headroom |
+| capture handoff | mutator attempts reserve/mutate/settle INSIDE capture-to-admission window; retained protection refuses it and legitimate handoff passes; missing protection/early-release mutants permit intended stale source violation |
+| Goal/registry | actual put_goal Completed with live/Lost Goal hold refuses; Cancel/Fail preserves it; held A pure status plus B actual status/removal succeeds; omit terminal hold check or hard-fail cross-Project sweep mutant |
+| replacement | claimant inserted between live prior intent and adoption plus crashed pre-effect claimant; prior adopts/executes genuine #60 recovery/settles; remove pending-class exception/invalidation or grant pre-effect authority mutant |
 
 Each credited mutant compiles, crosses real positive prerequisites and reaches the
 intended actual consumer assertion; setup refusal/timeout/helper-only failure earns
@@ -240,3 +326,12 @@ builds and Linux/macOS CI; record actual checkout/parents/source blobs separatel
 from trigger SHA. Two independent immutable design and source reviews precede
 acceptance. Update README/master design only to actual qualified behavior; #16 final
 Goal/review/approval/multi-Project/Context ON/OFF remains open.
+
+Design1 findings were verified against actual Store::put_goal, Registry::{resolve,
+list,reconcile}, project::resolve_file/git_metadata and Workflow::inputs/load_rules,
+plus Grok checkpoint/reconciliation Git consumers. Design2 corrects capture ABA with
+retained private read protection and atomic handoff; cross-kind physical/profile domain
+scope and aliases; scoped indexed capacity/recovery headroom/settled history retirement;
+actual generic Goal terminal/registry sweep consumers; database-enforced old-connection
+writer epoch; pending replacement pre-effect noninterference and typed Consult entry.
+All controls/producer/source/native gates remain mandatory and unimplemented.
