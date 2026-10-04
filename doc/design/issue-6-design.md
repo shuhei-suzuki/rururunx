@@ -76,10 +76,16 @@ new input cannot appear to belong to the old turn. The new acknowledged turn
 later supplies the current identity. Pre-dispatch rollback restores the exact
 historical Session, including its original turn and consumed-input marker.
 
-## Preparing continuation cancellation (design pending independent review)
+## Preparing continuation cancellation (design approved; implementation in progress)
 
 Fresh start, resume and checkpoint atomically install a private per-attempt control when
 claiming the registry transition, before any await or Starting publication.
+The design at `26945b0` passed its fifth independent native design review. That
+approval does not establish implementation or native containment. The first code
+stage adds private cancellation-aware Git/bootstrap waits with actual owned-child
+controls; the cancellation trigger is test-only until the registered attempt
+controller and owned preparation task are wired. Existing public stop/resume/
+checkpoint behavior is therefore still blocked by the preparing-lifetime finding.
 A terminal shared watch does not exclude preparation. Stop captures the current
 control Arc and exact owned scope under the registry lock; its target remains that
 attempt for the whole call. It never re-resolves a later registry control, sends

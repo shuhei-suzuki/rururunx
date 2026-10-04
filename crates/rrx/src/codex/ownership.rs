@@ -10,11 +10,10 @@ use std::{
 };
 use tokio::sync::Semaphore;
 
-use super::protocol::failure;
+use super::{preparation::Preparation, protocol::failure};
 use crate::{
     adapter::{
-        AdapterResult, ErrorKind, InputKind, LaunchRequest, SharedStore, bounded_git,
-        resolve_executable,
+        AdapterResult, ErrorKind, InputKind, LaunchRequest, SharedStore, resolve_executable,
     },
     domain::{
         Goal, GoalState, Project, ProjectState, Record, RecordKind, Session, SessionRole, Task,
@@ -363,22 +362,40 @@ impl ScopeSnapshot {
         request: &LaunchRequest,
         ownership: &mut ProcessOwnership,
     ) -> AdapterResult<Value> {
+        self.verify_git_preparing(request, ownership, &Preparation::new())
+            .await
+    }
+
+    pub async fn verify_git_preparing(
+        &self,
+        request: &LaunchRequest,
+        ownership: &mut ProcessOwnership,
+        preparation: &Preparation,
+    ) -> AdapterResult<Value> {
+        preparation.check()?;
         let project = self.project.clone();
         let workspace = request.worktree.clone();
-        let before = filesystem(move || canonical_binding(&project.root, &workspace)).await?;
-        let executable = filesystem(|| resolve_executable("git")).await?;
+        let before = preparation
+            .wait(filesystem(move || {
+                canonical_binding(&project.root, &workspace)
+            }))
+            .await?;
+        let executable = preparation
+            .wait(filesystem(|| resolve_executable("git")))
+            .await?;
         let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
         let mut observe = |cwd: PathBuf, args: Vec<String>| {
             let flag = ownership.group();
             let executable = executable.clone();
             async move {
-                bounded_git(
+                super::preparation::bounded_git(
                     &executable,
                     &cwd,
                     &args,
                     crate::git::native_environment(),
                     deadline,
                     flag,
+                    preparation,
                 )
                 .await
             }
@@ -508,7 +525,11 @@ impl ScopeSnapshot {
         }
         let project = self.project.clone();
         let workspace = request.worktree.clone();
-        let after = filesystem(move || canonical_binding(&project.root, &workspace)).await?;
+        let after = preparation
+            .wait(filesystem(move || {
+                canonical_binding(&project.root, &workspace)
+            }))
+            .await?;
         if before != after {
             return Err(failure(
                 ErrorKind::OwnershipMismatch,

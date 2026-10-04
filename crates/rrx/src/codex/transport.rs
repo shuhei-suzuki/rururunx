@@ -16,6 +16,7 @@ use tokio::{
 
 use super::{
     policy::DecisionPolicy,
+    preparation::Preparation,
     protocol::{NativeRpc, failure},
 };
 use crate::adapter::{AdapterResult, ErrorKind, ProcessGroup, cleanup_group};
@@ -138,6 +139,25 @@ impl NativeServer {
         environment: Vec<(OsString, OsString)>,
         uncertain: Arc<AtomicBool>,
     ) -> AdapterResult<Self> {
+        Self::launch_preparing(
+            executable,
+            workspace,
+            policy,
+            environment,
+            uncertain,
+            &Preparation::new(),
+        )
+        .await
+    }
+    pub(super) async fn launch_preparing(
+        executable: &Path,
+        workspace: &Path,
+        policy: Option<&DecisionPolicy>,
+        environment: Vec<(OsString, OsString)>,
+        uncertain: Arc<AtomicBool>,
+        preparation: &Preparation,
+    ) -> AdapterResult<Self> {
+        preparation.check()?;
         if !executable.is_absolute() || !workspace.is_absolute() || workspace.to_str().is_none() {
             return Err(failure(
                 ErrorKind::InvalidConfiguration,
@@ -188,17 +208,18 @@ impl NativeServer {
             .stderr(Stdio::piped())
             .kill_on_drop(true)
             .process_group(0);
+        preparation.check()?;
         let child = command.spawn().map_err(|_| {
-            failure(
+            preparation.failed(failure(
                 ErrorKind::LaunchFailure,
                 "native Codex app-server could not start",
-            )
+            ))
         })?;
         let mut process = ProcessGroup::new(child, uncertain)?;
         let pid = process.child.id().expect("validated owned child PID");
         let stdout = Reader::spawn(process.child.stdout.take().expect("piped stdout"));
         let stderr = Reader::spawn(process.child.stderr.take().expect("piped stderr"));
-        let connected = tokio::select! {
+        let connected = preparation.wait(async { tokio::select! {
             result = tokio::time::timeout(START_TIMEOUT, connect_socket(&socket, pid)) => match result {
                 Ok(result) => result,
                 Err(_) => Err(failure(ErrorKind::Timeout, "private native listener startup timed out")),
@@ -207,7 +228,7 @@ impl NativeServer {
                 let _ = result;
                 Err(failure(ErrorKind::LaunchFailure, "native Codex exited before private IPC initialization"))
             },
-        };
+        }}).await;
         let (stream, socket_binding) = match connected {
             Ok(connection) => connection,
             Err(error) => {
@@ -217,12 +238,13 @@ impl NativeServer {
                 ));
             }
         };
-        let initialized = async {
-            let mut rpc = NativeRpc::connect(stream).await?;
-            rpc.initialize().await?;
-            Ok::<_, crate::adapter::AdapterError>(rpc)
-        }
-        .await;
+        let initialized = preparation
+            .wait(async {
+                let mut rpc = NativeRpc::connect(stream).await?;
+                rpc.initialize().await?;
+                Ok::<_, crate::adapter::AdapterError>(rpc)
+            })
+            .await;
         let rpc = match initialized {
             Ok(rpc) => rpc,
             Err(error) => {
@@ -679,6 +701,75 @@ mod tests {
         assert!(verify_directory(directory.path()).is_err());
         drop(listener);
     }
+    #[tokio::test]
+    async fn cancelled_bootstrap_cleans_and_reaps_owned_process_before_returning() {
+        let directory = tempfile::tempdir().unwrap();
+        let executable = directory.path().join("native-fixture");
+        let ready = directory.path().join("ready");
+        std::fs::write(
+            &executable,
+            "#!/bin/sh\nprintf '%s' \"$$\" > \"$RRX_FIXTURE_READY\"\nexec /bin/sleep 30\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let preparation = Arc::new(Preparation::new());
+        let uncertain = Arc::new(AtomicBool::new(false));
+        let mut action = {
+            let preparation = preparation.clone();
+            let uncertain = uncertain.clone();
+            let cwd = directory.path().to_path_buf();
+            let ready = ready.clone();
+            tokio::spawn(async move {
+                NativeServer::launch_preparing(
+                    &executable,
+                    &cwd,
+                    None,
+                    vec![("RRX_FIXTURE_READY".into(), ready.into_os_string())],
+                    uncertain,
+                    &preparation,
+                )
+                .await
+            })
+        };
+        tokio::time::timeout(Duration::from_secs(3), async {
+            while !ready.exists() {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .unwrap();
+        assert!(uncertain.load(std::sync::atomic::Ordering::SeqCst));
+        let cancelled_at = tokio::time::Instant::now();
+        preparation.cancel();
+        let result = tokio::time::timeout(Duration::from_secs(17), &mut action)
+            .await
+            .unwrap()
+            .unwrap();
+        let error = match result {
+            Err(error) => error,
+            Ok(_) => panic!("cancelled listener startup returned a server"),
+        };
+        assert_eq!(error.kind, ErrorKind::StateConflict);
+        assert_eq!(
+            error.message,
+            "native preparation cancelled before admission"
+        );
+        assert!(!uncertain.load(std::sync::atomic::Ordering::SeqCst));
+        let pid = std::fs::read_to_string(ready).unwrap();
+        let observed = std::process::Command::new("/bin/ps")
+            .args(["-p", &pid, "-o", "pid="])
+            .output()
+            .unwrap();
+        assert!(
+            observed.stdout.is_empty(),
+            "bootstrap must reap its owned leader"
+        );
+        assert!(
+            cancelled_at.elapsed() < Duration::from_secs(2),
+            "cancellation must wake bootstrap before its original listener deadline"
+        );
+    }
+
     #[tokio::test]
     async fn output_is_drained_without_unbounded_retention() {
         use tokio::io::AsyncWriteExt;

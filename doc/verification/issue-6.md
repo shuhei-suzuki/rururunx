@@ -399,3 +399,19 @@ Evidence: /private/tmp/rururunx-issue6-stop-drain-compilefix.log,
 /private/tmp/rururunx-issue6-cb9-fmt.log,
 /private/tmp/rururunx-issue6-cb9-clippy.log,
 /private/tmp/rururunx-issue6-cb9-workspace-serial.log.
+# Preparing cancellation helper stage
+
+Private Git and native bootstrap waits retain their actual owned ProcessGroup
+outside the cancellation select, latch the first cause before cleanup, then kill,
+inspect and reap before returning cancellation. Shared adapter Git helpers and
+existing five-second Git/15-second listener/250ms inspection-reap budgets remain.
+Native bootstrap initialization borrows its already-owned process through the
+cancellable RPC wait. A selected cancellation never maps its killed exit into a
+fabricated ownership failure.
+
+Development smoke checks passed the actual owned Git/bootstrap cancellation
+fixtures and first-cause/pre-spawn checks; immutable exact-commit regression and
+compiled mutation evidence are pending. The helper cancellation trigger is test-only
+at this stage. Registry attempt installation, caller-drop owned task, consumed-input
+linearization, checkpoint commit and captured-attempt stop are not implemented;
+F4 remains unresolved. Helpers are not whole-native descendant containment proof.
