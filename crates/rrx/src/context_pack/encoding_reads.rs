@@ -703,3 +703,256 @@ fn maximum_depth_general_artifact_round_trips_through_actual_store_codec() {
     let loaded = f.store.lock().unwrap().record(record.id).unwrap().unwrap();
     assert_eq!(loaded.data, record.data);
 }
+
+// Separate checkpoint identity component; these are artifact-consumer controls,
+// outside the encoder's 16-test qualification and all native authority gates.
+fn append_body(f: &Fixture, session: SessionId, cp: &Checkpoint) -> (Record, Result<()>) {
+    let mut record = Record::new(
+        f.task.scope(),
+        RecordKind::Checkpoint,
+        serde_json::to_value(cp).unwrap(),
+    );
+    let mut store = f.store.lock().unwrap();
+    let expected = [
+        store.project(f.project.id).unwrap().unwrap().version,
+        store.goal(f.goal.id).unwrap().unwrap().version,
+        store.task(f.task.id).unwrap().unwrap().version,
+    ];
+    let version = store.session(session).unwrap().unwrap().1;
+    let result = store.append_pack_checkpoint(
+        &f.task.scope(),
+        expected,
+        session,
+        version,
+        cp.previous.as_ref(),
+        &mut record,
+    );
+    (record, result)
+}
+fn reject_body(
+    f: &Fixture,
+    session: SessionId,
+    cp: Checkpoint,
+    previous: Option<&CheckpointRef>,
+    message: &str,
+) {
+    let scope = f.task.scope();
+    let mut store = f.store.lock().unwrap();
+    let expected = [
+        store.project(f.project.id).unwrap().unwrap().version,
+        store.goal(f.goal.id).unwrap().unwrap().version,
+        store.task(f.task.id).unwrap().unwrap().version,
+    ];
+    let version = store.session(session).unwrap().unwrap().1;
+    let head = store.pack_checkpoint_head(&scope).unwrap();
+    let events = store.events(&scope, 0, 100).unwrap().len();
+    // The body is deliberately inconsistent; outer envelope and captured
+    // arguments remain valid so the actual private consumer is the cause.
+    let mut record = Record::new(
+        scope.clone(),
+        RecordKind::Checkpoint,
+        serde_json::to_value(&cp).unwrap(),
+    );
+    let result =
+        store.append_pack_checkpoint(&scope, expected, session, version, previous, &mut record);
+    let Err(error) = result else {
+        panic!("inconsistent checkpoint body accepted: {message}")
+    };
+    assert_eq!(error.root_cause().to_string(), message);
+    assert_eq!(record.version, 0);
+    assert!(store.record(record.id).unwrap().is_none());
+    assert_eq!(store.pack_checkpoint_head(&scope).unwrap(), head);
+    assert_eq!(store.events(&scope, 0, 100).unwrap().len(), events);
+}
+
+#[tokio::test]
+async fn checkpoint_append_binds_inner_identity_and_exact_mandatory_prefix() {
+    let f = Fixture::new();
+    let session = f.factual_session();
+    let other_session = f.factual_session();
+    let map = f
+        .packs()
+        .source()
+        .index(&f.task.scope(), vec![])
+        .await
+        .unwrap();
+    let events = vec![
+        HistoryEvent {
+            sequence: 1,
+            kind: EventKind::Decision,
+            text: "first exact decision".into(),
+        },
+        HistoryEvent {
+            sequence: 2,
+            kind: EventKind::Constraint,
+            text: "second exact constraint".into(),
+        },
+    ];
+    // Actual source observation and persisted factual Session, no raw seeded
+    // positive authority. This body uses the same typed first-chain recipe as
+    // the service. The resulting row must pass the actual service reader.
+    let first = Checkpoint {
+        format: CHECKPOINT.into(),
+        scope: f.task.scope(),
+        session,
+        role: SessionRole::Consultant,
+        previous: None,
+        chain_version: 1,
+        first_sequence: 1,
+        last_sequence: 2,
+        input_digest: digest(&events).unwrap(),
+        authority: RepositoryRef::of(&map, vec![]).unwrap(),
+        mandatory_goal: projection(&f.goal).unwrap(),
+        mandatory_task: projection(&f.task).unwrap(),
+        mandatory_rules: rules(&map),
+        retained: events
+            .into_iter()
+            .map(|event| RetainedEvent { session, event })
+            .collect(),
+        recent: vec![],
+        omitted_transient: 0,
+        omitted_first_sequence: None,
+        omitted_last_sequence: None,
+        omitted_digest: None,
+        recent_bytes: 0,
+        recent_history_limit_bytes: Some(0),
+        measured_tokens: None,
+    };
+    let mut fabricated = first.clone();
+    fabricated.previous = Some(CheckpointRef {
+        scope: f.task.scope(),
+        id: RecordId::new(),
+        version: 1,
+        digest: "sha256:unknown".into(),
+    });
+    reject_body(
+        &f,
+        session,
+        fabricated,
+        None,
+        "checkpoint body predecessor differs from append predecessor",
+    );
+    let (row, result) = append_body(&f, session, &first);
+    result.unwrap();
+    let reference = f
+        .store
+        .lock()
+        .unwrap()
+        .pack_checkpoint_head(&f.task.scope())
+        .unwrap()
+        .unwrap();
+    assert_eq!(reference.id, row.id);
+    let loaded = f.packs().load_checkpoint(&reference).unwrap();
+    assert_eq!(loaded.retained, first.retained);
+    let mut next = loaded;
+    next.previous = Some(reference.clone());
+    next.chain_version = 2;
+    next.first_sequence = 3;
+    next.last_sequence = 3;
+    let event = HistoryEvent {
+        sequence: 3,
+        kind: EventKind::Decision,
+        text: "third exact decision".into(),
+    };
+    next.input_digest = digest(&vec![event.clone()]).unwrap();
+    next.retained.push(RetainedEvent { session, event });
+    let mut cases = Vec::new();
+    let mut cp = next.clone();
+    cp.format = "unknown.format".into();
+    cases.push((cp, "checkpoint body format differs from append contract"));
+    let mut cp = next.clone();
+    cp.scope.task_id = Some(TaskId::new());
+    cases.push((cp, "checkpoint body scope differs from append scope"));
+    for id in [SessionId::new(), other_session] {
+        let mut cp = next.clone();
+        cp.session = id;
+        cases.push((cp, "checkpoint body Session differs from append Session"));
+    }
+    let mut cp = next.clone();
+    cp.role = SessionRole::Reviewer;
+    cases.push((cp, "checkpoint body role differs from append Session"));
+    let mut cp = next.clone();
+    cp.authority.worktree = f._temp.path().join("foreign-worktree");
+    cases.push((cp, "checkpoint body worktree differs from append Session"));
+    let mut cp = next.clone();
+    cp.previous = None;
+    cases.push((
+        cp,
+        "checkpoint body predecessor differs from append predecessor",
+    ));
+    let mut cp = next.clone();
+    cp.previous.as_mut().unwrap().digest = "sha256:stale".into();
+    cases.push((
+        cp,
+        "checkpoint body predecessor differs from append predecessor",
+    ));
+    let mut cp = next.clone();
+    cp.retained.remove(1);
+    cases.push((cp, "checkpoint body rewrites retained mandatory history"));
+    let mut cp = next.clone();
+    cp.retained.swap(0, 1);
+    cases.push((cp, "checkpoint body rewrites retained mandatory history"));
+    let mut cp = next.clone();
+    cp.retained[1].event.text = "rewritten mandatory constraint".into();
+    cases.push((cp, "checkpoint body rewrites retained mandatory history"));
+    let mut cp = next.clone();
+    cp.retained[1].event.kind = EventKind::Decision;
+    cases.push((cp, "checkpoint body rewrites retained mandatory history"));
+    let mut cp = next.clone();
+    cp.retained[1].session = other_session;
+    cases.push((cp, "checkpoint body rewrites retained mandatory history"));
+    for (cp, message) in cases {
+        reject_body(&f, session, cp, Some(&reference), message);
+    }
+    let connection = rusqlite::Connection::open(&f.db).unwrap();
+    connection.execute_batch("CREATE TRIGGER fail_checkpoint_identity_audit BEFORE INSERT ON audit WHEN NEW.kind='checkpoint.saved' BEGIN SELECT RAISE(ABORT,'owned injected checkpoint audit failure'); END;").unwrap();
+    reject_body(
+        &f,
+        session,
+        next.clone(),
+        Some(&reference),
+        "owned injected checkpoint audit failure",
+    );
+    connection
+        .execute_batch("DROP TRIGGER fail_checkpoint_identity_audit")
+        .unwrap();
+    let (_, result) = append_body(&f, session, &next);
+    result.unwrap();
+    let head = f
+        .store
+        .lock()
+        .unwrap()
+        .pack_checkpoint_head(&f.task.scope())
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        f.packs().load_checkpoint(&head).unwrap().retained,
+        next.retained
+    );
+    // Finally exercise the sole service producer against that direct consumer's
+    // valid predecessor, preserving both earlier mandatory events unchanged.
+    let final_ref = f
+        .packs()
+        .checkpoint(
+            &f.task.scope(),
+            session,
+            Some(head),
+            vec![HistoryEvent {
+                sequence: 4,
+                kind: EventKind::Verification,
+                text: "service producer preserved exact prefix".into(),
+            }],
+            HistoryPolicy {
+                recent_history_bytes: 0,
+            },
+        )
+        .await
+        .unwrap();
+    assert!(
+        f.packs()
+            .load_checkpoint(&final_ref)
+            .unwrap()
+            .retained
+            .starts_with(&next.retained)
+    );
+}

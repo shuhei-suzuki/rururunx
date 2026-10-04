@@ -586,6 +586,30 @@ impl Store {
                 && task.worktree.as_ref() == Some(&session.worktree),
             "checkpoint Session changed/foreign"
         );
+        ensure!(
+            checkpoint.format == crate::context_pack::CHECKPOINT,
+            "checkpoint body format differs from append contract"
+        );
+        ensure!(
+            checkpoint.scope == *scope,
+            "checkpoint body scope differs from append scope"
+        );
+        ensure!(
+            checkpoint.session == session.id,
+            "checkpoint body Session differs from append Session"
+        );
+        ensure!(
+            checkpoint.role == session.role,
+            "checkpoint body role differs from append Session"
+        );
+        ensure!(
+            checkpoint.authority.worktree == session.worktree,
+            "checkpoint body worktree differs from append Session"
+        );
+        ensure!(
+            checkpoint.previous.as_ref() == previous,
+            "checkpoint body predecessor differs from append predecessor"
+        );
         let latest = checkpoint_head_record(&tx, scope)?;
         match (previous, latest) {
             (None, None) => ensure!(
@@ -601,6 +625,10 @@ impl Store {
                     "incremental checkpoint no longer current"
                 );
                 let old: Checkpoint = serde_json::from_value(old.data)?;
+                ensure!(
+                    checkpoint.retained.starts_with(&old.retained),
+                    "checkpoint body rewrites retained mandatory history"
+                );
                 ensure!(
                     checkpoint.chain_version
                         == old

@@ -1,6 +1,7 @@
 # Issue19 checkpoint append identity component
 
-Status: PROPOSED small correction of the existing artifact contract; native managed
+Status: Design1 component APPROVABLE (native d52f3139 at4740148); source
+gate pending. This is a small correction of the existing artifact contract; native managed
 operation/settlement, production migration and whole Issue19 acceptance remain OPEN.
 Main has schema3 and no CPP service. This candidate branch has an unmerged schema5
 CPP prototype; no deployment or schema6 source is proposed here.
@@ -66,3 +67,9 @@ The component review covers only that private append consumer/caller contract an
 its direct fixtures. It cannot qualify PR39's native/session paths, schema5 prepared
 input index or proposed6 managed authority, real providers, legacy migration or
 19/23/43/60 composition. Parent CPP service still needs its full source gate.
+
+
+Reader-only classification, sequence-range, omitted commitment, recent accounting,
+nullable measurements and new suffix provenance predicates remain residual outside
+this identity/prefix correction. This component does not claim that append accepts
+exactly the set of DTOs accepted by the reader. Native/whole-CPP gates remain OPEN.

@@ -23,7 +23,7 @@ const MAX_EVENTS: usize = 4096;
 const MAX_TEXT: usize = 8192;
 const MAX_REFS: usize = 128;
 const FORMAT: &str = "rrx.task-pack.v1";
-const CHECKPOINT: &str = "rrx.checkpoint.v1";
+pub(crate) const CHECKPOINT: &str = "rrx.checkpoint.v1";
 const GOAL_FORMAT: &str = "rrx.goal-pack.v1";
 
 #[derive(Clone, Copy)]
