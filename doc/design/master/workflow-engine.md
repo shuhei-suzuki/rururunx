@@ -243,7 +243,6 @@ Supported examples:
 
 Human override should not silently disable mandatory project safety rules.
 
-
 ## 16. Goal Runtime integration
 
 Goal Runtime does not replace Task workflows.
@@ -417,7 +416,7 @@ prove launch occurred. #13 remains responsible for irreversible
 Pr/MergeGate/Cleanup outcomes.
 See [Issue #41 design](../issue-41-design.md).
 
-Two existing integration gaps are explicit. `retry` admits Failed unbound
+Existing integration gaps are explicit. `retry` admits Failed unbound
 dispatch markers without native-outcome evidence when no Session is persisted;
 Issue #14 must fence this explicit API, while ordinary observation never replays.
 The current successful native Session-binding publication writes an unchanged
@@ -426,3 +425,75 @@ admitted under that Task version can then reject their own completion/approval.
 A separate atomic Record-only binding contract (#43) must preserve exact owner/context/
 Session identity guards without incrementing unchanged Task fields; Issue #41
 does not introduce that shared integration API.
+
+## 18. Current native Session registration
+
+Current main uses ordinary Task/Workflow persistence after adapter start returns.
+It records the attempt's Session ID and rewrites Task, advancing its version.
+That can invalidate the native adapter's captured scope during registration.
+The record-only correction and its typed-input/admission integration are proposed
+in [Issue43 design](../issue-43-design.md); neither the private binding port nor
+its admission capability is implemented in main. Update this section to the
+actual corrected contract only after the combined source is accepted.
+
+Requirements9 also inventories two bound-live poll diagnostic writers: status error
+and persisted/status mismatch currently refresh owners and use ordinary Task-writing
+persist, invalidating native captured Task currency. Proposed #43 uses a separate
+private record-only observe_native_diagnostic port for only these diagnostic deltas,
+not the binder. It preserves all parent/Session/full-lock bytes/versions and native
+pins, coalesces repeated diagnostics, and grants no binding/outcome/retry/release or
+fresh authority. Actual managed held-turn controls and branch-specific Task-rewrite
+mutants are required. This port/source is unimplemented, not part of merged #41;
+terminal/authorized lifecycle/unknown recovery transitions retain their own gates.
+
+
+Issue43 proposed Design10 additionally carries one immutable resulting marker frame
+through actual native preparation/consumption/AllowCurrent, derives binding readiness
+from marked/unbound/phase-open private operations, reserves per-Project operation
+capacity atomically inside41reserve and parks only definitive Held observations without repeated binder
+transactions. Driver and binder independently require actual runtime-instance match
+or genuine14restore proof. These19/23/43/14 contracts remain unimplemented proposals;
+merged41observer behavior and normal lifecycle authority are unchanged.
+
+Capacity derives from active marked/unmarked native claims UNION actual open operations,
+so41owned pre-marker release/invalidation naturally retires capacity and orphan claims
+remain counted. Transient rollback-confirmed storage failures retry the same factual
+binder fairly on BOTH normal and late routes; deterministic constraint/encoding/trigger
+refusals park with attention. NormalReturned deferred binding is explicitly a non-failure
+while the genuine invocation retains the same returned identity/frame and owned launch. Uncertain commit reconciles only
+durable facts. No added native dispatch, owner refresh or new binder write is allowed.
+
+
+Binding and bound-live diagnostics advance factual Workflow W without renewing
+original native currency. Approved proposal #43 Design10 at6a72105 aligns unapproved #19 Design35
+at0993d2e: ONE private audit carries the complete canonical factual successor link.
+The exhaustive managed writer table includes dependency-owned gate claim/observation/
+hold, Task-terminal decision and genuine phase closure. Gate observations fuse actual
+compact outcome/repeat-count/last-time and typed Waiting disposition in ONE W-only
+transaction; no extra legacy gate audit or hidden Task version bump.15/23 derive held
+status; Engine::fail instead uses actual non-success closure/awaiting_explicit_retry.
+Cancellation cannot wash raw W drift. Full eligible TerminalRecovery validates the
+same complete genuine chain for bound and unbound attempts and grants nothing.
+
+The256-link allowance is99claim/result pairs+1bind+1terminal decision+1closure+
+8hold/clear links (four reserved pairs)+47diagnostics. Exhausted mandatory hold refuses
+new gates/success; the100th Waiting cycle refuses before effects with explicit trusted
+cancel-only/full-cleanup exit. Genuine closure releases only unspent ledger reserve.
+Full chain/Workflow plan/hash derives outside held Store; current version/endpoint CAS
+and fresh own-Session identity remain inside. Compact≤128 rows/512 KiB is a proof
+class, separate from bounded mandatory owner/body/SQL validation/write cost; no total
+mutex latency guarantee. Same-version mutation and INSERT OR REPLACE must refuse via
+actual checked-version/projection and BEFORE INSERT existing-key guards. Binder writes
+only W+one link, never parent/Session/operation/lock/native pins. Actual dependency
+producers, consumer mutations, native/restart and exact-source CI remain pending.
+
+
+Issue43 staged source checks pre-reservation capabilities and retained registered/
+probed selection, then explicitly refuses ALL native Workflow phases through a
+private composition guard until genuine19 admission and record-only binding compose.
+Even consistent advertised/probed capability metadata cannot enable the legacy binder.
+Refusals leave held state/context/marker/Session unchanged; current adapters and legacy
+fixtures provide no genuine prepared-input authority.
+This branch is not ready for merge: successful legacy Workflow fixtures require
+actual private-producer migration and full composed source/native/recovery checks.
+No record-only binder/diagnostic or native readiness is implemented by this slice.

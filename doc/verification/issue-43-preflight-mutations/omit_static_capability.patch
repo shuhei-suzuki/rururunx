@@ -1,0 +1,11 @@
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -1066,7 +1066,7 @@
+         let capabilities = adapter.capabilities();
+         for required in [needed, Capability::PreparedInputAdmission] {
+             ensure!(
+-                capabilities.contains(&required),
++                true,
+                 "agent {agent} lacks prepared native phase capability {required:?}"
+             );
+         }

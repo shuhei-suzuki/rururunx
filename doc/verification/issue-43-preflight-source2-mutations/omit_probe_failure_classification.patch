@@ -1,0 +1,13 @@
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -1115,9 +1115,7 @@
+                 return Err(NativePreflightRefusal::MissingCapability(required).into());
+             }
+         }
+-        let info = adapter.probe().map_err(|error| {
+-            anyhow::Error::new(error).context(NativePreflightRefusal::ProbeFailed)
+-        })?;
++        let info = adapter.probe()?;
+         if info.agent != *agent || info.provider.trim().is_empty() {
+             return Err(NativePreflightRefusal::IdentityMismatch.into());
+         }

@@ -1,0 +1,11 @@
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -1077,7 +1077,7 @@
+         );
+         for required in [needed, Capability::PreparedInputAdmission] {
+             ensure!(
+-                info.capabilities.contains(&required),
++                true,
+                 "agent {agent} lacks prepared native phase capability {required:?}"
+             );
+         }

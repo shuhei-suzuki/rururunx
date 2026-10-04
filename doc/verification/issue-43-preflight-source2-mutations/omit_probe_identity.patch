@@ -1,0 +1,11 @@
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -1118,7 +1118,7 @@
+         let info = adapter.probe().map_err(|error| {
+             anyhow::Error::new(error).context(NativePreflightRefusal::ProbeFailed)
+         })?;
+-        if info.agent != *agent || info.provider.trim().is_empty() {
++        if false {
+             return Err(NativePreflightRefusal::IdentityMismatch.into());
+         }
+         for required in [needed, Capability::PreparedInputAdmission] {

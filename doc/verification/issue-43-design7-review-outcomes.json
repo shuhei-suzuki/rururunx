@@ -1,0 +1,35 @@
+{
+  "status": "proposal design approval only; source/native/recovery unimplemented",
+  "head": "64867fbeadbcaac5c5b77ba5fec99a160dcd02f3",
+  "reviews": [
+    {
+      "reviewer": "a",
+      "native_session": "22ed2626-4cc0-47bc-ab84-297460971005",
+      "head": "64867fbeadbcaac5c5b77ba5fec99a160dcd02f3",
+      "verdict": "approve",
+      "finding_severities": [
+        "Low",
+        "Low"
+      ],
+      "unresolved_blockers": [],
+      "cleanup_verified": true,
+      "private_result_sha256": "35188c2863482361ca5b0709491356bd84bb91cc8e349e21e4de04be456ef994",
+      "meter_scope": "raw_native_resumed_session_attribution_unverified"
+    },
+    {
+      "reviewer": "b",
+      "native_session": "05a54d3e-e8b3-423c-ac25-ab484b29a951",
+      "head": "64867fbeadbcaac5c5b77ba5fec99a160dcd02f3",
+      "verdict": "approve",
+      "finding_severities": [
+        "Low",
+        "Low",
+        "Low"
+      ],
+      "unresolved_blockers": [],
+      "cleanup_verified": true,
+      "private_result_sha256": "d08e7575a1fa4b908a0dd56fb6fd2b3449db4c6387865e06163edb11b88f214e",
+      "meter_scope": "raw_native_resumed_session_attribution_unverified"
+    }
+  ]
+}

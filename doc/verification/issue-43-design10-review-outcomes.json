@@ -1,0 +1,81 @@
+{
+  "head": "6a7210574ead672d210906f51cb82cae3f78008c",
+  "stage": "design proposal only; no source/native qualification",
+  "reviews": [
+    {
+      "reviewer": "a",
+      "native_session": "22ed2626-4cc0-47bc-ab84-297460971005",
+      "verdict": "approve",
+      "findings": [
+        {
+          "id": "R43-D10-L1",
+          "severity": "Low",
+          "file": "doc/design/issue-43-binding-mechanics.md",
+          "line": 158,
+          "claim": "Step 6's factual duplicate lookup only proves absence if every Session in scope is actually indexed, and the design does not guarantee that. Requirements9 requires rejecting ANY distinct same-scope Session with the same provider and UUID, including Lost and historical unallocated ones. The lookup now proves a conflict with at most two indexed rows, but an empty result is a valid absence proof only if every persisted Session's identity is indexed. Two cases can silently fall outside the index: (1) a byte-guarded expression or generated index evaluates to NULL for a legacy Session over 4 MiB, which #19 still keeps as 'readable, not new admission'; (2) a malformed or non-decodable legacy row. Separately, if the identity columns are 'typed' columns written by callers rather than derived from the stored body, a writer could store a native_ref that disagrees with the column. In any of these cases an empty lookup lets the binder bind despite an ambiguous UUID.",
+          "evidence": "Mechanics step 6: 'A bounded indexed factual identity lookup ... \u22642 compact matching rows, proves a conflict ... Its exact generated/typed lexical identity columns must cover every valid persisted Session identity' and 'No ... truncated-list absence proof'. #19: 'Existing oversized idle legacy terminal history is readable, not new admission'. #19 Design35 requires every JSON index to apply its own byte guard first, and caps the Session Record at 4 MiB. #19 Design35 says oversized legacy rows refuse upgrade only in the Project/Goal/Task sentence.",
+          "fix": "Derive the identity columns only from the stored body, via a generated column or expression index, or a trigger that enforces equality with the body; callers must never write them separately. Make non-indexable rows fail closed. Either the deliberate migration refuses or backfills any Session whose identity cannot be extracted within bounds, or a per-scope count of non-indexable Sessions makes binding refuse with attention. Add controls: an oversized or malformed legacy duplicate in scope causes refusal, and a mutant that ignores non-indexable rows fails the actual binder consumer."
+        },
+        {
+          "id": "R43-D10-L2",
+          "severity": "Low",
+          "file": "doc/design/issue-43-binding-mechanics.md",
+          "line": 640,
+          "claim": "Some text still predates the outside-lock plan model. The bound-live diagnostic section still says its transaction compares the complete previous and candidate JSON. It does not say that the diagnostic uses the same sealed, version-pinned outside plan, with the successor hash computed outside. Design \u00a74 items 4\u20137 (Workflow scope, generation, active attempt, Running, absent ID, marker and context) still read as checks inside the transaction, while the mechanics now performs them outside and relies on the inside version CAS. The general Design10 paragraphs ('Each port ... planned W construction stay outside') govern, so this is wording, not a causal contradiction.",
+          "evidence": "Diagnostic section: 'Transaction checks exact Workflow Record version/generation/active Running bound attempt ... Compare complete previous/candidate JSON and Record metadata'. Successor section: 'complete allowed projection and hashes are verified in the outside-lock version-pinned plan'. Design \u00a74: 'Publication checks current owners ... in the same transaction: ... 4. verify exact Workflow scope/generation/active attempt 5. verify active attempt is Running and has no bound Session'.",
+          "fix": "Restate the diagnostic port in the same structure as the binder: an outside sealed plan carrying the complete-field comparison and before/after hashes, then an inside check of W version, the private latest-link endpoint, operation/attempt identity and the guarded OLD/NEW projection. Mark \u00a74 items 4\u20137 as 'validated in the version-pinned plan and protected by current W version CAS'."
+        },
+        {
+          "id": "R43-D10-L3",
+          "severity": "Low",
+          "file": "doc/design/issue-43-binding-mechanics.md",
+          "line": 893,
+          "claim": "#43 and #19 Design35 describe hold clearance differently. #43 says a clear is a separate gate_hold link, with its slot reserved whenever a hold is written (four pairs). The #43 gate_claim row allows ONLY Evaluating plus the exact claim index. #19 Design35's prose says the next gate claim/observed pair must reserve any required hold clearance within its own exact allowed projection, which suggests the clear can be folded into the gate pair. Each side's Store rejects links whose projection is not exactly allowed, so differing projections would cause one side's genuine links to be refused.",
+          "evidence": "#43 Design10: 'Gate hold/clear8 is FOUR pairs; reserve the clear slot whenever a hold is written'. #43 table: 'gate_claim: ONLY Evaluating and exact claimed_observations'. #19 Design35: 'the configured next gate claim/observed pair must reserve any required hold clearance within its exact allowed projection and body/quota headroom'.",
+          "fix": "Pick one mechanism and state it identically in both documents. Preferably the clear is a separate gate_hold link and gate_claim/gate_observed projections never touch held_reason. Pin the exact projections in the joint golden fixtures, and add a control where a hold followed by a clear is accepted by the real closure chain verifier."
+        }
+      ],
+      "unresolved_blockers": [],
+      "cleanup_verified": true,
+      "private_result_sha256": "8f69f36d0d42a44b05eb9474216e51d2929c11d9cc6d6df56d1468e65d474387"
+    },
+    {
+      "reviewer": "b",
+      "native_session": "05a54d3e-e8b3-423c-ac25-ab484b29a951",
+      "verdict": "approve",
+      "findings": [
+        {
+          "id": "D10-L1",
+          "severity": "Low",
+          "file": "doc/design/issue-43-binding-mechanics.md",
+          "line": 199,
+          "claim": "Two sections were not updated to the new outside-lock plan and dedicated-writer model.\n\nFirst, the persistence boundary still says the binder reuses put_record_tx's internal serialization path. #19 Design34/35 instead requires a dedicated private Workflow writer that does not call generic put_record_tx.\n\nSecond, Design10 adds a BEFORE INSERT existing-ID rejection for post-epoch managed Workflow Records on the shared records table. The design does not list which existing statements write those rows today, or whether they use INSERT OR REPLACE or upsert. SQLite fires BEFORE INSERT triggers for upsert attempts before the conflict check, so any such writer (marker, ordinary transitions, closure or the private ports) would be refused once the guard is installed.\n\nThird, the diagnostic section still describes an in-transaction comparison of the complete previous and candidate JSON.",
+          "evidence": "- Persistence section: 'Reuse `put_record_tx`'s record CAS/version validation, immutable scope/kind, worktree exclusion and serialization path \u2026 the existing helper delegates to the same internal record writer.'\n- #19 Design34: 'Each record-only port uses a DEDICATED private Workflow writer \u2026 It does not call generic put_record_tx.'\n- Design10: 'BEFORE INSERT existing-key rejection for \u2026 post-epoch managed Workflow Record existing IDs, forbid INSERT OR REPLACE even with recursive_triggers OFF.'\n- Diagnostic section: 'Transaction checks exact Workflow Record version\u2026 Compare complete previous/candidate JSON and Record metadata, rejecting every extra field.'\n- Binder steps 2\u20133 now place full construction and comparison outside the lock.",
+          "fix": "- Rewrite the persistence boundary as a dedicated private writer. It shares the CAS, scope/kind and exclusion checks, writes the exact pre-planned body with a versioned UPDATE, and emits exactly one reserved audit.\n- Inventory every statement that writes a post-epoch managed Workflow Record, and require exact versioned UPDATE rather than REPLACE or upsert. Add a positive control for each writer under the new guard.\n- State that observe_native_diagnostic uses the same outside-lock version-pinned plan, with only the version/endpoint CAS and guarded OLD/NEW projection inside."
+        },
+        {
+          "id": "D10-L2",
+          "severity": "Low",
+          "file": "doc/design/issue-43-binding-mechanics.md",
+          "line": 117,
+          "claim": "Binder step 2 says 'any permitted predecessor comes only from its complete genuine chain'. This can be read as letting an unbound attempt bind at a Workflow version later than the marker. Elsewhere the design says first binding compares the exact marker W.",
+          "evidence": "- Step 2: 'For an original unbound frame, marker W/hash is exact; any permitted predecessor comes only from its complete genuine chain.'\n- Same file: 'An unbound first binder compares that exact original W/body' and 'First binding starts at the exact immutable marker W/hash.'\n- #19 Design33/35: 'Unbound43 binding and unbound failure still compare original W.'\n- Writer table: after terminal_decision 'no new binder \u2026 admission is permitted'.",
+          "fix": "State that the binder always requires the current W to equal the immutable marker W version and body hash, with zero preceding links. Chain-derived predecessors apply only to the diagnostic port and the dependency ports. Add a mutant that accepts a chain-advanced predecessor in the binder and must be killed."
+        },
+        {
+          "id": "D10-L3",
+          "severity": "Low",
+          "file": "doc/design/issue-43-binding-mechanics.md",
+          "line": 896,
+          "claim": "The #43 design and its pinned dependency #19 Design35 describe hold-clearance capacity differently.\n- #43 Design10 reserves a separate gate_hold clear link for every hold written.\n- #19 Design35 folds 'any required hold clearance' into the next gate claim/observed pair.\n- Both documents restrict gate_claim's allowed projection to Evaluating and the claim index, which leaves no place to clear held_reason.\n\nIf implementers follow the #19 wording, a held gate cannot be claimed.",
+          "evidence": "- #43: 'Gate hold/clear8 is FOUR pairs; reserve the clear slot whenever a hold is written.'\n- #19 Design35: 'the configured next gate claim/observed pair must reserve any required hold clearance within its exact allowed projection'.\n- Both gate_claim rows: 'ONLY Evaluating and exact claimed_observations' / 'Evaluating+exact claim index W'.",
+          "fix": "Align both documents on one mechanism. The preferred option is #43's separate reserved gate_hold clear link, with #19 dropping the 'within claim/observed projection' wording. Otherwise, widen the gate_claim projection explicitly and re-derive the link budget. Pin the result in the joint projection goldens."
+        }
+      ],
+      "unresolved_blockers": [],
+      "cleanup_verified": true,
+      "private_result_sha256": "451ba22c2bf9b31753e9b4cbdc63e7523b93745f722f2260c896b6bbcc12f56f"
+    }
+  ],
+  "meter_scope": "raw_native_resumed_session_attribution_unverified"
+}

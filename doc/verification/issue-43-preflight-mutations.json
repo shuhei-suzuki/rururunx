@@ -1,0 +1,85 @@
+{
+  "stage": "negative preflight component only; no positive native/private ownership acceptance",
+  "original_source_sha256": "1083154ead082596fa27d1fb6d0237ac41c31249c9111525a5cca77f03e35d4b",
+  "mutations": [
+    {
+      "mutation": "omit_prepared_admission",
+      "compiled": true,
+      "actual_consumer_failed": true,
+      "failed_consumer": "native_preflight_refuses_before_context_reservation_or_session_writes",
+      "exit": 101,
+      "source_sha256": "df78b282127f9a163ce8135899846934cb64a9bdc013af1a2ae2c5cca057cb93",
+      "log_sha256": "7281bd2636403994bb9c8947cd668e6fda34b23ea09464f1e9a8dc3798f2b4bc",
+      "patch_sha256": "4df0b714180ab316ff4d92f12e644c6c391a59320eb8def14c1c0d2a69814987"
+    },
+    {
+      "mutation": "preflight_after_reservation",
+      "compiled": true,
+      "actual_consumer_failed": true,
+      "failed_consumer": "native_preflight_refuses_before_context_reservation_or_session_writes",
+      "exit": 101,
+      "source_sha256": "ba8ae4f5271301e5fffcaf3a24b9e9a5422a0e6a16f4cb63d348fb2fe37804a2",
+      "log_sha256": "19d4ad9cb2dae3f257cac9598b486f1eb42e76a82e3b3183492173802d4a6b39",
+      "patch_sha256": "6100016f481a4b6d0b800f54c7cc9ad2f048fb89668f7318adaeed7e0d4637ac"
+    },
+    {
+      "mutation": "omit_probe_identity",
+      "compiled": true,
+      "actual_consumer_failed": true,
+      "failed_consumer": "native_preflight_rejects_contradictory_probe_without_durable_mutation",
+      "exit": 101,
+      "source_sha256": "e199f0ad514e45c2b57f2077ad76968ecff68316f0952e73d99c011cb247d1da",
+      "log_sha256": "48a662619e32866457bf738f640f3d339f177cf9912f9e42c9d7d493bad0a309",
+      "patch_sha256": "f0dd339816f40e8e8599c8feb287be39322bdb791561653ff50b7f5e605bb654"
+    },
+    {
+      "mutation": "omit_static_capability",
+      "compiled": true,
+      "actual_consumer_failed": true,
+      "failed_consumer": "native_preflight_refuses_before_context_reservation_or_session_writes",
+      "exit": 101,
+      "source_sha256": "ea150ae63ac6eae3ad3ad72484719d28f8bd9afa946861b4ecdd3d4802f98b30",
+      "log_sha256": "cd6a6892e0c323c6e5fef309c1e145e6dc7e720fb0f3088b0f60141abc38f8c8",
+      "patch_sha256": "914982316c158323c0be8e1b93cddcfc749b5139520e1063b099cc28fd8f0035"
+    },
+    {
+      "mutation": "omit_probe_capability",
+      "compiled": true,
+      "actual_consumer_failed": true,
+      "failed_consumer": "native_preflight_rejects_contradictory_probe_without_durable_mutation",
+      "exit": 101,
+      "source_sha256": "807d511f5fa10a217eef6b1b6e627a2eb82b7c8b161926c9cbaff7badec2533a",
+      "log_sha256": "7860bd4d09bd4fc3d03ad727b8fc7ceb294c35ecea360485fa3bd49d53334575",
+      "patch_sha256": "43db65108b60a93d6961a8b69344a25aacbbae91c0e18886b827452b83748f32"
+    }
+  ],
+  "restored": {
+    "exit": 0,
+    "tests": 3,
+    "log_sha256": "3e5cc8eb79e3ed75a7c0c96942407e88e7e9fa83ff2ca3be407fac76ebf4ad9a"
+  },
+  "full_workflow_positive_fixtures": "await actual19 admission migration; no full regression/CI acceptance",
+  "source_head": "b39b727bb7c741381f3d0ef121d39c6352ae6048",
+  "source_files": {
+    "crates/rrx/src/adapter.rs": "1f206b7c8ff579622846841feeee17273f75b48239c1817a13dfda11353f3ee2",
+    "crates/rrx/src/workflow.rs": "1083154ead082596fa27d1fb6d0237ac41c31249c9111525a5cca77f03e35d4b",
+    "crates/rrx/src/workflow/tests.rs": "187727523772e14786b5cc5b274a611d8940595c14bc363c308f0f059c34567b"
+  },
+  "unmigrated_legacy_positive": {
+    "test": "workflow::tests::all_presets_drive_real_adapter_calls_and_persist_phase_context_history",
+    "result": "failed; actual19 preparation/admission fixture migration pending",
+    "exit": 101,
+    "cause": "missing PreparedInputAdmission",
+    "log_sha256": "002b8747c86944488067e0ab01d91937deff7df4809d9891894cde9fdd048908"
+  },
+  "checks": {
+    "fmt": "pass",
+    "clippy_locked_workspace_all_targets_D_warnings": "pass",
+    "debug_build": "pass",
+    "release_build": "pass",
+    "full_regression_and_CI": "not qualified; unmigrated positive workflow fixture fails",
+    "native_positive": "not qualified",
+    "debug_build_log_sha256": "5cf9d29af75fd6a800d75734efa8ea5744940a5b91c23bdc88b7f4793fbe04d0",
+    "release_build_log_sha256": "e9989f68f6bdfd29880158c2b45156585018d012d6ac6a87d7af6cecbf02e6c7"
+  }
+}

@@ -32,6 +32,10 @@ struct FakeAgent {
     statuses: Mutex<BTreeMap<SessionId, SessionStatus>>,
     start_pause: Mutex<Option<Arc<Pause>>>,
     start_error: AtomicBool,
+    probe_override: Mutex<Option<AgentInfo>>,
+    capabilities_override: Mutex<Option<BTreeSet<Capability>>>,
+    probes: AtomicUsize,
+    probe_error: AtomicBool,
 }
 impl FakeAgent {
     fn new(name: &str, store: SharedStore, review: bool) -> Self {
@@ -46,11 +50,18 @@ impl FakeAgent {
             statuses: Mutex::new(BTreeMap::new()),
             start_pause: Mutex::new(None),
             start_error: AtomicBool::new(false),
+            probe_override: Mutex::new(None),
+            capabilities_override: Mutex::new(None),
+            probes: AtomicUsize::new(0),
+            probe_error: AtomicBool::new(false),
         }
     }
 }
 impl AgentAdapter for FakeAgent {
     fn capabilities(&self) -> BTreeSet<Capability> {
+        if let Some(capabilities) = self.capabilities_override.lock().unwrap().as_ref() {
+            return capabilities.clone();
+        }
         BTreeSet::from([
             if self.review {
                 Capability::Review
@@ -61,6 +72,13 @@ impl AgentAdapter for FakeAgent {
         ])
     }
     fn probe(&self) -> AdapterResult<AgentInfo> {
+        self.probes.fetch_add(1, Ordering::SeqCst);
+        if self.probe_error.load(Ordering::SeqCst) {
+            return Err(adapter_error("controlled probe failure"));
+        }
+        if let Some(info) = self.probe_override.lock().unwrap().as_ref() {
+            return Ok(info.clone());
+        }
         Ok(AgentInfo {
             agent: self.name.clone(),
             provider: "fake".into(),
@@ -490,6 +508,227 @@ impl Fixture {
         }
         panic!("phase not reached");
     }
+}
+
+// Staged #43 negative coverage: these legacy fixtures have no genuine #19
+// prepared-input owner and MUST NOT advertise the new admission capability.
+#[tokio::test]
+async fn native_preflight_refuses_before_context_reservation_or_session_writes() {
+    let fixture = Fixture::new(WorkflowClass::Quick);
+    fixture
+        .engine
+        .initialize(fixture.task.id, None)
+        .await
+        .unwrap();
+    fixture.through(Phase::Worktree).await;
+    fixture
+        .engine
+        .hold(
+            fixture.engine.read(fixture.task.id).unwrap(),
+            None,
+            Phase::Implement,
+            "existing pre-dispatch attention",
+        )
+        .unwrap();
+    let state = || {
+        let store = fixture.store.lock().unwrap();
+        json!({
+            "project": store.project(fixture.task.project_id).unwrap(),
+            "goal": store.goal(fixture.task.goal_id).unwrap(),
+            "task": store.task(fixture.task.id).unwrap(),
+            "workflow": store.records(&fixture.task.scope(), RecordKind::Workflow).unwrap(),
+            "context": store.context(&fixture.task.scope(), None).unwrap(),
+            "sessions": store.records(&fixture.task.scope(), RecordKind::Session).unwrap(),
+            "locks": store.records(&fixture.task.scope(), RecordKind::WorktreeLock).unwrap(),
+            "audit": store.events(&fixture.task.scope(), 0, 1000).unwrap(),
+        })
+    };
+    let before = state();
+    let captures = fixture.sources.captures.load(Ordering::SeqCst);
+    for _ in 0..2 {
+        let error = fixture
+            .engine
+            .step(fixture.task.id, BTreeMap::new())
+            .await
+            .unwrap_err();
+        assert_eq!(
+            error.downcast_ref::<NativePreflightRefusal>(),
+            Some(&NativePreflightRefusal::MissingCapability(
+                Capability::PreparedInputAdmission
+            )),
+            "{error:#}"
+        );
+        assert_eq!(
+            state(),
+            before,
+            "refusal must leave all durable facts unchanged"
+        );
+        assert!(fixture.executor.launches.lock().unwrap().is_empty());
+        assert!(fixture.reviewer.launches.lock().unwrap().is_empty());
+        assert_eq!(
+            fixture.executor.probes.load(Ordering::SeqCst),
+            0,
+            "unsupported implementation must refuse before probing helpers"
+        );
+    }
+    assert_eq!(
+        fixture.sources.captures.load(Ordering::SeqCst),
+        captures + 2,
+        "each refusal captures policy once, without preparing a new pack"
+    );
+}
+
+#[tokio::test]
+async fn native_preflight_rejects_contradictory_probe_without_durable_mutation() {
+    for case in 0..8 {
+        let fixture = Fixture::new(WorkflowClass::Quick);
+        fixture
+            .engine
+            .initialize(fixture.task.id, None)
+            .await
+            .unwrap();
+        fixture.through(Phase::Worktree).await;
+        // Spoofed descriptors are NEGATIVE inputs, never genuine allocation proof.
+        let mut info = fixture.executor.probe().unwrap();
+        info.capabilities.insert(Capability::PreparedInputAdmission);
+        let mut advertised = info.capabilities.clone();
+        let expected = match case {
+            0 => {
+                info.agent = "foreign".into();
+                NativePreflightRefusal::IdentityMismatch
+            }
+            1 => {
+                info.provider = "  ".into();
+                NativePreflightRefusal::IdentityMismatch
+            }
+            2 => {
+                info.capabilities.remove(&Capability::Execute);
+                NativePreflightRefusal::MissingCapability(Capability::Execute)
+            }
+            3 => {
+                advertised.remove(&Capability::Execute);
+                NativePreflightRefusal::MissingCapability(Capability::Execute)
+            }
+            4 => {
+                info.capabilities
+                    .remove(&Capability::PreparedInputAdmission);
+                NativePreflightRefusal::MissingCapability(Capability::PreparedInputAdmission)
+            }
+            5 => {
+                advertised.remove(&Capability::PreparedInputAdmission);
+                NativePreflightRefusal::MissingCapability(Capability::PreparedInputAdmission)
+            }
+            // Even a fully consistent descriptor cannot enter the legacy binder.
+            6 => NativePreflightRefusal::ManagedBindingUnavailable,
+            7 => {
+                fixture.executor.probe_error.store(true, Ordering::SeqCst);
+                NativePreflightRefusal::ProbeFailed
+            }
+            _ => unreachable!(),
+        };
+        *fixture.executor.capabilities_override.lock().unwrap() = Some(advertised);
+        *fixture.executor.probe_override.lock().unwrap() = Some(info);
+        let state = || {
+            let store = fixture.store.lock().unwrap();
+            json!({
+                "project": store.project(fixture.task.project_id).unwrap(),
+                "goal": store.goal(fixture.task.goal_id).unwrap(),
+                "task": store.task(fixture.task.id).unwrap(),
+                "workflow": store.records(&fixture.task.scope(), RecordKind::Workflow).unwrap(),
+                "context": store.context(&fixture.task.scope(), None).unwrap(),
+                "sessions": store.records(&fixture.task.scope(), RecordKind::Session).unwrap(),
+                "locks": store.records(&fixture.task.scope(), RecordKind::WorktreeLock).unwrap(),
+                "audit": store.events(&fixture.task.scope(), 0, 1000).unwrap(),
+            })
+        };
+        let before = state();
+        let error = fixture
+            .engine
+            .step(fixture.task.id, BTreeMap::new())
+            .await
+            .unwrap_err();
+        assert_eq!(
+            error.downcast_ref::<NativePreflightRefusal>(),
+            Some(&expected),
+            "case {case}: {error:#}"
+        );
+        if case == 7 {
+            assert_eq!(
+                error.downcast_ref::<AdapterError>().unwrap().kind,
+                ErrorKind::UnsupportedCapability
+            );
+        }
+        assert_eq!(state(), before, "case {case} must not reserve or launch");
+        assert!(fixture.executor.launches.lock().unwrap().is_empty());
+    }
+}
+
+#[test]
+fn native_preflight_requires_selected_reviewer_and_implementation_admission() {
+    let fixture = Fixture::new(WorkflowClass::Quick);
+    let mut task = fixture.task.clone();
+    task.reviewers.clear();
+    let error = fixture
+        .engine
+        .preflight_native_adapter(&task, Phase::ImplementationReview)
+        .err()
+        .expect("missing reviewer must refuse");
+    assert_eq!(
+        error.downcast_ref::<NativePreflightRefusal>(),
+        Some(&NativePreflightRefusal::MissingReviewer)
+    );
+    task.reviewers = vec!["missing".into()];
+    let error = fixture
+        .engine
+        .preflight_native_adapter(&task, Phase::ImplementationReview)
+        .err()
+        .expect("unregistered reviewer must refuse");
+    assert_eq!(
+        error.downcast_ref::<NativePreflightRefusal>(),
+        Some(&NativePreflightRefusal::AdapterUnavailable)
+    );
+    assert_eq!(
+        error.downcast_ref::<AdapterError>().unwrap().kind,
+        ErrorKind::InvalidConfiguration
+    );
+    task.reviewers = vec!["executor".into()];
+    let error = fixture
+        .engine
+        .preflight_native_adapter(&task, Phase::ImplementationReview)
+        .err()
+        .expect("executor role does not grant review");
+    assert_eq!(
+        error.downcast_ref::<NativePreflightRefusal>(),
+        Some(&NativePreflightRefusal::MissingCapability(
+            Capability::Review
+        ))
+    );
+    task.reviewers = vec!["reviewer".into()];
+    let error = fixture
+        .engine
+        .preflight_native_adapter(&task, Phase::ImplementationReview)
+        .err()
+        .expect("legacy reviewer has no private admission producer");
+    assert_eq!(
+        error.downcast_ref::<NativePreflightRefusal>(),
+        Some(&NativePreflightRefusal::MissingCapability(
+            Capability::PreparedInputAdmission
+        ))
+    );
+    assert!(
+        !fixture
+            .executor
+            .capabilities()
+            .contains(&Capability::PreparedInputAdmission)
+    );
+    assert!(
+        !fixture
+            .reviewer
+            .capabilities()
+            .contains(&Capability::PreparedInputAdmission)
+    );
+    assert!(fixture.executor.launches.lock().unwrap().is_empty());
+    assert!(fixture.reviewer.launches.lock().unwrap().is_empty());
 }
 
 #[tokio::test]

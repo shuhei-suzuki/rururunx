@@ -1,0 +1,10 @@
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -1126,7 +1126,6 @@
+                 return Err(NativePreflightRefusal::MissingCapability(required).into());
+             }
+         }
+-        require_managed_native_binding_composed()?;
+         Ok(NativeAdapterSelection {
+             adapter,
+             agent: agent.clone(),
