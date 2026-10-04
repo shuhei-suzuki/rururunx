@@ -101,3 +101,15 @@ Actual multi-hold recovery and fence-order consumers/mutants remain required.
 Requirements7 review pending, with no actual successor/runtime/profile implemented.
 Exact Req6 CI37205124028 passed Linux/macOS fmt/clippy/tests/debug and release
 builds (individual steps inspected), without erasing the preserved earlier red.
+
+Requirements7 a2c5df0 completed two independent native request_changes reviews,
+one Medium each, with actual v3 owned cleanup verified. Verified shared liveness
+gap: retained prior recovery intent/effects and original holds can belong to different
+former epochs; single-proof adoption cannot resolve that mandated retained state.
+Requirements8 permits one private bounded successor closure with genuine per-instance
+fencing proofs, including recovery-of-recovery. Replacement intent reservation is
+only the reviewed #14 private CAS protocol and releases/adopts nothing before fencing.
+Live/unfenced/truncated scopes still refuse; actual crash-at-fence/reconciliation and
+two-former-instance consumer controls/mutants are required. No successor/profile/
+recovery source exists here, and mandatory production #14 readiness remains open.
+Requirements8 review pending; no new native defaults, source or acceptance claim.

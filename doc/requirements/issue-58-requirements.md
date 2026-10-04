@@ -1,7 +1,7 @@
 # Issue 58: Retained ownership of Task-free native Consultant work
 
 Workflow: STRICT (native ownership, durable authority and Project exclusion).
-Status: Requirements7; verified independent Req1–Req6 gaps corrected below;
+Status: Requirements8; verified independent Req1–Req7 gaps corrected below;
 requirements/design/source gates pending.
 Baseline: main80452f4/schema3. MVP follow-up from #6 F1 and #19; see
 [Issue58](https://github.com/shuhei-suzuki/rururunx/issues/58).
@@ -194,23 +194,35 @@ results do not prove Workflow transport success. Preserve that scope.
   cannot fabricate death or unlock replay. Lost remains absorbing in ordinary APIs.
   Reviewed #14 recovery is a separate EXCLUSIVE successor protocol, not an ordinary
   competing observer required to treat Lost as compatible. Before any recovery
-  effect, first commit exclusive private recovery intent/owner for the exact former
-  runtime instance/epoch and bounded physical closure, retaining EVERY original hold.
+  effect, first commit exclusive private successor recovery intent/owner for the
+  complete bounded physical closure and EVERY former runtime instance/epoch involved,
+  retaining EVERY original hold. A previous crashed recovery intent and its partial
+  fence/inspection/reconciliation effects are themselves retained recoverable owners.
+  Only the reviewed #14 successor protocol may atomically reserve their replacement:
+  it references exact prior intent/versions and extends the retained exclusive scope
+  without releasing/adopting their holds or granting ordinary native/job authority.
+  Competing successors use the same private CAS; none can fence through a caller label.
+  Reserving replacement does not prove the prior recovery owner dead or settled.
   Actual fencing itself is owned by that intent's #6/#60 recovery effect capability;
   a crash/partial fence retains its recovery reservation/attention. A still-live
   legitimate instance is a conflict unless its exact controlled shutdown/fencing
   is separately authorized by reviewed #14 policy; missing PID/heartbeat or a
   restart label never authorizes arbitrary killing/adoption. Genuinely fence/exclude
-  the exact former supervisors/workloads through the actual #6/#60 resource profile
+  EACH exact former supervisor/workload, including the prior recovery owner and its
+  effects, through its actual #6/#60 resource profile
   and private runtime-instance/epoch CAS. Epoch/row/
   boot/PID labels alone cannot prove the former native/helper effects fenced.
   Atomically adopt the COMPLETE closed set of intersecting uncertain holds and
-  reservations covered by that SAME genuine former-instance/epoch fencing proof
-  into ONE private successor, all-or-nothing WITHOUT releasing any hold. Adopted
+  reservations covered by the UNION of genuine per-instance/epoch fencing proofs
+  inside the ONE new intent into ONE private successor, all-or-nothing WITHOUT releasing any hold. Adopted
   members are one successor's scope, not mutual competing owners. Prove physical
   closure/current versions and every other hold/lock; refuse live, unfenced or
-  outside-proof intersections. A partial adoption cannot proceed against a leftover
-  intersecting member. Missing/truncated scope proof keeps the intent and holds,
+  outside-proof intersections. Another former instance is not itself a conflict
+  once its exact effects have a genuine proof inside this intent. An already-retained
+  recovery intent cannot make safe recovery permanently impossible merely through
+  its old exclusive row; only this actually owned/fenced successor protocol replaces
+  it, with every member retained until atomic complete adoption. A partial adoption
+  cannot proceed against a leftover intersecting member. Missing/truncated scope proof keeps the intent and holds,
   never an implicit global fence/release. Inspection/reconciliation runs under the
   actual #60 recovery effect owner
   and adopted scope, with no new native input or authority from historical rows.
@@ -329,6 +341,15 @@ partial worktree-removal reservations intersecting one root, through actual owne
 recovery intent/fence and atomic full-set adoption. Independently reject live/
 unfenced/outside-proof peers. Mutate partial-set adoption, adoption outside fencing
 proof and unowned pre-intent fence effects; restore real no-release positives.
+Then crash the recovery itself after intent commit/partial fence AND after partial
+owned reconciliation; a later actual successor reserves replacement without release,
+genuinely fences both the original owners and prior recovery owner/effects, adopts
+the complete union and settles. Separately recover compatible intersecting holds
+from two crashed former instances. Refuse a live/unfenced prior recovery. Kill
+missing-prior-owner fencing, silently omitted/released prior-intent members and
+row-only replacement mutants at actual recovery/admission consumers. Full closure
+and all proofs must fit reviewed finite bounds; exhaustion holds with attention,
+never truncated completeness or a blanket global fence.
 
 Run shared-state/native/Git/registry/Workflow regressions, fmt/clippy/build, exact
 Linux/macOS CI and independent immutable source reviews. Update README/master
