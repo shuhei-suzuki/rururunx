@@ -668,7 +668,9 @@ impl ClaudeAdapter {
             agent: self.agent.clone(),
             provider: "claude".into(),
             role: request.role,
-            native_ref: None,
+            // Retain only an already privately proved native identity during
+            // a fresh continuation. Identity is not current-attempt outcome.
+            native_ref: resume.as_ref().and_then(|old| old.native_ref.clone()),
             pid: None,
             worktree: request.worktree.clone(),
             state: SessionState::Starting,
@@ -2668,6 +2670,22 @@ for line in sys.stdin:
                 .kind,
             ErrorKind::StateConflict
         );
+        // The real resume caller's first Starting write must retain the known
+        // UUID and the exact prior-terminal restore proof before native starts.
+        let connection = rusqlite::Connection::open(
+            fixture
+                .request
+                .project
+                .root
+                .parent()
+                .unwrap()
+                .join("state.sqlite3"),
+        )
+        .unwrap();
+        connection.execute_batch(&format!(
+            "CREATE TRIGGER fixture_continuation_owner BEFORE UPDATE ON records WHEN json_extract(NEW.body,'$.data.state')='STARTING' AND json_extract(NEW.body,'$.data.recovery.input_version')=2 BEGIN SELECT CASE WHEN json_extract(NEW.body,'$.data.native_ref') IS NOT '{}' OR json_extract(NEW.body,'$.data.recovery.pre_dispatch_restore_sha256') IS NOT '{}' THEN RAISE(ABORT,'continuation lost owner or exact restore proof') END; END;",
+            session.native_ref.as_ref().unwrap(), restore_sha256(&previous.session).unwrap()
+        )).unwrap();
         executable(&temp, "mcp");
         assert_eq!(
             adapter.resume((&session).into()).await.unwrap_err().kind,
