@@ -266,8 +266,8 @@ can establish prior admission; a caller cannot install an ack by selecting field
 that match an unrelated row.
 
 The launch guard returns a typed outcome: `Validated`, `ConsumedHistorical`,
-`Acked`, `BoundHistorical`, `RestoredPrior`, or `NotAdmission`. Classify an exact
-`RestoredPrior` before any new-intent or actor-binding classification. It requires
+`Acked`, `BoundHistorical`, `RestoredPrior`, or `NotAdmission`. First enforce structural byte/depth/node bounds (without interpreting old input/intent authority); then classify an exact
+`RestoredPrior` before strict typed DTO/input-namespace parsing, any new-intent or actor-binding classification. Only nonrestored protected updates enter strict typed parsing. It requires
 old pending Starting, new terminal non-Lost, exact new complete-body canonical
 checksum == both stored old restore proof and private frozen preparation checksum,
 no admitted pair/consumed UUID for the pending version, and no old/new uncertainty.
@@ -368,8 +368,8 @@ unverified caller claim. Successful prewire restoration was separately checked
 at its Session update; retaining this frozen checksum permits causal closure
 verification after the pending Session body has been replaced.
 The current older terminal digest/version need NOT match the fresh attempt; this
-exception applies only to Failed/Interrupted closure, never fresh binding or
-Succeeded. Retain an already bound session_id unchanged; leave None when no binding
+exception applies to non-success failure/interruption or explicit retry replacement of that allocated attempt, never fresh binding or
+Succeeded. Every removal/replacement of an allocated active attempt under every WorkflowAccess invokes this same owner/terminal/current-input-or-restored predicate, including retry from Waiting or Failed: there is no state-label exemption. Retain an already bound session_id unchanged; leave None when no binding
 occurred. Do not clear/rebind the ID to make the predicate pass. The failed pending
 preparation alone is not delivery proof. Test restoration both before and after
 legitimate PreparedPending binding, using independent Store connections and a
@@ -440,7 +440,7 @@ Issue linking is query-label bookkeeping, as in the existing Task writer. Raw
 Engine-owned Task.artifacts is capture-status metadata; authoritative verification
 artifacts remain separately scoped typed refs with physical content hashes. Phase/source-synchronized revision, workflow/
 risk, blockers/next_action, lifecycle/pointers/versions/timestamps are separate
-phase or captured status. Task.revision is verified against physical captured Git
+phase or captured status. For Workflow-owned Tasks, blockers and next_action are Engine-owned writer-pinned fields: generic put_task/put_task_tx rejects changes, exactly as it pins workflow/risk/context/phase/artifacts. Only the atomic Workflow writer may synchronize them. This is required because they are excluded from the phase-stable instruction digest, and no generic operator update may become an unfenced model-visible instruction. Task.revision is verified against physical captured Git
 HEAD and frame revision. Engine effective workflow/risk/budget is immutable phase
 wrapper/attempt authority, not a phase-stable source hash.
 
@@ -1090,8 +1090,8 @@ overflow, no pair/audit writes, and preserve-order fractional checksum compatibi
 
 ### Restoration ordering, historical CAS and typed Workflow scope
 
-Exact `RestoredPrior` classification precedes ObservationOnly novelty rejection,
-new dispatch detection, initial actor-binding classification and live-head checks.
+The complete order is structural bounds → exact `RestoredPrior` checksum/classification → strict protected input/deny-unknown consumed DTO parsing for nonrestored updates → outcome-specific currency checks. Exact restoration precedes ObservationOnly novelty rejection,
+new dispatch detection, initial actor-binding classification and live-head checks. A legacy prior intent such as {input_version,prompt_id} is restored as exact bounded historical body content, not parsed as a new schema6 consumed DTO. At fresh preparation, bound/checksum the prior terminal before storing a restore proof; an oversized/unrestorable prior body cannot create a pending allocation.
 It may reinstate the exact prior terminal's old consumed intent without consuming
 it anew. Session version CAS and immutable scope/owner checks still apply; the
 private current-input preparation and frozen prior checksum remain unchanged.
@@ -1242,3 +1242,122 @@ public exact-source old-writer artifacts independently prove their stated builds
 a future deployed hotfix/feature-set artifact must join the compatibility matrix
 with its own source tree/binary identity before supported upgrade. Never infer the
 identity of an operator's binary from a commit label.
+
+
+### Complete observation and failed-publication contract
+
+Workflow-owned blockers/next_action are mutable only through the existing atomic
+Workflow transition and must remain writer-pinned in generic Task updates. Operators
+may request a lifecycle hold through the existing permitted WaitingHuman state
+transition with these fields unchanged, or publish actual constraints/criteria. No
+new generic directive field is excluded from semantic hashing without an explicit
+owner-writer fence. Test a generic blockers/next_action update after reservation but
+before adapter ScopeSnapshot capture: it rejects, source authority stays unchanged
+and no new directive reaches the model. Actual Engine status synchronization and
+operator lifecycle holds remain positive controls. Mutate each writer pin separately.
+
+A rejected pending native-binding CAS is not permission to publish the in-memory
+mutated Session as Failed/Lost. Each provider tracks the last successfully persisted
+owned Session and attempt/version. Following rejection, it observes/rechecks that
+exact same owned attempt; a newer foreign or higher-input attempt is never adopted
+or overwritten. Its cleanup/terminal body preserves those persisted actor/input
+pins. A privately prepared, current-input pending Starting with no admission, no
+consumption and no native-dispatch uncertainty may become Failed after authoritative
+owned no-dispatch cleanup, matching its preparation tuple without a live-head check.
+This records failure, not new permission. Actually consumed or uncertain input keeps
+its monotonic intent/uncertainty and conservative Lost ownership; restoration is
+not allowed. If own Session CAS/ownership changed, retain owned process bookkeeping
+and surface attention rather than clobbering another attempt. Historical binding
+publication holds likewise do not silently adopt rejected Some actor fields.
+
+Test actual Generic/Claude/Codex/Grok callers: head or lifecycle changes immediately
+before pending/combined binding CAS, rejected in-memory None→Some fields, zero new
+PreparedInput wire, and successful exact-persisted-pins Failed cleanup where no
+dispatch occurred. Repeat with uncertainty/consumption (held), a concurrent higher
+attempt (unchanged), and pending-before/after legitimate Workflow binding. These
+controls use real private preparation, not seeded admission rows.
+
+Every non-Succeeded removal/replacement of an allocated attempt checks exact owner,
+terminal non-Lost/non-uncertain state and current preparation/admission pins, or the
+exact RestoredPriorNotAdmitted alternative. This includes retry while old attempt
+state is Waiting or Failed, escalation/invalidation and all WorkflowAccess paths.
+An unbound allocated live actor is still ownership. Preserve the separate #41
+claim-owner/observer-release policy; this predicate does not manufacture owner death.
+Test active Waiting→None retry with a different-input terminal Session rejects,
+then exact current failed preparation or frozen older restoration permits closure.
+Succeeded always uses its stronger unconditional admitted+consumed predicate.
+
+### Post-consumption operation decisions and transport journal
+
+Canonical recovery.dispatch_intent is exclusively the typed prepared-frame consumed
+DTO, immutable for its (Session,input_version). Permission/tool replies and terminal
+transport startup/input must not replace it. Their separately scoped diagnostic
+operation journal uses recovery.operation_intent or recovery.transport_intent, with
+operation ID, decision/transport kind and reply attribution. That journal is never a
+credential for model-input admission, phase allocation, native ACK or recovery.
+
+ALLOW retains the actual Broker operation authority plus full current NativeCAS
+P/G/T/lock/own-Session checks immediately before wire. It may record a separate
+operation intent while the input outcome is Acked, but no historical exemption may
+grant ALLOW. DENY does not grant authority: the generic ObservationOnly write uses
+Acked only when the exact new admitted actor/input tuple and consumed UUID remain
+unchanged. Existing Project activity/Blocked, worktree and own-Session CAS/write
+constraints remain; a Task metadata/version revocation can still permit the existing
+owned denial path, whereas ProjectBlocked or failed own publication stops before
+wire. WaitingApproval→Running after a fixed typed reply is historical Acked, not
+a new prepared consumption; preserve current activity/worktree constraints.
+
+Actual writer inventory to migrate and causally test: Claude automatic DENY and
+Broker ALLOW/DENY overwrite sites, ordinary post-reply lifecycle publication,
+terminal_start and terminal_input, plus any SQL test/audit consumers of those keys;
+Codex answer_approval already preserves dispatch_intent but its post-reply generic
+Running publication must retain the exact admitted tuple; Grok callbacks retain
+the one prepared consumption and separately attributed audit/filesystem evidence.
+Test stale Task metadata DENY→wire with unchanged private input pair, ProjectBlocked
+DENY→no wire, stale ALLOW→no wire, current ALLOW→wire, after-reply historical Running,
+and transport-only input→no fabricated prepared ACK/consumed replacement. Assert
+byte-identical canonical consumed DTO and private allocation/pairs in every control.
+No free-text protected live input becomes permitted by this journal distinction.
+
+### Epoch, universal history and compatibility impact
+
+Lost remains absorbing for every Scope; an already terminal Session also cannot
+be relabeled Lost to fabricate new operational ownership. Legitimate initial
+terminal factual/Consultant history remains allowed. Only future reviewed private
+#14 recovery can change held Lost authority; no JSON terminal label is recovery.
+
+The phase-owner reader needs an explicit migration epoch to distinguish old typed
+contexts without allocations from post6 absence violations. Private fenced table
+context_admission_epochs(Project,Goal,Task,boundary_context_version) captures each
+existing Task's largest persisted owned ContextVersion at migration (zero if none),
+in the same transaction; new Task creation atomically installs boundary zero. Rows
+are immutable, scoped by FKs and never caller JSON. Missing rows on an existing Task
+are corruption, not an optional fallback. Pre6 versions ≤ boundary return
+NotApplicable as read-only history, never fresh admission/binding/success. All new
+typed native attempts require version > boundary plus actual allocation; old
+contexts must publish a consecutive higher attempt rather than being readopted.
+Include this table in every writer fence, migration schema equality and old-writer
+coverage. Standalone and EvidencePort retain their separately classified scope.
+
+Enabling serde_json float_roundtrip is an application-wide parse change, not only a
+restore hash option. Inventory and golden-test all persisted JSON round-trip/equality
+consumers: nested Session diagnostics, Usage estimated_cost, native owned-map
+current()/resume equality and checkpoint legacy digest preservation. Compare prior
+and enabled feature artifacts with fractional and large-integer fixtures. Unsupported
+legacy checkpoint numeric authority refuses migration unchanged; do not silently
+rewrite its digest. Verify explicit initial native UUID/startup binding with public
+provider source/caller fixtures, retaining pending-vs-actual acceptance labels.
+
+The supported old-writer matrix includes actual already-open old4 and both identified
+old5 binaries: held connections/cached statements created before migration, all
+public owner/Session/metadata/audit mutations and private table fence enumeration.
+Fresh old-binary refusal is an additional test, not a substitute for alive writers.
+All old runtimes/native services still must be explicitly drained before upgrade.
+
+Checkpoint condensation is an artifact contract. Ongoing autonomous Workflow
+checkpoint publication/progress is not claimed until #23 integrates lifecycle/source
+version separation and phase checkpoint ordering; an own checkpoint head append can
+legitimately invalidate a current pending phase. Deterministic condensation fixtures
+do not prove that progress integration. After schema6 source/integration acceptance,
+move implemented normative invariants back into the master current-state contract;
+pre-code design discussion never relabels current schema5 source as schema6-ready.

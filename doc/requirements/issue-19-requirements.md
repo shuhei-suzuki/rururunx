@@ -341,3 +341,26 @@ are not atomically fenced by SQLite. Upgrade past schema5 generic Lost settlemen
 is explicitly operator-attested old cleanup history, not provable from terminal
 labels/audit JSON; newly persisted Lost remains absorbing. Actual binary identities
 and all Engine context consumers are part of impact and compatibility evidence.
+
+
+Workflow-owned blockers/next_action are Engine-only writer-pinned capture metadata;
+generic Task directives cannot change unfenced input. Every allocated non-success
+closure/retry checks the exact owner's current input or immutable prior restoration,
+even when the old attempt was Waiting. Failed prewire binding publication must use
+last successfully persisted own-attempt pins for factual no-dispatch cleanup, never
+rejected in-memory bindings or a foreign newer attempt.
+
+Prepared-input consumption is separate from operation/transport journals. Permission
+ALLOW remains full-current NativeCAS/Broker authority; historical DENY/post-reply
+observations retain exact admitted input and consumed UUID with existing activity/
+worktree/own-Session constraints. ProjectBlocked denial remains no-wire; no journal
+creates prepared input admission. All real provider writers and SQL/audit consumers
+are acceptance inventory.
+
+Migration records immutable per-Task context epochs so pre6 typed history is
+NotApplicable and never re-adopted; post6 missing allocation fails closed. Bounds
+precede exact prior restoration, which precedes strict new consumed DTO parsing.
+Already terminal Sessions cannot become Lost; existing Lost remains universally held.
+Native held-open old4/old5 writers and full JSON feature/equality impact are required
+compatibility proofs. Workflow checkpoint-progress integration remains #23; artifact
+condensation alone does not claim native runtime checkpoint progress.
