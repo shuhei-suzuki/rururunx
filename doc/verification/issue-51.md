@@ -395,3 +395,16 @@ with cause AND regression UNKNOWN. No oldhead rerun, retroactive pass, causal re
 or native availability claim. New passes concern this composed source only. Full60/
 readerEOF/workload ownership/F1/native16/whole-native readiness stayOPEN;51 acceptance
 remains scoped synthetic environment boundaries, not installedauth/model inference.
+
+
+Before finite composition review, normal merge9bb6b9e adds independently approved
+mainb8 legacy usage reader identity/NULL-scope checks without conflict.
+[Reader composition classification](issue-51-legacy-read-composition.json):27line
+Store::usage read-only query/validation; no Session/CAS/environment/execution source
+change. All native/admission/diagnostic consumer inputs remain byte-identical068;
+Store::usage has no production caller beyond its declaration (Adapter.usage is a
+separate method). Current affected State target16/16PASS; prior full068 modes remain
+separately scoped, no full9bb local count invented. Public current-source CI and
+finite two-reviewer composition review remain required. Old failure/cause/regression
+limits are unchanged. Future independent legacy decode projection is not part of
+this immutable review; no waiting for unrelated uncommitted source.

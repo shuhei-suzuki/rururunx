@@ -1,0 +1,62 @@
+{
+  "merge_head": "9bb6b9ee99ee738d2a2c9f138dcfdbb9cf4dccc9",
+  "parents": [
+    "2ef0e031dba4bd1c0d1a8cef4b5ba7c8d5463bea",
+    "b8b1906b30f428bcc38d447f3d08d13eb6bb921a"
+  ],
+  "conflicts": false,
+  "incoming_source": "27line legacy Store::usage read-only query/scope-shape/row-body identity guard; no Session/CAS/environment/execution changes",
+  "source_diff": "diff --git a/crates/rrx/src/state/mod.rs b/crates/rrx/src/state/mod.rs\nindex 307cd2f..047fe0d 100644\n--- a/crates/rrx/src/state/mod.rs\n+++ b/crates/rrx/src/state/mod.rs\n@@ -947,16 +947,37 @@ impl Store {\n     }\n \n     pub fn usage(&self, scope: &Scope) -> Result<Vec<Usage>> {\n-        let mut statement = self.connection.prepare(\"SELECT body FROM usage WHERE project_id=?1 AND (?2 IS NULL OR goal_id=?2) AND (?3 IS NULL OR task_id=?3) ORDER BY sequence\")?;\n+        validate_scope(scope)?;\n+        let mut statement = self.connection.prepare(\"SELECT project_id,goal_id,task_id,session_id,body FROM usage WHERE project_id=?1 AND (?2 IS NULL OR goal_id=?2) AND (?3 IS NULL OR task_id=?3) ORDER BY sequence\")?;\n         let rows = statement.query_map(\n             params![\n                 scope.project_id.to_string(),\n                 str_id(scope.goal_id),\n                 str_id(scope.task_id)\n             ],\n-            |row| row.get::<_, String>(0),\n+            |row| {\n+                Ok((\n+                    row.get::<_, String>(0)?,\n+                    row.get::<_, Option<String>>(1)?,\n+                    row.get::<_, Option<String>>(2)?,\n+                    row.get::<_, String>(3)?,\n+                    row.get::<_, String>(4)?,\n+                ))\n+            },\n         )?;\n-        rows.map(|row| decode(row?)).collect()\n+        rows.map(|row| {\n+            let (project, goal, task, session, body) = row?;\n+            let usage: Usage = decode(body)?;\n+            ensure!(\n+                usage.scope.project_id.to_string() == project\n+                    && str_id(usage.scope.goal_id) == goal\n+                    && str_id(usage.scope.task_id) == task\n+                    && usage.session_id.to_string() == session,\n+                \"usage row/body identity mismatch\"\n+            );\n+            Ok(usage)\n+        })\n+        .collect()\n     }\n \n     pub fn audit(&mut self, scope: &Scope, kind: &str, data: Value) -> Result<()> {\n",
+  "unchanged_native_environment_and_diagnostic_inputs": {
+    "crates/rrx/src/state/environment.rs": {
+      "prior068_blob": "8f7f937b90751540a5f5bcbbaffa8befb5af257c",
+      "current9bb_blob": "8f7f937b90751540a5f5bcbbaffa8befb5af257c"
+    },
+    "crates/rrx/src/state/native_dispatch_tests.rs": {
+      "prior068_blob": "235ce98943278f7a31f8c9baa42f1ddc426c1b03",
+      "current9bb_blob": "235ce98943278f7a31f8c9baa42f1ddc426c1b03"
+    },
+    "crates/rrx/src/adapter.rs": {
+      "prior068_blob": "748e71bbf3cd088c2861588e3d9172353ed7e97b",
+      "current9bb_blob": "748e71bbf3cd088c2861588e3d9172353ed7e97b"
+    },
+    "crates/rrx/src/adapter/grok/mod.rs": {
+      "prior068_blob": "c4c241dbc81db2e2ab4073633005481205ef7312",
+      "current9bb_blob": "c4c241dbc81db2e2ab4073633005481205ef7312"
+    },
+    "crates/rrx/src/adapter/grok/environment.rs": {
+      "prior068_blob": "1382f391407cb739a805f62b1f816845d0ae1c1d",
+      "current9bb_blob": "1382f391407cb739a805f62b1f816845d0ae1c1d"
+    },
+    "crates/rrx/src/adapter/grok/environment_tests.rs": {
+      "prior068_blob": "35a96977f47241f332b5d536bb786f3391db39ed",
+      "current9bb_blob": "35a96977f47241f332b5d536bb786f3391db39ed"
+    },
+    "crates/rrx/src/adapter/grok/receipt_tests.rs": {
+      "prior068_blob": "d0dd5baa208c5a9beb9a41bd5b36ee49be042953",
+      "current9bb_blob": "d0dd5baa208c5a9beb9a41bd5b36ee49be042953"
+    },
+    "crates/rrx/src/adapter/inspection.rs": {
+      "prior068_blob": "376b6556758129eaa7c585a452ebe1dd387c40e3",
+      "current9bb_blob": "376b6556758129eaa7c585a452ebe1dd387c40e3"
+    },
+    "crates/rrx/src/adapter/inspection/diagnostics.rs": {
+      "prior068_blob": "9b6078660ecf31aaec5f40d2652f0ed6ee9140cf",
+      "current9bb_blob": "9b6078660ecf31aaec5f40d2652f0ed6ee9140cf"
+    },
+    "crates/rrx/src/context.rs": {
+      "prior068_blob": "ec4a0aebc495ef0780c90b32558dee6f93974e3d",
+      "current9bb_blob": "ec4a0aebc495ef0780c90b32558dee6f93974e3d"
+    }
+  },
+  "affected_tests": {
+    "target": "--test state",
+    "passed": 16,
+    "failed": 0,
+    "raw_log_sha256": "45e24034670ce8517be50eaca2d424b543360d54b1a474c1ba049d23297518ff"
+  },
+  "source_read_only_reach": "Store::usage has no production caller in crates/rrx/src beyond declaration; Adapter.usage is a separate trait/provider method. No native environment/Session writer calls it.",
+  "prior_full_gates": "068 source debug+release260Rust+2docs/24ignored PASS separately; not reexecuted or claimed full9bb local count",
+  "reviews": "Finite own-session composition1 reviewers start after publication; current9bb/sourceReview metadata CI pending",
+  "open_limits": "All historical18/b90/555 failures/cause AND regression UNKNOWN; no native availability/full60/F1/native16 claims"
+}
