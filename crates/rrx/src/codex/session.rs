@@ -1666,7 +1666,6 @@ impl AgentAdapter for CodexAdapter {
             }
             #[cfg(test)]
             self.gates.wait(TestPoint::StopWaiting).await;
-            let control = self.registry()?.get(&session.id).unwrap().control.clone();
             let outcome = control.wait_finished().await?;
             let snapshot = outcome.snapshot().cloned().ok_or_else(|| {
                 outcome.error().unwrap_or_else(|| {
