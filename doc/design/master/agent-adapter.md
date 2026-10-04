@@ -307,3 +307,14 @@ private owned turn-completion journal after verified cleanup/terminal persistenc
 without fabricating exit codes or trusting caller recovery JSON. Workflow verifies
 saved SessionId/Scope/actor/role/worktree before consulting this provider method;
 transport completion never replaces review/test/acceptance gate evidence.
+
+## Pending Issue51 native environment authority
+
+Grok currently whitelists intentional native constructor baseline but does not bind
+ordinary caller keys/known foreign baseline references to persisted owning Project
+refs. A synthetic actual-child probe verified two cross-Project paths; it did not use
+installed native Grok or real credentials. Issue51 requires owning caller declarations,
+foreign-reference filtering and fresh registered-inventory admission, preserving global
+native auth/hooks/config/safety and immutable controls. Requirements/design/source gates
+are pending; #5/#6 patterns are comparison inputs, not universal safety acceptance.
+No child isolation fix or schema change is claimed in the current baseline.

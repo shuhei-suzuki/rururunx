@@ -359,3 +359,8 @@ support `--json`. Display-name ambiguity requires a UUID.
 Interrupted worktree creation or invalidated review locks can retain reservations;
 explicit audited lock reconciliation CLI is pending in restart/recovery work.
 Removal remains blocked until those reservations are reconciled.
+
+Grok native environment reference isolation has an MVP-blocking follow-up
+[Issue51 requirements](doc/requirements/issue-51-requirements.md): synthetic foreign
+Project references reached an owned fake ACP child. Global native auth/settings/hooks
+remain intentional; requirements/design/source gates precede the environment fix.
