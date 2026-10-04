@@ -140,3 +140,49 @@ No schema/threshold/allowlist/environment/permission/default setting changes. A
 single bounded shared error literal is explanatory, not a typed outcome or proof.
 All Generic/Grok transitive error routes remain conservative by durable marker,
 actor and Session fields; source does not certify their process or reader cleanup.
+
+
+### Current normal main composition cbee1247
+
+PR38's limited Codex EMPTY Stage A merged as main47830b0, with whole6/Stage B/native
+acceptance still OPEN. The retry branch normally merged that main, no conflicts.
+All Workflow production/test and Store/schema bytes are EXACT49844a6. Incoming
+changes include Codex modules, structured trait forwarding, dependency/feature
+configuration and fixture changes; this is not a documentation-only composition.
+Generic start is now565 (same body); Grok start459 adds structured delegation469.
+The current new production implementor CodexAdapter/session1699 has EMPTY
+capabilities1700, Unsupported probe and launch859's immediate Availability::require865.
+The latter's ordinary production require always refuses; only private cfg(test)
+backend+producer inputs reach component bodies. It has no WorkflowSnapshot,
+PhaseAttempt, dispatch_started, Workflow Record writer or retry consumer. No new
+ordinary transition writer is added. This source reuses #6's scoped foundation
+approval without attributing whole native/F1/producer readiness.
+
+Current default full **debug AND release** each pass378 top-level Rust tests plus
+2doctests,26ignored; the nested ordinary witness child passes1, counted separately.
+All75 affected Workflow tests are included. Fmt/all-target Clippy-Dwarnings and both
+all-target builds pass on clean cbee1247. Historical Source1 affected-only release
+and main555 failure remain separately stated; no failure was erased or rerun as
+success. Current evidence: [composed gates](issue-14-unbound-retry-composed1-gates.json).
+
+All25 compiled mutation executions are repeated from the actual composed baseline:
+17unique operators assertion-killed (15new +2old41), one additional SAME Store
+removal Failed consumer,5survivors and2setup failures withNOcredit. Counts are not
+added to Source1 as new independent operators. Exact compiled consumer assertions
+and [patches](issue-14-unbound-retry-composed1-mutant-patches.diff) are retained in
+[the composed ledger](issue-14-unbound-retry-composed1-mutants.json). Restored614344b
+has COMPLETEcbee1247 tree and all75 Workflow controls pass, clean. The broad
+Store sessionless/missing-session mutations remain setup failures; the different
+retry-outcome-scoped predicates alone receive real retry-consumer credit.
+
+CI [37242311424](https://github.com/shuhei-suzuki/rururunx/actions/runs/37242311424)
+passes EVERY Linux/macOS step. Actual checkout parents478/cbee, complete tree and
+ALL tracked blobs equal cbee; [API/log proof](issue-14-unbound-retry-composed1-ci.json).
+The [current rg inventory](issue-14-unbound-retry-composed1-impact-rg.txt) adds the
+new production Codex implementation and structured trait forwarding; all prior
+closure/nonclosure/CAS rationales above still hold because actual core bytes match.
+Independent source reviews are next; no whole14/6/Scheduler/recovery/native/F1/MVP
+claim. The historical failed #6 private review wrappers retain uncertain owners
+and their original local CWD under a separate harness hold; PR38/main merge does
+not certify physical cleanup of those resources. Our current own verification
+and mutation processes are closed; this is no all-native-jobs cleanup certificate.
