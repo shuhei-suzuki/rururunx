@@ -390,6 +390,12 @@ The proposed configurable ReviewSet contract is tracked in
 [Issue9 requirements](../../requirements/issue-9-requirements.md).
 This master describes the current single-Reviewer implementation only.
 
+The provider-neutral [Issue9 design candidate](../issue-9-design.md) separates
+the immutable ReviewSet roster, actual member ownership/settlement and native
+profile qualification from opinion tally. It supplies no compiled N-way native
+delegation or weaker formal fallback; the actual19/23/43 integration design and
+required production native profile evidence remain open before source acceptance.
+
 
 Formal multi-reviewer gating and accepted Review policy configuration remain
 unimplemented; the current proposed contract and actual integration gates are pinned

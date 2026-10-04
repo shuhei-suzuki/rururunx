@@ -1,149 +1,255 @@
-# Issue 9 design preparation: Review Set authority and rounds
+# Issue 9 design: configurable independent Review Sets
 
-Status: proposed interfaces, not implementation. Base includes merged main 4851fcd (Grok7 and shared Session CAS).
-Integrate the reviewed context-pack/frame authority and native provider contracts
-before production work; do not guess an unmerged kernel signature.
+Status: Design1 candidate, provider-neutral and not implemented. The controlling
+[requirements](../requirements/issue-9-requirements.md) are the Req38-gated revision
+plus its Low wording clarifications at caa4390780f483f2d29f8182a36f65f924caf010,
+SHA256 0af45849f067036815d36b3c43adb74515243c7a220b7a5789f379e6f722fcfb.
+That document, including every stable I9-AC key and its closing/post-closure staging,
+is normative; this design organizes consumers and authority without replacing its
+limits or creating new policy. Names below are proposed private types, not compiled
+kernel APIs. Actual main has one Reviewer Session per Workflow phase; it has no
+ReviewSet implementation. Source qualification must use the real reviewed
+19/23/43/native ports and a separately committed integration design before code.
 
-## Types and boundaries
+## Data and authority
 
-Use typed ReviewPolicy {slots, completion, quorum, parallelism, timeout,
-require_clean, require_lock}, immutable ReviewerSlot {id, agent, model, effort},
-and scoped ReviewSet/ReviewRound envelopes. Validate distinct slot IDs, capability
-and agent registration, bounded counts, positive timeouts and 1 <= N <= M.
-`all` requires M eligible approvals; `any` requires one; `quorum` requires N.
-Keep opinion eligibility separate from settled native ownership and verified
-blocking findings. Exact bounds and configuration plumbing are finalized before
-implementation and recorded in the persisted policy snapshot.
+Use immutable typed PolicySnapshot, ReviewerSlot, ReviewSet, RoundProposal,
+ReviewRound, MemberInput, MemberOutcome, Finding, FindingDisposition, Verification,
+LineageReference and ReviewCertificate envelopes. Every durable object carries
+exact Project/Goal/Task, owning Set/round/slot where applicable, format version and
+bounded referenced artifact identity. Facts and serialized IDs do not construct
+native ownership, controller authority or recognized Human authority.
 
-A round captures its factual bundle through a provider port with exact scope,
-revision, source hashes, complete-frame hash, context version and bounded payload.
-Freeze one factual bundle for the independent roster. Different per-slot native
-model/effort are transport configuration, not edits to facts. A later-round bundle
-may carry explicit baseline/new revisions, verified unresolved findings, fix and
-verification refs through the deterministic delta provider. Never derive a delta
-from transient chat or simply relabel an old bundle with a new HEAD.
+Import the ONE canonical trusted-ingress derivation/type owned by23. Actual15/24
+handlers construct production Human authority; actual10 rejects recognized
+Human-only effects from Broker/native channels.9 owns those convergence consumer
+controls under9.i/9.j/21.i. A separate controller may instantiate an EXACT already
+Human-approved initial digest and execute its frozen scheduling/retry/cancellation
+branches; it cannot invent Human approval, new policy content, post-opinion roster
+or confirmer changes, blocker clearance or budget reset. Application-channel trust
+is explicit; this claims neither biological identity nor same-UID OS/DB secrecy.
+These producers remain pending, not test-library product ingress.
 
-Per-slot state is Reserved → Starting → Running/Waiting → terminal outcome. Record
-input-consumption intent before native wire through the adapter's actual private
-reservation. Session ID/configuration/frame ownership comes from an atomic slot
-reservation, not from arbitrary Session.recovery JSON. Agent outputs are parsed
-into bounded typed findings/result; malformed or ambiguous output is a failure
-or human-held result. Native transport completion alone is not review approval.
+PolicySnapshot freezes activated Runtime/registered Project governing rule/skill
+source, exact approved digest, roster/model/effort, mode/quorum, independent floor,
+risk/security behavior, confirmer assignments, clocks, schedule/channel profile and
+byte/round/resource bounds BEFORE target opinions. Task-authored edits are reviewed
+proposals, never governing rubric for their author. Resolving and hashing a source
+is not trusted activation; base-sync cannot auto-approve new content. Scope-changing
+updates create explicit history through the required authority, never in-place
+reinterpretation of a started round (8/9/12).
 
-## Actual Workflow port
+## Bundle and input consumer
 
-Add a real ReviewRunner delegation for Reviewer phases. The Workflow owns one
-exact dispatch claim and immutable context; the ReviewRunner owns its bounded
-roster of sessions. A single PhaseAttempt.session_id cannot represent that roster.
-Publish a scoped ReviewSet reference/attempt identity atomically and poll the
-ReviewRunner result. Default legacy single-reviewer behavior remains explicitly
-separate until this port is integrated and tested.
+Define one typed bundle contract owned by9 and consumed unchanged by20: exact
+scope, canonical primary/common-Git and bound Task worktree identity, committed
+Task-base/baseline/target HEAD AND trees, relevant dirty/ignored source versions,
+CPP/checkpoint/promoted-reference provenance, governing source, factual coverage
+manifest and bounded bytes. The same frozen core bytes/digest reach every slot.
+Per-slot specialization is structurally additive with separate identity/source/hash;
+record both core and COMPLETE frame hashes. Focus-only activation cannot exclude
+mandatory rubric, rules, severities or facts. Total rendered frame includes mandatory
+claims/rules/specialization/wrappers; source-budget size is not its byte limit.
 
-Extend kernel frame admission narrowly: an exact active ReviewSet/round/slot may
-bind a native Reviewer to the owned Workflow claim and the same factual frame.
-Use private authoritative slot allocation, expected agent/model/effort, exact
-Session ID once bound, target hashes and context version. Do not remove the
-existing phase-agent/session guard to make parallel launches pass. Executor,
-Consultant and ApprovalReviewer roles cannot use this delegation. Formal approval
-review remains on its separate operation-free decision Task.
+Full Task-base→target coverage is the default. Reduced delta coverage requires the
+qualifying exact frozen roster/policy/source baseline's COMPLETE settled delivery
+and result, ALL cumulative baseline→target changes, ALL unresolved required claims
+and affected unchanged consumers with supported current impact completeness. A
+prior delta APPROVE is not a new full baseline. Missing/stale/incomplete12 impact
+basis forces full delivery; full diff is not semantic impact proof. Controlled
+Git-backed consumer fixtures label impact_basis=controlled-fixture and cannot
+certify absent production12 or20.20 depends on9; no reverse merge prerequisite.
 
-Lock/canonical Git/FD/source checks run outside SharedStore. Snapshot authority,
-observe native sources with bounded helpers, then revalidate the exact live
-Workflow/ReviewSet/slot/source CAS immediately before publication and input
-consumption. Read-only native permissions plus clean/source checks enforce the
-review target; a lock record does not itself prove external processes cannot
-write. Once a dispatch could have reached a backend, cancellation/drop retains
-its ownership until authoritative terminal/cleanup evidence.
+Initial input, expansion, rules/source slices and manifests always exclude raw
+executor conversation, runtime DB/sidecars and current-round peer outputs. Store
+outputs outside reviewed/expandable source eligibility; exact/symlink references
+cannot bypass exclusions. A conflicting mandatory reference holds before input.
+After every preceding member safely settles, later rounds deliver bounded mandatory
+prior-claim manifests and all required unresolved claim text, retain original
+finding identity/severity/text/verdict and label prior exposure. Exact referenced
+resolved history is expandable within the same budgets; unverified actor fix claims
+are never facts or clearance. This is runtime-controlled input independence with
+explicit residual native filesystem visibility (8/14.e).
 
-## Rounds and certificates
+Source observation/hash/Git work runs outside SharedStore. Snapshot, observe through
+actual60 owned source/job effects where native execution is involved, then atomic
+publication and pre-input CAS validate the exact original source/lifecycle/locks.
+A read-only label, Session JSON or selected group death creates no source-job lease.
+Mandatory output/acquisition/serialization bounds stop overflow before semantic
+publication; byte overflow preserves bounded evidence and never truncates to approval.
 
-Persist every slot outcome before policy evaluation. Preserve raw individual
-findings independently until the round completes; then use scoped verifier
-records {finding_ref, target, decision, evidence, inspected_count, changed_count}.
-Verified blockers veto success even if other slots approve. False positives do
-not trigger fixes. Human judgment holds the round. The remediation path creates
-explicit verified-fix/commit/required-check evidence before the next immutable
-round; no old outcome is overwritten or promoted to a new revision.
+## Native profiles and current feasibility
 
-Issue one immutable review certificate only after policy eligibility, required
-finding verification, current target integrity and safe session settlement all
-hold. Bind it to ReviewSet/round, actual target, bundle hash, context version,
-roster/policy, verifier/evidence refs and individual terminal outcomes. The
-Workflow gate validates that certificate against its actual phase claim; the
-certificate is evidence, not permission to merge or execute a command.
+A registered profile consumes actual production5/6/7 permission construction,
+read-only denial, owned startup/normal/forced cleanup and channel qualification.
+Preserve default auth/hooks/rules/memory/history behavior. Capability labels,
+provider family, fresh SID, linked worktree or docs alone do not prove independence
+or all-descendant settlement.21.j's sealed fixed conformance ingress uses these SAME
+actual producer ports without formal gating authority; there is no public bypass.
 
-## Persistence and tests
+Current candidate feasibility under8.l is UNKNOWN, not qualified:
 
-Use private scoped transaction helpers for new authoritative Review records/slot
-reservations, with one active round per ReviewSet and one live launch per slot.
-Generic old Record writers must not mutate this contract. Add an ordered schema
-marker after the actual merged context base, with migration/reopen and native
-old-writer refusal proof. Scope indexes keep current lookup bounded; history is
-append-only and carries immutable provenance. Uncertain restart remains held for
-recovery rather than silently scheduling replacement sessions.
+| Candidate | Concrete known basis | Missing proof / owner |
+| --- | --- | --- |
+| Claude | Req38's retrieved vendor basis describes repository memory shared across worktrees; observed CLI2.1.283 only | Actual installed read/write timing and key predicates, same-round peer-free schedule, owned read-only/cleanup conformance:5/9/19/16 |
+| Codex | Req38 records CLI0.160.0 and distinct memories feature versus field defaults;6/F1 actual detached-tool cohort is unresolved | Actual effective channel activation/key/timing plus genuine managed cohort settlement:6/F1/9/19/16 |
+| Grok |7 supplies an actual native adapter; no qualified default-preserving channel/settlement declaration is supplied here | Actual installed channel inventory/key/timing and normal/forced owned settlement:7/9/19/16 |
 
-Tests combine fast controlled policy/verification cases with real temporary Git,
-actual Store/Workflow dispatch, native bounded subprocess fixtures and immutable
-source/lock races. Record all failure categories and mutation controls. Final
-integration must show the real multi-reviewer Workflow path, and later native
-model dogfood must show two/triple reviewer sessions and equivalent factual
-inputs rather than counting independent development reviews as runtime behavior.
+This table claims channel capability context, not observed peer-finding injection;
+no private user memory/config was read. Before any positive, templates must have
+actual owned native fixture evidence and instantiate proved installed-version/
+configuration/key/load-write/source/roster/schedule predicates on the real round.
+A peer-free starting snapshot is sufficient only when actual ALL relevant loads
+precede ANY peer write under an enforced finite schedule. Unknown reachable current-
+peer channels refuse; no universal family-equality floor or memory-disable workaround.
+At most three candidate investigations per required configuration then21.l requires
+named public owner/proof/scope-decision attention. Required repeated-family/4+,
+2-reviewer and Triple positives remain open; a candidate refusal cannot close them.
 
+## Workflow and member ownership
 
-## Formal preparation boundary
+Workflow delegates one exact Reviewer claim and immutable Task CPP/locked revision
+to a private ReviewSet roster. Allocate one distinct owner/frame per member without
+incrementing Task/context authority per Reviewer or cloning CPP. Bind Set/round/slot,
+agent/model/effort, actual full-frame SHA/bytes, common core, governing/input/source
+pins and original marker P/G/T/W/full lock frame.43's single native binder is not an
+N-way delegation. Never relax its default ownership checks by role or public JSON.
+Executor/Consultant/ApprovalReviewer cannot impersonate formal roster slots.
 
-Requirements and this provider-neutral design can be independently reviewed now:
-merged dependencies2/4/8 are available. Production work waits for the reviewed
-Issue19 prepared-frame/private actor authority and its exact shared native caller
-contract. Before implementation, commit and independently review an additive
-integration design against that merged source, including its actual schema marker,
-ReviewSet allocation, transition CAS and Workflow port. Proposed names here are
-not public kernel APIs and this draft does not claim those source ports exist.
+A genuine supervisor retains the sole managed operation across caller Drop and
+lends actor/lifetime-bound preparation capability. Actual setup, consumption,
+callbacks, cleanup and receipt producers must compose with19; lost futures, returned
+Session IDs or selected process groups cannot reconstruct it. New rounds use fresh
+native Sessions and exact fresh member admission. A genuine original consumed frame
+is distinct from a later observation or fresh prepared input. No previous terminal
+owner or receipt authorizes another dispatch.
 
-Policy bounds are 32 slots/local parallel launches, 64 rounds, 256 findings per
-slot result, 8192 bytes per finding text and 1 MiB per input/result envelope. Record
-validated bounds in the immutable policy; reject overflow before publication or
-model input. Use checked arithmetic and bounded database queries, and preserve
-provider measurements as nullable fields distinct from estimates. Global/Project/
-agent resource authority further constrains scheduling; a local ReviewRunner
-cannot manufacture extra permits while scheduler integration is pending.
+Absent profile, capability or private producer returns typed ReviewGatingUnavailable
+BEFORE phase/context reservation, marker, process or model input; no weaker legacy
+formal fallback. Workflow's single-Reviewer path remains historical behavior, not
+successful configurable gating. ApprovalReviewer means it does not execute the
+requested action; its future9/10 decision slot still needs actual native lifetime/
+input/settlement authority. No current DecisionTask port or native-free exemption
+is invented. Review Runner integration is independently reviewed against compiled
+19/23/43 ports before production code.
 
-Any/quorum policy does not yield an early certificate: settle the entire owned
-roster first and verify every reported potential blocker. Stop remaining work only
-through the adapter's explicit safe cancellation path, retaining cancellation and
-uncertainty as individual outcomes. Lost is a hold, never an implicit roster
-removal. A completed certificate explicitly reports tolerated failures/timeouts.
+## Scheduling and settlement
 
+A bounded RoundProposal freezes target/policy/source/hash refs and charges its exact
+metadata; wholly queued work is not an admitted round. Every initial/queued member
+admission revalidates exact qualification and elapsed schedule. Concurrent-only
+profiles acquire COMPLETE global/Project/provider cohort permits all-or-nothing,
+retain ZERO partial permits while queued and hold no unadmitted round worktree lock.
+Serialized-capable profiles still refuse a queued member outside their proved finite
+window and make the whole partially admitted round non-certifying (8.k/14/18).
 
-## Parallel member authority
+Use actual retained Lost shares to compute non-Lost-reachable capacity; healthy busy
+shares remain reachable. Impossible wholly queued proposals park with one unchanged
+identity/cause, no admission/round/retry charge or repeated metadata spam. Genuine14
+restoration may revalidate that SAME current proposal; stale target closes rather
+than rebinds. After partial admission, unrelated Lost capacity restoration creates
+no autonomous retry cause. Keep prior charge/hold and the18.h required authorized
+exit.27 fairness and product14 recovery remain pending consumers.
 
-The prepared-context integration must introduce an explicit private ReviewSet
-allocation/delegation contract. One immutable Workflow review claim and one Task
-context remain fixed for the whole round. Reserve an immutable round roster with
-one private owner per member; do not clone the CPP or increment Task.context_version
-for each Reviewer. Native prepared frames bind exact Set/round/slot identity,
-actual payload SHA, shared core hash, specialization digest, requested model/effort
-and source/CPP provenance. Shared factual core may be equal while slot wrappers
-have different full-frame digests; both are independently recorded and validated.
+Reserve whole-roster worst-case retained evidence BEFORE the first native effect.
+Each member releases ONLY its own native permit after genuine COMPLETE owned
+settlement AND exact member closure; the round target lock, unresolved evidence and
+unused safety headroom stay until safe WHOLE-round closure. Retained server/tools/
+Unknown/Lost hold ownership. Timers and native turn result are not death proof.
+Unknown suffix/target mutation/native uncertainty prevents certificates regardless
+of mode. Lost remains absorbing pending genuine14 recovery.
 
-The existing single-native phase_session_owners guard remains the default.
-Delegation can replace that ownership shape only through the private atomic
-ReviewSet publication bound to the exact active Workflow claim. Session JSON or
-role cannot declare delegation. All member admission/closure checks resolve that
-private roster and exact member ownership while preserving current native source,
-lifecycle/lock/CAS checks. A new round cannot change context/source authority until
-all prior native members are safely settled. Record-only single-actor binding43
-is not an implicit N-way roster API; review delegation needs its own approved
-additive transition and integration design against the merged19 kernel.
+Freeze three separate startup/review/settlement clocks and their exact start causes
+under14/16. Settlement starts ONCE at the earliest owned COMPLETE result/native
+terminal/cleanup request (or specified cancellation/expiry); never restarts between
+cleanup stages. Validate actual supported normal end-to-end AND forced envelopes,
+ceiled integer-ms arithmetic and required margin, including escalation/cancellation
+within normal cleanup. Preserve default100ms/minimum and stronger profile margins;
+a finite configured bound is no universal OS jitter/death guarantee. Unknown stages
+refuse before effects; unexpected escaped/late ownership stays factual held14.
 
+## Opinions, findings and lineage
 
-## Integration prerequisites and acceptance staging
+Mode all/quorum/any counts well-formed exact-current APPROVE opinions; independently
+apply Quick/Standard floor1 and Strict floor2 eligible NON-AUTHOR Sessions. Frozen
+allowSelf may affect opinion tally, never that floor. Every recorded applicable delta
+contributor identity/provider family is excluded from self-confirmation. Ordinary
+approvers need no mutual provider-family diversity unless frozen policy requires it;
+the dismissal/downgrade confirmer PAIR retains its required distinct diversity.
 
-Reviewed19/43 prepared-frame and binding ports are closing integration prerequisites,
-not evidence that this draft already names their final APIs. Native registration/
-capability checks use actual5/6/7 implementations and their reviewed read-only
-contracts; absence
-makes the configured triple unresolved before any input, rather than falling back
-to synthetic providers. The engine's Git-backed typed delta consumer fixture proves
-consumption/identity/provenance;20 depends on9 and separately ships the deterministic
-production producer. Real two/triple native outputs remain16 Goal proof.
+Persist immutable individual outcomes before evaluation. Findings and assigned
+per-prior-finding dispositions reference exact original hash/author/severity/target/
+inspected evidence, and remain distinct from native transport status. Potential
+blocking findings veto until genuine eligible finder/frozen independent confirmer
+or actual trusted Human adjudication meets9's exact rule. Controller summaries,
+APPROVE, changed text, dismissal claim or target movement cannot clear them.
+REQUEST_CHANGES stays REQUEST_CHANGES; disputed dispositions/ESCALATE remain held.
+Any/quorum does not publish early: all admitted native members must safely settle,
+all blockers need effective resolution and both mode/floor must hold. Policy-safe
+early cancellation remains forbidden for Strict/security as required.
+
+Concern-linked reruns retain recorded verification BEFORE fix commit, truthful
+attributed fix claim and actual nonempty committed concern-linked delta, with genuine
+bounded retry authority. No within-round retry, cosmetic resampling, new-target
+budget laundering, inherited verdict reuse or controller roster/confirmer shopping.
+18.i's disclosed residual nonblocking resampling remains an availability/metric
+limitation; it is no blocker clearance. Every admitted round and actual delivered/
+retained evidence charges the original immutable obligation-budget lineage.
+
+Trusted12 applicability evidence covers changed AND relied-on source/dependency/
+context plus retained contributions/findings and method incompleteness. Missing/
+unknown proof inherits/refuses; filenames/lexical map/model/Human assertion alone
+cannot grant a disjoint new budget. Proven disjoint obligations may progress without
+certifying old exhausted history. Affected rework/supersession/decomposition retains
+unresolved vetoes/authors/exhausted shared budget. Only genuine certificate PLUS exact
+merge artifact accepts old upstream; generic Merged/Completed/rebase cannot wash it.
+Real Lost/root/common-Git physical holds survive all review-scope labels (11/12).
+
+## Budgets, publication and acceptance
+
+Implement the requirements' checked simultaneous limits directly:32 slots/local
+parallel setting,64 admitted lineage rounds,256 findings/result,8192 COMPLETE encoded
+bytes/finding and1MiB COMPLETE member frame/result. Distinguish source budget,
+mandatory metadata, actual retained bytes, every actual delivery and nullable native
+measurements.128MiB bounds retained lineage evidence by real ownership/copy identity;
+external references still charge metadata/actual copies and have exact owner/bounds.
+Dedup does not hide actual copies or repeated delivery. The separate64×32 prepared+
+expansion delivery ceiling4GiB does not include invented native token/cost measures.
+
+Whole-roster reservations include frozen actual core/frames, bounded result/diagnostic/
+expansion representation, genuine native owner/operation/receipt/audit overhead and
+FIXED8MiB verification plus FIXED4MiB control allowances with reserved64KiB margin.
+Unknown producer bounds or insufficient quota refuse before input. Acquired model
+prefix1MiB/diagnostics64KiB retain exact count/hash/overflow, never unseen suffix
+approval. Between-round verification reserves its own bounded8MiB allowance against
+the same128MiB BEFORE owned effects; it borrows no unadmitted round reservation.
+Only safely closed unused reservations release; mandatory existing facts survive.
+
+Typed atomic Store publication validates exact immutable scope/authority/slot/frame/
+source/lock CAS and reserved quotas. History is append-only; generic Record/JSON
+writers cannot construct or edit allocations/certificates. Derive hashes/plans
+outside held SharedStore and recheck actual compact/full-row authority within its
+explicit reviewed bounds; no unbounded SQL scan or claimed512KiB total-lock budget.
+Coordinated incompatible reader/writer epoch follows the actual linear19/23/43/58
+release and genuine legacy drain/recovery, not a guessed version or fixture migration.
+Current rows matching themselves are not original-frame proof.
+
+A certificate binds current target/coverage/baseline, policy/roster, exact core/member
+frames, independence/read-only/native evidence basis, dispositions, lineage/budgets,
+individual tolerated failures/exposures and COMPLETE settlement. It is evidence,
+not command/merge permission. The downstream consumer independently assesses exact
+binding/basis BEFORE production readiness, preserving reachable bad-basis refusal
+while unready.21.i's interim controls cannot claim21.n's separately mandatory genuine
+formal-basis/readiness-positive matrix or final16 completion.
+
+Maintain a stable-key acceptance manifest for EVERY requirement: actual consumer,
+positive/negative fixture, compiled omission mutant or named pending producer.
+Exercise real temporary Git identity/delta/source races, unchanged-current CPP across
+parallel2/triple members, controller/Human separation, cohort contention/member
+release, uncertainty/timeout clocks, accumulated findings/dispositions, exact encoded
+byte quotas and full-floor policy matrices through actual ports. Synthetic fixtures
+prove only labelled mechanics and noncertifying refusal. Required production5/6/7
+profile declarations and repeated-family/2/triple positives close9 only with their
+actual evidence.20 deterministic producer,14/15/24/27 product composers and final16
+MVP dogfood remain the requirements' explicit separate gates; no pending producer
+is silently counted as implemented and no dependency cycle or whole-MVP waiver is added.
