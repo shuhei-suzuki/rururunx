@@ -2,7 +2,7 @@
 
 Workflow: STRICT. Requirements baseline `d8c5266` approved by native independent
 requirements re-review4; joint item6/Design4 approved at `77da799` by two independent
-reviewers. Requirements8 covers durable readiness before and after lost launch results;
+reviewers. Requirements9 covers durable readiness and record-only bound-live poll diagnostics;
 independent requirements/design delta and all implementation gates remain pending.
 
 ## Problem and MVP relationship
@@ -268,6 +268,54 @@ Typed private-owner tests compose with #19 after its implementation is available
 Compile mutants restoring the Task rewrite, omitting each meaningful CAS/identity
 boundary, or admitting additional Workflow changes. Assert causal real consumers fail,
 restore exact bytes and pass controls. A merely mirrored helper test is insufficient.
+
+## Bound-live Workflow bookkeeping inventory
+
+Integrated main d87faec has TWO additional ordinary Task-writing transitions while
+an already-bound native turn may remain live: poll's adapter.status error and its
+validate_persisted_status mismatch arms. Both refresh_owners then persist the detail,
+which increments the unchanged Task. This independently invalidates native currency
+after otherwise-correct binding. Route both through a SEPARATE private record-only
+`observe_native_diagnostic` port in #43; do not expand the Session-binding primitive.
+
+The diagnostic port accepts only the exact still-active Running bound native attempt,
+Workflow version/generation, immutable scope/actor/context/operation/Session identity,
+and a bounded allowlisted status-unavailable or persisted-status-mismatch reason.
+It changes only that attempt's diagnostic detail and Workflow record version plus
+bounded audit in one Immediate transaction. Preserve ALL P/G/T/Session/full scoped
+lock bytes/versions, native allocation/admission pins, Session ID, marker, attempt
+state/outcome/context, lifecycle and every other history field. A mismatched status
+is observation-unverified, not a terminal/native result. It cannot bind, release,
+retry, grant, fail, adopt ownership or refresh native authority. Stale/missing private
+operation or Workflow CAS holds/refuses without changes. No parent refresh_owners
+or recaptured grant frame. Coalesce identical diagnostics as a true no-write/no-audit
+result; serialize at most128UTF-8 bytes of reason code/bounded fact fields, no raw
+native error/transcript. Other diagnostics cannot use this port.
+
+Actual remaining mid-turn writer classes are explicitly classified: dispatch marker
+is committed BEFORE native admission; normal/late binding uses the sole private
+binding port; these two bound-live poll diagnostic branches use the separate port;
+unbound native poll is passive under #41; terminal transport/evaluation writes require
+genuine current settlement/provenance under #19/#23 and cannot act on a live turn;
+explicit cancel/fail/lifecycle revocation deliberately invalidates new authority while
+retaining genuine ownership under #19/#23/#14. Retry, Source/context replacement,
+unknown/unbound recovery and external unrelated bookkeeping are not diagnostics and
+retain their own gates. Source impact inventory must inspect every Workflow persist/
+refresh_owners call and classify it; no unclassified live bookkeeping write can claim
+#43 native-currency preservation. External parent drift remains the limit below.
+
+Add actual managed bound-live controls forcing BOTH adapter.status error and a genuine
+in-memory/persisted Session mismatch while a current owned native turn is held. Each
+poll returns truthful Waiting/diagnostic and preserves all parent/Session/lock bytes
+and versions; then exact own native callback/decision completion remains eligible
+once actual status converges, without retry or second dispatch. Exercise identical
+repeat coalescing, stale Workflow/private-owner rejection and concurrent unrelated
+parent changes separately. Kill compiled mutants restoring ordinary persist/Task
+rewrite in EACH diagnostic branch, bypassing attempt/owner CAS, admitting state or
+Session-ID deltas, and treating mismatch as failure/retry. Intended eligibility and
+no-write assertions must be reached with genuine native-owner prerequisites; seeded
+SQL/helper-only success cannot close these consumers. Preserve normal terminal and
+authorized lifecycle revocation regressions; restored exact controls pass.
 
 ## Limits
 

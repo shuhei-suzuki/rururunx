@@ -141,3 +141,13 @@ The renewed public delta includes current master/Workflow/Store contexts rather 
 assuming the older unchanged-context manifest still describes these source files.
 CI trigger identity is distinguished from its default PR-merge checkout; actual
 checkout source provenance is required for future source acceptance.
+
+Requirements8 e3f54c4 reviews completed A request_changes(one Medium R43-10), B
+approve0findings; both actual v3 owned cleanup verified. Root verified the two actual
+bound-live poll diagnostic arms in integrated workflow.rs and ordinary persist's
+Task rewrite. Requirements9 adds a separate private record-only diagnostic port for
+those branches, exact attempt/operation/Workflow CAS, no parent/Session/lock or native
+pin writes and repeated diagnostic coalescing. It inventories remaining mid-turn
+writers and requires held live native eligibility controls/branch-specific mutants.
+Binding remains single-field-only; no new live authority from diagnostics. Master
+explicit gaps updated. Requirement delta review and Design5/source remain pending.

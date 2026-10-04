@@ -416,7 +416,7 @@ prove launch occurred. #13 remains responsible for irreversible
 Pr/MergeGate/Cleanup outcomes.
 See [Issue #41 design](../issue-41-design.md).
 
-Two existing integration gaps are explicit. `retry` admits Failed unbound
+Existing integration gaps are explicit. `retry` admits Failed unbound
 dispatch markers without native-outcome evidence when no Session is persisted;
 Issue #14 must fence this explicit API, while ordinary observation never replays.
 The current successful native Session-binding publication writes an unchanged
@@ -435,3 +435,13 @@ The record-only correction and its typed-input/admission integration are propose
 in [Issue43 design](../issue-43-design.md); neither the private binding port nor
 its admission capability is implemented in main. Update this section to the
 actual corrected contract only after the combined source is accepted.
+
+Requirements9 also inventories two bound-live poll diagnostic writers: status error
+and persisted/status mismatch currently refresh owners and use ordinary Task-writing
+persist, invalidating native captured Task currency. Proposed #43 uses a separate
+private record-only observe_native_diagnostic port for only these diagnostic deltas,
+not the binder. It preserves all parent/Session/full-lock bytes/versions and native
+pins, coalesces repeated diagnostics, and grants no binding/outcome/retry/release or
+fresh authority. Actual managed held-turn controls and branch-specific Task-rewrite
+mutants are required. This port/source is unimplemented, not part of merged #41;
+terminal/authorized lifecycle/unknown recovery transitions retain their own gates.
