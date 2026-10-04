@@ -133,3 +133,24 @@ pending source gate; a later green result alone does not erase this failure.
 Design1 starts from approved Req8 and actual main/native/context inventory. Its
 private operation/measurement/epoch/producers, real controls, native benchmark and
 source/security gates remain unimplemented and pending.
+
+Design1 ab57c77 completed two independent native request_changes reviews, both
+with actual v3 owned cleanup verified. Verified causal gaps: cumulative snapshots/
+status-final views could double count; telemetry capacity/write failures could gate
+native/context effects; unowned attach intervals could be misattributed; static
+contract model facts could hide fallback; lane/repetition Project identities and
+actual effective/default configuration pins were missing; stable-prefix/cache and
+amplification-reference architecture was incomplete. Design2 corrects these, with
+producer-record inventory and optional post-admission measurement projection,
+one finalized per-event/per-field effective value, unknown unowned intervals,
+runtime-derived configuration checks and fully separate lane registry identities.
+It adds exact cache-independent/stable-prefix/reference consumers and causal mutants.
+Optional high-water paging/cutoff/oracle answer commitments are adopted; no source
+or native benchmark/profile/producer implementation is claimed.
+
+Exact Design1 CI37201118890 is RED: macOS lib86 passed/1 failed/1 ignored;
+the unchanged old inspection442 stdout overflow fixture instead reached TimedOut
+at283.380875ms. Ubuntu fmt/clippy passed, tests cancelled, builds skipped by
+fail-fast; macOS builds skipped. Failed log retained, no rerun or claimed causal
+fix. The related #55 cap-test/source component remains a separate integration gate;
+later green docs cannot erase this result. Design2 independent review pending.

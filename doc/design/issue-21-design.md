@@ -1,6 +1,6 @@
 # Issue 21: Qualified telemetry and native comparison
 
-Status: Design1, independent design/source review pending.
+Status: Design2, verified independent Design1 corrections; design/source gates pending.
 Requirements8 at e001483 received two independent approvals, no findings, and
 verified owned cleanup. This document proposes APIs/storage; none is implemented.
 Baseline main80452f4/schema3; required native/context producers remain pending.
@@ -19,6 +19,8 @@ validity. Reuse those distinctions; do not difference already incremental fields
 Consult lifetime/input identity; #9/#10 own decision-member identity. No table row,
 public Session or configuration label can replace an actual registered producer.
 Their private ports/profile conformance and #14 recovery remain production gates.
+Actual runtime Git/verification ownership under pending #60 also remains required;
+its process/effect records are not automatically provider token observations.
 Design/source changes must inventory actual latest implementations before wiring.
 Coordinate one migration with their final composed epoch, not a separate schema6.
 
@@ -28,25 +30,38 @@ Add crate-private telemetry interfaces in telemetry/{identity,normalize,store,qu
 benchmark}. Public reports are read-only numeric projections. Trusted runtime
 composition installs adapter implementations and immutable counter contracts;
 model/config JSON cannot register one. Controlled transport implementations have
-the same production caller contract but their evidence is labelled synthetic.
+the same caller contract; installed implementation identity determines synthetic
+provenance, rather than a transport-declared label. Collect only native output and
+protocol channels the adapter already owns, without exporters or new native setup.
 
 An actual supervisor acquires a nonserializable measurement-only handle before
 every runtime-owned provider operation. Identity contains Project, optional Goal/
 Task, actual native operation and input/attempt identity, runtime instance, adapter
 implementation/profile, source revision, operation purpose and beneficiary links.
+Capture effective reduction-feature, Project-policy and native-configuration digests
+from the actual runtime composition at that dispatch, separately from plan claims.
 Task dispatches derive generation/index/phase/context/round/slot from the actual
 owning Workflow/ReviewSet transaction; callers cannot supply attribution labels.
 Task-free and helper operations have explicit purposes rather than fake Tasks.
 The handle cannot grant native input, cleanup, release, review or Goal authority.
 
-Register the inventory row and immutable descriptor before native effects, linked
-atomically to the owning operation/admission marker. The real adapter receives the
-handle; it publishes bounded observations from owned responses. Startup failure,
-cancel, retry, missing collection, publication conflict and Drop remain inventoried
-with unknown fields. A retry is a distinct operation; unchanged input is no replay
-exemption. Unknown durable ownership is retained under the producer's recovery
-contract; telemetry never releases it. A failed inventory transaction prevents that
-new dispatch, not historical denial/cleanup or factual late observations.
+The inventory source is the owning producer's existing durable operation/admission
+record, written before effects under that producer's policy. Join its identity and
+immutable descriptor; do not create a separate telemetry prerequisite for dispatch.
+Publish optional measurement projections only after the producer's owning admission
+commit, in a separate bounded telemetry transaction; its failure cannot roll back
+or delay awaiting telemetry retries before dispatch. Completeness joins the existing
+producer record, rather than requiring atomic telemetry publication. Existing admission or
+mandatory context storage failures retain their existing meaning. Measurement-handle
+or telemetry storage/capacity failure cannot change native or context behavior.
+The adapter receives the handle when available and publishes bounded observations
+from owned responses. Startup failure, cancel, retry, missing collection, publication
+conflict and Drop remain in the producer inventory with unknown measurement fields.
+A retry is a distinct operation; unchanged input is no replay exemption. Unknown
+durable ownership stays under producer recovery; telemetry never releases it.
+If producer inventory or its correlation cannot be proved complete, scope coverage
+is unknown, including when the optional projection or failure marker cannot persist.
+Queries never infer completeness from the surviving telemetry rows alone.
 
 All reduction helpers, selection/condensation/expansion generation, initial setup
 and work outside Task phases use this same inventory. Owning helpers record exact
@@ -57,11 +72,25 @@ coverage incomplete; do not invent inner call IDs or assume one CLI result means
 one model call. Separate apparatus calls use predeclared apparatus identity and
 cannot feed lane execution or acceptance gates.
 
+Actual attach/input-capable intervals and other unowned native turns are inventoried
+as unowned/Human-purpose intervals linked to the native session, without assigning
+Task phase/round authority. Observation ports cannot grant attach permission.
+An attach during an owned operation, between owned turns, or any unprovable interval
+gap invalidates cumulative-derived attribution spanning that interval. Only counters
+whose native contract proves exact owned-turn scope remain qualified. Codex's replay
+of a previous owned total alone does not prove absence of intervening unowned turns.
+Unknown native-internal compaction/helper intervals also leave coverage unknown.
+
 ## Field normalization, model units and replay
 
 An immutable CounterContract identifies implementation/version, operation/turn
-scope, observed consuming model identity, tokenizer unit, incremental/cumulative
-semantics, category partition and containing/contained relationships. Qualification
+scope, native paths for observed consuming model/tokenizer identity, counter units,
+incremental/cumulative semantics, per-field reduction rule, category partition and
+containing/contained relationships. It defines interpretation, not observed model
+facts. Each observation/partition node derives its actual consuming model from that
+event's native data. An initial session/contract model is eligible only with native
+proof that this operation cannot fall back or use helper models; otherwise a mixed
+observation without a complete per-model partition remains unqualified. Qualification
 requires primary contract evidence plus real native conformance. Requested model
 and effort are separate; unknown observed model/tokenizer prevents comparable
 token qualification, while unknown effort alone supports an honest qualified-unit
@@ -84,12 +113,22 @@ Partition graphs are finite acyclic identity graphs; an encompassing total and i
 contained children cannot both contribute to an aggregate. Mixed models/tokenizers
 remain separate groups; no arithmetic across incompatible units.
 
-Replay key is (operation ID, producer kind, ordinal). Identical canonical content is
-a no-op; conflicting content rejects without replacing prior evidence. Wall time,
-equal payload and Session ID alone do not deduplicate distinct operations. Ordinals
-and versions are positive checked i64, immutable once accepted. Late observations
-may improve explicitly missing measurement coverage through a new versioned event,
-but cannot rewrite prior failure, benchmark outcome or native ownership facts.
+Observation identity is (owned operation ID, native response/turn ID), or an ordinal
+assigned once at the actual owned native event/stream position when no native ID
+exists. Collection channel, status/final/recovery path and producer kind are not part
+of the identity of one event. Identical finalized canonical content is a no-op;
+conflicting content rejects without replacing evidence. Wall time, equal payload
+and Session ID alone do not deduplicate distinct operations. Ordinals and versions
+are positive checked i64. Intermediate cumulative notifications update bounded,
+non-additive progress for that same turn; they do not consume finalized-observation
+slots. Accept one immutable final snapshot. A missing trustworthy final stays unknown.
+Each CounterContract selects exactly one effective value per operation, field and
+partition node: a qualified final cumulative snapshot supersedes progress, while
+incremental events sum only when native evidence proves disjointness. A snapshot
+and a delta derived from it cannot both contribute. Unknown combination is invalid.
+Late facts append versioned missing-coverage evidence but cannot rewrite failures,
+ownership or frozen benchmark results. Each attempt pins a predeclared measurement
+cutoff; post-cutoff facts are diagnostic and cannot repair its scored validity.
 
 Native monetary estimates remain separate from operator-derived estimates. Native
 finite values retain their declared precision and scope; no billing claim. Computed
@@ -138,8 +177,14 @@ UTF8 bytes, digests32 bytes, depth16, 64 beneficiary/partition links per operati
 rows and encoded output256KiB. Plan128 attempts, 64 feature/oracle registrations,
 4096 oracle items and total encoded plan1MiB; per-attempt retained metadata1MiB.
 Aggregate ledger bytes are capped independently (64MiB per Task, 256MiB per plan).
-These maxima need not fit simultaneously. Capacity refuses the new effect before
-dispatch, exposes bounded attention and preserves existing ownership/history.
+These maxima need not fit simultaneously. They bound telemetry detail, never native
+turns, retries or context effects. Reserve one fixed-size scope overflow/unknown
+marker outside detail capacity; on exhaustion preserve prior detail and attempt that
+marker while dispatch follows existing producer policy. If even the marker write
+fails, reconciliation against producer inventory/correlation remains conservative:
+coverage cannot become complete. Do not clear an overflow by dropping old attempts.
+Benchmark plan/attempt capacity may refuse a NEW benchmark registration before its
+first dispatch; it cannot suppress a running attempt or its negative outcome.
 No query truncation or exhausted history is evidence of complete coverage.
 
 Project query capability comes from trusted application selection of that Project;
@@ -151,8 +196,11 @@ outside it. Do not introduce a biological Human/OS security claim.
 Use a deferred read transaction for count/byte projections, inventory completeness,
 observations and source links. Verify row/body scope before bounded decoding; refuse
 oversize/malformed/foreign state with safe codes. Keyset cursor binds scope, filters,
-snapshot digest and last immutable identity. A changed snapshot returns StaleCursor,
-requiring a fresh query; no mixed-snapshot total. Query output contains only safe
+snapshot digest and last immutable identity. Pin append-sequence high-water marks
+for producer inventory, finalized observations and coverage versions, so concurrent
+appends do not prevent paging through an immutable view. Changed scope/filter/epoch
+or unavailable pinned history returns StaleCursor; no mixed-snapshot total.
+Query output contains only safe
 identities, numbers, coverage and reason enums, never prompt/transcript/env values,
 raw native errors or arbitrary metadata. SQL projects only required bounded fields.
 
@@ -163,6 +211,37 @@ input/output/cache/cost by compatible model/unit/category/currency; show measure
 and unknown operation counts, failure/cancel/retry counts and incomplete totals.
 Cached ratio is unavailable for zero/missing/incompatible inclusive input.
 
+## Stable prefix, provider cache awareness and amplification
+
+At the actual #19/#20 authorized prompt-construction consumer, construct stable
+prefixes by deterministic ordering of reusable instructions/tool definitions/source
+slices. Key the authorized input by exact Project identity, source revision, rules,
+artifact/version/content digests and phase/current authority. Equal authorized input
+has byte-identical prefix; any key change invalidates prior material. No cross-Project
+or cross-lane reuse, current peer findings, stale evidence or cached admission proof.
+Native-owned prompt portions remain native; no promise that the runtime controls
+their ordering or cache namespace. No raw cache contents enter telemetry.
+
+Discover cache capabilities through the actual registered adapter and supported
+owned native protocol/version. Persist only bounded supported/unsupported/unknown
+capability enums and numeric observations. Use explicit cache channels only where
+already authorized and supported; unsupported remains visible. Do not alter model,
+effort, credentials, hooks, permissions, history or native defaults to manufacture
+a hit. Warm, cold, expired and unavailable cache paths retain identical mandatory
+evidence, freshness, admission, reviewer independence and completion/cleanup gates.
+Fallback uses equivalent current authorized input or explicit native unsupported/
+error behavior. Cache performance is never evidence of logical input reduction.
+
+Register a measured single-reviewer reference as separate predeclared apparatus
+before lane execution, on the exact immutable review bundle and consuming model/
+unit/category definition. It cannot feed findings or gates. For each compatible
+model group, amplification is actual independent-reviewer input divided by that
+measured single-reviewer reference; expose slot/count, shared/specific and cache/
+uncached components with coverage. Heterogeneous rosters need per-model references
+and ratios; no mixed-model token sum. Replacements retain original attempts and new
+slot/roster versions. Missing/zero/incompatible references yield no ratio, never a
+packing estimate substitute. Reference calls are apparatus inventory, not lane work.
+
 ## Immutable benchmark plans and outcome axes
 
 Trusted benchmark composition registers a plan under the shared epoch before the
@@ -171,8 +250,18 @@ and Project policy digests, baseline changes, native/provider configurations,
 features, counter contracts, oracle/adjudication, repetition count/time stopping,
 counterbalanced order, tolerances and apparatus classification. Every started
 attempt has a permanent inventory/outcome; cleanup never deletes plan history.
-Own old native history/config/defaults remain unchanged; use distinct owned lane/
-repetition paths, session IDs and fixture repositories, recording known exposure.
+Derive the shipped-default digest from the tested source/build's actual compiled
+default configuration, and reject a claimed default that differs. At each actual
+dispatch compare its runtime-derived effective feature/policy/native configuration
+digests against that lane plan; a mid-run change or non-default enabled composition
+is a retained execution/configuration failure, not a valid reduction experiment.
+Record native observed configuration separately when available; a runtime digest
+does not prove unreported native model/effort, whose unknown confound remains.
+Own old native history/config/defaults remain unchanged. Give EACH lane AND
+repetition distinct owned fixture paths/repositories, Project/Goal/Task identities
+in the shared registry and native sessions. Pin only permitted canonical identity
+substitutions in the plan; all Pack/expansion/query channels enforce that boundary.
+Record known exposure.
 Exposure/confounding refuses causal/equivalence claims rather than claiming secrecy.
 
 Baseline disables evaluated reduction only; preserves mandatory safety/context,
@@ -200,6 +289,9 @@ exposure as confounds without inventing an OS secrecy guarantee. Keep answers ou
 of lane inputs/caches/fixture trees/history. Author-overlapping or tuning-exposed
 items are regression-only. Frozen baseline discrimination must establish sensitivity
 for every exercised feature; both-missed items do not nominally cover a feature.
+Plans store preregistered answer commitments/digests, not answer text; actual
+independent adjudication reveals answers outside lane inputs only after outputs
+freeze, while preserving item/creator/exposure identities and the frozen oracle.
 
 Pool ALL attempts across same-source/configuration plans with unknown/failing axes;
 never stop after N valid, replace invalid attempts or choose latest favorable plan.
@@ -236,6 +328,14 @@ wrong model/unit, reset/late/cumulative semantics, nested totals, helper omissio
 shared overhead, monetary schedule change, query scope/overflow/page drift, genuine
 sent mandatory context, every attempted plan, all outcome axes, initial/successor
 oracle independence, true default pins, known exposure and retained negative history.
+Exercise repeated Codex cumulative notifications and status/final/recovery views
+through actual aggregation/query/report; prove one finalized effective value.
+Attach between owned turns AND during a turn leaves interval-derived usage unknown.
+At both operation/ledger capacity and actual telemetry write failure, native and
+mandatory-context behavior stays unchanged while coverage becomes unknown. Test
+cross-lane Pack/expansion/metrics refusal, mid-run policy drift, measured amplification
+references and current stable-prefix invalidation. Warm/cold/unavailable cache paths
+have the same actual freshness/admission/evidence/gate results.
 Use required native parser/transport conformance plus controlled deterministic cases;
 synthetic measurements cannot satisfy the native benchmark.
 
@@ -248,6 +348,13 @@ mark own mandatory loss unverified; valid-only/until-valid pool; drop unfavorabl
 history; certify tuned/or author-overlapping items; disable a feature only in the
 benchmark while default remains on. Each must reach its intended assertion with
 passing positive controls, exact restoration and no unrelated timeout/setup credit.
+Additional actual-consumer mutants sum cumulative notifications, double-count one
+event through two collection paths, refuse native/context effects on telemetry
+capacity or write error, attribute an unowned attach interval, substitute a contract
+model for a native fallback, cross lane context/query scopes, certify actual config
+drift, and use cache presence to bypass freshness or mandatory evidence. Kill these
+at their real query/report/dispatch/context/certification consumers, not helper-only
+checks; restored positives must prove the relevant native/context prerequisites.
 
 Run relevant native/context/Store/Workflow/registry regressions, fmt/clippy/tests,
 debug/release builds, exact Linux/macOS CI and two independent immutable source/
