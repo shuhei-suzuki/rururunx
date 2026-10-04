@@ -101,8 +101,10 @@ marker CAS loss release the proven undispatched owned attempt and let the next s
 progress. Marker Project/Goal/Record-version conflicts and untyped marker errors retain
 the same reservation, including when owners are active; a release conflict/fence also
 retains it. A coordinated StateOnly re-persist writes Task before Workflow Record:
-its marker conflict surfaces as an owning Task-row error, but the changed Record
-version prevents release. Verify this actual release-token consumer. The marker
+after the post-refresh capture its marker conflict surfaces as an owning Task-row
+error, but the changed Record version prevents release. Before refresh, the
+refresh Record-version check rejects it first. Verify both actual release-token
+consumers and attribute their different errors correctly. The marker
 writes only its owning Task, so other Task IDs are unreachable there; verify exact
 table/owning-ID classification directly as defense in depth, without claiming
 consumer mutation credit for unreachable alternatives. Factual gate observation

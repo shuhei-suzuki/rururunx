@@ -70,12 +70,15 @@ retry of the release. Return the original preparation error, augmented with a
 retained-reservation diagnostic if release fails. The next ordinary step may
 reserve again only after this successful owner-local no-dispatch release.
 
-Process crash, dropped owner futures, inactive-owner failure, conflicting Workflow
-records, unknown/untyped marker publication outcomes (including a marker without a
-Session even when start was never called), release CAS conflicts/executor-Lost
-fences, marker Project/Goal-version conflicts, and post-dispatch Session-binding
-failures are intentionally conservative
-and depend on #14. A committed terminal decision may still use existing explicit
+Issue #14 must reconcile orphaned undispatched attempts, dropped futures/crashes,
+inactive-owner preparation errors, definitive-decision publication conflicts,
+marker Project/Goal-version conflicts (including Project/Goal metadata edits and
+lifecycle ABA), release-token Record-version mismatches, untyped/unknown marker
+errors, release CAS/executor-Lost fence failures, post-dispatch Session-binding
+conflicts and unknown reversible Evaluating claims.
+
+A marker without a Session remains reserved even when start was never called.
+A committed terminal decision may still use existing explicit
 TerminalRecovery: the terminal-Task transaction fence and no Session/dispatch
 marker exclude the suspended owner from future dispatch, while executor/Lost
 fences remain mandatory. This path needs no inferred owner absence and introduces
@@ -141,8 +144,11 @@ changes or automatic native replay are introduced.
 - Re-persist the exact Workflow body through StateOnly while an owner is held;
   its attempt stays byte-identical but Record version increases. The owner fails
   preparation and must retain it. Removing only the version check must fail.
-  This coordinated writer updates Task before Record, so the marker sees an
-  owning Task-row conflict; the release-token Record version rejects release.
+  After the post-refresh capture this coordinated writer updates Task before
+  Record, so the marker sees an owning Task-row conflict; before refresh the
+  refresh Record-version check rejects first. Exercise both timings: the
+  release-token Record version rejects release in each, and removing its check
+  must fail both consumers.
   Record-only factual gate observation requires Evaluating and cannot change this
   Running claim. Do not claim a records-table marker consumer. Other Task IDs are
   unreachable in this marker; direct classifier tests are defense in depth,

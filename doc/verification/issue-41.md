@@ -43,7 +43,14 @@ only defense-in-depth credit. Requirements, README and master now carry the same
 retained #14 classes, naming Project/Goal metadata ABA, Record token mismatch and
 unknown reversible evaluation. Workflow and Goal masters warn future progress
 writers about shared Goal-version noise. A narrow immutable delta re-review must
-verify these refinements before implementation.
+verify these refinements before implementation. Round 6 at public `2113df3`
+approved them with no blockers and verified owned cleanup. Its resumed native
+API duration and token/cost counters have unverified per-round attribution.
+Two optional Low precision fixes were verified: parent row versions fence
+definitive publications and Session binding as well as the marker; coordinated
+Record re-persist rejects at refresh before that point, or at the Task marker CAS
+after refresh, and both release-token consumers must retain the changed claim.
+These documentation fixes will be included in the immutable implementation review.
 
 Normal merge `8a31f81` restored original public `c516014` ancestry after the rebase;
 its committed tree was byte-identical to reviewed `a480610`. No further force

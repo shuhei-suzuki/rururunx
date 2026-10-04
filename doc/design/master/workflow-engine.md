@@ -402,7 +402,7 @@ errors, release CAS/executor-Lost fence failures, post-dispatch Session-binding
 conflicts and unknown reversible Evaluating claims.
 
 #41 adds no durable owner-absence proof. Project/Goal row versions participate in
-the marker CAS. Future per-Task progress writers must use Task-scoped records
+marker, definitive-publication and post-dispatch Session-binding CAS. Future per-Task progress writers must use Task-scoped records
 instead of bumping the shared Goal row on every step, or account for resulting
 #14 recovery frequency among concurrent sibling Tasks. Ordinary observation must allow evaluation still being
 in flight. A marker without a Session may precede any native launch and does not
