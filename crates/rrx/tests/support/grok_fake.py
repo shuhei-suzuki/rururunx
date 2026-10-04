@@ -4,9 +4,10 @@ synthetic=json.loads(pathlib.Path(sys.argv[0]).with_suffix('.json').read_text())
 if synthetic.get('RRX_PYTHON_OBSERVED'):pathlib.Path(synthetic['RRX_PYTHON_OBSERVED']).write_text(json.dumps({'executable':sys.executable,'version_info':list(sys.version_info)}))
 mode=synthetic.get('RRX_MODE','good');sid=None;prompt=None;calls=0;model='native-default';effort='high'
 if synthetic.get('RRX_ENVIRONMENT_OBSERVED'):
- actual={key:os.getenv(key) for key in ['LANG','GROK_SYNTHETIC_AUTH','RRX_CALLER_FORBIDDEN','NODE_TLS_REJECT_UNAUTHORIZED']}
- assert actual=={'LANG':'synthetic-own-locale','GROK_SYNTHETIC_AUTH':'synthetic-native-global','RRX_CALLER_FORBIDDEN':None,'NODE_TLS_REJECT_UNAUTHORIZED':'synthetic-tls-control'},'unexpected synthetic canary value'
- pathlib.Path(synthetic['RRX_ENVIRONMENT_OBSERVED']).write_text(json.dumps(actual))
+ expected=json.loads(synthetic['RRX_ENVIRONMENT_EXPECTED'])
+ matches={key:os.getenv(key)==value for key,value in expected.items()}
+ assert all(matches.values()),'synthetic environment canary mismatch'
+ pathlib.Path(synthetic['RRX_ENVIRONMENT_OBSERVED']).write_text(json.dumps(matches))
 if synthetic.get('RRX_SPAWN_OBSERVED'):pathlib.Path(synthetic['RRX_SPAWN_OBSERVED']).write_text('native process started')
 profile=pathlib.Path(sys.argv[sys.argv.index('--agent-profile')+1]).read_text();decision='name: rururunx-decision' in profile
 assert 'injectDefaultTools: false' in profile and 'GrokBuild:read_file' in profile and 'GrokBuild:search_replace' in profile

@@ -4,6 +4,9 @@ use super::*;
 use crate::domain::ProjectState;
 
 pub(super) async fn isolated(name: &str) {
+    isolated_with(name, &[], false).await;
+}
+async fn isolated_with(name: &str, extras: &[(String, String)], omit_ssl: bool) {
     let home = tempfile::tempdir().unwrap();
     let mut command = Command::new(std::env::current_exe().unwrap());
     command
@@ -21,6 +24,10 @@ pub(super) async fn isolated(name: &str) {
         .stderr(Stdio::piped())
         .kill_on_drop(true)
         .process_group(0);
+    if omit_ssl {
+        command.env_remove("SSLKEYLOGFILE");
+    }
+    command.envs(extras.iter().cloned());
     let mut child =
         ProcessGroup::new(command.spawn().unwrap(), Arc::new(AtomicBool::new(false))).unwrap();
     let stdout = tokio::spawn(read_git_output(child.child.stdout.take().unwrap()));
@@ -77,9 +84,39 @@ fn foreign(fixture: &Fixture, names: &[&str]) -> (tempfile::TempDir, crate::doma
         .unwrap();
     (directory, project)
 }
+fn expect_environment(fixture: &Fixture, expected: Value) -> PathBuf {
+    let observed = fixture.directory.path().join("environment.json");
+    fixture.synthetic(
+        "RRX_ENVIRONMENT_OBSERVED",
+        observed.to_str().unwrap().into(),
+    );
+    fixture.synthetic("RRX_ENVIRONMENT_EXPECTED", expected.to_string());
+    observed
+}
+fn assert_environment(observed: &Path) {
+    let matches: Value = serde_json::from_slice(&std::fs::read(observed).unwrap()).unwrap();
+    assert!(!matches.as_object().unwrap().is_empty());
+    assert!(
+        matches
+            .as_object()
+            .unwrap()
+            .values()
+            .all(|value| value == &json!(true)),
+        "synthetic environment canary did not reach child"
+    );
+}
 fn assert_not_spawned(fixture: &Fixture, status: &SessionStatus) {
     let observation = fixture.observation(status);
     receipt_support::assert_receipt(&observation.receipt);
+    assert_eq!(
+        serde_json::to_value(observation.saved.as_ref().unwrap()).unwrap(),
+        serde_json::to_value(&status.session).unwrap(),
+        "persisted and watched rejection differ"
+    );
+    assert_eq!(
+        observation.attempt.unwrap().input_version,
+        fixture.request.input.version
+    );
     assert!(
         !observation
             .events
@@ -111,6 +148,262 @@ async fn rejected_start(adapter: &GrokAdapter, fixture: &Fixture) -> AdapterErro
             panic!("environment admission unexpectedly reserved a Session");
         }
     }
+}
+
+async fn rejected_resume(
+    adapter: &GrokAdapter,
+    fixture: &Fixture,
+    session: &Session,
+) -> AdapterError {
+    let prior = adapter.status(session.into()).await.unwrap();
+    let lower = receipt_support::watermark(&fixture.store, &fixture.request.scope).unwrap();
+    match fixture
+        .resume(adapter, session.into(), fixture.request.input.version)
+        .await
+    {
+        Err(error) => {
+            let after = adapter.status(session.into()).await.unwrap();
+            assert_eq!(
+                serde_json::to_value(&prior.session).unwrap(),
+                serde_json::to_value(&after.session).unwrap()
+            );
+            assert!(
+                fixture
+                    .store
+                    .lock()
+                    .unwrap()
+                    .events(&fixture.request.scope, lower, 100)
+                    .unwrap()
+                    .iter()
+                    .all(|event| event.scope != fixture.request.scope),
+                "selection rejection altered owning audit"
+            );
+            error
+        }
+        Ok(resumed) => {
+            let status = terminal(adapter, fixture, &resumed).await;
+            if status.session.pid.is_none() {
+                adapter.release((&resumed).into()).unwrap();
+            }
+            assert_not_spawned(fixture, &status);
+            panic!("selection rejection unexpectedly reserved a new native attempt");
+        }
+    }
+}
+async fn fresh_checkpoint(
+    adapter: &GrokAdapter,
+    fixture: &mut Fixture,
+    session: &Session,
+    version: u64,
+) {
+    let mut input = fixture.request.input.clone();
+    input.version = version;
+    input.payload = "explicit fresh selection continuation".into();
+    adapter
+        .checkpoint(session.into(), input.clone())
+        .await
+        .unwrap();
+    fixture.request.input = input;
+}
+#[tokio::test]
+async fn initial_and_resume_selection_keep_invalid_and_live_ownership_guards() {
+    isolated("adapter::grok::environment_tests::selection_child").await;
+}
+#[tokio::test]
+#[ignore = "only entered by owned env-cleared canary parent"]
+async fn selection_child() {
+    assert_eq!(std::env::var("RRX_INSPECTION_FIXTURE_CHILD").unwrap(), "1");
+    for names in [
+        vec!["INVALID-NAME"],
+        vec!["LANG", "LANG"],
+        vec!["HOME"],
+        vec!["LANG", "NODE_TLS_REJECT_UNAUTHORIZED"],
+    ] {
+        let mut fixture = Fixture::new();
+        own_refs(&mut fixture, &names);
+        let adapter = fixture.adapter();
+        assert_eq!(
+            rejected_start(&adapter, &fixture).await.kind,
+            ErrorKind::InvalidConfiguration
+        );
+        assert!(
+            fixture
+                .store
+                .lock()
+                .unwrap()
+                .records(&fixture.request.scope, RecordKind::Session)
+                .unwrap()
+                .is_empty()
+        );
+    }
+    let mut fixture = Fixture::new();
+    fixture
+        .request
+        .environment
+        .insert("GIT_CONFIG_GLOBAL".into(), "synthetic".into());
+    let adapter = fixture.adapter();
+    let error = rejected_start(&adapter, &fixture).await;
+    assert_eq!(error.kind, ErrorKind::InvalidInput);
+    assert_eq!(error.message, "invalid/leaking Git environment");
+    assert!(
+        fixture
+            .store
+            .lock()
+            .unwrap()
+            .records(&fixture.request.scope, RecordKind::Session)
+            .unwrap()
+            .is_empty()
+    );
+    for kind in 0..5 {
+        let mut fixture = Fixture::new();
+        let (_foreign_dir, mut other) = foreign(&fixture, &[]);
+        let adapter = fixture.adapter();
+        let first = fixture.start(&adapter).await.unwrap();
+        let status = terminal(&adapter, &fixture, &first).await;
+        assert!(
+            adapter.transport_succeeded(&status),
+            "selection control failed; {:?}; {}",
+            status.failure,
+            fixture.receipt_message(&status)
+        );
+        if kind == 4 {
+            own_refs(&mut fixture, &["NODE_TLS_REJECT_UNAUTHORIZED"]);
+        } else {
+            other.environment_refs = if kind == 3 {
+                vec!["INVALID-NAME".into(), "GROK_SYNTHETIC_AUTH".into()]
+            } else {
+                vec!["GROK_SYNTHETIC_AUTH".into()]
+            };
+            if kind == 1 {
+                other.state = ProjectState::Blocked;
+                other.blocked_reason = Some("synthetic".into());
+            }
+            if kind == 2 {
+                other.state = ProjectState::Removed;
+            }
+            fixture
+                .store
+                .lock()
+                .unwrap()
+                .put_project(&mut other)
+                .unwrap();
+        }
+        fresh_checkpoint(&adapter, &mut fixture, &first, 2).await;
+        let error = rejected_resume(&adapter, &fixture, &first).await;
+        assert_eq!(error.kind, ErrorKind::InvalidConfiguration);
+        assert_eq!(
+            error.message,
+            if kind == 4 {
+                "native control references are not scoped environment values"
+            } else {
+                "native environment authority unavailable"
+            }
+        );
+        adapter.release((&first).into()).unwrap();
+    }
+    child_completed("adapter::grok::environment_tests::selection_child");
+}
+#[tokio::test]
+async fn native_constructor_enforces_actual_baseline_count_and_name_bounds() {
+    for (kind, count) in [
+        ("count_ok", 509),
+        ("count_bad", 510),
+        ("name_ok", 0),
+        ("name_bad", 0),
+    ] {
+        let mut extras = (0..count)
+            .map(|i| (format!("GROK_BOUND_{i}"), "synthetic-bound".into()))
+            .collect::<Vec<_>>();
+        extras.push(("RRX_CONSTRUCTOR_BOUNDARY".into(), kind.into()));
+        if kind.starts_with("name_") {
+            extras.push((
+                format!(
+                    "GROK_{}",
+                    "X".repeat(if kind == "name_ok" { 251 } else { 252 })
+                ),
+                "synthetic-bound".into(),
+            ));
+        }
+        isolated_with(
+            "adapter::grok::environment_tests::constructor_child",
+            &extras,
+            false,
+        )
+        .await;
+    }
+}
+#[tokio::test]
+#[ignore = "only entered by owned env-cleared canary parent"]
+async fn constructor_child() {
+    assert_eq!(std::env::var("RRX_INSPECTION_FIXTURE_CHILD").unwrap(), "1");
+    let fixture = Fixture::new();
+    let result = GrokAdapter::new(
+        "grok".into(),
+        fixture.executable.clone(),
+        fixture.store.clone(),
+    );
+    match std::env::var("RRX_CONSTRUCTOR_BOUNDARY").unwrap().as_str() {
+        "count_ok" | "name_ok" => assert!(result.is_ok(), "supported constructor bound rejected"),
+        "count_bad" | "name_bad" => {
+            let error = result
+                .err()
+                .expect("unsupported constructor bound accepted");
+            assert_eq!(error.kind, ErrorKind::InvalidConfiguration);
+            assert_eq!(error.message, "native environment authority unavailable");
+        }
+        _ => unreachable!(),
+    }
+    assert!(
+        fixture
+            .store
+            .lock()
+            .unwrap()
+            .records(&fixture.request.scope, RecordKind::Session)
+            .unwrap()
+            .is_empty()
+    );
+    child_completed("adapter::grok::environment_tests::constructor_child");
+}
+#[tokio::test]
+async fn absent_native_baseline_cannot_be_introduced_by_declared_caller() {
+    isolated_with(
+        "adapter::grok::environment_tests::absent_baseline_child",
+        &[],
+        true,
+    )
+    .await;
+}
+#[tokio::test]
+#[ignore = "only entered by owned env-cleared canary parent"]
+async fn absent_baseline_child() {
+    assert_eq!(std::env::var("RRX_INSPECTION_FIXTURE_CHILD").unwrap(), "1");
+    let mut fixture = Fixture::new();
+    own_refs(&mut fixture, &["SSLKEYLOGFILE"]);
+    let observed = expect_environment(
+        &fixture,
+        json!({"SSLKEYLOGFILE":null,"GROK_SYNTHETIC_AUTH":"synthetic-native-global"}),
+    );
+    let adapter = fixture.adapter();
+    assert!(
+        adapter
+            .environment_candidates(fixture.request.project.id)
+            .unwrap()
+            .is_empty()
+    );
+    let first = fixture.start(&adapter).await.unwrap();
+    let status = terminal(&adapter, &fixture, &first).await;
+    assert!(adapter.transport_succeeded(&status));
+    assert_environment(&observed);
+    adapter.release((&first).into()).unwrap();
+    fixture
+        .request
+        .environment
+        .insert("SSLKEYLOGFILE".into(), "synthetic-introduction".into());
+    assert_eq!(
+        rejected_start(&adapter, &fixture).await.kind,
+        ErrorKind::InvalidConfiguration
+    );
+    child_completed("adapter::grok::environment_tests::absent_baseline_child");
 }
 
 #[tokio::test]
@@ -237,10 +530,18 @@ async fn initial_child() {
         .request
         .environment
         .insert("LANG".into(), "synthetic-own-locale".into());
-    let observed = positive.directory.path().join("environment.json");
-    positive.synthetic(
-        "RRX_ENVIRONMENT_OBSERVED",
-        observed.to_str().unwrap().into(),
+    positive.mode("good");
+    assert_eq!(positive.synthetic_value("RRX_MODE"), "good");
+    assert_eq!(
+        PathBuf::from(positive.synthetic_value("RRX_DATABASE")),
+        positive.directory.path().join("state.db")
+    );
+    let observed = expect_environment(
+        &positive,
+        json!({
+            "LANG":"synthetic-own-locale", "GROK_SYNTHETIC_AUTH":"synthetic-native-global",
+            "RRX_CALLER_FORBIDDEN":null, "NODE_TLS_REJECT_UNAUTHORIZED":"synthetic-tls-control"
+        }),
     );
     let adapter = positive.adapter();
     let launched = positive.start(&adapter).await.unwrap();
@@ -251,19 +552,10 @@ async fn initial_child() {
         status.failure,
         positive.receipt_message(&status)
     );
-    let canary: Value = serde_json::from_slice(&std::fs::read(&observed).unwrap()).unwrap();
-    assert!(
-        canary["LANG"] == "synthetic-own-locale",
-        "synthetic own locale mismatch"
-    );
-    assert!(
-        canary["GROK_SYNTHETIC_AUTH"] == "synthetic-native-global",
-        "synthetic native baseline mismatch"
-    );
-    assert!(canary["RRX_CALLER_FORBIDDEN"].is_null());
-    assert!(
-        canary["NODE_TLS_REJECT_UNAUTHORIZED"] == "synthetic-tls-control",
-        "synthetic protected control mismatch"
+    assert_environment(&observed);
+    assert_eq!(
+        std::fs::read_to_string(positive.request.worktree.join("result.txt")).unwrap(),
+        "owned edit\n"
     );
     adapter.release((&launched).into()).unwrap();
     own_refs(&mut positive, &["LANG", "NODE_TLS_REJECT_UNAUTHORIZED"]);
@@ -299,6 +591,22 @@ async fn initial_child() {
         rejected_start(&adapter, &denied).await.kind,
         ErrorKind::InvalidConfiguration
     );
+    other.state = ProjectState::Blocked;
+    other.blocked_reason = Some("synthetic".into());
+    denied
+        .store
+        .lock()
+        .unwrap()
+        .put_project(&mut other)
+        .unwrap();
+    assert_eq!(
+        rejected_start(&adapter, &denied).await.kind,
+        ErrorKind::InvalidConfiguration
+    );
+    assert_eq!(
+        adapter.environment_candidates(other.id).unwrap(),
+        BTreeSet::from(["GROK_SYNTHETIC_AUTH".into()])
+    );
     other.state = ProjectState::Removed;
     denied
         .store
@@ -330,6 +638,10 @@ async fn initial_child() {
         BTreeSet::from(["GROK_SYNTHETIC_AUTH".into()])
     );
     own_refs(&mut denied, &["GROK_SYNTHETIC_AUTH"]);
+    let observed = expect_environment(
+        &denied,
+        json!({"GROK_SYNTHETIC_AUTH":"synthetic-native-global","XAI_API_KEY":"synthetic-xai-global","SSLKEYLOGFILE":"synthetic-keylog-locator"}),
+    );
     let session = denied.start(&adapter).await.unwrap();
     let status = terminal(&adapter, &denied, &session).await;
     assert!(
@@ -338,6 +650,7 @@ async fn initial_child() {
         status.failure,
         denied.receipt_message(&status)
     );
+    assert_environment(&observed);
     adapter.release((&session).into()).unwrap();
     for key in [
         "RRX_CALLER_FORBIDDEN",
@@ -355,6 +668,33 @@ async fn initial_child() {
         );
         denied.request.environment.clear();
     }
+    let mut decision = Fixture::new();
+    decision.request.role = SessionRole::Consultant;
+    own_refs(&mut decision, &["LANG"]);
+    decision
+        .request
+        .environment
+        .insert("LANG".into(), "synthetic-own-locale".into());
+    let observed = expect_environment(
+        &decision,
+        json!({"LANG":"synthetic-own-locale","GROK_SYNTHETIC_AUTH":"synthetic-native-global"}),
+    );
+    let adapter = decision.adapter();
+    let session = decision.start_structured(&adapter, json!({"type":"object","properties":{"verdict":{"type":"string","enum":["DENY"]},"reason":{"type":"string"}},"required":["verdict","reason"],"additionalProperties":false})).await.unwrap();
+    let status = terminal(&adapter, &decision, &session).await;
+    receipt_support::assert_state(
+        status.session.state,
+        SessionState::Exited,
+        "scoped decision environment",
+        &decision.receipt_message(&status),
+    );
+    assert!(adapter.transport_succeeded(&status));
+    assert_eq!(
+        serde_json::from_slice::<Value>(&status.stdout).unwrap()["verdict"],
+        "DENY"
+    );
+    assert_environment(&observed);
+    adapter.release((&session).into()).unwrap();
     child_completed("adapter::grok::environment_tests::initial_child");
 }
 
@@ -680,6 +1020,7 @@ fn mutation_hook(
 async fn irrelevant(boundary: usize, name: &str) {
     assert_eq!(std::env::var("RRX_INSPECTION_FIXTURE_CHILD").unwrap(), "1");
     let mut control = None;
+    let mut checkpoint_control = None;
     for kind in 0..9 {
         let mut fixture = Fixture::new();
         let initial_refs: &[&str] = if kind == 7 {
@@ -714,10 +1055,31 @@ async fn irrelevant(boundary: usize, name: &str) {
             input.version = 2;
             input.payload = "explicit fresh continuation".into();
             active.store(boundary == 1, Ordering::SeqCst);
+            let lower = receipt_support::watermark(&fixture.store, &fixture.request.scope).unwrap();
             adapter
                 .checkpoint((&first).into(), input.clone())
                 .await
                 .unwrap();
+            let checkpoint_events = fixture
+                .store
+                .lock()
+                .unwrap()
+                .events(&fixture.request.scope, lower, 100)
+                .unwrap();
+            let checkpoint_kinds = checkpoint_events
+                .iter()
+                .filter(|event| event.scope == fixture.request.scope)
+                .map(|event| event.kind.clone())
+                .collect::<Vec<_>>();
+            assert!(checkpoint_kinds.iter().any(|kind| kind == "session.saved"));
+            if let Some(control) = &checkpoint_control {
+                assert_eq!(
+                    &checkpoint_kinds, control,
+                    "unrelated metadata changed owning checkpoint event kinds/counts"
+                );
+            } else {
+                checkpoint_control = Some(checkpoint_kinds);
+            }
             active.store(boundary == 2, Ordering::SeqCst);
             fixture.request.input = input;
             let second = fixture.resume(&adapter, (&first).into(), 2).await.unwrap();
@@ -790,6 +1152,7 @@ async fn reference_child() {
         let (_foreign_dir, _foreign) = foreign(&fixture, &[key]);
         own_refs(&mut fixture, &[key]);
         fixture.request.environment.insert(key.into(), value.into());
+        let observed = expect_environment(&fixture, json!({key:value}));
         let adapter = fixture.adapter();
         let first = fixture.start(&adapter).await.unwrap();
         let status = terminal(&adapter, &fixture, &first).await;
@@ -799,7 +1162,17 @@ async fn reference_child() {
             status.failure,
             fixture.receipt_message(&status)
         );
+        assert_environment(&observed);
         adapter.release((&first).into()).unwrap();
+        fixture.request.environment.clear();
+        let retained = fixture.start(&adapter).await.unwrap();
+        let status = terminal(&adapter, &fixture, &retained).await;
+        assert!(
+            adapter.transport_succeeded(&status),
+            "retained owning native baseline failed"
+        );
+        assert_environment(&observed);
+        adapter.release((&retained).into()).unwrap();
         fixture
             .request
             .environment
@@ -836,6 +1209,10 @@ async fn reference_child() {
         "foreign inventory became an error side channel"
     );
     own_refs(&mut fixture, &["TZ"]);
+    let observed = expect_environment(
+        &fixture,
+        json!({"TZ":"synthetic-own-tz", "GROK_SYNTHETIC_AUTH":"synthetic-native-global"}),
+    );
     let first = fixture.start(&adapter).await.unwrap();
     let status = terminal(&adapter, &fixture, &first).await;
     assert!(
@@ -845,9 +1222,14 @@ async fn reference_child() {
         fixture.receipt_message(&status)
     );
     adapter.release((&first).into()).unwrap();
+    assert_environment(&observed);
     // A declared unsupported provider key is harmless until a caller tries passing it.
     fixture.request.environment.clear();
     own_refs(&mut fixture, &["OTHER_PROVIDER_REFERENCE"]);
+    expect_environment(
+        &fixture,
+        json!({"GROK_SYNTHETIC_AUTH":"synthetic-native-global","TZ":null}),
+    );
     let first = fixture.start(&adapter).await.unwrap();
     let status = terminal(&adapter, &fixture, &first).await;
     assert!(
@@ -855,6 +1237,17 @@ async fn reference_child() {
         "unused owning reference changed provider authority"
     );
     adapter.release((&first).into()).unwrap();
+    fixture.request.environment.insert(
+        "OTHER_PROVIDER_REFERENCE".into(),
+        "synthetic-unsupported".into(),
+    );
+    let denied = rejected_start(&adapter, &fixture).await;
+    assert_eq!(denied.kind, ErrorKind::InvalidConfiguration);
+    assert_eq!(
+        denied.message,
+        "native environment value cannot replace intentional runtime authority"
+    );
+    fixture.request.environment.clear();
     // Mixed registry-invalid strings still contribute their valid retained reference.
     other.environment_refs = vec!["INVALID-NAME".into(), "GROK_SYNTHETIC_AUTH".into()];
     fixture
@@ -914,7 +1307,8 @@ async fn ownership_child() {
         .await
         .unwrap();
     let prior = adapter.status((&first).into()).await.unwrap();
-    let denied = adapter.resume((&first).into()).await.unwrap_err();
+    fixture.request.input = input.clone();
+    let denied = rejected_resume(&adapter, &fixture, &first).await;
     assert_eq!(denied.kind, ErrorKind::InvalidConfiguration);
     let unchanged = adapter.status((&first).into()).await.unwrap();
     assert_eq!(

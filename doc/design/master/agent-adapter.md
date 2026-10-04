@@ -413,7 +413,7 @@ resume re-admission preserve native UUID/no implicit prompt replay, PID/death/Lo
 Explicit Project-scoped candidate inspection reports only that Project's own non-control
 reference names present in the frozen baseline, including inactive Projects; it reads no
 foreign inventory/activity or values. Never call it automatically from another Project's
-rejection. Corrupt owning refs produce only the fixed unreadable authority status. If
+rejection. Corrupt or mixed registry-invalid owning refs make the complete operator projection unreadable and must be repaired/cleared. An own native-control declaration blocks that Project's Grok selection even when the caller does not pass the key; another Project's identical control declaration does not revoke the intentional global native control. If
 owning source cannot be reactivated to clear refs, reconstruct the adapter without the
 intentional runtime variable; do not erase another Project or fall back to cached auth.
 
