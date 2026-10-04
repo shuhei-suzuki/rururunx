@@ -66,7 +66,12 @@ impl Inspector {
         // The leader remains our unreaped Child even if it exited between polls.
         // A kill error must not skip mandatory wait; wait can resolve that race.
         let _kill = self.child.kill();
-        let result = self.child.wait();
+        let result = loop {
+            match self.child.wait() {
+                Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+                result => break result,
+            }
+        };
         self.unreaped = false;
         result
             .map(|exit| self.exit = Some(exit))
@@ -171,10 +176,32 @@ pub(super) fn inspect(
     leader: i32,
     observed: impl FnOnce(u32),
 ) -> io::Result<bool> {
+    inspect_command(std::process::Command::new(executable), leader, observed)
+}
+
+#[cfg(test)]
+pub(super) fn inspect_with_prefix(
+    executable: &Path,
+    prefix: &[String],
+    leader: i32,
+    observed: impl FnOnce(u32),
+) -> io::Result<bool> {
+    let mut command = std::process::Command::new(executable);
+    command.args(prefix);
+    inspect_command(command, leader, observed)
+}
+
+// Private command seam lets tests start a trusted interpreter directly. Production
+// constructs only /bin/ps with no prefix; exact query/env/stdio remain shared here.
+fn inspect_command(
+    mut command: std::process::Command,
+    leader: i32,
+    observed: impl FnOnce(u32),
+) -> io::Result<bool> {
     if leader <= 1 {
         return Err(framing("invalid owned inspection leader"));
     }
-    let child = std::process::Command::new(executable)
+    let child = command
         // Order matters in the legacy negative control; production env_clear
         // leaves UNIX2003 enabled. -G is a real group, not a process group.
         .args(["-g", &leader.to_string(), "-o", "pid=,pgid=,stat="])
@@ -299,13 +326,15 @@ pub(super) fn validate(output: &[u8], leader: i32) -> io::Result<bool> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{io::Write, os::unix::fs::PermissionsExt, os::unix::net::UnixStream};
+    use std::os::unix::net::UnixStream;
 
-    fn shim(temp: &tempfile::TempDir, name: &str, body: &str) -> std::path::PathBuf {
-        let path = temp.path().join(name);
-        std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
-        path
+    fn builtin(body: &str) -> io::Result<bool> {
+        inspect_with_prefix(
+            Path::new("/bin/sh"),
+            &["-c".into(), body.into()],
+            42,
+            |_| {},
+        )
     }
     #[test]
     fn complete_frame_requires_exact_leader_all_members_and_canonical_states() {
@@ -337,7 +366,6 @@ mod tests {
     }
     #[test]
     fn actual_inspector_rejects_exit_zero_stderr_empty_and_incomplete_frames() {
-        let temp = tempfile::tempdir().unwrap();
         for (name, body, category) in [
             (
                 "diagnostic",
@@ -349,27 +377,28 @@ mod tests {
             ("missing", "printf '43 42 Z\\n'", "leader missing"),
             ("exit", "printf '42 42 Z\\n'; exit 1", "exit failed"),
         ] {
-            let path = shim(&temp, name, body);
-            let error = inspect(&path, 42, |_| {}).unwrap_err();
+            let error = builtin(body).unwrap_err();
             assert!(error.to_string().contains(category), "{name}: {error}");
         }
-        let good = shim(&temp, "good", "printf '42 42 Z\\n'");
-        assert!(inspect(&good, 42, |_| {}).unwrap());
+        assert!(builtin("printf '42 42 Z\\n'").unwrap());
     }
     #[test]
     fn each_output_stream_has_a_causal_size_failure() {
-        let temp = tempfile::tempdir().unwrap();
-        let padding = " ".repeat(LIMIT);
+        let padding = " ".repeat(8192);
+        let loop_body =
+            format!("i=0; while [ \"$i\" -lt 130 ]; do printf '{padding}'; i=$((i+1)); done");
         for (name, body) in [
-            ("stdout", format!("printf '42 42 Z{padding}\\n'")),
+            (
+                "stdout",
+                format!("printf '42 42 Z'; {loop_body}; printf '\\n'"),
+            ),
             (
                 "stderr",
-                format!("printf '42 42 Z\\n'; printf '{padding}x' >&2"),
+                format!("printf '42 42 Z\\n'; {{ {loop_body}; }} >&2"),
             ),
         ] {
-            let path = shim(&temp, name, &body);
             let started = Instant::now();
-            let error = inspect(&path, 42, |_| {}).unwrap_err();
+            let error = builtin(&body).unwrap_err();
             eprintln!(
                 "isolated {name} overflow observation elapsed={:?} category={error}",
                 started.elapsed()
@@ -384,10 +413,10 @@ mod tests {
     }
     #[test]
     fn exited_inspector_retained_output_writer_is_unknown_and_watchdog_releases_mutants() {
-        let (reader, mut retained_writer) = UnixStream::pair().unwrap();
-        retained_writer.write_all(b"42 42 Z\n").unwrap();
+        let (reader, retained_writer) = UnixStream::pair().unwrap();
         let output = retained_writer.try_clone().unwrap();
-        let child = std::process::Command::new("/bin/true")
+        let child = std::process::Command::new("/bin/sh")
+            .args(["-c", "printf '42 42 Z\\n'"])
             .env_clear()
             .stdout(Stdio::from(OwnedFd::from(output)))
             .stderr(Stdio::piped())

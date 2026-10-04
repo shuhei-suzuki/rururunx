@@ -159,3 +159,25 @@ legacy exec shim, generous retained-writer release watchdog. Workspace Cargo.tom
 already enables rustix fs; source review will include manifests to verify that fact.
 Mandatory reap/endpoint/sampling/global-kernel residuals remain explicit. Code/tests
 are not accepted by design approval; causal fixtures/mutants/source reviews remain.
+
+
+## First inspector fixtures and invocation diagnosis
+
+Committed17c7e21 targeted default four-test run: one passed, three failed. Retained
+endpoint fixture referenced nonexistent macOS /bin/true; fixed to a trusted shell
+producer. Tiny diagnostic and stdout1MiB shebang fixtures returned actual250ms timeout
+(~252.7ms for overflow); no deadline/latch/concurrency relaxation. Isolated committed
+producer diagnostics fe1f989/61c9a4a used env_clear, owned waitid/WNOWAIT and verified
+cleanup-before-reap: direct temporary shebang small/giant/chunk scripts330–359ms
+after1.5ms spawn; direct /bin/sh -c8.38ms, /bin/sh file7.43ms, /bin/ps3.43ms.
+This identifies local fixture invocation delay, not its OS mechanism, pipe-inheritance
+causality or historical CI cause. Peer full process suite overlapped first fixtures;
+its presence alone does not establish load causality, later diagnostic window was quiet.
+
+Private command construction seam now permits direct trusted interpreter prefix for
+synthetic tests; production remains only absolute/bin/ps with no prefix and exact
+shared -g/-o/env_clear/stdio/deadline gates. Tests generate chunks rather than a giant
+shell literal, and the owned producer emits the retained endpoint's frame. Retained
+endpoint uses an owned UnixStream FD as stdout through the same File drain completion
+runner, so credit is descriptor EOF/IO causality, not a privileged ps or signal proof.
+Default controls/source review must still verify the correction; original failure stays.
