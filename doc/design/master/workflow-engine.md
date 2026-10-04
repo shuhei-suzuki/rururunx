@@ -281,7 +281,14 @@ STRICT execute against `AgentAdapter`; formal requirements/design/impact phases
 use executor capability and review phases require explicit Review capability.
 Generic CLI's honest Execute-only contract therefore cannot act as a reviewer.
 The baseline delegates one configured reviewer Session; independent multi-reviewer
-sets, completion policy and remediation reconciliation remain #9 integration.
+sets, completion policy and remediation reconciliation remain #9 integration. Proposed
+[Issue9 requirements](../../requirements/issue-9-requirements.md) require fresh
+per-round native Sessions, explicit prior-finding dispositions and evidence-bound
+obligation applicability. An exhausted unrelated contribution alone does not veto
+proven disjoint work; applicable/unknown review obligations and all actual native/
+root/common-Git resource holds remain retained. These are unresolved requirements
+and future integration contracts, not behavior of this baseline single-reviewer
+consumer or implemented Human/scheduler/provider ports.
 
 `WorkflowSources` supplies factual scoped revision/source versions and selected
 payload (#18). Authority versions remain comparable across phases; phase and budget

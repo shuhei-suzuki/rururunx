@@ -26,8 +26,9 @@ worktree identity, committed target, captured sources, Task context/checkpoint
 provenance and factual Review Bundle. Two reviewers are first-class. The
 Claude/Codex/Grok triple is a preset; counts are never hard-coded to three.
 
-Each slot freezes a unique ID, agent, requested model/effort and independent native
-Session. All slots consume the identical frozen Task context and locked revision
+The roster freezes each unique slot key, registered agent and requested model/effort.
+Every new (round, slot) invocation allocates its own fresh independent native Session;
+the native Session identity is never frozen across rounds. All slots consume the identical frozen Task context and locked revision
 without incrementing Task.context_version or owner currency per reviewer. Temporal
 concurrency is best effort within permits; queued/serialized members retain the
 same input exclusions and residual native filesystem visibility caveat. A reviewed explicit ReviewSet delegation owns the entire roster;
@@ -71,8 +72,9 @@ actor identity. Dismissal claims/rationales remain labelled claims,
 not verified facts; re-raising a dismissed finding remains possible.
 Eligible opinions after this declared prior-round exposure may satisfy the
 independent floor: independence means current-round runtime-input independence,
-not lifetime blindness to prior findings. This also applies to a fresh transient
-retry slot whose previous invocation had no structured result. Result/certificate
+not lifetime blindness to prior findings. This also applies to a slot’s fresh native
+Session in a new full-roster retry round when its prior invocation had no structured
+result; no within-round retry is permitted. Result/certificate
 distinguish no prior-claim exposure from exposed re-review and never label an
 exposed opinion blind. Before any later-round input, every earlier round's native
 ownership must be safely settled; current-round peer findings remain excluded
@@ -80,7 +82,15 @@ until every roster slot settles.
 
 ## Verdicts, verification and completion
 
-Slots return APPROVE, REQUEST_CHANGES or ESCALATE, plus typed findings. Native
+Slots return APPROVE, REQUEST_CHANGES or ESCALATE, plus typed findings and explicit
+per-prior-finding dispositions. Each disposition identifies immutable original finding
+hash/round/slot, exact inspected current target locations and evidence references,
+and one of confirmed-fixed, still-present, false-positive, severity-downgrade,
+not-applicable, duplicate or superseded-by-target-change (9.a). It retains the
+original severity/text/opinion. Unknown, missing or malformed required dispositions
+hold; a general APPROVE is never an implicit confirmation. Only the eligible finder/
+independent confirmer or trusted Human resolution rules below can make that evidence
+an effective clearance. Target change or duplicated wording alone cannot clear it. Native
 failure, timeout, malformed output, cancellation and Lost are separate outcomes.
 Only completed, well-formed, exact-target APPROVE counts. Required review
 instructions/skills must resolve and be deliverable to every designated provider
@@ -256,7 +266,9 @@ startup/review expiry or terminal cleanup request. All three are frozen in polic
 requires reviewed normal post-result cleanup shape and observed/declared latency
 envelope from its actual production caller contract. The configured settlement
 deadline must exceed that envelope; if unavailable or too short, the preset refuses
-before member input. Default30 is provisional, not an asserted native guarantee.
+before member input. With default30, a known envelope strictly below30 seconds is
+accepted; an envelope at/above30 or unknown refuses. Default30 is provisional, not
+an asserted native guarantee.
 A supported explicit non-default deadline remains within1–3600. OS/uncertain cases
 still yield the declared held outcome; a contract bound is not a universal deadline
 guarantee or real-model timing proof.
@@ -363,31 +375,45 @@ target-mutation taint as well as blocker/authorship/budget obligations. Held sha
 and worktree locks continue to count; an independently allocated worktree does not
 erase the lineage hold. Trusted Issue14 recovery is the only releasable exit.
 Obligation lineage is the runtime-owned stable identity allocated for the initial
-Project/Task/Workflow-phase obligation, retained by every successor Set, generation
-and decomposition descendant. A new Task cannot choose a base behind which known
-held/exhausted obligations disappear. Formal admission requires exact registered-
-base ancestry or the recorded legitimate base-sync operation. A base containing
-recorded contributions from an uncertified-open/held/exhausted obligation lineage rejects a
-fresh unrelated lineage or requires an explicit linked inheritance of every known
-obligation/hold/budget/author exclusion; it is never an automatic fresh budget.
+Project/Task/Workflow-phase obligation, retained by successor Sets, generations and
+actual decomposition descendants. A new Task cannot choose a base behind which
+applicable held/exhausted obligations disappear. Formal admission retains exact
+registered-base ancestry or the recorded legitimate base-sync operation. Ancestry
+identifies retained contributions; it does not alone prove every later obligation
+is affected by every reachable uncertified contribution.
+
+Applicability is explicitly evidence-bound. A fresh unrelated obligation requires
+trusted recorded impact/applicability evidence covering its changed AND relied-on
+source/dependencies/context and the retained contribution/finding scopes. Filename
+or target-diff intersection alone, relabeling/rebasing, or an executor/Human JSON
+assertion cannot establish disjointness. The evidence identifies exact snapshots,
+inspected relationships/locations, retained finding identities, observed checks and
+scope conclusion through the trusted verification contract; unknown or incomplete
+applicability conservatively inherits the affected obligations or refuses admission.
+Reworking, superseding, decomposing or covering an affected prior obligation inherits
+its exact unresolved vetoes, original evidence, cumulative authors and shared exhausted/
+remaining budget. A proven disjoint new obligation may allocate a fresh lineage,
+budget and authorship set; the old uncertified history stays explicitly unaccepted
+and cannot acquire a certificate or disappear. No certificate-floor override exists.
+
+Actual Lost/uncertain native/resource holds retain their full reviewed effect scope
+until trusted14 recovery. Root/common-Git overlap can still fence the whole Project
+or physically overlapping Projects regardless of disjoint review obligations;
+new labels, merge, Human opinion or separate worktrees never release those holds.
 Lineage states are uncertified-open, certified-pending-merge, certified-and-merged,
 held, exhausted and terminated-without-certificate. A certified target handed to
 the registered base by an actual scoped merge artifact proving that same reviewed/
-accepted target contribution is certified-and-merged and becomes
-legitimate upstream attribution for a new unrelated Task under 10.a, without
-inheriting its author exclusions/budgets. Remaining original Task cleanup still
-retains that Task's actual locks/operations; it does not poison new upstream Tasks.
-The accepted ReviewSet certificate and actual merge artifact must bind the exact
-reviewed target/contribution; generic Task Merged/Completed labels, names, a claimed
-merge or Git reachability cannot create this handoff or wash held/exhausted history.
-Held/exhausted/uncertified-open recorded contributions merged out of band do trigger
-linked inheritance/rejection for every descendant base containing them. This can
-hold later Project Tasks until the applicable actual resolution/recovery; it is an
-explicit Project-wide ancestry availability limit, measured by #16 (11.d), not an
-automatic budget reset. Terminated-without-certificate unresolved contributions
-retain their applicable obligations and may not become fresh certified upstream by
-merely terminating. Previously attributed unresolved Task changes remain known
-even when later reachable upstream.
+accepted target contribution is certified-and-merged and becomes legitimate upstream
+attribution for a new unrelated Task under10.a without inheriting its review budget/
+author exclusions. Its original locks/operations still retain their actual scope.
+The accepted certificate and actual merge artifact bind exact reviewed target/
+contribution; generic Merged/Completed labels, names, claimed merge or Git reachability
+cannot create that handoff or wash held/exhausted history. Out-of-band merges retain
+explicit uncertified provenance and applicable obligations, assessed under the same
+evidence rule. Termination alone never certifies prior contribution. This scoped
+policy corrects the prior Project-wide ancestry availability defect: exhaustion is
+not a permanent veto on proven unrelated obligations. #16 measures applicability
+holds, disjoint progress and actual resource-scope blocking separately (11.d).
 Untracked semantic copying/re-authoring from main is outside this ancestry/reuse
 identity guarantee; ordinary provenance/unknown-authorship rules still apply and
 no exhaustive semantic copy detection is claimed.
@@ -479,7 +505,9 @@ included in a later full-roster round; it can resolve the escalated decision wit
 being counted as a model APPROVE. Repeated ESCALATE remains visible and may terminate
 without certificate. Authorized Set termination on Lost produces no certificate and
 releases no native ownership/lock; the Task remains WAITING_HUMAN until trusted
-restart/native recovery #14 proves cleanup. GitHub irreversible external outcome
+restart/native recovery #14 proves cleanup. Its attention reason is recovery-pending/
+nonactionable, distinct from a Human decision with an available trusted ingress.
+The status does not imply an existing UI action can release it. GitHub irreversible external outcome
 reconciliation (#13) is distinct. These future ports are not fabricated by this engine.
 
 APPROVE with only nonblocking Low findings may count even before verification;
@@ -769,7 +797,7 @@ explicit eligible custom roster. Human authorship remains separately attributed.
     21 is the canonical handoff: EVERY subcriterion attributing a measurement to
     #16 must be quoted by stable ID from public #16 acceptance before closure,
     This includes deferred evidence as well as measurements for ALL IDs referring
-    to #14/#16/#20: 16.b/16.c native read-only enforcement on real transports,
+    to named inherited owners: 16.b/16.c native read-only enforcement on real transports,
     8.a trace-observed isolation and 16.a efficiency attribution. #14 must also
     explicitly consume 11.b lineage/descendant holds and target-mutation taint,
     not just individual member locks. #20 must quote 8.g consumer-contract
@@ -780,7 +808,7 @@ explicit eligible custom roster. Human authorship remains separately attributed.
     roster availability), 21.b (partial-output early-stop/Human attention), and
     21.c/21.d (normal/cancel/timeout settlement holds, capacity and Task-time).
     It additionally requires 9.f Human-only blocker clearance impact,
-    18.g normal cleanup bound/profile readiness, 11.d Project-wide ancestry-taint impact and
+    18.g normal cleanup bound/profile readiness, 11.d scoped applicability/resource impact and
     round/artifact-quota exhaustion frequency, retained
     Task-time and decomposition/termination impact (14.e below). Branch blob URLs
     are not stable obligation owners; a permalink retains the gated SHA after
@@ -788,7 +816,11 @@ explicit eligible custom roster. Human authorship remains separately attributed.
     its obligation, this Issue cannot close until that tracking is concrete. This
     requires traceability, not completion of #20 or a cyclic merge dependency.
     Status/Human attention must state that no in-runtime Human action can release
-    a Lost hold before trusted #14 recovery.
+    a Lost hold before trusted #14 recovery. This canonical handoff additionally
+    covers21.e trusted15/24 Human ingress,21.f actual5/6/7 producer contract ownership,
+    and21.g actual14/27 fairness/resource recovery and12 verification evidence.
+    Public tracking, rather than those downstream implementations, is required
+    before9 closure; no cyclic merge dependency is introduced.
 
 **21.b — Default measurement handoff.** Safe retry/timeout defaults are retained until real #16 measurements justify a
 separately reviewed policy change. Native dogfood reports how often partial-output
@@ -986,11 +1018,13 @@ check artifacts retain distinct runtime provenance, and content hashes attest by
 reviewed source/proposals, never activated formal specialization. Activated scoped
 specialization with controller/Human provenance is additive and cannot drop core.
 
-**11.c — New Task lineage base.** A new Task based on a recorded held/exhausted
-lineage head rejects independent fresh admission or explicitly inherits all known
-obligations/holds/exclusions/shared remaining budgets. Registered-base sync retains
-those recorded contributions even after upstream reachability. Semantic copying/
-untracked re-authoring is not claimed detected by this ancestry guarantee.
+**11.c — New Task lineage base.** Registered-base sync retains recorded uncertified
+contributions even after upstream reachability. A new obligation may be fresh only
+with trusted exact applicability evidence proving disjoint changed AND relied-on
+source/dependency/context and retained finding scopes. Affected or unknown obligations
+inherit exact vetoes/authors/shared remaining or exhausted budget, or refuse. No
+filename-only, label, rebase or Human/executor JSON laundering is accepted. Untracked
+semantic copying/re-authoring is not claimed exhaustively detected.
 
 **14.d — Large target coverage.** A >1 MiB target diff with bounded core and exact
 required expansion references can pass only after each slot's complete required
@@ -1027,12 +1061,17 @@ Foreign/stale/relabelled artifacts refuse through the actual consumer. Public #2
 acceptance must quote this conformance obligation before #9 closes; production
 #20 remains separately unimplemented, with no cyclic merge gate.
 
-**11.d — Certified upstream and tainted base.** A certified-and-actually-merged
-target is legitimate upstream for the next unrelated Task, with no inherited author
-exclusions/budget. An out-of-band merge of a held/exhausted/uncertified lineage into
-the base retains known taint/holds/obligations and can block every descended Project
-Task; Human opinion cannot release Lost. #16 measures that Project-wide availability
-impact and its Task-time, distinct from ordinary original Task cleanup. Test both.
+**11.d — Certified upstream and scoped applicability.** A certified-and-actually-merged
+target is legitimate accepted upstream for a new unrelated Task, with no inherited
+review authors/budget. An out-of-band merge retains explicitly unaccepted provenance
+and applicable obligations; it never becomes a certificate. Test actual disjoint
+new progress after unrelated exhaustion, dependency/context overlap inheritance,
+relabel/rebase laundering rejection, unknown applicability refusal/inheritance and
+root/common-Git scoped Lost blocking even a review-disjoint Task. #16 measures
+applicability/unknown holds and their Task-time separately from disjoint progress
+and actual native/resource-scope blocking. Human opinion cannot release Lost or
+waive the certificate floor. The prior unconditional Project-wide ancestry veto was
+an availability defect and is replaced by this evidence-bound scope rule.
 
 **14.f — Queue attention bounds.** Queue threshold0/3601 rejects;1/3600 is accepted
 within the remaining policy, default600 is recorded. Queue expiry never invents a
@@ -1083,12 +1122,50 @@ clear it. #16 measures this Human-interruption frequency/Task impact, distinct
 from independent approval-floor availability, under criterion21's canonical handoff.
 
 **18.g — Normal cleanup bound.** Actual5/6/7 caller conformance identifies normal
-post-result cleanup shape/envelope. A too-short/default30 or unknown envelope
-refuses before input; a supported configured longer bounded deadline can run. Repeat
+post-result cleanup shape/envelope. At default30, a known envelope strictly below30
+seconds accepts; at/above30 or unknown refuses before input. Test29.9/30/unknown and
+a supported configured deadline strictly greater than its known envelope, within1–3600. Repeat
 normal-completion expiry through actual owned supervision and expose held ownership.
 Before actual14 recovery and required production native proof, these library/synthetic
 certificates are integration evidence, not production merge gate readiness. The MVP
 still requires actual native acceptance; synthetic timing does not validate defaults.
+
+
+**9.g — Actual disposition callback.** A later complete opinion must deliver explicit
+prior-finding dispositions through the typed production consumer contract. Prove an
+eligible finder’s confirmed-fixed with exact inspected locations/check evidence clears
+its prior High after a new full round, while general APPROVE, unknown hash, stale target,
+wrong slot/family, malformed disposition or executor-only claim keeps the veto.
+Retain every original finding/opinion and disposition independently.
+
+**21.e — Trusted product Human ingress.** Issue9 owns the library authority/ingress
+contract and negative native/Workflow/Broker JSON/API/IPC tests. Actual15 TUI and24
+Goal/controller handlers must publicly own their composition for every Human-only
+adjudication, policy/scope/supersession and termination exit, including exact scoped
+reason/evidence and principal provenance. No such handler is claimed implemented.
+Until available, status exposes integration-pending/nonactionable attention rather
+than a fictitious button/CLI escape. Public acceptance quotes this stable ID before9
+closes; product handler completion remains a separate MVP gate, not a9→15 merge cycle.
+
+**21.f — Native contract producer ownership.** Issue9 owns consumer conformance and
+runtime declaration checks; actual5/6/7 adapters or explicitly linked reviewed follow-up
+Issues own producer obligations for8.c fresh no-resume native identity,16.b/18.g normal
+cleanup shape/bounds,18.c requested/effective configuration,16.b/16.c runtime read-only
+permission construction and8.a available access traces. Public owner entries identify
+exact supported profiles and refusal limits before9 closes. Existing declarations or
+synthetic fixtures do not assert these producers or real native acceptance complete.
+
+**21.g — Fairness with held shares.** ReviewSet retains exact global/Project/provider
+shares under Lost; its local parallelism/per-Project cap never releases them or invents
+extra capacity. Prove remaining actual capacity progresses a disjoint Project and
+report zero-eligible-capacity as held-resource starvation, not runnable scheduling
+success. Actual27 fair admission and14 trusted recovery must publicly own cross-Project
+progress with real held shares, using12 verification evidence and16 scoped metrics.
+If a Project can consume all global/provider capacity in retained uncertainty, that
+cross-Project availability gap is explicit until the reviewed scheduler/recovery
+composition;9 library tests/measurements alone cannot satisfy MVP fairness. Tests keep
+root-scoped holds while allowing truly disjoint progress when limits permit. Status
+and16 distinguish actionable Human attention from recovery-pending/nonactionable holds.
 
 Every criterion and bold subcriterion ID above is a stable closure-evidence key.
 Absent suffixes are intentional reserved IDs; reordered subcriteria retain their
