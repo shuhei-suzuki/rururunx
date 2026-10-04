@@ -205,6 +205,7 @@ fn settled_child_status_error_is_relinquishment_not_cleanup_authority() {
         child,
         unreaped: true,
         exit: None,
+        settled_fixture: None,
     };
     let mut facts = open();
     facts.hooks.status_error_after_reap = true;
@@ -254,6 +255,7 @@ fn actual_inner_read_errno_is_preserved_and_outer_rendering_is_value_free() {
         child,
         unreaped: true,
         exit: None,
+        settled_fixture: None,
     };
     let stderr = inspector.child.stderr.take().unwrap();
     let mut facts = open();
@@ -510,4 +512,21 @@ fn prepared_byte_budget_refusal_records_read_without_claiming_pipe_throughput() 
         assert_eq!(endpoint.bytes, 1);
         assert_eq!(endpoint.eof, Eof::Pending);
     }
+}
+
+#[test]
+fn invalid_owned_leader_fails_before_any_spawn_and_has_unavailable_observations() {
+    let called = std::cell::Cell::new(false);
+    let error = inspect_command(std::process::Command::new("/bin/sh"), 1, |_| {
+        called.set(true)
+    })
+    .unwrap_err();
+    assert!(!called.get());
+    assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+    let sample = observed(&error);
+    assert_eq!(sample.site, Some(Site::Input));
+    assert_eq!(sample.refusal, Some(Refusal::Frame(Framing::InvalidLeader)));
+    assert!(sample.stdout.is_none() && sample.stderr.is_none() && sample.status.is_none());
+    assert!(sample.spawn_us.is_none() && sample.elapsed_us.is_none());
+    assert_eq!(sample.cleanup, Cleanup::NotReached);
 }

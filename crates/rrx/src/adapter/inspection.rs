@@ -41,6 +41,10 @@ struct Inspector {
     child: Child,
     unreaped: bool,
     exit: Option<ExitStatus>,
+    // Private fixture safety survives facts removal/Drop during guard mutants.
+    // It is set only after this exact Child actually returned Some from try_wait.
+    #[cfg(test)]
+    settled_fixture: Option<ExitStatus>,
 }
 impl Inspector {
     fn observe(&mut self, facts: &mut Collector) -> io::Result<()> {
@@ -58,6 +62,7 @@ impl Inspector {
         {
             // Only an actual reaped Child can enter this synthetic error branch.
             facts.hooks.actual_reaped = Some(exit);
+            self.settled_fixture = Some(exit);
             result = Err(io::Error::from(io::ErrorKind::PermissionDenied));
         }
         match result {
@@ -107,7 +112,7 @@ impl Inspector {
         // The leader remains our unreaped Child even if it exited between polls.
         // A kill error must not skip mandatory wait; wait can resolve that race.
         #[cfg(test)]
-        let already_reaped = facts.as_ref().and_then(|f| f.hooks.actual_reaped);
+        let already_reaped = self.settled_fixture;
         #[cfg(test)]
         let kill = if already_reaped.is_some() {
             if let Some(facts) = &mut facts {
@@ -478,6 +483,8 @@ fn observe_command_recorded(
         child,
         unreaped: true,
         exit: None,
+        #[cfg(test)]
+        settled_fixture: None,
     };
     observed(inspector.child.id());
     let result = (|| {
@@ -761,6 +768,8 @@ mod tests {
                 child,
                 unreaped: true,
                 exit: None,
+                #[cfg(test)]
+                settled_fixture: None,
             };
             let stderr = inspector.child.stderr.take().unwrap();
             let started = Instant::now();
@@ -821,6 +830,8 @@ mod tests {
             child,
             unreaped: true,
             exit: None,
+            #[cfg(test)]
+            settled_fixture: None,
         };
         let stderr = inspector.child.stderr.take().unwrap();
         // A safe owned directory FD exercises the actual read syscall's error

@@ -184,3 +184,13 @@ on two test-only style checks (`int_plus_one` and nested first-kind capture); pr
 in `/private/tmp/rururunx-issue60-source707-clippy.log`. The following source commit
 corrects those styles and completes finite-enum formatter branch coverage. No broader
 suite, Context consumer, mutation or independent source approval is claimed yet.
+
+
+Clean2ffb89b all-target Clippy and actual Context causal consumer passed. Full default
+DEBUG passed229 Rust tests+2doctests,8 explicit ignored (128/19/5/16/18/13/16/14 by
+target). Log `/private/tmp/rururunx-issue60-source2ff-full-debug.log`; no timing/cause
+explanation for old reds. The next test-only commit keeps the synthetic status fixture's
+actual settled Child proof in a cfg(test) Inspector field, so cleanup-guard omission
+mutants cannot call a physical kill/wait during either the measured helper or Drop.
+It also checks the no-spawn input guard. Production has no additional Inspector field
+or changed kill/reap behavior. RELEASE/latest changed controls/mutations remain pending.
