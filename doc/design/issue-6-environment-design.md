@@ -1,145 +1,231 @@
-# Issue 6: existing name-only environment admission integration (Design1)
+# Issue 6: existing name-only environment admission integration (Design2)
 
-Status: proposed STRICT component integration; requirements/design/source gates
-pending. Base is the limited Stage A merge `47830b0ab97a095d0c387089bf5442452e060572`.
-Production Codex availability stays EMPTY. No native profile, workload owner,
-managed operation, setup/settlement receipt or backend is introduced.
+Status: proposed STRICT component integration; design/source qualification pending.
+Design1 `6264702` was not qualified. This correction normally composes main
+`cf8a1e7c4ab74367ad175bedcfb60e28cb6bfc8b`. Production Codex availability stays
+EMPTY. No native workload backend, managed operation, setup/settlement receipt,
+custodian or native-origin provenance producer is introduced.
 
-## Existing contract and concrete consumers
+## Existing authority and actual consumers
 
-The merged Issue51 contract already supplies `EnvironmentAdmission::new`,
-`Store::check_environment_admission` and
-`Store::put_session_with_environment_if_current`. The DTO contains bounded,
-preclassified non-control baseline names and caller names, never values. The
-identical pure decision checks current owning references and streams foreign
-`environment_refs` through SQLite; it neither fully decodes foreign Projects nor
-reads their files. Initial selection and final exact Session/P/G/T/nullable-lock
-CAS can use this existing authority. This is an environment policy decision, not
-process ownership, delivery, cleanup, settlement or configuration provenance.
+Merged Issue51 requirements 3 and 6–8 supply the existing policy: bounded names-only
+environment selection, a last current Session/environment check before native exec,
+effect-free own-only checkpoint, and opaque rejection without credential stripping.
+Consume `EnvironmentAdmission::new`, `Store::check_environment_admission` and
+`Store::put_session_with_environment_if_current`. The DTO contains non-control
+baseline names and caller names, never values. The Store streams current foreign
+`environment_refs`; it does not decode foreign Project bodies or read their files.
+The transaction preserves exact own P/G/T, Session and nullable lock guards.
+No shared Store/Grok/Generic/registry/schema implementation changes are planned.
 
-Current Codex consumers still use a different path:
+Current Codex consumers are:
 
-- `ScopeSnapshot::capture` retains `Store::projects()`. `recheck_authority` compares
-  whole foreign Project JSON, including unrelated metadata, and can fail on
-  foreign non-reference corruption.
-- `prepare_launch` captures mutable process environment after Git preparation;
-  `native_environment` silently removes a retained credential if only another
-  Project declares its name. This can select cached/default authentication.
-- `provider_environment` treats merged `config/read` names as authority to restore
-  any matching runtime variable, without authoritative layer provenance.
-- Initial, checkpoint and consumed-input publications use ordinary Session CAS,
-  without the existing in-transaction environment decision. Approval replies must
-  not become dependent on foreign reference changes after a child was selected.
+- `CodexAdapter::new` and `owned_handles`; the current baseline is instead captured
+  later by `prepare_launch` using `vars_os` after Starting/Git preparation.
+- `ScopeSnapshot::capture/recheck/recheck_scope`; capture currently retains full
+  `Store::projects()` and ordinary recheck compares the complete roster.
+- `policy::native_environment/provider_environment`; they strip foreign-declared
+  retained credentials and restore arbitrary runtime values named by effective
+  selected-provider config without authoritative origin evidence.
+- `prepare_launch`: the selected environment reaches three distinct execs:
+  native `--version` through `preparation::bounded_git`, discovery through
+  `NativeServer::launch_preparing`, and the policy/main-server re-exec through that
+  same launcher. Auth, history load and hooks/MCP can run before `turn/start`.
+- `Reservation::admit_dispatch` publishes consumed input. `prepare_checkpoint`
+  publishes fresh input and replaces the stored request without a native exec.
+- `answer_approval`, observations, denial/cancellation, terminal cleanup and
+  rollback use already-owned child/own-scope authority; they do not select a new
+  credential environment. No foreign environment decision belongs on those paths.
 
-The integration changes only own Codex modules and their component tests. Shared
-Store/Grok/Generic/registry behavior and schema are unchanged. It consumes the
-already reviewed APIs rather than creating a competing environment transaction.
+The current caller-map producer is `WorkflowEngine::step/start_agent`, which forwards
+its map unchanged into `LaunchRequest.environment`; direct public callers can also
+supply that map. Current Codex component fixtures construct requests directly;
+policy tests exercise both selectors. There is no ready native runtime/CLI producer.
+Workflow's earlier context/reservation writes and managed ownership composition
+remain separate open gates; this work does not alter Workflow production.
 
-## Frozen baseline and selection
+## Exact frozen selection and compatibility impact
 
-Capture the intentional native baseline once in pure adapter construction, keep
-values private, and reuse that exact baseline for fresh preparation, checkpoint
-and resume. Preserve existing trusted native auth/config/hooks/proxy/TLS routing
-and OS login identity. Project references/caller values cannot override native
-controls, including HOME/PATH/config selectors and trusted USER/LOGNAME. Existing
-native whitelist/prefix routing is documented exactly; no foreign-name conflict
-silently drops a credential or changes authentication to fit a profile.
+Route public `new()` and fixtures through one private constructor consuming an
+`(OsString, OsString)` iterator. Production supplies `vars_os()` exactly once;
+fixtures supply only isolated synthetic pairs before that same filter/classifier/
+bounds/freeze. Do not construct over ambient secrets and overwrite the result.
+Keep values private in native OS-string form and share the same immutable snapshot
+with owned handles. No process-wide environment mutation, credential extraction,
+different-per-Project native value routing or API-client auth substitution.
 
-Use the existing registry control classifier plus the finite OS identity additions
-USER/LOGNAME. Do not classify provider credential prefixes as controls or broaden
-the baseline to all runtime variables. Frozen values retain their native OS string
-representation privately; unsupported names or caller comparisons fail rather
-than truncating an authority projection or logging a value.
+Baseline membership retains the current Codex whitelist: HOME, PATH, SHELL, LANG,
+TERM, TMPDIR, TEMP, TMP, NODE_OPTIONS, NODE_PATH, SSL_CERT_FILE, SSL_CERT_DIR,
+NODE_EXTRA_CA_CERTS, OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_API_BASE, XAI_API_KEY,
+ANTHROPIC_API_KEY, SSH_AUTH_SOCK, SSH_ASKPASS, EDITOR and VISUAL; plus LC_, XDG_,
+CODEX_ prefixes and case-insensitive *_PROXY suffix. Explicit compatibility delta:
+USER and LOGNAME join that whitelist to preserve trusted OS login identity when
+present. Do not synthesize missing values. No other native prefix/variable is added.
 
-Adopt the existing Issue51 name policy for non-control keys: owning references
-must be valid; ordinary locale/terminal keys may take explicitly declared caller
-values. A retained native non-control caller key requires its intentional frozen
-value, not a different credential/loader setting. Undeclared or unsupported caller
-keys fail explicitly. No different-per-Project value routing or API-client auth
-substitution is introduced. Values never enter the DTO, durable state, audit,
-public candidate projection or error diagnostics.
+The exact private control predicate is baseline membership AND (invalid registry
+name OR registry-forbidden name OR member of the finite additions {USER, LOGNAME}).
+Admitted syntactically invalid baseline names remain unownable global controls,
+preserved privately and excluded from the DTO. Do not reject an entire host for a
+name that no valid Project can own. Foreign control declarations cannot strip or
+replace the baseline. Reject owning control declarations only when the name is in
+this provider's baseline membership. Other valid own metadata not forwarded by
+Codex is not a blanket Project rejection. Credentials/credential-location prefixes
+never become controls; structural tests keep OPENAI_API_KEY, XAI_API_KEY and
+ANTHROPIC_API_KEY non-control and assert the finite additions exactly.
 
-Construct the bounded DTO from the actual selected non-control baseline and
-caller names. Its initial Store decision runs after ordinary availability refusal
-and own-scope validation, before any component process/model effect. An owning
-invalid/control declaration or relevant foreign reference conflict fails with the
-fixed opaque environment category; irrelevant foreign metadata/lifecycle/control
-or nonmatching reference changes do not revoke selection. All foreign lifecycle
-states and unknown reference projections follow the existing Store contract.
+Caller eligibility is the existing Issue51 OR rule: registry-valid, owning-declared,
+non-control, and either one of LANG/LC_ALL/LC_CTYPE/TERM/COLORTERM/TZ with its ordinary
+value, OR a native-whitelisted key with the exact intentional frozen value. The
+ordinary alternative takes precedence and need not equal the baseline. Unknown or
+different credential values are explicitly refused; no caller introduction of an
+absent non-ordinary native key. The DTO is constructed from every retained
+non-control baseline name and every caller name, using the existing 512-name/256-byte/
+64KiB baseline and 128-name caller bounds. Enforce bounds in the common constructor
+before retaining a usable baseline; never truncate a relevant authority projection.
 
-Remove the whole-Project roster from ScopeSnapshot. Own Project/Goal/Task and exact
-nullable scoped locks remain strict currency. Do not refresh their versions to
-hide changes. An already-selected child's approval/observation authority remains
-own-scope-only; foreign roster edits are not a second grant ledger or a stop cause.
+Malformed/GIT_/NUL caller input preserves InvalidInput. Invalid/control own refs,
+reserved RRX_, unsupported caller names, undeclared/foreign-only eligible caller
+names, different frozen credential values and baseline conflicts use the same
+fixed opaque InvalidConfiguration category, `native environment authority
+unavailable`, including the Store EnvironmentAuthority mapping. Never emit foreign
+IDs, names, versions, values or inventory. Own stale/lifecycle/Session/lock errors
+retain their existing precedence and kinds.
 
-## Selected native provider references: no inferred provenance
+Intentional changes and test migrations:
 
-Keep actual native settings and mandatory rules unchanged. A merged effective
-`config/read` value is not a trusted reference-origin certificate. This slice
-removes runtime-value restoration from arbitrary effective provider `env_key` or
-`env_http_headers` names. The selector may validate a configured reference already
-in the private selected environment; it cannot introduce an arbitrary new runtime
-value just because native config names it. A required reference outside that
-explicit selection fails Unsupported before re-exec/model dispatch, rather than
-silently selecting cached auth or disabling/changing native config.
+| Current Codex behavior | Proposed outcome |
+| --- | --- |
+| Baseline captured after preparation at each launch | Frozen once by the common constructor; handles and continuation reuse it |
+| Foreign-only retained credential silently stripped | Opaque refusal before the relevant new exec; no cached-auth substitution |
+| Any valid owning-declared arbitrary caller value passed | Existing51 ordinary OR exact frozen native value rule; unsupported/different values refused |
+| Full foreign Project decode/equality | Own Project equality, Goal/Task/locks remain exact; foreign refs alone determine environment policy |
+| Effective config restores an arbitrary runtime key/header | No value restoration; explicit unproven-reference refusal described below |
+| Own invalid refs/undeclared caller errors have different kinds | Fixed opaque environment category, preserving malformed caller and stale-own precedence |
+| USER/LOGNAME omitted | Present trusted constructor values forwarded; own/caller override refused |
 
-A reference name alone does not prove that an environment value is required or
-that an absent value changes native authentication. Missing/optional reference
-semantics remain native readiness/configuration concerns; this integration never
-extracts a replacement value or infers an authentication fallback from that name.
+Old strip/pass-through/custom-reference policy assertions migrate to these declared
+outcomes. Existing ordinary unavailable tests, own currency/cancellation, native
+defaults/auth/hooks/config, consumed-input/Lost facts and shared cleanup semantics
+remain unchanged. Synthetic fixture constructors migrate to the common injected
+constructor so no real credentials enter fake children. The new OS identity
+forwarding is tested as an explicit compatibility change, not described as unchanged.
 
-This is a bounded refusal for unproven reference expansion, not complete IPC02.
-Full effective-layer/source/endpoint/header provenance and custom-provider native
-compatibility remain required open gates. No `includeLayers` native probe, file
-parser pretending to be native effective config, token extraction or replacement
-API client is added. Ordinary production still refuses before discovery because
-its actual workload backend/dispatch producer remains absent.
+## Initial selection, every new exec, and consumed input
 
-## Actual publication boundary
+After ordinary EMPTY refusal and exact own scope/resume currency validation, select
+values and run the initial Store decision in the synchronous preparation context,
+BEFORE `Reservation::persist` or any Starting/Git/native effect. Deterministic initial
+refusal therefore yields FreshUnpublished or exact RestoredBeforeAdmission, with
+no new Session/audit/consumption publication or process entry sentinel.
 
-Retain the private DTO with the same preparation/attempt that selected its values.
-Use the existing environment-aware exact CAS at fresh input/checkpoint/resume
-admission, with no await or new observer between the final decision and existing
-component dispatch boundary. A relevant reference replacement across another
-Store connection is rechecked in that Immediate transaction. Own P/G/T/Session
-and complete exact lock guards remain unchanged. Failure preserves actor/version,
-consumed-input facts and conservative Lost/Unknown cleanup semantics.
+Retain the selected private environment and names DTO in that exact fresh/resume
+attempt. Immediately before EACH exec receiving those values, invoke the existing
+environment-aware exact CAS on the current reservation Session as the last state
+check: native version, discovery server, main/policy re-exec. It updates the private
+Session version/watch snapshot coherently but does not publish consumed input or a
+new environment dispatch-intent. The initial check is not this final exec fence.
 
-Do not apply a foreign environment recheck to denial/stop/drain of a previously
-owned child or claim that SQLite and OS exec are atomic. Post-admission changes
-are not retroactive physical fencing. Every future enabled launch still needs
-actual Stage B/#19/#58/#60/#14 ownership, all-job closure and current settlement.
+Use an additive private synchronous before-spawn callback at the actual selected
+exec sites in `preparation::bounded_git` and `NativeServer::launch_preparing`, after
+their command/local setup and directly before spawn. The callback is a statically
+owned reservation Store CAS, not caller code, a background job, a native lifetime
+lease or a new public API. The admission/cancellation critical section preserves
+the existing first-cause rules. Only the existing cancellation check may intervene
+between successful CAS and spawn; no await/new Store observer. Plain Git preflight
+uses its existing Git environment and ownership gate, not the native credential DTO.
+No shared helper/new/Drop/custody implementation is changed or declared safe here.
 
-## Finite verification and source gate
+Keep a separate environment-aware CAS at `Reservation::admit_dispatch` immediately
+before the buffered `turn/start` wire. This is the consumed-input fence. Its failure
+does not prove that earlier discovery/auth/history/hooks never ran. Preserve exact
+current-input pins, prior intent rollback, conservative cleanup and Lost/Unknown.
+Ordinary Starting/PID/observation/terminal/rollback publications retain their current
+purpose; only the named exec and consumed-input boundaries add environment checks.
+Approval reply (including Approve/Deny/Cancel) remains own-scope-only and is not a
+new selected-environment exec. The ordinary EMPTY approval guard is unchanged.
 
-Use synthetic isolated component controls with existing same-route test inputs;
-no real native auth/model/kernel/profile probes and no unrelated repository data.
-Component fixtures receive an explicit private synthetic baseline input so real
-runtime credentials are never forwarded to fake children. That test seam changes
-data only, never availability/routing, and does not mutate process-wide environment.
-Observe actual entry/process sentinels and Store/audit/version/frame state before
-classification strings. Include:
+SQLite and OS exec are not atomic. After successful last admission/cancellation
+check, later foreign-reference edits cannot retroactively fence an already-selected
+child. Subsequent new exec/current-input boundaries recheck current authority;
+cleanup/outcome remains factual. This mechanism never certifies full workload death,
+MCP/hooks containment, native provenance or physical revocation.
 
-- Two Projects, foreign-only and shared API-key names, intentional native control
-  preservation, malformed own refs, unsupported/different caller credential values
-  and opaque errors that never echo synthetic canary values.
-- Irrelevant foreign body corruption/non-reference/version/lifecycle changes do not
-  affect own capture/selection; unknown or relevant reference authority does deny.
-- Original selection, explicit higher-version checkpoint and resume: actual second
-  Store replacement windows before initial/final admission, including a relevant
-  name after a long roster. Exact own P/G/T/Session/lock guards stay causal.
-- Native effective config cannot add an arbitrary runtime-secret reference;
-  already selected references remain unchanged. This is synthetic reference-policy
-  evidence, not native layer or custom-provider acceptance.
-- Actual consumer mutants omit selection/final environment CAS or restore arbitrary
-  reference values, and must fail effect/canary assertions. Redundant survivors
-  are explicitly classified without kill credit; no timing/concurrency relaxation.
+## Effect-free checkpoint and fresh resume
 
-Commit clean stages before the scoped checks. Run appropriate default full
-workspace debug/release, fmt, denied-warning all-target Clippy/builds and current
-both-OS actual-checkout/tree/blob gates. Independent native zero-tool reviews use
-public bytes only, normal native defaults/auth/rules/hooks and properly retained
-owned review guardians. The historical failed review wrappers and old worktree
-remain held separately; this new worktree never adopts their numeric identities.
-No successful component test or names-only DTO opens native availability or closes
-Issue6/51/19/58/60/14, IPC02, Task attach or four-plus MVP acceptance.
+Remove the foreign roster from ScopeSnapshot entirely. Capture still exact-compares
+the owning persisted Project with request.project; Goal/Task/complete exact nullable
+locks remain strict. Checkpoint refreshes own metadata under immutable repository/
+worktree identity and higher-version prepared input, using existing own-only
+`put_session_if_current` in its atomic registry/control/Store request replacement.
+It selects no values, checks no foreign refs and confers no environment authority.
+
+A relevant foreign change or caller-key removal before checkpoint must not make
+that checkpoint fail. Resume uses the explicitly checkpointed Project and fresh
+own-scope snapshot, then performs its own initial/pre-exec/consumed-input environment
+checks. Removed caller keys now fail opaquely before any new native exec. Own edits
+after checkpoint still produce stale-own StateConflict and require another explicit
+checkpoint; no implicit metadata refresh or cached-authority exception. Fresh input,
+known UUID identity and no implicit mutating replay remain unchanged. Managed
+Fresh/Continue and standalone checkpoint readiness still require actual #19 integration.
+
+## Configured provider references: deterministic bounded refusal
+
+Reuse the IDENTICAL selected environment for discovery and main/policy re-exec.
+Never retain the complete ambient environment for later restoration. Effective
+`config/read` env_key/env_http_headers names are not an origin certificate or a
+grant to obtain any runtime value. Define a deterministic component rule: every
+explicit selected-provider reference must be syntactically supported, non-control,
+and already present in that private selection. Otherwise refuse
+UnsupportedCapability after actual discovery cleanup and BEFORE main re-exec or
+input consumption. Selected references pass unchanged; no values are added.
+
+This deliberately treats absent and ambient-only excluded references alike as an
+unproven configuration route. It makes no assertion that an absent value is required,
+that auth is unavailable, or that native optional-header behavior would fail. Optional/
+absent custom-provider compatibility and full effective-layer/source/endpoint/header
+provenance remain OPEN native qualification gates. No native config/defaults are
+changed or disabled to pass; no includeLayers probe/parser/token/API substitution.
+The refusal is an explicit component limitation, not whole native MVP acceptance.
+
+## Causal verification and finite gates
+
+Use isolated synthetic iterator input through the actual common constructor and
+fail-closed expected-marker booleans; no ambient credential capture, global set_var
+or value-printing assert. A sanitized env_clear re-exec checks real public new()
+with only known synthetic markers. Observe entry sentinels, canary presence
+booleans, Store/watch/audit/frame facts before error labels. Include:
+
+- Constructor freeze/filter/control/bounds, shared API-key and foreign-only collision,
+  exact/different native caller values, ordinary-value precedence, OS identity,
+  invalid admitted global-control names and malformed owning refs; opaque errors.
+- Valid foreign JSON with malformed NON-reference fields, unrelated refs/version/
+  lifecycle/control/registration/deletion remains eligible. Invalid JSON, missing/
+  non-array refs and non-string elements are unknown authority and deny opaquely.
+  A relevant name after a long roster cannot be skipped.
+- Actual second-Store replacement hooks immediately before version/discovery/main
+  exec: relevant change denies that particular NEW child/canary; earlier selected
+  children may have run and must clean up factually. A stop after CAS before spawn
+  causes no child. Matching controls prove each path reaches its exec unchanged.
+- Final consumed CAS conflict yields no current turn/start frame/consumed publication,
+  without pretending prior execs never happened. Already-owned approval/stop remains
+  independent of later foreign metadata.
+- Relevant foreign declaration/own caller-key removal before checkpoint permits
+  checkpoint, then resume fails pre-exec; post-checkpoint own change keeps StateConflict.
+  Irrelevant roster changes permit actual initial/checkpoint/resume controls.
+- Config selected/absent/ambient-only/control/invalid reference cases reach the actual
+  consumer. Unknown references never restore a runtime canary; discovery cleanup
+  precedes refusal, with no main exec/model frame. No native optionality proof claimed.
+
+Compiled actual-consumer mutants cover constructor filtering/control/freeze/bounds,
+DTO baseline/caller population, exact-value comparison, initial check omission,
+EACH pre-exec CAS omission, consumed CAS omission, arbitrary reference restoration,
+and reintroduced roster equality at start/checkpoint/resume. Bind each to its precise
+canary/entry/Store assertion. Checkpoint is not an environment-CAS mutation target.
+Redundant/masked/surviving operators earn no kill credit; restore exact source bytes.
+
+Commit clean stages before default checks: full workspace debug/release, fmt,
+all-target denied-warning Clippy/builds and current both-OS checkout/tree/blob proof.
+Independent native zero-tool reviews consume public bytes only with normal native
+defaults/auth/rules/hooks and retained review guardians. Historical failed wrappers
+and their old worktree remain held separately. No component success, DTO or callback
+opens EMPTY availability or closes #6/51/19/58/60/14, IPC02, Task attach or four-plus MVP.
