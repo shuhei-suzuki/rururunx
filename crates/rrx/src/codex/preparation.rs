@@ -38,7 +38,7 @@ impl Cause {
 #[derive(Clone, Debug)]
 pub(super) enum Admission {
     Preparing,
-    CancelledBeforeAdmission,
+    Cancelled,
     Failing(Cause),
     Consumed,
     CheckpointCommitted(u64),
@@ -64,11 +64,11 @@ impl Preparation {
         if let Ok(mut admission) = self.admission.lock() {
             match *admission {
                 Admission::Preparing => {
-                    *admission = Admission::CancelledBeforeAdmission;
+                    *admission = Admission::Cancelled;
                     self.cancelled.send_replace(true);
                     return true;
                 }
-                Admission::CancelledBeforeAdmission => return true,
+                Admission::Cancelled => return true,
                 _ => {}
             }
         }
@@ -77,7 +77,7 @@ impl Preparation {
     pub fn check(&self) -> AdapterResult<()> {
         match self.admission.lock() {
             Ok(admission) => match &*admission {
-                Admission::CancelledBeforeAdmission => Err(Cause::Cancelled.error()),
+                Admission::Cancelled => Err(Cause::Cancelled.error()),
                 Admission::Failing(cause) => Err(cause.error()),
                 _ => Ok(()),
             },
@@ -95,7 +95,7 @@ impl Preparation {
                         Admission::Failing(Cause::Failed(error.kind, error.message.clone()));
                     error
                 }
-                Admission::CancelledBeforeAdmission => {
+                Admission::Cancelled => {
                     if let Ok(mut later) = self.later_failures.lock()
                         && later.len() < 8
                         && error.kind != ErrorKind::StateConflict
@@ -118,7 +118,7 @@ impl Preparation {
     }
     pub(super) fn cause(&self, fallback: &AdapterError) -> Cause {
         match self.state() {
-            Ok(Admission::CancelledBeforeAdmission) => Cause::Cancelled,
+            Ok(Admission::Cancelled) => Cause::Cancelled,
             Ok(Admission::Failing(cause)) => cause,
             _ => Cause::Failed(fallback.kind, fallback.message.clone()),
         }
@@ -147,7 +147,7 @@ impl Preparation {
             .lock()
             .map_err(|_| failure(ErrorKind::StateFailure, "native preparation cause poisoned"))?;
         match &*admission {
-            Admission::CancelledBeforeAdmission => return Err(Cause::Cancelled.error()),
+            Admission::Cancelled => return Err(Cause::Cancelled.error()),
             Admission::Failing(cause) => return Err(cause.error()),
             _ => {}
         }
@@ -172,7 +172,7 @@ impl Preparation {
             .lock()
             .map_err(|_| failure(ErrorKind::StateFailure, "native preparation cause poisoned"))?;
         match &*admission {
-            Admission::CancelledBeforeAdmission => return Err(Cause::Cancelled.error()),
+            Admission::Cancelled => return Err(Cause::Cancelled.error()),
             Admission::Failing(cause) => return Err(cause.error()),
             Admission::Preparing => {}
             _ => {

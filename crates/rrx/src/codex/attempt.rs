@@ -80,7 +80,7 @@ pub(super) enum Phase {
     Preparing,
     AwaitingTurnAck,
     Supervised,
-    Finished(Outcome),
+    Finished(Arc<Outcome>),
 }
 
 pub(super) struct Control {
@@ -124,7 +124,7 @@ impl Control {
         self.phase.send_replace(Phase::Supervised);
     }
     pub fn finished(&self, outcome: Outcome) {
-        self.phase.send_replace(Phase::Finished(outcome));
+        self.phase.send_replace(Phase::Finished(Arc::new(outcome)));
     }
     pub fn spawn(
         self: &Arc<Self>,
@@ -162,7 +162,7 @@ impl Control {
         let mut receiver = self.subscribe();
         loop {
             if let Phase::Finished(outcome) = receiver.borrow_and_update().clone() {
-                return Ok(outcome);
+                return Ok(outcome.as_ref().clone());
             }
             receiver.changed().await.map_err(|_| {
                 failure(

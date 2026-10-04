@@ -189,7 +189,7 @@ impl Drop for RegisteredTransition {
                 .control
                 .published()
                 .filter(|status| status.session.state == SessionState::Lost)
-                .ok_or_else(|| Cause::Failed(error.kind, error.message));
+                .ok_or(Cause::Failed(error.kind, error.message));
             // Only explicit normal cleanup/publication can establish restore.
             // An abandoned frame never classifies its old snapshot as restored.
             self.control.finished(Outcome::Lost {
@@ -203,9 +203,7 @@ impl Drop for RegisteredTransition {
         {
             let restored = matches!(
                 *self.control.subscribe().borrow(),
-                Phase::Finished(
-                    Outcome::RestoredBeforeAdmission { .. } | Outcome::CheckpointCommitted { .. }
-                )
+                Phase::Finished(outcome) if matches!(outcome.as_ref(),Outcome::RestoredBeforeAdmission { .. } | Outcome::CheckpointCommitted { .. })
             );
             if let Some(previous) = &self.previous_control
                 && restored
@@ -4444,7 +4442,7 @@ mod tests {
         let _ = caller.await;
         assert!(matches!(
             control.preparation.state().unwrap(),
-            Admission::CancelledBeforeAdmission
+            Admission::Cancelled
         ));
         gate.release();
         let outcome = bounded(control.wait_finished()).await.unwrap();
@@ -4551,10 +4549,7 @@ mod tests {
         let target = reference.clone();
         let stopper = tokio::spawn(async move { actor.stop(target).await });
         bounded(async {
-            while !matches!(
-                control.preparation.state().unwrap(),
-                Admission::CancelledBeforeAdmission
-            ) {
+            while !matches!(control.preparation.state().unwrap(), Admission::Cancelled) {
                 tokio::task::yield_now().await;
             }
         })
@@ -4655,7 +4650,7 @@ mod tests {
                     input.version
                 );
             } else {
-                assert!(matches!(admission, Admission::CancelledBeforeAdmission));
+                assert!(matches!(admission, Admission::Cancelled));
                 assert_eq!(checkpoint.unwrap_err().kind, ErrorKind::StateConflict);
                 assert!(
                     stop.unwrap_err()
@@ -4738,7 +4733,7 @@ mod tests {
         let stop_gate = adapter.gates.install(TestPoint::StopWaiting);
         let actor = adapter.clone();
         let target = reference.clone();
-        let stopper_a = tokio::spawn(async move { actor.stop(target).await });
+        let mut stopper_a = tokio::spawn(async move { actor.stop(target).await });
         bounded(stop_gate.reached()).await;
         preparation_gate.release();
         let error_a = bounded(caller_a).await.unwrap().unwrap_err();
@@ -4752,11 +4747,21 @@ mod tests {
         let control_b = preparing_control(&adapter, reference.id);
         let own_a = Arc::ptr_eq(&control_a, &control_b);
         stop_gate.release();
-        let stopped_a = bounded(stopper_a).await.unwrap();
+        let before_b_stop =
+            tokio::time::timeout(std::time::Duration::from_secs(1), &mut stopper_a).await;
+        let completed_a_before_b_stop = before_b_stop.is_ok();
         let unchanged_b = matches!(control_b.preparation.state().unwrap(), Admission::Preparing);
         let snapshot_b = adapter.current(&reference).unwrap();
         let stopper_b = bounded(adapter.stop(reference.clone())).await;
         let error_b = bounded(caller_b).await.unwrap().unwrap_err();
+        let stopped_a = match before_b_stop {
+            Ok(result) => result.unwrap(),
+            Err(_) => bounded(stopper_a).await.unwrap(),
+        };
+        assert!(
+            completed_a_before_b_stop,
+            "A must finish without waiting for B's outcome"
+        );
         assert!(!own_a);
         assert_eq!(error_a.kind, ErrorKind::StateConflict);
         assert!(matches!(
@@ -4965,7 +4970,26 @@ mod tests {
         let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
         let mut current_turn = String::new();
         let cwd = std::env::current_dir().unwrap();
-        while let Some(Ok(frame)) = socket.next().await {
+        loop {
+            let frame = if !current_turn.is_empty()
+                && std::fs::read_to_string(directory.join("mode")).unwrap() == "ack_hold"
+            {
+                match tokio::time::timeout(std::time::Duration::from_secs(3), socket.next()).await {
+                    Ok(frame) => frame,
+                    Err(_) => {
+                        // Finite fixture fallback permits mutation assertions only
+                        // after the supervisor's actual owned cleanup has finished.
+                        synthetic_terminal(&mut socket, &current_turn, "interrupted").await;
+                        current_turn.clear();
+                        continue;
+                    }
+                }
+            } else {
+                socket.next().await
+            };
+            let Some(Ok(frame)) = frame else {
+                break;
+            };
             let Ok(text) = frame.to_text() else {
                 continue;
             };
@@ -5198,22 +5222,25 @@ mod tests {
         })
         .await;
         assert_eq!(resumed.native_ref, first.session.native_ref);
-        assert!(
-            !adapter
-                .registry()
-                .unwrap()
-                .get(&reference.id)
-                .unwrap()
-                .transition
-                .load(Ordering::SeqCst)
-        );
-        let usage = bounded(adapter.usage(reference.clone(), "execution".into(), None))
-            .await
-            .unwrap();
+        let transition_released = !adapter
+            .registry()
+            .unwrap()
+            .get(&reference.id)
+            .unwrap()
+            .transition
+            .load(Ordering::SeqCst);
+        let usage = bounded(adapter.usage(reference.clone(), "execution".into(), None)).await;
+        let pending = bounded(adapter.pending_approvals(reference.clone())).await;
+        let (usage, pending) = match (usage, pending) {
+            (Ok(usage), Ok(pending)) => (usage, pending),
+            (usage, pending) => {
+                let _ = bounded(adapter.stop(reference.clone())).await;
+                panic!(
+                    "supervised observation must be available after transfer: usage={usage:?},pending={pending:?}"
+                );
+            }
+        };
         assert_eq!(usage.input_tokens, None);
-        let pending = bounded(adapter.pending_approvals(reference.clone()))
-            .await
-            .unwrap();
         assert_eq!(pending["requests"].as_array().unwrap().len(), 1);
         let decision = json!({"native_turn":pending["native_turn"],"request_id":pending["requests"][0]["id"],"decision":"Approve","operation_hash":pending["requests"][0]["operation_hash"]});
         bounded(adapter.submit_approval(reference.clone(), decision.clone()))
@@ -5221,6 +5248,10 @@ mod tests {
             .unwrap();
         let second = terminal_status(&adapter, &reference).await;
         assert_eq!(second.session.state, SessionState::Exited);
+        assert!(
+            transition_released,
+            "transition releases with supervised installation, not terminal completion"
+        );
         assert_eq!(second.session.recovery["input_version"], input.version);
         assert!(adapter.transport_succeeded(&second));
         assert!(
@@ -5282,10 +5313,7 @@ mod tests {
             let cleanup_gate = adapter.gates.install(TestPoint::BeforeNativeCleanup);
             admission_gate.release();
             bounded(cleanup_gate.reached()).await;
-            let cause = match control.preparation.state().unwrap() {
-                Admission::Failing(cause) => cause,
-                other => panic!("failed CAS must latch before cleanup: {other:?}"),
-            };
+            let before_cancel = control.preparation.state().unwrap();
             caller.abort();
             let _ = caller.await;
             let stop_gate = adapter.gates.install(TestPoint::StopWaiting);
@@ -5304,7 +5332,10 @@ mod tests {
             } else {
                 ErrorKind::StateConflict
             };
-            assert_eq!(cause.error().kind, expected);
+            assert!(
+                matches!(before_cancel, Admission::Failing(Cause::Failed(kind,_)) if kind==expected),
+                "failed CAS must latch before held cleanup"
+            );
             assert!(
                 matches!(after_cancel,Admission::Failing(Cause::Failed(kind,_)) if kind==expected)
             );
