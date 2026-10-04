@@ -604,7 +604,7 @@ fn usage_integer_overflow_cannot_publish_rows_or_audit_or_change_owners() {
     let p = project(&mut store, "usage-range", temp.path());
     let g = goal(&mut store, &p);
     let mut t = task(&mut store, &p, &g);
-    t.worktree = Some(temp.path().join("task-worktree"));
+    t.worktree = Some(p.worktree_root.join("task-worktree"));
     t.branch = Some("feature/usage-range".into());
     store.put_task(&mut t).unwrap();
     let s = session(&t, t.worktree.clone().unwrap());
