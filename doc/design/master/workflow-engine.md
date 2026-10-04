@@ -360,18 +360,11 @@ terminal reservation release keeps Task/decision/context/evidence immutable and 
 owned persisted termination plus all executor/Lost fences. Unknown outcomes or unbound
 dispatch stay reserved. General workflow progression cannot resurrect terminal Tasks.
 
-The proposed Issue19 schema6 [managed settlement contract](../issue-19-design.md#managed-native-settlement-authority-design16)
-replaces terminal-label release for managed native phases with an actual supervisor
-receipt. Its pre-first-Session operation lease and tx-only predicate must compose
-with retry/escalation/invalidation/terminal recovery and Issue23 Goal completion.
-Current source has no such private receipt producer; historical trusted Store
-terminal records are not advertised as durable native cleanup certificates. Source
-integration and real Generic/Claude/Codex/Grok consumers remain separate gates.
-Store must enforce marker/operation/allocator atomicity, managed private observations,
-exact receipt/body/version freeze and operation-aware lock/reservation decisions.
-An actual no-Session NoCurrentDispatch receipt permits only scoped non-success
-post-marker closure; missing proof remains held. Per-profile unsupported refusal
-is honest integration evidence, not real native success/containment acceptance.
+The incompatible managed admission/settlement and compact observation authority is the
+pending [Issue19 contract](../issue-19-design.md#canonical-schema6-native-writer-predicate-table).
+Actual merged main is schema3; unmerged component5 does not provide managed receipts.
+Real19/23/43 source composition and required native/runtime producers remain gates;
+terminal labels, fake SQL and synthetic containment never prove production settlement.
 
 An evaluation claim binds the exact prior observation count. The private observer
 appends exactly one scope/phase/generation/Session/ContextVersion-bound outcome at that

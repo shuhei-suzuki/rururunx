@@ -15,20 +15,20 @@ passed fixture. The matrix is the single current native acceptance inventory.
 | S6-03 | Managed preparation/allocator (all5 actual callers) | Original frame/actor/locks, no prior terminal adoption, actual handle, allocation/factual-insert race |
 | S6-04 | First/new NativeCAS consumption before model bytes | Actual complete frame/payload SHA, CPP/head/sources+23 predicate, one UUID/delivery, stale wire zero |
 | S6-05 | Owned historical ACK/private observations | Exact admitted pair/intent, allowed native initial binding, original binding-frame pin remains immutable |
-| S6-06 | AllowCurrent + actual grant versus private DenyHistorical | Current23/head/fullscope/locks forALLOW; provider-specific factual DENY/activity, separate journals |
+| S6-06 | AllowCurrent + actual grant versus private DenyHistorical | Current23/head/immutable governing sources/fullscope/locks forALLOW; actual Executor own-write allowed; provider-specific factual DENY/activity, separate journals |
 | S6-07 | Owned Lost observation / no generic transition | Universal absorbing hold, remembered pins, no receipt/release or caller JSON cleanup |
 | S6-08 | Actual supervisor settlement + atomic restoration | KnownCurrentTerminal/eligible NoCurrentDispatch, complete cohort proof; consumedzeroWire held14 |
 | S6-09 | Receipt freeze + all closure/replacement consumers | Exact body/version/claim; allocated-unbound Cancelled failure release without SessionID, no success |
 | S6-10 | Sole active43 record-only binding/reconcile | Actual original frame+private owner/current or sealed successful receipt; noTask/P/G/Session/lock bump; passivepoll read-only |
 | S6-11 | Sealed Fresh/Continue selector | Latest closed delivery/predecessor+registry, exhaustive typed family/reference checks, failedprewireContinue→Fresh |
 | S6-12 | All checkpoint/pack render and publication consumers | EVERY own/promoted event caller-classified; immutable snapshots/current head vs admitted historical closure |
-| S6-13 | Counters/history/body and irreversible claim |64observations/8MiBbody/64KiBheadroom +256context/history, exact reserved tail before external effect, actual disposal terminal persists |
-| S6-14 | Operation-aware locks/idle/Git/removal/context/Goal consumer | Symmetric durable physical reservations; actual60/58/23 ports pending; fixture-only actual producer is nongating |
+| S6-13 | Counters/history/body and irreversible claim |64unique compact observations/8MiBbody/64KiBheadroom +256context/history, exact reserved tail before external effect, actual disposal terminal persists |
+| S6-14 | Operation-aware locks/idle/Git/removal/context/Goal consumer | Symmetric durable physical reservations; actual60/58/23 ports pending; fixture producer gates mechanics only; never production readiness |
 | S6-15 | Unsupported legacy Task/NoTask/interactive roles | All fresh generic nonterminal native writers refuse before effects; terminal historical facts unverified |
 | S6-16 | Exact composed projection/schema/caller readiness | Actual5/6/7/Generic/Fake and23/43/58/60 integration; synthetic producer mechanics≠production native acceptance |
 
 Each stable key requires named exact consumer tests AND meaningful causal mutants
-in final source evidence; it is not an invented available API or a checkmark. Design16–25
+in final source evidence; it is not an invented available API or a checkmark. Design16–26
 and the canonical writer table define the required private predicates. Source evidence
 must map each key to actual fixture/result SHA and list unready production ports.
 
@@ -604,3 +604,18 @@ reference manifest, own head/facts may advance while promoted/reference changes 
 Fresh. Original43 marker-time binding frame is immutable despite ordinary observation
 refresh; actual authoritative driver/reconcile/recovery routing remains coordinated43/14.
 The stable S6 matrix is current native acceptance; component5 positives are historical.
+
+
+Design26 narrows mid-turn AllowCurrent source currency explicitly: exact immutable
+rules/config/references/HEAD/identity/context plus current semantic fullscope/locks and
+actual Broker grant, while mutable Executor worktree content may change. No same-UID
+writer-origin attribution, prepared recapture or Reviewer snapshot exemption is claimed.
+Compact immutable observation source/evidence blobs keep realistic maps out of the bounded
+Workflow body; exact repeated Waiting summaries retain count/time without consuming new
+unique slots. Every execution reserves possible changed-outcome capacity before effects;
+64 unique entries refuses further effects. Irreversible tail reserves actual compact body
+and separately bounded blob bytes. Unexplained reconciliation failure remains held, never
+clean settlement. Every typed23 Goal writer preserves current context pointer in its tx.
+Actual19/23/43 co-integration is a source-positive gate; seeded/stub ports cannot pass.
+Original43 raw pins retain conservative hold/resume recovery availability limits;14 remains
+pending. S6-06/13/14/16 include these causal controls, not implemented source6 claims.

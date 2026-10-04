@@ -317,12 +317,8 @@ for the normative contract and its implementation boundary; the Goal design does
 not duplicate those predicates.
 
 
-The proposed [Design18 boundary](../issue-19-design.md#design18-minimum-supported-launch-boundary-and-settlement-precision)
-keeps protected standalone preparation non-launchable and rejects native standalone
-before reservation/process. Production schema6 deployment is gated on real required
-managed profiles, not synthetic-only success or universal Unsupported. Private actual
-cleanup can record cancelled/held lifecycle facts without launch/completion authority.
-Managed Goal classification persists across pre-marker/between-phase/all-settled
-windows using exact durable ancestry, and composes with Issue23 accepted authority.
-Live checkpoint append preserves admitted input; receipt freeze allows exact late
-record-only binding, with no Session rewrite. This remains proposed, not schema5 source.
+The incompatible managed native/Goal authority remains the pending
+[Issue19 contract](../issue-19-design.md#canonical-schema6-native-writer-predicate-table).
+Actual main is schema3; unmerged component5 pack publication is not accepted managed
+Goal/native settlement. Real23 typed Goal writers must preserve the latest pack pointer
+separately from semantic version; actual source composition/production gates are pending.

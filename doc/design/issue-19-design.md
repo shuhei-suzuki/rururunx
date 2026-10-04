@@ -3,7 +3,7 @@
 Status: actual main80452f4 is schema3; this unmerged component source is5. Proposed
 schema6 remains fixture-only/pre-code until its independent gate and actual composed
 source/native production release. No Phase::DecisionReview or native producer is
-created by prose. The schema6 canonical writer table below plus Design16–25 private
+created by prose. The schema6 canonical writer table below plus Design16–26 private
 port/bounds define proposed native authority. Earlier schema5 protocol examples are
 historical component context ONLY and cannot authorize a managed/public writer;
 artifact/encoding contracts continue where this table does not supersede them.
@@ -26,7 +26,7 @@ is separately permitted under authorized lifecycle holds, never launch/ALLOW.
 | First/new consumed input (including Starting→Starting) | Actual operation-bound NativeCAS | Same-tx composed23 admission; current full CPP/head/frame/source + P/G/T/own Session/locks/activity; unique consumption committed before bytes |
 | Consumed Starting→Running acknowledgement | Actual owned historical acknowledgement | Exact current admitted tuple/consumed UUID, same attempt; no re-admission or new payload |
 | Admitted Waiting/pending permission or fixed DENY observation | Private Acked/DenyHistorical | Original input/actor pins and provider-specific activity; no prepared consumption or grant |
-| Tool/action ALLOW | Private AllowCurrent + actual trusted grant proof | Same-tx composed23 admission; full current CPP/head/source/P/G/T/own Session/locks/activity before wire; no historical fallback |
+| Tool/action ALLOW | Private AllowCurrent + actual trusted grant proof | Same-tx composed23 admission; current immutable CPP/head/governing/reference source authority + P/G/T/own Session/locks/activity before wire; Executor mutable content excluded as Design26 specifies; no historical fallback |
 | Current managed non-Lost terminal / receipt | Actual owned supervisor settlement | Actual current native outcome or eligible NoCurrentDispatch + complete required owned cleanup; immutable exact receipt/body |
 | Exact prior terminal restoration before current dispatch | Actual owned settlement producer | Same Immediate transaction as the new operation's NoCurrentDispatch receipt/body/audit; exact private prior checksum, no current admit/consume/uncertainty; never current success |
 | Fresh higher-input continuation | Sealed managed Fresh/Continue selector + new operation | Exact latest closed predecessor/receipt; Continue actual registry proof; new context/frame/full current CAS |
@@ -1632,7 +1632,7 @@ bound to the exact operation/Session/remembered versions and unchanged prepared 
 admitted actor/input pins. It cannot create admission, consumption, allocation,
 terminal restoration or settlement. Those use their dedicated private ports.
 Post-consumption ALLOW uses the explicit handle-bound AllowCurrent branch with
-full-current NativeCAS/Broker before wire (Design22 below); private historical DENY
+full-current scoped NativeCAS/Broker before wire (Design26 below); private historical DENY
 preserves each provider's existing activity/write constraints and
 does not grant authority. No broad ProjectBlocked/lifecycle exemption is added.
 All five managed writers migrate every Session publication, not just first admission.
@@ -2381,14 +2381,14 @@ AllowCurrent performs the SAME full NativeCAS current P/G/T and own-Session vers
 active Goal/nonterminal Task, Executor ReadyForPr/PrCreated and existing worktree
 constraints, plus composed23 Running-Goal policy, complete lock-set and exact private
 operation/frame/pair predicates in one Immediate transaction before ALLOW bytes.
-Current CPP pointer/checkpoint head, exact complete prepared payload/source authority
-and relevant semantic/current source observation remain mandatory even though the
-prepared consumed UUID is unchanged. Capture bounded physical hashes outside the
-Store mutex, then revalidate their source/owner/version pins in the transaction;
-no external Git/IO runs inside it and no OS-atomic filesystem claim is made. A current
-owned grant does NOT create another prepared admission/consumption or alter its pins.
-Publication failure/stale head/lifecycle/lock/source emits zero grant wire bytes and
-retains the operation. There is no fallback to historical observe or generic CAS.
+Current CPP pointer/checkpoint head and the original complete prepared payload/pair
+remain exact. The scoped physical-source predicate in Design26 compares immutable
+governing/reference families, not an Executor's mutable working-content snapshot.
+No grant recaptures or replaces prepared authority. Bounded physical observations
+occur outside SharedStore, then exact held expected authority/version pins are
+revalidated in the transaction; no external Git/IO inside it or OS-atomic filesystem
+claim. Stale governing authority/head/lifecycle/locks emits zero grant bytes and retains
+ownership. Historical observation/generic CAS cannot substitute for AllowCurrent.
 
 The private permission producer/#10 integration is not claimed present. Unsupported
 managed ALLOW fails before grant effects until its actual trusted producer composes;
@@ -2587,9 +2587,11 @@ NextAction must render with the marker, cannot clear a blocker/replace actual co
 or forge native output. Preserve exact stored/checkpoint hashes; the new rendered
 provenance belongs to the new version2 frame projection, not rewriting old events.
 
-Bound every new post-epoch attempt to64 gate observations and the complete serialized
-Workflow Record body to8 MiB. Charge claim observation slots before any EvidencePort
-execution; refuse the65th without external effect or a lost observation. Reserve64 KiB
+Bound every new post-epoch attempt to64 unique gate observations and the complete serialized
+Workflow Record body to8 MiB. Reserve a possible new unique observation slot before every EvidencePort
+execution, including a suspected repeat; no free slot refuses before effects. Exact
+repeat outcomes may reuse the prior entry under Design26, releasing the unused slot.
+There is never a65th unique observation or an unrecorded changed outcome. Reserve64 KiB
 within that body cap for exact terminal/hold/closure metadata; ordinary claim/history/
 publication writes cannot consume that headroom. Existing bound text/authority/history/
 context limits still apply. SQLite enforces UTF-8 body bytes before JSON scans and Rust
@@ -2714,3 +2716,113 @@ read-only. Restart cannot reconstruct live owner from rows and needs actual14 au
 recovery. Non-success/NoCurrentDispatch uses its separate19 closure, never fake success.
 The composed43 requirement/design gate owns this additional routing; no producer/driver
 is claimed available by this paragraph.
+
+
+### Design26: scoped current grants, compact observations and real composition gates
+
+AllowCurrent preserves the immutable admitted full-frame digest, consumed UUID and
+private operation/pair. It performs actual composed23 admission and exact semantic
+P/G/T, own Session, complete locks, lifecycle and Broker action/request/grant checks.
+Expected versions come from the supervisor's privately retained admission/owned CAS
+state, never a caller JSON tuple or reading rows inside the transaction and comparing
+those rows to themselves. A legitimate ownership update must be produced by its
+existing reviewed private CAS path; there is no general refresh to current rows.
+Goal pointer-only publication and derived progress do not bump semantic Goal authority;
+a real changed DAG/hold/version still fences. Benign sibling authority drift therefore
+may retain an operation for recovery; this design does not promise transparent progress.
+
+The physical-source families for this grant predicate are exhaustive:
+
+| Source class | AllowCurrent currency |
+| --- | --- |
+| Repository root/common-dir identity and exact HEAD; current CPP pointer/checkpoint head; accepted semantic instruction/policy/evaluator/constraints | EXACT original/current authority as applicable; drift emits zero ALLOW |
+| Governing rule/config bytes, environment-name/reference declarations, promoted consultation/artifact references and their scoped digests | EXACT complete family sets and physical bytes/identity; removal/addition/change emits zero ALLOW |
+| Executor mutable worktree inventory/content/dirty/missing hashes used to prepare repository slices | May change during its actual owned operation; not compared with the initial prepared content snapshot for mid-turn ALLOW |
+| Reviewer source/reference snapshot | Remains immutable under its supported read-only profile; no Executor mutable exemption |
+| Unknown source family, scope or producer classification | Refuse; never infer mutable from an unrecognized prefix |
+
+The Executor exception is a scoped permission predicate, not evidence of writer origin.
+It cannot distinguish its own edits from arbitrary same-UID foreign writes to mutable
+content, and makes no such attribution/isolation claim. Broker proof remains bound to
+the exact action and operation; this does not approve unrelated actions, alter original
+43 marker pins, recapture prepared input or permit new model consumption. Native60 owns
+any external Git observation before native19 marker; source capture is not lease-free.
+S6-06 requires actual own-write→ALLOW/wire plus changed governing rule, HEAD, reference,
+revoked lifecycle/lock and stale semantic version→zero-wire controls. An immutable-family
+comparison-removal mutant must causally reach the real grant consumer.
+
+New post-epoch GateObservation is a compact reference, never an embedded SourceSnapshot
+map. An immutable scoped observation-source blob stores the complete sorted source map
+once per exact scope/digest (maximum2 MiB, actual encoded bytes counted); its digest,
+revision and producer projection bind its immutable ContextVersion/observation authority.
+Each complete outcome/evidence/error blob is bounded to1 MiB of encoded UTF-8;
+counts/references share the64-unique-observation ceiling. Overflow retains the bounded
+observed prefix with exact overflow/count provenance and cannot certify Passed. Large
+outcome/evidence/error text is separately bounded immutable content with exact references. Workflow embeds at most512 UTF-8 bytes per observation entry: typed source-
+blob/outcome/evidence references, first/last observation timestamps and checked occurrence
+count. Unknown/missing referenced content holds; no public ID/hash mints source authority.
+Every referenced blob is inserted atomically with its exact observed claim token before
+Workflow publication and included in the schema6 all-table writer fence/migration/golden.
+Generic Records/audit cannot replace it. Old embedded pre-epoch history is read-only.
+Per-blob bytes, unique observation count and complete8-MiB Workflow-body cap are simultaneous
+ceilings, not a promise all maximum history metadata fits. Private immutable blobs do not
+assert a total DB-storage cap; actual owned copies/refs and reservations report their bytes,
+and any actual configured storage quota is charged before effects, never bypassed by dedup.
+
+Irreversible tail reservation uses this real representation: each planned tail attempt
+reserves64*512 bytes for compact entries plus its bounded fixed metadata, required source/
+outcome blob capacity and closure bytes. Source-map bytes are reserved in their actual
+blob storage, not multiplied into the8-MiB Workflow body. A100-KiB map with three64-entry
+tail attempts stays96 KiB of compact body entries, with exact separate blob charges.
+Tests use realistic maps, maxima2 MiB, complete body/headroom and tail reservations;
+removing compaction must reproduce pre-effect capacity refusal/post-disposal failure.
+
+Repeated definitive Waiting observations reuse the prior unique entry only when exact
+scope/revision/source-map digest, complete outcome and evidence/artifact digests ALL match.
+Checked occurrence count and first/last time retain the repeat; changed source, evidence,
+reason or outcome creates a new unique entry. Each explicit gate execution first reserves
+one possible unique slot and actual60 effect capacity; after exact claim-token/CAS proof,
+a repeat releases that unused slot. At64 unique entries no further execution is allowed,
+even an expected repeat; u64 occurrence overflow also refuses before effects. Separate
+monotonic claim epoch guards each execution, so summary count never replaces ownership/CAS.
+Passive41 step/poll stays read-only. More than64 identical Waiting executions followed by
+Passed must retain two entries with exact repeat count; changed-evidence and64-unique refusal
+controls retain every executed outcome. Neither repeated waiting nor dedup resets budgets.
+
+Every actual managed reconciliation consumer (Generic/Claude/Codex/Grok) treats unexplained
+physical inventory/index/source mismatch as uncertain held ownership. Successful selected-
+group cleanup, native terminal or output verification alone cannot publish a clean Failed
+receipt when reconciliation itself failed. A proven bounded known mismatch may only use
+its reviewed actual producer evidence; no guess from index pathname or terminal labels.
+The Grok branch currently computes cleanup/output success separately from reconciliation;
+source acceptance must change that real consumer and test foreign index/source discrepancy
+retains operation/claim with no receipt. Actual escaped/native cohort proof remains6/60/16.
+
+ALL Goal writers, including future23 typed lifecycle/DAG/additive graph/acceptance writers,
+must preserve the latest typed ContextVersion pointer read in their transaction or reject
+an explicit stale pointer expectation. Semantic Goal.version alone cannot authorize a stale
+whole-row rewrite after pointer-only publication. No writer silently copies its captured
+older pointer. Two-connection tests through the actual23 typed port cover pointer publication
+then stale typed update, simultaneous publication winner and reopen/audit invariants.
+This composes with accepted immutable Goal definition; Task acceptance does not permit Goal
+objective/criteria/evaluator/constraints edits.
+
+S6-02/03/04/06/09/10 and these pointer controls require actual19/23/43 source co-integration.
+The actual23 trusted acceptance/admission port and authoritative Task driver,43 sole binding
+port and19 managed producer must compile and execute together before source acceptance.
+A seeded goal_authority, stub readiness predicate or fixture-only fake binder earns no
+positive credit. Until those ports exist, these positives are PENDING; honest negative
+refusal/mechanical controls may proceed. Reviewed closed synthetic runtime jobs can gate
+candidate mechanics only, using isolated repositories and closed executable/script/env/
+effect inventory; selected-group death never proves nativeGit containment. S6-14 fixture
+positives are source-gating mechanics, NOT production-readiness. Actual60/58/native6/14/16
+production producer/conformance gates stay pending; co-review of real combined producers
+is allowed without inventing a completed-merge dependency cycle.
+
+The original43 marker binding frame remains immutable, including raw authority versions.
+Hold/resume or sibling drift may strand a factual successful yet unbound operation: retain
+receipt/claim and report recovery-pending, never fail/retry successful work, refresh original
+pins, release by terminal label or bind under inactive owners. An actual14 recovery mode
+would require its own19/43 gate; none is supplied here. A lifecycle hold→resume regression
+must demonstrate that conservative held result and zero duplicate dispatch. Where this
+missing production recovery prevents a required supported path, deployment stays unready.

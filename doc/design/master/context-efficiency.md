@@ -351,126 +351,18 @@ estimates are audited independently of optional repository slice estimates.
 
 ## 17. Context publication and native input authority
 
-The Workflow source port binds typed phase artifacts to exact Project/Goal/Task,
-owned HEAD/content hashes, payload digest and phase/budget. Engine owns phase
-ContextVersion publication and preserves the reserved artifact through Cleanup.
-Optional repository sections obey discretionary budget and remaining absolute
-capacity; mandatory Task/Goal/checkpoint facts and rules are counted separately,
-once. Complete phase input has a 1 MiB cap. Standalone explicit budgets constrain
-the complete rendered input. Provider measurements are nullable.
+Actual merged main remains schema3. The unmerged Issue19 component source is schema5;
+its deterministic pack/checkpoint implementation and evidence are not production native
+acceptance. That component uses scoped immutable ContextVersion payloads, indexed own
+checkpoint heads and exact prepared-frame hash/byte checks. Goal pointer-only publication
+is distinct from semantic/lifecycle version; optional repository budget and mandatory
+facts are counted separately under the complete1-MiB input cap. Provider measurements
+remain nullable. Git/filesystem observations stay outside SharedStore.
 
-Goal summary publication compares all owned Task membership/versions, including
-Tasks outside its DAG. Goal semantic/lifecycle version is separate from the
-consecutive ContextVersion head and pointer CAS; pointer-only publication cannot
-roll back an older typed head or invalidate admitted semantic Task input. Goal
-packs and finalized Task references remain non-launchable history.
-
-Schema5 private prepared_pack_inputs stores standalone frame Scope/context version,
-HEAD/source versions, exact UTF-8 payload bytes/SHA and up to 128 variants without
-prompt duplication. Publication rechecks source/head/owner authority with audit in
-one Immediate transaction. Generic Records/audit cannot create frame authority.
-Workflow complete frame authority is immutable ContextVersion.data.payload,
-including the Engine rule prefix. validate_context_input compares actual request
-bytes against this database authority. Transport envelopes/fixed prefixes have a
-separate digest. This check does not re-hash physical sources or attest native wire.
-
-Indexed own checkpoint heads, including explicit absence, bind same-Task preparation
-and first/new consumed publication. Same admitted observations retain historical
-pins. Historical unmerged component5 terminal continuation installed fresh input/
-restore proof; proposed6 permits only receipt/registry-bound sealed managed Continue; no restoration is allowed after consumption/uncertainty.
-New irreversible claims compare live checkpoint head; historical admitted claims
-can finalize after a later append. Source change may restart a pre-effect generation
-or hold post-effect work for explicit external reconciliation. Native event
-normalization/scheduling, recovery and actual provider acceptance remain distinct
-integration responsibilities, not inferred from deterministic artifact fixtures.
-
-### Private native input admission
-
-Native Session publication has an Immediate scoped Session+Project/Goal/Task version
-and complete lock-set CAS primitive. Typed input source/hash checks and actor binding
-must compose with it; a generic history record is not model launch permission.
-Native adapters retain separate private UUID/Session ownership, before-wire protocol
-and terminal outcome evidence. A database input hash never certifies native delivery
-or arbitrary Session JSON as completion. Native/Git/filesystem work stays outside
-SharedStore; bounded observations precede exact version revalidation.
-
-The next authoritative admission/actor/allocation and incompatible-writer contract
-is specified in the [scoped pack design](../issue-19-design.md#private-input-admission-and-schema-6).
-Its source and actual native caller acceptance are separate gates; private admission
-rows, universal historical Lost settlement changes and allocation claims are not
-advertised as current schema5 implementation facts. Current source version and
-operational migration limits must match the validated implementation.
-
-Managed native phase release additionally requires the proposed
-[owned settlement contract](../issue-19-design.md#managed-native-settlement-authority-design16):
-an exact operation lease exists before first Session, and only the actual owned
-supervisor can atomically publish its scoped immutable settlement receipt. Terminal
-JSON and input admission cannot certify cleanup. Every managed closure/replacement,
-idle/removal and Goal completion consumer uses the receipt; Lost or restart-unknown
-ownership remains held for private Issue14 recovery. This is a pre-code design gate,
-not current schema5/native acceptance. Issue41 claim-owner release and Issue43
-record-only binding compose separately without JSON credentials or fake SQL proofs.
-The revised producer contract additionally pins all managed Session writes to the
-private operation port, freezes exact receipt/body/version until phase closure and
-includes lock/executor reservation consumers. Unsupported native profiles refuse
-before marker; synthetic producers do not prove native containment. Managed Goal
-Completed needs actual Issue23 authority, while cancellation retains native leases.
-
-
-The proposed [Design18 boundary](../issue-19-design.md#design18-minimum-supported-launch-boundary-and-settlement-precision)
-keeps protected standalone preparation non-launchable and rejects native standalone
-before reservation/process. Production schema6 deployment is gated on real required
-managed profiles, not synthetic-only success or universal Unsupported. Private actual
-cleanup can record cancelled/held lifecycle facts without launch/completion authority.
-Managed Goal classification persists across pre-marker/between-phase/all-settled
-windows using exact durable ancestry, and composes with Issue23 accepted authority.
-Live checkpoint append preserves admitted input; receipt freeze allows exact late
-record-only binding, with no Session rewrite. This remains proposed, not schema5 source.
-
-The proposed [Design19 refinement](../issue-19-design.md#design19-managed-continuation-and-admission-possession)
-uses sealed managed continuation and handle-bound admission; unmanaged Task native
-Executor/Reviewer launch rejects even before a typed context exists. Actual settlement
-alone may publish terminal actor binding. Receipt outcome drives phase closure,
-and private Issue14 recovery is an explicit production deployment gate for held
-orphan/Lost ownership. No such authority is claimed in current schema5 source.
-
-The proposed [Design20 Store fence](../issue-19-design.md#design20-store-launch-fence-locks-and-deliberate-migration)
-refuses every unmanaged Task native role/nonterminal generic Session, preserves
-role-classified exact pre-marker lock ownership and makes old-DB migration deliberate.
-Same-generation/unchanged-authority Continue and immutable closed managed bodies
-preserve receipt provenance. Task-free Consultant ownership remains pending58.
-These are design gates, not source5 or production profile readiness.
-
-[Design21](../issue-19-design.md#design21-pre-marker-continuation-availability-and-composed-authority)
-defines runtime-aware Continue, ordered marker/receipt SQL backstops and generic
-NoTask live Session denial pending58. Candidate6 is component-only; first production
-schema/projection must be the actual reviewed composition. Decision-only review still
-owns native operations. Current source5 is unchanged by these proposed gates.
-
-[Design22](../issue-19-design.md#design22-current-managed-grants-and-fixture-only-candidate-persistence)
-requires a separate owned current grant branch, fixture-only candidate persistence,
-finite Workflow phase history and explicit unverified promoted role provenance.
-Actual main3/unmerged component5 defaults remain unchanged until composed release; future approval
-slot/native producer, recovery and Consultant ports are not available by this text.
-
-[Canonical schema6 writer table](../issue-19-design.md#canonical-schema6-native-writer-predicate-table)
-is the consolidated proposed transition authority; historical component5 examples
-are not generic managed permissions. [Design23](../issue-19-design.md#design23-complete-publication-bounds-maintenance-and-closed-receipt-binding)
-counts every Workflow context publication, requires actual maintenance effect
-reservation and sealed43 closed-receipt binding, and keeps60/14 producer/recovery
-and native acceptance explicitly pending. Actual main3/component5 state is unchanged.
-
-
-[Design24](../issue-19-design.md#design24-reachable-failure-release-goal-admission-and-factual-rendering)
-separates allocated-unbound non-success receipt release from active-only43 binding,
-repeats actual23 Running/accepted-DAG admission at marker/prep/consumption/ALLOW and
-marks ALL rendered checkpoint events as unverified caller classification. Bounded
-observations/body/headroom, exact private event names and atomic restore+receipt remain
-pre-code/native integration gates; schema3 main and unmerged component5 stay factual.
-
-
-[Design25](../issue-19-design.md#design25-irreversible-tail-reservation-candidate-identity-and-exhaustive-continuation)
-adds exact irreversible-tail capacity reservation before effects, distinct RRXC candidate
-identity and exhaustive reference-aware Continue selection. S6-01–16 is the pending
-native acceptance inventory; actual60 production ownership and43 original-frame/driver
-composition remain required, not supplied by candidate fixture or public receipt JSON.
+The sole pending incompatible-writer/managed native contract is the
+[Issue19 design](../issue-19-design.md#canonical-schema6-native-writer-predicate-table)
+and its stable S6 acceptance inventory. It requires actual owned admission/settlement,
+current grants, compact bounded evidence and real19/23/43/60/native composition. Public
+JSON, terminal labels and synthetic fixture proofs never confer production ownership,
+cleanup or review independence. Candidate schema6 is not implemented or an ordinary
+user upgrade; migration and supported native readiness are separate pending gates.
