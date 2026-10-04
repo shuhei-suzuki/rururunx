@@ -1,6 +1,7 @@
 # Issue60 diagnostic component design
 
-Risk: STRICT. Design2 candidate, not implemented or source-approved.
+Risk: STRICT. Design2 approved independently twice at201bd89; six Low source-phase
+clarifications below. Implementation/source gates remain pending.
 Requirements4 has two independent diagnostic-only approvals at26de8da. The later
 source-aside correction does not change its required real-inspector consumer criterion.
 Full Issue60 workload ownership/effect/delegation/durable settlement, native16 and the
@@ -26,8 +27,10 @@ permission, death, native completion, freshness, replay or reservation authority
 
 Add private finite enums and a fixed-size fact snapshot, containing no command or
 process values. A small internal collector records actual facts at source. All collection and final
-error attachment live only in shared inspect_command/observe_command/complete/Inspector/
-Stream/validate code, including their private common helpers. Production-only inspect,
+collection lives only in shared inspect_command/observe_command/complete/Inspector/
+Stream/validate code, including private common helpers. FINAL error attachment is
+only observe_command's Err arm and inspect_command's error returns. Complete, Stream
+and validate keep their original inner error values, Display and IO kinds. Production-only inspect,
 macos_group_is_dead, process_group_inspection, inspect_process_group and resolver
 closure arms remain byte-identical pass-throughs. No production-only fact decoration
 or stripping is allowed: the shared attachment site is the causal mutation target. An error
@@ -99,7 +102,10 @@ io::Error.raw_os_error is None, not a promised preserved errno. Current producti
 callers stringify/kind-check only. Existing complete-directory-read unit expects
 raw ISDIR: keep its unwrapped inner read error. The real live-member resolver control
 expects raw PERM: Ok(false) inspection still returns original signal PERM unchanged.
-Inventory those tests; no raw-metadata consumer is silently changed. Known framing/
+Also keep Stream overflow exact Display at480, complete TimedOut at535 and wrapped
+inspect substring assertions420/450/758. Any collector signature/literal updates at
+470–473,511–525,548–562,582–588 are mechanical; existing assertions stay unchanged.
+No raw-metadata consumer is silently changed. Known framing/
 timeout human prefixes remain. Do not expose child bytes as error bodies.
 Display writes only fixed strs, enums and integers, propagating only writer errors;
 it never originates fmt::Error, unwraps or invents an optional formatting-failure
@@ -156,10 +162,14 @@ Child try_wait has returned Some(exit), so std has already reaped that direct ch
 Retain its actual Child handle in the fixture through synthetic relinquishment; never
 rescue by numeric observed-callback PID, waitid/adoption or later PID signals. The
 source error branch then clears unreaped/has no reported exit just as baseline.
+Hold the unit logical deadline open with the private per-invocation clock seam;
+this is deterministic unit injection, not a wider native budget. Shared post-error
+cleanup/fact recording is one helper used by observe_command and the fixture.
 Any cleanup-call omission mutant in this synthetic state uses recorded fixture-only
 kill/wait operations, not a new real syscall on a reaped PID. Assert no calls after
 relinquishment and independently verify the pre-injection actual reap even on assertion
-failure. No stranded live child/zombie or real status-error acceptance is claimed.
+failure. Relinquishment mutation earns UNIT GUARD credit only, not authority-consumer
+closure. No stranded live child/zombie or real status-error acceptance is claimed.
 Each adjacent deadline check is reached deterministically rather than waiting
 for scheduling between statements. Production uses its unchanged monotonic clock.
 
@@ -175,6 +185,10 @@ withdrawn. Any future hand-built fact/ioError bypass earns rendering pass-throug
 Actual Context tests use a private latch to isolate destructive first-Unknown controls
 from default concurrent tests. The supplied plan must execute the real inspector; its
 error snapshot must survive resolver→cleanup_group→bounded Git→Context rendering.
+Inspect Context anyhow chain ({:#} or chain()), not top-level Display which hides
+the bounded-context-Git cause. Discriminate original returned inspector IO kind
+(TimedOut versus guard InvalidData/Other) independently of the reported site, then
+check matching site family; a mislabelled site cannot select its own acceptance path.
 Assert original kind, a present safe fact block, retained uncertainty and derived
 refusal without a fresh sample. Exact deterministic guard/refusal/stream, EOF/exit/
 validation/cleanup/kill categories and fixed shim stderr-byte count apply ONLY when
@@ -206,7 +220,7 @@ new diagnostics are not an explanation for them.
 
 ## Implementation gates and explicit limits
 
-Committed requirements precede narrowed approvals; committed Design1 precedes two
+Committed requirements precede narrowed approvals; the current committed design revision precedes two
 independent public immutable design reviews. No source before both design approvals.
 Source/impact commit precedes affected tests, compiled causal mutants and independent
 source reviews. Run default debug/release, fmt/all-targetClippy, both builds and final

@@ -299,13 +299,14 @@ Blocked Project native ownership metadata. Preflight/cancelled Lost may lack
 native PID evidence; generic reconnection is unsupported and explicit recovery
 remains necessary.
 
-### Pending inspector failure diagnostics
+### Inspector failure diagnostics: source gates pending
 
 [Issue60 diagnostic requirements](../../requirements/issue-60-inspection-requirements.md)
-have two narrowed approvals; [component design](../issue-60-inspection-design.md) is
-pending independent gates. It proposes finite value-free site/stream/EOF/status/cleanup
-facts in existing failure rendering, preserving selected argv/env,250ms observation,
-Unknown and original authority. No implementation or availability acceptance yet.
+have two narrowed approvals; [component design](../issue-60-inspection-design.md) has
+two independent Design2 approvals. The diagnostic-only implementation now attaches
+finite value-free site/stream/EOF/status/cleanup facts at common inspector error exits,
+preserving selected argv/env,250ms observation, Unknown and original authority.
+Source verification and independent source gates are pending; no availability claim.
 Reader/driver retention and every existing Drop/reap gap remain separate/open. The
 Grok receipt below stays unclassified; facts cannot grant cleanup or alter clean.
 
@@ -325,8 +326,9 @@ reservation release or transport completion.
 is `not_found`, `permission_denied`, `interrupted`, `invalid_input`, `invalid_data`,
 `timed_out`, `would_block`, `unexpected_eof`, `broken_pipe`, `out_of_memory`,
 `write_zero`, or `other`. No error body/debug rendering is copied. Group-cleanup
-failure cause is unclassified because the shared helper erases its structured cause;
-message parsing cannot recover authority.
+failure cause stays unclassified as policy until a separately reviewed typed consumer
+exists. The shared helper erases its structured cause; bounded inspector fact text may
+remain in diagnostics, but message parsing cannot recover or grant authority.
 
 `stderr_drain_state` is `not_started`, `joined_returned`, `joined_panic`,
 `joined_cancelled`, or `budget_elapsed_abort_requested`. `stderr_read_error` is

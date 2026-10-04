@@ -1,0 +1,56 @@
+{
+  "head": "201bd892a43fc3ae6dd92030fc13e9b91dce3eb3",
+  "outcomes": {
+    "facts": "approve",
+    "authority": "approve"
+  },
+  "cleanup_verified": true,
+  "raw_result_sha256": {
+    "facts": "9d6475c4ec28a55031a0caed2a460cca6706391c56f10b35dabe6264fa5573cf",
+    "authority": "29b40320486bfc522ae493e4d392f1c6bfce5346ab5bbb0755acb73b2d0872ee"
+  },
+  "findings": [
+    {
+      "review": "facts",
+      "id": "D2-L1-attachment-location-vs-exact-inner-assertions",
+      "severity": "Low",
+      "verified": true,
+      "disposition": "Narrow source-phase clarification; source/tests and independent source gate pending"
+    },
+    {
+      "review": "facts",
+      "id": "D2-L2-context-rendering-chain",
+      "severity": "Low",
+      "verified": true,
+      "disposition": "Narrow source-phase clarification; source/tests and independent source gate pending"
+    },
+    {
+      "review": "authority",
+      "id": "D60b-L1",
+      "severity": "Low",
+      "verified": true,
+      "disposition": "Narrow source-phase clarification; source/tests and independent source gate pending"
+    },
+    {
+      "review": "authority",
+      "id": "D60b-L2",
+      "severity": "Low",
+      "verified": true,
+      "disposition": "Narrow source-phase clarification; source/tests and independent source gate pending"
+    },
+    {
+      "review": "authority",
+      "id": "D60b-L3",
+      "severity": "Low",
+      "verified": true,
+      "disposition": "Narrow source-phase clarification; source/tests and independent source gate pending"
+    },
+    {
+      "review": "authority",
+      "id": "D60b-L4",
+      "severity": "Low",
+      "verified": true,
+      "disposition": "Narrow source-phase clarification; source/tests and independent source gate pending"
+    }
+  ]
+}

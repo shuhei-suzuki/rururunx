@@ -124,3 +124,55 @@ checkout07a7d6b2d08329bcd25fb151fb45653b98ecf9ac parents054aefd/ab2ac23 tree=hea
 Requirements4/source-aside CI37222227095/37222545671 likewise unchanged-source green;
 provenance artifacts preserve actual both checkouts64c31906/87716538 and parents.
 No diagnostics source/availability or failed Issue51 acceptance follows.
+
+## Design2 approvals and fresh unchanged-source red
+
+At201bd89 both independent delta reviews approve/noCritical/High/Medium (facts2Low,
+authority4Low), actual cleanup verified. [All6 verified carryovers](issue-60-design2-findings.json)
+pin final attachment to observe_command/inspect_command only, unchanged inner assertions,
+Context anyhow chain and returned-IO-kind discriminator, shared failure-cleanup fact
+helper and logical-clock-open UNIT injection after actual Child reap with recorded ops.
+These are source-phase precision fixes; no native/reader/deadline/authority expansion.
+
+CI37224052464 is RED: macOS Context whitespace_head_paths_staged_deletions_and_path_aliases_are_explicit
+atcontext110 has one own inspection timeout; Context15PASS1FAIL24.29s, no derived
+Context failures. Earlier lib120PASS6ignored, adapter19PASS,CLI5PASS; mac builds skipped.
+Actual both checkoutca7bc11210e50ebb49954d7666e540b57530f096 parents054aefd/201bd89,
+tested tree=head. Raw logs/step/checkout JSON preserved in private verification artifacts.
+This is unchanged production, no diagnosis of cause, no rerun/waiver or availability
+acceptance. New reviewed diagnostic source will be measured freshly; final red blocks
+merge. Frozen Issue51 final18c remains red/draft. Full60/reader/driver/native16 remain open.
+
+
+## First diagnostic source: implementation and impact, gates pending
+
+Design2 has two independent approvals at201bd89. The six Low clarifications are
+carried into the implementation and design without expanding ownership/reader scope.
+Only macOS inspection source adds a typed finite diagnostic collector, static framing
+refusals, common error attachment and private deterministic seams. The production
+selected command, signal resolver, ProcessGroup/Drop/reap, Git reader scheduling,
+Store, native controls, deadlines and byte bounds are unchanged. Complete/Stream/
+validate inner error assertions preserve their original kind/Display; decorated
+inspect failures deliberately replace raw IO text with static site text and preserve
+kind, not raw errno. The directory-read ISDIR and valid-live resolver PERM remain
+unwrapped. Deferred validation retains the masked validation result separately and
+selects only the actually returned post-validation deadline or framing error.
+
+The Context consumer adds an invocation-local test-only capture of the original
+inspector IO kind before cleanup_group erases it into AdapterError text. This records
+the first real plan observation, including the Drop-retry distinction, and has no
+production field/API/authority. It permits independent timeout-versus-guard checks
+rather than selecting its own acceptance path by the reported diagnostic site. The
+actual plan still performs KILL then injected PERM and real shared shell inspection;
+no fabricated snapshot/result substitutes for that path.
+
+Planned controls include exact adjacent deadline/validation unit seams, settled-child
+status relinquishment, actual inner directory read, safe maximum formatter, actual
+Context uncertainty/latch transport and pre-effect missing-executable entry hop. Unit
+injections/open logical clocks are labelled separately from native scheduling; there
+is no exact read-throughput/elapsed/OS-permission credit. Source commit precedes
+compilation/test/review gates. No passing source verification is claimed yet.
+Design2 documentation CI37224052464 remains RED macOS: one own Context inspection
+timeout,15PASS/1FAIL, unchanged baseline implementation. No old-head rerun or
+cause attribution; fresh changed-source CI is required. Full60, reader/driver draft,
+recovery14, native16 and Issue51 final RED remain open.
