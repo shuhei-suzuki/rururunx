@@ -19,6 +19,8 @@ pub(super) fn failure(kind: ErrorKind, message: impl Into<String>) -> AdapterErr
 }
 
 struct OwnedEntry {
+    #[cfg(all(test, target_os = "macos"))]
+    process_inspection: Option<ProcessInspectionPlan>,
     scope: Scope,
     transition: Mutex<()>,
     status: watch::Receiver<SessionStatus>,
@@ -52,6 +54,8 @@ impl Drop for Busy {
 
 /// Provider selection is explicit; neither agent names nor arbitrary argv select Grok.
 pub struct GrokAdapter {
+    #[cfg(all(test, target_os = "macos"))]
+    process_inspection: Option<ProcessInspectionPlan>,
     agent: String,
     executable: PathBuf,
     store: SharedStore,
@@ -86,6 +90,8 @@ impl GrokAdapter {
             }
         }
         Ok(Self {
+            #[cfg(all(test, target_os = "macos"))]
+            process_inspection: None,
             agent,
             executable,
             store,
@@ -199,6 +205,8 @@ impl GrokAdapter {
         };
         let (events, status) = watch::channel(initial);
         let entry = Arc::new(OwnedEntry {
+            #[cfg(all(test, target_os = "macos"))]
+            process_inspection: self.process_inspection.clone(),
             scope: session.scope.clone(),
             transition: Mutex::new(()),
             status,
@@ -1008,6 +1016,8 @@ async fn supervise(mut actor: Actor, load: Option<String>) {
             .current_dir(&actor.request.worktree).env_clear().envs(&actor.environment).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true).process_group(0);
         actor.owner()?;if actor.stopped(){return Err(failure(ErrorKind::ProcessFailure,"native stop before spawn"));}
         let child=ProcessGroup::new(command.spawn().map_err(|e|failure(if e.kind()==std::io::ErrorKind::NotFound {ErrorKind::ExecutableMissing}else{ErrorKind::LaunchFailure},"native Grok could not spawn"))?,ownership.group())?;
+        #[cfg(all(test,target_os="macos"))]
+        let child = { let mut child = child; child.inspection_plan = actor.entry.process_inspection.clone(); child };
         actor.session.pid=child.child.id();process=Some(child);
         actor.store.lock().map_err(|_|failure(ErrorKind::StateFailure,"state poisoned"))?.audit(&actor.session.scope,"grok.process_spawned",json!({"session":actor.session.id,"pid":actor.session.pid})).map_err(state_error)?;
         actor.publish()?;
@@ -1284,6 +1294,109 @@ async fn index_digest(root: &Path, ownership: &mut ProcessOwnership) -> AdapterR
 
 #[cfg(test)]
 mod registry_tests {
+    #[cfg(target_os = "macos")]
+    #[tokio::test]
+    async fn sanitized_native_process_unknown_cleanup_reaches_grok_durable_reservation() {
+        let home = tempfile::tempdir().unwrap();
+        let mut command = tokio::process::Command::new(std::env::current_exe().unwrap());
+        command
+            .args([
+                "--exact",
+                "adapter::grok::registry_tests::sanitized_grok_cleanup_child",
+                "--ignored",
+                "--nocapture",
+            ])
+            .env_clear()
+            .env("HOME", home.path())
+            .env("PATH", "/usr/bin:/bin")
+            .env("RRX_INSPECTION_FIXTURE_CHILD", "1")
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true)
+            .process_group(0);
+        let mut child =
+            ProcessGroup::new(command.spawn().unwrap(), Arc::new(AtomicBool::new(false))).unwrap();
+        let stdout = tokio::spawn(read_git_output(child.child.stdout.take().unwrap()));
+        let stderr = tokio::spawn(read_git_output(child.child.stderr.take().unwrap()));
+        let observed = tokio::time::timeout(Duration::from_secs(60), child.observe_exit()).await;
+        child = cleanup_group(child).await.unwrap();
+        let exit = child.reap().await.unwrap();
+        let output = stdout.await.unwrap().unwrap();
+        let diagnostic = stderr.await.unwrap().unwrap();
+        assert!(
+            observed.is_ok(),
+            "isolated child fixture timed out: {} {}",
+            String::from_utf8_lossy(&output),
+            String::from_utf8_lossy(&diagnostic)
+        );
+        assert!(
+            exit.success(),
+            "sanitized fixture failed: {} {}",
+            String::from_utf8_lossy(&output),
+            String::from_utf8_lossy(&diagnostic)
+        );
+    }
+    #[cfg(target_os = "macos")]
+    #[tokio::test]
+    #[ignore = "entered only by the env-cleared parent fixture; no ambient native baseline"]
+    async fn sanitized_grok_cleanup_child() {
+        assert_eq!(std::env::var("RRX_INSPECTION_FIXTURE_CHILD").unwrap(), "1");
+        for unknown in [false, true] {
+            let (_temp, store, project, task, worktree) = super::super::tests::preflight_fixture();
+            let revision = std::process::Command::new("/usr/bin/git")
+                .args(["rev-parse", "HEAD"])
+                .current_dir(&worktree)
+                .env_clear()
+                .output()
+                .unwrap();
+            assert!(revision.status.success());
+            let mut request = super::super::tests::fixture_request(project, &task, worktree);
+            request.input.revision = String::from_utf8(revision.stdout)
+                .unwrap()
+                .trim()
+                .to_owned();
+            request.environment.clear();
+            let mut adapter =
+                GrokAdapter::new("fake".into(), PathBuf::from("/bin/cat"), store.clone()).unwrap();
+            if unknown {
+                adapter.process_inspection = Some(ProcessInspectionPlan::unknown(
+                    UnknownObservation::Diagnostics,
+                ));
+            }
+            let launched = adapter.start(request).await.unwrap();
+            let status = tokio::time::timeout(Duration::from_secs(10), async {
+                loop {
+                    let status = adapter.status(SessionRef::from(&launched)).await.unwrap();
+                    if status.terminal() {
+                        break status;
+                    }
+                    tokio::time::sleep(Duration::from_millis(5)).await;
+                }
+            })
+            .await
+            .unwrap();
+            let state = store.lock().unwrap();
+            let saved = state.session(launched.id).unwrap().unwrap().0;
+            let events = state.events(&task.scope(), 0, 100).unwrap();
+            assert!(
+                events
+                    .iter()
+                    .any(|event| event.kind == "grok.process_spawned")
+            );
+            assert_eq!(
+                saved.state,
+                if unknown {
+                    SessionState::Lost
+                } else {
+                    SessionState::Failed
+                }
+            );
+            assert_eq!(status.session.state, saved.state);
+            drop(state);
+            assert!(!adapter.transport_succeeded(&status));
+        }
+    }
     use super::*;
     #[tokio::test]
     async fn actor_journals_failed_write_effect_and_denies_completion() {
@@ -1356,6 +1469,8 @@ mod registry_tests {
             failure: None,
         });
         let entry = Arc::new(OwnedEntry {
+            #[cfg(all(test, target_os = "macos"))]
+            process_inspection: None,
             scope: session.scope.clone(),
             transition: Mutex::new(()),
             status,
@@ -1478,6 +1593,8 @@ mod registry_tests {
             failure: None,
         });
         let entry = Arc::new(OwnedEntry {
+            #[cfg(all(test, target_os = "macos"))]
+            process_inspection: None,
             scope: scope.clone(),
             transition: Mutex::new(()),
             status,
