@@ -54,8 +54,8 @@ async fn finished(
 async fn native_execute_edits_only_owned_files_and_preserves_actual_exit() {
     let mut fixture = Fixture::new();
     fixture.request.input.payload = "  /always-approve".into();
-    fixture.request.environment.insert(
-        "RRX_EXPECT_INPUT".into(),
+    fixture.synthetic(
+        "RRX_EXPECT_INPUT",
         fixture.request.input.payload.clone(),
     );
     let adapter = fixture.adapter();
@@ -420,8 +420,8 @@ async fn native_stop_permissions_foreign_refs_and_environment_guards_are_explici
     );
     fixture.mode("hang");
     let spawn_observed = fixture.directory.path().join("spawn-observed");
-    fixture.request.environment.insert(
-        "RRX_SPAWN_OBSERVED".into(),
+    fixture.synthetic(
+        "RRX_SPAWN_OBSERVED",
         spawn_observed.to_str().unwrap().into(),
     );
     let session = fixture.start(&adapter).await.unwrap();
@@ -851,12 +851,9 @@ async fn parent_replacement_after_native_preflight_never_reaches_prompt_wire() {
     fixture.mode("pause_info");
     let pause = fixture.directory.path().join("pause");
     let prompt_observed = fixture.directory.path().join("prompt-observed");
-    fixture
-        .request
-        .environment
-        .insert("RRX_PAUSE".into(), pause.to_str().unwrap().into());
-    fixture.request.environment.insert(
-        "RRX_PROMPT_OBSERVED".into(),
+    fixture.synthetic("RRX_PAUSE", pause.to_str().unwrap().into());
+    fixture.synthetic(
+        "RRX_PROMPT_OBSERVED",
         prompt_observed.to_str().unwrap().into(),
     );
     let adapter = fixture.adapter();

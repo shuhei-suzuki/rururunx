@@ -96,22 +96,12 @@ impl Fixture {
                 source_versions: BTreeMap::from([("fixture".into(), "v1".into())]),
                 payload: "prepared owned fixture".into(),
             },
-            environment: BTreeMap::from([
-                ("RRX_DATABASE".into(), database.to_str().unwrap().into()),
-                (
-                    "RRX_FOREIGN".into(),
-                    directory
-                        .path()
-                        .join("foreign.txt")
-                        .to_str()
-                        .unwrap()
-                        .into(),
-                ),
-            ]),
+            environment: BTreeMap::new(),
             model: Some("requested-model".into()),
             effort: Some("low".into()),
         };
         let executable = directory.path().join("fake-grok");
+        std::fs::write(executable.with_extension("json"), serde_json::to_vec(&json!({"RRX_DATABASE":database,"RRX_FOREIGN":directory.path().join("foreign.txt")})).unwrap()).unwrap();
         std::fs::write(&executable, include_str!("grok_fake.py")).unwrap();
         std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o700)).unwrap();
         Self {
@@ -126,6 +116,17 @@ impl Fixture {
     pub(super) fn adapter(&self) -> GrokAdapter {
         GrokAdapter::new("grok".into(), self.executable.clone(), self.store.clone()).unwrap()
     }
+    pub(super) fn synthetic(&self, key: &str, value: String) {
+        assert!(key.starts_with("RRX_"));
+        let path = self.executable.with_extension("json");
+        let mut metadata: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        metadata[key] = json!(value);
+        std::fs::write(path, serde_json::to_vec(&metadata).unwrap()).unwrap();
+    }
+    pub(super) fn synthetic_value(&self, key: &str) -> String {
+        let metadata: Value = serde_json::from_slice(&std::fs::read(self.executable.with_extension("json")).unwrap()).unwrap();
+        metadata[key].as_str().unwrap().to_owned()
+    }
     pub(super) fn mode(&mut self, mode: &str) {
         if mode == "unowned_read" {
             std::fs::write(
@@ -134,9 +135,7 @@ impl Fixture {
             )
             .unwrap();
         }
-        self.request
-            .environment
-            .insert("RRX_MODE".into(), mode.into());
+        self.synthetic("RRX_MODE", mode.into());
     }
 }
 

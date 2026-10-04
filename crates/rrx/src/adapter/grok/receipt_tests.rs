@@ -122,8 +122,8 @@ fn synthetic_fixture(mode: &str) -> Fixture {
         ("RRX_PROMPT_OBSERVED", "prompt-observed"),
         ("RRX_PYTHON_OBSERVED", "python-observed"),
     ] {
-        fixture.request.environment.insert(
-            name.into(),
+        fixture.synthetic(
+            name,
             fixture.directory.path().join(file).to_str().unwrap().into(),
         );
     }
@@ -133,7 +133,7 @@ fn synthetic_fixture(mode: &str) -> Fixture {
         "RRX_PROMPT_OBSERVED",
         "RRX_PYTHON_OBSERVED",
     ] {
-        let path = PathBuf::from(&fixture.request.environment[name]);
+        let path = PathBuf::from(fixture.synthetic_value(name));
         let path = path
             .parent()
             .unwrap()

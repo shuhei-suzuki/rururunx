@@ -230,7 +230,7 @@ fn environment_projection_streams_all_names_and_ignores_unrelated_foreign_metada
     body["environment_refs"].as_array_mut().unwrap().push(json!("GROK_SYNTHETIC_AUTH"));
     store.connection.execute("UPDATE projects SET body=?1 WHERE id=?2", params![body.to_string(),foreign.id.to_string()]).unwrap();
     assert!(matches!(store.check_environment_admission(project.id,&policy).unwrap_err().downcast_ref::<StateGuardError>(),Some(StateGuardError::EnvironmentAuthority)));
-    project.environment_refs.push("GROK_SYNTHETIC_AUTH".into()); store.put_project(&mut project).unwrap();
+    store.connection.execute("UPDATE projects SET body=json_set(body,'$.environment_refs',json(?1)) WHERE id=?2", params![json!(["LANG","GROK_SYNTHETIC_AUTH"]).to_string(),project.id.to_string()]).unwrap();
     store.check_environment_admission(project.id,&policy).unwrap();
     for value in [Value::Null,json!({}),json!(["UNRELATED",null])] {
         body["environment_refs"]=value;
