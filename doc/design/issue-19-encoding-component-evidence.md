@@ -95,3 +95,40 @@ per-mutant logs use `/private/tmp/rururunx-issue19-encoding-final-mutant-*.txt` 
 control output `rururunx-issue19-encoding-final-mutant-restored.txt`. These contain synthetic
 codec facts only. Public reviewer input is restricted to exact Git source/design/evidence;
 no runtime DB, authentication, environment or executor conversation is included.
+
+## Source1 correction and reviewed-main integration
+
+Native component Source1 `fd662a59-b24e-42fe-b70f-aee848d592a7` reviewed exact
+public `a8617a296c0aa668649031456ba87773d464c9a6`, reporting no production defect,
+0Critical/High,1Medium caller-test gap and3Low controls. Medium was source-verified:
+Goal descriptor's TaskProvenance→TypedTask swap could regress oversized opaque legacy
+history. Commit `8f43875` now drives actual publish_goal→validate_goal for both
+GOAL_FORMAT and unknown.format, with typed_context=false and exact Task refs. It
+also pins validate_goal's preguard, differential whole TaskPack/GoalPack/Checkpoint/
+PhasePackArtifact lengths and fitting unknown-format envelope errors. All16 focused
+controls and clippy pass; no production policy/predicate changed.
+
+The two caller mutants compiled and failed actual consumer assertions:
+- goal-descriptor-opaque-intent: `e2fb9fa0dfa0a1a634847bee39f712ada54da3ec`; killed (exit101).
+- goal-validation-before-digest: `f7e79d8bfd9cf5484701cdc0ee460c3b075efb71`; killed (exit101).
+
+Restored all16 controls passed at clean detached `8a3aab5dfd48f15c4eac8f9aac17bb4d2a9d7df3`.
+This brings component proof to20 independently committed causal mutants. It is not
+native/runtime ownership qualification.
+
+Normal merge `915945ad5cf292ae7165f3288af2f6f0301fa992` retains reviewed main
+`f7baad4` ancestry and its exact #41 owner-local preparation policy/all tests; existing
+19 four-value source tuple is carried through prepare_agent, and the earlier narrow
+post-start acknowledgement remains unchanged. All four encoding source/test files
+are byte-identical across this merge. The inherited main raw mutation patch context
+whitespace was byte-equality checked/preserved, not rewritten as new source evidence.
+
+Integrated committed full default-parallel `cargo test --locked` passed300 checks
+including2 doctests, with9 explicit opt-in/controlled tests ignored (not qualification).
+No failed test or serial retry. fmt/clippy/debug/release builds passed. Saved local
+full-test output SHA256 `1bc715fd8d933573b37d9aab2055a3e5b544829d22cad3e30ea2e19fab14a458`
+is `/private/tmp/rururunx-issue19-encoding-integrated-tests.txt`.
+The whole branch includes unapproved schema5/native/prepared-ack/Workflow prototype
+code; a fulltree build or narrowly approved encoder NEVER qualifies PR39 for merge.
+Source2 component delta review and exact pushed-head Linux/macOS CI remain pending.
+The production #19/native/legacy/co-integration gates remain OPEN.
