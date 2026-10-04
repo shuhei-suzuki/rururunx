@@ -905,7 +905,7 @@ impl Store {
             |row| {
                 Ok((
                     row.get::<_, String>(0)?,
-                    Some(row.get::<_, String>(1)?),
+                    row.get::<_, Option<String>>(1)?,
                     row.get::<_, Option<String>>(2)?,
                     row.get::<_, String>(3)?,
                     row.get::<_, String>(4)?,
