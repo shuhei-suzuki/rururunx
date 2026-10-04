@@ -671,3 +671,13 @@ Protection derives from the owner's durable typed ancestry (an indexed/latest
 non-downgrade invariant), never a caller-selected JSON flag. Verify both publication
 paths, missing-key irreversible caller boundary and allocation-aware unbound
 Reviewer closure with independent Store connections and meaningful mutants.
+
+
+Issue43 supplies the narrow record-only Workflow native binding transaction so a
+successful adapter.start does not invalidate its own Task-version snapshot. Its
+exact owner/Task/Workflow CAS must compose with this design's private allocation
+check in the same transaction, retaining canonical Task semantic projection and
+native-only phase context ownership. Integrated native acceptance requires the
+reviewed binding port and combined caller regression; a synthetic Store proof
+cannot substitute for that integration. Issue41 observer/release policy remains
+independent and unchanged by this context authority.

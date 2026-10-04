@@ -231,3 +231,9 @@ sends no new model input. Variant-cap exhaustion supports explicit idle consecut
 republish without discarding history. Idle unfinished Workflow hot-upgrade is not
 supported; compatible-runtime completion or explicit terminal cancellation is
 required, with remaining external effects reconciled.
+
+
+Integrated native Workflow acceptance also requires Issue43's reviewed record-only
+actor binding to preserve the admitted caller's Task currency while retaining
+exact scope/lifecycle/claim/private-slot CAS. Independent context core validation
+does not claim that pending cross-provider integration already works.
