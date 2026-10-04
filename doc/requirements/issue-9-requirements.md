@@ -361,7 +361,8 @@ remains a distinct
 failure/cancellation outcome; startup expiry is a distinct failure only after authoritative
 safe cleanup, otherwise an uncertain/Lost hold. It never counts as approval. Resource-queue wait is a separate visible state with 1–3600-second
 attention threshold, default 600; crossing it emits durable attention but the slot
-STAYS queued and automatically admits when actual permits return, after fresh
+STAYS queued under ordinary non-Lost-blocked contention and automatically admits
+when actual permits return, after fresh
 source/claim/round/lock/currency checks. It neither requires Human rescheduling nor
 pretends a model timed out. An explicit policy/trusted Human termination still applies;I9-AC-14.h separately defines
 frozen optional queue expiry and exact round-lock timing.
@@ -1049,7 +1050,12 @@ location: known exact output-hash copies and paths declared by the scoped artifa
 excluded with a visible note, or hold before input if mandatory. A committed copy under
 doc/verification does not become eligible merely because Git tracks it. Unknown content is not
 claimed to be exhaustively recognized; native/source visibility limits are reported. Test
-committed copies, explicit requests and symlink aliases.
+committed copies, explicit requests and symlink aliases. If an excluded copy is
+mandatory Task-base→target coverage, hold before input with its exact named path.
+The supported exit is an authorized new target commit removing or summarizing that
+copy while preserving every mandatory unresolved original claim in typed claim
+coverage. No automatic transcript rewrite or raw executor-chat eligibility is
+introduced. #16 reports this hold/exit frequency and Task-time.
 
 **7.a — In-round mutation authorship.** Any reviewer/external mutation invalidates
 that entire round and retains observed tree/source/trace evidence, attribution or
@@ -1069,6 +1075,14 @@ restoration/applicability cannot claim the discarded-transient exemption. Tests 
 exact verified restoration, retained native bytes, retained unattributable overlapping
 mutation, earlier accepted-then-reverted contribution and uncertain cleanup; criterion
 I9-AC-20.b/21/#16 separately measures resulting zero-eligible frequency/Task impact.
+#9 owns the typed restoration-evidence checker, not an automatic reset/discard
+mechanism. Production restoration is an explicitly authorized Human/Workflow action
+with actual #60 owned source/effect evidence (and #14 recovery where native ownership
+is uncertain); absent that reviewed producer, no production exemption is available.
+The checker positive uses exact Git/dirty/ignored/governing-byte restoration in an
+owned controlled fixture through21.j, restoration_basis=controlled-fixture; this is
+noncertifying consumer evidence, not a production restoration/cleanup receipt.
+Missing/partial/unknown evidence keeps authorship taint and all native holds.
 
 **12.d — Forged attribution.** I9-AC-12, I9-AC-20 tests forged Git author/trailers: runtime-owned Codex dispatch/delta attribution
 keeps Codex excluded despite a commit string naming Human/Grok. Uncovered delta bytes require
@@ -1085,6 +1099,14 @@ author admits the default no-self Triple preset with three actual registered I9-
 profiles under QUICK/STANDARD and STRICT. All three opinions and exact settlement remain
 required by all mode, and the appropriate independent floor applies. Controlled transport
 may test mechanics only; the qualifying real-native profile basis cannot be mocked.
+In the isolated component positive, the test's explicit authored delta is recorded
+through the trusted library-composition ingress with origin=library-composition and
+nongating provenance. This is declared fixture authorship at creation, not a later
+unknown→Human relabel, a native-author override or biological Human proof. It is
+usable only by fixed21.j conformance, never formal production attribution. The
+same harness-written delta WITHOUT that explicit record must refuse with zero
+eligible native reviewers. Production Human attribution still requires actual
+trusted ingress and full original byte/contribution provenance.
 
 **20.a — Strict roster availability.** STRICT fixed Triple is unavailable when document drafting and implementation have contributed
 two native families. Supported alternatives are an eligible custom roster with actual I9-AC-8.c conformance meeting the same
@@ -1435,7 +1457,14 @@ rejected delta-only without baseline, unchanged-file coverage provenance, cumula
 multi-fix delta, a changed contract with unchanged callers requiring their delivered
 coverage, stale/missing impact evidence and full fallback. Actual delivery counts
 against frozen slot/round byte ceilings even when referenced source is deduplicated;
-retention follows I9-AC-14.c, not a second charge per delivery.
+retention follows I9-AC-14.c, not a second charge per delivery. The qualifying-delta
+consumer positive closes using exact Git-backed controlled impact evidence through
+fixed noncertifying21.j ingress, impact_basis=controlled-fixture, conforming to #9's
+typed contract. It does not certify semantic applicability or an absent #12 producer.
+Production reduced coverage stays unavailable (full Task-base→target fallback) until
+actual #12 completeness proof composes, publicly tracked under21.h/21 without a
+#9→#12→#20→#9 merge cycle. Public checkbox8 requires typed delta consumption plus
+this safe full fallback, not unavailable production reduced-coverage certification.
 
 **8.g — Consumer contract ownership.** Actual Git-backed bundle, revision/identity
 delta and expansion fixtures conform to the typed consumer contract owned by #9.
@@ -1455,8 +1484,10 @@ and actual native/resource-scope blocking. Human opinion cannot release Lost or
 waive the certificate floor. Current applicability follows this evidence-bound scope rule.
 
 **14.f — Queue attention bounds.** Queue threshold 0/3601 rejects;1/3600 is accepted
-within the remaining policy, default 600 is recorded. Attention crossing stays queued;
-permits returning after the threshold automatically admit with current currency.
+within the remaining policy, default 600 is recorded. Under ordinary non-Lost-blocked
+contention attention crossing stays queued; permits returning after the threshold
+automatically admit with current currency. Lost-blocked wholly queued proposals
+park under18.h; genuine recovery permits full revalidation without a new retry cause.
 Test that no Human decision is required and stale target still refuses. Queue attention
 frequency/Task-time goes to 16; it never invents native timeout or releases ownership.
 
@@ -1729,11 +1760,12 @@ is claimed merely because this table names an Issue; it must actually be quoted 
 | I9-AC-8.g, I9-AC-10.d, I9-AC-18.a | #20 production typed bundle/delta/coverage; #9 consumer contract; #12 actual complete delta impact-closure producer; #18 captured inputs; #16 actual full-fallback/delta-efficiency |
 | I9-AC-11.c, I9-AC-11.d, I9-AC-21.h | #12 trusted applicability producer, #18/#20 inputs, #9 consumer; #16 actual disjoint/unknown/resource impact and pre12 author-growth/zero-eligible availability |
 | 1, 4/I9-AC-4.a, I9-AC-12.b, I9-AC-17.a, I9-AC-18.f, I9-AC-20.a, I9-AC-20.c, I9-AC-16.b, I9-AC-16.c, I9-AC-16.d, I9-AC-18.g, I9-AC-14.g, I9-AC-14.i, I9-AC-8.a, I9-AC-8.c, I9-AC-21.f | #5/#6/#7 actual supported native/config/permission/cleanup and actual bounded retained-overhead declarations or tracked reviewed follow-up; #16 real enforcement/trace/default evidence |
-| I9-AC-2.b, I9-AC-7.a, I9-AC-18.h, I9-AC-8.d, I9-AC-8.h, I9-AC-8.i, I9-AC-12.j, I9-AC-14.f, I9-AC-16.a, I9-AC-14.c, I9-AC-14.d, I9-AC-14.e, I9-AC-17.c, I9-AC-20.a, I9-AC-20.b, I9-AC-21.b, I9-AC-9.c, I9-AC-9.f, I9-AC-14.h | #16 actual exposure, efficiency, finite delivered versus retained bytes, quotas/retries/eligibility/Human impact; #21 nullable native telemetry |
+| I9-AC-2.b, I9-AC-7.a, I9-AC-8.l, I9-AC-21.m, I9-AC-18.h, I9-AC-8.d, I9-AC-8.h, I9-AC-8.i, I9-AC-12.j, I9-AC-14.f, I9-AC-16.a, I9-AC-14.c, I9-AC-14.d, I9-AC-14.e, I9-AC-17.c, I9-AC-20.a, I9-AC-20.b, I9-AC-21.b, I9-AC-9.c, I9-AC-9.f, I9-AC-14.h | #16 actual exposure, efficiency, finite delivered versus retained bytes, quotas/retries/eligibility/Human impact; #21 nullable native telemetry |
 | I9-AC-3.b, I9-AC-3.c, I9-AC-9.d, I9-AC-9.i, I9-AC-21.e, I9-AC-21.i, I9-AC-21.j | #9 typed phase-policy/ingress/readiness consumer; #23 shared principal derivation; #15/#24 actual scoped product policy/Human handlers; #14/#27 actual recovery/admission |
 | I9-AC-12.k, I9-AC-18.a | #60 actual owned deterministic-effect attribution producer; #12 inspected effect/source evidence; #9 checker; LLM/unknown origin refuses/conservative exclusion |
 | I9-AC-13.a | #13 actual post-certificate irreversible reconciliation; no fabricated rollback or later certificate washing |
 | I9-AC-1, I9-AC-1.a, I9-AC-16, I9-AC-18.a, I9-AC-18.h, I9-AC-20.d, I9-AC-12.j, I9-AC-21.j | PRE-CLOSURE: #19/#43 actual member/phase input, original-frame binding and full owned closure; #5/#6/#7 actual supported native ports; #9 fixed conformance ingress + refusing formal consumer. POST-CLOSURE: #16 representative dogfood; #14 restart/uncertain recovery; #27 fair admission |
+| I9-AC-7.a | #9 typed restoration-evidence checker; #60 actual authorized restoration/source-effect producer; #14 actual uncertain-owner recovery; #16 restoration/eligibility availability |
 | I9-AC-21.g, I9-AC-18.h | #14 actual retained-share recovery, #27 admission, #12 relevant verification evidence, #16 scoped recovery/fairness metrics |
 | I9-AC-21.n | POST-CLOSURE MVP: #9 real formal consumer; #14/#15/#24/#27 actual readiness composers; #16 representative positive/removal matrix |
 | I9-AC-1.b, I9-AC-1.c, I9-AC-8.k, I9-AC-18.i | #9 frozen roster/schedule/rerun consumer; #5/#6/#7 actual qualified native profiles; #27 permits; #16 observed qualification and rerun metrics |
@@ -1796,7 +1828,9 @@ and starts actual owned cancellation for any started members. It releases no Los
 owner or unused reservation before safe whole-round closure. Attention default 600 is
 independent notification, not expiry or mandatory Human rescheduling. Status distinguishes
 ordinary queue from queue behind retained uncertain capacity. A fully queued proposal
-or partially admitted round blocked by that retained uncertain share takes the automatic safe noncertifying closure in I9-AC-18.h, even with optional
+blocked by that retained uncertain share parks under I9-AC-18.h without admitting a
+round; an already partially admitted round takes its automatic safe noncertifying
+closure. Both rules apply even with optional
 queue expiry Disabled; #14/#27 recovery/admission
 and #15/#24 actual trusted handlers remain pending where required. Tests cover entirely
 queued/no lock, one started+queued/lock retained, expiry safe closure versus Lost held,
@@ -1921,8 +1955,19 @@ one healthy-busy share leaves one reachable share, so a one-permit slot waits no
 Only a queued slot (or its qualified simultaneous-start cohort, I9-AC-8.k) needing
 more than that reachable capacity is blocked by retained Lost. Before first round
 admission, every frozen roster slot and its qualified schedule must be non-Lost-
-reachable; otherwise close the entirely queued proposal without round/retry spend,
-retaining charged proposal metadata and unrelated holds. This avoids burning a
+reachable; otherwise park the wholly queued proposal as nonactionable recovery-pending,
+without admitting a round or charging round/retry allowances. Keep ONE proposal
+identity per unchanged cause, original frozen target/policy/hash references, charged
+bounded metadata and unrelated ownership holds; repeated unchanged wakes cannot
+create new proposals or burn the512-record allowance. Genuine #14 capacity restoration
+may automatically revalidate all original source/claim/context/lock/policy/quota and
+qualified-schedule predicates, then admit that SAME still-current proposal. Parking
+adds no retry cause/spend because no round was admitted; an existing retry proposal's
+original allowance is still consumed at first admission as14.h requires. A stale
+proposal or frozen explicit expiry closes under14.h; new target/policy requires a
+new identity and charged record, never in-place rebinding. Test repeated Lost/healthy
+capacity cycles with one unchanged parked record, no admission while held, genuine
+recovery revalidation/admission and stale-target refusal. This avoids burning a
 healthy lineage's budget against a known foreign Lost.
 A partially admitted round stopped by an unrelated retained Lost/unknown capacity
 cause has no autonomous cause(c) retry. After genuine #14 restores that capacity, its
