@@ -109,3 +109,21 @@ Store rollback/reopen for cycles, self/duplicate edges and missing endpoints.
 This does not claim managed Goal authority, verified readiness/completion, native
 settlement, scheduling or CLI acceptance. Source review and causal mutations
 remain required before this component or the composed implementation is accepted.
+
+Initial graph source33e34d2 verified from clean worktree: fmt/clippy, full default
+DEBUG186 Rust tests +2 documentation tests passed (3 installed-native tests remain
+ignored), debug/release builds passed. RELEASE graph3 and Store13 controls passed.
+The existing native/Workflow tests are regressions, not acceptance of managed Goal
+admission or actual #19 settlement. Six compiled operators in
+[graph mutation ledger](issue-23-graph-mutations.json) each reached the intended
+unwrap_err assertion on an actual successful mutated call: G01 cycle, G02 ordered
+pair, G03 advisory self edge and G04 Store wiring at the real save transaction;
+G05/G06 finite node/edge caps at the structural graph API. Thus4 Store kills and2
+structural API kills, with no native/evidence/authority credit. Exact-base source
+was restored, graph3/Store13 controls passed, and the clean detached mutation
+worktree was removed normally. The validator preserves bounded allocation after
+caller deserialization; bounded DB decoding/all-scoped Task scans remain pending
+in the complete managed implementation. Independent source/security reviews and
+exact public-head Linux/macOS CI remain pending.
+
+Full debug regression log SHA256: `db5c3576a449d12657bdfea04bdad9317bd7d838970762bdd4e219ef356beb34`; release graph/Store log SHA256: `e281f267ae34f7c028bc1609e5651aae82925e6322df305630abaa9312c05286`.
