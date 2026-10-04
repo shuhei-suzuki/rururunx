@@ -93,7 +93,7 @@ mod tests {
             assert_eq!(serde_json::to_value(ReapKind::from(kind)).unwrap(), word);
         }
         // Error body is never an input to this bounded mapping.
-        let synthetic = std::io::Error::new(ErrorKind::Other, "synthetic private error body");
+        let synthetic = std::io::Error::other("synthetic private error body");
         assert_eq!(
             serde_json::to_value(ReapKind::from(synthetic.kind())).unwrap(),
             "other"

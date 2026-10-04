@@ -8,7 +8,6 @@ use std::os::unix::fs::PermissionsExt;
 use std::{
     collections::BTreeMap,
     path::Path,
-    process::Command,
     sync::{Arc, Mutex},
     time::Duration,
 };
@@ -79,6 +78,12 @@ async fn native_execute_edits_only_owned_files_and_preserves_actual_exit() {
         fixture.receipt_message(&status)
     );
     assert_ne!(status.exit_code, Some(0));
+    let observation = fixture.observation(&status);
+    receipt_support::assert_receipt(&observation.receipt);
+    assert_eq!(observation.saved.as_ref().unwrap().id, session.id);
+    assert_eq!(observation.attempt.unwrap().input_version, 1);
+    assert!(!observation.events.is_empty());
+
     assert_eq!(
         std::fs::read_to_string(fixture.request.worktree.join("result.txt")).unwrap(),
         "owned edit\n"
