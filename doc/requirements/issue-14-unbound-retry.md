@@ -1,6 +1,6 @@
 # Issue 14: fence explicit retry of an unbound native dispatch
 
-Requirements2 candidate, NOT APPROVED. Risk STRICT: shared Workflow/Store
+Requirements3 candidate, NOT APPROVED. Risk STRICT: shared Workflow/Store
 reservation and replay boundary. Base main efe9774, normal composition of63 after
 both Requirements1 reviewers finished/cleaned. No production change.
 Related open Issue14's "Verified explicit retry gap" acceptance; limited
@@ -28,7 +28,9 @@ Issue41 deliberately left this gap for14; ordinary observation never replays.
    closure fences. Store must refuse any closure/replacement of an active native
    marked-unbound reservation, including via StateOnly or generation change;
    marker/Session/phase identity alone supplies no resolution. Preserve the same
-   active reservation when recording Failed/terminal decision. Do not add a new
+   original active attempt when its owner publishes Running→Failed, binds its
+   returned Session or records TerminalDecision; those are not reservation
+   replacement/closure and remain allowed. Do not add a new
    proof/API/schema. Existing CAS compares original Task/Record and owner versions;
    existing non-Running marker/Session immutability and native termination checks
    remain. A future genuine14 recovery producer needs its own reviewed authority.
@@ -55,9 +57,14 @@ Issue41 deliberately left this gap for14; ordinary observation never replays.
 ## Accepted availability consequence
 
 The marker commits BEFORE every adapter.start. Generic executable/config/model/
-effort/input/binding/Git/preflight/Store/process-start errors and Grok environment/
-input/capture/ownership/registration/spawn errors can therefore yield the same
-Failed marked-unbound attempt. Enumerate all current start implementations and
+effort/input/binding/Git/preflight/Store/process-start errors, and Grok pre-persist
+input/capture/environment/ownership/registration/Session-save errors returned
+from start, can yield the same Failed marked-unbound attempt.
+Grok Git/profile/admission/spawn/actor failures AFTER start returns its saved
+Session are bound outcomes under existing policy (Failed or Lost); do not classify
+them as unbound. Generic can save its own same-scope/agent/role terminal Session
+before returning Err; that unbound row supplies no trusted no-dispatch proof.
+Enumerate all current start implementations and
 transitive error producers in source impact analysis; do not infer effects from
 an error label. Conservatively, even user-fixable post-marker configuration errors
 retain the claim: Task cannot progress, Goal cannot complete through it, and Project
@@ -91,16 +98,34 @@ actor/state/dispatch_started/session_id, never error text, and claim no new endp
   positives with actual transition/counter assertions too.
 - Direct crate-private Store closure of the actual marked-unbound Failed fixture
   must refuse unchanged; matching pre-marker/bound/port closures must work.
-  Include direct generation-change bypass refusal without claiming it a reachable
-  public retry consumer. Existing synchronous characterization remains in Git
-  history; rename/update post-fix assertions and all41 references truthfully.
+  Also hold the actual Running marked-unbound start for both actors, before any
+  Session exists for that invocation. Direct Store attempts to close it via
+  Running→Failed+RetryEvent in the same generation, or Running→Interrupted plus
+  generation+1/valid invalidation/fresh valid context, must refuse unchanged ONLY
+  because of the new fence. Release the actual owner and join its real handle;
+  successful single launch/binding or its Failed publication keeps the original
+  attempt correctly. Separately verify TerminalDecision preserves active.
+  Failed→Interrupted generation change already fails existing state validation:
+  NO new-fence/mutant credit for that fixture. Running controls are crate-private
+  boundary evidence, not a public retry or native/F1 certificate.
+- Include a held-start Executor variant whose synthetic adapter saves a terminal
+  Failed Session of its own scope/agent/role before returning Err (Generic-shaped
+  persistence only, no native certificate). Both public retry and direct Store
+  closure refuse with full snapshot/counters unchanged; a same-agent/role terminal
+  row cannot supply resolution. Exact terminal bound-Session positives still work.
+  Existing synchronous characterization remains in Git history; rename/update
+  post-fix assertions and all41 references truthfully.
 - Killable compiled mutants: remove Store fence (direct Store consumer); remove
   BOTH Engine+Store fences (public held-start consumer); narrow BOTH fences to
   either actor (other held-start consumer); drop dispatch_started condition in
   either guard (pre-marker positives); refuse all sessionless attempts (port
   positives). Exact forms must be recorded. Engine-only removal remains masked
   by Store, actor-condition removal is equivalent because port marker impossible,
-  and Failed-only narrowing cannot be killed by production Waiting: NO credit.
+  and Engine Failed-only narrowing cannot be killed by production Waiting: NO
+  credit. Store Failed/Waiting-only or same-generation-only narrowing MUST be
+  killed by the actual held Running closure/generation controls. These are direct
+  Store consumers; do not mislabel public retry kills. A same-agent/role terminal
+  row-as-resolution mutant must fail the matching-row controls.
   Any constructed marked-unbound Waiting coverage is defense in depth only, not
   a public consumer/mutation claim. Restore exact source/tree and rerun controls.
 
@@ -109,7 +134,11 @@ actor/state/dispatch_started/session_id, never error text, and claim no new endp
 Enumerate every retry caller, every put_workflow_transition caller and reader of
 phase actor/dispatch_started/session_id across the workspace using rg. Current
 production transition writers are persist, reserve and persist_decision; tests
-also use crate-private Store directly. Inspect step/poll, prepare_agent/owner
+also use crate-private Store directly. The other Workflow Record writer is
+observe_workflow_gate via observe_gate: it requires the same Evaluating active
+index and changes only observations/detail, without closing or replacing it.
+Confirm put_record rejects Workflow and inventory all direct writers too.
+Inspect step/poll, prepare_agent/owner
 release, retry, resume_gate, fail/hold/invalidation, escalate, request_finalization,
 cancel/fail_task/terminate, terminal release, Store CAS/generation/closure guards,
 Project removal and existing status consumers. Record symbol/file/line and actual

@@ -1,7 +1,7 @@
 # Issue14 unbound native retry component
 
-Requirements1 NOT APPROVED. No implementation or qualification yet.
-Open Issue14 explicitly requires this follow-up from Issue41. Current main2c6ae9d
+Requirements3 candidate NOT APPROVED. No implementation or qualification yet.
+Open Issue14 explicitly requires this follow-up from Issue41. Current main efe9774
 still allows explicit Failed+dispatch_started+session_id=None retry when the
 Session loop has nothing to reject. Existing characterization is evidence of the
 unsafe release behavior, not native recovery proof. No schema/permission/timeout
@@ -21,3 +21,12 @@ closure/terminal fences. Requirements2 chooses dual Engine+Store enforcement wit
 actual positives/directStore/combinedmutants and explicit no-escape consequence.
 All findings/dispositions retained. Normal no-conflict main63 composition completed
 after review closure. Requirements2 re-review pending; no implementation.
+
+Requirements2 at1f3b01e: A request_changes with one verified Medium proofgap;
+B approve with the same Medium nonblocking. No Critical/High remains, but gate
+notapproved. Both selected wrappers closed. Requirements3 names actual held
+Running direct Store closures/generation with validcontext, preserves same-owner
+binding/fail/decision and classifies Failed-generation falsecredit. Grok returned
+startErr versus bound post-start actor failure split corrected; Generic-shaped
+unbound terminal row control added, observation writer inventoried and header
+updated. Source unchanged; independent Requirements3 delta re-review pending.
