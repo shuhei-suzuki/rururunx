@@ -359,3 +359,11 @@ support `--json`. Display-name ambiguity requires a UUID.
 Interrupted worktree creation or invalidated review locks can retain reservations;
 explicit audited lock reconciliation CLI is pending in restart/recovery work.
 Removal remains blocked until those reservations are reconciled.
+
+Shared macOS owned-process inspection is under STRICT follow-up
+[Issue 46](doc/requirements/issue-46-requirements.md). The implementation uses exact-group,
+bounded-diagnostic and unreaped-leader observation, preserving existing timeout and
+uncertainty guards. Verification and independent review results are recorded in
+[Issue46 evidence](doc/verification/issue-46.md). Non-atomic
+sampling and partial-success KILL with non-signalable survivors remain explicit
+limitations.
