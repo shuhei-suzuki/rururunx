@@ -190,7 +190,7 @@ impl Preparation {
             Err(error) => {
                 // A failed CAS is unconsumed, but has an actual first cause and
                 // cannot be relabelled by stop while owned cleanup is pending.
-                *admission = Admission::Preparing;
+                *admission = Admission::Failing(Cause::Failed(error.kind, error.message.clone()));
                 Err(error)
             }
         }
