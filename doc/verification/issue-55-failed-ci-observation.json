@@ -1,0 +1,24 @@
+{
+  "scope": "sanitized public CI assertion excerpt; not cleanup-cause or death proof",
+  "head": "3d844d153b1fb9f0d384d1a3be3afdc7ca791cb6",
+  "run": 37192948085,
+  "job": 111408797958,
+  "runner": "macos-latest",
+  "test": "native_auth_inventory_config_parser_and_tool_evidence_fail_closed",
+  "mode": "unowned_read",
+  "assertion": "assert!(status.session.pid.is_none(), \"{mode}\")",
+  "panic_location": "crates/rrx/tests/grok.rs:479:9",
+  "panic_text": "unowned_read",
+  "target_result": "8 passed; 1 failed; 2 ignored; finished in23.87s",
+  "later_mode_not_observed": "unknown_fs_method",
+  "full_failed_log_sha256": "3c61a4b591d7dc335fb7fe8e179a7713a580c060acd04d9edc31a64d730d8f67",
+  "unavailable": [
+    "concrete cleanup cause",
+    "retained native child state after runner teardown"
+  ],
+  "no_inference": [
+    "ps timeout",
+    "native child death",
+    "later mode passed"
+  ]
+}
