@@ -331,6 +331,7 @@ async fn resume_admission_child() {
     resumed.request.input = input;
     let second = resumed.resume(&adapter, (&first).into(), 2).await.unwrap();
     let status = terminal(&adapter, &resumed, &second).await;
+    assert_not_spawned(&resumed, &status);
     assert_eq!(
         status.failure.as_deref(),
         Some("InvalidConfiguration: native environment authority unavailable")
@@ -343,7 +344,6 @@ async fn resume_admission_child() {
     for key in ["dispatch_intent", "prompt_id", "dispatch_state"] {
         assert_eq!(status.session.recovery[key], previous[key]);
     }
-    assert_not_spawned(&resumed, &status);
     assert_eq!(invocations.load(Ordering::SeqCst), 2);
     adapter.release((&second).into()).unwrap();
 
