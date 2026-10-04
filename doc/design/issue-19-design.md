@@ -2706,7 +2706,8 @@ mutant must reach pre-marker routing and actual no-Continue wire outcome.
 
 43 reconciliation requires the original marker-time binding frame, retained immutably
 separate from any later ordinary owned-observation bookkeeping CAS refresh. It includes
-captured P/G/T, post-marker Workflow Record version, exact attempt/context/source/frame,
+resulting post-marker P/G/T and Workflow Record version, all captured atomically
+IN the marker transaction (including the full lock set), exact attempt/context/source/frame,
 actor/native selection and full lock set. Store never builds it by matching current rows
 with themselves. The active-only record binder uses those original/current exact pins;
 mismatch holds for14, not an ack-induced silent refresh. Actual authoritative Task-driver/
@@ -2826,3 +2827,14 @@ pins, release by terminal label or bind under inactive owners. An actual14 recov
 would require its own19/43 gate; none is supplied here. A lifecycle hold→resume regression
 must demonstrate that conservative held result and zero duplicate dispatch. Where this
 missing production recovery prevents a required supported path, deployment stays unready.
+
+
+Original43 binding pins are Store-derived from the resulting marker transaction,
+including resulting P/G/T, post-marker Workflow Record version and its complete locks;
+normal returned-Session binding uses this SAME frame, never a later lock read. The
+actual23 authoritative Task driver supervises invocation end independently of a dropped
+Engine future and derives exact sealed current settlement from durable level readiness.
+Notification is only a wake hint, never the sole proof/trigger. Early-before-drop,
+lost/full/closed notification channels and duplicate notifications must converge to one
+binding/audit without dispatch/fail/retry; the notification-only mutant must fail.
+These actual19/23/43 source-positive and14 authenticated-restart gates remain pending.
