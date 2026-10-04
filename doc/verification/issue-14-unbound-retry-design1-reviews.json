@@ -1,0 +1,94 @@
+{
+  "head": "c1b9d1bee3378ec185c3bcaa47a91850386b741c",
+  "reviews": [
+    {
+      "head": "c1b9d1bee3378ec185c3bcaa47a91850386b741c",
+      "section": "design1a",
+      "native_session": "5cdbdc2a-31a2-4bdd-bc7d-cc961bf294f6",
+      "review": {
+        "verdict": "approve",
+        "findings": [
+          {
+            "id": "D14U1-1",
+            "severity": "Low",
+            "file": "doc/design/issue-14-unbound-retry.md",
+            "line": 72,
+            "claim": "The design reuses its direct Store retry builder on the pre-marker and marked fixtures only. Requirements3 also asks for 'matching pre-marker/bound/port closures must work' as direct Store controls, and the design never names the bound and port fixtures for that direct builder.",
+            "evidence": "The design covers bound and port retries through the public path (rejected-review retry, nonirreversible EvidencePort Waiting/Failed retry). The requirements bullet for the direct crate-private Store closure separately requires the same raw closure to succeed on matching pre-marker, bound and port fixtures. Mutation kills do not depend on these direct positives: Store-only marker-conjunct drop is killed by the public pre-marker positive, and Store all-sessionless refusal by the public port positive. Their value is construction validity. They show that the same builder, with the same RetryEvent/completed_at/active fields, is admitted where the new predicate is false. Without them a refused marked closure could still be blamed on builder mis-construction.",
+            "fix": "State that the identical same-generation direct Store builder must commit on three fixtures. (a) A bound terminal Failed native attempt, such as a review rejection with an Exited reviewer Session. (b) A nonirreversible EvidencePort Waiting or Failed attempt. (c) The pre-marker definitive Failed fixture. Each case asserts an exact-index RetryEvent and active=None. These are construction controls, not mutant credit."
+          },
+          {
+            "id": "D14U1-2",
+            "severity": "Low",
+            "file": "doc/design/issue-14-unbound-retry.md",
+            "line": 79,
+            "claim": "After a successful direct pre-marker closure, the resumed former owner's rejection path depends on which capture it was paused at. The design asserts only 'it cannot overwrite the changed Record or launch' without pinning the pause point or the observable to assert.",
+            "evidence": "Paused at the first prepare_agent capture (before refresh_owners), the owner resumes and refresh_owners fails on the Record version check. That error is release-eligible, so release_preparation runs; its re-read sees active=None and fails 'preparation claim changed', returning the release-not-performed diagnostic with no write. Paused at the post-refresh capture, the owner reaches marker publication instead. put_workflow_transition then runs validate_transition against the closed DB record and rejects it as an untyped history-immutability or generation-rewrite error before Task CAS. eligible stays false, so there is no release and no launch. Both paths are safe, but their error text and eligibility differ.",
+            "fix": "Pin the pause offsets for both actors, or run both. Assert only actor-independent facts after join: the full raw snapshot equals the post-closure snapshot (no stale write, no audit row) and the launch counters are unchanged. Do not assert on error text or eligibility, which legitimately differ by pause point."
+          }
+        ],
+        "assessment": "I reviewed Design1 against the unchanged public source; the design is correct and constructible. Guard location. The Engine guard runs after read, active(), the Waiting/Failed admission and the irreversible check (port-only, so the predicate is false there), and before the Session loop and every in-memory mutation. A Running attempt keeps its existing refusal. A Failed marked-unbound attempt with a Lost or Generic terminal row now hits the new static refusal first. The Store guard sits in put_workflow_transition's existing closure block (`before.active.is_some() && after.active != before.active`). That block runs after validate_transition and before Session iteration, context insert, put_task_tx and put_record_tx, so a refusal leaves nothing to roll back, and the caller's Task/Record are assigned only after commit. The block covers same-generation retry closure, generation closure (active must become None) and any active-index replacement. Error priority is preserved: TerminalRecovery's conservative unbound fence still fires first ('unbound dispatch' in the existing direct test), and Failed\u2192Interrupted generation requests still fail in validate_transition, correctly given no credit. Unaffected transitions. The owner's fail() (Running\u2192Failed, active kept), Session binding (Running\u2192Running, active kept), TerminalDecision (active unchanged), release_preparation (marker false), pre-marker prepare_agent invalidations (marker false), and bound or port completions, retries and invalidations (session bound, or actor EvidencePort) never satisfy the predicate inside a closure. No legitimate production closure breaks. The only existing test whose expectation changes is the planned characterization rename; other suites are covered by the required rg inventory and full regression. Constructibility. FakeAgent start_pause/start_error give a held Running marked-unbound attempt for both actors: the Executor has no Session rows, and the Reviewer has only the Exited Implement Session, which is not reserved. The same-generation builder (Running\u2192Failed if needed, completed_at only if absent, exact-index RetryEvent, active=None) passes validate_transition and today's closing check. The generation builder (super::invalidate, Running\u2192Interrupted with timestamp, completed cleared, active=None, make_context for the first configured phase at version+1, matching Task/Workflow pointers and revision) passes validate_transition and validate_context. Both are refused only by the new guard, and the required pre-marker positives validate the construction first. After a refused raw closure, versions are unchanged, so the released owner binds or publishes Failed on the original attempt. The matching-row Fake (a terminal Failed same-scope/agent/role Session) passes validate_worktree_exclusion and is admitted by today's Engine Session loop and Store closing check, so only the new guards refuse it. Mutant accounting matches the source: Store removal and Failed/Waiting-only or same-generation-only narrowings are killed by the direct Running consumers; marker-conjunct drops by the public pre-marker positives; all-sessionless refusal by the port positives; per-guard row-as-resolution as stated. Engine-only removal is masked, actor-conjunct removal is equivalent, and Engine Failed-only narrowing gets no credit. No schema, API, bypass, certificate or policy change is introduced. The no-escape consequence and the Grok/Generic producer split are stated accurately, and no Issue14, native, F1 or MVP claim is made. The two Lows are construction and assertion precision, not design blockers.",
+        "unresolved_blockers": []
+      },
+      "cleanup_verified": true,
+      "meter_scope": "raw_native_resumed_session_attribution_unverified"
+    },
+    {
+      "head": "c1b9d1bee3378ec185c3bcaa47a91850386b741c",
+      "section": "design1b",
+      "native_session": "c25c12b7-606f-48dd-96ea-b7c08b903667",
+      "review": {
+        "verdict": "approve",
+        "findings": [
+          {
+            "id": "D1-M1",
+            "severity": "Medium",
+            "file": "doc/design/issue-14-unbound-retry.md",
+            "line": 33,
+            "claim": "The new all-access Store closure guard overlaps the existing TerminalRecovery dispatch fences. Issue41's approved mutation evidence for those fences therefore becomes masked, but the design still calls the TerminalRecovery fence 'independent' and its impact inventory does not list this evidence as a consumer of the change.",
+            "evidence": "In put_workflow_transition, the conservative TerminalRecovery branch ensures `attempt.session_id.is_some() || !attempt.dispatch_started` ('unbound dispatch requires explicit recovery'). It runs before validate_transition and before the `before.active.is_some() && after.active != before.active` closure block, where Design1 puts the new guard. TerminalRecovery always closes active, so it always enters that block. The Issue41 design credits two mutants as killed: 'direct missing Store TerminalRecovery dispatch fence', killed by the direct Store call in preparation_dispatched_observation_and_direct_store_terminal_fence, and 'combined missing Engine/Store TerminalRecovery dispatch fences', killed by the public TerminalRecovery consumer. With the new guard in place, removing the conservative Store fence still refuses with unchanged durable state; only the `.contains(\"unbound dispatch\")` text assertion differs. Removing both TerminalRecovery fences leaves `release_terminal_reservation(..).is_err()` true and durable state unchanged, so the combined mutant survives behaviourally. Issue41's own rule forbids crediting kills from 'differing error text'.",
+            "fix": "Choose one option and record it. (a) Exclude WorkflowAccess::TerminalRecovery from the new closure guard. The identical predicate is already enforced earlier in the conservative branch, so requirement 2 is still met, and Issue41's single and combined mutants stay independently killable. (b) Keep the guard for every access mode, then reclassify Issue41's Store-only and Engine+Store TerminalRecovery mutants as masked with no credit. Add a combined mutant (Engine TR fence + Store TR fence + new closure guard) killed by an actual TerminalRecovery consumer that detects a committed closure. Update the master Workflow and Issue41 references, and state that text assertions never count as kills."
+          },
+          {
+            "id": "D1-L1",
+            "severity": "Low",
+            "file": "doc/design/issue-14-unbound-retry.md",
+            "line": 62,
+            "claim": "The public retry refusal control asserts 'exact static text'. If the Store guard's message differs from the Engine guard's, an Engine-only removal mutant fails that assertion on text alone and could be miscounted as a kill, even though the design says it is masked.",
+            "evidence": "Design1 says the shared explanation 'may' be a crate-private constant, so it is optional. Under an Engine-only removal, retry reaches persist, and the Store guard's ensure! message becomes the returned error. Durable state and launch counters are identical to the unmutated source, so the only observable difference is the text.",
+            "fix": "Either require the Store guard to use the same crate-private literal, so an Engine-only removal is truly indistinguishable, or state that kills are attributed only to durable-state or launch-counter differences and that text assertions are never kill evidence."
+          },
+          {
+            "id": "D1-L2",
+            "severity": "Low",
+            "file": "doc/design/issue-14-unbound-retry.md",
+            "line": 75,
+            "claim": "In the generation builder, 'make_context for the next configured phase' is ambiguous. After invalidate() clears completed, the only valid context phase is the first configured phase, not the phase after the current attempt.",
+            "evidence": "validate_context derives the phase from `workflow.active.map(..).or_else(|| next_phase(&workflow))`. With active=None and completed cleared, next_phase returns the first configured phase (Worktree for QUICK). It also requires authority == workflow.sources.source_versions and `workflow:generation` equal to the new generation. validate_transition requires next.context_version == task.context_version and task.revision == sources.revision. The existing unknown_gate_generation_cannot_be_released_by_raw_transition builds exactly this, with Phase::Worktree.",
+            "fix": "Specify make_context(task, &workflow.sources, next_phase(&invalidated).unwrap(), class, new_generation, budget, latest+1). Apply the matching set_context-equivalent pointers to task.context_version, task.revision and workflow.context_version. The required pre-marker positive already catches mistakes; stating this avoids setup churn."
+          },
+          {
+            "id": "D1-L3",
+            "severity": "Low",
+            "file": "doc/design/issue-14-unbound-retry.md",
+            "line": 24,
+            "claim": "Placing the guard before the Task/Record CAS changes which error a stale caller receives. The design describes the rollback but does not record this change in the impact inventory.",
+            "evidence": "In put_workflow_transition, validate_transition and the closure block run before put_task_tx/put_record_tx, which perform the Task/Record version CAS. A stale caller closing an attempt that the database now holds as marked-unbound gets the new untyped refusal instead of a typed StateGuardError::SnapshotChanged. No current caller classifies closure-transition errors: retry propagates them, release_preparation wraps them as 'release not performed', and own_task_marker_rollback classifies only the marker persist, which does not change active. validate_transition already precedes the CAS, so stale writers can already receive untyped errors.",
+            "fix": "Add one inventory line: the guard precedes the Task/Record CAS; no closure caller depends on typed SnapshotChanged; the error is untyped by design; marker-transaction classification is unaffected because active is unchanged."
+          }
+        ],
+        "assessment": "Design1 is correct against the unchanged source I reviewed in full. Guard location and semantics: the Store guard keys on the original attempt (`before.history[before.active]`) inside the existing closure block. That block is entered for any change of active, so it covers same-generation retry closure, generation-change invalidation and raw index replacement. validate_transition makes marker and Session immutable outside Running\u2192Running, so a closing transition cannot also mark or bind, and checking `before` loses nothing. Production closures enumerated from source are unaffected. Retry is the target. release_preparation and pre-marker invalidations carry marker=false. Completions and invalidations of bound or EvidencePort attempts have session_id set or actor EvidencePort. The owner's fail(), its Session binding and TerminalDecision keep active, so they never enter the block. A scan of existing tests found none that closes an active marked-unbound native attempt, apart from the characterization test to be renamed and TerminalRecovery, whose earlier conservative fence still produces the same refusal. In native_gate_requires_persisted_owned_status_and_sessionless_completion_is_rejected the marker is false, and validate_transition rejects first. Atomicity holds: refusal inside the immediate transaction rolls back, and the caller's structs are assigned only after commit. The Engine guard before the Session loop cannot race, because marker and session_id are immutable for Failed and Waiting attempts. Test constructibility is confirmed. Held-start for both actors uses FakeAgent start_pause and start_error; the Executor fixture has no Sessions and the Reviewer fixture has only the Exited Implement Session. The matching-row Fake can put_session a terminal Failed row with the same scope, agent, role and worktree, which passes validate_worktree_exclusion and leaves Task and Record versions unchanged. The same-generation Running\u2192Failed+RetryEvent builder and the generation builder (invalidate, Interrupted, active=None, next context) both commit today on a held pre-marker Running attempt for both actors. A former owner held at capture 3 then fails refresh_owners and release_preparation; one held at capture 4 fails the untyped validate_transition at marker publication. Either way it writes nothing and does not launch. After refusal on the marked held start, the owner's binding or fail() commits on the original attempt. The mutant list is causally sound: every listed killable operator has an executable killing consumer, and the masked and equivalent classifications are correct. The one substantive gap is D1-M1: the new guard behaviourally overlaps the TerminalRecovery fences, so Issue41's approved TerminalRecovery mutant evidence must either be preserved, by excluding TerminalRecovery from the guard, or explicitly reclassified, with master and Issue41 updated. This is evidence accounting, not a production safety fault, and should be fixed in the design before the source gate. The Lows are precision items. No schema, public API, bypass, certificate, producer or whole-Issue14/native/F1/MVP claim is introduced.",
+        "unresolved_blockers": []
+      },
+      "cleanup_verified": true,
+      "meter_scope": "raw_native_resumed_session_attribution_unverified"
+    }
+  ],
+  "gate": "Both Design1 APPROVE, A2Low/B1nonblockingMedium3Low. No source approval. Verified Medium accounting corrected in Design2 before implementation; independent design delta review follows.",
+  "verified_dispositions": {
+    "B D1M1 TerminalRecovery overlap": "VERIFIED in earlier conservative TR block versus laterclosure guard. Choose optionA: newguard applies to non-TR closure only; earlierTRpredicate enforcesidenticalrequiredrefusal. Preserve41single/combinedTR consumer mutations, no text-onlycredit. All-access safety via respectiveexistingTR/newnonTRguards, no bypass.",
+    "B message masking": "Require single sharedcrate-private literal forEngine/newStoreguard. Mutantkillrequires actualacceptedrelease/unchangedstateviolation/countereffect, nottextdifference.",
+    "B generation builder and staleCAS": "Specify first configuredphase afterinvalidate via next_phase; exactmatchingContext pointers/budget. Newuntypedclosureguard beforeTask/RecordCAS; noexistingclosureclassifierdepends on typedSnapshotChanged, markeractiveunchanged therefore41ownTaskrollback unaffected.",
+    "A directpositives/pause": "Explicit identicaldirectretrybuilder boundterminal/port/premarkerdefinitiveFailed exactindexactiveNone positives, no mutantcredit. Run premarkerpauses3&4 bothactors; resumedownererrorclasstextcanvary, assert fullpostclosurestate/countersunchanged only."
+  }
+}

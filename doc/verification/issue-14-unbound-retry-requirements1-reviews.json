@@ -1,0 +1,165 @@
+{
+  "head": "535452c9b8464f4b217e8170760cef9aa6eca287",
+  "reviews": [
+    {
+      "head": "535452c9b8464f4b217e8170760cef9aa6eca287",
+      "section": "requirements1a",
+      "native_session": "5cdbdc2a-31a2-4bdd-bc7d-cc961bf294f6",
+      "review": {
+        "verdict": "request_changes",
+        "findings": [
+          {
+            "id": "R14U-1",
+            "severity": "High",
+            "file": "doc/requirements/issue-14-unbound-retry.md",
+            "line": 31,
+            "claim": "The new predicate's defining conjunct, dispatch_started=true, has no required causal control. Requirement 3 also omits an existing retry path that must keep working: an agent attempt that failed definitively before the marker (dispatch_started=false, session_id=None).",
+            "evidence": "In workflow.rs prepare_agent, several failures call self.fail() before `history[index].dispatch_started = true` is persisted: 'reviewer not configured', a registry.get error for an unregistered adapter, a missing Review/Execute capability, and 'agent phase requires bound worktree'. Each leaves an active Failed agent attempt with dispatch_started=false and session_id=None. adapter.start was never called, and the owner itself published the decision, so retry is safe. Retry is also the only non-terminal exit: poll on a Failed attempt returns Failed, and resume_gate admits only Waiting or irreversible Failed. Existing tests already reach this state for both actors: explicit_stricter_selection_and_unsupported_review_capability_are_honest (reviewer lacks Review) and preparation_definitive_fail_and_both_invalidation_publication_conflicts_retain (executor 'missing-adapter'). The listed positive controls cover only EvidencePort retry and bound terminal-Session retry. A plausible over-broad mutant such as `actor != EvidencePort && session_id.is_none()` would therefore survive every required consumer, while permanently stranding Tasks after ordinary misconfiguration.",
+            "fix": "Add to requirement 3: agent Waiting/Failed attempts with dispatch_started=false and no bound Session remain retryable. Require actual public positive controls for both actors, for example an executor bound to an unregistered adapter and a reviewer that is unconfigured or lacks the Review capability. Each control must assert a RetryEvent for that index and active=None. After the configuration is fixed, it must assert that the next step reserves a new attempt and launches exactly once. Add a compiled mutant that drops the dispatch_started conjunct, and require these controls to kill it."
+          },
+          {
+            "id": "R14U-2",
+            "severity": "Medium",
+            "file": "doc/requirements/issue-14-unbound-retry.md",
+            "line": 28,
+            "claim": "The phrase 'EvidencePort phase markers' describes a state that cannot exist. As a result, the 'wrongly applying it to EvidencePort' mutant is equivalent in its natural form and cannot be killed. The Failed-only narrowing mutant is likewise unreachable through public Waiting consumers.",
+            "evidence": "In validate_transition, a new attempt must have `!attempt.dispatch_started`. The marker may change only when `before.phase.actor() != Actor::EvidencePort`, and the marker is immutable. EvidencePort attempts therefore always have dispatch_started=false, even through crate-private raw Store writes. Removing the actor filter from `dispatch_started && session_id.is_none()` changes no reachable behavior. Separately, an agent Waiting attempt with dispatch_started=true and no Session can only be constructed with crate-private Store writes (Running\u2192Evaluating, then observe_workflow_gate, then Waiting). Production evaluate requires a bound status. The requirements acknowledge the Waiting reachability issue but do not classify the related mutant.",
+            "fix": "Replace the 'EvidencePort phase markers' sentence with the actual invariant: EvidencePort attempts never carry a dispatch marker. Define each mutant explicitly. Mark actor-filter removal and Failed-only narrowing as equivalent or unreachable for public consumers, earning no credit. Define the killable 'applies to EvidencePort' form as one that ignores the marker for sessionless EvidencePort attempts, and require the nonirreversible EvidencePort retry control to kill it. If Waiting coverage is included, state that it is a crate-private constructed fixture serving as defense in depth, with no consumer kill credit."
+          },
+          {
+            "id": "R14U-3",
+            "severity": "Medium",
+            "file": "doc/requirements/issue-14-unbound-retry.md",
+            "line": 60,
+            "claim": "The requirements do not decide whether the fence lives only in the Engine or also in Store, so mutation credit cannot be assigned. The Store transition currently accepts this exact release.",
+            "evidence": "In state/mod.rs put_workflow_transition, the closing-reservation check sets `own_found = own_id.is_none()`. With StateOnly access, closing an active Failed attempt that has dispatch_started=true and session_id=None, plus a RetryEvent, therefore passes both the Session loop and validate_transition. Only TerminalRecovery has a Store-level 'unbound dispatch requires explicit recovery' fence. Issue41's precedent paired Engine and Store fences. Its design recorded that removing only the Engine fence is masked by the Store fence, and it required a direct Store consumer plus a combined mutant. This requirement says 'removing the new guard' in the singular and lists Store's transition guard only as something to inspect.",
+            "fix": "State the decision explicitly. Recommended: also refuse, inside Store, any same-generation closure of an active Executor/Reviewer attempt with dispatch_started && session_id None. Verify that release_preparation (marker false), TerminalRecovery (already fenced) and generation-change invalidation are unaffected. Then require a direct crate-private Store consumer, record Engine-only removal as masked without credit, and require the combined removal to be killed by the public held-start consumer. Alternatively, choose an Engine-only fence and document that raw crate-private StateOnly transitions remain permissive, with no Store credit."
+          },
+          {
+            "id": "R14U-4",
+            "severity": "Medium",
+            "file": "doc/requirements/issue-14-unbound-retry.md",
+            "line": 38,
+            "claim": "The requirements do not list which producers reach this state or disclose the availability consequence: every adapter.start error, including deterministic configuration errors before spawn, will leave the Task with no exit at all.",
+            "evidence": "The marker is committed before adapter.start. Any Err from start, such as a missing Generic executable, model/effort settings rejected by the Generic baseline, Grok environment-admission InvalidConfiguration, or Generic preflight Git/binding rejections, reaches self.fail() as Failed+dispatched+unbound. Today, retry lets an operator fix the configuration and continue. After this change, retry refuses, release_terminal_reservation refuses unbound dispatch, ensure_project_idle blocks Project removal because the workflow is active, and escalate/request_finalization require no active attempt. Requirement 4 says the marker 'remains reserved' but does not name these producers or say that no API exit exists. Requirement 4 also correctly forbids inferred no-dispatch certificates, so typed adapter ErrorKind cannot be used as an escape either.",
+            "fix": "Add an impact requirement that enumerates the error producers of every AgentAdapter::start implementation in the workspace. State explicitly that adapter error kinds and text are not trusted no-dispatch proof. Disclose, in the requirements, README and master Workflow design, that affected Tasks and their Project stay stranded until the separate #14 recovery producer exists: no retry, no TerminalRecovery and no Project removal. Record this as an accepted conservative trade-off."
+          },
+          {
+            "id": "R14U-5",
+            "severity": "Low",
+            "file": "doc/requirements/issue-14-unbound-retry.md",
+            "line": 24,
+            "claim": "The constraints on the fixed refusal explanation are underspecified.",
+            "evidence": "Issue41 requirement 9 and the Issue41 design require that no-Session reasons allow for launch never having begun, because a marker commit does not establish that adapter.start ran. Those reasons must also not assert interruption, and Scheduler/Status must use durable fields rather than parsing text. Requirement 1 here only says the text is fixed and contains no raw payload.",
+            "fix": "Require the refusal text to state that the launch outcome is unknown and may or may not have begun. It must not assert a live process, a dead process or interruption, and must not echo the caller's reason. Require that no consumer parses the text, and that callers classify the refusal from the durable actor, state, dispatch_started and session_id fields."
+          },
+          {
+            "id": "R14U-6",
+            "severity": "Low",
+            "file": "doc/requirements/issue-14-unbound-retry.md",
+            "line": 48,
+            "claim": "The acceptance criterion 'no durable changes' is broader than the fixture's existing snapshot helper, so the requirement can be under-verified. The Session-row cases enumerated in requirement 1 are not tied to specific controls.",
+            "evidence": "Fixture::durable() captures only the task, the workflow records, the latest context and audit. Requirement 1 also requires preserving Sessions and owners (Project/Goal). The executor held-start fixture (ready_agent(false), through Worktree) has zero Session rows. The reviewer fixture naturally has an unrelated Exited executor Session from Implement.",
+            "fix": "Require the before/after comparison to include Project and Goal rows and versions, all Task-scope records (Session, WorktreeLock, Workflow), every context version and audit, and both fixtures' launch counters. Map requirement 1's 'no Session rows' case to the executor control and the 'unrelated terminal Session' case to the reviewer control, and assert those conditions explicitly."
+          },
+          {
+            "id": "R14U-7",
+            "severity": "Low",
+            "file": "doc/requirements/issue-14-unbound-retry.md",
+            "line": 64,
+            "claim": "The consumer inspection list is narrower than both the Issue41 precedent and the global impact-analysis rule.",
+            "evidence": "The list omits cancel/fail_task/terminate, escalate and request_finalization, all of which the Issue41 impact section inspected. It also omits workspace-wide callers of WorkflowEngine::retry, including modules and test files outside the supplied packet such as state/native_dispatch_tests.rs, and other readers of PhaseAttempt.dispatch_started and session_id.",
+            "fix": "Require grep-based enumeration of every retry caller and every reader of these attempt fields across the workspace. Give a short non-impact rationale per entry, for example that a function requires active=None or does not close the reservation."
+          }
+        ],
+        "assessment": "The requirement identifies the verified gap correctly against the current source. retry() admits active Failed/Waiting attempts that are not irreversible. Its Session loop passes when the attempt is unbound with dispatch_started=true. Store's closing check treats own_id=None as found, so the reservation is released. Requirements 1 to 5 describe a coherent, limited negative fence. It adds no schema, bypass, certificate or recovery producer, and it keeps the existing Running/Interrupted/Evaluating, irreversible-gate, Lost/executor and CAS fences. Scoping it as a prerequisite, with whole Issue14, Scheduler, restart and native recovery left open, is appropriate. The held-start consumer is feasible for both actors with the existing harness: FakeAgent.start records the launch, holds on start_pause after the marker commits, and returns an Err when start_error is set, without persisting a Session. prepare_agent then publishes Failed with dispatch_started=true and session_id=None, eligibility is false, and nothing is released. Reviewer fixtures through Tests reach the same path. The positive bound-Session controls (rejected review or corrupt evidence, leaving an Exited Session) and the EvidencePort Waiting retry control are also reachable. Changes are needed before approval. The required controls leave the dispatch_started conjunct unprotected, and the existing pre-marker definitive-failure retry path is not listed as preserved (High). The mutant list relies on an EvidencePort marker that cannot exist, and the Engine-versus-Store fence decision is open, given that Store currently permits the release (Medium). The availability consequence for adapter start errors, which leave the Task with no exit, should be stated explicitly (Medium). None of these findings depends on implementing parent Issue14 features.",
+        "unresolved_blockers": [
+          "R14U-1: require pre-marker agent Failed retry positive controls for Executor and Reviewer, and a killed mutant that drops the dispatch_started conjunct",
+          "R14U-2: correct the nonexistent EvidencePort marker wording and define killable versus equivalent mutants",
+          "R14U-3: decide Engine-only versus Engine+Store fence placement, with the matching direct-Store, masked and combined mutant obligations"
+        ]
+      },
+      "cleanup_verified": true,
+      "meter_scope": "raw_native_fresh_session_fields_unverified_operation_inventory"
+    },
+    {
+      "head": "535452c9b8464f4b217e8170760cef9aa6eca287",
+      "section": "requirements1b",
+      "native_session": "c25c12b7-606f-48dd-96ea-b7c08b903667",
+      "review": {
+        "verdict": "request_changes",
+        "findings": [
+          {
+            "id": "R1-H1",
+            "severity": "High",
+            "file": "doc/requirements/issue-14-unbound-retry.md",
+            "line": 31,
+            "claim": "The requirements never verify the dispatch_started conjunct of the new predicate. Requirement 3 lists the retries that must stay supported but omits agent Failed attempts closed by a definitive pre-marker decision. No positive control or mutant protects that path. An over-broad guard would pass every specified gate and permanently strand reachable Tasks.",
+            "evidence": "In prepare_agent, several branches call self.fail() before the marker is persisted, with eligible=false: 'reviewer not configured', registry.get error, missing capability, and 'agent phase requires bound worktree'. Each produces an active Failed attempt with dispatch_started=false and session_id=None. adapter.start runs only after a successful marker commit, and validate_transition forbids a Failed attempt's marker from changing. retry() admits these attempts today, and no existing test retries one. Consider a guard written as `actor != EvidencePort && session_id.is_none()`, which drops the dispatch_started conjunct. It still kills the unbound-dispatch negatives. It still passes the bound-Session positives, the EvidencePort positives, and the listed mutants. Yet it leaves no closure path for these attempts: release_preparation requires Running+!dispatch_started, TerminalRecovery requires a terminal decision, and ensure_project_idle blocks Project removal while the Workflow has an active attempt.",
+            "fix": "Add to requirement 3 and the acceptance list: agent Failed attempts with dispatch_started=false and no Session, published as definitive pre-marker decisions, remain retryable. Require actual WorkflowEngine::step positive controls for both actors. Executor: executor set to an unregistered adapter. Reviewer: reviewers set to an agent lacking Review, as in explicit_stricter_selection_and_unsupported_review_capability_are_honest. Assert the RetryEvent, active=None, and that the next step launches exactly once. Require a compiled mutant that drops the dispatch_started conjunct to fail these controls."
+          },
+          {
+            "id": "R1-M1",
+            "severity": "Medium",
+            "file": "doc/requirements/issue-14-unbound-retry.md",
+            "line": 60,
+            "claim": "The mutant 'wrongly applying it to EvidencePort' is equivalent under current Store invariants and cannot be killed as written. 'EvidencePort phase markers' (line 28) names no persisted field in the source.",
+            "evidence": "validate_transition requires every new attempt to have !dispatch_started && session_id.is_none(). The marker may change only when before.phase.actor() != EvidencePort, and a Session may bind only when after.phase.actor() != EvidencePort. A Store-admitted EvidencePort attempt therefore never carries dispatch_started=true. Removing the actor conjunct from `actor != EvidencePort && dispatch_started && session_id.is_none()` changes no reachable outcome. No EvidencePort dispatch or phase marker exists in PhaseAttempt.",
+            "fix": "Replace the 'EvidencePort phase markers' wording with the actual invariant: EvidencePort attempts never carry a native marker or Session. Classify removal of the actor conjunct as an equivalent mutant earning no kill credit. In its place, require the over-broad mutants to fail the EvidencePort Waiting/Failed retry controls and the R1-H1 pre-marker agent controls. The over-broad mutants are `session_id.is_none()` across all actors and refusal of all agent Failed attempts."
+          },
+          {
+            "id": "R1-M2",
+            "severity": "Medium",
+            "file": "doc/requirements/issue-14-unbound-retry.md",
+            "line": 64,
+            "claim": "The requirements do not say where the fence is enforced. The Store transition guard still admits closing a Failed, marked, unbound attempt through StateOnly with a RetryEvent. The mutant clause does not account for masking if both layers enforce.",
+            "evidence": "In put_workflow_transition's closing check, own_found starts as own_id.is_none(), so it is trivially true for an unbound attempt. validate_transition accepts Waiting|Failed closure with an appended RetryEvent whose prior_attempt == index. Issue41 used dual Engine and Store fences for TerminalRecovery and required a direct crate-private Store consumer plus a combined mutant, because an Engine-only removal was masked. Issue14's scope also covers retries/timeouts and Scheduler code, which may live in the same crate.",
+            "fix": "State the enforcement decision. Option A, Engine-only: record the rationale. retry's read is CAS-protected, and marker/Session immutability for non-Running attempts makes the check stable. Also enumerate the crate-private StateOnly callers that could close an active attempt. Option B, Store guard added: require a direct crate-private Store negative. Treat an Engine-only removal as masked with no credit, and require a combined Engine+Store mutant to fail the public consumer."
+          },
+          {
+            "id": "R1-M3",
+            "severity": "Medium",
+            "file": "doc/requirements/issue-14-unbound-retry.md",
+            "line": 39,
+            "claim": "The fence turns every post-marker adapter start error into a stuck reservation with no supported escape, including deterministic, user-fixable configuration errors. The requirements do not state this consequence explicitly.",
+            "evidence": "Several failures occur inside adapter.start, after the Workflow marker commits. agent-adapter.md lists them: Generic model/effort settings fail explicitly, plus bounded Git preflight, ownership checks and executable problems. Each yields Failed+marker+unbound via fail(). After the fix: retry refuses; cancel followed by release_terminal_reservation refuses on the Engine and Store unbound-dispatch fences; resume_gate refuses non-irreversible Failed attempts; ensure_project_idle blocks Project removal while workflow.active is set. The README/master line only asks to 'keep disclosure aligned', which does not describe this operator impact.",
+            "fix": "Add an explicit accepted-consequence statement. Retained Failed-unbound attempts block Task progress, Goal completion and Project removal, and there is no operator escape until a reviewed Issue14 producer exists. Require README, the master Workflow doc and Issue14 to record this. Require status classification of the stuck state from durable actor/state/marker/Session fields. This does not ask for the producer to be implemented."
+          },
+          {
+            "id": "R1-L1",
+            "severity": "Low",
+            "file": "doc/requirements/issue-14-unbound-retry.md",
+            "line": 64,
+            "claim": "The consumer inventory is narrower than Issue41's impact audit and the global impact-analysis rule require.",
+            "evidence": "Issue41's impact section covered escalate, request_finalization, cancel/fail_task through terminate, release_terminal_reservation and hold. This list omits escalate, request_finalization, terminate, hold and fail. The packet contains only workflow.rs, so callers of WorkflowEngine::retry in CLI, Review or Goal modules are not shown. Each omitted entrypoint is safe today: they require active=None, refuse non-irreversible Failed attempts, or only record a decision. That safety should be stated with evidence rather than left implicit.",
+            "fix": "Require a grep inventory of every WorkflowEngine::retry caller and every crate-internal put_workflow_transition closure across the crate. List escalate, request_finalization, terminate, hold, fail, resume_gate and the status/Scheduler classifiers, each with a file:line non-impact rationale."
+          },
+          {
+            "id": "R1-L2",
+            "severity": "Low",
+            "file": "doc/requirements/issue-14-unbound-retry.md",
+            "line": 48,
+            "claim": "Several verification details are ambiguous, and one fixture detail contradicts the wording.",
+            "evidence": "(a) FakeAgent's adapter_error always uses ErrorKind::UnsupportedCapability, which reads as a definitive category, yet the requirement calls it a 'synthetic unknown-outcome error'. fail() persists only error.to_string(). (b) The existing durable() helper omits Session records, but requirement 1 says Sessions must be preserved. (c) Lines 54-55 say to 'retain' the characterization test as historical evidence and also to update its assertion. Issue41's design cites this test by name as gap evidence. (d) 'Cover the shared refusal' for the Waiting state names no method. A Waiting unbound agent attempt is unreachable in production and constructible only through crate-private Store transitions plus observe_workflow_gate.",
+            "fix": "Make these explicit. (a) The refusal is independent of adapter ErrorKind and text; consider a LaunchFailure or SessionLost kind in the fixture. (b) Include all scope Session records in the before/after comparison. (c) Rename or annotate the characterization test after the fix and update the Issue41 references. (d) Choose either a direct predicate unit test or a crate-private raw Waiting fixture for the Waiting refusal, with no consumer-mutation credit."
+          }
+        ],
+        "assessment": "The core requirement matches the source. Today, an active Failed agent attempt with dispatch_started=true and session_id=None arises only when adapter.start returns an error and fail() then publishes successfully. retry() is the only entrypoint that closes such an attempt. resume_gate refuses non-irreversible Failed attempts. TerminalRecovery's Engine and Store guards refuse unbound dispatch. escalate and request_finalization require active=None. poll returns Failed without replaying. Waiting is correctly identified as unreachable for unbound agent attempts, because evaluate runs for agents only with a bound Session. The held-start consumer is feasible for both Executor and Reviewer: FakeAgent records the launch, holds on start_pause, and checks start_error only after the pause. The marker is durable during the hold, so the attempt can become Failed and retry can be shown to refuse with unchanged durable state and no second launch. The bound terminal-Session and EvidencePort positive controls are also feasible. Scope is coherent as a negative-fence prerequisite. It invents no Issue14 readiness, certificate, schema or policy change, and the missing recovery producer does not count against it. One blocker remains: the boundary of the new predicate (the dispatch_started conjunct) has no positive control or causal mutant, so an over-broad guard could strand reachable pre-dispatch Failed Tasks while passing every listed gate. The Medium findings concern an equivalent EvidencePort mutant, the undecided enforcement layer, and undisclosed operator impact.",
+        "unresolved_blockers": [
+          "R1-H1"
+        ]
+      },
+      "cleanup_verified": true,
+      "meter_scope": "raw_native_fresh_session_fields_unverified_operation_inventory"
+    }
+  ],
+  "qualification": "Requirements1 rejected; no design/source approval. Selected-wrapper cleanup only, not native F1. Raw native counters not qualified or aggregated.",
+  "dispositions": {
+    "both High pre-marker positive gap": "VERIFIED: prepare_agent registry/capability/missing-worktree fail branches persist Failed before marker. Requirements2 explicitly preserves both actor pre-marker retry and demands dispatch-conjunct mutants.",
+    "both Medium EvidencePort equivalent": "VERIFIED: validate_transition admits marker/Session changes only for native actors. Actor-conjunct removal is equivalent; no consumer kill credit. Broader sessionless/allFailed guards need actual pre-marker/port positive controls.",
+    "both Medium enforcement layer": "VERIFIED: StateOnly closure currently accepts this case. Requirements2 chooses dual Engine+Store unknown-unbound native closure fence; direct Store consumer +combined mutants, single Engine removal masked/no credit.",
+    "both Medium availability impact": "VERIFIED: marker precedes adapter.start; even deterministic errors are not no-dispatch certificates. Requirements2 explicitly retains Task/Project reservation with no operator escape until real14 producer; statusfields not messageparsing.",
+    "both Low consumer/snapshot completeness": "VERIFIED: durable helper incomplete; requirements2 requires owners/all scoped Records/all contexts/whole audit +both counters and full closure/caller inventory.",
+    "A Low explanation and B Low fixture/history/Waiting": "VERIFIED: existing Fake Unsupported error supplies no trusted outcome. Requirements2 says kind-independent, historicalGit kept/rename references, constructedWaiting onlydefenseindepth/no publickillcredit."
+  }
+}
