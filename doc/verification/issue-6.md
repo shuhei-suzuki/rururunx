@@ -409,9 +409,20 @@ Native bootstrap initialization borrows its already-owned process through the
 cancellable RPC wait. A selected cancellation never maps its killed exit into a
 fabricated ownership failure.
 
-Development smoke checks passed the actual owned Git/bootstrap cancellation
-fixtures and first-cause/pre-spawn checks; immutable exact-commit regression and
-compiled mutation evidence are pending. The helper cancellation trigger is test-only
+At clean committed `543505c`, unchanged default-concurrency Codex unit regression
+passed **72 tests** in 16.68 seconds. All-target Clippy with `-D warnings` and fmt
+passed development checks; final combined exact-head build/CI remain pending.
+Actual owned Git/bootstrap cancellation fixtures verify returned cancellation,
+confirmed cleanup and reaped leader; first-cause/pre-spawn checks also pass.
+Compiled M636 (omit cancellation wake), M637 (map cancellation to OwnershipMismatch)
+and M638 (omit explicit group kill before reap) each fail the actual owned Git
+consumer assertion. M636 waits the unchanged five-second Git deadline and fails
+the two-second cancellation response assertion; M637 fails the typed cause; M638
+retains SessionLost uncertainty instead of a confirmed cancellation. Every mutant
+was committed before testing in its isolated worktree. Exact source bytes were
+restored after each; initial/restored controls pass. Result ledger:
+`/private/tmp/rururunx-issue6-preparing-mutations-result.json`.
+The helper cancellation trigger is test-only
 at this stage. Registry attempt installation, caller-drop owned task, consumed-input
 linearization, checkpoint commit and captured-attempt stop are not implemented;
 F4 remains unresolved. Helpers are not whole-native descendant containment proof.
