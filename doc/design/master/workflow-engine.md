@@ -360,6 +360,14 @@ terminal reservation release keeps Task/decision/context/evidence immutable and 
 owned persisted termination plus all executor/Lost fences. Unknown outcomes or unbound
 dispatch stay reserved. General workflow progression cannot resurrect terminal Tasks.
 
+The proposed Issue19 schema6 [managed settlement contract](../issue-19-design.md#managed-native-settlement-authority-design16)
+replaces terminal-label release for managed native phases with an actual supervisor
+receipt. Its pre-first-Session operation lease and tx-only predicate must compose
+with retry/escalation/invalidation/terminal recovery and Issue23 Goal completion.
+Current source has no such private receipt producer; historical trusted Store
+terminal records are not advertised as durable native cleanup certificates. Source
+integration and real Generic/Claude/Codex/Grok consumers remain separate gates.
+
 An evaluation claim binds the exact prior observation count. The private observer
 appends exactly one scope/phase/generation/Session/ContextVersion-bound outcome at that
 index; poll/restart/release/invalidation use only the current claim's result, never a

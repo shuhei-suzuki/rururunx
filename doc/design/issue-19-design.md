@@ -389,7 +389,10 @@ Workflow release policy: ordinary observer polling remains read-only, and owner
 release still requires its own exact claim token and applicable pre/post-marker
 rules. The reader requires typed native-phase ancestry before reporting absence;
 standalone/evidence/opaque history returns NotApplicable rather than no-admission
-proof. Explicit recovery can use applicable absence to prove no typed admission, while
+proof. Applicable absence proves no typed admission, but an outstanding managed
+operation can still own native startup/setup before a first Session. Release also
+requires the actual operation settlement receipt or the separately applicable
+pre-marker invocation-owner proof; absence never settles native setup. Explicit recovery can use applicable absence to prove no typed admission, while
 an allocated Starting/Running/Lost or uncertain owner remains held until genuine
 terminal/cleanup evidence. Current unbound post-marker failure may remain held
 until the explicit recovery port is integrated; this is an availability limit,
@@ -546,10 +549,11 @@ Every v6 Store connection registers a private zero-argument SQLite function
 `rrx_writer_v6()` returning 6 before migration or application writes. Add distinct
 BEFORE INSERT/UPDATE/DELETE fence triggers to EVERY application table: projects,
 goals, tasks, records, context_versions, usage, audit, checkpoint_heads,
-prepared_pack_inputs and session_input_acks. Each requires this function to return
+prepared_pack_inputs, session_input_acks, phase_session_owners,
+context_admission_epochs, native_phase_operations and native_phase_settlements.
+This is the single canonical final table inventory. Each requires this function to return
 6. Register UTF8|DETERMINISTIC|INNOCUOUS, never DIRECTONLY, and verify
-writes with trusted_schema=OFF. Add `phase_session_owners` to the fenced table
-inventory. A schema-enumerating regression requires every non-sqlite_ application
+writes with trusted_schema=OFF. A schema-enumerating regression requires every non-sqlite_ application
 table to have all three compatibility triggers; new tables cannot silently escape.
 Preserve all existing immutable/append-only/domain triggers; fences only add
 writer compatibility checks. Include private runtime metadata and audit writes,
@@ -1248,7 +1252,11 @@ identity of an operator's binary from a commit label.
 Workflow-owned blockers/next_action are mutable only through the existing atomic
 Workflow transition and must remain writer-pinned in generic Task updates. Operators
 may request a lifecycle hold through the existing permitted WaitingHuman state
-transition with these fields unchanged, or publish actual constraints/criteria. No
+transition with these fields unchanged, or make an explicitly authorized additive
+graph/lifecycle change. Accepted Goal objective, criteria, evaluators, constraints,
+nonGoals and sourceRefs remain immutable under Issue23; this example does not
+authorize edits to the accepted Goal definition. Task acceptance constraints remain
+subject to their own authority and semantic-input fences. No
 new generic directive field is excluded from semantic hashing without an explicit
 owner-writer fence. Test a generic blockers/next_action update after reservation but
 before adapter ScopeSnapshot capture: it rejects, source authority stays unchanged
@@ -1285,6 +1293,9 @@ claim-owner/observer-release policy; this predicate does not manufacture owner d
 Test active Waiting→None retry with a different-input terminal Session rejects,
 then exact current failed preparation or frozen older restoration permits closure.
 Succeeded always uses its stronger unconditional admitted+consumed predicate.
+These input/terminal predicates are necessary but insufficient: every managed
+operation also needs its actual owned settlement receipt below, including before
+first Session and current failed/restored preparation. No terminal label is cleanup.
 
 ### Post-consumption operation decisions and transport journal
 
@@ -1302,8 +1313,12 @@ grant ALLOW. DENY does not grant authority: the generic ObservationOnly write us
 Acked only when the exact new admitted actor/input tuple and consumed UUID remain
 unchanged. Existing Project activity/Blocked, worktree and own-Session CAS/write
 constraints remain; a Task metadata/version revocation can still permit the existing
-owned denial path, whereas ProjectBlocked or failed own publication stops before
-wire. WaitingApproval→Running after a fixed typed reply is historical Acked, not
+owned denial path. Preserve the real provider distinction: Claude's prewire
+WaitingApproval→Running publication rejects ProjectBlocked and sends no reply;
+Codex Decline can publish an unchanged WaitingApproval observation and send the
+fixed denial under ProjectBlocked, then its postreply Running publication rejects.
+This contract adds no universal DENY privilege or new universal DENY fence.
+WaitingApproval→Running after a fixed typed reply is historical Acked, not
 a new prepared consumption; preserve current activity/worktree constraints.
 
 Actual writer inventory to migrate and causally test: Claude automatic DENY and
@@ -1312,8 +1327,13 @@ terminal_start and terminal_input, plus any SQL test/audit consumers of those ke
 Codex answer_approval already preserves dispatch_intent but its post-reply generic
 Running publication must retain the exact admitted tuple; Grok callbacks retain
 the one prepared consumption and separately attributed audit/filesystem evidence.
-Test stale Task metadata DENY→wire with unchanged private input pair, ProjectBlocked
-DENY→no wire, stale ALLOW→no wire, current ALLOW→wire, after-reply historical Running,
+Both pre-reply Running→WaitingApproval/pending publication and postreply Running
+publication retain the exact historical Acked pair. Session.saved audit adds bounded
+operation_intent/transport_intent projections without replacing dispatch_intent.
+Retarget Claude SQL consumers at public f9b671f session lines2486/2493/3005/3022;
+positive and negative SQL assertions must continue testing the actual decision wire.
+Test stale Task metadata DENY→wire with unchanged private input pair, provider-specific
+ProjectBlocked denial controls, stale ALLOW→no wire, current ALLOW→wire, after-reply historical Running,
 and transport-only input→no fabricated prepared ACK/consumed replacement. Assert
 byte-identical canonical consumed DTO and private allocation/pairs in every control.
 No free-text protected live input becomes permitted by this journal distinction.
@@ -1324,6 +1344,12 @@ Lost remains absorbing for every Scope; an already terminal Session also cannot
 be relabeled Lost to fabricate new operational ownership. Legitimate initial
 terminal factual/Consultant history remains allowed. Only future reviewed private
 #14 recovery can change held Lost authority; no JSON terminal label is recovery.
+Every generic and native new-Session INSERT rejects initial Lost, WaitingApproval
+and WaitingHuman in every scope, including Project/Goal and legacy Task history.
+Lost is a conservative transition of a persisted nonterminal owned Session, never
+an initial record that creates an unresolvable fabricated hold. Existing Goal-pack
+Lost fixtures first persist legitimate Starting/Running ownership, then transition
+the same ID to Lost; initial terminal factual history remains a separate control.
 
 The phase-owner reader needs an explicit migration epoch to distinguish old typed
 contexts without allocations from post6 absence violations. Private fenced table
@@ -1337,6 +1363,8 @@ typed native attempts require version > boundary plus actual allocation; old
 contexts must publish a consecutive higher attempt rather than being readopted.
 Include this table in every writer fence, migration schema equality and old-writer
 coverage. Standalone and EvidencePort retain their separately classified scope.
+SQL immutable-row triggers reject UPDATE, DELETE and INSERT OR REPLACE on epochs,
+including same-value changes; the writer-version fence alone is not immutability.
 
 Enabling serde_json float_roundtrip is an application-wide parse change, not only a
 restore hash option. Inventory and golden-test all persisted JSON round-trip/equality
@@ -1427,3 +1455,195 @@ admitted v1 pins must not be confused with current unadmitted v2; if restored bo
 contains an actual consumed intent it must match its retained private consumption.
 The exact prior checksum, no current admission/uncertainty and immutable actor
 ownership still gate restoration. No old intent is parsed as new consumption.
+
+### Managed native settlement authority (Design16)
+
+This is a new private producer/consumer contract, pending the immutable pre-code
+design gate. Existing terminal Session labels, recovery JSON, PID absence,
+transport_succeeded/status return values and generic operator observations are
+not managed native settlement proof. Input admission proves input currency; a
+separate adapter-owned settlement proves that the exact operation no longer owns
+unresolved native Task work. Neither proves that reviewed/tested Task artifacts
+meet acceptance criteria. Goal completion additionally needs its scoped current
+evidence and accepted definition predicates from Issue23.
+
+Use the following conceptual Rust interfaces; names may move internally without
+changing the authority contract. Types crossing the public adapter trait are
+opaque public types with private fields, no public constructor and no Serialize/
+Deserialize. Store/producer helpers and receipt predicates are crate-private.
+
+```rust
+// Only the Engine's successful exact dispatch-marker transaction creates this.
+pub struct ManagedPhaseLaunch { request: LaunchRequest, operation: OwnedNativeOperation }
+// Runtime-owned supervisor identity; cannot be reconstructed from persisted JSON.
+pub struct OwnedNativeOperation { /* private operation, runtime and claim pins */ }
+pub struct OwnedNativeSettlement { /* private supervisor outcome and captured pins */ }
+
+// Additive adapter entry point: default Unsupported; legacy start is not a fallback.
+fn start_managed(&self, launch: ManagedPhaseLaunch) -> AdapterFuture<'_, Session>;
+
+// One Immediate transaction: exact owned observation + receipt + bounded audit.
+pub(crate) fn publish_native_settlement(
+    &mut self, proof: OwnedNativeSettlement,
+) -> Result<SettlementReceiptId>;
+
+// Pure reader of this transaction; never observes processes or grants admission.
+pub(super) fn validate_phase_settlement_tx(
+    tx: &Transaction<'_>, scope: &Scope, context_version: u64,
+    attempt: &PhaseAttemptIdentity, session_id: Option<SessionId>,
+    requirement: SettlementRequirement,
+) -> Result<ValidatedNativeSettlement>;
+```
+
+PhaseAttemptIdentity is the immutable exact Workflow Record ID, generation,
+history index, phase and context version. Its original successful reservation
+Record-version token is retained for the separate Issue41 invocation-owner
+release policy; later dispatch/binding Record versions do not change this attempt
+identity. A losing reserve invocation never receives a managed operation handle.
+The operation insertion and dispatch_started marker commit together with exact
+P/G/T/Workflow/lock-set CAS, after actual implementation-owned admission/settlement
+capability validation and before adapter startup. There is no IO under this
+transaction. The context must be post-epoch typed native authority. No operation
+exists for EvidencePort or historical/unmanaged Consultant records.
+
+The private native_phase_operations row contains operation UUID, runtime-instance
+UUID, exact P/G/T, Workflow Record ID, immutable attempt fields and successful
+reservation token, context version, full authoritative payload SHA256/bytes,
+revision and canonical complete source-map digest. It references the immutable
+ContextVersion rather than duplicating prompt/source text. Its optional Session ID
+is bound once in the same first private preparation/allocation transaction. This
+operation exists before the first Session: an adapter error or dropped future with
+no Session does not make a dispatch-marked operation absent. It remains an owned
+lease until the actual tracked startup invocation settles. All Task/Project idle,
+pack force/publication, removal and fresh-phase admission checks include outstanding
+operations, so a generic forged terminal label cannot release the same worktree.
+
+The operation handle transfers into the actual owned supervisor before startup
+work. It is not Clone; any internal shared bookkeeping stays private and cannot
+produce more than one terminal receipt. A dropped start future, returned error,
+timeout or public release call does not mint a proof. The owned supervisor retains
+the handle/process/native-turn cleanup responsibility until it can publish proof
+or durable attention; publishing failure retains the owned bookkeeping. Before
+any Session/process/native connection, a supervisor may certify NoCurrentDispatch
+only from its tracked invocation's actual no-dispatch/settled-setup state. Absence
+of Session, PID or allocation is insufficient. After preparation, this class also
+requires no current private admitted/consumed input and no dispatch uncertainty.
+
+KnownCurrentTerminal requires the exact privately owned current native outcome,
+known end of Task inference and completed owned resource cleanup/settlement.
+Unknown outcomes, Lost, partial/unobserved input, interruption acknowledgements
+without authoritative terminal outcome, escaped/uncertain process groups and
+unsettled setup do not produce a receipt. The narrow managed MVP policy requires
+actual owned server cleanup before a releasable Codex receipt: a known phase result
+may be observed while the service remains owned, but an idle retained server never
+releases operation, Goal/removal or capacity. The current public Codex674 producer
+already calls native.shutdown before terminal publication. A fresh owned server may
+later resume the retained native thread UUID with fresh exact admission. Reusing
+an idle live server across released phases is outside this contract and would need
+a separately reviewed durable service lease; no service-lease table is added here.
+Providers requiring group cleanup must complete it; a dead leader/PID or selected
+process-group Dead alone is insufficient for escaped command descendants. Actual
+owned tool/setup/decision tasks must be settled, with no active or pending relevant
+operations. Native6's verified escaped-command containment/interrupt limitation is
+a real producer readiness gate: an unsupported profile or unresolved escape cannot
+advertise managed settlement capability or issue a receipt. This is an owned native
+operation contract, not an OS same-UID sandbox or arbitrary descendant-death theorem. The receipt
+records the actual settlement class and bounded outcome attribution, never a
+uniform fabricated exit zero or universal process-death claim.
+
+native_phase_settlements is append-only, one receipt per operation. It contains
+receipt/operation UUIDs, exact attempt/scope/context/frame pins, optional exact
+Session ID and persisted Record version, private preparation version/digest,
+optional admitted version/digest/consumed UUID as an all-present/all-null triple,
+optional frozen prior-restore digest, settlement class and known outcome,
+bounded native turn/ref attribution, runtime-instance UUID and observed timestamp.
+Fixed fields plus bounded attribution fit 64 KiB; refs are at most 8192 UTF-8 bytes,
+reason at most 8192 bytes. It contains no model transcript, prompt, environment or
+JSON credential. Operation identity fields are immutable; Session None→Some is
+the only binding mutation and requires the allocator's exact private same-tx proof.
+Receipts and epoch rows reject UPDATE, DELETE and INSERT OR REPLACE; inserts require
+their private producer and one scoped unique identity, in addition to every
+table's v6 writer fence. One receipt is not a new native input/permission grant.
+
+Settlement publication performs the exact remembered operation/Session Record
+version and input/actor/preparation/admission/consumed pins CAS, then publishes the
+actual terminal observation and receipt atomically. A no-Session receipt requires
+no allocator owner and the actual tracked no-dispatch proof. A generic concurrent
+terminal write or newer/foreign attempt cannot be adopted; conflicts retain the
+operation and require attention/recovery. Publication may record actual cleanup
+under a paused/blocked owner without granting input or altering its lifecycle:
+this is a separate private factual observation port, not a general BoundHistorical
+CAS bypass. A Lost persisted owner remains held; late cleanup can be separately
+audited but cannot settle/release it until reviewed private Issue14 recovery.
+
+An older terminal restored after failed fresh preparation is still NotAdmitted.
+Its closure requires the new operation's actual NoCurrentDispatch receipt, the
+frozen new preparation and exact prior-terminal checksum. An older Exited label
+or older operation receipt never certifies the new attempt. Success requires
+KnownCurrentTerminal with known successful native outcome plus exact current
+admitted/consumed pins and Exited owner; NoCurrentDispatch cannot certify success.
+Failed/Interrupted replacement requires its applicable receipt and existing
+metadata/claim predicates. A receipt does not erase a definitive terminal decision
+or unknown external side effect. Already closed historical receipts retain frozen
+provenance when that Session UUID later has a legitimate higher-input attempt;
+new-open-attempt validation never substitutes a historical receipt for current pins.
+
+The same transaction predicate is mandatory for every allocated/managed native
+attempt removal, replacement or operational release under every WorkflowAccess:
+ordinary completion/failure, retry (including Waiting), escalate/invalidate,
+TerminalRecovery/release_terminal_reservation and source-drift generation changes.
+It also gates operation-aware Task idle/new preparation, Project removal and
+Issue23 managed Goal completion/evidence extraction. Binding uses Issue43's
+separate exact owner/preparation/admission predicate; settlement cannot fabricate
+binding or authorize new dispatch. Ordinary poll remains read-only. Issue41
+pre-marker release still requires that invocation's exact successful reserve token
+and unchanged committed Record version; this receipt does not weaken it. A
+post-marker startup failure needs actual tracked settlement, including before a
+first Session. Unknown external EvidencePort gates keep their separate reconciliation.
+
+After restart, durable receipts remain usable as scoped immutable historical proof.
+An outstanding operation from another runtime is unknown even if its Session is
+terminal; no reconstructible JSON token recreates live native ownership. Issue14
+must supply actual private recovery/cleanup and an exact operation/attempt/epoch
+CAS before settling such ownership. Issue23's managed completion stays unavailable
+until this real producer and consumer compose; no fake SQL acceptance earns credit.
+Drain migration refuses outstanding managed operations in future upgrade paths;
+the initial v5→v6 migration creates none for old history and never backfills native
+settlement from labels. Preserve the already declared operator-attested old-runtime
+upgrade limitation rather than retroactively claiming older proof.
+
+Actual integration inventory is GenericCliAdapter's child/group supervisor,
+Claude print supervisor and startup cleanup, Codex owned turn completion/setup
+cleanup (actual server shutdown and owned tool settlement), Grok Actor's native protocol/owned group
+settlement and failures before first Session. Each uses the actual private managed
+entry point and produces receipts only after its owned lifecycle condition. Positive
+FakeAgent uses a controlled owned transport/task with real preparation/admission
+and settlement callbacks; neither a raw seeded receipt nor terminal JSON passes.
+Its post-preparation/pre-return barrier independently exercises Issue43 binding CAS.
+
+Acceptance and causal mutants cover all five actual callers: no-Session startup
+failure, failed setup after preparation, partial/uncertain dispatch (held), current
+known terminal (receipt), prior restored terminal (non-success only), consumed
+interruption with no authoritative terminal (held), publication failure (retain
+supervisor), generic forged terminal (all release/replacement paths reject),
+foreign/higher-input attempt (unchanged), paused factual settlement (no new grant),
+Lost late terminal (held), and old receipt replay against a fresh attempt (reject).
+Each predicate mutant must reach the real consumer; SQL row seeding or an earlier
+startup rejection cannot prove a later guard. Protected terminal_input uses a
+reachable unprotected-era Interactive Consultant now protected by a ReadOnly frame
+or a narrow actual entry guard seam, with an unchanged unprotected positive control.
+
+### Remaining capture and scope precision
+
+Standalone rendered Goal bookkeeping is explicitly captured status/as-of metadata,
+not a live directive; its omission from semantic authority cannot authorize stale
+instructions. Sibling-progress tolerance here means Store semantic frame validity;
+actual native adapters' full raw P/G/T version CAS may still hold publication and
+must not be advertised as automatic native liveness. One-delivery is per exact
+(Session UUID,input_version): a genuinely settled standalone frame may be freshly
+admitted by a new UUID under every current fence; Workflow context allocation
+remains single-owner. Every new Project/Goal-only Session uses the exact registered
+canonical primary Project.root path and cannot name a Task worktree or worktree
+namespace. Compare stored canonical paths and scope under Store; actual FD/Git/
+filesystem ownership checks stay bounded outside SharedStore. Generic updates pin
+that worktree; legacy history remains read-only rather than silently rebound.

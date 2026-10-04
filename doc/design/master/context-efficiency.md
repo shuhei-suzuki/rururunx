@@ -400,3 +400,13 @@ Its source and actual native caller acceptance are separate gates; private admis
 rows, universal historical Lost settlement changes and allocation claims are not
 advertised as current schema5 implementation facts. Current source version and
 operational migration limits must match the validated implementation.
+
+Managed native phase release additionally requires the proposed
+[owned settlement contract](../issue-19-design.md#managed-native-settlement-authority-design16):
+an exact operation lease exists before first Session, and only the actual owned
+supervisor can atomically publish its scoped immutable settlement receipt. Terminal
+JSON and input admission cannot certify cleanup. Every managed closure/replacement,
+idle/removal and Goal completion consumer uses the receipt; Lost or restart-unknown
+ownership remains held for private Issue14 recovery. This is a pre-code design gate,
+not current schema5/native acceptance. Issue41 claim-owner release and Issue43
+record-only binding compose separately without JSON credentials or fake SQL proofs.

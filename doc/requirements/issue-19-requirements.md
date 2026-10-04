@@ -273,7 +273,7 @@ settlement: Goal publication/Project removal may stay held until trusted #14
 recovery, and actual legacy fixtures must assert that hold. Initial factual
 terminal Consultant history remains supported. Protected input dispatch uses an
 exact typed runtime intent and private consumed UUID per admitted input version;
-a second delivery at that version rejects, while identical intent means observation
+a second delivery at the same (Session UUID,input_version) rejects, while identical intent means observation
 only. Every actual wire delivery goes through its provider's fresh private intent.
 Session fields are exhaustively classified, preparation/publication bounds match
 admission, and every provider uses the shared canonical restore checksum helper.
@@ -353,7 +353,10 @@ rejected in-memory bindings or a foreign newer attempt.
 Prepared-input consumption is separate from operation/transport journals. Permission
 ALLOW remains full-current NativeCAS/Broker authority; historical DENY/post-reply
 observations retain exact admitted input and consumed UUID with existing activity/
-worktree/own-Session constraints. ProjectBlocked denial remains no-wire; no journal
+worktree/own-Session constraints. Preserve provider-specific ProjectBlocked denial:
+Claude's prewire Running publication rejects/no-wire; Codex's unchanged Waiting
+Decline publication may send the fixed reply, then its Running publication rejects.
+No new universal DENY fence or privilege is introduced. No journal
 creates prepared input admission. All real provider writers and SQL/audit consumers
 are acceptance inventory.
 
@@ -361,6 +364,11 @@ Migration records immutable per-Task context epochs so pre6 typed history is
 NotApplicable and never re-adopted; post6 missing allocation fails closed. Bounds
 precede exact prior restoration, which precedes strict new consumed DTO parsing.
 Already terminal Sessions cannot become Lost; existing Lost remains universally held.
+New Session INSERT rejects initial Lost/WaitingApproval/WaitingHuman universally,
+including Project/Goal and unprotected legacy Task scope. Legitimate initial
+terminal factual Consultant history remains supported. New Project/Goal Sessions
+use the exact registered canonical primary Project root; a Task worktree or the
+Project worktree namespace cannot be adopted through a non-Task scope.
 Native held-open old4/old5 writers and full JSON feature/equality impact are required
 compatibility proofs. Workflow checkpoint-progress integration remains #23; artifact
 condensation alone does not claim native runtime checkpoint progress.
@@ -376,3 +384,39 @@ genuine legacy DDL/JSON shapes, never relabeled current schema. Exact wrapper
 separator bytes and feature-independent policy/pack-facts hashes are acceptance
 boundaries. A restored unadmitted failed input remains distinct from an older
 retained admitted pair; actual consumed restored pins must still match authority.
+
+Managed native phases require an actual owned settlement producer, distinct from
+terminal labels and input admission. The exact dispatch-marker transaction installs
+a private operation lease before adapter startup/first Session, binding the immutable
+successful claim/attempt, scope, typed context and full frame/source pins. Only the
+actual owned supervisor can publish a nonserializable settlement proof and atomic
+scoped append-only receipt, with the exact observed Session/version and private
+preparation/admission/consumed pins. Known no-current-dispatch and known current
+native terminal settlement are separate outcomes. Unknown/Lost, timeout, a returned
+start error, PID absence, public terminal JSON or a dropped future never settles an
+operation. Publication conflicts retain real owned bookkeeping and the durable lease.
+
+All managed/allocated native closure, replacement, retry, escalation, invalidation,
+terminal reservation release, idle/publication/removal and managed Goal completion
+consumers require the actual private receipt in their transaction. Succeeded also
+requires current privately consumed/admitted input, Exited and successful owned
+native outcome; a restored older terminal is failure-only and needs the current
+operation's actual no-dispatch settlement. Generic Consultant/factual history cannot
+certify native death. Retained native service ownership never releases operation,
+Goal/removal or capacity; managed MVP Codex receipts require actual server cleanup
+and owned tool/setup settlement. A selected dead process group does not certify
+escaped descendant cleanup; unresolved actual native containment is a producer
+readiness gate, not waived by terminal labels. Actual Generic/Claude/
+Codex/Grok and controlled owned Fake producers, including failure before first Session,
+must compose with this contract before integrated readiness. Private Issue14 recovery
+remains necessary for Lost/restart-unknown operations; Issue41 invocation-owner release
+is unchanged and Issue43 binding remains a separate exact same-tx predicate.
+
+The schema6 authority inventory includes immutable per-Task epochs and append-only
+native settlement receipts with every-table writer fencing. Existing schema5 code
+does not implement this new contract. No seeded private rows, forged terminal facts
+or declared tests substitute for actual producer/consumer proof. Accepted Goal
+definitions remain immutable under Issue23; lifecycle holds or validated additive
+graph updates must not rewrite their objective/criteria/evaluators/constraints.
+Standalone capture status is labelled as-of metadata, and semantic Store validity
+does not promise native liveness where full raw P/G/T version CAS still fences.
