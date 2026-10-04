@@ -1,0 +1,88 @@
+{
+  "head": "d774df3988f0d9a03930433eee6e1eaceb6c5efa",
+  "scope": "legacy Usage body decode error projection only",
+  "reviews": [
+    {
+      "head": "d774df3988f0d9a03930433eee6e1eaceb6c5efa",
+      "section": "source1a",
+      "native_session": "3cb5f18d-58ba-4df7-94d8-c9ce5a64a3de",
+      "review": {
+        "verdict": "approve",
+        "findings": [
+          {
+            "id": "L1-unknown-key-class-uncovered",
+            "severity": "Low",
+            "file": "crates/rrx/tests/state.rs",
+            "line": 1027,
+            "claim": "The controls only replace the values of three known fields. They never exercise the other serde error class that also quotes persisted content: an unknown JSON key rejected by deny_unknown_fields.",
+            "evidence": "domain.rs declares Usage and Scope with #[serde(deny_unknown_fields)]. serde_json reports an extra key as \"unknown field `<key>`, expected one of ...\", which quotes the attacker-controlled key text. Requirements lines 170\u2013172 cover \"Invalid or unknown fields\". The test loop corrupts only input_tokens, estimated_cost and scope values. Production is not affected, because map_err(|_| ...) discards every decode error uniformly, and the three retained mutants are all uniform.",
+            "fix": "Optional, non-blocking. Add a fourth case that inserts the canary as an unknown top-level key, and optionally one inside the scope object. Assert the same canary-free, exact-static and chain-count-1 checks. No production change is needed."
+          },
+          {
+            "id": "L2-ledger-views-vs-fields-wording",
+            "severity": "Low",
+            "file": "doc/verification/issue-21.md",
+            "line": 389,
+            "claim": "\"Task/Goal/Project corrupt fields\" reads as if this component corrupted Project/Goal/Task identity fields, which is what the prior read-identity component did. This component actually corrupts input_tokens, estimated_cost and scope values and reads them through Task, Goal and Project views.",
+            "evidence": "The test iterates fields [\"input_tokens\",\"estimated_cost\",\"scope\"] and views [t.scope(), Goal scope, Project scope]. issue-21-legacy-decode.md states this correctly as \"Input tokens, cost and Scope malformed fields ... Task/Goal/Project views\".",
+            "fix": "Reword to \"input-token/cost/Scope corrupt fields read through Task/Goal/Project views\". Documentation only."
+          }
+        ],
+        "assessment": "The production delta is one closure in Store::usage (state/mod.rs:972-973). anyhow!(\"invalid persisted usage snapshot\") with a format-free literal resolves to Error::msg(&'static str): it has no source, so chain().count()==1, and Display and alternate Display are the exact static text. Debug can append only an ordinary backtrace, which contains no body data.\n\nThe rest of Store::usage is unchanged:\n- validate_scope still runs first.\n- The SELECT, its filters and ORDER BY sequence are unchanged.\n- The row? path still propagates rusqlite errors, which are declared out of scope.\n- The static identity-mismatch ensure! still runs after decode.\n- Valid rows are returned unchanged.\n\nUsage bodies are read only by Store::usage. Every other decode() reader still propagates serde detail. The design, the legacy-scope design, the master design and the ledger all state this limit honestly without claiming more.\n\nThe new integration test drives the public API from valid public writers. It applies JSON-valid, CHECK-respecting body-type corruption. The three fields each produce serde invalid-type messages that quote the canary in the unfixed code. Each case is read through the Task, Goal and Project views. The test checks leakage in all three renderings before the exact-static assertion, and checks chain count. It also confirms that the full usage/audit rows and the Project/Goal/Task/Session state are unchanged, and that restored history is readable.\n\nThe mutation evidence is internally consistent:\n- The leak assert! is at state.rs:1062.\n- The mutation target lines are 920 at c44 and 973 at 775, matching the +53 lines from the environment merge.\n- revert and retain_raw_cause leak only through {:#}, and format_raw_cause leaks through Display. Each mutant is caught by the leak assertion before the static or chain checks, so the kills come from the actual consumer.\n\nCounts derive mechanically. At c44: 133+19+5+16+18+13+16+17=237 Rust tests plus 2 doctests (1+1), with 7+2=9 ignored. At 775: 159+19+5+16+18+13+16+17=263 Rust tests plus 2 doctests, with 22+2=24 ignored. The state target has 17 tests, matching the 17 #[test] functions in state.rs.\n\nManifest blob and sha256 values for mod.rs (9a4dfe0 / 7c1f278\u2026) and state.rs (0c096ee / 6041ece\u2026) match the checks and mutation records. The integrated input list has 42 entries and the c44 list has 38. The Requirements citation 170\u2013172 was line-counted and correctly covers the bounded-safe-projection and sensitive-error-string requirement.\n\nNo writes, schema, audit, Session, CAS, environment or other reader behavior changed. No Critical, High or Medium issue was found. Both Lows are optional. The process gates the packet itself names, a second independent Source1 review and current exact-source CI, remain outside this verdict. Whole #21, the qualified query, native, epoch and raw-retirement work, and the full-workspace release test remain open as stated.",
+        "unresolved_blockers": []
+      },
+      "cleanup_verified": true,
+      "meter_scope": "raw_native_fresh_session_fields_unverified_operation_inventory"
+    },
+    {
+      "head": "d774df3988f0d9a03930433eee6e1eaceb6c5efa",
+      "section": "source1b",
+      "native_session": "5ffec6c9-0045-4478-a678-229385250e0f",
+      "review": {
+        "verdict": "approve",
+        "findings": [
+          {
+            "id": "L1",
+            "severity": "Low",
+            "file": "crates/rrx/tests/state.rs",
+            "line": 1027,
+            "claim": "The canary controls cover only one serde error category that quotes input: invalid type on input_tokens, estimated_cost and scope. Usage and Scope are deny_unknown_fields, and serde also quotes unknown field keys (\"unknown field `<key>`, expected one of ...\"). That second quoting category has no control.",
+            "evidence": "The test loops `for field in [\"input_tokens\", \"estimated_cost\", \"scope\"]` and replaces each value with the canary string. domain.rs declares `#[serde(deny_unknown_fields)]` on Usage and Scope. Production is not affected: `map_err(|_| ...)` discards every serde error kind the same way, and the three mutants are all non-category-specific.",
+            "fix": "Optional and non-blocking. Add a fourth corruption that inserts an extra top-level key named with the canary (still JSON-valid), so the evidence covers the whole quoting class rather than one category. No production change needed."
+          },
+          {
+            "id": "L2",
+            "severity": "Low",
+            "file": "doc/design/master/context-efficiency.md",
+            "line": 245,
+            "claim": "The new decode component document cannot be reached by link. The master sentence at line 242 describes the decode projection, but the only 'Details' link points to issue-21-legacy-scope.md. That document mentions 'the separate legacy decode-error component' without linking doc/design/issue-21-legacy-decode.md.",
+            "evidence": "Line 245 reads `Details: [legacy scope component](../issue-21-legacy-scope.md)`. In issue-21-legacy-scope.md the new sentence is plain text with no link.",
+            "fix": "Optional. Link issue-21-legacy-decode.md from the legacy-scope sentence, or add it beside the existing master Details link."
+          }
+        ],
+        "assessment": "I reviewed the provided bytes by inspection only; tools were disabled. No Critical, High or Medium findings.\n\n**Production change.** The 5-line change in Store::usage is correct and minimal. `anyhow::anyhow!(\"literal\")` expands to `Error::msg` of a static str, which is a MessageError with no source. So `to_string()` and `{:#}` both equal the static text, `chain().count()==1`, and Debug contains only the message plus any ordinary anyhow backtrace (frame names, no body content).\n\nThe following are unchanged:\n- requested-scope validation (`validate_scope`)\n- the SQL filter and ORDER BY sequence\n- `row?` rusqlite propagation\n- the static row/body identity `ensure!`\n- valid-row representation\n\nThe shared `decode()` and the other readers (records/read/list/context/read_tx/audit_if_current) still carry serde context. Valid rows still expose raw cache_metadata and missing_reason. The docs disclose all of this as outside the component, and I do not credit any broader retirement, allocation, backtrace or secrets guarantee.\n\nThe reformatted line is 95 columns, which is consistent with the reported fmt pass. `map_err_ignore` is not a default Clippy lint.\n\n**Test.** The new test uses the actual public writers:\n- put_project/goal/task\n- a Reviewer put_session with no executor binding requirement\n- put_usage\n\nIt then corrupts only the body type through a raw connection. CHECK(json_valid) stays enforced; foreign keys are not involved because no FK columns change. All three views (Task, Goal, Project) select the single Task-scoped row. The test snapshots all usage columns, all audit rows, P/G/T and the Session before and after each refusal, and requires `unwrap_err`, so a silently skipped row would also fail. It checks for the canary in all three renderings before the exact static-text and chain assertions.\n\nThe file contains 17 tests, which matches the logs showing 17 state tests, '16 filtered out' for the focused run, and state release 17. The panic location 1062:17 matches the canary assertion line and column inside the rendered loop.\n\n**Baseline and mutants.** The baseline and revert-mutant messages show the canary only in alternate Display ('invalid persisted snapshot: invalid type: string ...'). That is consistent with the `{error:#}` render failing first.\n- retain_raw_cause_chain: its message is consistent with `cause.context(...)`.\n- format_raw_cause_into_message: its message is consistent with the cause formatted into Display.\n- Exit code 101 alone cannot separate test from compile failure, but each mutant records an observed panic assertion that does.\n- The zero-context patches target line 973 at current source. 973 matches the diff hunk (967 + 6). The c44 patches target line 920; the 53-line offset is consistent with the composed environment additions.\n\n**Counts and manifest.**\n- c44 summaries sum to 239 = 237 + 2; ignored 7 + 2 = 9.\n- 775 summaries sum to 265 = 263 + 2; ignored 22 + 2 = 24.\n- Two trailing 1-test summaries for one crate are plausible as edition-2024 merged and standalone doctest lines; the source uses let-chains.\n- The c44 input list has 38 entries and the 775 list has 42.\n- The mod.rs, state.rs, environment.rs, schema.sql and domain.rs blobs and sha256 values in the integrated checks and mutations match the d774 manifest. Tests are byte-identical across c44, 775 and d774, so d774 is a metadata-only change over 775.\n\n**Scope wording.** Whole #21, the qualified query, epoch, native, allocation and raw-metadata retirement remain explicitly OPEN. There is no Closes21, and the unrun full release test and historical 555 failure are disclosed. I could not independently re-execute the logs or CI; I relied on the published hashes and observed-assertion text. The second independent review and exact current-source CI remain the author's own process gates, not findings against this component.",
+        "unresolved_blockers": []
+      },
+      "cleanup_verified": true,
+      "meter_scope": "raw_native_fresh_session_fields_unverified_operation_inventory"
+    }
+  ],
+  "dispositions": [
+    {
+      "finding": "A L1 / B L1 unknown JSON keys",
+      "verified": true,
+      "disposition": "optional nonblocking coverage extension deferred; Usage and Scope deny_unknown_fields, current controls cover three invalid-type corruptions only. Production uniformly discards all decode errors; no unknown-key execution or category-specific mutation claimed."
+    },
+    {
+      "finding": "A L2 ledger views versus fields wording",
+      "verified": true,
+      "disposition": "documentation corrected to distinguish malformed fields from the three read views; no code/test change"
+    },
+    {
+      "finding": "B L2 component discoverability",
+      "verified": true,
+      "disposition": "direct master link added; no contract change"
+    }
+  ],
+  "qualification": "Two independent selected-wrapper reviews; cleanup_verified is not an all-descendant native F1 proof. Raw native counters remain unverified operation inventory and are not aggregated/projected as qualified telemetry. Whole21/MVP/native remain OPEN."
+}
