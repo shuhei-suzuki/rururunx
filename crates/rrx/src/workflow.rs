@@ -936,8 +936,15 @@ impl WorkflowEngine {
         snapshot.workflow.active = Some(index);
         #[cfg(test)]
         {
-            let hook = self.hooks.before_reserve.lock().expect("reserve hook").take();
-            if let Some(hook) = hook { hook.await; }
+            let hook = self
+                .hooks
+                .before_reserve
+                .lock()
+                .expect("reserve hook")
+                .take();
+            if let Some(hook) = hook {
+                hook.await;
+            }
         }
         self.reserve(&mut snapshot, &context, phase)?;
         if phase.actor() == Actor::EvidencePort {
@@ -948,7 +955,11 @@ impl WorkflowEngine {
         let result = self
             .prepare_agent(
                 snapshot,
-                AgentPreparation { context, config, environment },
+                AgentPreparation {
+                    context,
+                    config,
+                    environment,
+                },
                 &claim,
                 &mut eligible,
             )
@@ -984,7 +995,10 @@ impl WorkflowEngine {
                 && snapshot.task.branch == claim.branch,
             "preparation claim changed"
         );
-        let attempt = snapshot.workflow.history.get_mut(claim.index)
+        let attempt = snapshot
+            .workflow
+            .history
+            .get_mut(claim.index)
             .context("preparation attempt missing")?;
         ensure!(
             attempt.state == AttemptState::Running
@@ -1004,7 +1018,13 @@ impl WorkflowEngine {
         });
         snapshot.workflow.active = None;
         #[cfg(test)]
-        if let Some(hook) = self.hooks.before_release.lock().expect("release hook").take() {
+        if let Some(hook) = self
+            .hooks
+            .before_release
+            .lock()
+            .expect("release hook")
+            .take()
+        {
             hook();
         }
         // Fresh metadata is preserved; the existing immediate transaction checks
@@ -1018,7 +1038,11 @@ impl WorkflowEngine {
         claim: &PreparationClaim,
         eligible: &mut bool,
     ) -> Result<StepResult> {
-        let AgentPreparation { context, config, environment } = preparation;
+        let AgentPreparation {
+            context,
+            config,
+            environment,
+        } = preparation;
         let index = claim.index;
         let phase = claim.attempt.phase;
         let class = snapshot.workflow.workflow;
@@ -1197,7 +1221,10 @@ impl WorkflowEngine {
         ) {
             return Ok(StepResult::Waiting {
                 phase,
-                reason: format!("evidence evaluation may still be active; unknown outcome requires explicit recovery ({})", recovery_issue(phase)),
+                reason: format!(
+                    "evidence evaluation may still be active; unknown outcome requires explicit recovery ({})",
+                    recovery_issue(phase)
+                ),
             });
         }
         if attempt.state != AttemptState::Running {
@@ -1369,7 +1396,13 @@ impl WorkflowEngine {
         let attempt = &mut snapshot.workflow.history[index];
         ensure!(
             attempt.state != AttemptState::Evaluating || known_gate_observation(attempt).is_some(),
-            "unknown evaluation requires explicit recovery (#13 irreversible, #14 reversible)"
+            "unknown {} outcome requires explicit recovery ({})",
+            if irreversible(attempt.phase) {
+                "external"
+            } else {
+                "reversible evaluation"
+            },
+            recovery_issue(attempt.phase)
         );
         ensure!(
             attempt.session_id.is_some() || !attempt.dispatch_started,
@@ -1471,7 +1504,8 @@ impl WorkflowEngine {
         source: SourceSnapshot,
         reason: &str,
     ) -> Result<StepResult> {
-        self.invalidate_attempt_preparation(snapshot, index, source, reason, None).await
+        self.invalidate_attempt_preparation(snapshot, index, source, reason, None)
+            .await
     }
     async fn invalidate_attempt_preparation(
         &self,
