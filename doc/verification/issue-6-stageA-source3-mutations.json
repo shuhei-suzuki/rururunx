@@ -1,0 +1,119 @@
+{
+  "source": "cba0b1d3b52ca643eae7add73b73417138e3ff38",
+  "raw": [
+    {
+      "path": "/private/tmp/rururunx-issue6-stageA-mutations-cba0b1d-source3/results.json",
+      "sha256": "775c8c34edee7d41379f0cafd44beb847fe84675fb6a673b0056c81a7a1af166",
+      "complete": false,
+      "pass": null,
+      "restored_source_matches": null
+    },
+    {
+      "path": "/private/tmp/rururunx-issue6-stageA-mutations-cba0b1d-source3/followup-results.json",
+      "sha256": "6d83dac3b58fc2cacacdb8a15130ebd86db281b18d1a33a9af8791b55e480061",
+      "complete": true,
+      "pass": false,
+      "restored_source_matches": true
+    },
+    {
+      "path": "/private/tmp/rururunx-issue6-stageA-mutations-cba0b1d-source3/partial-window-results.json",
+      "sha256": "06db8b866398615f2c6c26dd6560ffc3721b3c100a2aae624991950744a5f57c",
+      "complete": true,
+      "pass": true,
+      "restored_source_matches": true
+    },
+    {
+      "path": "/private/tmp/rururunx-issue6-stageA-mutations-cba0b1d-source3/decisions-results.json",
+      "sha256": "387f10bccaad3bec07da4bcab2880de6ed01727c8673693ecc140d6d85b0b977",
+      "complete": true,
+      "pass": true,
+      "restored_source_matches": true
+    }
+  ],
+  "records": [
+    {
+      "case": "S301-approval-guard-consumed",
+      "exit": 101,
+      "elapsed_seconds": 8.706,
+      "compiled_and_tests_started": true,
+      "log": "/private/tmp/rururunx-issue6-stageA-mutations-cba0b1d-source3/S301-approval-guard-consumed.log",
+      "path": "crates/rrx/src/codex/session.rs",
+      "operator_sha256": "fd4be3078fb990c61b34ea991f0e9bda970505acce7caafa70936c918bbbf013",
+      "oracle": "empty consumed approval changed Session/audit",
+      "classification": "assertion-killed"
+    },
+    {
+      "case": "S302-fresh-outcome-omitted",
+      "exit": 101,
+      "elapsed_seconds": 7.64,
+      "compiled_and_tests_started": true,
+      "log": "/private/tmp/rururunx-issue6-stageA-mutations-cba0b1d-source3/S302-fresh-outcome-omitted.log",
+      "path": "crates/rrx/src/codex/session.rs",
+      "operator_sha256": "e867411d90ee1fc3fa3f3b38dd47ef26ab83d22f160347addf28476fefed77ea",
+      "oracle": "fresh no-work outcome must retain factual Unsupported cause",
+      "classification": "assertion-killed"
+    },
+    {
+      "case": "S303-checkpoint-guard-omitted",
+      "exit": 101,
+      "elapsed_seconds": 7.422,
+      "compiled_and_tests_started": true,
+      "log": "/private/tmp/rururunx-issue6-stageA-mutations-cba0b1d-source3/S303-checkpoint-guard-omitted.log",
+      "path": "crates/rrx/src/codex/session.rs",
+      "operator_sha256": "82eec8c312911b9cb9926fd5c37c687d5b9f3d381c88cc90963f4755d7614c73",
+      "oracle": "assertion `left == right` failed",
+      "classification": "assertion-killed"
+    },
+    {
+      "case": "S304-sidecar-truncate",
+      "exit": 0,
+      "elapsed_seconds": 4.755,
+      "compiled_and_tests_started": true,
+      "log": "/private/tmp/rururunx-issue6-stageA-mutations-cba0b1d-source3/S304-sidecar-truncate.log",
+      "path": "crates/rrx/tests/support/grok_fixture.rs",
+      "operator_sha256": "503f8576df4bd9ab69868535d52c961c868af785611854ff298c82f3bbc4dc61",
+      "oracle": "atomic sidecar reader observed incomplete JSON",
+      "classification": "unresolved-no-credit"
+    },
+    {
+      "case": "S305-sidecar-partial-window",
+      "exit": 101,
+      "elapsed_seconds": 3.852,
+      "compiled_and_tests_started": true,
+      "log": "/private/tmp/rururunx-issue6-stageA-mutations-cba0b1d-source3/S305-sidecar-partial-window.log",
+      "path": "crates/rrx/tests/support/grok_fixture.rs",
+      "operator_sha256": "5ac3b72df65d112a4be7f1f9581b75cca012518744d30351aee38d56b4d7b134",
+      "oracle": "atomic sidecar reader observed incomplete JSON",
+      "classification": "assertion-killed"
+    },
+    {
+      "case": "S306-cancel-only-guard-bypass",
+      "exit": 101,
+      "elapsed_seconds": 10.833,
+      "compiled_and_tests_started": true,
+      "log": "/private/tmp/rururunx-issue6-stageA-mutations-cba0b1d-source3/S306-cancel-only-guard-bypass.log",
+      "path": "crates/rrx/src/codex/session.rs",
+      "operator_sha256": "ad13964a7ab73bfb1c07b3d8958e4d568fec2014460b62d064f5754a6bb49f53",
+      "oracle": "empty consumed approval changed Session/audit",
+      "classification": "assertion-killed"
+    },
+    {
+      "case": "S307-deny-only-guard-bypass",
+      "exit": 101,
+      "elapsed_seconds": 10.12,
+      "compiled_and_tests_started": true,
+      "log": "/private/tmp/rururunx-issue6-stageA-mutations-cba0b1d-source3/S307-deny-only-guard-bypass.log",
+      "path": "crates/rrx/src/codex/session.rs",
+      "operator_sha256": "c7d3ed5443a51c6e69dcf3b3f4a40a2ce719321c7ab91d5dc35750e3981545a2",
+      "oracle": "empty consumed approval changed Session/audit",
+      "classification": "assertion-killed"
+    }
+  ],
+  "assertion_kills": 6,
+  "plain_truncation_survivor_no_credit": 1,
+  "initial_driver_failure": "operator expected1 but matched4, before checkpoint mutation; source restored in finally; no later initial restored-controls credit",
+  "corrected_followup_restored_controls_pass": true,
+  "widened_partial_window": "10ms only mutant; distinct from surviving narrow truncation; production bounds/concurrency unchanged",
+  "decision_matrix": "S301 kills actualDeny; S306Cancel-only and S307Deny-only independently kill actual Session/audit changes",
+  "scope": "component synthetic private owned fixtures only; not actual managed19 owner/readiness/wire/settlement; no StageB native credit"
+}
