@@ -679,3 +679,132 @@ fn usage_integer_overflow_cannot_publish_rows_or_audit_or_change_owners() {
         }
     }
 }
+
+#[test]
+fn legacy_usage_query_checks_row_body_identity_and_invalid_scope_without_writes() {
+    let temp = tempfile::tempdir().unwrap();
+    let db = temp.path().join("usage-scope.db");
+    let mut store = Store::open(&db).unwrap();
+    let p = project(&mut store, "usage-scope", &temp.path().join("one"));
+    let g = goal(&mut store, &p);
+    let mut t = task(&mut store, &p, &g);
+    t.worktree = Some(p.worktree_root.join("task-worktree"));
+    t.branch = Some("feature/usage-scope".into());
+    store.put_task(&mut t).unwrap();
+    let s = session(&t, t.worktree.clone().unwrap());
+    store.put_session(&s, 0).unwrap();
+    let valid = Usage {
+        scope: t.scope(),
+        session_id: s.id,
+        agent: s.agent.clone(),
+        phase: "legacy-unqualified".into(),
+        review_round: None,
+        input_tokens: Some(7),
+        cached_input_tokens: None,
+        output_tokens: Some(3),
+        estimated_cost: None,
+        context_pack_version: None,
+        context_pack_size: None,
+        repo_map_size: None,
+        cache_metadata: json!({"legacy":true}),
+        missing_reason: Some("legacy history is unqualified".into()),
+    };
+    store.put_usage(&valid).unwrap();
+    let foreign_p = project(&mut store, "foreign-usage-scope", &temp.path().join("two"));
+    let foreign_g = goal(&mut store, &foreign_p);
+    let foreign_t = task(&mut store, &foreign_p, &foreign_g);
+    // Both legitimate Tasks have Issue42, but distinct Project identities.
+    assert_eq!(foreign_t.issue, t.issue);
+    let views = [
+        t.scope(),
+        Scope {
+            project_id: p.id,
+            goal_id: Some(g.id),
+            task_id: None,
+        },
+        Scope {
+            project_id: p.id,
+            goal_id: None,
+            task_id: None,
+        },
+    ];
+    for scope in &views {
+        assert_eq!(
+            serde_json::to_value(store.usage(scope).unwrap()).unwrap(),
+            json!([valid])
+        );
+    }
+    let raw = rusqlite::Connection::open(&db).unwrap();
+    let snapshot = || {
+        let body: String = raw
+            .query_row("SELECT body FROM usage", [], |row| row.get(0))
+            .unwrap();
+        json!({"usage_body":body,"project":store.project(p.id).unwrap(),
+            "goal":store.goal(g.id).unwrap(),"task":store.task(t.id).unwrap(),
+            "session":store.session(s.id).unwrap(),
+            "audit":store.events(&t.scope(),0,1000).unwrap()})
+    };
+    for field in [
+        "project",
+        "goal",
+        "task",
+        "session",
+        "missing_goal",
+        "missing_task",
+    ] {
+        let mut corrupt = valid.clone();
+        match field {
+            "project" => corrupt.scope.project_id = foreign_p.id,
+            "goal" => corrupt.scope.goal_id = Some(foreign_g.id),
+            "task" => corrupt.scope.task_id = Some(foreign_t.id),
+            "session" => corrupt.session_id = SessionId::new(),
+            "missing_goal" => corrupt.scope.goal_id = None,
+            "missing_task" => corrupt.scope.task_id = None,
+            _ => unreachable!(),
+        }
+        assert_eq!(
+            raw.execute(
+                "UPDATE usage SET body=?1",
+                [serde_json::to_string(&corrupt).unwrap()]
+            )
+            .unwrap(),
+            1
+        );
+        let before = snapshot();
+        for scope in &views {
+            let error = store.usage(scope).unwrap_err();
+            assert_eq!(
+                error.to_string(),
+                "usage row/body identity mismatch",
+                "field {field}"
+            );
+            assert_eq!(
+                snapshot(),
+                before,
+                "query must not change corrupt history or owners: {field}"
+            );
+        }
+    }
+    raw.execute(
+        "UPDATE usage SET body=?1",
+        [serde_json::to_string(&valid).unwrap()],
+    )
+    .unwrap();
+    let before = snapshot();
+    let invalid = Scope {
+        project_id: p.id,
+        goal_id: None,
+        task_id: Some(t.id),
+    };
+    assert_eq!(
+        store.usage(&invalid).unwrap_err().to_string(),
+        "task scope requires goal identity"
+    );
+    assert_eq!(snapshot(), before);
+    for scope in &views {
+        assert_eq!(
+            serde_json::to_value(store.usage(scope).unwrap()).unwrap(),
+            json!([valid])
+        );
+    }
+}

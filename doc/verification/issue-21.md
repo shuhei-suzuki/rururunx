@@ -287,3 +287,15 @@ This approves ONLY the legacy six typed integer Store boundary; whole21 stays op
 Qualified provenance/raw retirement/native counters/price/report/benchmark/epoch and
 #16 acceptance are still mandatory. No failed review/cleanup or earlier CI failure
 was relabeled. This scoped component may merge without closing the tracking issue.
+
+
+## Staged legacy usage read identity component
+
+Baseline main054aefd/schema3, under approved Requirements8/Design4. Store::usage
+previously filtered row scope columns but returned decoded body without matching
+Project/Goal/Task/Session identity, and omitted validate_scope. The component adds
+these read-only checks; genuine legacy rows remain unqualified with unchanged values.
+Six controlled body corruptions and invalid-scope checks exercise actual Store::usage,
+Task/Goal/Project reads and unchanged history/owner/Session/audit snapshots. Source
+verification and independent review pending. No native execution/aggregation, private
+writer epoch, raw-metadata retirement, benchmark or whole21 acceptance is claimed.
