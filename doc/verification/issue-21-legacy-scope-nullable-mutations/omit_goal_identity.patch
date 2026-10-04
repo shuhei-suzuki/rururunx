@@ -1,0 +1,5 @@
+--- a/crates/rrx/src/state/mod.rs
++++ b/crates/rrx/src/state/mod.rs
+@@ -920 +920 @@
+-                    && str_id(usage.scope.goal_id) == goal
++                    && true

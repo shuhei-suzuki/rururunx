@@ -1,9 +1,10 @@
 //! Transactional SQLite snapshots + append-only logical events, scoped by Project.
 mod context_pack;
+mod environment;
 #[cfg(test)]
 mod native_dispatch_tests;
 mod prepared_input;
-
+pub(crate) use environment::EnvironmentAdmission;
 use std::{path::Path, time::Duration};
 
 use anyhow::{Context, Result, bail, ensure};
@@ -22,6 +23,7 @@ pub enum StateGuardError {
     WorktreeLocked,
     ProjectInactive,
     ExecutorReserved,
+    EnvironmentAuthority,
     SnapshotChanged {
         table: String,
         id: String,
@@ -36,6 +38,7 @@ impl std::fmt::Display for StateGuardError {
                 f.write_str("worktree has an active immutable/maintenance lock")
             }
             Self::ExecutorReserved => f.write_str("executor is reserved/live"),
+            Self::EnvironmentAuthority => f.write_str("native environment authority unavailable"),
             Self::SnapshotChanged {
                 table,
                 id,
@@ -723,6 +726,34 @@ impl Store {
         expected: [u64; 3],
         expected_locks: &[(RecordId, u64)],
     ) -> Result<u64> {
+        self.put_session_current(session, expected_session, expected, expected_locks, None)
+    }
+
+    pub(crate) fn put_session_with_environment_if_current(
+        &mut self,
+        session: &Session,
+        expected_session: u64,
+        expected: [u64; 3],
+        expected_locks: &[(RecordId, u64)],
+        admission: &EnvironmentAdmission,
+    ) -> Result<u64> {
+        self.put_session_current(
+            session,
+            expected_session,
+            expected,
+            expected_locks,
+            Some(admission),
+        )
+    }
+
+    fn put_session_current(
+        &mut self,
+        session: &Session,
+        expected_session: u64,
+        expected: [u64; 3],
+        expected_locks: &[(RecordId, u64)],
+        admission: Option<&EnvironmentAdmission>,
+    ) -> Result<u64> {
         let scope = &session.scope;
         validate_scope(scope)?;
         let tx = self
@@ -816,7 +847,28 @@ impl Store {
         if let Some(previous) = read_tx::<Record>(&tx, "records", &record.id.to_string())? {
             record.created_at = previous.created_at;
         }
-        let next = put_record_tx(&tx, &record)?;
+        guard_record_tx(&tx, &record)?;
+        if let Some(admission) = admission {
+            // Preserve the existing guard/CAS order before any foreign decision.
+            let actual: Option<u64> = tx
+                .query_row(
+                    "SELECT version FROM records WHERE id=?1",
+                    [record.id.to_string()],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            if record.version == 0 {
+                ensure!(actual.is_none(), "snapshot insert failed");
+            } else if actual != Some(record.version) {
+                bail!(StateGuardError::SnapshotChanged {
+                    table: "records".into(),
+                    id: record.id.to_string(),
+                    expected: record.version
+                });
+            }
+            environment::evaluate(&tx, scope.project_id, admission)?;
+        }
+        let next = write_record_tx(&tx, &record)?;
         tx.commit()?;
         Ok(next.version)
     }
@@ -928,16 +980,37 @@ impl Store {
     }
 
     pub fn usage(&self, scope: &Scope) -> Result<Vec<Usage>> {
-        let mut statement = self.connection.prepare("SELECT body FROM usage WHERE project_id=?1 AND (?2 IS NULL OR goal_id=?2) AND (?3 IS NULL OR task_id=?3) ORDER BY sequence")?;
+        validate_scope(scope)?;
+        let mut statement = self.connection.prepare("SELECT project_id,goal_id,task_id,session_id,body FROM usage WHERE project_id=?1 AND (?2 IS NULL OR goal_id=?2) AND (?3 IS NULL OR task_id=?3) ORDER BY sequence")?;
         let rows = statement.query_map(
             params![
                 scope.project_id.to_string(),
                 str_id(scope.goal_id),
                 str_id(scope.task_id)
             ],
-            |row| row.get::<_, String>(0),
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                ))
+            },
         )?;
-        rows.map(|row| decode(row?)).collect()
+        rows.map(|row| {
+            let (project, goal, task, session, body) = row?;
+            let usage: Usage = decode(body)?;
+            ensure!(
+                usage.scope.project_id.to_string() == project
+                    && str_id(usage.scope.goal_id) == goal
+                    && str_id(usage.scope.task_id) == task
+                    && usage.session_id.to_string() == session,
+                "usage row/body identity mismatch"
+            );
+            Ok(usage)
+        })
+        .collect()
     }
 
     pub fn audit(&mut self, scope: &Scope, kind: &str, data: Value) -> Result<()> {
@@ -1224,7 +1297,7 @@ fn put_task_tx(tx: &Transaction<'_>, task: &Task) -> Result<Task> {
     Ok(next)
 }
 
-fn put_record_tx(tx: &Transaction<'_>, record: &Record) -> Result<Record> {
+fn guard_record_tx(tx: &Transaction<'_>, record: &Record) -> Result<()> {
     context_pack::guard_checkpoint_write(tx, record)?;
     context_pack::guard_launch_checkpoint(tx, record)?;
     validate_scope(&record.scope)?;
@@ -1256,6 +1329,14 @@ fn put_record_tx(tx: &Transaction<'_>, record: &Record) -> Result<Record> {
         );
     }
     validate_worktree_exclusion(tx, record)?;
+    Ok(())
+}
+fn put_record_tx(tx: &Transaction<'_>, record: &Record) -> Result<Record> {
+    guard_record_tx(tx, record)?;
+    write_record_tx(tx, record)
+}
+/// Private caller must have checked the original Record guards in this transaction.
+fn write_record_tx(tx: &Transaction<'_>, record: &Record) -> Result<Record> {
     let mut next = record.clone();
     bump(&mut next.version)?;
     next.updated_at = now_ms();

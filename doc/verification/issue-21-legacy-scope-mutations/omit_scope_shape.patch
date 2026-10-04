@@ -1,0 +1,4 @@
+--- a/crates/rrx/src/state/mod.rs
++++ b/crates/rrx/src/state/mod.rs
+@@ -897 +896,0 @@
+-        validate_scope(scope)?;

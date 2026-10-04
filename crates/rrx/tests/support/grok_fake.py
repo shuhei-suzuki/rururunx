@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
 import json,os,sys,uuid,sqlite3,time,pathlib
-if os.getenv('RRX_PYTHON_OBSERVED'):pathlib.Path(os.environ['RRX_PYTHON_OBSERVED']).write_text(json.dumps({'executable':sys.executable,'version_info':list(sys.version_info)}))
-mode=os.getenv('RRX_MODE','good');sid=None;prompt=None;calls=0;model='native-default';effort='high'
-if os.getenv('RRX_SPAWN_OBSERVED'):pathlib.Path(os.environ['RRX_SPAWN_OBSERVED']).write_text('native process started')
+synthetic=json.loads(pathlib.Path(sys.argv[0]).with_suffix('.json').read_text())
+if synthetic.get('RRX_PYTHON_OBSERVED'):pathlib.Path(synthetic['RRX_PYTHON_OBSERVED']).write_text(json.dumps({'executable':sys.executable,'version_info':list(sys.version_info)}))
+mode=synthetic.get('RRX_MODE','good');sid=None;prompt=None;calls=0;model='native-default';effort='high'
+if synthetic.get('RRX_ENVIRONMENT_OBSERVED'):
+ expected=json.loads(synthetic['RRX_ENVIRONMENT_EXPECTED'])
+ matches={key:os.getenv(key)==value for key,value in expected.items()}
+ assert all(matches.values()),'synthetic environment canary mismatch'
+ pathlib.Path(synthetic['RRX_ENVIRONMENT_OBSERVED']).write_text(json.dumps(matches))
+if synthetic.get('RRX_SPAWN_OBSERVED'):pathlib.Path(synthetic['RRX_SPAWN_OBSERVED']).write_text('native process started')
 profile=pathlib.Path(sys.argv[sys.argv.index('--agent-profile')+1]).read_text();decision='name: rururunx-decision' in profile
 assert 'injectDefaultTools: false' in profile and 'GrokBuild:read_file' in profile and 'GrokBuild:search_replace' in profile
 assert 'web_search, x_search, web_fetch' in profile and '--disable-web-search' in sys.argv
@@ -37,20 +43,20 @@ for line in sys.stdin:
   result={'configOptions':[{'id':'model','currentValue':model if mode!='config' else 'wrong'},{'id':'reasoning_effort','currentValue':effort}]}
  elif method=='_x.ai/session/info':
   if mode=='pause_info' and calls==0:
-   pause=pathlib.Path(os.environ['RRX_PAUSE']);pause.write_text('native preflight paused')
+   pause=pathlib.Path(synthetic['RRX_PAUSE']);pause.write_text('native preflight paused')
    while not pause.with_suffix('.continue').exists():time.sleep(0.01)
   if calls and mode=='late_write':assert fs('fs/write_text_file','late.txt','forbidden late effect').get('error')
   if calls and mode=='late_tool':tool('search_replace','late.txt',99)
   result={'result':{'sessionId':sid,'cwd':os.getcwd(),'agentName':'rururunx-decision' if decision else 'rururunx-executor','context':{'toolDefinitionsCount':(0 if decision else 2)+(1 if mode=='inventory' else 0),'toolCallCount':calls+(1 if calls and mode=='unnotified' else 0)}}}
  elif method=='session/prompt':
-  if os.getenv('RRX_PROMPT_OBSERVED'):pathlib.Path(os.environ['RRX_PROMPT_OBSERVED']).write_text('actual prompt received')
+  if synthetic.get('RRX_PROMPT_OBSERVED'):pathlib.Path(synthetic['RRX_PROMPT_OBSERVED']).write_text('actual prompt received')
   prompt=p['_meta']['promptId'];assert 'bash_command' not in p['prompt'][0].get('_meta',{})
   assert p['prompt'][0]['text'].startswith('Prepared Task input follows:\n\n'), 'native slash command authority escaped envelope'
-  if os.getenv('RRX_EXPECT_INPUT'):assert p['prompt'][0]['text'].endswith(os.environ['RRX_EXPECT_INPUT'])
+  if synthetic.get('RRX_EXPECT_INPUT'):assert p['prompt'][0]['text'].endswith(synthetic['RRX_EXPECT_INPUT'])
   send({'jsonrpc':'2.0','method':'session/update','params':{'sessionId':sid,'update':{'sessionUpdate':'session_info_update','title':'native title'}}})
-  connection=sqlite3.connect(os.environ['RRX_DATABASE']);rows=connection.execute("select body from records where kind='session'").fetchall()
+  connection=sqlite3.connect(synthetic['RRX_DATABASE']);rows=connection.execute("select body from records where kind='session'").fetchall()
   owned=[json.loads(row[0]) for row in rows if json.loads(row[0])['data']['recovery'].get('prompt_id')==prompt];assert len(owned)==1,'dispatch not durable'
-  record=owned[0];recovery=record['data']['recovery'];assert recovery['input_version'] in [1,2]
+  record=owned[0];recovery=record['data']['recovery'];assert recovery['input_version'] in [1,2,3]
   audit=connection.execute("select data from audit where kind='session.saved' order by sequence desc").fetchall();connection.close()
   saved=next(json.loads(row[0]) for row in audit if json.loads(row[0])['id']==record['id'])
   assert saved['evidence']['dispatch_intent']=={'input_version':recovery['input_version'],'prompt_id':prompt},'Grok dispatch intent was not atomically durable before wire'
@@ -83,7 +89,7 @@ for line in sys.stdin:
    else:
     target='own.txt' if mode=='replace_existing' else 'result.txt'
     n=tool('search_replace',target,2);fs('fs/read_text_file',target);assert fs('fs/write_text_file',target,'owned edit\n').get('result')=={};done(n)
-   n=tool('search_replace',os.environ['RRX_FOREIGN'],3);assert fs('fs/write_text_file',os.environ['RRX_FOREIGN'],'forbidden').get('error');done(n,mode!='denied_completed')
+   n=tool('search_replace',synthetic['RRX_FOREIGN'],3);assert fs('fs/write_text_file',synthetic['RRX_FOREIGN'],'forbidden').get('error');done(n,mode!='denied_completed')
   elif mode=='decision_tool':tool('read_file','own.txt',1)
   if mode in ['hook','hook_failure']:pathlib.Path('unexplained.txt').write_text('native hook effect')
   output={'verdict':'DENY','reason':'native fixture'}

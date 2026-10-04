@@ -1,0 +1,5 @@
+--- a/crates/rrx/src/state/mod.rs
++++ b/crates/rrx/src/state/mod.rs
+@@ -909 +909 @@
+-                    row.get::<_, Option<String>>(2)?,
++                    Some(row.get::<_, String>(2)?),
