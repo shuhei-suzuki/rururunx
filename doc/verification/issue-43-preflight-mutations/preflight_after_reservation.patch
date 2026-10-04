@@ -1,0 +1,26 @@
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -904,11 +904,6 @@
+                 reason: "revision/source/rules changed; stale evidence invalidated".into(),
+             });
+         }
+-        let selected = if phase.actor() == Actor::EvidencePort {
+-            None
+-        } else {
+-            Some(self.preflight_native_adapter(&snapshot.task, phase)?)
+-        };
+         clear_hold(&mut snapshot);
+         let context = self
+             .prepare_pack(
+@@ -961,6 +956,11 @@
+         if phase.actor() == Actor::EvidencePort {
+             return self.evaluate(snapshot, index, None).await;
+         }
++        let selected = if phase.actor() == Actor::EvidencePort {
++            None
++        } else {
++            Some(self.preflight_native_adapter(&snapshot.task, phase)?)
++        };
+         let claim = PreparationClaim::committed(&snapshot, index);
+         let mut eligible = true;
+         let result = self

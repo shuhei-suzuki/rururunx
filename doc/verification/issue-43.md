@@ -264,3 +264,21 @@ native_preflight_prevents_executor_launch: it failed atadapter.rs1927, expected
 StateConflict/actualSessionLost. Underlying cause unmeasured; no same-test rerun,
 deadline change or ownership-latch reset. This failure is distinct from the new
 preflight controls and is retained; no full regression/CI success is claimed.
+
+
+Committed staged preflight sourceb39b727bb7c741381f3d0ef121d39c6352ae6048:
+Rust/cargo1.91.1, fmt and locked all-target Clippy -Dwarnings PASS; debug/release
+builds PASS. Three focused controls PASS (including existing held state, both
+capability surfaces and malformed probe identity). Five actual compiled mutants
+omitted private-admission capability/static capability/probed capability/identity or
+moved preflight after reservation: intended real Workflow consumer failed each;
+exact restored source and3controls PASS. Patch/source/log hashes in the companion
+artifact. These are negative preflight/component controls, not genuine private
+allocator/native profile evidence. No fake fixture advertises positive authority.
+
+Actual original all_presets_drive_real_adapter_calls_and_persist_phase_context_
+history FAILED with missing PreparedInputAdmission at the first native phase;
+full positive Workflow fixture migration remains required19 integration. No tests
+were skipped, native execution authorized or full-suite/CI/merge readiness claimed.
+The earlier exploratory adapter StateConflict-vsSessionLost failure remains retained
+with unmeasured cause. Independent component source review remains pending.

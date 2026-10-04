@@ -1,0 +1,20 @@
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -1064,7 +1064,7 @@
+         };
+         let adapter = self.registry.get(agent)?;
+         let capabilities = adapter.capabilities();
+-        for required in [needed, Capability::PreparedInputAdmission] {
++        for required in [needed] {
+             ensure!(
+                 capabilities.contains(&required),
+                 "agent {agent} lacks prepared native phase capability {required:?}"
+@@ -1075,7 +1075,7 @@
+             info.agent == *agent && !info.provider.trim().is_empty(),
+             "selected adapter probe identity mismatch"
+         );
+-        for required in [needed, Capability::PreparedInputAdmission] {
++        for required in [needed] {
+             ensure!(
+                 info.capabilities.contains(&required),
+                 "agent {agent} lacks prepared native phase capability {required:?}"

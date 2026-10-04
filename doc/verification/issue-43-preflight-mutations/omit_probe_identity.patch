@@ -1,0 +1,11 @@
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -1072,7 +1072,7 @@
+         }
+         let info = adapter.probe()?;
+         ensure!(
+-            info.agent == *agent && !info.provider.trim().is_empty(),
++            true,
+             "selected adapter probe identity mismatch"
+         );
+         for required in [needed, Capability::PreparedInputAdmission] {
