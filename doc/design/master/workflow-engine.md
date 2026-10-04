@@ -380,13 +380,8 @@ PhaseAttempt.session_id. A parallel ReviewSet roster and certificates are not ye
 implemented. Current context ownership does not permit per-member Session cloning
 or arbitrary role-based delegation.
 
-Review roster examples including the current executor or any cumulative author family
-require explicit allow-self independent Sessions; those opinions never meet the
-independent approval floor. Default selection rejects before member input. Actual
-registered-adapter synthetic consumer proof is distinct from real native #16 success.
-
-Review policy completion additionally holds on unresolved potential blockers in the
-effective blocking set. Human adjudication does not replace the independent floor.
-An all-author native roster is unready and cannot mint a certificate. Fresh native
-review Sessions are required; auto-loaded native context visibility is separately
-declared/unverifiable and tested in #16, not attested by runtime-input checks.
+Issue #9's proposed ReviewSet requirements define additional floors, policy authority,
+fresh native Sessions and potential-blocker holds. They are not implemented current
+behavior; see [Issue 9 requirements](../../requirements/issue-9-requirements.md).
+Existing example rosters are proposed configuration, not actual parallel-review
+acceptance. Real native isolation/efficiency acceptance remains Issue #16.

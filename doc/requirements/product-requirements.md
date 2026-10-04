@@ -595,15 +595,15 @@ review:
 Supported completion policies must include at least:
 
 - `all` — every configured reviewer must return an exact-round APPROVE with no unresolved blocking result
-- `quorum` — configurable N-of-M exact-round approvals; verified blockers veto completion
-- `any` — at least one exact-round approval, for lightweight workflows; verified blockers still veto
+- `quorum` — configurable N-of-M exact-round approvals; verified blockers veto and unresolved potential blockers in the effective blocking set hold
+- `any` — at least one exact-round approval, for lightweight workflows; the same verified/potential blocker holds apply
 
 A **two-reviewer setup is a first-class configuration**, not a workaround.
 
 Formal Core gates retain Critical/High/Medium as blocking severities. Workflow
 class changes approval count and verification breadth: QUICK/STANDARD require
 at least one independent non-author approval, STRICT at least two. Explicit
-same-agent opinions can participate in completion policy, but cannot satisfy
+allow-self author opinions can participate in completion policy, but cannot satisfy
 that independent floor. They never dismiss their own delta's blockers. Reviewer
 independence means runtime-controlled inputs/expansions exclude same-round peer
 outputs and raw executor transcripts; native permissions remain unchanged, with
@@ -616,6 +616,23 @@ eligible custom roster is required for a certificate; Human may select that rost
 or terminate without a certificate, but never replace the independent floor; allow-self opinions
 do not meet the independent approval floor. Issue #16 must measure this availability
 boundary alongside supported native Triple configurations.
+
+
+Review roster examples including the current executor or any cumulative author family
+require explicit allow-self independent Sessions; those opinions never meet the
+independent approval floor. Default selection rejects before member input. Actual
+registered-adapter synthetic consumer proof is distinct from real native #16 success.
+
+Review completion holds on unresolved potential blockers in the effective blocking
+set as well as verified blockers; quorum/any tolerate only settled failures and
+nonblocking dissent. If all three MVP provider families are cumulative authors, no
+formal class has an eligible native approval from those families. Use an eligible
+registered non-author provider if actually supported, or terminate without a
+certificate. Human adjudication cannot mint a below-floor Review-Set certificate.
+
+Allow-duplicate-agent permits fresh Sessions sharing a non-author registered identity,
+independent of allow-self. Eligible Sessions can count toward the floor when the
+activated policy permits them; blocker-confirmer pair diversity still applies.
 
 ### Parallel review
 
@@ -1261,15 +1278,3 @@ The MVP is accepted when all of the following are demonstrable:
 51. Runtime-wide status/TUI groups activity by Project → Goal → Task.
 52. Runtime restart restores Project registry and multi-project Goal/Task scheduling state.
 53. Dogfooding demonstrates at least two repositories progressing concurrently with no cross-project context/worktree contamination.
-
-Review roster examples including the current executor or any cumulative author family
-require explicit allow-self independent Sessions; those opinions never meet the
-independent approval floor. Default selection rejects before member input. Actual
-registered-adapter synthetic consumer proof is distinct from real native #16 success.
-
-Review completion holds on unresolved potential blockers in the effective blocking
-set as well as verified blockers; quorum/any tolerate only settled failures and
-nonblocking dissent. If all three MVP provider families are cumulative authors, no
-formal class has an eligible native approval from those families. Use an eligible
-registered non-author provider if actually supported, or terminate without a
-certificate. Human adjudication cannot mint a below-floor Review-Set certificate.

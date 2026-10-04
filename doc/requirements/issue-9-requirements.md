@@ -60,7 +60,7 @@ resolution claims and structured prior findings as attributed unverified
 claims with original author slot, severity and exact text hash. Whole raw peer
 outputs/transcripts are never injected. Dismissal adjudication history retains
 actor identity. Dismissal claims/rationales remain labelled claims,
-not core facts; re-raising a dismissed finding remains possible.
+not verified facts; re-raising a dismissed finding remains possible.
 
 ## Verdicts, verification and completion
 
@@ -87,7 +87,7 @@ finder who is not a recorded delta author by identity or family, or by at least
 two policy-designated slots each excluded from all recorded authors.
 Each confirmer must differ from every recorded delta author in registered agent
 identity and native provider family, and a two-confirmer pair must also differ from
-each other in both registered agent identity and native provider family; alias/same-agent permission cannot create dismissal independence.
+each other in both registered agent identity and native provider family; alias/allow-duplicate-agent permission cannot create dismissal independence.
 Inputs separate original finding and actual repository evidence from the labelled
 executor dismissal claim, never presenting that claim as fact. Disputed evidence holds for Human.
 A fix candidate records actual commit/delta/check artifacts and the author's
@@ -213,7 +213,7 @@ or native family in the cumulative delta-author set (including document drafting
 and former executors). It requires explicit allow-self before input, including a
 different alias of an author's family; with that permission its opinion never
 satisfies the independent floor or any blocker-resolution confirmation.
-Explicit policy may allow same-agent independent Sessions;
+Explicit policy may allow duplicate-agent fresh independent Sessions;
 that permission and provider/model diversity are visible in the result. A single
 Session cannot occupy two slots. The Triple preset ships the Claude/Codex/Grok roster and all-of-three policy,
 without an implicit self-review exception. With an MVP executor in that roster,
@@ -254,7 +254,7 @@ inherits unresolved potential/verified blockers, adjudication and cumulative
 limits across roster, policy and generation changes. Target change never erases
 unresolved findings; verification must explicitly resolve applicability or fixes.
 Lineage exhaustion can terminate without certificate or hold for explicit Task
-scope decomposition; it cannot reset into a new passing Set. Decomposition requires an explicit
+terminal scope reorganization; decomposition cannot resume an exhausted obligation lineage or restore certificate capacity. It cannot reset into a new passing Set. Decomposition requires an explicit
 Human actor/reason, never autonomous Goal follow-up creation. Child Tasks inherit unresolved
 potential/verified blocker vetoes and original evidence, cumulative author attribution from the
 parent frozen base, all remaining budgets and the same parent obligation-lineage identity.
@@ -291,8 +291,7 @@ APPROVE. ESCALATE/dispute requires authorized Human adjudication,
 then a new full-roster round or termination without certificate; malformed/partial
 output needs independently recorded inspection/resolution and new round; unknown
 suffix requires new successful review rather than pretending it was examined;
-quota/round exhaustion requires termination without certificate or explicit Human-authorized scope
-decomposition with inherited obligation lineage; Lost remains held until trusted native #14
+quota/round exhaustion requires termination without certificate or explicit terminal scope reorganization with inherited obligation lineage; Lost remains held until trusted native #14
 cleanup. The specific hazard is accepting generic late terminal/cleanup JSON as a claimed
 continuously owned supervisor without a private continuity proof bound to the persisted Lost
 owner/attempt. That would launder uncertain ownership into capacity release or fresh dispatch.
@@ -428,7 +427,7 @@ are not runtime proof.
    result/efficiency dogfood remain separate mandatory MVP gates.
 9. APPROVE with a potential blocker holds; verified blockers veto every completion
    mode. Preserve unverified nonblocking Low and immutable original severity.
-   Executor-only dismissal/downgrade and two same-agent/provider-family confirmers
+   Executor-only dismissal/downgrade and two duplicate-agent/provider-family confirmers
    reject. Independent eligible confirmation or explicit Human judgment records
    evidence; fix candidates/commit/checks require a new full-roster round and explicit
    eligible resolution before a blocker is cleared.
@@ -443,7 +442,7 @@ are not runtime proof.
 12. Class/Project policy floors reject missing/weaker policies (including blocking
     {Critical,High} without Medium), early-stop under STRICT/security and absent
     required configuration. Pairwise independence/delta-author exclusion and unknown
-    authorship decisions are visible; same-agent permission does not authorize
+    authorship decisions are visible; allow-duplicate-agent permission does not authorize
     dismissal by an author.
 13. Certificate binds exact phase/generation/claim, target/source/core/member hashes,
     mandatory instruction/skill/context/checkpoint provenance and settled evidence.
@@ -632,7 +631,7 @@ provenance; synthetic facts do not claim exhaustive native inspection.
 
 STRICT fixed Triple is unavailable when document drafting and implementation have contributed
 two native families. Supported alternatives are an eligible custom roster meeting the same
-floor, or explicit Human adjudication selecting an eligible roster, Human-authorized decomposition, or termination without a certificate; allow-self never supplies the missing
+floor, or explicit Human adjudication selecting an eligible roster, termination without a certificate; allow-self never supplies the missing
 independent approval. #16 must exercise this availability limit alongside supported Triple
 configurations.
 
@@ -666,9 +665,7 @@ Lost frequency and retained capacity/Task-time, not only inference timeout count
 
 Human adjudication never substitutes for the mandatory independent approval floor
 and never mints a formal Review-Set certificate below F. It may select an eligible
-roster, authorize decomposition preserving obligations, or terminate without a
-certificate. Any future Human-only Workflow gate override is a distinct typed
-policy outcome owned by #8/#10, not an Issue 9 certificate. Criteria 12/20 test
+roster or terminate without a certificate. Obligation-preserving decomposition is structural history, not an eligibility/budget recovery exit. No Human-only Workflow gate override is implemented or promised by this Issue; any future override requires its own explicit requirement/ownership gate. Criteria 12/20 test
 two-author-family STRICT Triple plus Human adjudication: still no certificate.
 
 When all three MVP native families are cumulative authors, every class has zero
@@ -698,3 +695,48 @@ an explicit authority exemption from native author exclusions, but certificate
 evidence flags self-adjudication when that Human authored the reviewed delta.
 Criteria 9/19 preserve actor/reason/evidence and this flag, never present it as an
 independent model confirmation or approval.
+
+Policy authority (criteria 3/12/15) resolves from an activated Runtime/registered
+Project policy snapshot outside the reviewed Task delta and executor-writable
+worktree, with source revision/digest and explicit controller/Human activation
+provenance. Task-authored config edits are proposals only, never activated authority
+for that Task's own review. A conditional branch/allow-self/allow-duplicate-agent/
+early-stop/diversity permission cannot be smuggled into admission by changing a
+worktree config before freeze. Independent policy activation retains the prior
+mandatory floors and cannot clear the reviewed Task's blocker obligations. Test
+author-written conditional relaxation is rejected while the prior activated policy
+remains effective. Native filesystem protections remain separately declared.
+
+Base-sync attribution (criteria 10/12/20) records actual registered-base ancestry
+and the exact integration operation. Legitimate upstream content reachable from
+the registered base branch is attributed upstream, never invented as this Task's
+native author or unknown contribution. Retain all previously recorded Task authors
+across merge/rebase and retain the immutable original obligation base in history.
+A base advance is allowed only by the recorded registered-base operation; it cannot
+move this lineage's authored changes behind a new base to erase exclusion. Test
+upstream merge adds no unknown authors and keeps prior exclusions, while a proposed
+base advance to a Task-authored commit/foreign branch rejects. Previously Task-authored
+content remains attributed even if later reachable upstream.
+
+Supported two-author-family STRICT exit explicitly permits an eligible custom
+roster of two fresh Sessions from the remaining non-author family when activated
+policy allows duplicate-agent identities or distinct registered aliases; mandatory
+family diversity, if imposed by that policy, still applies. Otherwise use an actually
+supported non-author provider or terminate. Decomposition never recovers eligibility
+or exhausted quota. Tests distinguish certificate-capable roster selection from
+terminal-only exits. The conservative pre-#14 settlement-expiry Lost policy can
+permanently hold a Task and its capacity even after late owned cleanup; this accepted
+Core availability risk must be stated in the public Issue and #16 handoff.
+
+Closing obligation map: completion/floors/policy 2–4/12/15; native/fresh/read-only
+contract basis 1/4/8/18/20; cumulative authorship/upstream/base 10/12/17/20; facts/claims
+and class-wide N/M verification 8–10/19; isolation/expansion/provenance 8/16–18/21;
+queue/native timing and quota attribution 14/16/18; retry defaults/holds 10/14/17–18/21;
+public downstream handoff and accepted availability metrics 21. All unnumbered
+normative acceptance text follows these mapped criteria. Shared core stored once
+per round is charged once to the lineage artifact quota; distinct member frames,
+results/expansions/manifests are charged by actual retained bytes, including duplicated
+core bytes if a member frame stores them. Nothing exempts native input byte metrics.
+Read-only certificate basis is reviewed adapter contract plus runtime permission
+construction until #16 real enforcement evidence exists; synthetic peers do not
+prove native enforcement and result/certificate explicitly records that basis.
