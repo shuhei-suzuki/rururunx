@@ -164,7 +164,7 @@ impl Control {
         // A closed runtime can synchronously drop the future inside spawn. Its
         // TaskGuard must release this exact owner without re-locking a mutex
         // held by spawn. Released also records completion-before-installation.
-        let spawned = { let _held = self.task.lock().unwrap(); runtime.spawn(future) };
+        let spawned = runtime.spawn(future);
         let mut task = self.task.lock().unwrap_or_else(|error| error.into_inner());
         if matches!(*task, TaskOwner::Installing) {
             *task = TaskOwner::Running(spawned);
