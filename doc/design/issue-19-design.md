@@ -237,7 +237,7 @@ consumed-dispatch protocol.
 
 A private `session_input_acks` table holds one indexed row per protected, Task-scoped
 Session: Session ID, Project/Goal/Task IDs, optional admitted input_version/metadata
-SHA256, optional consumed dispatch UUID for that admitted input, and private
+SHA256, consumed dispatch UUID required whenever that admitted input pair is present, and private
 validated-preparation input_version/metadata SHA256, and optional frozen
 preparation_restore_sha256 for a fresh terminal continuation. That checksum is
 verified against the previous persisted terminal Session at private preparation;
@@ -245,8 +245,8 @@ initial creation has None. Each pair
 is both null or both present; present hashes are length64 lowerhex. Initial terminal
 history does not create a row. A validated Starting may register the preparation
 pair without asserting admission. A freshly validated consumed-dispatch publication
-(including Starting before wire) or validated Running writes the admitted pair.
-An admitted pair means Store input admission, never native wire acknowledgement. This distinction permits verified prewire-failure continuation
+(including Starting before wire) writes the admitted pair together with its consumed UUID. First Running either atomically consumes the frame or observes the already consumed exact private pair; plain protected Running without consumption is rejected.
+An admitted pair means Store-authorized consumption committed before wire, never native wire acknowledgement. This distinction permits verified prewire-failure continuation
 without claiming model delivery. It references
 the Session Record and owned Task; its helper derives all IDs from the validated
 Session, never from caller-supplied ack metadata. Scope equality is checked against
@@ -272,7 +272,7 @@ old pending Starting, new terminal non-Lost, exact new complete-body canonical
 checksum == both stored old restore proof and private frozen preparation checksum,
 no admitted pair/consumed UUID for the pending version, and no old/new uncertainty.
 A restored prior intent is historical body content, never a new consumption; when
-a retained prior admitted pair/UUID exists it must match those restored pins. This
+the restored body carries the consumed intent for a retained prior admitted pair/UUID, it must match those restored pins. A bounded exact restored terminal from an unadmitted failed preparation may carry a later input version than the retained older admitted pair; that older pair is preserved and does not admit the restored input. This
 branch changes no private pair/allocation. Outside this branch, a changed/new actually consumed dispatch_intent ALWAYS
 validates the latest frame/head first, even if the same input has an ack. For other
 admissions, the privately indexed matching consumed dispatch or a matching private row permits historical
@@ -283,7 +283,7 @@ Waiting/Lost never writes
 an ack. Only the private native CAS port may create an admitted pair or consumed UUID,
 after `Validated`. `ConsumedHistorical` is read-only proof requiring an existing
 exact indexed pair/UUID; it cannot seed or replace a row. A new Running input
-without consumption is admitted only by the same private port after `Validated`; `Acked` requires the NEW exact Session digest to equal the admitted pair and
+without matching already-indexed or atomically published consumption is rejected; `Acked` requires the NEW exact Session digest to equal the admitted pair and
 preserves the existing row. `BoundHistorical` is
 the sole equal-version digest update: the persisted old digest must match the
 private admission row, every input/scope/actor pin remains exact, and only the
@@ -348,11 +348,11 @@ terminal state alone never identify the input. Any fresh session_id binding must
 match that Session's exact input version == attempt.context_version, payload SHA
 and byte count == immutable ContextVersion.data.payload, revision and complete
 source_versions == context authority, plus a matching private validated preparation
-or admitted pair. Pending Starting preparation may bind an actor without asserting
+or admitted-and-consumed pair. Pending Starting preparation may bind an actor without asserting
 delivery (Grok start returns before inference); Succeeded requires the matching
 private ADMITTED pair AND privately indexed consumed intent for those exact input
-pins, plus the adapter-owned terminal outcome; neither preparation nor plain Running
-admission certifies native delivery.
+pins, plus the adapter-owned terminal outcome; neither preparation nor Store consumption
+certifies native delivery.
 A Session restored to its older terminal snapshot after fresh prewire failure uses
 an explicit closure-only `RestoredPriorNotAdmitted` predicate. In the same Workflow
 transaction require: allocation owner == the immutable already-bound session_id
@@ -965,8 +965,7 @@ First consumption validates latest full frame/head and stores that UUID with the
 admitted pair before wire, even while Session is Starting. A second different
 UUID for the same Session/input version rejects unconditionally, even when HEAD
 and checkpoint are unchanged. A strictly higher owned continuation can install
-its new pair/UUID; a new validated Running input without consumption has a null
-consumed UUID. SQL/typed helpers reject same-version consumed UUID substitution
+its new pair/UUID. There is no protected admitted pair with null consumed UUID: preparation is a separate state; Running cannot authorize wire without consumption. SQL/typed helpers reject same-version consumed UUID substitution
 or clearing. Historical observation requires exact intent identity and matching
 private row, not merely equality of arbitrary recovery Values. DTO authority_versions
 must equal the private CAS port's expected tuple AND the current Project/Goal/Task
@@ -1179,7 +1178,7 @@ with admission: old None may become one effective Some model/effort/native_ref,
 while every old explicit Some remains exact. This exception applies to both
 Starting→Starting consumption and Starting→Running. Latest frame/head/lifecycle
 and native owner/lock CAS are mandatory; atomically refresh preparation digest to
-digest(new) and write admitted pair=digest(new) plus consumed UUID if supplied.
+digest(new) and write admitted pair=digest(new) plus the required consumed UUID for new admission.
 It does not permit arbitrary actor substitution or a later same-input Some change.
 Claude's actual combined native UUID/Running/consumption before-wire path need not
 insert a fictitious intermediate write. Test this actual caller order and a mutant
@@ -1361,3 +1360,70 @@ legitimately invalidate a current pending phase. Deterministic condensation fixt
 do not prove that progress integration. After schema6 source/integration acceptance,
 move implemented normative invariants back into the master current-state contract;
 pre-code design discussion never relabels current schema5 source as schema6-ready.
+
+
+### Noninteractive protected input, consumption and exact compatibility fixtures
+
+Protected Task input supports only LaunchMode::NonInteractive. Interactive mode, a
+PTY native UI and terminal_input are refused before initial reservation/Starting,
+process spawn or model-visible bytes whenever the Task/context/private frame is
+protected. The actual caller derives mode from LaunchRequest/native transport; no
+recovery JSON declares it safe. Native private preparation preflight and every
+provider entry point enforce this mode; terminal_input also independently rejects
+an existing protected actor before wire. A pending unconsumed protected Starting
+cannot enter WaitingHuman/WaitingApproval to open a live model UI. Native setup
+without inference may run under the supported noninteractive bounded startup
+contract, but unresolved interactive auth/permission UI fails setup and retains
+owned cleanup, never changes input mode or forwards operator bytes. Standalone
+Consultant/live terminal behavior remains outside protected frame admission and
+cannot hold/adopt a protected Task's Executor reservation or produce its phase
+evidence. Actual Claude launch_terminal/terminal_start/terminal_input and Generic
+Interactive rejection are inventory, with zero-spawn/zero-byte controls and a
+mutant at each entry-point mode check. No fabricated transport journal is acceptance.
+
+Private admitted version/digest/consumed UUID form an all-null or all-present triple
+in SQL and typed helpers, with a nonnil bounded UUID when present. Preparation
+remains distinct. Every first protected Running must carry a new consumed DTO
+committed in the same NativeCAS or match an already indexed exact consumption;
+plain Running with null consumption rejects. Thus GenericCLI and every real/Fake
+positive consumer must commit consumption before its first payload write, not
+publish Running then infer and retrofit a marker. A Running→first-consume same-V
+fixture rejects because the unconsumed Running creation itself rejects; consumed
+Starting→historical Running is a positive control. Running/consumption atomicity
+never certifies actual delivery, and no ACK/terminal JSON replaces owned native
+completion evidence. SQL triple/equal-version monotonic guards and actual caller
+wire ordering mutants protect this invariant.
+
+Golden migration databases for EVERY supported v1–v5 come from exact historical
+source binaries/public Store APIs or source-identified historical SQL dumps. Pin
+commit/tree/binary/helper/dump hashes and record initial schema objects plus actual
+legacy JSON shapes. Initial versions may not be made by changing user_version on
+a newer schema. Use historical sources e51e06979f0a0a198036ef314bbeb4c8c4a2693b(v1),
+5f442ab1d3075d4170fc73393fdfdd5e800b6d3c(v2),
+1c44316ee5d4092c3d519782350c6463aa94269f(v3),
+e622c1db435bb68f7d1fd44597b88e63bbdb3f7d(v4), and the two already identified old5
+artifacts. Native fixtures assert each binary's own supported version before
+production. Compare object/source hashes for historically changed objects and
+verify v1 Project bodies genuinely lack later optional metadata; unchanged legacy
+objects need not differ from current DDL. Then prove drain/source-aware decoding,
+ordered atomic migration, data/head/digest preservation and fresh-vs-migrated
+sqlite_schema equality. Relabeled current-schema fixtures are negative controls,
+not legitimate compatibility evidence. Held-open old4/old5 refusal is separate.
+
+Mandatory phase accounting includes the exact Engine prefix encoding: rule UTF-8
+bytes, the single newline separator, mandatory header/facts and fixed wrapper
+bytes. Count the separator once even with zero optional bytes, then independently
+validate actual complete frame bytes. Exactly-1MiB and one-byte-over goldens cover
+no-rule/nonempty-rule cases without raising default map budgets. Version2
+standalone policy and instruction:pack_facts digests use the same explicit typed
+sorted-key encoding contract as other semantic projections, independent of JSON
+feature unification. Pin preserve_order and float_roundtrip feature fixtures,
+source-map and publication-CAS hashes. Legacy stored hashes remain historical;
+new schema6 launch authority must be version2 or explicitly republished.
+
+Restoration-chain controls include admitted v1→unadmitted failed preparation v2→
+fresh v3→exact rollback to Failed-v2, both bound/unbound allocated owners. Retained
+admitted v1 pins must not be confused with current unadmitted v2; if restored body
+contains an actual consumed intent it must match its retained private consumption.
+The exact prior checksum, no current admission/uncertainty and immutable actor
+ownership still gate restoration. No old intent is parsed as new consumption.

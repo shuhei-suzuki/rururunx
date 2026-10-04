@@ -364,3 +364,15 @@ Already terminal Sessions cannot become Lost; existing Lost remains universally 
 Native held-open old4/old5 writers and full JSON feature/equality impact are required
 compatibility proofs. Workflow checkpoint-progress integration remains #23; artifact
 condensation alone does not claim native runtime checkpoint progress.
+
+
+Protected Task/native frame input is noninteractive only: Interactive/PTY launch
+and terminal_input reject before reservation/Starting/spawn or model-visible bytes;
+a pending preparation cannot open a live model UI through Waiting. Every admitted
+input has atomically committed consumed UUID; preparation alone never admits
+Running or authorizes wire. All actual consumers migrate to consume-before-write.
+Every v1–v5 migration fixture has historical source/binary/dump provenance and
+genuine legacy DDL/JSON shapes, never relabeled current schema. Exact wrapper
+separator bytes and feature-independent policy/pack-facts hashes are acceptance
+boundaries. A restored unadmitted failed input remains distinct from an older
+retained admitted pair; actual consumed restored pins must still match authority.
