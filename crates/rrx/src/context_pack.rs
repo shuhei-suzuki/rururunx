@@ -1,4 +1,5 @@
 //! Durable compact coordination artifacts. Native source observations stay in context.
+mod encoding;
 pub mod workflow;
 
 use crate::{
@@ -703,15 +704,7 @@ impl ContextPacks {
             );
         }
         ensure!(
-            cp.recent_bytes
-                == cp
-                    .recent
-                    .iter()
-                    .map(serde_json::to_vec)
-                    .collect::<serde_json::Result<Vec<_>>>()?
-                    .iter()
-                    .map(Vec::len)
-                    .sum::<usize>(),
+            cp.recent_bytes == retained_bytes(&cp.recent)?,
             "checkpoint recent byte accounting mismatch"
         );
         ensure!(
@@ -1034,18 +1027,15 @@ impl ContextPacks {
             retained.len() <= MAX_EVENTS,
             "mandatory retained events exceed limit; resolve explicitly"
         );
-        let mut recent_bytes = recent
-            .iter()
-            .map(|e| serde_json::to_vec(e).map(|b| b.len()))
-            .collect::<serde_json::Result<Vec<_>>>()?
-            .into_iter()
-            .sum::<usize>();
+        let mut recent_bytes = retained_bytes(&recent)?;
         let mut omitted = old.as_ref().map_or(0, |c| c.omitted_transient);
         let mut drop_count = 0usize;
         while (recent_bytes > policy.recent_history_bytes || recent.len() - drop_count > MAX_EVENTS)
             && drop_count < recent.len()
         {
-            recent_bytes -= serde_json::to_vec(&recent[drop_count])?.len();
+            recent_bytes = recent_bytes
+                .checked_sub(encoding::encoded_len(&recent[drop_count])?)
+                .context("history byte count underflow")?;
             drop_count += 1;
             omitted = omitted.checked_add(1).context("history count overflow")?;
         }
@@ -1566,11 +1556,14 @@ fn digest(value: &impl Serialize) -> Result<String> {
     ))
 }
 fn bounded(value: &impl Serialize) -> Result<()> {
-    ensure!(
-        serde_json::to_vec(value)?.len() <= MAX_BYTES,
-        "mandatory pack/checkpoint exceeds 1 MiB; narrow explicitly"
-    );
-    Ok(())
+    encoding::encoded_len(value).map(|_| ())
+}
+fn retained_bytes(events: &[RetainedEvent]) -> Result<usize> {
+    events.iter().try_fold(0usize, |total, event| {
+        total
+            .checked_add(encoding::encoded_len(event)?)
+            .context("history byte count overflow")
+    })
 }
 pub(crate) fn projection(value: &impl Serialize) -> Result<Value> {
     let mut v = serde_json::to_value(value)?;

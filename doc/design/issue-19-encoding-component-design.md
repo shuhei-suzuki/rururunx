@@ -56,7 +56,7 @@ Raw a distinct fixed unsupported-raw-JSON error. Sink/Formatter share one privat
 Cell-based state. All refusals use io::ErrorKind::Other, NEVER Interrupted (which
 write_all retries); first refusal is the only source of truth for later writes.
 With no latched refusal, propagate the original Serialize error unchanged. Valid
-encoded-length measurement is reused for existing small HistoryEvent accounting
+encoded-length measurement is reused for existing small RetainedEvent accounting
 with the SAME1-MiB/depth/raw guard and fixed root-cause errors. MAX_TEXT8192 plus
 fixed metadata makes that byte limit unreachable for current valid events; a future
 event contract expansion must review these limits. History aggregate add/subtract
@@ -105,7 +105,10 @@ Project150–171/Goal234–252/Task284–318 domain projection fields are scalar
 paths, IDs/enums/numbers or fixed nonrecursive collections/structs; none is Value or
 a recursive domain type (domain.rs). Fixed projection nesting is well below120.
 Historically persisted artifact Values remain deliberately subject to the new
-raw/depth refusal even if prior typed re-encoding was shallow; opaque contexts are unaffected. Input Values/custom Serialize code may already own
+raw/depth refusal even if prior typed re-encoding was shallow; opaque contexts are unaffected. Depth/byte correctness applies to well-formed derive/Value serialization. After
+a custom serializer swallows a non-latched error inside an open child, counters
+need not recover its malformed structure; latched refusals always remain final.
+Input Values/custom Serialize code may already own
 memory; this guard bounds emitted validation, not arbitrary user code allocations.
 Store has already materialized its body String/Value BEFORE a loader guard: this
 component prevents further encoding/clone/decode stages at the declared entry,
@@ -115,14 +118,14 @@ not prior Store row materialization or a total reload-memory ceiling.
 
 Source search covers serialized-size measurements and every existing artifact
 bounded call, including the child workflow module. Inspect5 direct allocate-to-
-measure sites; convert4 (one shared bounded check and3 HistoryEvent measurements).
+measure sites; convert4 (one shared bounded check and3 RetainedEvent measurements).
 The11 existing bounded artifact calls inherit the shared check; add the pre-decode
 Value guards above. No native or whole-row budget is silently changed.
 
 | Actual site at component baseline | Disposition |
 | --- | --- |
 | context_pack.rs1568 bounded; callers481/527/631/1107/1352/1402; workflow.rs221/321/361/454/509 | IN: existing1-MiB artifact check; streaming validation |
-| context_pack.rs710/1039/1048 recent-history encoded accounting | IN: streaming exact encoded lengths, checked aggregate; no Vec just to count |
+| context_pack.rs710/1039/1048 recent RetainedEvent encoded accounting | IN: streaming exact encoded lengths, checked aggregate; no Vec just to count |
 | context_pack.rs515/530/614/1393 and context_pack/workflow.rs315/359 loaders | IN: matching artifact Value guard before digest/clone/typed decode |
 | adapter/grok/schema.rs24 schema16-KiB check | OUT: separately owned provider schema contract, not context artifacts |
 | context_pack.rs890 prepare header; context_pack/workflow.rs141/157/285/330/462/472 rendered payload and native-input cap | OUT: actual payload bytes are retained for delivery;1-MiB native frame unchanged |
@@ -154,6 +157,9 @@ carriers and acceptance points, preserving valid identity/reference digest.
 | phase context_artifact | source_versions, outside header/native payload | pack.task Value | context_artifact Ok; source_versions mirrored into ContextVersion.source_hashes and exact SourceSnapshot; depth fixture rewrites source payload header, payload_digest, estimated_bytes/tokens, mandatory/optional bytes and source_payload_offset consistently |
 | direct validate_capture | source_versions mirrored into SourceSnapshot | pack.task Value | validate_capture Ok; same exact phase/HEAD/scope/budget, depth header/payload/accounting consistency as above |
 
+Byte corruption carriers are only just above1 MiB (one boundary-crossing chunk);
+assert each complete stored row remains below8 MiB, including duplicated phase
+source_versions/source_hashes. This prevents a future row cap masking the consumer.
 No mutant may be credited merely for returning a different later error. Excess
 phase bytes in pack itself would hit the separate1-MiB native-frame cap, so do not
 use that masked fixture. Loader acceptance is distinct from live source/projection
@@ -224,7 +230,11 @@ omitting the byte limit and depth limit, with passing controls reaching the inte
 actual-consumer assertions. Controlled fixture Git/provenance is component evidence,
 not production #60 containment or native #16 acceptance.
 
-Commit before checks, run fmt/clippy/test/debug/release as appropriate, review the
+Commit before checks; run cargo fmt --check and clippy/test/debug/release with
+--locked. Any serde_json version/feature change invalidates this component evidence
+until the to_vec differential corpus,119/120+serialize_bytes boundary and maximum-
+depth actual Store round-trip are rerun. Verify cited installed1.0.151 source at
+the source gate, not Cargo.lock alone. Review the
 immutable exact component delta independently, and retain exact evidence. Component
 approval does not authorize deploying the other unreviewed branch changes or report
 whole Issue19 acceptance. Full schema6/native/legacy/co-integration gates remain open.
