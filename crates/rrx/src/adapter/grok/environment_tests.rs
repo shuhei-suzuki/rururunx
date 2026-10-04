@@ -434,6 +434,8 @@ fn mutation_hook(
                     1 => {
                         foreign.id = crate::domain::ProjectId::new();
                         foreign.version = 0;
+                        foreign.repository_identity =
+                            format!("synthetic-new-identity-{}", foreign.id);
                         foreign.root = foreign
                             .root
                             .with_file_name(format!("synthetic-new-{}", foreign.id));
