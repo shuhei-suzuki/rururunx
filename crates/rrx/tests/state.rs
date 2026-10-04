@@ -980,3 +980,103 @@ fn legacy_usage_query_preserves_null_scopes_and_refuses_null_column_wildcards() 
         json!(valid)
     );
 }
+
+#[test]
+fn legacy_usage_query_redacts_malformed_body_decode_chain_without_writes() {
+    let temp = tempfile::tempdir().unwrap();
+    let db = temp.path().join("usage-decode.db");
+    let mut store = Store::open(&db).unwrap();
+    let p = project(&mut store, "usage-decode", temp.path());
+    let g = goal(&mut store, &p);
+    let t = task(&mut store, &p, &g);
+    let mut s = session(&t, p.worktree_root.join("legacy-review"));
+    s.role = SessionRole::Reviewer;
+    store.put_session(&s, 0).unwrap();
+    let valid = Usage {
+        scope: t.scope(),
+        session_id: s.id,
+        agent: s.agent.clone(),
+        phase: "legacy-unqualified".into(),
+        review_round: None,
+        input_tokens: Some(7),
+        cached_input_tokens: None,
+        output_tokens: Some(3),
+        estimated_cost: None,
+        context_pack_version: None,
+        context_pack_size: None,
+        repo_map_size: None,
+        cache_metadata: json!({"legacy":true}),
+        missing_reason: Some("legacy history is unqualified".into()),
+    };
+    store.put_usage(&valid).unwrap();
+    let raw = rusqlite::Connection::open(&db).unwrap();
+    let snapshot = || {
+        json!({
+            "persisted_rows":legacy_usage_rows_snapshot(&raw),
+            "project":store.project(p.id).unwrap(), "goal":store.goal(g.id).unwrap(),
+            "task":store.task(t.id).unwrap(), "session":store.session(s.id).unwrap()
+        })
+    };
+    assert_eq!(
+        serde_json::to_value(store.usage(&t.scope()).unwrap()).unwrap(),
+        json!([valid])
+    );
+    // A synthetic canary, never a credential/native observation. Keep SQLite's
+    // supported schema/JSON constraints enabled; only the body type is corrupt.
+    let canary = "STATIC_USAGE_BODY_CANARY_DO_NOT_PROJECT";
+    for field in ["input_tokens", "estimated_cost", "scope"] {
+        let mut body = serde_json::to_value(&valid).unwrap();
+        body[field] = json!(canary);
+        assert_eq!(
+            raw.execute(
+                "UPDATE usage SET body=?1",
+                [serde_json::to_string(&body).unwrap()]
+            )
+            .unwrap(),
+            1
+        );
+        let before = snapshot();
+        for view in [
+            t.scope(),
+            Scope {
+                project_id: p.id,
+                goal_id: Some(g.id),
+                task_id: None,
+            },
+            Scope {
+                project_id: p.id,
+                goal_id: None,
+                task_id: None,
+            },
+        ] {
+            let error = store.usage(&view).unwrap_err();
+            assert_eq!(snapshot(), before, "decode refusal wrote state: {field}");
+            for rendered in [
+                error.to_string(),
+                format!("{error:#}"),
+                format!("{error:?}"),
+            ] {
+                assert!(
+                    !rendered.contains(canary),
+                    "usage read leaked body via {field}: {rendered}"
+                );
+                assert_eq!(
+                    rendered, "invalid persisted usage snapshot",
+                    "decode refusal has only its static projection"
+                );
+            }
+            assert_eq!(error.chain().count(), 1, "raw decode cause must not escape");
+        }
+    }
+    raw.execute(
+        "UPDATE usage SET body=?1",
+        [serde_json::to_string(&valid).unwrap()],
+    )
+    .unwrap();
+    let before = snapshot();
+    assert_eq!(
+        serde_json::to_value(store.usage(&t.scope()).unwrap()).unwrap(),
+        json!([valid])
+    );
+    assert_eq!(snapshot(), before);
+}
