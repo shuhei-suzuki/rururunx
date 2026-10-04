@@ -237,16 +237,19 @@ consumed-dispatch protocol.
 
 A private `session_input_acks` table holds one indexed row per protected, Task-scoped
 Session: Session ID, Project/Goal/Task IDs, optional admitted input_version/metadata
-SHA256, and private validated-preparation input_version/metadata SHA256. Each pair
+SHA256, optional consumed dispatch UUID for that admitted input, and private
+validated-preparation input_version/metadata SHA256. Each pair
 is both null or both present; present hashes are length64 lowerhex. Initial terminal
 history does not create a row. A validated Starting may register the preparation
-pair without asserting admission; only validated/consumed-historical Running sets
-the admitted pair. This distinction permits verified prewire-failure continuation
+pair without asserting admission. A freshly validated consumed-dispatch publication
+(including Starting before wire) or validated Running writes the admitted pair.
+An admitted pair means Store input admission, never native wire acknowledgement. This distinction permits verified prewire-failure continuation
 without claiming model delivery. It references
 the Session Record and owned Task; its helper derives all IDs from the validated
 Session, never from caller-supplied ack metadata. Scope equality is checked against
 the actual persisted Session and Task. Project/Goal-only Sessions and unprotected
-legacy inputs receive no admission row. Generic Records, audit events and caller
+legacy inputs receive no admission row. Their history contract remains, except
+for the explicitly new universal absorbing-Lost safety rule below. Generic Records, audit events and caller
 JSON cannot create or update it.
 
 Hash a domain-tagged typed tuple: exact Session ID, Scope, agent, provider, role,
@@ -262,13 +265,13 @@ that match an unrelated row.
 The launch guard returns a typed outcome: `Validated`, `ConsumedHistorical`,
 `Acked`, `BoundHistorical`, or `NotAdmission`. A changed/new actually consumed dispatch_intent ALWAYS
 validates the latest frame/head first, even if the same input has an ack. For other
-admissions, actual consumed intent or a matching private row permits historical
+admissions, the privately indexed matching consumed dispatch or a matching private row permits historical
 observation of the same pinned input. Otherwise Starting/Running validates current
 frame/head for an admissible previous state. Lost remains absorbing under the
 generic transition predicate below, including when an old input has an ack.
 Waiting/Lost never writes
-an ack. A new or changed Running input writes its admitted pair only after `Validated` or
-`ConsumedHistorical`; `Acked` requires the NEW exact Session digest to equal the admitted pair and
+an ack. A first consumed dispatch or new Running input writes its admitted pair only after
+`Validated` or privately proved `ConsumedHistorical`; `Acked` requires the NEW exact Session digest to equal the admitted pair and
 preserves the existing row. `BoundHistorical` is
 the sole equal-version digest update: the persisted old digest must match the
 private admission row, every input/scope/actor pin remains exact, and only the
@@ -325,14 +328,17 @@ check any attempt.session_id binding or closure against the private allocation
 in the same transaction. Whenever an allocation exists, closing/replacing the
 active attempt requires that exact allocated Session to be persisted terminal,
 regardless of whether attempt.session_id has been bound; Succeeded additionally
-requires Exited AND current-attempt admitted/consumed input proof. Owner UUID and
+requires authoritative Exited AND the exact current admitted pair with a
+privately committed consumed dispatch UUID for that input. Owner UUID and
 terminal state alone never identify the input. Any session_id bind/verify must
 match that Session's exact input version == attempt.context_version, payload SHA
 and byte count == immutable ContextVersion.data.payload, revision and complete
 source_versions == context authority, plus a matching private validated preparation
 or admitted pair. Pending Starting preparation may bind an actor without asserting
-delivery (Grok start returns before inference); Succeeded requires a matching
-private ADMITTED pair or actual consumed intent for those exact input pins.
+delivery (Grok start returns before inference); Succeeded requires the matching
+private ADMITTED pair AND privately indexed consumed intent for those exact input
+pins, plus authoritative terminal outcome; neither preparation nor plain Running
+admission certifies native delivery.
 A Session restored to its older terminal snapshot after fresh prewire failure may
 close this allocation only as Failed/Interrupted with explicit not-admitted owner
 provenance. It cannot bind as the fresh input actor or satisfy Succeeded; retain
@@ -576,8 +582,8 @@ native adapters call that helper rather than arbitrary recovery insertion order.
 not canonicalized JSON or transport envelopes.
 
 This contract fences Issue19 typed native inputs; generic Store history writes are
-not permission to launch a model. Project/Goal-only history records remain allowed
-for existing callers, but Issue19 prepares no launchable Goal input or standalone
+not permission to launch a model. Project/Goal-only initial history records remain allowed
+for existing callers, with universal Lost observation/settlement restrictions, but Issue19 prepares no launchable Goal input or standalone
 consultation/ApprovalReviewer input. Current native caller ownership validation
 requires an actual Task/worktree. The future Broker decision-Task isolation remains
 a required integration, not a claim that generic history records enforce it today.
@@ -789,9 +795,10 @@ must resolve the exact Session UUID in its own registry and match Scope, agent,
 provider, role, Task worktree and the exact persisted prior terminal snapshot. An
 unregistered historical UUID cannot attach/resume an arbitrary native_ref, even
 when it names another Project's conversation. Known references remain immutable
-on legitimate same-UUID continuation. The current Codex resume path checks exact
-owner metadata/persisted equality and then registry.get(previous.id) before
-Reservation.persist/native setup; a forged terminal Record has no registry entry.
+on legitimate same-UUID continuation. The current Codex AgentAdapter::resume first calls current(), which compares
+its private registry watch snapshot byte-for-value with the persisted Session,
+then launch checks exact owner metadata/persisted equality and registry.get(previous.id)
+before Reservation.persist/native setup; a forged terminal Record has no registry entry.
 Include that actual producer path and causal no-wire caller rejection in the
 acceptance evidence. No global native_ref index is introduced without a verified
 provider-owned admission gap. Generic historical data alone grants no native
@@ -843,8 +850,9 @@ actor pins with the old persisted Session: model, effort and native_ref must rem
 exact. The only exceptions are a validated higher-input owned terminal-to-Starting
 continuation, exact private prewire restoration, pending initial binding with
 latest-frame/head/lifecycle validation, or BoundHistorical initial None-to-Some
-binding proved by the old exact admitted pair. BoundHistorical may observe
-Running, WaitingApproval, WaitingHuman or an ordinary terminal outcome; it cannot
+binding proved by the old exact admitted pair. BoundHistorical requires a nonterminal old state (Starting, Running,
+WaitingApproval or WaitingHuman), and may report an ordinary terminal outcome;
+terminal-to-terminal native binding is forbidden; it cannot
 leave or change actor fields of Lost. All other actor fields remain exact on those
 exceptions. Acked requires digest(new)==admitted_digest, not just the old digest.
 A permitted Waiting initial binding after checkpoint append updates the admitted
@@ -898,3 +906,67 @@ a malicious same-user caller. Such callers can append facts that consume retaine
 capacity or hold future claims. Preserve attribution/audit and surface those holds;
 do not claim private admission makes arbitrary event text trustworthy or silently
 drop it to manufacture availability.
+
+
+### Typed dispatch identity and explicit compatibility impact
+
+Protected consumed intent is a fixed deny-unknown-fields DTO, containing id
+(a nonnil UUID), origin=runtime, consumed=true, input_version, input_bytes,
+input_sha256 and authority_versions (exact three bounded Project/Goal/Task
+versions). It contains no progress/diagnostic keys; those belong outside the intent.
+Its version/bytes/SHA match the pinned complete prepared input, and first consumption
+checks current owner versions through the actual atomic native reservation. The
+private admission row stores consumed_dispatch_id for the admitted input version.
+First consumption validates latest full frame/head and stores that UUID with the
+admitted pair before wire, even while Session is Starting. A second different
+UUID for the same Session/input version rejects unconditionally, even when HEAD
+and checkpoint are unchanged. A strictly higher owned continuation can install
+its new pair/UUID; a new validated Running input without consumption has a null
+consumed UUID. SQL/typed helpers reject same-version consumed UUID substitution
+or clearing. Historical observation requires exact intent identity and matching
+private row, not merely equality of arbitrary recovery Values.
+
+Identical intent is observation only, never permission for another wire delivery.
+Every actual provider delivery generates a fresh private runtime UUID and invokes
+consumption immediately before the wire; provider dispatch is the private causal
+port, not a generic Session writer. The native fixture proves exactly one wire
+frame and rejects the second same-version dispatch, including unchanged-source
+and after-checkpoint cases. Nonidentity metadata does not live inside this DTO,
+so a diagnostic update cannot masquerade as novelty or wedge a historical ack.
+Preserved legacy terminal intents are historical compatibility data, never
+synthesized into new private consumption proof. Test intent substitution, unknown
+keys, malformed UUID, duplicated delivery and private pair/audit rollback.
+
+Exhaustively destructure Session when building actor/admission predicates: id,
+scope, agent, provider, role, worktree are immutable ownership; model/effort and
+native_ref are monotonic-initial pins; state is explicit lifecycle; pid and
+started_at are diagnostic/timing; recovery is explicitly split into the typed
+input/restore/dispatch namespaces and bounded nonauthoritative diagnostics. No
+Session rest-pattern can silently ignore a new field. Its shape golden and
+compile-time field inventory require a new authority field's explicit
+classification and the same projection/schema/incompatible-writer-fence review.
+Unknown authoritative input/intent keys reject rather than becoming diagnostics.
+
+Apply applicable source-map/revision/version/byte limits at private standalone
+preparation and Workflow phase publication before any pack/index/audit commits.
+Actor-specific string/path limits also run on the actual launch request before
+Starting/admission. Unlaunchable oversized authority cannot burn a variant slot
+and repeatedly fail only later. Preparation does not invent model/effort values
+that only a subsequent native request supplies. All provider consumers use the
+shared pure session_restore_sha256(&Session) helper instead of their own
+Sha256(serde_json::to_vec(previous)), including Claude5, Codex6 and Grok7; their
+coordinated acceptance includes a preserve_order-enabled actual caller fixture
+and fractional diagnostics. Its deterministic sorted encoding never asserts
+native outcome proof.
+
+Universal Lost is an intentional new safety change, including unprotected legacy
+Task and Project/Goal-only history. The previous generic Lost-to-Stopped contract
+is NOT retained: neither runtime JSON nor a dead PID proves unknown native death.
+A Lost Goal/Project Session can hold Goal publication and Project removal until
+trusted Issue14 recovery; migration already refuses such ownership in every
+scope. Update actual existing Goal-publication, Git ownership and generic-adapter
+fixtures to assert the retained hold, instead of manually relabelling Lost as
+Stopped to continue. Initial legitimate terminal Consultant history remains
+recordable and may contribute factual history; it was never a persisted Lost
+owner and does not manufacture native completion. These availability changes
+are explicit, not an assertion that old source already enforced the rule.

@@ -166,8 +166,8 @@ an owned terminal Session and installs fresh authority before native dispatch.
 
 Admission facts are privately indexed, scoped to Task/Session/input/actor, bounded
 to one row per Session and atomic with Session plus audit. JSON or generic APIs
-cannot manufacture them. Unprotected legacy and Project/Goal-only Sessions retain
-their existing contract. Standalone Executor frames cannot be adopted by another
+cannot manufacture them. Unprotected legacy and Project/Goal-only initial history remains supported,
+with the explicitly new universal absorbing-Lost safety rule. Standalone Executor frames cannot be adopted by another
 agent, role or worktree. Workflow frames preserve their active attempt authority.
 
 Standalone prepared payloads render stable scoped instruction and Task policy
@@ -266,3 +266,14 @@ metadata is bounded before hashing. Fresh and migrated schemas preserve identica
 authority constraints. Database writer fencing prevents incompatible state writes,
 not arbitrary old-binary external operations; supported upgrades require all old
 runtimes and owned groups stopped/drained before migration.
+
+
+The universal Lost safety change intentionally replaces legacy Lost-to-Stopped
+settlement: Goal publication/Project removal may stay held until trusted #14
+recovery, and actual legacy fixtures must assert that hold. Initial factual
+terminal Consultant history remains supported. Protected input dispatch uses an
+exact typed runtime intent and private consumed UUID per admitted input version;
+a second delivery at that version rejects, while identical intent means observation
+only. Every actual wire delivery goes through its provider's fresh private intent.
+Session fields are exhaustively classified, preparation/publication bounds match
+admission, and every provider uses the shared canonical restore checksum helper.

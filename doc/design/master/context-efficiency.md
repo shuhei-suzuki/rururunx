@@ -521,3 +521,13 @@ its pair atomically; it cannot recover Lost. Admission encoding has explicit
 entry/string/aggregate bounds. Fresh and migrated schema authority constraints
 must match. Writer compatibility SQL fences state writes; old runtime/native/Git
 activity must be stopped and drained for supported upgrades.
+
+
+Universal absorbing Lost intentionally changes legacy history settlement, including
+Goal/Project-only Sessions; Goal publication/removal stays held until trusted #14
+recovery. Initial terminal Consultant facts remain allowed. A typed dispatch UUID
+is consumed once per Session/input version and privately indexed before wire.
+A second delivery at that version rejects; identical intent is observation only.
+Exhaustive Session field classification and common preparation/admission bounds
+prevent silent authority drift. Native callers share canonical restore hashing
+and compare exact private registry snapshots before continuation.
