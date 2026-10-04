@@ -248,6 +248,14 @@ actual OS exit code is preserved. Native aggregate usage is collected per owned 
 Executor writes require one unfinished owned search_replace before any syscall; a failed
 host write with possible effects denies transport success even after native end_turn and
 matching inventory.
+
+The additive object-safe `AgentAdapter::start_structured(request, schema)` accepts
+caller-owned per-turn constraints. Its default returns UnsupportedCapability;
+native Codex and Grok explicitly implement it. Grok delegates the registry's trait
+dispatch to its existing bounded schema check and native launch path, preserving
+local enum, required-property and additional-property validation. Structured event
+collection alone does not establish support for arbitrary caller schemas. Review
+Set policy and approval semantics remain caller responsibilities.
 Shell/PTY, ApprovalReviewer, universal permission interception and restart recovery remain
 unsupported. See [verification](../../verification/issue-7.md) for final review/CI status.
 

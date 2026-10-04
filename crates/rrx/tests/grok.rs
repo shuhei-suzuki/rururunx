@@ -336,7 +336,7 @@ async fn concurrent_native_reviewers_share_exact_lock_and_validate_structured_ve
     let schema = json!({"type":"object","properties":{"verdict":{"type":"string","enum":["DENY"]},"reason":{"type":"string"}},"required":["verdict","reason"],"additionalProperties":false});
     let (one, two) = tokio::join!(
         adapter.start_structured(fixture.request.clone(), schema.clone()),
-        adapter.start_structured(fixture.request.clone(), schema)
+        adapter.start_structured(fixture.request.clone(), schema.clone())
     );
     let one = one.unwrap();
     let two = two.unwrap();
@@ -373,7 +373,28 @@ async fn concurrent_native_reviewers_share_exact_lock_and_validate_structured_ve
         serde_json::to_value(registered.status((&three).into()).await.unwrap().session).unwrap(),
         serde_json::to_value(&c.session).unwrap()
     );
-    for session in [&one, &two, &three, &four] {
+    // The workflow receives dyn AgentAdapter from the registry. Caller constraints
+    // must reach the same native prompt and local validator through that path.
+    let (five, six) = tokio::join!(
+        registered.start_structured(fixture.request.clone(), schema.clone()),
+        registered.start_structured(fixture.request.clone(), schema)
+    );
+    let five = five.unwrap();
+    let six = six.unwrap();
+    assert_ne!(five.id, six.id);
+    let (e, f) = tokio::join!(finished(&*registered, &five), finished(&*registered, &six));
+    for status in [&e, &f] {
+        assert!(
+            registered.transport_succeeded(status),
+            "{:?}",
+            status.failure
+        );
+        let output: Value = serde_json::from_slice(&status.stdout).unwrap();
+        assert_eq!(output["verdict"], "DENY");
+        assert!(output["reason"].is_string());
+        assert_eq!(output.as_object().unwrap().len(), 2);
+    }
+    for session in [&one, &two, &three, &four, &five, &six] {
         registered.release(session.into()).unwrap();
     }
 }
@@ -832,34 +853,48 @@ async fn installed_native_structured_decision_has_exact_response_correlation() {
 
 #[tokio::test]
 async fn native_structured_consumer_rejects_each_schema_violation_and_live_decision_tools() {
-    for mode in [
-        "schema_enum",
-        "schema_required",
-        "schema_extra",
-        "decision_tool",
-    ] {
-        let mut fixture = Fixture::new();
-        fixture.review();
-        fixture.mode(mode);
-        let adapter = fixture.adapter();
-        let schema = json!({"type":"object","properties":{"verdict":{"type":"string","enum":["DENY"]},"reason":{"type":"string"}},"required":["verdict","reason"],"additionalProperties":false});
-        let session = adapter
-            .start_structured(fixture.request.clone(), schema)
-            .await
-            .unwrap();
-        let status = finished(&adapter, &session).await;
-        assert_eq!(
-            status.session.state,
-            if mode == "decision_tool" {
-                SessionState::Lost
+    for registered_path in [false, true] {
+        for mode in [
+            "schema_enum",
+            "schema_required",
+            "schema_extra",
+            "decision_tool",
+        ] {
+            let mut fixture = Fixture::new();
+            fixture.review();
+            fixture.mode(mode);
+            let adapter = Arc::new(fixture.adapter());
+            let mut registry = AgentRegistry::default();
+            registry.register("grok".into(), adapter.clone()).unwrap();
+            let schema = json!({"type":"object","properties":{"verdict":{"type":"string","enum":["DENY"]},"reason":{"type":"string"}},"required":["verdict","reason"],"additionalProperties":false});
+            let session = if registered_path {
+                registry
+                    .get("grok")
+                    .unwrap()
+                    .start_structured(fixture.request.clone(), schema)
+                    .await
+                    .unwrap()
             } else {
-                SessionState::Failed
-            },
-            "{mode}: {:?}",
-            status.failure
-        );
-        assert!(!adapter.transport_succeeded(&status));
-        assert!(status.failure.is_some());
+                adapter
+                    .start_structured(fixture.request.clone(), schema)
+                    .await
+                    .unwrap()
+            };
+            let status = finished(&*adapter, &session).await;
+            assert_eq!(
+                status.session.state,
+                if mode == "decision_tool" {
+                    SessionState::Lost
+                } else {
+                    SessionState::Failed
+                },
+                "{mode}, registered={registered_path}: {:?}",
+                status.failure
+            );
+            assert!(!adapter.transport_succeeded(&status));
+            assert!(status.failure.is_some());
+            adapter.release((&session).into()).unwrap();
+        }
     }
 }
 

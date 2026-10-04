@@ -374,6 +374,13 @@ impl AgentAdapter for GrokAdapter {
             self.launch(request, schema).await
         })
     }
+    fn start_structured(
+        &self,
+        request: LaunchRequest,
+        schema: Value,
+    ) -> AdapterFuture<'_, Session> {
+        GrokAdapter::start_structured(self, request, schema)
+    }
     fn status(&self, reference: SessionRef) -> AdapterFuture<'_, SessionStatus> {
         Box::pin(async move { Ok(self.entry(&reference)?.status.borrow().clone()) })
     }

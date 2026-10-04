@@ -5,6 +5,17 @@ final immutable independent delta source review and final
 exact-head CI remain required. Authentication/provider compatibility guards are
 implemented and tested; native Interactive/Attach remain explicitly unavailable.
 
+## Grok structured trait integration (verification pending)
+
+The merged Issue 7 provider already accepts caller schemas through its inherent
+API. Issue 6's additive object-safe structured-start API now delegates Grok's
+registry dispatch to that same implementation. Causal fixtures retain the inherent
+and standard registry launch paths, add concurrent constrained registry launches,
+and exercise enum, required-property and additional-property rejection through
+both inherent and trait dispatch. Live decision tools remain rejected. Focused
+controls, compiled delegation mutants and immutable source review are pending;
+this integration does not constitute Issue 9 Review Set or Broker acceptance.
+
 ## Installed native execution
 
 Installed Codex CLI 0.160.0 used existing authentication/configuration/hooks/trust
