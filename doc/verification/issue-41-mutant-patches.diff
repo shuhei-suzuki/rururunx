@@ -347,3 +347,43 @@ index 3a75edf..b6b3390 100644
                  && snapshot.workflow.generation == claim.generation
                  && snapshot.workflow.active == Some(claim.index)
                  && snapshot.workflow.context_version == claim.context_version
+
+Mutation M06-r2; operator M06; sha256 c7123c4b4207a777b1a6ae8183ec3efc0da9e794fd8862502ecd74a65a8efe31
+diff --git a/crates/rrx/src/workflow.rs b/crates/rrx/src/workflow.rs
+index 294c462..81130ff 100644
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -1156,10 +1156,6 @@ impl WorkflowEngine {
+         };
+         snapshot.workflow.history[index].dispatch_started = true;
+         *eligible = false;
+-        if let Err(error) = self.persist(&mut snapshot, None) {
+-            *eligible = own_task_marker_rollback(&error, snapshot.task.id);
+-            return Err(error);
+-        }
+         let request = LaunchRequest {
+             project: snapshot.project.clone(),
+             scope: snapshot.task.scope(),
+
+Mutation M20; operator M20; sha256 ccf548fecdbd4adc239a87b55c614a1842b4aae1cd0f872650eedf444a4d31b7
+diff --git a/crates/rrx/src/workflow.rs b/crates/rrx/src/workflow.rs
+index 294c462..33fe28b 100644
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -991,14 +991,8 @@ impl WorkflowEngine {
+                 && snapshot.workflow.generation == claim.generation
+                 && snapshot.workflow.active == Some(claim.index)
+                 && snapshot.workflow.context_version == claim.context_version
+-                && claim
+-                    .worktree
+-                    .as_ref()
+-                    .is_none_or(|path| snapshot.task.worktree.as_ref() == Some(path))
+-                && claim
+-                    .branch
+-                    .as_ref()
+-                    .is_none_or(|branch| snapshot.task.branch.as_ref() == Some(branch)),
++                && snapshot.task.worktree == claim.worktree
++                && snapshot.task.branch == claim.branch,
+             "preparation claim changed"
+         );
+         let attempt = snapshot

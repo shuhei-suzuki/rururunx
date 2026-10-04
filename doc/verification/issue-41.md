@@ -169,3 +169,31 @@ terminal recovery, where marker publication rejects after eligibility is disable
 The fixture now checks the release diagnostic only before refresh and verifies
 unchanged recovered state plus absence of the false retained-claim diagnostic at
 both timings. No production boundary is weakened.
+
+## Low-fix controls and mutation attribution
+
+Committed `7a8c0e5` passed all67 Workflow tests and the unchanged default-concurrency
+workspace: 189 Rust tests plus2 doctests;2 installed-native Grok tests remain
+ignored. All-target Clippy with warnings denied, fmt check and workspace debug/release
+builds passed. Local default concurrency
+is now explicit, rather than relabeling the older constrained serial run. The
+exact historical macOS CI failure remains failed; fresh exact CI is still required.
+
+M06-r2 recompiled the marker-order operator against the strengthened actual
+adapter-start await. It failed the durable `dispatch_started` assertion before
+any human diagnostic, establishing causal marker-order credit independently of
+its first round's wording failure. M20 restores strict original-None binding
+equality and fails actual fresh release (`active.is_none`) after a concurrent
+pre-refresh assignment. The post-refresh control retains the definitive-publication
+conflict. Both compiled; restored committed source passed18 controls and its
+clean detached mutation worktree was normally removed. Across21 compiled runs
+there are19 distinct operators:18 consumer kills from16 distinct operators,1
+defense-in-depth unit kill and2 masked survivors. Repeated M04/M06 runs are not
+new operators. The public patch artifact and SHA256 ledger preserve each exact
+mutation; no compile error or overlapping lone fence earns kill credit.
+
+Owner/observer Source1 Low fixes are verified against source and actual consumers:
+original unbound binding release, truthful terminal-recovery diagnostics, current
+function-based impact audit and precise gate/mutation provenance. Independent
+immutable scoped Source2 must confirm them before readiness; #14/#43/#46 limitations
+remain explicit and no native Workflow completion acceptance is claimed.

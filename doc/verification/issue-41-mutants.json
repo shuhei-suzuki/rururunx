@@ -3,10 +3,11 @@
   "scope": "local committed isolated synthetic consumers; not installed-native acceptance",
   "production_head": "1418b36",
   "first_restored_head": "46dd6f02cfac390b5fc1c8a9dc79bcebda5e5f66",
-  "final_restored_head": "5835702becb8157dab4ea0b608eb001bab5d0537",
+  "final_restored_head": "7a8c0e50db53a39fda1997a893c1efd01a6702f0",
   "restored_preparation_controls": [
     16,
-    17
+    17,
+    18
   ],
   "mutations": [
     {
@@ -274,9 +275,35 @@
       "passed": false,
       "operator_id": "M04",
       "patch_sha256": "edcfe7791d7407724470b4c596692eb18ea9543379c856409b469876a3b66401"
+    },
+    {
+      "id": "M06-r2",
+      "operator_id": "M06",
+      "head": "e72f0e6199b493370a8e189ac1e3a64b2cee0bf7",
+      "consumer": "preparation_dispatched_observation_and_direct_store_terminal_fence",
+      "credit": "consumer",
+      "exit": 101,
+      "seconds": 11.363,
+      "compiled": true,
+      "assertion_killed": true,
+      "patch_sha256": "c7123c4b4207a777b1a6ae8183ec3efc0da9e794fd8862502ecd74a65a8efe31",
+      "passed": false
+    },
+    {
+      "id": "M20",
+      "operator_id": "M20",
+      "head": "f7f455f9ab9818f6d08083f9de9a48331d553988",
+      "consumer": "preparation_unbound_to_bound_before_refresh_releases_for_new_reservation",
+      "credit": "consumer",
+      "exit": 101,
+      "seconds": 3.82,
+      "compiled": true,
+      "assertion_killed": true,
+      "patch_sha256": "ccf548fecdbd4adc239a87b55c614a1842b4aae1cd0f872650eedf444a4d31b7",
+      "passed": false
     }
   ],
-  "compiled_runs": 19,
-  "distinct_operators": 18,
+  "compiled_runs": 21,
+  "distinct_operators": 19,
   "patch_artifact": "issue-41-mutant-patches.diff"
 }
