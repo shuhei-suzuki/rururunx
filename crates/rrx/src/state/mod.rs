@@ -894,7 +894,6 @@ impl Store {
     }
 
     pub fn usage(&self, scope: &Scope) -> Result<Vec<Usage>> {
-        validate_scope(scope)?;
         let mut statement = self.connection.prepare("SELECT project_id,goal_id,task_id,session_id,body FROM usage WHERE project_id=?1 AND (?2 IS NULL OR goal_id=?2) AND (?3 IS NULL OR task_id=?3) ORDER BY sequence")?;
         let rows = statement.query_map(
             params![
@@ -919,7 +918,7 @@ impl Store {
                 usage.scope.project_id.to_string() == project
                     && str_id(usage.scope.goal_id) == goal
                     && str_id(usage.scope.task_id) == task
-                    && true,
+                    && usage.session_id.to_string() == session,
                 "usage row/body identity mismatch"
             );
             Ok(usage)
