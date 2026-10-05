@@ -396,3 +396,16 @@ before discard or membership and can reject a pair that would otherwise be
 excluded. Root accepted this finite prose alignment with the reviewed constructor
 refusal. It is an explicit conservative compatibility limitation; no ambient-value
 restoration, additional control or broader native-default compatibility is claimed.
+
+On clean `1718f7c`, full DEFAULT debug FAILED283pass/4Grokfail/24ignored in66.57s;
+distinct Release FAILED280pass/7Grokfail/24ignored in68.51s. All119 Codex tests
+passed/2ignored inside each failed library run. Stop/baseline assertions and
+checkpoint/resume watchdogs failed in Debug; Release additionally observed Git
+ownership preflight Timeout before native dispatch and stale-prefix assertions.
+Exact current facts and log hashes are in the Source2 current-gates record. Cause
+remains UNKNOWN. The two concurrent agent4 read-only native Source4 CLIs are
+recorded as overlap only. No rerun, serialization, deadline or uncertainty change.
+Current fmt/all-target Clippy-denied-warnings and both production builds passed;
+external ordinary EMPTY outer1pass/1ignored plus actual scoped child1pass passed.
+Later full workspace integration/doctest targets did not run after library failure.
+No full workspace success, all-job cleanup, native backend or MVP credit is added.
