@@ -216,6 +216,133 @@ async fn native_terminal(
 }
 
 #[tokio::test]
+async fn workflow_live_subscription_wait_retains_the_same_attempt_until_cancelled() {
+    for provider in ["claude", "codex"] {
+        let (dir, owner, fixture_task) = results::tests::fixture().await;
+        let mut task = Task::new(
+            fixture_task.project_id,
+            fixture_task.goal_id,
+            "live quota workflow".into(),
+            "native-alias".into(),
+        );
+        task.workflow = WorkflowClass::Quick;
+        owner.store.lock().unwrap().put_task(&mut task).unwrap();
+        let seed = results::text(
+            &results::git(&dir.path().join("repo"), ["rev-parse", "HEAD"])
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        let program = execution::native::tests::program(dir.path(), provider);
+        let text = std::fs::read_to_string(&program).unwrap();
+        std::fs::write(
+            &program,
+            text.replacen(
+                "import json",
+                "WORKFLOW_SCENARIO = 'quota-retry-held'\nimport json",
+                1,
+            ),
+        )
+        .unwrap();
+        let config = configuration(provider, &program);
+        let registry =
+            Arc::new(AgentRegistry::from_managed_config(&config, owner.clone()).unwrap());
+        let engine = WorkflowEngine::new(
+            owner.store(),
+            registry.clone(),
+            config,
+            Arc::new(Sources {
+                owner: owner.clone(),
+                seed,
+                result: results::ResultStore::new(owner.clone()),
+            }),
+            Arc::new(Gates {
+                owner: owner.clone(),
+                control: "publish",
+            }),
+        )
+        .unwrap();
+        engine.initialize(task.id, None).await.unwrap();
+        engine.step(task.id, BTreeMap::new()).await.unwrap();
+        assert!(matches!(
+            engine.step(task.id, BTreeMap::new()).await.unwrap(),
+            StepResult::Started { .. }
+        ));
+        let workflow = engine.snapshot(task.id).unwrap();
+        let index = workflow.active.unwrap();
+        let identity = workflow.history[index].execution.clone().unwrap();
+        let adapter = registry.get("native-alias").unwrap();
+        tokio::time::timeout(Duration::from_secs(10), async {
+            loop {
+                let status = adapter
+                    .status(SessionRef {
+                        id: identity.session,
+                        scope: identity.scope.clone(),
+                        execution: Some(identity.clone()),
+                    })
+                    .await
+                    .unwrap();
+                if status.execution.as_ref().unwrap().wait_reason
+                    == Some(execution::WaitReason::Quota)
+                {
+                    assert!(!status.terminal());
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .unwrap();
+        for _ in 0..2 {
+            assert!(matches!(
+                engine.step(task.id, BTreeMap::new()).await.unwrap(),
+                StepResult::Waiting { .. }
+            ));
+            let current = engine.snapshot(task.id).unwrap();
+            assert_eq!(current.active, Some(index));
+            assert_eq!(current.history.len(), workflow.history.len());
+            assert_eq!(current.history[index].execution.as_ref(), Some(&identity));
+            let store = owner.store.lock().unwrap();
+            assert_eq!(
+                store.task(task.id).unwrap().unwrap().state,
+                TaskState::WaitingQuota
+            );
+            assert_eq!(store.execution_unit(identity.unit).unwrap().work, None);
+            assert_eq!(
+                store
+                    .managed_effects(identity.unit)
+                    .unwrap()
+                    .iter()
+                    .filter(|e| e.kind == "native_input")
+                    .count(),
+                1
+            );
+        }
+        engine
+            .cancel(task.id, "cancel live quota waiter".into())
+            .unwrap();
+        native_terminal(&registry, &identity).await;
+        let store = owner.store.lock().unwrap();
+        let unit = store.execution_unit(identity.unit).unwrap();
+        assert_eq!(unit.disposition, execution::Disposition::Cancelled);
+        assert!(!unit.native_effects_open && !unit.result_finalization_open);
+        assert_eq!(
+            store.task(task.id).unwrap().unwrap().state,
+            TaskState::Cancelled
+        );
+        assert_eq!(
+            store
+                .managed_effects(identity.unit)
+                .unwrap()
+                .iter()
+                .filter(|e| e.kind == "native_input")
+                .count(),
+            1
+        );
+    }
+}
+
+#[tokio::test]
 async fn workflow_native_capacity_terminal_waits_with_fresh_resources_instead_of_failing() {
     for (provider, scenario, waiting) in [
         ("codex", "quota-terminal", TaskState::WaitingQuota),

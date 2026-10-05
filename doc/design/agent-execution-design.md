@@ -438,7 +438,11 @@ and wait reason to its watch as its durable status. Retain the current native
 input and quota lease; this notification neither sends another prompt nor changes
 a sibling's execution state. An allowed event for another bucket cannot erase
 the wait. Unknown windows and foreign Session notifications do not mint confirmed
-subscription waiting. A reliable successful result still closes the live wait
+subscription waiting. Telemetry-only waiting does not grant a recovery-probe
+lease: an unsolicited allowed event cannot reopen the same exhausted window.
+Codex's owned `willRetry=true` subscription error separately establishes a native
+retry; a scheduler-admitted recovery probe retains its existing rights. A reliable
+successful result still closes the live wait
 with successful work, even if pool telemetry remains exhausted. Native retry
 behavior and real quota recovery remain Phase3 qualification, not fixture proof.
 

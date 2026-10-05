@@ -1100,11 +1100,11 @@ async fn claude_live_quota_wait_is_scoped_preserves_input_and_keeps_sibling_runn
         );
         assert!(current.native_effects_open && current.result_finalization_open);
         assert_eq!(current.work, None);
-        assert_eq!(
-            store
+        assert!(
+            !store
                 .execution_is_quota_probe(unit.id, "claude", "unknown")
                 .unwrap(),
-            waits
+            "{payload}: telemetry does not mint recovery probe authority"
         );
         let sibling_before = store.execution_unit(other.id).unwrap();
         assert_eq!(sibling_before.state, UnitState::Running);

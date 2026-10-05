@@ -385,6 +385,20 @@ impl Store {
         &mut self,
         authority: &ExecutionAuthority,
     ) -> Result<ExecutionUnit> {
+        self.mark_execution_quota_wait_inner(authority, true)
+    }
+    /// Plan-window telemetry retains the live turn without proving a recovery retry.
+    pub(crate) fn mark_execution_quota_wait(
+        &mut self,
+        authority: &ExecutionAuthority,
+    ) -> Result<ExecutionUnit> {
+        self.mark_execution_quota_wait_inner(authority, false)
+    }
+    fn mark_execution_quota_wait_inner(
+        &mut self,
+        authority: &ExecutionAuthority,
+        native_retry: bool,
+    ) -> Result<ExecutionUnit> {
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -392,6 +406,10 @@ impl Store {
         ensure!(
             matches!(unit.state, UnitState::Running | UnitState::WaitingQuota),
             "quota retry requires the same live native turn"
+        );
+        ensure!(
+            !native_retry || unit.provider == "codex",
+            "native recovery retry is not established for this provider"
         );
         let account: String = tx.query_row(
             "SELECT account_key FROM quota_leases WHERE unit_id=?1 AND active=1 AND provider=?2",
@@ -401,11 +419,17 @@ impl Store {
         unit.state = UnitState::WaitingQuota;
         unit.wait_reason = Some(WaitReason::Quota);
         write_unit(&tx, &mut unit)?;
-        tx.execute("UPDATE quota_pools SET probe_unit=?1 WHERE provider=?2 AND account_key=?3 AND probe_unit IS NULL",params![unit.id.to_string(),unit.provider,account])?;
+        if native_retry {
+            tx.execute("UPDATE quota_pools SET probe_unit=?1 WHERE provider=?2 AND account_key=?3 AND probe_unit IS NULL",params![unit.id.to_string(),unit.provider,account])?;
+        }
         append_event(
             &tx,
             &unit.scope,
-            "execution.native_quota_retry",
+            if native_retry {
+                "execution.native_quota_retry"
+            } else {
+                "execution.native_quota_wait"
+            },
             json!({"unit":unit.id,"session":unit.session_id}),
         )?;
         tx.commit()?;

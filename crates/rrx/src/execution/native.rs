@@ -1237,7 +1237,7 @@ impl Core {
                             // A rejected stale window may have been ignored by the pool.
                             // Only accepted exhaustion for this Session's bucket waits.
                             if store.quota_observations("claude","unknown")?.iter().any(|o|o.bucket==observation.bucket && o.status==QuotaStatus::Exhausted) {
-                                self.unit=store.mark_execution_quota_retry(&authority)?;
+                                self.unit=store.mark_execution_quota_wait(&authority)?;
                                 self.update.send_modify(|s|{s.authority=self.unit.authority();s.wait_reason=self.unit.wait_reason;s.diagnostic=Some("subscription quota exhausted; native retry state retained");});
                             }
                         }
