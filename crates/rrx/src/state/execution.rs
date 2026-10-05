@@ -27,11 +27,14 @@ const MUTABLE_TABLES: &[&str] = &[
     "quota_windows",
     "quota_leases",
     "quota_waiters",
+    "native_invocations",
+    "native_results",
 ];
 
 pub(super) fn install_schema(tx: &Transaction<'_>) -> Result<()> {
     migration::validate_legacy(tx)?;
     tx.execute_batch(include_str!("execution.sql"))?;
+    native_results::install_schema(tx)?;
     tx.execute(
         "INSERT INTO runtime_epoch(singleton,instance_id,epoch) VALUES(1,?1,0)",
         [Uuid::new_v4().to_string()],
@@ -1250,7 +1253,10 @@ mod effects;
 mod quotas;
 pub(crate) use quotas::QuotaAdmission;
 mod migration;
+pub(super) mod native_results;
 mod sessions;
 pub(super) use sessions::logically_retired_session;
+#[cfg(test)]
+mod native_results_tests;
 #[cfg(test)]
 mod tests;

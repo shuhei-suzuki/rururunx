@@ -11,6 +11,7 @@ pub(crate) mod docker;
 pub(crate) mod git_io;
 pub mod ipc;
 pub mod native;
+pub mod native_result;
 pub mod process;
 pub mod quota;
 pub mod resources;
