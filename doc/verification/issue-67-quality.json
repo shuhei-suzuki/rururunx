@@ -1,0 +1,191 @@
+{
+  "head": "87ec5eea34f93a49907b5dd941eb49121bd5e679",
+  "default_parallelism": true,
+  "no_deadline_change": true,
+  "production_source_unchanged_except_test_only_module": true,
+  "commands": [
+    {
+      "name": "debug",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--workspace"
+      ],
+      "exit_code": 0,
+      "seconds": 110.94197766704019,
+      "log_sha256": "ad5eb7e31dd0c7ca5c03fb276da96e7886e751f51a4bf3e70cfc587da4a1c196",
+      "test_result_rows": [
+        {
+          "result": "ok",
+          "passed": 271,
+          "failed": 0,
+          "ignored": 23
+        },
+        {
+          "result": "ok",
+          "passed": 0,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "result": "ok",
+          "passed": 19,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "result": "ok",
+          "passed": 5,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "result": "ok",
+          "passed": 1,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "result": "ok",
+          "passed": 1,
+          "failed": 0,
+          "ignored": 1
+        },
+        {
+          "result": "ok",
+          "passed": 16,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "result": "ok",
+          "passed": 18,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "result": "ok",
+          "passed": 15,
+          "failed": 0,
+          "ignored": 2
+        },
+        {
+          "result": "ok",
+          "passed": 16,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "result": "ok",
+          "passed": 17,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "result": "ok",
+          "passed": 1,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "result": "ok",
+          "passed": 1,
+          "failed": 0,
+          "ignored": 0
+        }
+      ]
+    },
+    {
+      "name": "release-environment",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--release",
+        "--lib",
+        "adapter::grok::environment_tests::"
+      ],
+      "exit_code": 0,
+      "seconds": 35.71844758302905,
+      "log_sha256": "ec119c658e1dc0e7333cdbfe1351428017a9e459dfdcdfef89931853d606b1a6",
+      "test_result_rows": [
+        {
+          "result": "ok",
+          "passed": 15,
+          "failed": 0,
+          "ignored": 14
+        }
+      ]
+    },
+    {
+      "name": "fmt",
+      "command": [
+        "cargo",
+        "fmt",
+        "--all",
+        "--",
+        "--check"
+      ],
+      "exit_code": 0,
+      "seconds": 0.2851007090648636,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_result_rows": []
+    },
+    {
+      "name": "clippy",
+      "command": [
+        "cargo",
+        "clippy",
+        "--locked",
+        "--workspace",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exit_code": 0,
+      "seconds": 4.621323750005104,
+      "log_sha256": "dd8a13d16de59cb994569ed31f18fd1fe450cbcb8c9c3d1e01456f391d33efe2",
+      "test_result_rows": []
+    },
+    {
+      "name": "debug-build",
+      "command": [
+        "cargo",
+        "build",
+        "--locked",
+        "--workspace",
+        "--all-targets"
+      ],
+      "exit_code": 0,
+      "seconds": 0.20399408403318375,
+      "log_sha256": "2b34696728dc82b03cbf6311d7e3a6a41658bbde097834c3010a78bc82842c1a",
+      "test_result_rows": []
+    },
+    {
+      "name": "release-build",
+      "command": [
+        "cargo",
+        "build",
+        "--locked",
+        "--release",
+        "--workspace",
+        "--all-targets"
+      ],
+      "exit_code": 0,
+      "seconds": 19.767433999921195,
+      "log_sha256": "2fec04a958be7044b8a2c5ab6f95005c17608664fb9d531845b0570698f80328",
+      "test_result_rows": []
+    }
+  ],
+  "counts": {
+    "debug_top_level_rust": 378,
+    "debug_doctests": 2,
+    "debug_ignored": 26,
+    "nested_ordinary_witness_child_separate": 1,
+    "release_environment_top_level": 15,
+    "release_environment_ignored_direct_child_entries": 14
+  },
+  "limits": "No full workspace Release test qualification or established cause/fix of historical failures. No native backend or all-nested-job cleanup qualification."
+}
