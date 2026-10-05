@@ -399,12 +399,105 @@ prior checkpoint; these action corrections do not inherit a later Linux/native
 or release acceptance. Formatting and current-action workspace/all-target Clippy with warnings as
 errors passed.
 
+## Docker component checkpoint
+
+The [round12 reports](agent-execution-phase2-preliminary12-reviews.json) each
+approved the typed cookie-action correction at `6350c9f`, without C/H/M/L
+findings. These were static component reviews, not provider/OS acceptance.
+
+Docker qualification and historical cleanup were added at `39f077f`. A first
+account-free protocol run passed one control and failed six because the host's
+ambient `DOCKER_HOST` refused qualification before the fixture could run. The
+private fixture-only program now ignores that ambient endpoint prerequisite;
+production still refuses it. At `52b43e6`, seven protocol controls, a full macOS
+workspace run and warnings-denied Clippy passed. An independent temporary-worktree
+mutation removed initial namespace-label verification; the actual foreign-action
+oracle failed, and the restored source passed. No actual Docker daemon was used.
+
+The [round13 reports](agent-execution-phase2-preliminary13-reviews.json) requested
+changes. Both identified Runtime/shim Docker configuration divergence and mutation
+acknowledgement timeout losing exact action identity. One additionally identified
+changing inventories exceeding the composed persistence bound. All three defects
+were verified against their consumers. The routing issue was High in one report
+and Medium in the other; both original severities are retained. Corrections at
+`a3ee6fc` bind a nonsecret configuration-directory digest in the real shim request,
+Runtime qualification, grant recheck and historical target; register exact
+container/engine action intents before spawn; create typed Unknown actions before
+await; and reserve 128 Docker plus 896 cookie remaining identities. Every partial
+return applies the report cap and marks limited coverage on truncation. Configuration
+and authentication files are not read/copied/substituted.
+
+Eleven Docker controls passed on that source, including kill and remove each
+performing a synthetic mutation and blocking before acknowledgement. Their exact
+Unknown target/action survives both durable intent and persisted cleanup receipt.
+A changing-inventory control observes 32 initial and 32 different final containers,
+32 networks and 32 volumes through actual registered helper processes. It bypasses
+the aggregate five-second timeout to exercise the legal worst-case inventory on a
+host that starts 128 Python helpers; this is a bound/composition control, not a
+latency or service-budget qualification. The actual outer composition and Store
+persist those identities with a controlled maximum process receipt. The process
+IDs in that composition control are synthetic; no 896-process scan is claimed.
+
+A separate actual Cargo-built rrx/IPC test uses two synthetic Docker configuration
+roots with the same context name and distinct synthetic engines. A differing config
+or shim-only DOCKER_HOST refuses before probes/creation; the matching config reaches
+the recorded engine and creation identity. Its child environment is isolated without
+changing this process's global environment. This is installed-entry wiring, not
+actual Docker or authenticated Agent compatibility. At `cd7b620`, the producer loop,
+coverage and composition control share the actual cookie limit; at `e067578`, the
+control calls Store persistence before the length assertion.
+
+The [round14](agent-execution-phase2-preliminary14-reviews.json) and
+[round15 reports](agent-execution-phase2-preliminary15-reviews.json) each have two
+independent component approvals with zero C/H/M/L. Round14 covers `a3ee6fc`;
+Round15 covers the final small budget/control delta at `e067578`. The initial
+review findings are closed statically; final coordinated Phase2 approval is pending.
+These reviewers executed no tests, native Agents, Docker, authentication or OS actions.
+
+The full macOS workspace run at `cd7b620` passed 407 rrx library tests, four tracker
+unit tests, 113 primary rrx integration tests, one tracker discovery control and
+two doctests: 527 primary passes, zero failures and 29 primary ignored cases.
+Nested reexecuted witnesses are not counted again. Workspace/all-target Clippy with
+warnings as errors passed on that same source. The later `e067578` only moves a
+test assertion after persistence; its targeted actual persistence control passed.
+The prior full-run tree is not relabelled as a later tree or Linux/native qualification.
+
+Four distinct compiled causal mutations are retained in the
+[checkpoint ledger](agent-execution-phase2-docker-checkpoint.json), with exact
+mutant/restored commits, patches, local log hashes and failure oracles. Removing
+the Runtime/caller configuration check let the actual built shim accept a different
+synthetic engine; the entry refusal oracle failed. Removing the exact mutation
+intent target failed the timeout receipt's required target lookup. Increasing the
+real cookie producer cap to 928 combined with the changing 128 Docker identities
+caused the actual Store persistence call to reject the 1056-entry observation.
+Each corresponding restored source and selected test passed. The earlier label
+mutation failed its actual foreign-action oracle and also passed after restoration.
+These are account-free component mutation controls, not real Docker or native tests.
+
+`cargo install --path crates/rrx --locked --offline` at `e067578` succeeded into an
+owned temporary install root and produced one optimized rrx binary. Version, help
+and config-check passed without starting native Agents. This is local-source macOS
+installation evidence, not crates.io distribution or Linux installation. The
+installed help still exposes Project/configuration commands; operational run/Goal
+commands remain pending. No PATH, license, README Status, user Docker configuration
+or global installation was changed.
+
+The [staged master profile](../design/master/agent-execution.md#6-staged-docker-command-profile)
+records finite Docker versions and refusal/coverage limits. Actual Docker 28
+templates/CLI behavior, remote contexts, Compose, image-declared anonymous volumes,
+network/volume creation/attachments and complete delegation coverage are unqualified
+or unsupported. Observed unexpected networks/volumes are reported, not deleted.
+The overall cleanup remains unknown or leftovers; ports/worktrees stay quarantined,
+and an empty Docker list is not a complete collection or release certificate.
+
+## Remaining Phase2 and acceptance work
+
 - Full current-source/retained-graph qualification and production source/evidence
   ports; Runtime orchestration and operational CLI.
 - Required native/Git settings and hooks, dependency qualification and remaining
   scoped preparation/retained-inspection helpers; full finite tool profiles and
   installed-binary tool mediation tests.
-- Optional Linux scope, Docker label reconciliation, filesystem/port release
+- Optional Linux scope, actual Docker qualification, filesystem/port release
   policy and complete crash/restart/legacy reconciliation.
 - Full fixture/migration/fairness/permission/cancellation coverage, installation,
   both-OS CI and final independent coordinated STRICT source approvals.

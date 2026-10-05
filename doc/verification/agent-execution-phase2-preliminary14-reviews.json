@@ -1,0 +1,252 @@
+{
+  "source_commit": "a3ee6fc68f9881f31c50c0a5ac05c7f72503e082",
+  "review_kind": "Independent preliminary component static reviews; not Phase2/native/MVP acceptance",
+  "reports": [
+    {
+      "review": "Independent STRICT preliminary component source re-review, round 14",
+      "source_commit": "a3ee6fc68f9881f31c50c0a5ac05c7f72503e082",
+      "baseline_commit": "39f077f6eea2531f58357348af81de488f462fec",
+      "approved_contract_commit": "9a11d03f1b1676c2c3c8a24b6b3fd328759f7db5",
+      "verdict": "approve",
+      "approval_scope": "Fixed-source static preliminary review of Docker correction/consumer composition; not final Phase2, native, Docker or MVP acceptance.",
+      "counts": {
+        "Critical": 0,
+        "High": 0,
+        "Medium": 0,
+        "Low": 0
+      },
+      "findings": [],
+      "prior_own_findings": [
+        {
+          "id": "M-M1",
+          "round": 13,
+          "disposition": "Closed in fixed source for the actual managed binary/shim path; no OS/CLI conformance executed",
+          "evidence": [
+            "docker.rs:16-55 derives an absolute canonical configuration-directory reference digest plus DOCKER_HOST presence, without reading configuration/auth contents. Relative and unusable references refuse.",
+            "ipc.rs tool_entry derives DockerRouting from the actual shim environment; serve requires it and qualify_native compares it with the Runtime routing before probes. The successful DockerTarget receipt retains the config digest.",
+            "The Grant carries the qualified caller routing. execute recomputes the actual shim routing before command construction/spawn and refuses divergence/host overrides rather than relying on a context name.",
+            "Historical cleanup compares the current Runtime routing with the recorded config digest before daemon probes. Engine/context checks remain separate, and changed configuration references do not silently rebind prior target authority.",
+            "The new managed_docker.rs actual built-binary/IPC control uses two owned synthetic config roots, same-named default contexts and different synthetic engines; it asserts config/host mismatch refusal before probes/creation plus a matching real shim path/ledger identity. Read, not run."
+          ]
+        },
+        {
+          "id": "M-M2",
+          "round": 13,
+          "disposition": "Closed in fixed source; cancellation/native helper execution not certified",
+          "evidence": [
+            "docker.rs:428-447 initializes the exact container kill CleanupAction as Unknown/NotAttempted before the mutation await; lines474-492 do the same for remove.",
+            "Both mutation helper intents now include action, exact full container ID and qualified engine digest in expected_target before spawn, through the existing claim-validating durable helper registration.",
+            "On enclosing timeout, the mutable partial report retains the initialized action; HelperGuard records the uncertain helper. Confirmation is not invented from missing acknowledgement.",
+            "The added delay-ack fixture mutates synthetic state then waits before acknowledgement for kill/remove. Its test inspects exact Unknown durable target/action and compares the complete persisted receipt. Read, not run."
+          ]
+        },
+        {
+          "id": "M-M3",
+          "round": 13,
+          "disposition": "Closed in fixed source; execution of persistence controls not inherited",
+          "evidence": [
+            "docker::MAX_REMAINING is128, covering first32 plus distinct final32 containers and32 networks plus32 volumes.",
+            "cleanup_for normalizes the report after success, error and timeout; normalize_report deduplicates and caps retained IDs at128, marking overflow/limited coverage rather than passing oversized partial data.",
+            "The actual process consumer selects at most1024-MAX_REMAINING=896 matches, including skipped/unconfirmed entries. append_docker therefore combines at most896+128=1024 remaining IDs.",
+            "At most32 selected containers yield64 Docker actions; combined with896 process actions the actual action count is at most960, below the1024 writer guard. Deduplicated finite error categories also fit the32-error writer bound.",
+            "The new rotating-inventory control uses all four distinct valid inventories through cleanup_inner, invokes the actual append_docker/persistence consumer with maximum synthetic process receipt data, and checks complete persisted equality. It explicitly avoids claiming those synthetic process IDs are tracker conformance. Read, not run."
+          ]
+        }
+      ],
+      "reviewed_guarantees_and_limits": [
+        "Routing fingerprints are references/provenance, not credentials or a security capability. Arbitrary same-user custom IPC or mutation of provider configuration contents is not turned into a universal sandbox guarantee.",
+        "Explicit context name, qualified engine digest and configuration reference remain distinct. The actual managed shim and historical cleanup do not qualify from a caller engine string alone.",
+        "Current DockerTarget validation requires finite digest/context/version fields; old unqualified/missing-config target receipts fail conservatively rather than silently adopting new routing.",
+        "New action initialization does not grant permission: helper registration still validates exact current historical claim/epoch/job/scoped Unit before spawn. No native input/finalization authority is reopened.",
+        "Name/operation/four-label checks, full container IDs, post-stop identity/running reinspection, non-forced removal and qualified engine checks remain unchanged.",
+        "Finite profile does not delete unregistered networks/volumes. Anonymous image volumes, raw Docker delegation, Compose, resource/path release and full workload cleanup remain explicitly unqualified/pending.",
+        "Aggregate cleanup remains independent from known work, Task/evidence/artifact advancement and historical lease quarantine. An empty Docker list is not a full release or death proof.",
+        "Report normalization bounds remaining identities even on partial/error paths without dropping already-recorded action identity or describing truncation as complete absence.",
+        "Master staged-profile note accurately distinguishes protocol selection, synthetic mechanics and pending actual OS/Docker/native qualification."
+      ],
+      "coverage": [
+        "Read complete relevant fixed Docker qualification/cleanup flow from the prior immutable baseline plus the entire new correction delta.",
+        "Read actual ToolRequest/Grant/tool_entry/serve/execute consumer paths, current cleanup composition, durable reserve_cleanup_helper/claim validation, managed effect/HelperGuard baseline consumers.",
+        "Read complete new managed_docker.rs built-binary test and added Docker fixture/tests, including delay acknowledgement, rotating inventory, normalization and reference alias controls.",
+        "Read new master staged Docker profile note. Approved R4/R6/R7/R8/design7/9 contracts were retained as review authority; no peer or merged disposition document was consulted."
+      ],
+      "proposed_controls_not_executed": [
+        "Run actual built-binary mismatch/matching routing controls in an owned account-free fixture; prove the compiled omission of request or spawn-time reference checking changes its intended target oracle.",
+        "Execute kill/remove mutation-before-ack cancellation controls and causal omissions of pre-await action or exact durable target; check Unknown confirmation survives actual persisted receipt and siblings remain unchanged.",
+        "Execute rotating initial/final container plus network/volume inventories and maximum process receipt composition, alongside partial-return oversize normalization. Remove normalization/headroom as separate causal variants.",
+        "Treat real Docker28 template/API/version/config-routing execution on each supported OS as separate qualification; the static fixtures and accepted protocol predicate are not that evidence."
+      ],
+      "limitations": [
+        "Static immutable source review only, not final Phase2/native/Docker/Runtime/MVP approval.",
+        "No tests/builds, real provider/Docker/model/account/auth/network/settings probes, OS calls/signals or host mutations. Parent test/log claims are not inherited.",
+        "Only this report was written to /private/tmp; no shared worktree source was edited and no dirty/later source read.",
+        "No peer/aggregate review JSON, progress or test logs were opened.",
+        "Referenced external Docker API documentation in the staged master note was not fetched; actual external CLI/API conformance remains outside this source review.",
+        "No physical cleanup completeness, hard real-time syscall bound, secure memory erasure or same-user enforcement is certified."
+      ],
+      "live_handles": [],
+      "commands_closed": true
+    },
+    {
+      "reviewer": "agent_execution_phase0_review_b",
+      "round": 14,
+      "source_commit": "a3ee6fc68f9881f31c50c0a5ac05c7f72503e082",
+      "baseline_commit": "39f077f6eea2531f58357348af81de488f462fec",
+      "approved_contract_commit": "9a11d03f1b1676c2c3c8a24b6b3fd328759f7db5",
+      "review_kind": "Independent read-only preliminary STRICT component source re-review",
+      "verdict": "APPROVE_COMPONENT_SOURCE_ONLY",
+      "severity_counts": {
+        "C": 0,
+        "H": 0,
+        "M": 0,
+        "L": 0
+      },
+      "findings": [],
+      "prior_own_findings_disposition": [
+        {
+          "id": "round13-H1",
+          "severity": "H",
+          "disposition": "CLOSED_STATIC",
+          "locations": [
+            {
+              "file": "crates/rrx/src/execution/docker.rs",
+              "lines": "16-55, 161-170, 194-199, 272-279, 380-385"
+            },
+            {
+              "file": "crates/rrx/src/execution/ipc.rs",
+              "lines": "29-33, 53-60, 178-182, 221, 283-307, 344-348"
+            },
+            {
+              "file": "crates/rrx/src/main.rs",
+              "lines": "199-205"
+            }
+          ],
+          "evidence": "The installed argv0 Docker entry derives a canonical configuration-directory digest from its actual inherited DOCKER_CONFIG or HOME/.docker and a DOCKER_HOST-presence flag. These bounded nonsecret fields travel in ToolRequest. qualify_native refuses a caller with host override or a routing reference different from the Runtime before qualification probes or creation admission. The qualified receipt durably retains config digest, explicit context and observed engine. Grant returns the routing reference and execute rechecks it immediately before the owned official-CLI spawn. The namespace overlay does not replace DOCKER_CONFIG/HOME or credentials. Historical cleanup refuses a different configuration reference or host override before helpers, and checks recorded context transport and observed engine before destructive commands. Therefore the previous ordinary A-directory Runtime/B-directory shim scenario now refuses before create; equal context names no longer admit that mismatch.",
+          "qualification": "Closure covers configuration-reference mismatch in the currently finite inherited-context profile. Directory digest and sampled engine checks do not establish atomic endpoint/configuration immutability or a security boundary."
+        },
+        {
+          "id": "round13-M1",
+          "severity": "M",
+          "disposition": "CLOSED_STATIC",
+          "locations": [
+            {
+              "file": "crates/rrx/src/execution/docker.rs",
+              "lines": "330-341, 428-447, 474-492, 559-590"
+            },
+            {
+              "file": "crates/rrx/src/state/execution/cleanup.rs",
+              "lines": "10-49"
+            },
+            {
+              "file": "crates/rrx/src/execution/owner.rs",
+              "lines": "82-111"
+            }
+          ],
+          "evidence": "DockerKill and DockerRemove are appended with exact container target, Unknown outcome and NotAttempted confirmation before their awaited helper calls. Their durable helper target now contains action, full container ID and engine digest. reserve_cleanup_helper validates the historical claim, persists this exact target and commits before spawn; its allowed safe characters and 256-byte bound accommodate these identities. If the five-second outer timeout drops the await after the daemon effect but before acknowledgement, the borrowed report keeps the in-flight typed action and HelperGuard reconciles its registered exact target to Unknown. Partial earlier actions survive. Later successful receipt and independent inspection/inventory only refine outcome/confirmation.",
+          "qualification": "This is static producer/consumer closure. A Runtime crash may still interrupt observation persistence; its prior durable exact helper intent remains uncertain, not proof of successful cleanup."
+        }
+      ],
+      "verified_source_observations": [
+        {
+          "topic": "Installed binary and finite admission",
+          "locations": [
+            {
+              "file": "crates/rrx/src/main.rs",
+              "lines": "199-205"
+            },
+            {
+              "file": "crates/rrx/src/execution/ipc.rs",
+              "lines": "145-182, 208-251, 265-348"
+            }
+          ],
+          "evidence": "Tool entry runs before operational argument parsing. Routing validation belongs to actual request/grant execution paths, not only fixture helper calls. Existing exact owner/cookie/native authority and post-qualification admission fencing remain. Managed-effect intent precedes grant/spawn; lost lifecycle acknowledgement remains Unknown. No arbitrary environment or credential payload is sent through IPC."
+        },
+        {
+          "topic": "Exact historical target and Task independence",
+          "locations": [
+            {
+              "file": "crates/rrx/src/execution/docker.rs",
+              "lines": "374-440, 449-487, 636-677"
+            },
+            {
+              "file": "crates/rrx/src/execution/tools.rs",
+              "lines": "271-319, 362-459"
+            },
+            {
+              "file": "crates/rrx/src/state/execution/cleanup.rs",
+              "lines": "202-225"
+            }
+          ],
+          "evidence": "Historical claims bind exact epoch/job/unit/version/scope/generation/cookie and both closed authority flags. Docker mutation requires qualified historical context/engine, full ID, all four Runtime/Project/Task/unit labels and registered operation/name. It reinspects the identity and stopped state before non-forced removal. Tool run/create forces unique names plus namespace/operation labels; admitted port and mount forms remain unit-local. No sibling/global prune, forced removal or shared network/volume deletion path was introduced."
+        },
+        {
+          "topic": "Bounded partial receipt and actual persistence",
+          "locations": [
+            {
+              "file": "crates/rrx/src/execution/docker.rs",
+              "lines": "9, 344-353, 398-399, 495-543, 679-715"
+            },
+            {
+              "file": "crates/rrx/src/execution/cleanup.rs",
+              "lines": "121-138, 171-193, 200-212"
+            },
+            {
+              "file": "crates/rrx/src/state/execution/cleanup.rs",
+              "lines": "129-188, 191-200"
+            }
+          ],
+          "evidence": "Each initial/final container, network and volume inventory is bounded to 32. Their union can require 128 remaining identities; Docker's normalization caps/deduplicates partial results at 128 and adds finite limited-coverage error on truncation. Cookie observation takes at most 896 identities, so append_docker fits the actual 1024 persisted remaining bound. Docker destructive actions are at most 64, giving at most 960 combined actions; exact targets fit 256 bytes. Cookie errors are deduplicated finite categories, Docker errors are finite categories, and the combined path fits the 32-error persistence bound. State insertion, quarantine and next cleanup deadline affect only the historical unit and do not change work, Task progress or accepted artifacts. Empty or incomplete Docker observations do not become complete-release claims."
+        },
+        {
+          "topic": "Honest profile boundaries",
+          "locations": [
+            {
+              "file": "crates/rrx/src/execution/docker.rs",
+              "lines": "25-29, 122-130, 161-184, 261-263, 520-535"
+            },
+            {
+              "file": "doc/design/master/agent-execution.md",
+              "lines": "83-119"
+            }
+          ],
+          "evidence": "The component document names its selected Docker 28/API 1.48-1.51 profile, managed run/create/filtered ps, local named Unix contexts, and refusals for relative roots/DOCKER_HOST/remote transport/raw Compose. It explicitly separates protocol selection from real-daemon/native acceptance, and names raw delegation/image anonymous-volume/shared-resource limitations. Configuration-reference hashing reads directory/path metadata, not configuration or authentication file contents. No license or README claim change is present in the reviewed diff."
+        }
+      ],
+      "controls_inspected_but_not_executed": [
+        {
+          "file": "crates/rrx/tests/managed_docker.rs",
+          "lines": "18-51, 125-197",
+          "purpose": "Account-free built-binary argv0/real IPC path: same context name in different configuration references refuses before fixture probes/effects, host override refuses, matching reference admits forced labels and recorded operation/name."
+        },
+        {
+          "file": "crates/rrx/src/execution/docker/tests.rs",
+          "lines": "375-448",
+          "purpose": "Fixture kill/remove applies effect then delays command acknowledgement; verifies uncertain exact typed action, durable target, historical observation round-trip and live sibling authority."
+        },
+        {
+          "file": "crates/rrx/src/execution/docker/tests.rs",
+          "lines": "450-566",
+          "purpose": "Changing valid inventories exercise 128 Docker identities plus 896 cookie identities through the actual append/persistence/history path; partial normalization and canonical/absolute/nonsecret reference checks."
+        }
+      ],
+      "additional_proposed_causal_controls_not_executed": [
+        "Exercise historical cleanup with a changed Runtime configuration root and unchanged context name; assert refusal before inventory/kill and unknown coverage, never mutation of a different engine.",
+        "Exercise a HOME-derived reference versus an explicit DOCKER_CONFIG canonical alias, and a symlink reference changed between request and grant execution; expected semantic equality should admit and changed reference should refuse before effect.",
+        "Exercise multiple registered containers where an earlier action completes and a later kill/remove applies then loses acknowledgement. Ensure completed and uncertain action records both survive and sibling IDs/resources remain unchanged.",
+        "Qualify actual supported Docker CLI/template/version/context behavior and native sandbox/auth/settings/hooks separately on both target OSes. Fixed fixture source is not evidence those controls pass."
+      ],
+      "limits": [
+        "Only immutable git objects at source, baseline and approved contract plus this reviewer's own prior report were read. No dirty/later source, peer findings, aggregate review document, progress document or test log was inspected.",
+        "No builds/tests, real Docker/native Agents/accounts/authentication/configuration probes, network activity, process signals or host/repository changes were performed. Only this authorized private review report was written; no parent test claims are inherited.",
+        "This approval covers the changed finite component source and closure of this reviewer's prior findings, not final Phase2, installation, operational Runtime/Workflow/Gates/CLI readiness, actual four-Task runs or native MVP acceptance. Pending integrations are excluded rather than counted as new findings.",
+        "Configuration-directory hashes and sampled context/engine metadata are provenance checks, not an atomic connection lease or immutable configuration snapshot. External mutation during separate CLI calls, native sandbox behavior and Docker API assumptions remain empirical qualification/coverage limits.",
+        "Cookie/Docker cleanup remains bounded, incomplete, non-atomic best-effort hygiene. Arbitrary raw delegation, image anonymous volumes and shared/unregistered resources are not fully collected; paths/ports remain retained or quarantined. No scope-empty, whole-workload death, security-sandbox or complete release guarantee is certified."
+      ],
+      "owned_handles": {
+        "live_command_sessions": [],
+        "native_processes_started": [],
+        "tool_status": "All fixed-source read commands completed without session_id. No command, Docker, Agent, worker or OS tracker handle remains owned."
+      }
+    }
+  ]
+}

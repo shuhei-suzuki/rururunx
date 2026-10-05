@@ -1,0 +1,165 @@
+{
+  "source_commit": "e0675783a7ad4bccbfd56ff502e98f5c2c0f07df",
+  "review_kind": "Independent preliminary component static reviews; not Phase2/native/MVP acceptance",
+  "reports": [
+    {
+      "review": "Independent preliminary STRICT component delta review, round 15",
+      "source_commit": "e0675783a7ad4bccbfd56ff502e98f5c2c0f07df",
+      "baseline_commit": "a3ee6fc68f9881f31c50c0a5ac05c7f72503e082",
+      "approved_contract": "9a11d03f1b1676c2c3c8a24b6b3fd328759f7db5",
+      "verdict": "APPROVE",
+      "counts": {
+        "Critical": 0,
+        "High": 0,
+        "Medium": 0,
+        "Low": 0
+      },
+      "findings": [],
+      "scope": {
+        "changed_paths": [
+          "crates/rrx/src/execution/cleanup.rs",
+          "crates/rrx/src/execution/docker/tests.rs"
+        ],
+        "diff": "9 insertions, 10 deletions; constant extraction and consumer test ordering only",
+        "method": "Immutable Git object reads; no working-tree source or peer report reads"
+      },
+      "source_evidence": [
+        {
+          "location": "crates/rrx/src/execution/cleanup.rs:12,123-137",
+          "assessment": "MAX_COOKIE_MATCHES is derived from 1024 minus Docker MAX_REMAINING (128), therefore 896. Actual overflow classification, coverage maximum, and actual process-loop take all consume this same constant. This preserves baseline behavior while exposing the real producer limit to its persistence control."
+        },
+        {
+          "location": "crates/rrx/src/execution/docker/tests.rs:450-521",
+          "assessment": "The changing Docker inventory control creates 128 distinct retained IDs through actual cleanup_inner plus normalize_report. Synthetic cookie remaining identities are now sized from the actual producer constant, appended through actual append_docker, and submitted to actual Store::finish_execution_cleanup before the explicit 1024 length assertion. The persisted observation is then read back and compared in full; sibling checks remain."
+        },
+        {
+          "location": "crates/rrx/src/execution/cleanup.rs:199-210,231-260; crates/rrx/src/state/execution.rs:940-949",
+          "assessment": "The common append retains all Docker entries; each processed cookie can contribute at most one remaining entry. Store retains its 1024 remaining bound. No authority, work/result, lease release, or cleanup confirmation semantics change."
+        }
+      ],
+      "prior_own_findings_disposition": [
+        {
+          "id": "M-M1",
+          "status": "Remains source-closed",
+          "evidence": "Docker routing and actual binary shim/Grant files are byte-unchanged versus approved round14 baseline."
+        },
+        {
+          "id": "M-M2",
+          "status": "Remains source-closed",
+          "evidence": "Docker pre-await exact kill/remove actions and target registration are byte-unchanged versus baseline."
+        },
+        {
+          "id": "M-M3",
+          "status": "Remains source-closed; persistence control strengthened",
+          "evidence": "All-return-path Docker cap128 is byte-unchanged. Actual cookie producer remains896 and the test now consumes its shared limit and calls actual persistence before checking combined length."
+        }
+      ],
+      "causal_controls_not_executed": [
+        "If the shared MAX_COOKIE_MATCHES regresses to 928, the control constructs 928+128=1056 remaining entries and must fail at actual persistence before its later length assertion. This is a static control sensitivity expectation, not an executed mutation claim.",
+        "The retained full JSON equality comparison verifies the observation body after persistence, rather than using the length assertion alone.",
+        "The constant extraction does not independently prove OS discovery completeness or any process cleanup outcome."
+      ],
+      "limitations": [
+        "No tests, builds, mutations, OS actions, Docker/native/account/auth/config/network probes or process signals executed.",
+        "No parent test pass claims or peer findings inherited.",
+        "Only this component delta is approved; no final Phase2, Docker/native profile, complete recovery or MVP acceptance.",
+        "Synthetic cookie receipt IDs are explicitly not live tracker conformance evidence."
+      ],
+      "live_handles": [],
+      "commands_closed": true
+    },
+    {
+      "reviewer": "agent_execution_phase0_review_b",
+      "round": 15,
+      "source_commit": "e0675783a7ad4bccbfd56ff502e98f5c2c0f07df",
+      "baseline_commit": "a3ee6fc68f9881f31c50c0a5ac05c7f72503e082",
+      "approved_contract_commit": "9a11d03f1b1676c2c3c8a24b6b3fd328759f7db5",
+      "review_kind": "Independent immutable-source preliminary STRICT component delta review",
+      "verdict": "APPROVE_COMPONENT_STATIC_DELTA_ONLY",
+      "severity_counts": {
+        "C": 0,
+        "H": 0,
+        "M": 0,
+        "L": 0
+      },
+      "findings": [],
+      "verified_source_observations": [
+        {
+          "locations": [
+            {
+              "file": "crates/rrx/src/execution/cleanup.rs",
+              "lines": "12, 123-137"
+            },
+            {
+              "file": "crates/rrx/src/execution/docker.rs",
+              "lines": "9, 344-353"
+            }
+          ],
+          "evidence": "The only production delta extracts MAX_COOKIE_MATCHES = 1024 - docker::MAX_REMAINING. MAX_REMAINING is 128; MAX_COOKIE_MATCHES is therefore 896. The same constant controls overflow detection, advertised coverage and the actual cookie iteration take. This preserves the existing producer ceiling and removes the previously separate coverage literal."
+        },
+        {
+          "locations": [
+            {
+              "file": "crates/rrx/src/execution/docker/tests.rs",
+              "lines": "487-521"
+            },
+            {
+              "file": "crates/rrx/src/execution/cleanup.rs",
+              "lines": "185-192, 199-211"
+            },
+            {
+              "file": "crates/rrx/src/state/execution/cleanup.rs",
+              "lines": "129-153, 191-200"
+            }
+          ],
+          "evidence": "The changing-inventory control now constructs synthetic cookie receipt identities from the real producer constant, adds the already normalized 128 Docker identities through actual append_docker and calls actual finish_execution_cleanup before its 1024-length assertion. It then reads persisted history and compares serialized observations. Actual Store remaining/action count guards remain 1024. This is fixture-source wiring verification only; no claim that the test passed or that synthetic cookie receipts exercise OS tracking."
+        },
+        {
+          "locations": [
+            {
+              "file": "crates/rrx/src/execution/cleanup.rs",
+              "lines": "12, 123-137"
+            },
+            {
+              "file": "crates/rrx/src/execution/docker/tests.rs",
+              "lines": "495-509"
+            }
+          ],
+          "evidence": "The complete fixed baseline-to-source diff contains only these two files and 9 insertions/10 deletions. No Docker routing, action ordering, intent, historical-claim fencing, native IPC or other production path changed."
+        }
+      ],
+      "prior_own_findings_disposition": [
+        {
+          "id": "round13-H1",
+          "disposition": "REMAINS_CLOSED_STATIC",
+          "evidence": "Round14 canonical configuration-directory request/grant/execution comparison and historical routing checks are unchanged by this exact delta."
+        },
+        {
+          "id": "round13-M1",
+          "disposition": "REMAINS_CLOSED_STATIC",
+          "evidence": "Round14 pre-await exact typed kill/remove actions and durable action/container/engine helper targets are unchanged by this exact delta."
+        },
+        {
+          "id": "round14 bounded receipt review",
+          "disposition": "REMAINS_APPROVED_STATIC_WITH_SHARED_LIMIT",
+          "evidence": "The cookie producer still bounds observations at 896 and Docker normalization still caps remaining identities at 128; actual combined persistence guard is 1024. The extracted constant now supplies both the production loop and fixture receipt construction."
+        }
+      ],
+      "causal_controls_inspected_not_executed": [
+        "Changing-inventory fixture performs four bounded inventories producing 128 Docker identities, composes 896 synthetic cookie identities using the production limit, persists through actual Store before asserting length, and reads exact history afterward.",
+        "Existing source checks for uncertain kill/remove acknowledgement and native config mismatch remain unchanged. They were previously statically reviewed; neither their execution nor parent execution claims are inherited."
+      ],
+      "limits": [
+        "Only immutable source/baseline git objects were inspected. No peer report, aggregate document, dirty/later source, progress document or test log was read.",
+        "No build/test, real Agent/Docker/authentication/configuration probe, network, OS tracking or signal operation was performed. Only this authorized private report was written.",
+        "This is a small static component delta approval, not final Phase2/native/MVP/install/operational acceptance. Synthetic receipt construction is not live-cookie producer or OS conformance testing.",
+        "Existing best-effort, non-atomic cleanup and finite Docker-profile/native integration limitations remain. No complete resource collection or process-death guarantee is established."
+      ],
+      "owned_handles": {
+        "live_command_sessions": [],
+        "native_processes_started": [],
+        "tool_status": "Every fixed-object read command returned an exit code without session_id; no owned command/process/worker/tracker handle remains."
+      }
+    }
+  ]
+}
