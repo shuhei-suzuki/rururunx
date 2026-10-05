@@ -120,7 +120,7 @@ pub struct CodexAdapter {
     #[cfg(test)]
     gates: Arc<TestGates>,
     #[cfg(test)]
-    environment_hooks: Arc<super::environment::TestHooks>,
+    environment_hooks: Arc<crate::codex::environment::TestHooks>,
 }
 struct Entry {
     status: watch::Receiver<SessionStatus>,
@@ -310,7 +310,7 @@ struct Reservation {
     #[cfg(test)]
     gates: Arc<TestGates>,
     #[cfg(test)]
-    environment_hooks: Arc<super::environment::TestHooks>,
+    environment_hooks: Arc<crate::codex::environment::TestHooks>,
 }
 impl Reservation {
     fn finish_preparation_error(
@@ -772,7 +772,7 @@ impl CodexAdapter {
             #[cfg(test)]
             gates: Arc::new(TestGates::default()),
             #[cfg(test)]
-            environment_hooks: Arc::new(super::environment::TestHooks::default()),
+            environment_hooks: Arc::new(crate::codex::environment::TestHooks::default()),
         })
     }
     /// Bounded own-Project names only; grants no execution or native availability.
@@ -3097,7 +3097,7 @@ mod tests {
                 attempt: Control::new(None).0,
                 gates: Arc::new(TestGates::default()),
                 #[cfg(test)]
-                environment_hooks: Arc::new(super::environment::TestHooks::default()),
+                environment_hooks: Arc::new(crate::codex::environment::TestHooks::default()),
             };
             reservation.persist().unwrap();
             reservation.session.state = if runtime_broker {
@@ -3699,7 +3699,7 @@ mod tests {
                 attempt: Control::new(None).0,
                 gates: Arc::new(TestGates::default()),
                 #[cfg(test)]
-                environment_hooks: Arc::new(super::environment::TestHooks::default()),
+                environment_hooks: Arc::new(crate::codex::environment::TestHooks::default()),
             };
             reservation.session.state = SessionState::Starting;
             reservation.session.pid = Some(42);
@@ -4169,7 +4169,7 @@ mod tests {
                     attempt: Control::new(None).0,
                     gates: Arc::new(TestGates::default()),
                     #[cfg(test)]
-                    environment_hooks: Arc::new(super::environment::TestHooks::default()),
+                    environment_hooks: Arc::new(crate::codex::environment::TestHooks::default()),
                 };
                 reservation.persist().unwrap();
                 let (mut rpc, mut wire, peer) = rpc_peer().await;
@@ -5004,7 +5004,7 @@ mod tests {
         let executable = parent.join("synthetic-codex");
         let marker = parent.join("native-bootstrap-ready");
         let quoted = format!("'{}'", marker.to_str().unwrap().replace('\'', "'\\''"));
-        std::fs::write(&executable,format!("#!/bin/sh\nif [ \"$1\" = '--version' ]; then printf version > {version_entry}; if [ \"${{OPENAI_API_KEY-}}\" = 'synthetic-codex-marker' ]; then printf present > {version_canary}; fi; printf '%s\\n' 'codex-cli 0.160.0'; exit 0; fi\nprintf '%s' \"$$\" > {quoted}\nexec /bin/sleep 30\n")).unwrap();
+        std::fs::write(&executable,format!("#!/bin/sh\nif [ \"$1\" = '--version' ]; then printf '%s\\n' 'codex-cli 0.160.0'; exit 0; fi\nprintf '%s' \"$$\" > {quoted}\nexec /bin/sleep 30\n")).unwrap();
         std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o700)).unwrap();
         (executable, marker)
     }
@@ -5510,7 +5510,7 @@ mod tests {
         let executable = directory.join("synthetic-codex");
         let binary = std::env::current_exe().unwrap();
         let script = format!(
-            "#!/bin/sh\nif [ \"$1\" = '--version' ]; then printf '%s\\n' 'codex-cli 0.160.0'; exit 0; fi\nprintf '%s\\n' \"$@\" > {args}\nexport RRX_SYNTHETIC_NATIVE_DIRECTORY={directory}\nprintf '%s' \"$$\" > {leader}\nexec {binary} --exact codex::session::tests::synthetic_owned_native_rpc_child --ignored --nocapture\n",
+            "#!/bin/sh\nif [ \"$1\" = '--version' ]; then printf version > {version_entry}; if [ \"${{OPENAI_API_KEY-}}\" = 'synthetic-codex-marker' ]; then printf present > {version_canary}; fi; printf '%s\\n' 'codex-cli 0.160.0'; exit 0; fi\nprintf '%s\\n' \"$@\" > {args}\nexport RRX_SYNTHETIC_NATIVE_DIRECTORY={directory}\nprintf '%s' \"$$\" > {leader}\nexec {binary} --exact codex::session::tests::synthetic_owned_native_rpc_child --ignored --nocapture\n",
             version_entry = quoted_path(&directory.join("version-entry")),
             version_canary = quoted_path(&directory.join("version-canary")),
             args = quoted_path(&directory.join("arguments")),
