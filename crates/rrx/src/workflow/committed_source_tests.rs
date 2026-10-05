@@ -373,23 +373,34 @@ async fn production_gates_observe_real_preparation_native_result_and_commit_but_
                 ..
             }
         ));
-        let store = f.owner.store.lock().unwrap();
-        let artifacts = store.result_artifacts(&f.task.scope()).unwrap();
-        assert_eq!(artifacts.len(), 1);
-        assert_eq!(artifacts[0].state, execution::ArtifactState::Published);
-        let receipts = store
-            .records(&f.task.scope(), RecordKind::Verification)
-            .unwrap();
-        assert_eq!(receipts.len(), 3);
-        for record in receipts {
-            assert_eq!(record.data["schema"], "managed_workflow_gate_v1");
-            assert_eq!(
-                record.data["context_data_sha256"].as_str().unwrap().len(),
-                64
-            );
-            assert_eq!(store.record(record.id).unwrap().unwrap().data, record.data);
-        }
-        drop(store);
+        let artifacts = {
+            let store = f.owner.store.lock().unwrap();
+            let artifacts = store.result_artifacts(&f.task.scope()).unwrap();
+            assert_eq!(artifacts.len(), 1);
+            assert_eq!(artifacts[0].state, execution::ArtifactState::Published);
+            let receipts = store
+                .records(&f.task.scope(), RecordKind::Verification)
+                .unwrap();
+            assert_eq!(receipts.len(), 3);
+            for record in receipts {
+                assert_eq!(record.data["schema"], "managed_workflow_gate_v1");
+                assert_eq!(
+                    record.data["context_data_sha256"].as_str().unwrap().len(),
+                    64
+                );
+                assert_eq!(store.record(record.id).unwrap().unwrap().data, record.data);
+            }
+            artifacts
+        };
+        let reopened = Store::open(&f._dir.path().join("state.db")).unwrap();
+        assert_eq!(
+            reopened
+                .records(&f.task.scope(), RecordKind::Verification)
+                .unwrap()
+                .len(),
+            3
+        );
+        drop(reopened);
         // A survivor can alter its abandoned workspace; commit evidence stays pinned.
         std::fs::write(prepared.worktree.join("answer.txt"), "survivor\n").unwrap();
         results::ResultStore::new(f.owner.clone())
