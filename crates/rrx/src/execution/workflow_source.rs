@@ -647,3 +647,6 @@ async fn read_corpus(
     }
     Ok(files)
 }
+
+#[cfg(test)]
+mod tests;
