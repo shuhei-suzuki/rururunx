@@ -215,7 +215,8 @@ async fn workflow_source_bootstrap_file_reader_enforces_type_literal_path_and_si
     std::fs::write(source.join("limit.txt"), vec![b'x'; 256 * 1024]).unwrap();
     std::fs::write(source.join("large.txt"), vec![b'x'; 256 * 1024 + 1]).unwrap();
     std::fs::write(source.join(":(glob)*"), "literal\n").unwrap();
-    std::os::unix::fs::symlink("answer.txt", source.join("link.txt")).unwrap();
+    std::fs::create_dir(source.join("nested")).unwrap();
+    std::fs::write(source.join("nested/item.txt"), "nested\n").unwrap();
     results::git(&source, ["add", "--all"]).await.unwrap();
     results::git(
         &source,
@@ -250,11 +251,7 @@ async fn workflow_source_bootstrap_file_reader_enforces_type_literal_path_and_si
         prepared.read_committed_file(":(glob)*").await.unwrap(),
         b"literal\n"
     );
-    let error = prepared
-        .read_committed_file("link.txt")
-        .await
-        .err()
-        .unwrap();
+    let error = prepared.read_committed_file("nested").await.err().unwrap();
     assert!(error.to_string().contains("not an exact ordinary file"));
     let unit = prepared.unit().clone();
     drop(prepared);
@@ -268,6 +265,44 @@ async fn workflow_source_bootstrap_file_reader_enforces_type_literal_path_and_si
             .work,
         Some(WorkOutcome::Unknown)
     );
+    // The actual preparation qualifier refuses unsupported symlinks before
+    // returning a capability. Do not bypass it to reach a reader-only assertion.
+    std::os::unix::fs::symlink("answer.txt", source.join("link.txt")).unwrap();
+    results::git(&source, ["add", "--all"]).await.unwrap();
+    results::git(
+        &source,
+        [
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=fixture@example.invalid",
+            "-c",
+            "commit.gpgsign=false",
+            "commit",
+            "-m",
+            "unsupported symlink",
+        ],
+    )
+    .await
+    .unwrap();
+    let error = attempts::AttemptManager::new(owner.clone())
+        .prepare_workflow_source(task.id, "codex")
+        .await
+        .err()
+        .unwrap();
+    assert!(
+        error
+            .to_string()
+            .contains("source symlinks require a qualified profile")
+    );
+    let store = owner.store.lock().unwrap();
+    let units = store.execution_units(Some(&task.scope())).unwrap();
+    assert_eq!(units.len(), 2);
+    assert!(units.iter().all(|u| !u.native_effects_open
+        && !u.result_finalization_open
+        && u.work == Some(WorkOutcome::Unknown)
+        && u.session_id.is_none()
+        && u.artifact_id.is_none()));
 }
 #[tokio::test]
 async fn four_protocol_fixture_sessions_keep_sibling_work_when_one_is_cancelled() {
