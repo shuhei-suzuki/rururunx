@@ -31,8 +31,15 @@ Source1 has two independent selected APPROVE results with no Critical/High/Mediu
 both closed before reading either result. Shared stale status wording was verified
 and corrected. A speculative matrix Low was cheaply covered with all eight configured
 class/Reviewer combinations at entry/retry/resume. No production code changed.
-CI37262802366 is RED: Linux218 pass/29 typed-refusal fail/16 ignored; macOS was
+CI37262802366 is RED: Linux lib binary218 pass/29 typed-refusal fail/16 ignored; remaining workspace
+binaries did not execute after that failure. macOS was
 matrix-cancelled, both build steps skipped. Actual checkoutaaa6f6f has the same
 fulltree4c8bbd and all293pathblobs as source12cc. No bothOSgreen qualification.
-The finite docs/test delta and its exact final CI remain pending. Whole
+Finite Source2 also received two independent APPROVE results without Critical/High/Medium.
+Expanded8-case Debug/Release controls remain11/11; fmt/clippy/builds pass. The current
+full default run remains234/162/26RED with133unknown-cause non-policy failures.
+CI37263450190 is againRED at7e04277: Linux lib218/29/16, laterworkspace binaries
+unexecuted, macOSmatrix-cancelled and buildsSKIPPED. Actualcheckoutc35bdbc equals
+the complete reviewedsource tree; no inference about unexecuted integration tests.
+A final docs/evidence commit changes no Rust; its exact CI is tracked separately. Whole
 Issue9, genuine19/43/native profile/migration and final16 MVP gates remain OPEN.
