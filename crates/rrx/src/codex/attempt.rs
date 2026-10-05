@@ -422,6 +422,7 @@ impl Drop for TaskGuard {
 pub(super) enum TestPoint {
     BeforeStarting,
     BeforeCustodyFactory,
+    AfterCustodyFactory,
     BeforeInitialPersist,
     BeforeBootstrap,
     BeforeDispatch,

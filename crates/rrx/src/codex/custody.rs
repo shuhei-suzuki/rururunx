@@ -60,6 +60,7 @@ impl Pool {
             created: AtomicBool::new(false),
             endpoint_taken: AtomicBool::new(false),
             open: Mutex::new(true),
+            endpoint_closed: AtomicBool::new(false),
             #[cfg(test)]
             paused: AtomicBool::new(false),
         });
@@ -202,6 +203,7 @@ pub(super) struct Inventory {
     created: AtomicBool,
     endpoint_taken: AtomicBool,
     open: Mutex<bool>,
+    endpoint_closed: AtomicBool,
     #[cfg(test)]
     paused: AtomicBool,
 }
@@ -288,11 +290,22 @@ impl Inventory {
             && self.effects.load(Ordering::SeqCst) == 0
             && self.assets.lock().unwrap().worker.is_none()
     }
+    #[cfg(test)]
+    pub fn endpoint_closed(&self) -> bool {
+        self.endpoint_closed.load(Ordering::SeqCst)
+    }
 }
 
 pub(super) struct Endpoint {
     inventory: Arc<Inventory>,
     generation: Uuid,
+}
+impl Drop for Endpoint {
+    fn drop(&mut self) {
+        if self.generation == self.inventory.generation {
+            self.inventory.endpoint_closed.store(true, Ordering::SeqCst);
+        }
+    }
 }
 impl Endpoint {
     pub fn try_note(&self, text: &str) -> AdapterResult<()> {

@@ -2,6 +2,7 @@
 mod custody_mechanics {
     use super::super::super::custody::{Factory, FileSpec, Pool};
     use super::*;
+    use futures_util::FutureExt;
     use std::time::{Duration, Instant};
 
     struct Release(Option<std::sync::mpsc::Sender<()>>);
@@ -388,5 +389,147 @@ mod custody_mechanics {
                 .control,
             &previous
         ));
+    }
+    #[tokio::test]
+    async fn actual_caller_drop_after_creation_revokes_without_losing_owned_worker() {
+        let (owned, adapter, factory) = adapter();
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("worker");
+        let (file, mut release) = spec(path.clone(), false, false, false);
+        let started = file.started.clone();
+        factory.enqueue(file);
+        let gate = adapter.gates.install(TestPoint::AfterCustodyFactory);
+        let registered = adapter.register_fresh(owned.request.clone(), None).unwrap();
+        let id = registered.transition.id;
+        let control = registered.transition.control.clone();
+        let mut calling = Box::pin(adapter.spawn_launch(registered));
+        tokio::select! { _ = gate.reached() => {}, value = &mut calling => panic!("early return: {value:?}") }
+        wait(|| started.load(Ordering::SeqCst)).await;
+        let endpoint = control.take_endpoint().unwrap();
+        drop(calling);
+        assert!(control.jobs_revoked());
+        assert!(endpoint.try_note("after caller Drop").is_err());
+        assert_eq!(factory.pool.used(), 3);
+        assert!(path.exists());
+        gate.release();
+        assert!(matches!(
+            control.wait_finished().await.unwrap(),
+            Outcome::CustodyHeld {
+                cause: Cause::Cancelled,
+                ..
+            }
+        ));
+        assert!(adapter.registry().unwrap().contains_key(&id));
+        release.release();
+        joined(&factory.pool, &control).await;
+        adapter.reconcile_custody().unwrap();
+        assert!(adapter.registry().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn endpoint_close_before_worker_join_is_factual_not_unknown() {
+        let (owned, adapter, factory) = adapter();
+        let directory = tempfile::tempdir().unwrap();
+        let (file, mut release) = spec(directory.path().join("worker"), false, false, false);
+        factory.enqueue(file);
+        let registered = adapter.register_fresh(owned.request.clone(), None).unwrap();
+        let control = registered.transition.control.clone();
+        adapter.spawn_launch(registered).await.unwrap_err();
+        let custody = control.custody().unwrap();
+        drop(control.take_endpoint().unwrap());
+        assert!(custody.endpoint_closed());
+        assert!(!custody.unknown());
+        assert!(!custody.worker_joined());
+        release.release();
+        joined(&factory.pool, &control).await;
+        assert!(!custody.unknown());
+    }
+
+    #[tokio::test]
+    async fn complete_job_capacity_refuses_before_factory_and_recovers_after_actual_joins() {
+        let (owned, adapter, factory) = adapter();
+        let directory = tempfile::tempdir().unwrap();
+        let mut held = Vec::new();
+        for index in 0..21 {
+            let (file, release) = spec(
+                directory.path().join(format!("worker-{index}")),
+                false,
+                false,
+                false,
+            );
+            factory.enqueue(file);
+            let registered = adapter.register_fresh(owned.request.clone(), None).unwrap();
+            let control = registered.transition.control.clone();
+            adapter.spawn_launch(registered).await.unwrap_err();
+            held.push((control, release));
+        }
+        assert_eq!(factory.pool.used(), 63);
+        let path = directory.path().join("capacity-refused");
+        let (file, mut release) = spec(path.clone(), false, false, false);
+        factory.enqueue(file);
+        let registered = adapter.register_fresh(owned.request.clone(), None).unwrap();
+        let id = registered.transition.id;
+        let error = adapter.spawn_launch(registered).await.unwrap_err();
+        assert_eq!(error.kind, ErrorKind::StateConflict);
+        assert_eq!(error.message, "preparation job capacity exhausted");
+        assert_eq!(factory.pool.used(), 63);
+        assert!(!path.exists());
+        assert!(!adapter.registry().unwrap().contains_key(&id));
+        for (_, release) in &mut held {
+            release.release();
+        }
+        for (control, _) in held {
+            wait(|| {
+                factory.pool.drain();
+                control.custody().unwrap().joined()
+            })
+            .await;
+        }
+        assert_eq!(factory.pool.used(), 0);
+        let registered = adapter.register_fresh(owned.request.clone(), None).unwrap();
+        let control = registered.transition.control.clone();
+        adapter.spawn_launch(registered).await.unwrap_err();
+        release.release();
+        joined(&factory.pool, &control).await;
+        assert!(path.exists());
+        adapter.reconcile_custody().unwrap();
+        assert!(adapter.registry().unwrap().is_empty());
+    }
+
+    #[test]
+    fn actual_registration_missing_and_closed_runtime_have_no_native_effects() {
+        let (owned, adapter, factory) = adapter();
+        let registered = adapter.register_fresh(owned.request.clone(), None).unwrap();
+        let error = adapter
+            .spawn_launch(registered)
+            .now_or_never()
+            .unwrap()
+            .unwrap_err();
+        assert_eq!(error.kind, ErrorKind::LaunchFailure);
+        assert_eq!(factory.pool.used(), 0);
+        assert!(adapter.registry().unwrap().is_empty());
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let handle = runtime.handle().clone();
+        drop(runtime);
+        let _entered = handle.enter();
+        let registered = adapter.register_fresh(owned.request.clone(), None).unwrap();
+        let control = registered.transition.control.clone();
+        let error = adapter
+            .spawn_launch(registered)
+            .now_or_never()
+            .unwrap()
+            .unwrap_err();
+        assert_eq!(error.kind, ErrorKind::SessionLost);
+        assert!(adapter.registry().unwrap().is_empty());
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while factory.pool.used() != 1 {
+            factory.pool.drain();
+            assert!(Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        assert!(control.custody().unwrap().unknown());
+        assert_eq!(adapter.availability.sites(), [0; 10]);
     }
 }

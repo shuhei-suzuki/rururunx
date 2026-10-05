@@ -1158,7 +1158,9 @@ impl CodexAdapter {
         #[cfg(test)]
         let factory_error = if let Some(factory) = &self.file_factory {
             self.gates.wait(TestPoint::BeforeCustodyFactory).await;
-            Some(factory.run(&control).await)
+            let error = factory.run(&control).await;
+            self.gates.wait(TestPoint::AfterCustodyFactory).await;
+            Some(error)
         } else {
             None
         };
@@ -1391,7 +1393,9 @@ impl CodexAdapter {
         #[cfg(test)]
         let factory_error = if let Some(factory) = &self.file_factory {
             self.gates.wait(TestPoint::BeforeCustodyFactory).await;
-            Some(factory.run(&control).await)
+            let error = factory.run(&control).await;
+            self.gates.wait(TestPoint::AfterCustodyFactory).await;
+            Some(error)
         } else {
             None
         };
