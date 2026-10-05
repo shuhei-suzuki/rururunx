@@ -387,3 +387,35 @@ start in the held live case and requires StateConflict. No arbitrary state
 alternatives, uncertainty guard, production code, timing or cleanup changed.
 Old9c environment/watchdog failures remain failed/cause AND regression UNKNOWN;
 the current1b37 results do not establish their cause or full workspace readiness.
+
+### Current composed source5b09c6d gates
+
+After both1b37 suites closed, ff92bfb replaced only the first-Pending timing
+inference with the deterministic private actual Generic consumer and actual
+second-start StateConflict. Normal main768 composition brought only three
+Issue67 outcome documents; its20cfg(test) stage lines are identical to the
+previously composed dependency. Issue67 is now merged; its historical5ca CI red
+and watchdog failures still have cause AND regression UNKNOWN.
+
+Full DEFAULT Debug at5b09 FAILED: library290 PASS/14 FAIL/24 ignored113.47s;
+later workspace targets did not execute. All26 selected owner controls passed,
+including actual four Git operations/16jobs and public second-start exclusion.
+Grok irrelevant checkpoint/resume observed boundary1/2 case0 fixture/start/terminal,
+then initial-start Git preflight Timeout. Another existing initial-and-resume
+fixture observed watchdog_expired60001ms, actual SIGKILL and only stdout
+`running 1 test`, empty stderr; that case has no static progress lines. Other
+failures include actual initial canary/transport expectations and pre-native
+receipt operands. They do not prove no Git spawn, process scheduling cause,
+all nested-job settlement, nor that the new code caused those failures.
+
+Distinct full DEFAULT Release at the same clean source5b09 PASSED415 top-level
+Rust tests plus2 doctests/27 ignored; the ordinary Codex nested child1 PASS is
+separate. Library304 passed45.17s, adapter19, CLI5, ordinary Codex boundary1,
+Context16, Git18, graph4, Grok15, Project16 and State17. Both modes preserved
+existing internal parallelism/budgets/watchdogs/Unknown/latches. No own native
+review/mutation suite overlapped; peer workloads have no measured causal role.
+Fmt/all-target Clippy(-D warnings)/Debug BUILD/Release BUILD all passed.
+[Finite raw-log hashes and tested source blobs](issue-60-reader-source1-gates.json)
+bind these outcomes to5b09. No full Debug or native readiness is claimed from
+the Release result. Formal Source1 two-reviewer gate and required public bothOS
+CI/actual checkout provenance remain pending; this candidate is not merge-ready.

@@ -344,8 +344,11 @@ The selected Git reader Requirements4 has two independent approvals; its
 [Design2](../issue-60-reader-design.md) has two independent approvals. The committed candidate implements
 a Git-local actual std Child worker, caller-runtime-independent supervisor/runtime
 and both reader joins, four counted jobs per call/global64. Shared native
-ProcessGroup/new/reap/Drop stays unchanged. Actual scoped consumer controls have passed, while source/mutation/CI gates
-remain pending and full default Debug/Release failed (cause/regression unknown).
+ProcessGroup/new/reap/Drop stays unchanged. Actual scoped consumer controls and
+12 distinct compiled causal operators were assertion-killed; two prior masked worker-join
+survivors retain zero credit. Source/CI gates remain pending. Current composed
+default Debug failed while full Release passed415 Rust tests plus2 doctests;
+cause/regression remain unknown and Release does not close Debug or availability.
 These process-local holders grant no durable/full-workload proof.
 
 ### Grok terminal supervision receipts

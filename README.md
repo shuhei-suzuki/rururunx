@@ -423,5 +423,7 @@ and native acceptance remain open.
 Selected Git reader lifetime has two independent Requirements4 approvals. The
 [Design2](doc/design/issue-60-reader-design.md), approved by two independent reviewers, now has a committed selected Git
 Child/readers implementation independent of caller runtime. Source review and
-required gates remain pending; full default local Debug and Release failed,
-with cause and regression status unknown. Shared native process lifetime and full #60/F1 acceptance remain open.
+required gates remain pending. Current composed source's default local Debug
+failed; its distinct full Release passed415 Rust tests plus2 doctests. Historical
+failures remain preserved with cause and regression status unknown. Release does
+not close Debug or native availability. Shared native lifetime and full #60/F1 remain open.
