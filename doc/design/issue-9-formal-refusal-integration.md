@@ -142,8 +142,9 @@ is the factual boundary, not a claim that the original gate never ran.
 
 An explicit same-class risk-only `escalate` can currently prepare its formal next
 pack; the central guard refuses that transaction and no new risk/policy is persisted.
-Likewise an early formal `step` refusal can withhold the old drift/invalidation
-publication. This stage neither commits a requested strengthening nor reports it
+Likewise an early protected (Reviewer/Pr/MergeGate/Cleanup) `step` refusal can
+withhold the old drift/invalidation publication. This stage neither commits a
+requested strengthening nor reports it
 applied: callers get the typed unavailable error, all stored authority is unchanged
 and no formal input is granted. Document these availability limits and cover both
 with exact DB/capture controls; do not add a broad risk/source-revocation exemption.
@@ -162,7 +163,7 @@ cancel/terminal-reconciliation path, without calling it a native death certifica
 ## Consumer controls, compatibility and source gate
 
 Implementation uses actual Workflow entrypoints with dedicated Store/Project/Task
-fixtures and counters for Sources.capture, gate invocation, adapter probe/start,
+fixtures and counters for Sources.capture, gate invocation, adapter probe/start/status,
 and complete DB snapshots (owners, Records, ALL Contexts, Sessions, locks, audits).
 Before-input refusal requires zero new relevant capture/effect/claim/model delivery
 and byte-identical durable state. Internal successor and already-observed outcome
@@ -190,6 +191,9 @@ fixture-only construction of factual legacy history, not a traced native invocat
 new typed allocation or private owner. No raw SQL, test-ready flag, Session JSON or
 fictional lease produces a native/readiness positive. Full schema/old-writer fencing
 remains outside this component.
+Legacy reviewer completion also uses actual `Store::put_session` grammar for its
+persisted scoped Exited Session plus required Running marker/bind/Evaluating claim
+transitions; this terminal fixture record is never a native settlement certificate.
 
 Controls reach each public branch, context preparation, downstream Passed application
 and Quick/finalization bypass. Compiled mutations exercise causal guaranteed cuts,
@@ -202,6 +206,11 @@ Workflow `poll`→adapter.status consumer; known journal replay reaches apply_ou
 Workflow has NO adapter.stop callsite: cancel is TerminalDecision publication,
 not stop. Existing adapter stop/cleanup is an unchanged external nonconsumer here,
 with no Workflow-mutant kill or new native-resource proof claimed.
+The session-bound reviewer `resume_gate` status counter can distinguish omission
+of its before-status guard; a session-less case remains masked by evaluate and has
+no individual credit (explicit pair cut only). The downstream retry arm is already
+blocked by the existing irreversible-phase check and has no new independent credit;
+Reviewer retry is the actually reachable refusal consumer.
 
 Retain existing tests and their actual semantics/evidence. Main's successful
 single-reviewer FakeAgent fixtures are legacy mechanics, not current ReviewSet
@@ -250,3 +259,11 @@ Known historical journal construction uses the actual audited schema3 Store gram
 and is never native ownership or readiness. A's malformed Passed/intermediate STRICT
 and missing durable drift-attention consequences are disclosed, not exemptions or
 new policy. These are finite HOW/control corrections under unchanged21.j/21.k.
+
+Design3 A `038599e2-b626-4626-8171-85ce345788dd` and B
+`63af97e1-9864-40dc-a875-6c4871beab4c` BOTH APPROVE with no Critical/High/Medium;
+both commands closed before reading either result. Their four Low precision items
+are recorded above: actual legacy Session grammar, external stop nonconsumer, status
+counter/masked guard credit and downstream drift-publication limits. These metadata
+clarifications change no policy or source; implementation has not started at this
+design-evidence revision. Whole9/19/43/native-profile/migration acceptance is open.
