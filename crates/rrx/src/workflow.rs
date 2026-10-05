@@ -3572,6 +3572,9 @@ fn load_rules(
 }
 
 #[cfg(test)]
+#[path = "workflow/committed_source_tests.rs"]
+mod committed_source_tests;
+#[cfg(test)]
 #[path = "workflow/managed_tests.rs"]
 mod managed_tests;
 #[cfg(test)]
