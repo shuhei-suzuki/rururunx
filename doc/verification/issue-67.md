@@ -1,0 +1,9 @@
+# Issue67 isolated Grok fixture diagnostics
+
+Related: #67, #51, #60, #16. This QUICK test-only change makes failures of existing isolated environment fixtures observable. It does not fix or establish the cause of earlier full Release watchdog failures or main CI ProcessStatus deadline failures.
+
+`isolated_with` retains its env-cleared owned child, synthetic environment, two existing bounded readers, 60-second observation deadline, cleanup/reap order and original success predicate. Its failure message adds a finite observation classification, elapsed observation milliseconds and actual reaped exit status. No environment values or filesystem/config/credential contents are added. Observation I/O errors are reported as a category without their error message.
+
+For the existing nine irrelevant foreign-change cases, progress lines use only boundary 0..2, case 0..8 and eight static stage labels. At most 72 lines per child (under 8 KiB) fit the existing 64 KiB stderr reader bound. Output uses the existing child stderr pipe; no new owner, process, thread, timer, file or poller is introduced. The last emitted stage indicates entry into an operation, not its successful completion or which nested activity caused a delay. Existing final child-completion assertions remain required. These are synthetic fixtures, never native acceptance or proof that every nested job is reaped.
+
+Clean committed source verification and independent finite source review remain pending. Original full Release failure observations at graph source `364139d5dedf35e154597417efb0c5e9ac7927fd` remain retained in the Issue23 composed1 ledger: checkpoint and resume parents each reached the 60-second watchdog with only `running 1 test` child stdout and empty stderr. No increase to deadlines, serial execution, ignored assertion, production policy, environment selection, native defaults or ownership protocol is made here.
