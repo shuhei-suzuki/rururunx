@@ -620,6 +620,83 @@ was tested. Cleanup guarantees, Phase2 completion and MVP completion do not foll
 from this checkpoint. Operational source/evidence/Runtime integration remains
 dependency-ready work; no additional component approval is requested.
 
+## Registered initial-source component checkpoint
+
+This checkpoint advances the production source-bootstrap prerequisites. It does
+not complete production Workflow source/evidence ports or native acceptance.
+The [machine-readable checkpoint](agent-execution-phase2-bootstrap-checkpoint.json)
+retains exact commits, source/log hashes, original failure evidence, mutation
+chains, host/tool versions and limitations. The separate
+[review ledger](agent-execution-phase2-bootstrap-reviews.json) preserves all five
+independent design/source rounds and their original findings.
+
+Design `a732376` made initial preparation distinct from successful Agent work and
+specified private same-unit adoption. Design1 review A found that the actual
+Workflow rule/config producer remains separate from Sources.capture. Inspection
+of `inputs`/`load_rules` confirmed that finding: even a committed repository index
+would otherwise receive live tracked rules. `9b4ad6a` explicitly specifies the
+prepared committed rule/config frame at the actual policy/hash/payload consumer,
+external-origin handling and an A-versus-B input control. Both Design2 reviewers
+approved the component contract. That Workflow frame connection is still pending.
+
+Source `6be63c8` adds `AttemptManager::prepare_workflow_source` and a non-Clone,
+non-serializable PreparedExecutor with private producer fields and an abandonment
+guard. It reuses the actual registered attempt/UnitGit preparation path, before
+base-resolution Git. It remains Preparing with no Session, work result or artifact.
+Its bounded ordinary-file reader resolves the exact base tree entry and blob,
+using literal relative paths and registered helpers; it does not read later HEAD
+or live worktree bytes. This is a file reader, not yet a complete RepositoryMap.
+
+Native start rejects this phase before version helpers or preparation abandonment
+effects. Session registration, native capacity, non-Git helper and delegated/native
+intent transactions independently reject it. Ordinary preparation cannot mint the
+reserved phase. Schema 5 replaces connection-local contract-4 write guards with
+contract-5 guards without changing table layout; unrelated append-only triggers
+remain. Dropping the capability closes exact owned authority and records unknown
+work, retaining paths/resources for best-effort cleanup rather than fabricating
+success or disposal.
+
+The initial full regression passed 540 primary tests. Initial Clippy rejected the
+new test's explicitly dropped MutexGuard lifetime; `5efdc89` uses a lexical block
+and also rejects the reserved phase at the public snapshot preparation entry.
+Its new reader fixture incorrectly included a symlink before preparation. Actual
+regression and Source2 review A both showed preparation refusing that unsupported
+content before the size/literal reader assertions. `da85933` separates ordinary
+file reader controls from a later symlink-preparation refusal. Source2 review B's
+earlier approval is retained, including its Source3 acknowledgement of the missed
+reachability issue. The qualification guard was not relaxed.
+
+Final source `da85933a3d2c5c8c692d5f906f6fb2e00be63b7c` passed the full macOS
+workspace regression: 421 rrx library, 113 primary rrx integration, four tracker
+library, one tracker discovery and two doctests, **541 primary passes**, zero
+failures and 30 primary ignores. Internal filtered child runs are not counted
+again. Clippy all-targets with `-D warnings`, build, formatting and diff checks
+passed. Both final component reviewers approved with zero findings; these are
+static component reviews, not coordinated Phase2/native approval.
+
+Twelve final mutations each compiled and failed at an actual consumer assertion:
+Native, Session, quota, non-Git helper and delegated grant restrictions; exact
+commit origin; abandonment guard; contract-4 write fence; snapshot phase entry;
+blob size and type; literal path handling. Every restoration tree equals the
+final source tree. Four selected controls passed on the final restored tree.
+Both mutation chains are retained under the checkpoint's named verification refs;
+all three newly owned temporary worktrees were normally removed after clean/tree
+checks. No outstanding command handles remain.
+
+An actual CLI check created an owned empty schema-5 database with the current
+debug build. The previously recorded `e067578` installed schema-4 binary refused
+`project list` with `unsupported state schema 5, supported 4`, exit 1, while its
+logical database dump remained unchanged. Already-open contract-4/cached-writer
+refusal and current-writer success passed separately through actual SQLite.
+This is not a current-source installation or CLI run/Goal qualification.
+
+The same-unit adoption transaction, committed Workflow mandatory-rule/config
+frame, complete committed context index and real source/evidence ports are the
+next integration. Runtime run/status/stop/resume, verifier/reviewer policies,
+recovery and Linux/native qualification still remain. No new human decision is
+needed for this dependency-ready Phase2 work. The full Phase2-to-Phase3 human
+approval gate remains; README Status and licensing are unchanged.
+
 ## Remaining Phase2 and acceptance work
 
 - Production source/evidence ports and scoped initial-source bootstrap; Runtime

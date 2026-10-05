@@ -1,0 +1,811 @@
+{
+  "scope": "Independent component requirements/design/source rounds, not final Phase2/native/MVP approval",
+  "rounds": [
+    {
+      "round": "design1",
+      "source_commit": "a732376e549dc73e5d8b1655c9d4afa91db5a3d7",
+      "reports": [
+        {
+          "reviewer": "a",
+          "original": {
+            "path": "/private/tmp/rururunx-agent-execution-bootstrap-design1-a.json",
+            "sha256": "d4dfd2b40b89bf3e5a27a6511a9ced61b0d5f27c543c8e423e21f2b49aa1a575",
+            "bytes": 6455
+          },
+          "report": {
+            "review": "Independent STRICT component bootstrap Design1 review A",
+            "source_commit": "a732376e549dc73e5d8b1655c9d4afa91db5a3d7",
+            "implementation_baseline": "e6665a69c3b7b6d0370e618d43be7adae4642240",
+            "approved_phase1_contract": "9a11d03f1b1676c2c3c8a24b6b3fd328759f7db5",
+            "verdict": "REQUEST_CHANGES",
+            "counts": {
+              "critical": 0,
+              "high": 0,
+              "medium": 1,
+              "low": 0
+            },
+            "findings": [
+              {
+                "id": "B-M1",
+                "severity": "Medium",
+                "title": "Initial committed-object Context does not specify migration of the separate mandatory rule/config producer",
+                "design_locations": [
+                  {
+                    "path": "doc/design/agent-execution-design.md",
+                    "lines": "579-583,591-594"
+                  },
+                  {
+                    "path": "doc/design/agent-execution-design.md",
+                    "lines": "287-288"
+                  }
+                ],
+                "source_refs": [
+                  {
+                    "commit": "e6665a69c3b7b6d0370e618d43be7adae4642240",
+                    "path": "crates/rrx/src/workflow.rs",
+                    "lines": "662-689",
+                    "evidence": "Workflow.inputs independently loads rules/config before Sources.capture, forbids source_versions keys beginning rules:, then extends those rule versions and prepends the returned rule text. A new committed-object WorkflowSources implementation cannot replace this producer through the current source port."
+                  },
+                  {
+                    "commit": "e6665a69c3b7b6d0370e618d43be7adae4642240",
+                    "path": "crates/rrx/src/workflow.rs",
+                    "lines": "3472-3502",
+                    "evidence": "load_rules reads project.config_ref and rule_refs from the live Project root, hashes those bytes, applies config.with_project_text, and returns the exact text inserted into the model Context."
+                  },
+                  {
+                    "commit": "e6665a69c3b7b6d0370e618d43be7adae4642240",
+                    "path": "crates/rrx/src/workflow.rs",
+                    "lines": "732-745",
+                    "evidence": "The initial initialize/prepare_pack calls both pass through this separate live producer; this is an initial Context consumer, not merely a future later-phase integration."
+                  }
+                ],
+                "causal_rationale": "For a tracked Project rule/config whose working-tree bytes differ from the resolved base commit, a committed-tree Sources implementation can correctly index and report the exact base while Workflow.inputs still prepends/hashes the different live rule bytes and uses the live configuration to choose policy. Full reservation/source CAS sees a consistent live rules hash, so cannot restore the promised same-commit origin. The existing design already requires tracked rules/config from the same commit; section10.1 names object capture but leaves its actual independent rule/config ingress unspecified. This is a finite initial input composition gap, not a request to finish all Sources/Gates/CLI or add a new rule policy.",
+                "minimal_correction": "State explicitly that bootstrap committed-object capture supplies the governing tracked rule/config bytes and versions to the actual Workflow.inputs/prepare_pack policy+rule-prepend consumer through a private prepared-source/rule frame or equivalent port; it must not call the legacy live load_rules for tracked refs. Preserve the existing separately declared hashed external-rule reference policy. Require equality/origin validation at first adoption and no fallback. A short callsite integration sentence and actual-consumer control are sufficient; no new UnitKind or broader requirement is requested.",
+                "causal_controls_not_executed": [
+                  "Base commit contains tracked rule/config A while live Project root contains B: initial Context payload, mandatory rules hashes and selected policy must use A (or explicitly refuse the unsupported origin), never silently B.",
+                  "Omit the new Workflow.inputs rule-frame wiring while leaving the committed object Sources implementation intact: the actual initialize/prepare_pack control must fail; a source-index-only assertion cannot qualify this consumer.",
+                  "Explicit supported external noncredential rule remains hashed and scoped under its declared policy rather than silently treated as committed content."
+                ]
+              }
+            ],
+            "verified_nonblocking_contracts": [
+              "The preparation allocator already registers generation/Task namespace before UnitGit base resolution. Keeping Executor/Preparing/work=None with no artifact is representable without inventing Agent success.",
+              "Explicit same-Unit adoption is required because existing reserve_workflow_execution refuses another live Executor. The proposed exact Unit/Task/Workflow/Context CAS and atomic phase/history binding preserve this boundary.",
+              "Initial Issue/Worktree are EvidencePort; first native Executor Implement/Requirements is the appropriate adoption point. The master keeps the private abandonment capability until the first native phase, so earlier preparation facts must not become native succeeded history.",
+              "Native start rejection before version/quota effects plus independent Session registration refusal fixes the actual grant ingress. Reserved phase exclusion from ordinary preparation prevents caller-created bootstrap labels.",
+              "A coordinated schema5 connection-local guard replacement and old4 reopen rejection can be implemented on the existing mutable-table trigger mechanism without a new table. Actual migration/cached-statement behavior remains a source/test gate, not verified here.",
+              "No rows/restart recreate private preparation provenance; existing epoch retirement and opaque owned capability remain required. Best-effort helper cleanup is not a native work result or workload-death claim."
+            ],
+            "review_scope": "Three committed documentation changes and relevant immutable existing initial allocation/source/policy/Workflow/adoption/grant/migration consumers. This is component design only, not implementation acceptance.",
+            "limits": [
+              "No tests/builds, native/auth/account/model, network, OS/process/kill, credentials or shared edits were performed.",
+              "No peer reports, dirty/later source, progress/aggregate reviews or parent execution logs were consulted.",
+              "Actual producer APIs remain proposed; no production source, grant, native compatibility, full Phase2 or MVP acceptance is certified.",
+              "Known later Sources/Gates/RuntimeCLI and cleanup/backend completion gaps are not counted as new findings."
+            ],
+            "live_handles": [],
+            "commands_closed": true
+          }
+        },
+        {
+          "reviewer": "b",
+          "original": {
+            "path": "/private/tmp/rururunx-agent-execution-bootstrap-design1-b.json",
+            "sha256": "84fac31b9d23326f9cf518a1b6a965bf97391d9753c81ab1645b7c4e8f71e2ca",
+            "bytes": 8092
+          },
+          "report": {
+            "reviewer": "B",
+            "review_kind": "independent STRICT component design review",
+            "source_commit": "a732376e549dc73e5d8b1655c9d4afa91db5a3d7",
+            "implementation_baseline_commit": "e6665a69c3b7b6d0370e618d43be7adae4642240",
+            "verdict": "APPROVE_COMPONENT_DESIGN_ONLY",
+            "severity_counts": {
+              "C": 0,
+              "H": 0,
+              "M": 0,
+              "L": 0
+            },
+            "findings": [],
+            "scope": "The three committed documentation changes define initial registered source preparation and exact first-Executor adoption. Existing implementation objects were read for feasibility and integration boundaries; proposed source ports, grants and schema-5 migration are not treated as implemented.",
+            "verified_design_properties": [
+              {
+                "property": "The bootstrap breaks the initial Context/Git admission cycle without inventing Agent work or an accepted artifact.",
+                "design_refs": [
+                  "doc/design/agent-execution-design.md:564-583",
+                  "doc/requirements/agent-execution-requirements.md:R1 added initial preparation requirements"
+                ],
+                "source_refs": [
+                  "crates/rrx/src/execution/attempts.rs:prepare_inner",
+                  "crates/rrx/src/execution/git_io.rs:127-164",
+                  "crates/rrx/src/workflow.rs:720-789"
+                ],
+                "rationale": "The existing allocator registers the ExecutionUnit/Task projection before registered base resolution and worktree creation. UnitGit records helper intent under current authority before spawn and bounds its wait/receipt. Workflow initialize reads a Task snapshot before asynchronous inputs and later persists by CAS; placing initial registration before that snapshot avoids a self-created version conflict. The design explicitly requires committed tree/blob reads through a new production source port, Preparing with no Session/work/artifact, and no fabricated successful result."
+              },
+              {
+                "property": "Adoption is a private producer-proven operation with exact atomic authority rather than reconstruction from a row.",
+                "design_refs": [
+                  "doc/design/agent-execution-design.md:574-600"
+                ],
+                "source_refs": [
+                  "crates/rrx/src/execution/attempts.rs:prepare_inner successful-return guard disarm",
+                  "crates/rrx/src/execution/owner.rs:34-79",
+                  "crates/rrx/src/state/execution.rs:270-355",
+                  "crates/rrx/src/state/execution.rs:517-564",
+                  "crates/rrx/src/workflow.rs:1340-1442"
+                ],
+                "rationale": "The proposed non-Clone, non-serializable capability must be returned by the successful preparation producer and retain the existing abandonment guard beyond the current tuple-return boundary. The adoption transaction explicitly checks unit/version/epoch/generation, active Task projection, prepared namespace/base/provider/profile, permissions and no Session/work/artifact/native input/quota/unresolved helper. It shares the concrete Workflow/Context/owner CAS checks already used for reservation. Only phase and history unit binding change; generation/resource identity remain stable. Failed adoption rolls back both writes, and capability abandonment retires only its owned unit. This is feasible as a separate producer/API and is not satisfied by simply wrapping an arbitrary recovered ExecutionUnit."
+              },
+              {
+                "property": "The first real phase follows actual Workflow ordering while later attempts keep fresh namespaces and retained result provenance.",
+                "design_refs": [
+                  "doc/design/agent-execution-design.md:575-600"
+                ],
+                "source_refs": [
+                  "crates/rrx/src/workflow.rs:74-84",
+                  "crates/rrx/src/workflow.rs:124-143",
+                  "crates/rrx/src/workflow.rs:1340-1435"
+                ],
+                "rationale": "Quick starts Worktree then Implement; Standard/Strict begin Issue, Worktree, Requirements. The capability must survive all initial evidence-only steps until that first real Executor reservation. Initial evidence success is separate from Agent success and does not create a retained artifact. Subsequent Executor phases remain genuinely fresh attempts consuming retained accepted revisions; readonly reviewer/verifier input authorities stay separate. No conflicting generation advance or obligatory fabricated initial artifact is required by this contract."
+              },
+              {
+                "property": "The reserved preparation mode has actual consumer grant restrictions and an explicit old-writer migration boundary.",
+                "design_refs": [
+                  "doc/design/agent-execution-design.md:602-618",
+                  "doc/design/master/agent-execution.md:initial production context paragraph"
+                ],
+                "source_refs": [
+                  "crates/rrx/src/execution/native.rs:199-268",
+                  "crates/rrx/src/state/execution/sessions.rs:5-54",
+                  "crates/rrx/src/state/execution.rs:7-46",
+                  "crates/rrx/src/state/mod.rs:15",
+                  "crates/rrx/src/state/mod.rs:71-79",
+                  "crates/rrx/src/state/mod.rs:107-160"
+                ],
+                "rationale": "Current native start performs a registered version probe before Session insertion, so the proposed refusal must precede that probe as stated; transaction-local Session rejection is an independent second guard. Ordinary public preparation must reject the reserved phase. Existing guards use connection-local contract 4 on all listed mutable tables and initialization checks the maximum schema. Atomically replacing the guards with contract 5 and increasing the supported schema can reject already-open contract-4 writers and old-binary reopening without changing execution table layout or minting preparation provenance. The ordered upgrade must install compatible current guards before any data write requiring the new contract; actual migration behavior remains to be implemented and tested."
+              }
+            ],
+            "required_implementation_controls_not_executed": [
+              "Exercise Quick and Standard/Strict through actual initial Issue/Worktree source and evidence consumers, retain the preparation capability through both Standard/Strict evidence steps, and show same Unit/generation/path/resource identity at the first Executor phase with no fabricated work/artifact.",
+              "Assert registered bounded UnitGit intent precedes every initial base/tree/blob helper and native version/Session/quota/input effects are absent before adoption, including direct public NativeSessions and transactional Session registration attempts.",
+              "Cause exact Unit/Task/Workflow/Context/provider/profile/namespace/base/epoch drift, unresolved helper, preexisting native input/quota admission and repeat adoption; assert the whole adoption transaction rolls back and no replacement unit or stale dispatch is admitted.",
+              "Drop or abort preparation/capture/initialization/evidence/adoption at decisive boundaries; prove only the owned preparation is retired, no capability can be recovered from a row, and restart cannot reuse an old worktree as a fresh attempt.",
+              "Keep a contract-4 writer open across migration, including a connection with its old scalar function registered and cached writes; prove every mutable-table write fails afterward. Exercise fresh schema 5, legacy-to-5 migration, current-writer success and old-binary reopening refusal.",
+              "Remove each decisive phase/provenance/CAS guard in a controlled mutation check and require actual consumer controls to fail rather than merely unit-testing duplicate predicates."
+            ],
+            "limits": [
+              "Static immutable Git-object review only. No source edits, builds, tests, native Agents, authentication/account access, network calls or OS/process operations were performed.",
+              "The preparation capability, same-unit adoption, reserved-phase refusal, committed-object production source port and schema-5 migration are implementation obligations. Existing e666 implementation is not claimed to contain them.",
+              "No peer findings, aggregate reports, progress/evidence logs, dirty files or later commits were used. No external empirical result is inherited.",
+              "Initial source preparation/first adoption component design only. Subsequent production Sources/Gates/CLI completeness, real native behavior, four-Task independence, OS conformance and complete Phase2/MVP acceptance remain outside this approval."
+            ],
+            "live_handles": [],
+            "closed_commands": "Every owned read-only Git command completed with exit_code 0 and no session_id. No owned process or command handle remains open. Only this private report was written."
+          }
+        }
+      ]
+    },
+    {
+      "round": "design2",
+      "source_commit": "9b4ad6a7ce61b428d3bade9d7a8a9bde292ae4e4",
+      "reports": [
+        {
+          "reviewer": "a",
+          "original": {
+            "path": "/private/tmp/rururunx-agent-execution-bootstrap-design2-a.json",
+            "sha256": "b752e03fdf1daa0f7f9f34b483baf0a4f54513f74d6d7671b58a6c72cefa2fed",
+            "bytes": 3457
+          },
+          "report": {
+            "review": "Independent STRICT bootstrap Design2 delta re-review A",
+            "source_commit": "9b4ad6a7ce61b428d3bade9d7a8a9bde292ae4e4",
+            "baseline_design_commit": "a732376e549dc73e5d8b1655c9d4afa91db5a3d7",
+            "implementation_baseline": "e6665a69c3b7b6d0370e618d43be7adae4642240",
+            "approved_phase1_contract": "9a11d03f1b1676c2c3c8a24b6b3fd328759f7db5",
+            "verdict": "APPROVE",
+            "counts": {
+              "critical": 0,
+              "high": 0,
+              "medium": 0,
+              "low": 0
+            },
+            "findings": [],
+            "own_prior_findings": [
+              {
+                "id": "B-M1",
+                "prior_severity": "Medium",
+                "disposition": "Closed in the component design; implementation and actual consumer controls remain required.",
+                "evidence": [
+                  {
+                    "path": "doc/design/agent-execution-design.md",
+                    "lines": "584-592",
+                    "detail": "Explicitly replaces the actual Workflow.inputs/prepare_pack tracked rule/config ingress, not only Sources.capture. The prepared committed frame supplies exact bytes/hashes/parsed policy from the base commit. Declared external noncredential dependencies remain separately scoped/hashed; complete frame is checked against Context at first adoption and unsupported origins refuse without fallback."
+                  },
+                  {
+                    "path": "doc/design/agent-execution-design.md",
+                    "lines": "628-631",
+                    "detail": "Requires the actual initialize/prepare_pack A-at-base versus B-live control for payload, rule hashes and selected policy, with omission sensitivity specifically targeting independent rule-frame consumer wiring."
+                  },
+                  {
+                    "path": "doc/design/master/agent-execution.md",
+                    "lines": "114-118",
+                    "detail": "Master describes the same actual mandatory consumer and separate hashed external origin, with no legacy live tracked-rule fallback."
+                  }
+                ],
+                "actual_source_cause_retained": "Fixed implementation e6665a69 Workflow.inputs:662-689 and load_rules:3472-3502 are the unchanged consumers to migrate; documentation approval does not claim that source migration has happened."
+              }
+            ],
+            "consistency": [
+              "The complete section10.1 still preserves registered Git before effects, private non-Clone actual preparation capability, no fabricated Agent work/result artifact, same-Unit atomic adoption, exact Workflow/Context/Task authority, absence of Session/input/quota/pending preparation and no generation/path/resource replacement.",
+              "Native/Session grant rejection and coordinated schema5 old-writer/reopen fencing remain unchanged proposed requirements; no weaker fallback is added.",
+              "Tracked same-commit rules/config aligns existing design section5:287-288; external references do not gain false committed provenance or credential copying.",
+              "The full immutable delta is two design documents, 17 additions and one deletion. Production source and requirements are unchanged."
+            ],
+            "limits": [
+              "Component design approval only, not source implementation, native conformance, full Phase2 or MVP acceptance.",
+              "No tests/builds/native/auth/account/model/network/OS/process actions, logs or shared source edits were performed.",
+              "No peer findings, dirty/later source, aggregate reviews or progress documents were read.",
+              "Actual private producer, rule-frame API, migration behavior and consumer/omission controls still require implementation and independent verification."
+            ],
+            "live_handles": [],
+            "commands_closed": true
+          }
+        },
+        {
+          "reviewer": "b",
+          "original": {
+            "path": "/private/tmp/rururunx-agent-execution-bootstrap-design2-b.json",
+            "sha256": "06c644f119fa53bad99042c9f7002c275cda45fef95e2148a8a97f337218ceda",
+            "bytes": 4767
+          },
+          "report": {
+            "reviewer": "B",
+            "review_kind": "independent STRICT component design delta review",
+            "source_commit": "9b4ad6a7ce61b428d3bade9d7a8a9bde292ae4e4",
+            "baseline_design_commit": "a732376e549dc73e5d8b1655c9d4afa91db5a3d7",
+            "implementation_reference_commit": "e6665a69c3b7b6d0370e618d43be7adae4642240",
+            "verdict": "APPROVE_COMPONENT_DESIGN_ONLY",
+            "severity_counts": {
+              "C": 0,
+              "H": 0,
+              "M": 0,
+              "L": 0
+            },
+            "findings": [],
+            "source_evidence": [
+              {
+                "design_refs": [
+                  "doc/design/agent-execution-design.md:584-592",
+                  "doc/design/master/agent-execution.md:initial production context paragraph"
+                ],
+                "implementation_refs": [
+                  "crates/rrx/src/workflow.rs:655-690",
+                  "crates/rrx/src/workflow.rs:692-718",
+                  "crates/rrx/src/workflow.rs:3472-3502"
+                ],
+                "rationale": "The actual current inputs consumer independently loads live Project config/rules, selects budget from parsed config, forbids Sources.capture from providing rules: versions, then prepends its own mandatory rule payload. prepare_pack calls that inputs consumer again and validates policy. The amended contract explicitly replaces that tracked ingress with the same prepared committed-source frame containing exact bytes, hashes and parsed policy. It therefore covers the actual payload, hash and configuration consumers rather than merely attaching a revision to repository content or altering Sources.capture in isolation."
+              },
+              {
+                "design_refs": [
+                  "doc/design/agent-execution-design.md:589-592",
+                  "doc/design/agent-execution-design.md:594-609"
+                ],
+                "rationale": "Explicitly supported external noncredential origins are scoped, hashed dependencies and are not represented as commit-owned bytes. Unsupported origins refuse without legacy live fallback. Complete source/rule frame equality is required at exact Context adoption; this strengthens the prior private-producer, current-version/epoch/generation, Task/Workflow/Context atomic adoption contract without reopening old result or native authority."
+              },
+              {
+                "design_refs": [
+                  "doc/design/agent-execution-design.md:621-631"
+                ],
+                "rationale": "The required control reaches actual initialize/prepare_pack consumption with committed A and live B. It demands A or explicit refusal for payload, rule hashes and selected policy, and fails if only the repository index is committed while rule-frame wiring is omitted. This control is causally appropriate for the independent live load_rules ingress present in the reference source. It is a future implementation obligation, not an executed result."
+              }
+            ],
+            "prior_own_dispositions": [
+              {
+                "review": "bootstrap-design1-B",
+                "disposition": "Prior component design approval maintained; no new conflict with producer capability, registered Git intent, first same-unit adoption, Native/Session restrictions or schema-5 writer fence was established. Their implementation and consumer controls remain required."
+              }
+            ],
+            "proposed_controls_not_executed": [
+              "Use tracked config/rules committed as A and differing live Project versions B through actual Workflow initialize/prepare_pack; assert mandatory payload, rule versions, budget/minimum Workflow and other selected parsed policy all derive from A or refuse explicitly.",
+              "Keep the committed repository index but deliberately omit prepared rule/config ingress, and verify the actual consumer control fails rather than accepting revision-only provenance.",
+              "Exercise supported declared external hashed dependencies and unsupported origins, including changes between Context construction and adoption; require exact Context/frame refusal without a live tracked-rule fallback.",
+              "Retain all prior same-unit adoption CAS, pre-native refusal, abandonment and contract-4-to-5 migration consumer controls."
+            ],
+            "limits": [
+              "Immutable Git-object static review only. The full design delta changes two documentation files, 17 insertions and one deletion; production source is unchanged.",
+              "No peer reports, logs, aggregate findings, dirty files, later commits or external empirical results were used. No tests/builds/native Agents/accounts/authentication/network/OS/process operations were performed.",
+              "The production committed-object frame and actual Workflow consumer wiring are not implemented or empirically verified by this documentation approval.",
+              "Component initial-bootstrap design approval only. This is not acceptance of subsequent Sources/Gates/CLI completeness, native compatibility, four-Task behavior, Phase2 completion or MVP/public guarantees."
+            ],
+            "live_handles": [],
+            "closed_commands": "All owned read-only Git command calls completed with exit_code 0 and no session_id. No owned command or native process remains open. Only this private report was written."
+          }
+        }
+      ]
+    },
+    {
+      "round": "source1",
+      "source_commit": "6be63c8167a09f27fe0abf9dd516a57d1f9aaaf3",
+      "reports": [
+        {
+          "reviewer": "a",
+          "original": {
+            "path": "/private/tmp/rururunx-agent-execution-bootstrap-source1-a.json",
+            "sha256": "2491fb66f1a52fe89ff4e0d318d7c1afd941083628a33a1f4e1a498d38e53b98",
+            "bytes": 6790
+          },
+          "report": {
+            "review": "Independent STRICT bootstrap Source1 component review A",
+            "source_commit": "6be63c8167a09f27fe0abf9dd516a57d1f9aaaf3",
+            "baseline_commit": "9b4ad6a7ce61b428d3bade9d7a8a9bde292ae4e4",
+            "approved_phase1_contract": "9a11d03f1b1676c2c3c8a24b6b3fd328759f7db5",
+            "verdict": "APPROVE",
+            "scope": "Implemented preparation-only registration/capability, exact bounded committed-file reader, bootstrap grant refusals, abandonment guard, and schema5 writer-contract migration only.",
+            "counts": {
+              "Critical": 0,
+              "High": 0,
+              "Medium": 0,
+              "Low": 0
+            },
+            "findings": [],
+            "verified_source_checks": [
+              {
+                "claim": "The genuine preparation producer registers an Executor before its Git effects and returns a non-Clone, non-serializable capability retaining its preparation abandonment guard. It does not mark Agent work successful or create a result artifact.",
+                "locations": [
+                  "crates/rrx/src/execution/attempts.rs:14-24",
+                  "crates/rrx/src/execution/attempts.rs:103-118",
+                  "crates/rrx/src/execution/attempts.rs:173-221",
+                  "crates/rrx/src/execution/attempts.rs:225-292",
+                  "crates/rrx/src/execution/owner.rs:34-79"
+                ],
+                "evidence": "prepare_inner reserves the unit and resources before registered UnitGit resolution/worktree creation; the returned unit stays Preparing with absent Session/work/artifact. Successful inner guard disarming and outer guard creation have no intervening await. Drop uses the exact scope/generation/epoch/Session and only logically retires the owned preparation."
+              },
+              {
+                "claim": "The new reader selects the exact base commit entry and blob, refuses nonordinary or ambiguous entries and invalid relative paths, and enforces the 256KiB per-file bound before blob capture.",
+                "locations": [
+                  "crates/rrx/src/execution/attempts.rs:26-80",
+                  "crates/rrx/src/execution/git_io.rs:107-199",
+                  "crates/rrx/src/execution/process.rs:85-162",
+                  "crates/rrx/src/execution/results.rs:630-653"
+                ],
+                "evidence": "Literal pathspec ls-tree uses the captured full base OID; mode/type/name/OID checks precede cat-file size/blob. Registered UnitGit journals helpers, checks execution authority, and uses bounded scoped process capture. Shared command construction clears Git repository/graph routing overrides and disables replacement/lazy-fetch behavior; no textconv/filter or worktree content read substitutes for the selected blob."
+              },
+              {
+                "claim": "Preparation-only units cannot obtain native version probes, native Session admission, native/model or delegated effects, or quota admission through the changed actual entry points.",
+                "locations": [
+                  "crates/rrx/src/execution/attempts.rs:90-101",
+                  "crates/rrx/src/execution/native.rs:178-199",
+                  "crates/rrx/src/state/execution/sessions.rs:13-24",
+                  "crates/rrx/src/state/execution/effects.rs:31-107",
+                  "crates/rrx/src/state/execution/quotas.rs:170-180"
+                ],
+                "evidence": "The native phase refusal precedes its preparation guard/probes/quota/Session path, while Session and non-Git helper/effect/quota transactions independently reject the reserved phase before insertion/admission. Registered Git helpers remain allowed. Public ordinary prepare refuses the reserved phase."
+              },
+              {
+                "claim": "Schema5 replaces only the connection-local write-contract triggers in the ordered migration and leaves unrelated identity/append-only guards and layout intact.",
+                "locations": [
+                  "crates/rrx/src/state/mod.rs:15",
+                  "crates/rrx/src/state/mod.rs:71-79",
+                  "crates/rrx/src/state/mod.rs:107-164",
+                  "crates/rrx/src/state/execution.rs:7-30",
+                  "crates/rrx/src/state/execution.rs:98-111"
+                ],
+                "evidence": "Fresh databases install contract5 guards; existing databases replace all enumerated mutable-table INSERT/UPDATE/DELETE guards and user_version within the same Immediate transaction. A pre-open contract4 function fails new guards, and older source rejects reopening unsupported user_version5. No provenance or native capability is reconstructed during this migration."
+              }
+            ],
+            "causal_controls_read_not_executed": [
+              "workflow_source_bootstrap_reads_commit_and_refuses_native_before_effects exercises both provider labels, exact base blob despite changed worktree/HEAD, invalid paths without helper effects, native refusal without unit/effect mutation, ordered reservation/base binding, and logical Drop retirement followed by a genuinely fresh attempt.",
+              "workflow_source_bootstrap_refuses_session_capacity_and_non_git_intents exercises independent actual Store Session/quota/helper/managed-effect gates, unchanged unit/effect/Session/quota state on refusal, and allowed journaled Git helper intent.",
+              "schema5_replaces_contract4_guards_and_fences_already_open_writer exercises a pre-open function4 connection and cached statement before/after upgrade, a fresh old write refusal, current writer success and retained append-only guard."
+            ],
+            "own_previous_findings": [
+              {
+                "id": "B-M1",
+                "disposition": "Closed by approved bootstrap Design2 at the contract level; actual Workflow tracked rule/config frame integration remains explicitly pending and was not implemented or qualified by this Source1 slice.",
+                "evidence": "Design 10.1 lines584-592 and628-631 require the prepared committed frame to replace actual inputs/prepare_pack load_rules behavior and require a base-A/live-B consumer control. This Source1 review does not treat an exact repository blob reader alone as satisfying that contract."
+              }
+            ],
+            "limits": [
+              "Static immutable Git-object review only; no compilation, tests, mutation execution, logs, parent pass claims, authenticated native models, account/network/OS probes or process actions were performed or inherited.",
+              "No peer reports, aggregate review dispositions, progress documents, dirty source or later commits were consulted.",
+              "The committed tests were inspected for source-level consumer wiring, not certified as executed. Direct 256KiB boundary/mode fixtures are not newly demonstrated by this review.",
+              "Same-Unit first-phase adoption, actual Workflow tracked rule/config frame, full committed Context/production Sources/Gates/CLI and native compatibility remain outside this implemented slice and pending.",
+              "Logical Drop retirement and bounded selected-child cleanup are not complete descendant cleanup or same-user filesystem enforcement claims.",
+              "APPROVE is confined to this component source slice, not final Phase2, production native, whole requirements or MVP acceptance."
+            ],
+            "live_handles": [],
+            "commands_closed": true,
+            "source_modified": false,
+            "report_is_only_write": true
+          }
+        },
+        {
+          "reviewer": "b",
+          "original": {
+            "path": "/private/tmp/rururunx-agent-execution-bootstrap-source1-b.json",
+            "sha256": "d972290837e2b9e6acb0291e9a98c9c9c26edbe78e7a4308ccb50361dfff2dde",
+            "bytes": 7483
+          },
+          "report": {
+            "reviewer": "B",
+            "review_kind": "independent STRICT preliminary component source review",
+            "source_commit": "6be63c8167a09f27fe0abf9dd516a57d1f9aaaf3",
+            "baseline_commit": "9b4ad6a7ce61b428d3bade9d7a8a9bde292ae4e4",
+            "verdict": "APPROVE_COMPONENT_SOURCE_ONLY",
+            "severity_counts": {
+              "C": 0,
+              "H": 0,
+              "M": 0,
+              "L": 0
+            },
+            "findings": [],
+            "verified_source_boundaries": [
+              {
+                "property": "Preparation provenance is minted by the successful producer and retained with abandonment handling.",
+                "locations": [
+                  "crates/rrx/src/execution/attempts.rs:14-24",
+                  "crates/rrx/src/execution/attempts.rs:90-119",
+                  "crates/rrx/src/execution/attempts.rs:200-285",
+                  "crates/rrx/src/execution/owner.rs:34-79"
+                ],
+                "evidence": "PreparedExecutor has private owner/unit/guard fields and no Clone or serialization implementation. Its public constructor path calls actual registered preparation with the reserved phase; ordinary prepare refuses that phase before allocation. Inner preparation records the unit before resources and registered Git, and validates namespace/current authority before returning. The inner guard handoff to the returned capability has no intervening await after successful prepare_inner completion. The retained guard retires only matching scope/generation/epoch/Session with no known work and open native authority; it does not dispose a worktree or claim process reclamation."
+              },
+              {
+                "property": "The new per-file reader consumes a bounded exact committed blob through current registered helper authority.",
+                "locations": [
+                  "crates/rrx/src/execution/attempts.rs:28-80",
+                  "crates/rrx/src/execution/git_io.rs:127-199",
+                  "crates/rrx/src/execution/results.rs:630-653",
+                  "crates/rrx/src/execution/process.rs:85-92",
+                  "crates/rrx/src/execution/process.rs:113-161"
+                ],
+                "evidence": "Path validation rejects empty/absolute/parent/NUL paths and limits path length. Literal ls-tree lookup uses stored base_sha, not HEAD or filesystem content, and requires a single matching exact filename, ordinary file mode, blob type and OID. cat-file size precedes blob retrieval, with a 256 KiB file bound and exact returned size. The shared Git constructor clears routing/index/object/namespace/replacement environment overrides and disables replacements/lazy fetch. UnitGit validates current same scope/generation/epoch/Session plus permissions, records helper intent before spawn without an await gap, periodically fences the capture, and records bounded receipts without arbitrary stderr. Process output and duration are independently bounded."
+              },
+              {
+                "property": "Preparation-only identity is refused by actual native and delegated-effect admission paths before their effects.",
+                "locations": [
+                  "crates/rrx/src/execution/model.rs:6-7",
+                  "crates/rrx/src/execution/native.rs:183-199",
+                  "crates/rrx/src/state/execution/sessions.rs:13-25",
+                  "crates/rrx/src/state/execution/effects.rs:44-65",
+                  "crates/rrx/src/state/execution/effects.rs:86-110",
+                  "crates/rrx/src/state/execution/quotas.rs:168-180"
+                ],
+                "evidence": "NativeSessions checks reserved phase before installing a preparation guard, native version probes or Session/quota effects. Session registration independently checks the phase within its authority transaction before record insertion. Helper admission permits only git_helper for bootstrap; native_version and docker_probe refuse. General managed native/delegated intents refuse before insertion/audit, and quota reservation refuses before pool/lease mutation. A copied public unit DTO does not recreate PreparedExecutor provenance or bypass these consumer checks."
+              },
+              {
+                "property": "Schema 5 installs connection-local writer-contract guards atomically without reinterpreting prepared provenance.",
+                "locations": [
+                  "crates/rrx/src/state/mod.rs:15",
+                  "crates/rrx/src/state/mod.rs:71-79",
+                  "crates/rrx/src/state/mod.rs:107-164",
+                  "crates/rrx/src/state/execution.rs:32-39",
+                  "crates/rrx/src/state/execution.rs:98-111"
+                ],
+                "evidence": "The scalar writer function returns this binary's schema contract. Fresh installation uses contract-5 triggers. The ordered immediate migration replaces each listed mutable table's insert/update/delete writer trigger at step 5, then updates user_version and commits. Existing schema-4 connections whose own function returns 4 will fail the new condition; older binaries' maximum-version check rejects schema 5 on reopening. Only writer trigger names are replaced, leaving layout and unrelated identity/append-only triggers unchanged. No preparation adoption or work/artifact success is fabricated by migration."
+              }
+            ],
+            "source_wired_controls_not_executed": [
+              "execution/native/tests.rs adds an actual prepare_workflow_source/read_committed_file/NativeSessions consumer control for both providers: forbidden ordinary phase leaves no unit, changed filesystem plus moved HEAD retains base bytes, invalid paths add no effects, native refusal creates no version/Session/input effects, Drop retires without disposal and retry uses a fresh unit/path/generation.",
+              "state/execution/tests.rs directly exercises transactional Session/quota/non-Git-helper/native-intent rejection with unchanged unit/effect/pool state and positive journaled Git-helper admission.",
+              "state/execution/tests.rs creates contract-4 schema/triggers plus an already-open contract-4 function and cached statement, migrates through Store::open, and checks cached/fresh old writes fail, current writes succeed, all writer triggers target contract 5 and an append-only trigger remains. This review credits the control wiring only, not a test result."
+            ],
+            "additional_causal_controls_not_executed": [
+              "Exercise symlink/submodule/tree/absent paths and exact 256 KiB versus oversized blobs through the actual file reader; verify refusal never substitutes live bytes or unbounded fetch.",
+              "Interrupt committed reading and preparation at helper awaits, cancel/replace the current epoch or Task projection, and assert no stale helper authority is revived; retain unknown helper receipts and historical worktree ownership for best-effort cleanup.",
+              "Run fresh initialization and nonempty legacy 1/2/3/4-to-5 migration cases, and test contract-4 writes across all mutable tables using cached and fresh statements, with migration rollback if any trigger operation fails."
+            ],
+            "limits": [
+              "Immutable source-only static review. No tests/builds/native Agents/accounts/authentication/credentials/network/Docker/process signals or OS/configuration changes were performed; no parent results are inherited.",
+              "No peer reports, aggregate findings, progress/evidence logs, dirty source or later commits were inspected. Only this private report was written.",
+              "This stage implements initial registered preparation, per-file reading and grant restrictions. Same-unit adoption, actual Workflow tracked-rule/config frame wiring, complete committed Context inventory, production Sources/Gates and operational CLI remain intentionally unconnected and are not approved by this report.",
+              "No empirical Git semantics, migration behavior, native authentication/hooks, subscription recovery, four-Task independence or Linux/macOS conformance is certified. This is not complete Phase2/native/MVP acceptance or a public guarantee."
+            ],
+            "live_handles": [],
+            "closed_commands": "All owned read-only commands completed with exit_code 0 and no session_id. No owned command/native process remains open."
+          }
+        }
+      ]
+    },
+    {
+      "round": "source2",
+      "source_commit": "5efdc893610db065a45daa6bef23e795975bfb26",
+      "reports": [
+        {
+          "reviewer": "a",
+          "original": {
+            "path": "/private/tmp/rururunx-agent-execution-bootstrap-source2-a.json",
+            "sha256": "030c47902fe132ab0da27792172559fc6c3d0b938c6c2660477c25acc490be35",
+            "bytes": 5267
+          },
+          "report": {
+            "review": "Independent STRICT bootstrap Source2 static component re-review A",
+            "source_commit": "5efdc893610db065a45daa6bef23e795975bfb26",
+            "baseline_commit": "6be63c8167a09f27fe0abf9dd516a57d1f9aaaf3",
+            "approved_bootstrap_design": "9b4ad6a7ce61b428d3bade9d7a8a9bde292ae4e4",
+            "verdict": "REQUEST_CHANGES",
+            "counts": {
+              "Critical": 0,
+              "High": 0,
+              "Medium": 1,
+              "Low": 0
+            },
+            "findings": [
+              {
+                "id": "BS2-M1",
+                "severity": "Medium",
+                "title": "New combined reader control commits a symlink before preparation, so qualification rejects it before any reader boundary assertion",
+                "locations": [
+                  "crates/rrx/src/execution/native/tests.rs:215-239",
+                  "crates/rrx/src/execution/attempts.rs:225-249",
+                  "crates/rrx/src/execution/results.rs:767-777"
+                ],
+                "evidence": "The test creates link.txt as a filesystem symlink, git add --all commits it to the fixture main branch, and then unwraps prepare_workflow_source. The actual preparation resolves that same main commit and calls qualified_content_scoped before returning PreparedExecutor. Its ls-tree scan explicitly rejects every mode120000 entry. For the ordinary supported Unix Git symlink profile, prepare therefore returns source symlinks require a qualified profile at the unwrap on line239. The exact256KiB, oversized-file, literal :(glob)* and reader-mode assertions below cannot run. This follows from immutable source; no test or log execution was performed.",
+                "causal_rationale": "This is a new test-path defect, not a claim that the correct production qualifier should permit symlinks. It prevents the newly required positive/negative reader controls from exercising their actual consumer and would fail the component regression in the ordinary native symlink profile.",
+                "minimal_fix": "Keep the size/literal fixtures free of unsupported tree modes so genuine preparation succeeds. Exercise committed-symlink refusal in a separate actual preparation control and accurately label that as qualification refusal. If direct reader mode-parser sensitivity is required, use an explicitly scoped mechanical parser/control without weakening qualification or claiming a real valid prepared source with a forbidden mode.",
+                "proposed_causal_controls_not_executed": [
+                  "Actual prepare_workflow_source on a commit containing only limit.txt, large.txt and :(glob)* must return its genuine capability; read256KiB succeeds, read256KiB+1 refuses with exceeds file bound, literal path returns only literal bytes.",
+                  "Separate ordinary Unix symlink commit must cause preparation refusal with source symlinks require a qualified profile before any blob reader.",
+                  "Any direct reader type-check omission control must reach that exact type-check and must not obtain credit from the earlier full-tree qualification refusal."
+                ]
+              }
+            ],
+            "verified_delta": [
+              {
+                "locations": [
+                  "crates/rrx/src/execution/attempts.rs:300-314",
+                  "crates/rrx/src/execution/native/tests.rs:57-79"
+                ],
+                "assessment": "The added public prepare_snapshot reserved-phase guard runs before artifact lookup, profile/resource draft or unit registration. The actual call test checks the specific reserved-phase error using a nonexistent artifact and observes no units, so an omitted guard would take a distinguishable artifact lookup error path."
+              },
+              {
+                "locations": [
+                  "crates/rrx/src/execution/native/tests.rs:162-190"
+                ],
+                "assessment": "The explicit lexical Store guard block preserves all previous assertions and ends before PreparedExecutor Drop and subsequent async retry; no production semantics changed."
+              },
+              {
+                "locations": [
+                  "crates/rrx/src/execution/attempts.rs:26-80"
+                ],
+                "assessment": "The exact blob reader implementation is unchanged from Source1 and retains literal pathspec, ordinary mode/type/exact-name checks and the256KiB pre-capture size bound."
+              }
+            ],
+            "prior_own_dispositions": [
+              {
+                "id": "Source1",
+                "disposition": "Prior source-only approval remains scoped to the unchanged production registration/blob/grant/migration/Drop paths. The new test setup defect does not overturn those source checks."
+              },
+              {
+                "id": "B-M1",
+                "disposition": "Design2 rule/config frame contract closure maintained; actual Workflow rule frame/adoption remain announced next-stage work and were not counted as new findings."
+              }
+            ],
+            "limits": [
+              "Static immutable Git-object source review only; no tests/build, logs, native/auth/accounts, network, signals or operating-system probes.",
+              "No peer reports, aggregate/progress documents, dirty source or later commits read.",
+              "Only attempts.rs and native/tests.rs differ from Source1; unchanged consumer bodies and fixture initialization were inspected to validate the test trigger.",
+              "Same-Unit adoption, actual Workflow tracked rule/config frame, full committed Context/production Sources/Gates/CLI are pending and not qualified.",
+              "This verdict is component-only and grants no Phase2, production native or MVP acceptance."
+            ],
+            "live_handles": [],
+            "commands_closed": true,
+            "source_modified": false,
+            "report_is_only_write": true
+          }
+        },
+        {
+          "reviewer": "b",
+          "original": {
+            "path": "/private/tmp/rururunx-agent-execution-bootstrap-source2-b.json",
+            "sha256": "644259a6a4ea0481f0ff8f62a0a9e925a633f9381f355097e29e43cddaf0a911",
+            "bytes": 4293
+          },
+          "report": {
+            "reviewer": "B",
+            "review_kind": "independent STRICT preliminary component source delta review",
+            "source_commit": "5efdc893610db065a45daa6bef23e795975bfb26",
+            "baseline_commit": "6be63c8167a09f27fe0abf9dd516a57d1f9aaaf3",
+            "approved_design_commit": "9b4ad6a7ce61b428d3bade9d7a8a9bde292ae4e4",
+            "verdict": "APPROVE_COMPONENT_SOURCE_ONLY",
+            "severity_counts": {
+              "C": 0,
+              "H": 0,
+              "M": 0,
+              "L": 0
+            },
+            "findings": [],
+            "verified_delta": [
+              {
+                "locations": [
+                  "crates/rrx/src/execution/attempts.rs:300-314",
+                  "crates/rrx/src/execution/native/tests.rs:57-81"
+                ],
+                "evidence": "The public prepare_snapshot entry now refuses WORKFLOW_SOURCE_BOOTSTRAP before calling its inner reader/allocator, so no artifact lookup, unit/resource registration or materialization occurs for this reserved phase. The actual-call test requires the specific reserved-phase error, not merely any error from its nonexistent artifact, and checks the Task still has no execution units. Ordinary executor preparation retains its corresponding prior guard; the private successful bootstrap producer remains the supported origin."
+              },
+              {
+                "locations": [
+                  "crates/rrx/src/execution/native/tests.rs:162-200"
+                ],
+                "evidence": "The previous explicit MutexGuard drop is now a lexical block containing the identical current unit, effects and registration-before-base-binding checks. It ends before PreparedExecutor Drop and the subsequent fresh retry await, preserving the assertions, fixture effects and lock-release order."
+              },
+              {
+                "locations": [
+                  "crates/rrx/src/execution/native/tests.rs:205-270",
+                  "crates/rrx/src/execution/attempts.rs:28-80"
+                ],
+                "evidence": "The new fixture commits actual 256 KiB and 256 KiB+1 files, a literal pathspec-looking :(glob)* filename and a symlink into the configured source before calling the real prepare_workflow_source producer. It then invokes the actual read_committed_file consumer: the inclusive boundary verifies byte count/content, oversized input requires the size-bound error, the literal filename requires exact expected bytes, and symlink lookup requires the ordinary-file error. The production reader is unchanged and supplies these checks via literal ls-tree, file type/OID/path validation, bounded cat-file size and content length. The fixture drops the capability and checks unknown work; no result artifact success is fabricated. These are source-wired controls only, not observed test passes."
+              }
+            ],
+            "prior_own_dispositions": [
+              {
+                "review": "bootstrap-source1-B",
+                "disposition": "Component approval maintained. Existing producer provenance, registered helper fencing, Native/Session/non-Git/delegated/quota grant restrictions and schema-5 writer migration are unchanged. The sole production delta strengthens the ordinary public snapshot reserved-phase refusal; no new contradiction or concrete defect was established."
+              }
+            ],
+            "proposed_controls_not_executed": [
+              "Run the source-wired inclusive/oversized/literal/symlink and actual snapshot refusal controls together with the retained bootstrap native-refusal, Drop/fresh retry and schema migration controls under the required checks.",
+              "Retain future missing/submodule/tree-path, epoch/cancel/abandonment and actual consumer mutation controls; this delta does not establish complete committed inventory, adoption or Workflow frame correctness."
+            ],
+            "limits": [
+              "Immutable source-only static delta review in the requested fix worktree. The full diff changes only attempts.rs and execution/native/tests.rs; no tests/builds/native Agents/accounts/authentication/network/OS/process operations were performed.",
+              "No peer reports, logs, aggregate findings, dirty or later source, or parent empirical results were inspected or inherited. Only this private report was written.",
+              "Same-unit adoption, actual Workflow tracked-rule/config frame, full committed Context/production Sources/Gates/CLI remain the explicitly unfinished next stage. This report approves none of those components and is not complete Phase2/native/MVP acceptance or a public guarantee."
+            ],
+            "live_handles": [],
+            "closed_commands": "All owned read-only Git command calls completed with exit_code 0 and no session_id. No owned command or native process remains open."
+          }
+        }
+      ]
+    },
+    {
+      "round": "source3",
+      "source_commit": "da85933a3d2c5c8c692d5f906f6fb2e00be63b7c",
+      "reports": [
+        {
+          "reviewer": "a",
+          "original": {
+            "path": "/private/tmp/rururunx-agent-execution-bootstrap-source3-a.json",
+            "sha256": "bbbd145ab6baaa4baca6a2176585ea66eac7d52f4227affea61177ebfe284d90",
+            "bytes": 3665
+          },
+          "report": {
+            "review": "Independent STRICT bootstrap Source3 static component re-review A",
+            "source_commit": "da85933a3d2c5c8c692d5f906f6fb2e00be63b7c",
+            "baseline_commit": "5efdc893610db065a45daa6bef23e795975bfb26",
+            "approved_bootstrap_design": "9b4ad6a7ce61b428d3bade9d7a8a9bde292ae4e4",
+            "verdict": "APPROVE",
+            "counts": {
+              "Critical": 0,
+              "High": 0,
+              "Medium": 0,
+              "Low": 0
+            },
+            "findings": [],
+            "own_prior_findings": [
+              {
+                "id": "BS2-M1",
+                "disposition": "Closed in static source review",
+                "locations": [
+                  "crates/rrx/src/execution/native/tests.rs:215-255",
+                  "crates/rrx/src/execution/native/tests.rs:256-305"
+                ],
+                "evidence": "The initial commit now contains only ordinary blobs and a directory tree, so genuine prepare_workflow_source is not rejected by the existing symlink qualifier. The exact256KiB positive,256KiB+1 refusal and literal :(glob)* assertions execute before the symlink is created. The nested directory reaches the actual reader ordinary-file mode/type refusal. The first capability is then dropped and its logical retirement checked. A distinct fresh preparation against the later committed symlink independently asserts the actual full-tree qualification error and absent Session/artifact/work success for both retired units. It does not bypass qualification or claim reader symlink-mode sensitivity from that earlier refusal."
+              }
+            ],
+            "verified_delta": [
+              {
+                "claim": "Production source unchanged from Source2",
+                "evidence": "Immutable baseline/source diff contains only crates/rrx/src/execution/native/tests.rs (41 insertions,6 deletions). No production, schema, documentation, Cargo or CI bytes changed."
+              },
+              {
+                "claim": "Existing Source1 and Source2 reviewed production boundaries retained",
+                "evidence": "Preparation registration/capability, exact blob reader, ordinary and snapshot reserved-phase refusal, Native/Session/effect/quota refusals, schema5 writer guards and logical preparation Drop have no changes in this target."
+              },
+              {
+                "claim": "Directory control exercises reader type guard without unsupported source qualification",
+                "evidence": "The nested/item.txt blob creates a tree entry for nested. The reader ls-tree literal path selects that exact entry and rejects it as not an ordinary100644/100755 blob; the full-tree preparation qualifier only rejects symlink/gitlink modes, so it does not preempt the directory-reader check."
+              }
+            ],
+            "causal_controls_read_not_executed": [
+              "Actual reader boundary/literal/directory control is now source-reachable through genuine successful preparation.",
+              "Actual symlink preparation refusal is independent and follows Drop of the prior owned preparation; no successful Agent result or artifact is minted.",
+              "No mutation or runtime test result is inherited or independently certified by this static review."
+            ],
+            "limits": [
+              "Immutable Git-object static review only; no tests/build, logs, native/provider/account/auth/network/OS/process actions.",
+              "No peer reports, aggregate/progress documents, dirty source or later commits read.",
+              "Approval is limited to the bootstrap component source/test delta, not final Phase2, whole requirements, native compatibility or MVP acceptance.",
+              "Same-Unit adoption, actual Workflow tracked rule/config frame, full committed Context/production Sources/Gates/CLI remain explicitly pending.",
+              "Drop assertions concern logical permission retirement, not physical complete descendant cleanup."
+            ],
+            "live_handles": [],
+            "commands_closed": true,
+            "source_modified": false,
+            "report_is_only_write": true
+          }
+        },
+        {
+          "reviewer": "b",
+          "original": {
+            "path": "/private/tmp/rururunx-agent-execution-bootstrap-source3-b.json",
+            "sha256": "3403b57d1d95100d24a836f0b605db1fcca8fa5b77966eccb8f461239b5873aa",
+            "bytes": 4129
+          },
+          "report": {
+            "reviewer": "B",
+            "review_kind": "independent STRICT component static delta review",
+            "source_commit": "da85933a3d2c5c8c692d5f906f6fb2e00be63b7c",
+            "baseline_commit": "5efdc893610db065a45daa6bef23e795975bfb26",
+            "approved_design_commit": "9b4ad6a7ce61b428d3bade9d7a8a9bde292ae4e4",
+            "verdict": "APPROVE_COMPONENT_STATIC_DELTA_ONLY",
+            "severity_counts": {
+              "C": 0,
+              "H": 0,
+              "M": 0,
+              "L": 0
+            },
+            "findings": [],
+            "verified_delta": [
+              {
+                "locations": [
+                  "crates/rrx/src/execution/native/tests.rs:215-255",
+                  "crates/rrx/src/execution/results.rs:767-777"
+                ],
+                "evidence": "The first producer now receives a commit containing ordinary size/literal fixtures and a directory with an ordinary nested file, without a symlink. The real preparation qualifier recursively rejects submodules/symlinks, so removing the symlink removes the earlier control-flow obstruction before capability return. The unchanged actual reader assertions check the inclusive 256 KiB content, oversized error and exact :(glob)* bytes. Requesting the directory exercises the reader's non-ordinary-tree refusal instead of bypassing the preparation qualifier to manufacture a symlink-bearing capability."
+              },
+              {
+                "locations": [
+                  "crates/rrx/src/execution/native/tests.rs:256-305",
+                  "crates/rrx/src/execution/attempts.rs:105-118",
+                  "crates/rrx/src/execution/attempts.rs:248-249",
+                  "crates/rrx/src/execution/owner.rs:56-79"
+                ],
+                "evidence": "The first capability is dropped before adding and committing a symlink. A separate real prepare_workflow_source call must fail with the preparation qualifier's exact symlink error. The test then requires two registered historical units with closed permissions, unknown work and no Session/artifact, covering both first-capability abandonment and second-preparation failure. No fabricated capability or reader-only bypass is used."
+              },
+              {
+                "locations": [
+                  "full immutable baseline-to-source diff"
+                ],
+                "evidence": "Only execution/native/tests.rs changes (41 additions, six deletions); production and documentation bytes are identical to Source2. The registered producer, exact bounded file reader, grant restrictions and schema-5 writer fence therefore retain their prior component source disposition."
+              }
+            ],
+            "prior_own_assessment_correction": {
+              "review": "bootstrap-source2-B",
+              "correction": "The prior static review described the size/literal/symlink fixture as actual reader control wiring but missed that its committed symlink caused the real preparation qualifier to reject before any reader assertion. This obstruction follows directly from the immutable source; no external regression result is inherited. The current fixture separates valid reader input from unsupported preparation input and removes that obstruction. No prior test-pass claim existed, and no current test pass is claimed."
+            },
+            "proposed_controls_not_executed": [
+              "Execute the corrected actual producer/reader control and retained grant/migration tests; removing the size, literal-path or ordinary-file reader guards should make their corresponding reachable assertions fail.",
+              "Removing the symlink preparation qualifier should cause the second producer refusal control to fail, independently of the earlier size/literal assertions."
+            ],
+            "limits": [
+              "Immutable Git-object static review only. No tests/builds/native Agents/accounts/authentication/network/OS/process operations, peer findings, logs, dirty files or later source were used. Only this private report was written.",
+              "Static control-flow feasibility and assertion wiring do not establish executed test passes, Git/runtime conformance or native compatibility.",
+              "Same-unit adoption, actual Workflow source/rule/config frames, complete committed Context, production Sources/Gates and operational CLI remain unconnected next-stage work. This is only component delta approval, not full Phase2/native/MVP acceptance or a public guarantee."
+            ],
+            "live_handles": [],
+            "closed_commands": "All owned read-only Git commands completed with exit_code 0 and no session_id. No owned command or native process remains open."
+          }
+        }
+      ]
+    }
+  ],
+  "verified_findings": [
+    {
+      "round": "design1",
+      "reviewer": "a",
+      "original_id": "B-M1",
+      "classification": "verified design omission",
+      "evidence": "Actual Workflow.inputs independently calls live load_rules, forbids Sources rules: hashes and prepends that frame. Confirmed against e6665a69 source, corrected by 9b4ad6a section10.1/master; both Design2 reviews approve. The actual production frame remains an outstanding integration, not implemented by this component."
+    },
+    {
+      "round": "source2",
+      "reviewer": "a",
+      "original_id": "BS2-M1",
+      "classification": "verified test reachability defect",
+      "evidence": "Actual 5efdc893 full regression fails at preparation unwrap with source symlinks require a qualified profile, before ordinary reader assertions. da85933 separates ordinary size/literal/directory reader controls from a later symlink-preparation refusal; final full regression passes and both Source3 reviews approve."
+    }
+  ],
+  "final_component_source": "da85933a3d2c5c8c692d5f906f6fb2e00be63b7c",
+  "phase2_approved": false
+}
