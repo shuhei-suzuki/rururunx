@@ -154,7 +154,13 @@ impl WorkflowSources for FaultSources {
 #[tokio::test]
 async fn first_adoption_refuses_changed_envelope_task_cas_and_unsettled_helper_atomically() {
     for fault in [Fault::Envelope, Fault::TaskCas, Fault::Helper] {
-        let (dir, owner, mut task) = results::tests::fixture().await;
+        let (dir, owner, fixture_task) = results::tests::fixture().await;
+        let mut task = Task::new(
+            fixture_task.project_id,
+            fixture_task.goal_id,
+            "negative adoption".into(),
+            "codex".into(),
+        );
         task.workflow = WorkflowClass::Quick;
         owner.store.lock().unwrap().put_task(&mut task).unwrap();
         let program = native::tests::program(dir.path(), "codex");

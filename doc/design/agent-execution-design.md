@@ -667,6 +667,11 @@ Ready/Published artifacts are graph/manifest verified before reuse. RetainedGit'
 finite current-Runtime reader adds an exact-artifact tree action and only ordinary
 bounded blob OIDs observed in that tree. It does not allow arbitrary object reads,
 reopen historical native/finalization grants, or depend on surviving worktree bytes.
+Preparation adoption rejects unresolved helpers and every non-Git effect, rather
+than requiring every observed Git exit code to be zero. Qualification's bounded
+LFS grep legitimately reports exit 1 for no match; the actual producer accepts
+that negative observation explicitly. Fatal reader/qualification errors still
+prevent creation of the private frame, and namespace revalidation must succeed.
 Per-Task source capture is serialized independently. Synchronous terminal decisions
 remove initial-source access immediately; an in-flight bounded read retains its
 abandonment guard until it completes. Task terminal fencing already forbids launch.
