@@ -171,7 +171,7 @@ impl<'de> Visitor<'de> for Seed<'_> {
     }
     fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Value, A::Error> {
         let depth = self.depth.checked_add(1);
-        let Some(depth) = depth else {
+        let Some(depth) = depth.filter(|n| *n <= self.budget.limits.depth) else {
             return Err(self.budget.refuse(Error::Depth));
         };
         let mut values = Vec::new();
@@ -191,7 +191,7 @@ impl<'de> Visitor<'de> for Seed<'_> {
     }
     fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Value, A::Error> {
         let depth = self.depth.checked_add(1);
-        let Some(depth) = depth else {
+        let Some(depth) = depth.filter(|n| *n <= self.budget.limits.depth) else {
             return Err(self.budget.refuse(Error::Depth));
         };
         let mut values = Map::new();
