@@ -400,6 +400,7 @@ pub(super) struct TaskGuard(pub Arc<Control>);
 impl Drop for TaskGuard {
     fn drop(&mut self) {
         if !matches!(*self.0.phase.borrow(), Phase::Finished(_)) {
+            self.0.revoke_jobs();
             let error = failure(
                 ErrorKind::SessionLost,
                 if std::thread::panicking() {

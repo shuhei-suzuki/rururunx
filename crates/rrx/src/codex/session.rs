@@ -175,6 +175,7 @@ impl Drop for RegisteredTransition {
         // owner supplies uncertainty if a panic/drop skipped normal completion.
         let phase = self.control.subscribe().borrow().clone();
         if !matches!(phase, Phase::Finished(_)) {
+            self.control.revoke_jobs();
             let error = failure(
                 ErrorKind::SessionLost,
                 if std::thread::panicking() {
