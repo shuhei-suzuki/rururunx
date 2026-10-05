@@ -1,0 +1,363 @@
+{
+  "schema": "phase2_strict_json_checkpoint_v1",
+  "source": "bff8b27b72ae68c664764b6e51b549e860266bea",
+  "requirements_design_source": "6bd0d9d1191644c2b0ca667d02d65acc772a2638",
+  "scope": "Pure raw content decoder, no native consumer/Review approval/Store schema change.",
+  "platform": "macOS26.6.2/25G83 arm64, Rust/Cargo1.91.1, Git2.49.0, offline fixture regression, RUST_TEST_THREADS=4",
+  "source_hashes": [
+    {
+      "file": "crates/rrx/src/execution/strict_json.rs",
+      "sha256": "16100371842364202e9c2ca78fb0674405761ca8b5af7b51edfc75e29b791573"
+    },
+    {
+      "file": "crates/rrx/src/execution/strict_json/tests.rs",
+      "sha256": "9bb4bc48e9b144c00685ae15933b74ad3d4880bc20102a88296d4182810e0d64"
+    },
+    {
+      "file": "crates/rrx/src/execution/mod.rs",
+      "sha256": "6e105d6833e3bba2fcf7a6c90baa6083a307ffe80d45644b849070066830a5f1"
+    }
+  ],
+  "controls": {
+    "functions": 8,
+    "result": "PASS",
+    "coverage": "Nested/scalar values, duplicate root/nested/array/escaped keys, malformed UTF8/JSON/numbers/prefixes, inclusive and exceeded all budgets, Unicode decoded bytes, invalid profiles and noncontent errors.",
+    "initial_selected_control_run": "Fixed clean source8PASS, same checks source; full regression independently includes8controls."
+  },
+  "checks": {
+    "source": "bff8b27b72ae68c664764b6e51b549e860266bea",
+    "threads": 4,
+    "checks": [
+      {
+        "name": "clippy",
+        "command": [
+          "cargo",
+          "clippy",
+          "--workspace",
+          "--all-targets",
+          "--offline",
+          "--target-dir",
+          "/private/tmp/rrx-phase2-target",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "exit_code": 0,
+        "elapsed_seconds": 8.659008979797363,
+        "log": "/private/tmp/rrx-phase2-strict-json-clippy.log",
+        "sha256": "a33ffa2040650b47814b41cbe898273aba48c9caaadd634f637e75b070f59443"
+      },
+      {
+        "name": "build",
+        "command": [
+          "cargo",
+          "build",
+          "--workspace",
+          "--offline",
+          "--target-dir",
+          "/private/tmp/rrx-phase2-target"
+        ],
+        "exit_code": 0,
+        "elapsed_seconds": 8.123016119003296,
+        "log": "/private/tmp/rrx-phase2-strict-json-build.log",
+        "sha256": "d8dbb1cedfad8b137da6649d3ba7271396e45cf80e5ced4069ad6697e79ea3f4"
+      },
+      {
+        "name": "fmt",
+        "command": [
+          "cargo",
+          "fmt",
+          "--all",
+          "--",
+          "--check"
+        ],
+        "exit_code": 0,
+        "elapsed_seconds": 0.42257213592529297,
+        "log": "/private/tmp/rrx-phase2-strict-json-fmt.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "name": "regression",
+        "command": [
+          "cargo",
+          "test",
+          "--workspace",
+          "--offline",
+          "--target-dir",
+          "/private/tmp/rrx-phase2-target"
+        ],
+        "exit_code": 0,
+        "elapsed_seconds": 187.69999384880066,
+        "log": "/private/tmp/rrx-phase2-strict-json-regression.log",
+        "sha256": "eb5029681bdcc20e1e814847a478c4c890e328c793e3856ccbe18ec64e1bc45b"
+      }
+    ]
+  },
+  "primary_regression": {
+    "passed": 567,
+    "failed": 0,
+    "ignored": 30,
+    "raw_passed_failed_ignored": [
+      612,
+      0,
+      31
+    ],
+    "excluded_duplicate_passes": 45,
+    "excluded_child_ignored": 1,
+    "breakdown": {
+      "rrx_lib": 447,
+      "integration": 113,
+      "tracker_lib": 4,
+      "tracker_discovery": 1,
+      "doctest": 2
+    }
+  },
+  "mutations": {
+    "base": "bff8b27b72ae68c664764b6e51b549e860266bea",
+    "mutations": [
+      {
+        "operator": "duplicate",
+        "mutant": "4f80a26048776b4e4f621b84e3c76835bdb77c4b",
+        "restored": "ebea7cc5504ea7ed8e028140a9c10328f9502618",
+        "restored_tree": "dddbdd3500119c2ffe89fe4feafe23ceaa013164",
+        "result": "COMPILED_RUNTIME_ASSERTION_KILL",
+        "check": {
+          "command": [
+            "cargo",
+            "test",
+            "-p",
+            "rrx",
+            "--lib",
+            "execution::strict_json::tests::duplicate_keys_in_every_object_and_escaped_spellings_refuse",
+            "--offline",
+            "--target-dir",
+            "/private/tmp/rrx-phase2-retained-mutation-target"
+          ],
+          "exit_code": 101,
+          "seconds": 28.082406997680664,
+          "log": "/private/tmp/rrx-phase2-strict-json-mutant-duplicate.log",
+          "sha256": "44cf8e51f13965504846d846986046e55a7877c0bb0bb2ed58b6f15ce6e434e4",
+          "bytes": 1254
+        }
+      },
+      {
+        "operator": "depth",
+        "mutant": "c5b253cfb4267625b92d1dbd6ed95bd02b5dcae3",
+        "restored": "a754fe9a46a00e9a40405d3ce787cc92deb1c750",
+        "restored_tree": "dddbdd3500119c2ffe89fe4feafe23ceaa013164",
+        "result": "COMPILED_RUNTIME_ASSERTION_KILL",
+        "check": {
+          "command": [
+            "cargo",
+            "test",
+            "-p",
+            "rrx",
+            "--lib",
+            "execution::strict_json::tests::container_depth_counts_objects_and_arrays_with_exact_ceiling",
+            "--offline",
+            "--target-dir",
+            "/private/tmp/rrx-phase2-retained-mutation-target"
+          ],
+          "exit_code": 101,
+          "seconds": 8.075103998184204,
+          "log": "/private/tmp/rrx-phase2-strict-json-mutant-depth.log",
+          "sha256": "501463292790aa1e31411a1b8c162a31e5ec108fcf3bf6d3c691f3bf520ddd14",
+          "bytes": 1124
+        }
+      }
+    ]
+  },
+  "restored_controls": {
+    "source": "a754fe9a46a00e9a40405d3ce787cc92deb1c750",
+    "tree": "dddbdd3500119c2ffe89fe4feafe23ceaa013164",
+    "check": {
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "rrx",
+        "--lib",
+        "execution::strict_json::tests",
+        "--offline",
+        "--target-dir",
+        "/private/tmp/rrx-phase2-retained-mutation-target"
+      ],
+      "exit_code": 0,
+      "seconds": 7.486721992492676,
+      "log": "/private/tmp/rrx-phase2-strict-json-mutants-restored.log",
+      "sha256": "761134c291575e24aa26ab46a695137fa6422966abafdcaae9f408f0cfbdaeef",
+      "bytes": 1130
+    },
+    "scope": "All8 controls after both restorations; not after each."
+  },
+  "mutation_branch": "test/agent-execution-strict-json-mutations",
+  "mutation_worktree": "Owned tmp worktree normally removed after exact restoration and8PASS; branch history retained.",
+  "independent_reviews": [
+    {
+      "path": "/private/tmp/rrx-strict-json-design-review-c.json",
+      "sha256": "032ad032fb4b8b81ad0af37aa87734e99f88ac382c3254e2111ec3e6b21c117c",
+      "report": {
+        "reviewer": "workflow_source_review_c",
+        "source_commit": "6bd0d9d1191644c2b0ca667d02d65acc772a2638",
+        "mode": "independent STRICT requirements/design review; immutable git objects; no implementation or peer results",
+        "scope": [
+          "doc/requirements/strict-json-decoder-requirements.md",
+          "doc/design/strict-json-decoder-design.md"
+        ],
+        "verdict": "APPROVE_COMPONENT_DESIGN",
+        "findings": [],
+        "assessment": [
+          {
+            "requirement": "raw duplicate detection",
+            "evidence": "requirements J1/J5; design 2/4",
+            "actual_guard_condition": "DeserializeSeed reads original bytes; decoded keys are checked per object before insertion, including nested objects and escaped-key equivalence. Value reserialization cannot substitute."
+          },
+          {
+            "requirement": "finite resource accounting",
+            "evidence": "requirements J2; design 1/2/4",
+            "actual_guard_condition": "Positive bounded profiles, frame cap before parser construction, inclusive container depth/value nodes/decoded per-string and aggregate bytes/entry counts with checked arithmetic; acknowledged bounded transient serde allocation."
+          },
+          {
+            "requirement": "finite noncontent errors",
+            "evidence": "requirements J3; design 3",
+            "actual_guard_condition": "Discard serde error strings; retain first finite category only; no key/input-derived text in Debug/Display."
+          },
+          {
+            "requirement": "authority separation",
+            "evidence": "requirements J4; design 1/3/4; ReviewEngine R3 at source",
+            "actual_guard_condition": "Value is untrusted content. Owned raw acquisition, full deny-unknown-field envelope, actual receipt and semantic/approval predicates remain separately necessary. Native failure with valid content does not count approval."
+          },
+          {
+            "requirement": "qualification",
+            "evidence": "requirements J5; design 4",
+            "actual_guard_condition": "Boundary and adversarial inputs, compiled duplicate/depth omissions with runtime assertion failures and exact restored controls; helper tests do not close real producer R3."
+          }
+        ],
+        "acceptance_gaps": [
+          "Implementation and allocation behavior have not been executed or source-reviewed; this is a static proposal approval.",
+          "No actual native raw-wire integration, Review DTO/schema validation, ownership proof, approval counting, OS/native compatibility or account qualification.",
+          "Downstream integration must invoke the decoder on original candidate bytes before Value conversion and retain independent completion/authority predicates."
+        ],
+        "limitations": [
+          "No production edits or tests run for this review. No whole Phase2, Runtime, schema migration or authenticated native acceptance."
+        ],
+        "source_checks": [
+          "Cargo.toml uses existing serde_json without arbitrary_precision feature and unsafe_code forbid.",
+          "Design describes future execution::strict_json; no existing module implementation is assumed."
+        ]
+      }
+    },
+    {
+      "path": "/private/tmp/rrx-strict-json-source-review-a.json",
+      "sha256": "c8cd3b966799f9037a8827d66383c9ef70aa9912e35781e1253607097e998b9a",
+      "report": {
+        "source_commit": "bff8b27b72ae68c664764b6e51b549e860266bea",
+        "approved_contract": "6bd0d9d1191644c2b0ca667d02d65acc772a2638",
+        "verdict": "APPROVE",
+        "counts": {
+          "Critical": 0,
+          "High": 0,
+          "Medium": 0,
+          "Low": 0
+        },
+        "findings": [],
+        "scope": "Independent static source review of strict_json.rs247lines, tests194lines and module declaration only. Self-authored SourceRecovery and other pending components excluded.",
+        "evidence": [
+          {
+            "location": "crates/rrx/src/execution/strict_json.rs::decode",
+            "assessment": "Validates every profile field before constructing parser, checks original frame bytes before parsing, seeds one value and requires Deserializer::end. Finite error categories discard serde input diagnostics."
+          },
+          {
+            "location": "crates/rrx/src/execution/strict_json.rs::Budget / Seed / Visitor",
+            "assessment": "Checked counters count each value node exactly once; entering each array/object adds container depth; keys share decoded UTF8 string budgets and do not count as value nodes. Array entry refusal is passed as a seed and invoked only for an actual next element. Object keys enforce entry bounds and duplicate decoded-key membership before reading/inserting the duplicate value. Map/sequence close at the inclusive limit without an extra node."
+          },
+          {
+            "location": "crates/rrx/src/execution/strict_json.rs::Key / visit_str / visit_string",
+            "assessment": "Decoded strings and keys enforce individual and cumulative byte limits before retained copies. Serde can transiently allocate one escaped token; design explicitly bounds this by original frame and makes no zero-allocation/smaller-than-frame heap claim."
+          },
+          {
+            "location": "crates/rrx/src/execution/strict_json/tests.rs",
+            "assessment": "Eight controls cover scalar/nested values, escaped and nested duplicate spellings, malformed UTF8/numbers/trailing input, inclusive frame/node/object/array/depth/string/cumulative budgets, invalid limits and privacy. These are actual decoder consumers but were not executed by this reviewer."
+          },
+          {
+            "location": "crates/rrx/src/execution/mod.rs / Limits::CEILINGS",
+            "assessment": "Only exposes pure content utility. Existing protocol/Store/gate consumers unchanged; maxima are compiled ceilings rather than an automatic semantic consumer profile. Returned Value carries no execution/result/approval authority."
+          }
+        ],
+        "causal_controls_not_executed": [
+          "Omit duplicate membership refusal: root/nested/escaped duplicate decoder controls must fail.",
+          "Omit depth check: depth33/limit2 exact decoder assertions must fail.",
+          "Omit frame/profile/end/string/node/entry checks: corresponding decoded value or exact error assertions must fail rather than pass from setup error."
+        ],
+        "limits": [
+          "Static immutable git-object reads only; no test/build/native/auth/network/OS actions and no peer reports or parent logs read.",
+          "No binary/compiler, mutation-run or CI outcomes inherited.",
+          "No source integration into actual raw native acquisition/ReviewEngine is certified; consumers still need explicit bounded profile, typed schema and genuine owned receipt validation.",
+          "No Phase2, native compatibility, account settings/hooks, full Runtime or MVP acceptance."
+        ],
+        "confidence": 0.96,
+        "live_handles": [],
+        "commands_closed": true
+      }
+    },
+    {
+      "path": "/private/tmp/rrx-strict-json-source-review-c.json",
+      "sha256": "bc686441d4c165c509e5e2abf6a7065921c960fd84475313344064eb12b751ce",
+      "report": {
+        "reviewer": "workflow_source_review_c",
+        "source_commit": "bff8b27b72ae68c664764b6e51b549e860266bea",
+        "mode": "independent STRICT static source review of immutable git objects; no peer findings or execution logs",
+        "scope": [
+          "crates/rrx/src/execution/strict_json.rs",
+          "crates/rrx/src/execution/strict_json/tests.rs",
+          "crates/rrx/src/execution/mod.rs"
+        ],
+        "requirements_source": "6bd0d9d1191644c2b0ca667d02d65acc772a2638",
+        "verdict": "APPROVE_COMPONENT_SOURCE",
+        "findings": [],
+        "assessment": [
+          {
+            "requirement": "J1 original raw duplicates and complete value",
+            "evidence": "strict_json.rs:67-93,192-215,222-243; tests duplicate_keys_in_every_object_and_escaped_spellings_refuse / malformed_input_and_prefix_recovery_are_rejected",
+            "actual_guard_condition": "decode traverses original bytes with nested seeds. Every map checks decoded key membership before value insertion; key visitors use decoded UTF-8. Deserializer.end rejects successful-prefix recovery. Unsupported finite-number conversion refuses."
+          },
+          {
+            "requirement": "J2 positive profiles and finite inclusive budgets",
+            "evidence": "strict_json.rs:17-41,67-80,107-124,132-140,172-228; tests frame_nodes_and_entry_bounds_are_inclusive / container_depth_counts_objects_and_arrays_with_exact_ceiling / decoded_utf8_keys_and_strings_share_byte_budgets / every_invalid_profile_refuses_before_parsing",
+            "actual_guard_condition": "All seven limits require positive <= compiled ceiling. Frame bound precedes parser construction. Nodes increment once per actual value via checked_add; array/object limits reject a present extra entry before decoding it. Container levels are checked before descent; per-string/aggregate decoded key/value byte budgets are checked before retaining copies. serde transient token allocation remains bounded by original frame, as documented."
+          },
+          {
+            "requirement": "J3 error privacy",
+            "evidence": "strict_json.rs:46-63,87-105; tests errors_never_render_source_keys_or_parser_payloads",
+            "actual_guard_condition": "Returned Error is finite copyable category. Fixed custom error and discarded serde error strings prevent key/value/parser diagnostics in API Display/Debug. No IO, logging or persistence."
+          },
+          {
+            "requirement": "J4 parse content versus authority",
+            "evidence": "strict_json.rs:1,65-67; mod.rs single declaration; fixed commit changes only three files",
+            "actual_guard_condition": "decode accepts bytes and content Limits and returns untrusted Value. It receives no Store/Runtime/native/session binding, cannot create completion/grant/vote and does not alter native consumers."
+          },
+          {
+            "requirement": "J5 meaningful controls",
+            "evidence": "strict_json/tests.rs eight tests",
+            "actual_guard_condition": "Controls cover nested/array/escaped duplicates including APPROVE-shaped content, malformed and extra bytes, inclusive/excess budgets, Unicode byte accounting, profile validation and noncontent diagnostics. Tests are inspected, not executed by this reviewer."
+          }
+        ],
+        "acceptance_gaps": [
+          "Reviewer did not run tests, causal compiled mutants, fmt/Clippy/build; Root provides independent execution evidence.",
+          "Native/review producers do not invoke this decoder in this source commit. Actual original-wire consumer integration and full deny-unknown-field/identity/semantic/ownership validation remain required to close R3.",
+          "No both-OS, account, native final-answer or Review opinion/approval qualification."
+        ],
+        "limitations": [
+          "Component-only static source approval; no implementation edits. No whole Phase2/MVP, schema, Runtime, authentication or real Agent acceptance.",
+          "One bounded serde token can be transiently decoded before a smaller decoded-string budget rejects it; the implementation does not claim zero allocation for oversized tokens."
+        ]
+      }
+    }
+  ],
+  "limitations": [
+    "Parsed Value is untrusted; actual raw-wire/answer producers, owned receipt, typed unknown-field/schema/bindings/semantic checks remain required.",
+    "No NativeStatus/Workflow/SQL/CLI consumer changed by this source; utility tests do not close ReviewR3 or certify votes.",
+    "Compiled duplicate omission is killed at root verdict assertion; depth omission is killed at inclusive small-depth control. No additional causal mutation credit for every nested/ceiling variant.",
+    "No authenticated provider, Linux CI, default-unrestricted regression, installed binary, four-Task/auth/hooks/subscription, process-death, Phase2 completion or MVP qualification. Prior unrestricted Source32 failures remain unresolved."
+  ]
+}

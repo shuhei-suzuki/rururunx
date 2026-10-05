@@ -1,7 +1,7 @@
 # Bounded strict JSON decoder requirements
 
-Risk: STRICT (shared native-result/review decoding). Status: pre-implementation
-component proposal. This supplies content validation only, not execution,
+Risk: STRICT (shared native-result/review decoding). Status: component implemented at `bff8b27` after independent design review;
+actual native/review consumer integration remains pending. This supplies content validation only, not execution,
 result ownership, reviewer identity or approval authority. Requirements/design
 and independent review precede source. No additional human boundary within Phase2.
 
@@ -57,3 +57,10 @@ failure/setup refusal does not count as a killed mutant. Fixed clean source must
 pass applicable tests, fmt/Clippy/build and independent source review. Linux,
 authenticated native final-answer/profile behavior, resource accounting and full
 ReviewEngine/Runtime remain separate qualifications.
+
+## Component evidence
+
+The [source checkpoint](../verification/agent-execution-phase2-strict-json-checkpoint.json)
+pins actual controls, full bounded regression, compiled guard omissions/restoration
+and independent static reviews. Consumer integration and all owned-result/approval
+semantics remain separately required; this is not native or full Phase2 acceptance.

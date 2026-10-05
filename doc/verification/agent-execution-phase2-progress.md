@@ -906,6 +906,31 @@ model/native qualification. Review counting/member grants and Runtime constructi
 remain separate source work. These component approvals permit continued Phase2
 implementation, not Phase2/MVP completion or Phase3 account use.
 
+## Bounded raw JSON content checkpoint
+
+Requirements/design `6bd0d9d` received C's independent approval before source.
+Fixed clean source `bff8b27b72ae68c664764b6e51b549e860266bea` implements the pure
+shared strict decoder; A and C independently approved source with no findings.
+Original bytes are checked for duplicate decoded keys at every object, one complete
+value and finite inclusive frame/depth/node/string/entry budgets. Errors retain
+only categories. The normal Value it returns remains untrusted content.
+
+Eight controls passed. Two compiled mutants omit duplicate and depth guards;
+actual expected-error assertions fail, then all eight controls pass on the exact
+restored tree. Mutation history is retained and the owned temporary worktree was
+normally removed. At fixed clean source with four test threads: **567 primary
+passed, 0 failed, 30 ignored**; workspace all-target Clippy `-D warnings`, build
+and fmt passed. Raw612 passes exclude the same45 duplicate child passes. The
+[checkpoint](agent-execution-phase2-strict-json-checkpoint.json) preserves raw
+reviews, command/log hashes, source hashes and exact mutation/restore identities.
+
+This component does not alter native/Review/Workflow/Store consumers. B's actual
+native acquisition must invoke it before Value conversion, and ReviewEngine still
+needs strict DTO/identity/semantic validation plus owned receipt/read-only/member
+proofs. Parsed APPROVE never supplies approval authority. Both-OS/current-install,
+actual native four-Task and unrestricted regression remain unqualified; earlier
+unrestricted Source32 failures remain retained.
+
 ## Remaining Phase2 and acceptance work
 
 - Qualified milestone content, verifier/reviewer/external gate consumers and

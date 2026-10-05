@@ -1,6 +1,7 @@
 # Bounded strict JSON decoder design
 
-Risk: STRICT. Status: pre-implementation proposal. Implements
+Risk: STRICT. Status: pure component implemented at `bff8b27` after independent design review;
+actual native/review consumer integration remains pending. Implements
 [J1–J5](../requirements/strict-json-decoder-requirements.md) as a shared pure
 content decoder. Source baseline `414bc2b`. No Store schema migration, third-party
 dependency, public grant or native input authority is added.
@@ -82,3 +83,10 @@ settings/hooks, ps observations and execution policy remain untouched.
 Independent design/source approval is limited to this content component. Both-OS
 CI, real native answer compatibility, full schema validation, Review votes and
 operational Runtime are explicitly outside its acceptance evidence.
+
+## Component evidence
+
+The [source checkpoint](../verification/agent-execution-phase2-strict-json-checkpoint.json)
+pins actual controls, full bounded regression, compiled guard omissions/restoration
+and independent static reviews. Consumer integration and all owned-result/approval
+semantics remain separately required; this is not native or full Phase2 acceptance.
