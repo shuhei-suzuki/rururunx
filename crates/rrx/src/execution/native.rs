@@ -563,14 +563,32 @@ impl NativeSessions {
             entry.handle == *handle,
             "foreign native Session/unit/generation"
         );
+        // Logical terminal state is durable before hygiene/watch publication. A
+        // caller may observe that committed result and release the registry entry;
+        // the supervisor retains its OwnedProcess until stop_and_reap completes.
+        let store = self
+            .owner
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("state poisoned"))?;
+        let unit = store.execution_unit(handle.unit)?;
+        let (session, _) = store
+            .session(handle.session)?
+            .context("native Session missing")?;
         ensure!(
-            matches!(
-                entry.status.borrow().session.state,
-                SessionState::Exited
-                    | SessionState::Stopped
-                    | SessionState::Lost
-                    | SessionState::Failed
-            ),
+            unit.scope == handle.scope
+                && unit.generation == handle.generation
+                && unit.owner_epoch == handle.epoch
+                && unit.session_id == Some(handle.session)
+                && session.scope == handle.scope
+                && !unit.native_effects_open
+                && matches!(
+                    session.state,
+                    SessionState::Exited
+                        | SessionState::Stopped
+                        | SessionState::Lost
+                        | SessionState::Failed
+                ),
             "live native Session cannot be released"
         );
         entries.remove(&handle.session);
