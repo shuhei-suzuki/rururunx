@@ -112,10 +112,14 @@ impl ResultStore {
         let output=self.owner.root.join("units").join(unit.id.to_string()).join("output");
         std::fs::create_dir_all(&output)?;
         let mut command=Command::new("git");command.args(["clone","--no-local","--no-hardlinks","--no-checkout","--"]).arg(&artifact.repository).arg(&unit.worktree);
-        process::capture(&mut command).await?;
+        process::capture(&mut command).await.context("clone independent snapshot")?;
         ensure!(!unit.worktree.join(".git/objects/info/alternates").exists(),"snapshot alternates forbidden");
-        // Preserve declared project hooks; clone defaults must not silently replace required hooks.
-        git(&unit.worktree,["checkout","--detach",artifact.revision.as_str()]).await?;
+        // The result repo retains private refs; clone's default head refspec does not select them.
+        let mut fetch=git_command(&unit.worktree)?;
+        fetch.args(["fetch","--no-tags","--no-write-fetch-head","--no-recurse-submodules","--"])
+            .arg(&artifact.repository).arg(format!("{}:refs/rrx/input",artifact.revision)).arg(format!("{}:refs/rrx/base",artifact.base_sha));
+        process::capture(&mut fetch).await.context("import exact retained snapshot graph")?;
+        git(&unit.worktree,["checkout","--detach",artifact.revision.as_str()]).await.context("checkout retained snapshot SHA")?;
         qualified_content(&unit.worktree,&artifact.revision).await?;
         let digest=tracked_digest(&unit.worktree).await?;
         readonly_tree(&unit.worktree,true)?;
