@@ -112,7 +112,7 @@ async fn irrelevant_foreign_change_does_not_stale_own_start_or_restore_native_va
             foreign(&mut writer, "IRRELEVANT_SYNTHETIC")
         });
     let session = bounded(adapter.start(owned.request.clone())).await.unwrap();
-    let status = terminal_status(&adapter, &session.into()).await;
+    let status = terminal_status(&adapter, &SessionRef::from(&session)).await;
     assert!(status.session.state == SessionState::Exited && status.session.pid.is_none());
     for site in [ExecSite::Version, ExecSite::Discovery, ExecSite::Main] {
         assert!(adapter.environment_hooks.total(site) == (1, 1));
@@ -238,4 +238,75 @@ async fn real_public_constructor_captures_raw_os_once_in_scoped_child() {
     child = cleanup_group(child).await.unwrap();
     let status = child.reap().await.unwrap();
     assert!(observed.is_ok() && status.success() && directory.path().join("complete").exists());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn real_stop_at_pre_and_post_cas_cannot_spawn_selected_child() {
+    for site in [ExecSite::Version, ExecSite::Discovery, ExecSite::Main] {
+        for point in [HookPoint::PreCas, HookPoint::PostCas] {
+            let owned = Fixture::new(false);
+            let (executable, directory) = wire_fixture(&owned, "complete");
+            let adapter = synthetic_adapter(&owned, executable);
+            let (reached, receiver) = std::sync::mpsc::sync_channel(1);
+            let release = Arc::new((Mutex::new(false), std::sync::Condvar::new()));
+            let hook_release = release.clone();
+            adapter
+                .environment_hooks
+                .install(site, point, move |attempt| {
+                    reached.send(attempt).unwrap();
+                    tokio::task::block_in_place(|| {
+                        let (lock, changed) = &*hook_release;
+                        let (released, timeout) = changed
+                            .wait_timeout_while(
+                                lock.lock().unwrap(),
+                                std::time::Duration::from_secs(10),
+                                |value| !*value,
+                            )
+                            .unwrap();
+                        assert!(
+                            *released && !timeout.timed_out(),
+                            "finite synchronous hook was not released"
+                        );
+                    });
+                });
+            let actor = adapter.clone();
+            let request = owned.request.clone();
+            let caller = tokio::spawn(async move { actor.start(request).await });
+            // This is the test block_on driver, not a task woken into the hook's LIFO slot.
+            let attempt_id = receiver
+                .recv_timeout(std::time::Duration::from_secs(10))
+                .unwrap();
+            let (reference, control) = {
+                let registry = adapter.registry().unwrap();
+                let entry = registry.values().next().unwrap();
+                (
+                    SessionRef::from(&entry.status.borrow().session),
+                    entry.control.clone(),
+                )
+            };
+            let before = no_effect_snapshot(&adapter, &owned.request.scope);
+            let mut stop = Box::pin(adapter.stop(reference));
+            tokio::select! {
+                result=&mut stop => panic!("stop unexpectedly finished while selected spawn hook retained: {result:?}"),
+                _=control.preparation.wait_cancelled()=>{},
+                _=tokio::time::sleep(std::time::Duration::from_secs(10))=>panic!("real stop did not latch cancellation"),
+            }
+            assert!(no_effect_snapshot(&adapter, &owned.request.scope) == before);
+            {
+                let (lock, changed) = &*release;
+                *lock.lock().unwrap() = true;
+                changed.notify_all();
+            }
+            let stopped = bounded(stop).await;
+            let started = bounded(caller).await.unwrap();
+            if let Ok(session) = &started {
+                terminal_status(&adapter, &SessionRef::from(session)).await;
+            }
+            if directory.join("leader").exists() {
+                assert_leader_reaped(&directory.join("leader"));
+            }
+            assert!(adapter.environment_hooks.counts(attempt_id, site) == (0, 0));
+            assert!(started.is_err() && stopped.is_ok());
+        }
+    }
 }
