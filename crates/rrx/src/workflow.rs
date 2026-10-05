@@ -1795,6 +1795,17 @@ impl WorkflowEngine {
             }
         }
         if !status.terminal() {
+            if snapshot.task.state == TaskState::WaitingQuota
+                && status
+                    .execution
+                    .as_ref()
+                    .is_some_and(|native| native.wait_reason.is_none())
+            {
+                let mut snapshot = snapshot;
+                snapshot.task.state = phase.task_state();
+                self.refresh_owners(&mut snapshot)?;
+                self.persist(&mut snapshot, None)?;
+            }
             return Ok(StepResult::Running { phase, session: id });
         }
         if !adapter.transport_succeeded(&status) {

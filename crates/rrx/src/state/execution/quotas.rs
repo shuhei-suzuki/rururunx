@@ -435,6 +435,51 @@ impl Store {
         tx.commit()?;
         Ok(unit)
     }
+    /// Only accepted recovery of every participating plan window resumes this live turn.
+    pub(crate) fn resume_execution_quota_wait(
+        &mut self,
+        authority: &ExecutionAuthority,
+        buckets: &std::collections::BTreeSet<String>,
+    ) -> Result<ExecutionUnit> {
+        ensure!(
+            !buckets.is_empty() && buckets.len() <= 5,
+            "invalid live quota buckets"
+        );
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let mut unit = validate_authority(&tx, authority, true, false)?;
+        ensure!(
+            unit.provider == "claude",
+            "plan-window recovery requires the owned Claude turn"
+        );
+        let account: String = tx.query_row(
+            "SELECT account_key FROM quota_leases WHERE unit_id=?1 AND active=1 AND provider=?2 AND epoch=?3",
+            params![unit.id.to_string(), unit.provider, unit.owner_epoch], |r| r.get(0))?;
+        let observations = windows(&tx, &unit.provider, &account)?;
+        let available = buckets.iter().all(|bucket| {
+            observations
+                .iter()
+                .any(|o| &o.bucket == bucket && o.status == QuotaStatus::Available)
+        });
+        if unit.state == UnitState::WaitingQuota
+            && unit.wait_reason == Some(WaitReason::Quota)
+            && available
+        {
+            unit.state = UnitState::Running;
+            unit.wait_reason = None;
+            write_unit(&tx, &mut unit)?;
+            append_event(
+                &tx,
+                &unit.scope,
+                "execution.native_quota_recovered",
+                json!({"unit":unit.id,"session":unit.session_id}),
+            )?;
+        }
+        // Existing input, worktree, lease and any admitted probe are unchanged.
+        tx.commit()?;
+        Ok(unit)
+    }
 }
 fn windows(
     connection: &Connection,

@@ -441,7 +441,13 @@ the wait. Unknown windows and foreign Session notifications do not mint confirme
 subscription waiting. Telemetry-only waiting does not grant a recovery-probe
 lease: an unsolicited allowed event cannot reopen the same exhausted window.
 Codex's owned `willRetry=true` subscription error separately establishes a native
-retry; a scheduler-admitted recovery probe retains its existing rights. A reliable
+retry; a scheduler-admitted recovery probe retains its existing rights. When
+every participating plan window is Available in the accepted ledger, revalidate
+the same live unit/generation/epoch/Session and active lease transactionally,
+return it to Running and clear the wait in the watch/status. Workflow polling
+then restores the active phase's Task state without creating another attempt.
+Unrelated windows, ignored stale recovery and unknown data cannot clear the wait.
+Neither recovery nor waiting resends input or releases the live lease. A reliable
 successful result still closes the live wait
 with successful work, even if pool telemetry remains exhausted. Native retry
 behavior and real quota recovery remain Phase3 qualification, not fixture proof.

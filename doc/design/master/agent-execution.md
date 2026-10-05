@@ -59,8 +59,11 @@ An owned Claude plan-window exhaustion updates both its live unit's durable wait
 reason and watch status after the pool accepts it. Native input/lease are retained;
 no prompt is resent and sibling unit state is unchanged. Foreign/unknown events
 do not qualify that wait. Telemetry-only waiting does not mint recovery-probe
-authority or reopen exhaustion on an unsolicited same-window allowed event;
-reliable native success remains success. This staged
+authority or reopen exhaustion on an unsolicited same-window allowed event.
+Accepted recovery of every participating plan window returns the same unit and
+watch to Running/no wait under current authority and lease checks; Workflow
+restores its phase state without restarting input. Reliable native success
+remains success. This staged
 producer policy is covered by local protocol controls, not actual account recovery.
 
 ## 4. Cleanup and outcome reporting

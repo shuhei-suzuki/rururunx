@@ -1240,6 +1240,13 @@ impl Core {
                                 self.unit=store.mark_execution_quota_wait(&authority)?;
                                 self.update.send_modify(|s|{s.authority=self.unit.authority();s.wait_reason=self.unit.wait_reason;s.diagnostic=Some("subscription quota exhausted; native retry state retained");});
                             }
+                        } else if observation.status==QuotaStatus::Available {
+                            let authority=self.authority()?;
+                            let recovered=self.owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?.resume_execution_quota_wait(&authority,&quota_buckets)?;
+                            if recovered.version!=self.unit.version {
+                                self.unit=recovered;
+                                self.update.send_modify(|s|{s.authority=self.unit.authority();s.wait_reason=self.unit.wait_reason;if s.wait_reason.is_none(){s.diagnostic=None;}});
+                            }
                         }
                     }
                     if frame["type"]=="control_request"{
