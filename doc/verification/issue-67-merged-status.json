@@ -1,0 +1,149 @@
+{
+  "scope": "Correct stale current status of merged diagnostic slice; historical failures remain unchanged",
+  "observed_at_utc": "2026-10-05",
+  "pull_request": {
+    "baseRefOid": "5b4a3147b2b2cd4ed88642741f6b25c4c5f3441b",
+    "headRefOid": "3d6ac5fb40f50239f0d0c69795f9c11247d263e1",
+    "isDraft": false,
+    "mergeCommit": {
+      "oid": "768f84319cd2a73e14cd39336eb12d99e9be81a7"
+    },
+    "mergedAt": "2026-10-05T01:45:50Z",
+    "state": "MERGED",
+    "url": "https://github.com/shuhei-suzuki/rururunx/pull/68"
+  },
+  "issue": {
+    "closedAt": "2026-10-05T01:50:58Z",
+    "number": 67,
+    "state": "CLOSED",
+    "url": "https://github.com/shuhei-suzuki/rururunx/issues/67"
+  },
+  "final_source_ci": {
+    "head": "3d6ac5fb40f50239f0d0c69795f9c11247d263e1",
+    "run": 37251714742,
+    "conclusion": "success",
+    "actual_checkout": "1e3fc29444a0a2473e8531f2e3ea50f117e88bf4",
+    "parents": [
+      "5b4a3147b2b2cd4ed88642741f6b25c4c5f3441b",
+      "3d6ac5fb40f50239f0d0c69795f9c11247d263e1"
+    ],
+    "tree": "b671a403343dd2e99c0158b894e4fa60e6a5d949",
+    "complete_tree_equal": true,
+    "all_tracked_blobs_equal": true,
+    "compared_tracked_blobs": 274,
+    "jobs": [
+      {
+        "name": "check (macos-latest)",
+        "actual_checkout": "1e3fc29444a0a2473e8531f2e3ea50f117e88bf4",
+        "every_step_success": true,
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run dtolnay/rust-toolchain@1.91.1",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run cargo fmt --all -- --check",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run cargo clippy --locked --workspace --all-targets -- -D warnings",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run cargo test --locked --workspace",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run cargo build --locked --workspace",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run cargo build --locked --release --workspace",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Complete job",
+            "conclusion": "success"
+          }
+        ]
+      },
+      {
+        "name": "check (ubuntu-latest)",
+        "actual_checkout": "1e3fc29444a0a2473e8531f2e3ea50f117e88bf4",
+        "every_step_success": true,
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run dtolnay/rust-toolchain@1.91.1",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run cargo fmt --all -- --check",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run cargo clippy --locked --workspace --all-targets -- -D warnings",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run cargo test --locked --workspace",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run cargo build --locked --workspace",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run cargo build --locked --release --workspace",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Complete job",
+            "conclusion": "success"
+          }
+        ]
+      }
+    ]
+  },
+  "merged_main_ci": {
+    "run": 37252707188,
+    "head": "768f84319cd2a73e14cd39336eb12d99e9be81a7",
+    "tree": "b671a403343dd2e99c0158b894e4fa60e6a5d949",
+    "every_both_os_step_success": true,
+    "actual_checkout_head_observed_both_os": true,
+    "limits": "Default workspace debug tests and release builds, not full release tests or native/F1/backend/whole-MVP qualification; retained earlier main/source failures remain unexplained."
+  },
+  "raw_ci_log_sha256": {
+    "final": "8662911369d0f0cbe0263906b7a03a093af6b6c68d34928b968072b6b8309ad9",
+    "main": "f4d39e884b92cc8c85a98db0df51f0ced8cf6a7b120c9152381857c9dd1f5486"
+  },
+  "limits": [
+    "Documentation correction only; no newly executed code tests",
+    "Earlier failed final5ca CI and full Release watchdog failures remain cause/regression unknown",
+    "Final workflows test Debug and build Release; not full Release tests",
+    "No native/backend/F1/whole-MVP or all-nested-settlement acceptance"
+  ]
+}
