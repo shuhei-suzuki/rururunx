@@ -224,7 +224,59 @@ struct TestHooks {
     initialized_error: bool,
     worker_panic: bool,
     supervisor_panic: bool,
+    before_authorize: Option<Arc<TestPause>>,
+    after_spawn: Option<Arc<TestPause>>,
+    after_reap_send: Option<Arc<TestPause>>,
+    after_primary_panic: bool,
+    pending_stderr: bool,
 }
+#[cfg(test)]
+#[derive(Default)]
+struct TestPause {
+    entered: AtomicBool,
+    reached: Notify,
+    released: Mutex<bool>,
+    wake: std::sync::Condvar,
+}
+#[cfg(test)]
+impl TestPause {
+    fn block(&self) {
+        self.entered.store(true, Ordering::SeqCst);
+        self.reached.notify_one();
+        let mut released = self.released.lock().unwrap();
+        while !*released {
+            released = self.wake.wait(released).unwrap();
+        }
+    }
+    async fn reached(&self) {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                let reached = self.reached.notified();
+                tokio::pin!(reached);
+                reached.as_mut().enable();
+                if self.entered.load(Ordering::SeqCst) {
+                    return;
+                }
+                reached.await;
+            }
+        })
+        .await
+        .unwrap();
+    }
+    fn release(&self) {
+        *self.released.lock().unwrap() = true;
+        self.wake.notify_all();
+    }
+}
+#[cfg(test)]
+struct TestRelease(Arc<TestPause>);
+#[cfg(test)]
+impl Drop for TestRelease {
+    fn drop(&mut self) {
+        self.0.release();
+    }
+}
+
 struct Request {
     executable: PathBuf,
     cwd: PathBuf,
@@ -576,6 +628,10 @@ fn supervise(record: &Arc<OpRecord>, request: Request) -> Completion {
         }
     };
     *record.worker.lock().unwrap() = Some(worker);
+    #[cfg(test)]
+    if let Some(pause) = &record._context.hooks.before_authorize {
+        pause.block();
+    }
     {
         let mut publication = record.ticket.publication.lock().unwrap();
         if publication.state == State::Admitted && !record.ticket.cancel.load(Ordering::SeqCst) {
@@ -717,10 +773,28 @@ async fn supervisor_work(
             let stderr = tokio::process::ChildStderr::from_std(stderr)
                 .map_err(|_| error(ErrorKind::LaunchFailure, "Git stderr registration failed"))?;
             readers.stdout = Some(tokio::spawn(read_git_output(stdout)));
-            readers.stderr = Some(tokio::spawn(read_git_output(stderr)));
+            #[cfg(test)]
+            if record._context.hooks.pending_stderr {
+                readers.stderr = Some(tokio::spawn(async move {
+                    let endpoint = stderr;
+                    std::future::pending::<()>().await;
+                    drop(endpoint);
+                    Ok(Vec::new())
+                }));
+            } else {
+                readers.stderr = Some(tokio::spawn(read_git_output(stderr)));
+            }
+            #[cfg(not(test))]
+            {
+                readers.stderr = Some(tokio::spawn(read_git_output(stderr)));
+            }
             Ok(())
         })()
     };
+    #[cfg(test)]
+    if let Some(pause) = &record._context.hooks.after_spawn {
+        pause.block();
+    }
     #[cfg(test)]
     if record._context.hooks.supervisor_panic {
         panic!("synthetic Git supervisor inner panic");
@@ -784,10 +858,16 @@ async fn supervisor_work(
     let output_deadline = tokio::time::Instant::now() + WINDOW;
     let output = tokio::time::timeout_at(output_deadline, async {
         let stdout = readers.join_stdout().await;
-        if stdout.is_err() {
+        if let Err(e) = &stdout {
+            record.ticket.establish(e);
             readers.abort();
         }
         let stderr = readers.join_stderr().await;
+        if stdout.is_ok()
+            && let Err(e) = &stderr
+        {
+            record.ticket.establish(e);
+        }
         stdout.and_then(|out| stderr.map(|_| out))
     })
     .await;
@@ -795,10 +875,21 @@ async fn supervisor_work(
         readers.abort();
     }
     let output = output.unwrap_or_else(|_| {
-        Err(error(
-            ErrorKind::ProcessFailure,
-            "Git output remained open after cleanup",
-        ))
+        let publication = record
+            .ticket
+            .publication
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        Err(publication
+            .primary
+            .as_ref()
+            .map(|e| error(e.kind, e.message.clone()))
+            .unwrap_or_else(|| {
+                error(
+                    ErrorKind::ProcessFailure,
+                    "Git output remained open after cleanup",
+                )
+            }))
     });
     let primary = match primary {
         Err(e) => Err(e),
@@ -813,6 +904,10 @@ async fn supervisor_work(
     };
     if let Err(e) = &primary {
         record.ticket.establish(e);
+    }
+    #[cfg(test)]
+    if primary.is_err() && record._context.hooks.after_primary_panic {
+        panic!("synthetic Git loss after primary");
     }
     // A deadline return is frozen before awaiting the same outstanding wait late.
     let settled = record.native_settled.load(Ordering::SeqCst) && readers.settled();
@@ -959,6 +1054,10 @@ fn native_worker(
                     }
                     if let Some(sender) = reaped.take() {
                         let _ = sender.send(result);
+                    }
+                    #[cfg(test)]
+                    if let Some(pause) = &record._context.hooks.after_reap_send {
+                        pause.block();
                     }
                     return;
                 }
