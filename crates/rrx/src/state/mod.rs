@@ -1,7 +1,9 @@
 //! Transactional SQLite snapshots + append-only logical events, scoped by Project.
+mod context_pack;
 mod environment;
 #[cfg(test)]
 mod native_dispatch_tests;
+mod prepared_input;
 pub(crate) use environment::EnvironmentAdmission;
 use std::{path::Path, time::Duration};
 
@@ -12,7 +14,7 @@ use serde_json::{Value, json};
 
 use crate::domain::*;
 
-pub const SCHEMA_VERSION: i64 = 3;
+pub const SCHEMA_VERSION: i64 = 5;
 pub const APPLICATION_ID: i64 = 0x52525831; // ASCII RRX1.
 
 /// Typed transactional guards let callers distinguish contention from storage failure.
@@ -108,6 +110,8 @@ impl Store {
                     "refusing to initialize a nonempty or foreign database"
                 );
                 tx.execute_batch(include_str!("schema.sql"))?;
+                context_pack::migrate_v4(&tx)?;
+                prepared_input::migrate_v5(&tx)?;
                 tx.pragma_update(None, "application_id", APPLICATION_ID)?;
                 tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
             } else {
@@ -118,9 +122,15 @@ impl Store {
                 let application: i64 =
                     tx.pragma_query_value(None, "application_id", |row| row.get(0))?;
                 ensure!(application == APPLICATION_ID, "not an rrx state database");
-                // Ordered JSON-format migrations; SQL layout and ownership/audit stay intact.
-                // v2 adds Project blocked_reason; v3 adds authoritative Workflow records.
+                // Ordered authority migrations: v2 Project metadata, v3 Workflow,
+                // v4 immutable checkpoint heads; v5 private prepared-frame authority.
                 for next in (locked_version + 1)..=SCHEMA_VERSION {
+                    if next == 4 {
+                        context_pack::migrate_v4(&tx)?;
+                    }
+                    if next == 5 {
+                        prepared_input::migrate_v5(&tx)?;
+                    }
                     tx.pragma_update(None, "user_version", next)?;
                 }
             }
@@ -290,6 +300,16 @@ impl Store {
                 "goal project binding is immutable"
             );
         }
+        let previous = read_tx::<Goal>(&tx, "goals", &goal.id.to_string())?;
+        if previous.as_ref().map_or(0, |p| p.version) != goal.version {
+            bail!(StateGuardError::SnapshotChanged {
+                table: "goals".into(),
+                id: goal.id.to_string(),
+                expected: goal.version
+            });
+        }
+        let old = previous.map_or(0, |p| p.context_version);
+        context_pack::guard_pack_pointer(&tx, &goal.scope(), old, goal.context_version)?;
         validate_goal_references(&tx, goal)?;
         let mut next = goal.clone();
         bump(&mut next.version)?;
@@ -339,6 +359,16 @@ impl Store {
                 "workflow-owned Task fields require atomic transition"
             );
         }
+        let previous = read_tx::<Task>(&tx, "tasks", &task.id.to_string())?;
+        if previous.as_ref().map_or(0, |p| p.version) != task.version {
+            bail!(StateGuardError::SnapshotChanged {
+                table: "tasks".into(),
+                id: task.id.to_string(),
+                expected: task.version
+            });
+        }
+        let old = previous.map_or(0, |p| p.context_version);
+        context_pack::guard_pack_pointer(&tx, &task.scope(), old, task.context_version)?;
         let next = put_task_tx(&tx, task)?;
         tx.commit()?;
         *task = next;
@@ -581,12 +611,14 @@ impl Store {
                 );
             }
         }
+        context_pack::guard_irreversible_checkpoint(&tx, workflow)?;
         if let Some(context) = context {
             ensure!(
                 context.scope == task.scope() && context.version == task.context_version,
                 "context pointer/scope differs from workflow Task"
             );
             crate::workflow::validate_context(task, workflow, context)?;
+            context_pack::guard_context_checkpoint(&tx, task, context)?;
             put_context_tx(&tx, context)?;
         } else {
             let owner = context_owner(&task.scope())?;
@@ -866,6 +898,7 @@ impl Store {
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        context_pack::guard_context_write(&tx, context)?;
         ensure!(
             !owns_workflow(&tx, &context.scope)?,
             "workflow-owned ContextVersion requires atomic transition"
@@ -1015,11 +1048,21 @@ impl Store {
         kind: &str,
         data: Value,
     ) -> Result<()> {
-        validate_scope(scope)?;
         ensure!(
             !kind.trim().is_empty() && !reserved_audit_kind(kind),
             "invalid/reserved audit kind"
         );
+        self.audit_observation_if_current(scope, expected, kind, data)
+    }
+
+    pub(crate) fn audit_observation_if_current(
+        &mut self,
+        scope: &Scope,
+        expected: [u64; 3],
+        kind: &str,
+        data: Value,
+    ) -> Result<()> {
+        validate_scope(scope)?;
         let goal_id = scope.goal_id.context("current audit requires Goal scope")?;
         let task_id = scope.task_id.context("current audit requires Task scope")?;
         let tx = self
@@ -1266,6 +1309,8 @@ fn put_task_tx(tx: &Transaction<'_>, task: &Task) -> Result<Task> {
 }
 
 fn guard_record_tx(tx: &Transaction<'_>, record: &Record) -> Result<()> {
+    context_pack::guard_checkpoint_write(tx, record)?;
+    context_pack::guard_launch_checkpoint(tx, record)?;
     validate_scope(&record.scope)?;
     if record.kind == RecordKind::Session {
         let session: Session =
@@ -1482,6 +1527,22 @@ fn validate_worktree_exclusion(tx: &Transaction<'_>, record: &Record) -> Result<
                     if session.pid.is_none() {
                         metadata.pid = old.pid;
                     }
+                    // An unknown native dispatch is conservative evidence, never
+                    // a new actor/input authority. Preserve every other field.
+                    if session.state == SessionState::Lost
+                        && session.recovery["native_dispatch_unobserved"] == true
+                        && old.recovery["native_dispatch_unobserved"] != true
+                        && let Some(recovery) = metadata.recovery.as_object_mut()
+                    {
+                        match old.recovery.get("native_dispatch_unobserved") {
+                            Some(value) => {
+                                recovery.insert("native_dispatch_unobserved".into(), value.clone());
+                            }
+                            None => {
+                                recovery.remove("native_dispatch_unobserved");
+                            }
+                        }
+                    }
                     !session_terminal(old.state)
                         && (session.state == SessionState::Lost
                             || (old.state != SessionState::Lost
@@ -1673,6 +1734,13 @@ fn reserved_audit_kind(kind: &str) -> bool {
     kind.ends_with(".saved")
         || matches!(
             kind,
-            "context.created" | "usage.recorded" | "workflow.gate_observed"
+            "context.created"
+                | "usage.recorded"
+                | "workflow.gate_observed"
+                | "context.pack.prepared"
+                | "goal.context_updated"
+                | "context.index.generated"
+                | "context.selection"
+                | "context.expansion"
         )
 }

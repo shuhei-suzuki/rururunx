@@ -1,0 +1,796 @@
+# Issue 19 requirements: durable context packs and checkpoints
+
+Current authority status: merged production baseline is schema3; this unmerged
+component source is schema5. Candidate6 below is proposed/test-only, not implemented
+or production-ready. ALL native writer/admission/continuation/ACK/Lost examples from
+component5 are HISTORICAL ONLY unless the canonical matrix below explicitly permits
+the actual managed private producer. Earlier artifact/encoding/provenance requirements
+still apply; they never create a generic managed writer. No Test paragraph asserts a
+passed fixture. The matrix is the single current native acceptance inventory.
+
+| Stable acceptance | Canonical writer / actual consumer | Required causal proof (source/native PENDING) |
+| --- | --- | --- |
+| S6-01 | Explicit epoch/all-table writer fence and drained migration | Actual v1–5 binaries plus already-open/prepared old writers; unchanged original DB bytes/version on refusal; RRXC candidate distinct from RRX1 production (Design20/22/24/25/31/35) |
+| S6-02 | Atomic marker/operation and actual managed Goal admission | Exact accepted Running Goal, no governing hold, listed DAG Task and genuine bounded hard-prerequisite proof; missing production profile/producer refuses before effects (Design24/31/32/35) |
+| S6-03 | All five actual managed preparation/allocator callers | Immutable original frame/actor/full locks and genuine private operation; no prior-terminal adoption; actual allocation/factual-insert race (Design16/18/31/35) |
+| S6-04 | First/new input consumption before bytes | Complete rendered-frame hash/bytes, current CPP/head/source and actual Goal predicate; exactly one consumed UUID/model delivery; stale input emits zero bytes (Design18/24/31/35) |
+| S6-05 | Owned historical ACK/observations | Exact current admitted pair/consumed UUID; monotonic initial native binding only; original marker frame immutable (Design29/35) |
+| S6-06 | Current ALLOW/host effects versus provider-specific historical DENY | Genuine grant, complete scope/locks, immutable sources and declared Executor outputs; Project bookkeeping held; at most256 host admissions PER OPERATION,257th before IO; exact outcome bytes/quota and unknown-worker refusal (Design26/29/30/32/34/35) |
+| S6-07 | Genuine monotonic Lost diagnostics | Absorbing hold in ALL scopes; remembered actor/input/intent pins; no generic terminal rewrite, receipt or release (Design20/29/35) |
+| S6-08 | Actual owned supervisor settlement/restoration | Genuine current native outcome or eligible pre-input NoCurrentDispatch plus complete owned cohort/worker cleanup; consumed input with zero wire remains held for14; exact restoration atomic (Design16/18/31/35) |
+| S6-09 | Receipt freeze and exact closure/replacement consumers | Body/version/claim and actual failure/TerminalRecovery proof; closed awaiting-explicit-retry hold before later RetryEvent; no automatic redispatch; legitimate bounded Workflow successor, never raw version refresh (Design32/33/34/35) |
+| S6-10 | Sole active record-only binder/reconcile/diagnostic | Original marker and private actual owner or sealed successful receipt; factual W-version/body successor ledger only; no P/G/T/Session/lock write; passive observer cannot settle (Design26/30/33/34/35) |
+| S6-11 | Sealed Fresh/Continue selector | Latest closed delivery/predecessor, actual registry proof, exhaustive typed family/reference checks; immutable refusal attribution persists after later pristine no-Session attempt (Design21/22/24/32/35) |
+| S6-12 | All checkpoint/pack publication/render consumers | Every own/promoted event caller classified; immutable snapshots; live latest-head preparation distinct from exact historical admitted closure (Design29/34/35) |
+| S6-13 | Whole-body/history/quota and irreversible tail | At most64 unique observation/material authorities and256 history/context entries; complete Workflow AND ContextVersion bodies≤8 MiB; charged128 MiB PER WORKFLOW plus reserved64-KiB closure headroom; ALL source-map/evidence fields compact; exact tail before effects (Design24/25/26/29/30/31/33/35) |
+| S6-14 | Operation-aware locks/idle/Git/removal/context/Goal writers | Symmetric physical reservations include overlapping roots/common Git; actual producers required; closed synthetic producer tests prove mechanics only (Design23/25/31/35) |
+| S6-15 | Unsupported legacy Task/NoTask/interactive roles | Every fresh generic nonterminal native writer refuses before reservation/process/bytes; terminal historical records never verified ownership (Design20/21/35) |
+| S6-16 | Actual composed caller/projection/schema readiness | All actual native/Generic/Fake and Goal/binding/effect/recovery ports; phase-closed pending-Goal drain; bounded prerequisite transaction≤128 rows,4096 bytes each/512 KiB aggregate; capacity in same claim transaction; synthetic proof never production readiness (Design31/32/33/34/35) |
+
+Each stable key requires named exact consumer tests AND meaningful causal mutants
+in final source evidence; it is not an invented available API or a checkmark. The named Design16 and Design18–37 contracts
+and the canonical writer table define the required private predicates. Source evidence
+must map each key to actual fixture/result SHA and list unready production ports.
+
+Implement typed, Project/Goal/Task-scoped durable working context on existing
+append-only ContextVersion and Checkpoint records. Rust remains provider independent;
+no supervisor model or transcript summarization model is introduced.
+
+The independent [encoding component](../design/issue-19-encoding-component-design.md)
+implements only existing compact artifact byte bounds,120-container depth and typed
+read-order validation. It introduces no schema/native/publication authority and does
+not satisfy the pending S6 producer matrix by itself.
+The separately proposed [checkpoint append identity component](../design/issue-19-checkpoint-identity-component-design.md)
+enforces existing exact scoped predecessor/Session and semantic-retention requirements
+only; it creates no native ownership, epoch or production acceptance.
+
+- Task packs preserve purpose, criteria, workflow/risk/phase, constraints, owned
+  repository/worktree/revision, scoped authoritative artifact references, selected
+  file/symbol metadata, decisions, completed work, failures, verification/findings,
+  blockers and next action. Source bodies remain authoritative outside summaries.
+- Goal packs preserve objective/criteria/constraints/source references, DAG and
+  all owned Task status/context references (including Tasks outside the DAG), cross-Task decisions, blockers/next runnable work
+  and explicitly supplied aggregate metrics. They do not copy Task histories.
+- Relevant authority/source/state changes create consecutive versions. Pointer,
+  ContextVersion and audit publication is atomic and version guarded. Equal inputs
+  reuse a version. State CAS versions are distinct from semantic authority hashes;
+  publishing a context pointer must not immediately stale its own pack.
+- Freshness includes actual owned worktree/HEAD, dirty/admitted ignored bytes,
+  primary rules/config and artifact digests, plus semantic Task/Goal state. Stale,
+  foreign, malformed or dangling references fail before native preparation.
+- Checkpoints accept typed, ordered execution/consultation events. Condensation
+  retains all semantic goals/decisions/completed work/failures/findings/next actions/
+  constraints/verification/critical references. Recent transient history remains
+  verbatim under a configurable byte estimate window; omitted old transient data
+  has an auditable count/range/digest. Excess mandatory state fails explicitly.
+- Checkpoint creation appends evidence without overwriting an active launch's
+  ContextVersion. Consultation promotion is explicit, scoped and compact; it copies
+  preserved facts with historical provenance, never the full transcript or target
+  source authority. Cross-Task promotion is an explicit immutable snapshot; later
+  source checkpoints do not silently replace it. Own checkpoint history is automatically included even when its reference is
+  omitted. Same-Task preparation/publication requires the latest checkpoint head,
+  including the absence of a chain. Own history and consulted snapshots coexist. No cross-Project or cross-Goal implicit
+  promotion is allowed.
+- Mandatory Project rules and Goal/Task constraints survive packing and promotion.
+  The source Task criteria are preserved in checkpoints as well.
+  Standalone byte/estimated-token budgets cap the fully rendered payload. Workflow
+  discretionary budgets cap optional repository slices; mandatory Task/Goal/
+  checkpoint metadata and Engine-owned rules are separate overhead, counted in
+  total UTF-8 estimates. One 1 MiB absolute rendered native-input cap for standalone and Workflow rejects
+  oversized mandatory state. Provider metrics stay nullable; no fact is dropped
+  to fit a budget.
+- Native I/O stays outside SharedStore. Publication rechecks current versions and
+  live/Lost Session/lock/workflow ownership inside the transaction. Workflow-owned
+  publication uses the workflow phase port; standalone publication cannot rewrite
+  its phase/attempt context. The ordered format 3→4 migration
+  makes older writers refuse the authoritative checkpoint write contract. SQL
+  checkpoint-head indexing is maintained atomically with append. Generic Context
+  writes and pointer changes cannot bypass typed publication or restore an older
+  pack. Record kinds remain unchanged.
+
+Goal-only packs use read-only exact primary-root identity/source validation and
+atomic Project/Goal/Task-membership-and-summary CAS, including before Tasks and after worktree
+cleanup. Finalized Task refs remain historical and non-launchable.
+
+Core checkpoints use a registered Goal and bound Task, including consultation
+Sessions. Goal-before-Task consultation creation and CLI/TUI/session transport are
+separate integrations. Native checkpoint capability is not fabricated. The real
+workflow PhaseContext port is integrated against merged Issue 8, before acceptance.
+
+Goal summaries report exact immutable Task refs and whether source validation is
+required; concurrent dirty execution does not disable the Goal summary. Task
+launch preparation separately validates current sources. Core limits are 128 Goal
+Tasks/4096 DAG edges and 4096 retained semantic events/1 MiB per checkpoint. There
+is no destructive checkpoint reset or semantic deduplication; overflow is explicit.
+
+Checkpoint admission projects the complete mandatory Task/phase artifact plus
+current captured rules before committing a new head. The checkpoint's 1 MiB
+envelope limit is an upper bound, not a promise that all such envelopes fit a
+rendered input: combined mandatory-state capacity can reject earlier. Existing
+scoped facts/references are included when available. Rejection leaves the old
+head/checkpoint-publication audit unchanged (source observation may be audited); it does not accept an unrenderable new mandatory history.
+Later explicit input or rule changes can still require decomposition/extra budget.
+
+New Cleanup evaluation claims atomically compare the live checkpoint head before
+an external gate is invoked. A preclaim change preserves the worktree and requires
+explicit recovery; a checkpoint arriving after the admitted claim is historical
+evidence and does not prevent terminal persistence after actual disposal.
+
+An admitted input's revision/version/byte count/source versions remain pinned
+through all Session observations. Historical component5 continuation (not a
+schema6 exception; use the design canonical writer table): terminal→Starting may
+install a strictly higher input version after latest typed context/head validation.
+It first binds `pre_dispatch_restore_sha256` to SHA256 of the exact serialized
+prior terminal Session. Exact terminal restoration is allowed only before any
+consumed dispatch intent/unobserved boundary; after dispatch, input rebinding or
+rollback fails. Native adapters preserve this protocol without rewriting active
+attempts. The checksum helper is pure and performs no Git/filesystem work.
+
+Protected Sessions cannot bypass fresh continuation through terminal→Running/
+Waiting/Lost or by creating an initial Waiting/Lost record. Every new admission
+binds its declared input version and checkpoint head to the exact latest typed
+ContextVersion and Task pointer. Historical restore proofs are installed only
+from a persisted terminal Session and remain immutable until the next verified
+fresh continuation; exact prewire restoration of a historical consumed intent
+is restoration, not a new model dispatch. Pr/MergeGate/Cleanup all compare the
+live checkpoint head atomically at each new irreversible evaluation claim.
+
+Workflow checkpoint acceptance has a concrete liveness dependency: before external
+effects, any new checkpoint source authority can restart the entire generation;
+after PR/merge effects, an append may hold the Task until explicit Issue 13/23
+reconciliation is available. This core demonstrates auditable condensation and
+constraint preservation, but does not claim automatic post-PR recovery. A bound
+owned worktree created by the existing WorktreeManager remains necessary before Engine initialization.
+Cross-Task promotion selects caller-classified Consultant-origin history only; its
+unverified role/native provenance is explicit in the target frame. It preserves
+target Goal/Project/rule constraints and does not implicitly select source Executor history.
+
+Ordered schema 4→5 adds private immutable prepared-frame authority for standalone
+selection. Preparation publishes scope/context version/HEAD/source versions/UTF-8
+byte count/lowerhex SHA256 of the exact complete PreparedInput.payload in the
+same Immediate owner/source/head CAS and audit transaction. Up to 128 variants
+per context version are retained; prompt bodies are not duplicated. Generic audit
+or Record writes cannot fabricate this authority. Workflow authority uses its
+immutable ContextVersion.data.payload, including mandatory Engine rule prefix.
+Store::validate_context_input checks actual request bytes; Session admission pins
+input_sha256 and consumed intent must match that hash. Provider-specific RPC
+envelopes/fixed prefixes are a distinct transport digest, never this input hash.
+Older public schema 4 writers refuse schema 5. Existing schema4 standalone packs
+historically needed preparation again under the new private publication contract before launch.
+
+Once the same dispatch intent is consumed before wire delivery, its Starting
+status/Running acknowledgement is a historical admitted observation. Later
+checkpoint updates cannot rewrite or wedge that acknowledgement. A changed/new
+consumed intent remains a new admission and must compare live head/frame authority.
+
+New native admissions of typed Workflow frames require the current active Running,
+dispatch-started attempt with the exact context, phase and generation. Session
+publication also binds its owned Session ID. Inactive owners, terminal Tasks,
+frozen final packs and EvidencePort phases are non-launchable. Already-consumed
+observations retain their historical input instead of re-admitting it. Stable
+Project scoped references and Goal/Task instruction hashes are source authority;
+Goal criterion satisfaction, DAG progress and raw row counters are bookkeeping.
+
+Optional source sections use the smaller of the selected discretionary budget and
+the remaining absolute 1 MiB capacity after mandatory pack metadata and Engine
+rule bytes. Zero remaining optional bytes is valid; mandatory overflow still fails
+closed. The selected phase budget remains unchanged and reported. New generic
+Context writes reject reserved task_pack/frozen_task_pack envelopes. Readers
+classify historical legacy envelopes by the explicit typed format. Pointer-only
+Goal contention is a typed SnapshotChanged on goals.context_version. Reserved
+preparation/index/selection audit events require their private producer paths.
+
+Historical component5 generic blocked-owner Lost could add only
+native_dispatch_unobserved=true and clear PID. Schema6 managed Lost requires the
+actual private owned observation, which may make that same conservative addition/
+PID clearing while preserving exact actor, scope, input, restore proof and consumed intent.
+This flag is conservative uncertainty, not a new dispatch admission. New
+checkpoints record their configured transient window; historical checkpoints with
+no recorded policy retain an explicit unknown value.
+
+HISTORICAL UNMERGED COMPONENT5 ONLY (superseded by schema6 original43 frame):
+A successful native actor acknowledgement may refresh only its Project/Goal CAS
+rows after sibling bookkeeping changes. It first verifies the exact unchanged
+Task/Workflow versions, active attempt/context/generation and stable semantic
+instruction hashes, with active lifecycle guards. Session ID publication then
+uses the new CAS in the same existing atomic Workflow transition. Changed
+constraints, scoped references, Task/attempt authority or paused owners remain
+fenced; acknowledgement is not another model dispatch. Legacy sources retain
+strict Project/Goal version equality.
+
+## First admission and compatibility requirements
+
+Protected Task input stays pending until private NativeCAS commits exact consumption,
+including a combined consumed first-Running admission. Head-validated Running without
+a consumed UUID grants no admission and rejects. WaitingApproval/WaitingHuman/Lost
+and native_dispatch_unobserved do not grant admission. Under schema6, pending
+unconsumed Starting→Waiting rejects; historical admitted waiting reentry retains
+its exact private pins. Lost has no generic exit. Already admitted input retains its historical pins. New consumed
+intent always revalidates, and admitted nonterminal input cannot visit Starting to
+roll back to an older terminal frame. Exact prewire restoration requires no
+current admission, consumption or uncertainty. Higher-input continuation requires
+the sealed managed owner/closed receipt and actual registry eligibility before
+marker commit, and installs fresh authority before native dispatch.
+
+Admission facts are privately indexed, scoped to Task/Session/input/actor, bounded
+to one row per Session and atomic with Session plus audit. JSON or generic APIs
+cannot manufacture them. Initial terminal factual history remains supported, but
+all generic/non-owned nonterminal Task and NoTask native Session writes reject
+until their actual managed19 or retained58 ownership port composes, with the new
+universal absorbing-Lost safety rule. Standalone Executor frames cannot be adopted by another
+agent, role or worktree. Workflow frames preserve their active attempt authority.
+
+Standalone prepared payloads render stable scoped instruction and Task policy
+hashes and publish exact private byte/hash authority. Sibling progress, blockers,
+pointer-only and sibling bookkeeping cannot strand pending semantic input;
+constraints, refs, identity, own standalone directives/policy and lifecycle changes remain fenced. Physical
+HEAD/source hashes remain authoritative. Explicit idle consecutive standalone artifact republish supports only missing
+v2 contract or variant cap128 recovery; it remains non-launchable under schema6; default
+publication remains idempotent and active launches immutable.
+
+Schema6 migration is ordered, atomic and makes no historical admission claims.
+Unsupported old5 opens AND old5 connections held open before migration must reject
+all subsequent application writes, including private metadata/audit, without
+changing state. Existing domain/immutability triggers remain effective. Native
+compiled old-writer evidence must cover a live connection, not only fresh opens.
+
+Factual Consultant checkpoint history is supported. Live Task Consultant remains
+Unsupported. Future ApprovalReviewer action-decision Task/member needs actual9/10
+owned slot/native settlement; no currently available DecisionTask port is implied,
+and Executor-writable rules/config/hooks never become its trusted authority. Arbitrary role changes cannot bypass frame authority.
+
+Migration must refuse before mutation while any live/Lost Session, active lock or
+ANY Workflow with active.is_some() or owning a nonterminal Task regardless of
+finished (including QUICK PrCreated) remains. Design27 and the canonical migration
+predicate supersede all earlier unfinished-only wording. Terminal non-owning
+cancelled Workflow history remains migratable. Complete or explicitly cancel/drain
+with the compatible old runtime first. New semantic projection definitions
+are versioned and exhaustively classified. Every typed actor, including Reviewer,
+binds the exact Task worktree and single-actor phase allocation atomically; two
+Sessions cannot consume the same attempt before Engine Session binding.
+
+Fresh input admission must reject a Task put on hold after Starting, even when its
+frame hashes are unchanged. Protection cannot change underneath a live legacy
+Session. Fabricated terminal history cannot unlock forced consecutive publication;
+a historical standalone terminal pair is not a schema6 force branch. Managed
+continuation instead binds its exact closed-operation receipt and private owner.
+Provider lifecycle/lock/version fences remain independent of semantic input checks.
+
+
+Initial native actor binding is monotonic per input: requested None may bind one
+effective model/effort value, explicit Some cannot silently change, and a known
+native_ref remains immutable across the Session UUID. Exact admitted metadata
+pins and private same-attempt binding updates remain atomic. Higher-input fresh
+continuation resets requested model/effort before Starting and keeps exact prior
+terminal rollback proof. Claude5, Codex6 and Grok7 require reviewed complete prepared-frame preflight,
+input SHA/source pins before Starting, atomic consumed admission before wire,
+native binding compatibility and causal typed-frame caller fixtures before
+integrated acceptance.
+
+Private phase allocation covers initial INSERT and fresh terminal-to-Starting
+UPDATE; Engine binding/closure must use that exact allocated owner. Ordered
+migration preflight covers every older supported version, and an old Lost owner
+without verified recovery remains an explicit upgrade limitation. Existing
+checkpoint-v1 and terminal restore hash encodings remain byte-compatible. Backup
+rollback is permitted only before any post-upgrade application/external effect.
+
+
+A typed irreversible claim must carry an explicit own checkpoint head; absence
+fails closed. Single-actor ownership survives the gap before Engine Session
+binding: an allocated live Reviewer prevents claim closure. The native dispatch
+intent denotes actual input delivery; an own-checkpoint append requires fresh
+higher-input continuation before another delivery. Historical observation alone
+sends no new model input. Variant-cap exhaustion supports explicit idle consecutive
+republish without discarding history. Idle unfinished Workflow hot-upgrade is not
+supported; compatible-runtime completion or explicit terminal cancellation is
+required, with remaining external effects reconciled.
+
+
+Integrated native Workflow acceptance also requires Issue43's reviewed record-only
+actor binding to preserve the admitted caller's Task currency while retaining
+exact scope/lifecycle/claim/private-slot CAS. Independent context core validation
+does not claim that pending cross-provider integration already works.
+
+
+A native actor allocation cannot certify a different historical input after
+prewire restoration: binding matches the exact current prepared frame, and success
+requires that input's admitted/consumed proof plus authoritative terminal outcome.
+Future instruction-authority changes require incompatible-writer exclusion as
+well as new semantic versioning, including already-open older runtimes.
+
+
+Generic writes keep persisted Lost absorbing and cannot turn Lost/uncertain
+ownership into terminal native completion; verified owned recovery remains an explicit Issue14 prerequisite.
+Private preparation/admission proves exact input currency, not native transcript
+truth. Provider private Session ownership must reject unregistered historical
+UUID/native_ref before native resume or wire delivery. Factual Consultant/history
+checkpoint append remains supported with caller-classified provenance and cannot
+certify Workflow success or native completion. For a Task with an open managed
+phase, factual events use the same owned staging contract: no generic checkpoint
+head append or admitted-context rewrite. Closed historical publication retains its
+existing provenance checks; historical rows never mint managed staging authority.
+Pending Starting initial actor
+binding revalidates the latest full frame/head/lifecycle and updates its private
+preparation pair atomically; it never grants delivery. Migration verifies all
+legacy typed checkpoint references before mutation, retaining actual old-producer
+checksums and refusing inconsistent history.
+
+
+Protected actor pins remain exact on every observation/terminal update except
+explicit validated initial binding, owned fresh continuation or exact prewire
+restore. Pending or historical binding never weakens Lost recovery. Admission
+metadata is bounded before hashing. Fresh and migrated schemas preserve identical
+authority constraints. Database writer fencing prevents incompatible state writes,
+not arbitrary old-binary external operations; supported upgrades require all old
+runtimes and owned groups stopped/drained before migration.
+
+
+The universal Lost safety change intentionally replaces legacy Lost-to-Stopped
+settlement. Candidate6 Task fixtures use actual managed ownership to prove held
+Lost; NoTask initial/live/Lost publication and old live/Lost migration refuse.
+Goal-publication/Project-removal Lost positive controls require the actual58 producer
+and trusted14 recovery, not generic Starting seeding. Initial factual
+terminal Consultant history remains supported. Protected input dispatch uses an
+exact typed runtime intent and private consumed UUID per admitted input version;
+a second delivery at the same (Session UUID,input_version) rejects, while identical intent means observation
+only. Every actual wire delivery goes through its provider's fresh private intent.
+Session fields are exhaustively classified, preparation/publication bounds match
+admission, and every provider uses the shared canonical restore checksum helper.
+
+
+Private native admission is an explicit entry-point contract: only the crate-private
+atomic Session+Project/Goal/Task+complete-lock CAS port may create preparation,
+first admission/consumption or phase owner allocation. The consumed DTO's versions
+must equal that current checked authority. Generic Session/Record writers cannot
+manufacture these rows or a fresh consumed marker; they preserve historical pins,
+permitted terminal/diagnostic observations or verified no-dispatch restoration only.
+The Store proves input currency/allocation, not a native outcome from JSON. Actual
+Workflow success separately requires the adapter-owned completion evidence.
+
+Prewire restoration after a legitimate pending actor bind must remain closable as
+Failed/Interrupted: preserve the immutable allocated/bound Session ID and require
+its exact frozen preparation for that attempt, persisted non-Lost/non-uncertain
+terminal owner, and no admitted/consumed proof for that input. An older restored
+terminal must match the private prior-terminal checksum captured and verified
+at fresh preparation; current-input failed terminal matches its preparation tuple. The restored older
+terminal cannot fresh-bind or certify Succeeded. Test both bound and unbound cases.
+
+One 1 MiB cap applies before standalone selection, phase publication and admission;
+older schema5 oversized variants remain non-launchable history without rewriting.
+Protected Session/restore inputs are explicitly bounded in bytes, depth and nodes
+before hashing; overflow rejects without authority publication or truncation.
+
+The one-delivery guarantee concerns PreparedInput-bearing native wire frames.
+Fixed typed approval/protocol responses are distinct and keep their separate
+operation authority; no free-text Human/operator live reply shortcut is supported
+for protected input. New model-visible instructions require terminal settlement
+and a fresh higher-input prepared frame with attributed facts. Real provider
+fixtures must prove these entry-point distinctions and exact one-frame consumption.
+
+
+Exact prior-terminal restoration is classified before new consumed-intent checks;
+its old intent remains historical content. A restored older terminal bound to an
+open allocated attempt is frozen until failure closure, while separate diagnostics
+and usage remain attributable. Historical initial binding skips live head currency
+but retains current owner/lock CAS and existing lifecycle fences; Paused/ReadyForPr
+publication holds are explicit and never new dispatch permission.
+
+All fresh post-upgrade Workflow native phases require typed19 authority; opaque
+native contexts cannot launch. Phase allocation applies only to typed Workflow
+native actors, never standalone inputs or EvidencePort/history. The allocation
+reader distinguishes NotApplicable from proven typed-phase absence. Generic CLI,
+Claude5, Codex6, Grok7 and positive FakeAgent fixtures must migrate to actual
+private prep/admit ports; implementation-owned admission capability defaults absent
+and prevents preclaim/process launch before reviewed integration. Two separately
+identified old5 binaries prove writer exclusion; malformed non-integer legacy
+checkpoint authority refuses migration with unchanged state.
+
+
+Combined first-Running/first-consumption may bind initial None native fields once,
+with exact explicit Some pins and current frame/head/lifecycle/CAS. Typed native
+Succeeded unconditionally requires present allocation, bound exact owner, Exited,
+current admitted pair and consumed UUID; an absent owner never succeeds. Every
+new native retry/escalation/invalidation attempt has a consecutive higher owned
+phase context even for unchanged source; existing attempt observations stay frozen.
+
+Each production caller revalidates complete physical owned sources after startup
+and before consumed CAS/wire, including same-length dirty edits and ignored/rule/
+config bytes. Store itself proves DB authority only; external filesystem changes
+are not atomically fenced by SQLite. Upgrade past schema5 generic Lost settlement
+is explicitly operator-attested old cleanup history, not provable from terminal
+labels/audit JSON; newly persisted Lost remains absorbing. Actual binary identities
+and all Engine context consumers are part of impact and compatibility evidence.
+
+
+Workflow-owned blockers/next_action are Engine-only writer-pinned capture metadata;
+generic Task directives cannot change unfenced input. Every allocated non-success
+closure/retry checks the exact owner's current input or immutable prior restoration,
+even when the old attempt was Waiting. Failed prewire binding publication must use
+last successfully persisted own-attempt pins for factual no-dispatch cleanup, never
+rejected in-memory bindings or a foreign newer attempt.
+
+Prepared-input consumption is separate from operation/transport journals. Permission
+ALLOW remains full-current NativeCAS/Broker authority; historical DENY/post-reply
+observations retain exact admitted input and consumed UUID with existing activity/
+worktree/own-Session constraints. Preserve provider-specific ProjectBlocked denial:
+Claude's prewire Running publication rejects/no-wire; Codex's unchanged Waiting
+Decline publication may send the fixed reply, then its Running publication rejects.
+No new universal DENY fence or privilege is introduced. No journal
+creates prepared input admission. All real provider writers and SQL/audit consumers
+are acceptance inventory.
+
+Migration records immutable per-Task context epochs so pre6 typed history is
+NotApplicable and never re-adopted; post6 missing allocation fails closed. Bounds
+precede exact prior restoration, which precedes strict new consumed DTO parsing.
+Already terminal Sessions cannot become Lost; existing Lost remains universally held.
+New Session INSERT rejects initial Lost/WaitingApproval/WaitingHuman universally,
+including Project/Goal and unprotected legacy Task scope. Legitimate initial
+terminal factual Consultant history remains supported. New Project/Goal Sessions
+use the exact registered canonical primary Project root; a Task worktree or the
+Project worktree namespace cannot be adopted through a non-Task scope.
+Native held-open old4/old5 writers and full JSON feature/equality impact are required
+compatibility proofs. Workflow checkpoint-progress integration remains #23; artifact
+condensation alone does not claim native runtime checkpoint progress.
+
+
+Protected Task/native frame input is noninteractive only: Interactive/PTY launch
+and terminal_input reject before reservation/Starting/spawn or model-visible bytes;
+a pending preparation cannot open a live model UI through Waiting. Every admitted
+input has atomically committed consumed UUID; preparation alone never admits
+Running or authorizes wire. All actual consumers migrate to consume-before-write.
+Every v1–v5 migration fixture has historical source/binary/dump provenance and
+genuine legacy DDL/JSON shapes, never relabeled current schema. Exact wrapper
+separator bytes and feature-independent policy/pack-facts hashes are acceptance
+boundaries. A restored unadmitted failed input remains distinct from an older
+retained admitted pair; actual consumed restored pins must still match authority.
+
+Managed native phases require an actual owned settlement producer, distinct from
+terminal labels and input admission. The exact dispatch-marker transaction installs
+a private operation lease before adapter startup/first Session, binding the immutable
+successful claim/attempt, scope, typed context and full frame/source pins. Only the
+actual owned supervisor can publish a nonserializable settlement proof and atomic
+scoped append-only receipt, with the exact observed Session/version and private
+preparation/admission/consumed pins. Known no-current-dispatch and known current
+native terminal settlement are separate outcomes. Unknown/Lost, timeout, a returned
+start error, PID absence, public terminal JSON or a dropped future never settles an
+operation. Publication conflicts retain real owned bookkeeping and the durable lease.
+Store enforces marker↔exact operation insertion and allocator/preparation/admission→
+existing unsettled exact operation in the same transaction. Missing operation for
+a marked/allocated post-epoch native phase is corruption, never legacy fallback.
+All generic writes to an open managed operation's Session reject, including exact
+restoration, terminal labels, same-body updates, diagnostics and Lost. Actual owned
+nonterminal/uncertain observations use the narrow private operation port; terminal/
+restoration publication uses only actual owned settlement with the receipt. Usage/
+audit remain separate. Every lock/executor/worktree/reservation/idle/removal consumer
+counts operation ownership independently of Session labels.
+
+After receipt, the complete Session body and Record version remain frozen until
+that exact Workflow phase closes. Closure matches both recorded version/checksum
+and private input pins; diagnostics cannot wedge or relabel the receipt. The closure
+transaction alone marks that phase closed. An unbound/unallocated post-marker
+operation with an actual matching no-Session NoCurrentDispatch receipt may close
+Failed/Interrupted or explicit retry/TerminalRecovery, never Succeeded. Without
+that receipt it remains held; ordinary polling never releases it. Drop/abandonment
+records bounded best-effort attention, never cleanup or release authority.
+
+All managed/allocated native closure, replacement, retry, escalation, invalidation,
+terminal reservation release, idle/publication/removal and managed Goal completion
+consumers require the actual private receipt in their transaction. Succeeded also
+requires current privately consumed/admitted input, Exited and successful owned
+native outcome; a restored older terminal is failure-only and needs the current
+operation's actual no-dispatch settlement. Generic Consultant/factual history cannot
+certify native death. Retained native service ownership never releases operation,
+Goal/removal or capacity; managed MVP Codex receipts require actual server cleanup
+and owned tool/setup settlement. A selected dead process group does not certify
+escaped descendant cleanup; unresolved actual native containment is a producer
+readiness gate, not waived by terminal labels. Every actual Generic/Claude/
+Codex/Grok profile composes by either verified real managed producer support or
+tested unsupported rejection before reservation/marker/process, with no fallback.
+Synthetic controlled no-subprocess/Fake producers prove actual port mechanics only,
+including failure before first Session; they never prove production containment.
+Readiness reports supported/refused profiles explicitly. Real native Executor/MVP
+acceptance remains dependent on actual native6 containment and Issue16 evidence.
+Private Issue14 recovery
+remains necessary for Lost/restart-unknown operations; Issue41 invocation-owner release
+is unchanged and Issue43 binding remains a separate exact same-tx predicate.
+
+The schema6 authority inventory includes immutable per-Task epochs and append-only
+native settlement receipts with every-table writer fencing. Existing schema5 code
+does not implement this new contract. No seeded private rows, forged terminal facts
+or declared tests substitute for actual producer/consumer proof. Accepted Goal
+definitions remain immutable under Issue23; lifecycle holds or validated additive
+graph updates must not rewrite their objective/criteria/evaluators/constraints.
+Standalone capture status is labelled as-of metadata, and semantic Store validity
+does not promise native liveness where full raw P/G/T version CAS still fences.
+Generic managed Goal Completed publication needs actual private Issue23 accepted-
+definition/gates/evidence/receipt completion authority and is unavailable until
+that consumer exists. Cancelled/Failed lifecycle dispositions may revoke admission
+while operations remain owned, but never release their resources or certify native
+death. Actual private factual settlement does not alter the terminal Goal decision.
+
+
+Design18 narrows supported schema6 production authority: protected standalone
+native launch/resume is explicitly Unsupported before reservation/Starting/process,
+while standalone preparation remains a non-launchable artifact. Existing native
+component positives without a retained operation are not production proof. A
+schema6 candidate cannot pass production deployment/automatic migration or MVP
+acceptance with all real required native profiles refused; the actual managed
+producer and required Core configuration proofs remain release gates.
+
+Actual owned factual settlement must remain publishable after authorized Task
+Cancelled/Failed or Goal/Project hold/cancel/fail, without reopening lifecycle or
+certifying acceptance. Pure pre-effect refusal after a committed marker has an
+actual private pristine/no-effect settlement transition, not dropped-handle fiction.
+Every operation column/marker mutation is SQL constrained, including REPLACE and
+already-marked inserted history. Generic managed Goal completion is fenced using
+durable post-epoch Workflow/operation history, not only outstanding operations;
+actual Issue23 accepted definition authority further governs its integrated path.
+Same-Task live checkpoint capture stages mandatory facts under the actual owned
+operation, preserving the admitted input AND published head. Durable ordered
+publication follows genuine settlement and exact phase closure; every new same-Task
+prepared input/marker/context ingress is held while staged facts remain unpublished.
+The fence is atomic with staging/closure, survives restart and refuses on quota or
+publication conflict with attention. This clarifies the earlier live-append timing
+example; it does not permit loss of mandatory facts or relax head currency.
+Receipt freeze permits only exact record-only
+late Workflow binding and closure, never Session mutation. These require actual
+caller/transaction positives and causal mutants in source acceptance.
+
+
+Managed continuation is explicit sealed Fresh/Continue authority selected from an
+exact closed prior attempt/receipt, with actual adapter registry ownership before
+effects; protected legacy resume methods cannot bypass the managed entry. Every
+managed preparation/admission/consumption requires the actual operation handle and
+runtime identity, not an existing row alone. Unmanaged native Task Executor/Reviewer
+launches are Unsupported even before typed context creation. Managed terminal initial
+binding is atomically part of actual settlement, never receipt-free NativeCAS.
+Receipt class drives Engine success/failure selection independently of historical
+Session labels. Pristine/orphan/Lost remains held; actual private Issue14 recovery
+is a production deployment prerequisite, not a reconstructed JSON receipt. Source
+acceptance must prove these actual caller paths and statement-order rollback.
+
+
+Design20 enforces fresh Task native ownership at the shared Store writer as well as
+every adapter: ALL generic Task nonterminal Session writes and ALL unmanaged Task
+native roles are refused, including untyped Consultant. Actual managed operation-
+handle ports are the sole positive path; terminal factual history remains unverified.
+Review locks precede marker commit and exact role-classified lease/lock sets persist
+through receipt/closure. Continue needs same generation and unchanged semantic/rule/
+reference authority, else Fresh. Closed managed bodies remain generic immutable.
+Plain current Store open refuses older DBs unchanged; only deliberate migration
+performs ordered drain/fence upgrade. Candidate profiles do not become ready through
+that API. Task-free Consultant ownership is pending58, not this managed producer.
+
+
+Design21 makes Continue pre-marker availability require the current runtime's actual
+private registry query; restart/unavailable or an owned rejected Continue selects
+Fresh. Marker insertion order and Workflow-side receipt SQL checks are explicit,
+without pretending SQLite has deferred bidirectional triggers. Fresh NoTask native
+Session publication also rejects until actual58 ownership; primaryroot can contain
+Task namespaces. Candidate6 is not a standalone production release: the first deployed
+schema/projection is the actual composed reviewed authority. Actual23 criterion evaluator
+is immutable accepted definition. Drop must not block, aggregate authority tuple bounds
+precede phase publication/marker, and decision-only native review still needs actual
+operation/slot ownership. Historical component waiting/Lost/resume positives do not
+assert schema6 launch permission. All require actual source/caller gate evidence.
+
+
+Design22 adds a handle-bound AllowCurrent branch requiring actual trusted grant
+proof, exact current CPP/head/source plus full NativeCAS P/G/T/lifecycle/lock/own-
+Session checks before wire; historical observation never grants. Candidate6 DDL/
+state construction is internal fixture-only: actual main is3 and unmerged component
+baseline is5, each preserved until actual composed release/migration/profile gates. NoTask Lost positives belong to
+actual58 producer; candidate refusal/drain controls stay reachable. Latest closed
+Session-less predecessor selects Fresh, refusal chain cannot be skipped. Workflow
+history256/generation64 and atomic phase-context publication bound retry growth.
+All own-Task and promoted checkpoint events render UNVERIFIED CALLER CLASSIFICATION,
+including generic terminal Executor history; captured role is attribution, not authority.
+These are corrected pre-code contracts, not schema6 implementation/acceptance.
+
+
+The design canonical schema6 transition/writer table is the sole native permission
+inventory, superseding historical component5 generic terminal/continuation/Lost
+exceptions. Design23 caps EVERY Workflow ContextVersion publication256 (not just
+history/generation), adds actual retained maintenance reservations before Task Git
+effects (producer60 pending), and sealed exact closed-receipt late binding through
+sole43 record-only CAS with existing active-owner fences. Current grant head drift
+uses actual historical DENY/owned stop; Engine external observation stays pre-marker
+or in the actual effect-owned supervisor. Consumed-known-zero-wire stays held14;
+private event kinds share reserved rrx.private.* and every generic audit rejects it.
+All remain source/native integration gates, not an available managed/recovery API.
+
+
+Design24 keeps43 binding active-only, allowing only its ordinary Workflow Record
+metadata increment plus bounded audit. Cancelled/Failed TerminalRecovery may release
+an allocated but unbound attempt WITHOUT SessionID write only from the actual owned
+current settlement receipt and exact frozen allocation/operation/input/body pins;
+missing proof/Lost remains held, never success. Actual composed23 Running Goal/accepted
+definition/no hold/listed DAG/verified hard-prerequisite readiness is checked at marker,
+preparation, first/new consumption and ALLOW in their authority transaction; absent
+port is Unsupported. Historical ACK/DENY/cleanup retain separate factual guards.
+All own/promoted event rendering remains caller-classified. Gate observations cap64
+per attempt; new Workflow bodies cap8 MiB with64-KiB closure headroom before external
+claims/JSON scans. Restoration and NoCurrentDispatch receipt are one settlement tx;
+private emitted events use exact rrx.private.* constants. A prewire failed Continue
+forces Fresh until a new admitted/settled Fresh, preserving lineage history/budgets.
+These are proposed pre-code predicates and acceptance controls, not production proof.
+
+
+Design25 reserves exact remaining configured irreversible tail publications/attempts
+before its first effect, in addition to Record closure byte headroom; caps cannot strand
+post-disposal terminal persistence. Candidate6 uses durable RRXC application identity,
+never a production migration origin. Positive mechanics require an actual reviewed
+fixture-only runtime-job/reservation producer using real private ports (no SQL seeding);
+production60 remains a gate. Continue checks every produced key family and typed
+reference manifest, own head/facts may advance while promoted/reference changes force
+Fresh. Original43 marker-time binding frame is immutable despite ordinary observation
+refresh; actual authoritative driver/reconcile/recovery routing remains coordinated43/14.
+The stable S6 matrix is current native acceptance; component5 positives are historical.
+
+
+Design26 narrows mid-turn AllowCurrent source currency explicitly: exact immutable
+rules/config/references/HEAD/identity/context plus current semantic fullscope/locks and
+actual Broker grant, while mutable Executor worktree content may change. No same-UID
+writer-origin attribution, prepared recapture or Reviewer snapshot exemption is claimed.
+Compact immutable observation source/evidence blobs keep realistic maps out of the bounded
+Workflow body; exact repeated Waiting summaries retain count/time without consuming new
+unique slots. Every execution reserves possible changed-outcome capacity before effects;
+64 unique entries refuses further effects. Irreversible tail reserves actual compact body
+and separately bounded blob bytes. Unexplained reconciliation failure remains held, never
+clean settlement. Every typed23 Goal writer preserves current context pointer in its tx.
+Actual19/23/43 co-integration is a source-positive gate; seeded/stub ports cannot pass.
+Original43 raw pins retain conservative hold/resume recovery availability limits;14 remains
+pending. S6-06/13/14/16 include these causal controls, not implemented source6 claims.
+
+
+Design27 migration refuses every pre-epoch nonterminal Workflow Task, including finished
+QUICK PrCreated, without inventing post-epoch counter/tail authority. Terminal non-owning
+history remains migratable/read-only. Separate actual known-current failure closure may
+close exact active unbound failure without SessionID and only under existing23/8 lifecycle
+policy; subsequent retry is separately admitted, missing/stale/unknown proof stays held14.
+S6-01/05/06/09/11/13 cover old QUICK refusal, historical consumed ACK after append, actual
+fixed/native cancellation paths, typed append-only facts orFresh, and every JSON trigger's
+own pre-parse byte bound plus all-table fences. These remain source6-positive pending gates.
+
+
+Design28 labels old component5 acknowledgement refresh historical, reserves QUICK's
+normal later finalization tail beforePr and publishes actual factual cleanup under
+Task WaitingHuman without granting/refreshing current authority. Closure still follows
+actual existing lifecycle policy and original43 pins. Drop uses bounded in-memory hints
+ONLY, noSQLite/StoreIO; native Executor tools never self-exempt runtime maintenance.
+Bound/unbound restoration preserves exact prior SessionID. S6-08/09/10/13 include these
+causal consumer controls; no source6 implementation or production acceptance is asserted.
+
+
+Design29 explicitly defines historical observation branch pins, including the exact
+Codex unchanged-Waiting fixed Decline and monotonic Lost exceptions (provenance only,
+no current grant). Host-executed ACP filesystem callbacks require distinct real current
+effect admission before IO; actual Grok callers must migrate. Native phase success needs
+actual Passed gate evidence plus durable owned result, never receipt alone. Checkpoint
+transient-window bookkeeping is separate from retained semantic-prefix comparison.
+Persisted new observation/result blobs have128-MiB aggregate perWorkflow quota, reserved
+before every effect with final factual-settlement/tail capacity protected. Structural
+bounds precede Lost classification and settlement-only restoration dispatch. All are
+S6 source/native controls pending actual composed implementation, not a synthetic proof.
+
+
+### Managed host-effect and Goal availability acceptance
+
+Actual host callbacks require bounded private admission/outcome provenance before IO,
+256 effects maximum per operation and complete known settlement for every admitted
+effect before any native settlement receipt. Unknown/unjoined host work remains owned
+even after native terminal; public request/terminal labels cannot certify it. Tests
+include limit+quota refusal before IO, duplicate zero-repeat, uncertain blocking-worker
+outcome, forged settlement and actual causal consumer mutations. Candidate6 source
+will include these tables in every writer/migration/golden fence.
+
+Exact raw native/marker Goal authority stays enforced; safe stale-version refusal
+does not prove mandatory parallel Goal/follow-up availability. Actual23/24 composition
+may derive progress from Task facts/separate bounded Records without per-poll Goal
+rewrites, and queue authoritative DAG/follow-up changes until exact native phase closure (not receipt alone), with new markers held by a durable
+pending-authority barrier, or deliberately revoke through existing gates. Actual 4+ Tasks/two Projects
+and follow-up progress with full19/23/43 authority remains an acceptance gate; no
+docs-only policy or fixture proves it. Protected standalone checkpoint success stays
+Unsupported before effects until its separately reviewed real19/60 ownership and
+atomic no-dispatch publication producer composes.
+
+
+The complete private writer inventory includes operation state/Session binding/
+remembered versions, host admissions AND outcomes, receipt/phase closure, maintenance
+reservation, context/counters/quota/blobs, Fresh-only facts, epoch insertion and every
+lock mutation (Design31). Every listed real consumer requires its own S6 control/
+causal mutant. S6-06/08 prove 256/257 host effects, row bounds and no receipt with
+unjoined/unknown host work; S6-13 proves complete stored ContextVersion ≤8 MiB, all
+copies/source maps/escaping charged to128-MiB quota, private journal bounds and reserved
+terminal tail. S6-14 proves actual durable maintenance acquire/close/crash/conflict
+transactions; S6-16 proves pending Goal change after binding+phase closure, prevents
+new-marker drain starvation and rejects generic non-lifecycle Task edits while open.
+Exact immutable marker resulting-version/full-lock columns and raw-SQL refresh mutants
+are S6-02/10. S6-01 verifies native historical v1–v5 open-before-PRAGMA refusal and
+resolved binary serde feature/encoding evidence with unchanged supported fixture bytes.
+No fixture or proposed barrier is actual production controller/native proof.
+
+
+S6-02/03/04/06 require actual adapters to consume the ORIGINAL marker frame, never
+new parent snapshots at start. S6-08/09/16 genuine fully cleaned unconsumed
+NoCurrentDispatch may close that exact phase non-successfully after lifecycle/version
+revocation under actual23/8 policy, preserving current decisions/holds; no binding,
+success, phase advance or new bytes. Consumed/uncertain/forged cleanup remains held.
+Known-current failure and successful43 binding keep original current fences.
+
+
+Design32 resolves candidate failure/retry availability without refreshing original
+native authority: genuine non-success closure atomically closes the exact phase and
+records an awaiting-explicit-retry hold; ordinary step cannot redispatch before an
+explicit RetryEvent and new independent admission. Generic Project bookkeeping writes
+are held while any Project phase remains open; authorized lifecycle revocation stays
+available and removal still requires complete idle ownership. Actual23 repeated native
+prerequisite gates consume compact genuine scoped certificates/revocation only, bounded
+to128 rows/4096 UTF-8 bytes each/512 KiB aggregate, with full evidence extraction outside
+SharedStore and atomic publication CAS. Actual current-phase Executor output declarations
+permit genuine artifact edits; governing/promoted/foreign/undeclared input and Reviewer
+references remain exact. Duplicate host reads return fixed AlreadyProcessed without IO
+or fabricated content. Every JSON trigger bounds UTF-8 BLOB bytes before parsing.
+Fresh-only lineage attribution lives in the immutable settlement receipt, not an
+unlisted table. Capacity is derived/reserved in the actual41 claim transaction, not a
+standalone token. S6-06/09/11/13/16 require actual consumers, rollback and causal mutants;
+these are proposed unimplemented contracts, not passed tests or native readiness.
+
+
+Design33 keeps original marker authority immutable while genuine bind/diagnostic W
+successors use a bounded private reserved factual audit chain anchored in the planned
+complete body hash. No extra binder-updated operation row, current-row self-match or
+P/G/T/source/lock refresh is allowed. Managed retry ONLY consumes an already closed
+awaiting-explicit-retry hold. ALL Workflow source/evidence-bearing fields use charged
+bounded immutable references; complete tail reservation includes escalation/invalidation/
+completed/retry material, not only gate observations. Known consumed failure after raw
+lifecycle revocation remains explicitly held for14; no broader closure policy is granted.
+Actual co-integrated source/native consumers and causal controls remain pending.
+
+Managed evaluation also migrates actual19/8 gate-claim and outcome ports to record-only
+Workflow changes with genuine reserved successor proof; Task stays unchanged before
+atomic closure. Genuine review/evidence semantics, actual input/result authority and
+independent owned gate effects remain required. The finite chain reserves bind/gate/
+observation/final closure capacity before effects, so optional diagnosis cannot strand
+mandatory closure. Receipt/transport/native JSON alone never means a Passed phase gate.
+
+
+Design34 makes the complete factual Workflow ledger outside-lock derived and sealed;
+Design35 supersedes the earlier ALL-reads bound: compact proof rows≤128×4096
+bytes/512 KiB; explicitly bounded mandatory owner/body/lock/physical rows and SQL
+validation/write costs are a separate class, never a total512-KiB mutex promise. Concurrent
+link/W changes refuse rather than refresh an original frame. Every open-phase writer
+is inventoried, including fused gate Waiting/held outcome and separately authorized
+Task terminal decision; unknown/raw successors never permit closure. The256-link
+budget reserves99 claim/observed pairs, binding, terminal decision and closure,8 gate
+holds and47 diagnostics;65 genuine Wait then Passed fits,100th gate refuses BEFORE
+effect without spending closure headroom. Actual private ports emit only one reserved
+audit, with guarded partial expression indices and append-only complete-prefix proof.
+
+S6-09/16 retry requires real trusted Human or recorded finite frozen-policy authority;
+owned stop ACK alone is not terminal/cleanup, and consumed revoked failure stays held14.
+S6-06/12 pins actual PRIMARY-root rule/config origin independently from still-pending
+native auto-loaded rule profile proof. S6-12/16 names composed typed Goal pointer-only
+publication, and S6-16 names Project pending-authority drain without rewriting live
+Project versions or accepted Goal definitions. Historical component5 restoration chains
+cannot stand in for candidate6 Continue→NCD→NEW-UUID Fresh controls. Whole legacy-owner
+drain/refusal is unchanged; pending58 legacy recovery/barrier ideas confer no migration
+or cleanup authority. Actual production ports, source tests, mutants and native
+conformance remain mandatory and unimplemented, not earned by this document review.
+
+
+Design35's normative finite transaction manifest separates compact proof≤128rows/
+512 KiB from actual full P/G/T/W/Context≤8-MiB bodies, ownSession≤4 MiB, private
+operation≤4 MiB, complete frozen receipt≤64 KiB, authority tuples≤2 MiB,
+full256locks≤4 MiB and complete physical4096-scope-row lookup≤64 MiB. Actual endpoint/duplicate indices never
+replace native registry proof or truncate a conflict scan. Full body-write/SQL
+JSON cost is reported, not silently exempted; actual contention tests remain required.
+S6-13 byte-guards ALL CHECK surfaces including4-MiB generic audit/1-MiB Usage before
+JSON; S6-01 actual opaque fixture birth authority refuses arbitrary user RRX1 retag.
+S6-09/10/13/16 exhaustively covers every new private writer,99/100 gate cycles,8/9
+hold limit, reserved genuine closure/cancel-only exit and BEFORE-INSERT REPLACE guards.
+S6-05/06/16 rejects idle generic managed definition edits; only actual trusted typed
+policy/barrier writes may change admitted instruction definitions. S6-06 uses sealed
+declared outputs as the ONLY mutable own-Task AllowCurrent set. All are proposed
+unimplemented acceptance, with actual ports/native production and legacy migration
+readiness still pending, never schema6 deployment proof.

@@ -389,6 +389,12 @@ owner absence is needed for this existing explicit TerminalRecovery path.
 Unknown outcomes or unbound
 dispatch stay reserved. General workflow progression cannot resurrect terminal Tasks.
 
+The incompatible managed admission/settlement and compact observation authority is the
+pending [Issue19 contract](../issue-19-design.md#canonical-schema6-native-writer-predicate-table).
+Actual merged main is schema3; unmerged component5 does not provide managed receipts.
+Real19/23/43 source composition and required native/runtime producers remain gates;
+terminal labels, fake SQL and synthetic containment never prove production settlement.
+
 An evaluation claim binds the exact prior observation count. The private observer
 appends exactly one scope/phase/generation/Session/ContextVersion-bound outcome at that
 index; poll/restart/release/invalidation use only the current claim's result, never a

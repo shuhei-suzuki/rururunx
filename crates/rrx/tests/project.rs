@@ -850,6 +850,8 @@ fn schema_one_project_migrates_without_changing_identity_or_history() {
         [],
     )
     .unwrap();
+    old.execute_batch("DROP TABLE prepared_pack_inputs; DROP TABLE checkpoint_heads;")
+        .unwrap();
     old.pragma_update(None, "user_version", 1).unwrap();
     drop(old);
     let reopened = Store::open(&f.db).unwrap();

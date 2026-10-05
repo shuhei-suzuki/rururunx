@@ -82,6 +82,30 @@ impl RepositoryMap {
     pub fn skipped(&self) -> &BTreeMap<String, String> {
         &self.skipped
     }
+    pub(crate) fn phase_mandatory_payload(&self) -> Result<String> {
+        Ok(mandatory_payload(self, &[], false)?.0)
+    }
+    pub(crate) fn phase_rule_bytes(&self) -> Result<usize> {
+        let mut bytes = 1usize; // Engine's prefix separator.
+        for reference in &self.snapshot.project.rule_refs {
+            let path = crate::project::resolve_file(&self.snapshot.project, reference)?;
+            let text = self
+                .mandatory
+                .get(&format!(
+                    "rule:{}",
+                    path.strip_prefix(&self.snapshot.project.root)?
+                        .to_str()
+                        .context("rule path is not UTF-8")?
+                ))
+                .context("captured Project rule unavailable")?;
+            bytes = bytes
+                .checked_add(
+                    format!("\nMandatory Project rule {}:\n{}\n", path.display(), text).len(),
+                )
+                .context("rule byte count overflow")?;
+        }
+        Ok(bytes)
+    }
 }
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -266,7 +290,7 @@ impl RepositoryContext {
             .lock()
             .map_err(|_| anyhow::anyhow!("Store poisoned"))?;
         map.snapshot.recheck(&store)?;
-        store.audit_if_current(scope,map.snapshot.versions(), "context.index.generated", json!({"revision":map.freshness.revision,"inventory_hash":map.freshness.inventory_hash,"source_manifest_hash":manifest_hash(&map),"additional_paths":map.additional_paths,"files":map.files.len(),"skipped":map.skipped.len(),"text_source_bytes":map.files.values().map(|f|f.bytes).sum::<usize>(),"algorithm":"lexical-v1"}))?;
+        store.audit_observation_if_current(scope,map.snapshot.versions(), "context.index.generated", json!({"revision":map.freshness.revision,"inventory_hash":map.freshness.inventory_hash,"source_manifest_hash":manifest_hash(&map),"additional_paths":map.additional_paths,"files":map.files.len(),"skipped":map.skipped.len(),"text_source_bytes":map.files.values().map(|f|f.bytes).sum::<usize>(),"algorithm":"lexical-v1"}))?;
         Ok(map)
     }
     pub async fn validate(&self, map: &RepositoryMap) -> Result<()> {
@@ -295,7 +319,32 @@ impl RepositoryContext {
         request: &SelectionRequest,
         budget: Budget,
     ) -> Result<SelectionOutcome> {
-        budget.validate()?;
+        self.select_rules(map, request, budget, true).await
+    }
+    /// Workflow Engine supplies its independently verified mandatory rules once.
+    pub(crate) async fn select_for_workflow(
+        &self,
+        map: &RepositoryMap,
+        request: &SelectionRequest,
+        budget: Budget,
+    ) -> Result<SelectionOutcome> {
+        self.select_rules(map, request, budget, false).await
+    }
+    async fn select_rules(
+        &self,
+        map: &RepositoryMap,
+        request: &SelectionRequest,
+        budget: Budget,
+        include_rules: bool,
+    ) -> Result<SelectionOutcome> {
+        if include_rules {
+            budget.validate()?;
+        } else {
+            ensure!(
+                budget.bytes <= MAX_TOTAL_BYTES && budget.estimated_tokens <= MAX_TOTAL_BYTES,
+                "optional context budget exceeds 16 MiB"
+            );
+        }
         validate_request(request)?;
         for path in &request.changed_files {
             ensure!(
@@ -306,7 +355,8 @@ impl RepositoryContext {
             );
         }
         self.validate(map).await?;
-        let (mandatory, required) = mandatory_payload(map, &request.mandatory_evidence)?;
+        let (mandatory, required) =
+            mandatory_payload(map, &request.mandatory_evidence, include_rules)?;
         let terms = words(&request.task_text);
         ensure!(
             terms.len() <= 512,
@@ -397,12 +447,30 @@ impl RepositoryContext {
                 (path, reasons, text)
             })
             .collect();
+        // Workflow callers budget optional map sections; their mandatory authority
+        // header remains explicit overhead. Public standalone selection keeps a
+        // complete-rendered hard cap.
+        let packing_budget = if include_rules {
+            budget
+        } else {
+            Budget {
+                bytes: budget
+                    .bytes
+                    .checked_add(mandatory.len())
+                    .context("context budget overflow")?,
+                estimated_tokens: budget
+                    .estimated_tokens
+                    .checked_add(mandatory.len())
+                    .context("context budget overflow")?,
+            }
+        };
+        packing_budget.validate()?;
         self.pack(
             map,
             mandatory,
             required,
             candidates,
-            budget,
+            packing_budget,
             "context.selection",
         )
         .await
@@ -417,7 +485,8 @@ impl RepositoryContext {
         budget.validate()?;
         validate_request(request)?;
         self.validate(map).await?;
-        let (mut mandatory, mut required) = mandatory_payload(map, &request.mandatory_evidence)?;
+        let (mut mandatory, mut required) =
+            mandatory_payload(map, &request.mandatory_evidence, true)?;
         let paths = expansion_paths(map, expansion)?;
         ensure!(
             paths.len() <= MAX_REFS,
@@ -527,7 +596,7 @@ impl RepositoryContext {
             .lock()
             .map_err(|_| anyhow::anyhow!("Store poisoned"))?;
         map.snapshot.recheck(&store)?;
-        store.audit_if_current(&map.freshness.scope,map.snapshot.versions(),event,json!({"revision":map.freshness.revision,"inventory_hash":map.freshness.inventory_hash,"source_manifest_hash":manifest_hash(map),"ready":matches!(outcome,SelectionOutcome::Ready{..}),"evidence":evidence}))?;
+        store.audit_observation_if_current(&map.freshness.scope,map.snapshot.versions(),event,json!({"revision":map.freshness.revision,"inventory_hash":map.freshness.inventory_hash,"source_manifest_hash":manifest_hash(map),"ready":matches!(outcome,SelectionOutcome::Ready{..}),"evidence":evidence}))?;
         Ok(outcome)
     }
 }
@@ -1335,6 +1404,7 @@ fn validate_request(request: &SelectionRequest) -> Result<()> {
 fn mandatory_payload(
     map: &RepositoryMap,
     evidence: &[String],
+    include_rules: bool,
 ) -> Result<(String, BTreeSet<String>)> {
     let p = &map.snapshot;
     let mut payload = format!(
@@ -1344,6 +1414,9 @@ fn mandatory_payload(
         )?
     );
     for (path, text) in &map.mandatory {
+        if !include_rules {
+            continue;
+        }
         payload.push_str(&section(
             "project_rule",
             path,
@@ -1559,4 +1632,204 @@ mod tests {
             reader.file_id
         );
     }
+}
+
+/// Bounded read-only primary-source authority for a Goal, including before Tasks
+/// exist or after their worktrees have been safely disposed. Never a launch map.
+#[derive(Debug, Clone, Serialize)]
+pub struct GoalSourceSnapshot {
+    pub scope: Scope,
+    pub project_version: u64,
+    pub goal_version: u64,
+    pub root: PathBuf,
+    pub root_file_id: String,
+    pub revision: String,
+    pub repository_identity: String,
+    pub source_hashes: BTreeMap<String, String>,
+}
+impl RepositoryContext {
+    pub async fn goal_sources(&self, scope: &Scope) -> Result<GoalSourceSnapshot> {
+        self.goal_sources_with_files(scope, vec![]).await
+    }
+    pub async fn goal_sources_with_files(
+        &self,
+        scope: &Scope,
+        mut paths: Vec<String>,
+    ) -> Result<GoalSourceSnapshot> {
+        ensure!(
+            paths.len() <= MAX_REFS && paths.iter().all(|p| p.len() <= 4096),
+            "too many/oversized Goal artifacts"
+        );
+        paths.sort();
+        paths.dedup();
+        for path in &paths {
+            relative(path)?;
+        }
+        ensure!(
+            scope.goal_id.is_some() && scope.task_id.is_none(),
+            "primary Goal observation requires exact Goal scope"
+        );
+        let (project, goal) = {
+            let store = self
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("Store poisoned"))?;
+            let project = crate::project::registered_project(&store, scope.project_id)?;
+            let goal = store
+                .goal(scope.goal_id.unwrap())?
+                .context("unknown Goal")?;
+            ensure!(
+                goal.scope() == *scope,
+                "foreign Goal primary-source observation"
+            );
+            (project, goal)
+        };
+        ensure!(
+            project.rule_refs.len() <= MAX_REFS,
+            "too many Goal rule references"
+        );
+        let first = observe_primary(&project, paths.clone()).await?;
+        let second = observe_primary(&project, paths.clone()).await?;
+        ensure!(
+            first.root_file_id == second.root_file_id
+                && first.revision == second.revision
+                && first.source_hashes == second.source_hashes,
+            "primary Project changed during Goal observation"
+        );
+        let store = self
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Store poisoned"))?;
+        let current = crate::project::registered_project(&store, project.id)?;
+        let current_goal = store.goal(goal.id)?.context("Goal disappeared")?;
+        ensure!(
+            current.version == project.version
+                && current_goal.version == goal.version
+                && current_goal.scope() == *scope,
+            "Project/Goal changed during primary observation"
+        );
+        Ok(GoalSourceSnapshot {
+            scope: scope.clone(),
+            project_version: project.version,
+            goal_version: goal.version,
+            ..first
+        })
+    }
+}
+async fn primary_revision(project: &Project, deadline: tokio::time::Instant) -> Result<String> {
+    let facts = git::ProjectOwnershipFacts {
+        top: git_value(&project.root, &["rev-parse", "--show-toplevel"], deadline)
+            .await?
+            .into(),
+        git_dir: git_value(
+            &project.root,
+            &["rev-parse", "--path-format=absolute", "--git-dir"],
+            deadline,
+        )
+        .await?
+        .into(),
+        common: git_value(
+            &project.root,
+            &["rev-parse", "--path-format=absolute", "--git-common-dir"],
+            deadline,
+        )
+        .await?
+        .into(),
+        roots: git_value(
+            &project.root,
+            &[
+                "rev-list",
+                "--max-parents=0",
+                &format!("refs/heads/{}", project.base_branch),
+                "--",
+            ],
+            deadline,
+        )
+        .await?
+        .lines()
+        .map(str::to_owned)
+        .collect(),
+    };
+    let owned = project.clone();
+    bounded_fs(move || git::validate_project_ownership(&owned, facts)).await?;
+    git_value(
+        &project.root,
+        &["rev-parse", "--verify", "HEAD^{commit}"],
+        deadline,
+    )
+    .await
+}
+async fn observe_primary(project: &Project, paths: Vec<String>) -> Result<GoalSourceSnapshot> {
+    let opening = project.clone();
+    let reader = Arc::new(bounded_fs(move || ScopedReader::new(&opening.root, &opening)).await?);
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    let revision = primary_revision(project, deadline).await?;
+    let scanning = project.clone();
+    let source = reader.clone();
+    let source_hashes = bounded_fs(move || {
+        let mut result = BTreeMap::new();
+        let mut total = 0usize;
+        for reference in scanning.rule_refs.iter().chain(scanning.config_ref.iter()) {
+            let relative = reference
+                .strip_prefix(&scanning.root)
+                .context("foreign Goal rule/config")?
+                .to_str()
+                .context("non-UTF8 Goal rule/config")?;
+            let (bytes, _) = source.read(relative)?.context("Goal rule/config missing")?;
+            total = total
+                .checked_add(bytes.len())
+                .context("Goal source size overflow")?;
+            ensure!(
+                total <= MAX_TOTAL_BYTES,
+                "Goal rule/config sources exceed limit"
+            );
+            let text = std::str::from_utf8(&bytes).context("Goal rule/config must be UTF8")?;
+            ensure!(!text.contains('\0'), "Goal rule/config cannot be binary");
+            result.insert(
+                format!(
+                    "{}:{relative}",
+                    if scanning.rule_refs.contains(reference) {
+                        "rule"
+                    } else {
+                        "config"
+                    }
+                ),
+                hash(&bytes),
+            );
+        }
+        for path in paths {
+            let (bytes, _) = source
+                .read(&path)?
+                .context("Goal authoritative artifact missing")?;
+            total = total
+                .checked_add(bytes.len())
+                .context("Goal source size overflow")?;
+            ensure!(
+                total <= MAX_TOTAL_BYTES,
+                "Goal artifacts exceed source limit"
+            );
+            let text = std::str::from_utf8(&bytes).context("Goal artifact must be UTF8")?;
+            ensure!(!text.contains('\0'), "Goal artifact cannot be binary");
+            result.insert(format!("project:{path}"), hash(&bytes));
+        }
+        source.unchanged()?;
+        Ok(result)
+    })
+    .await?;
+    ensure!(
+        revision == primary_revision(project, deadline).await?,
+        "primary HEAD changed during Goal observation"
+    );
+    let final_reader = reader.clone();
+    bounded_fs(move || final_reader.unchanged()).await?;
+    Ok(GoalSourceSnapshot {
+        scope: Scope::project(project.id),
+        project_version: project.version,
+        goal_version: 0,
+        root: project.root.clone(),
+        root_file_id: reader.file_id.clone(),
+        revision,
+        repository_identity: project.repository_identity.clone(),
+        source_hashes,
+    })
 }

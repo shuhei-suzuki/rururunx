@@ -30,6 +30,7 @@ struct FakeAgent {
     native_completions: Mutex<BTreeSet<SessionId>>,
     launches: Mutex<Vec<LaunchRequest>>,
     statuses: Mutex<BTreeMap<SessionId, SessionStatus>>,
+    before_ack: Mutex<Option<Box<dyn FnOnce() + Send>>>,
     start_pause: Mutex<Option<Arc<Pause>>>,
     start_error: AtomicBool,
     start_error_session: AtomicBool,
@@ -45,6 +46,7 @@ impl FakeAgent {
             native_completions: Mutex::new(BTreeSet::new()),
             launches: Mutex::new(vec![]),
             statuses: Mutex::new(BTreeMap::new()),
+            before_ack: Mutex::new(None),
             start_pause: Mutex::new(None),
             start_error: AtomicBool::new(false),
             start_error_session: AtomicBool::new(false),
@@ -126,6 +128,9 @@ impl AgentAdapter for FakeAgent {
                     failure: None,
                 },
             );
+            if let Some(hook) = self.before_ack.lock().unwrap().take() {
+                hook();
+            }
             Ok(session)
         })
     }
@@ -1208,17 +1213,25 @@ fn ordered_format_migration_preserves_v2_state_and_unknown_future_is_rejected() 
     let fixture = Fixture::new(WorkflowClass::Quick);
     let db = fixture.dir.path().join("state.db");
     let connection = rusqlite::Connection::open(&db).unwrap();
+    connection
+        .execute_batch("DROP TABLE prepared_pack_inputs; DROP TABLE checkpoint_heads;")
+        .unwrap();
     connection.pragma_update(None, "user_version", 2).unwrap();
     drop(connection);
     let restored = Store::open(&db).unwrap();
-    assert_eq!(restored.schema_version().unwrap(), 3);
+    assert_eq!(
+        restored.schema_version().unwrap(),
+        crate::state::SCHEMA_VERSION
+    );
     assert_eq!(
         restored.task(fixture.task.id).unwrap().unwrap().scope(),
         fixture.task.scope()
     );
     drop(restored);
     let connection = rusqlite::Connection::open(&db).unwrap();
-    connection.pragma_update(None, "user_version", 4).unwrap();
+    connection
+        .pragma_update(None, "user_version", crate::state::SCHEMA_VERSION + 1)
+        .unwrap();
     drop(connection);
     assert!(Store::open(&db).is_err());
 }
@@ -4890,5 +4903,275 @@ async fn preparation_unbound_to_bound_before_refresh_releases_for_new_reservatio
     }
 }
 
+#[tokio::test]
+async fn cleanup_checkpoint_drift_before_claim_never_invokes_external_gate() {
+    let fixture = Fixture::new(WorkflowClass::Quick);
+    fixture
+        .sources
+        .snapshot
+        .lock()
+        .unwrap()
+        .source_versions
+        .insert("checkpoint:head".into(), "none".into());
+    fixture
+        .engine
+        .initialize(fixture.task.id, None)
+        .await
+        .unwrap();
+    fixture.finish().await;
+    fixture
+        .engine
+        .request_finalization(fixture.task.id, "fixture finalization".into())
+        .await
+        .unwrap();
+    fixture
+        .engine
+        .step(fixture.task.id, BTreeMap::new())
+        .await
+        .unwrap();
+    fixture.gates.waiting.store(true, Ordering::SeqCst);
+    assert!(matches!(
+        fixture
+            .engine
+            .step(fixture.task.id, BTreeMap::new())
+            .await
+            .unwrap(),
+        StepResult::Waiting {
+            phase: Phase::Cleanup,
+            ..
+        }
+    ));
+    let calls = fixture.gates.calls.lock().unwrap().len();
+    // Raw scoped row isolates freshness authority without asserting native event
+    // capability/provenance. Production append and real disposal are exercised in
+    // the context_pack native lifecycle fixture.
+    let mut record = Record::new(
+        fixture.task.scope(),
+        RecordKind::Checkpoint,
+        json!({"format":"rrx.checkpoint.v1","fixture":"new head before admission"}),
+    );
+    record.version = 1;
+    let raw = rusqlite::Connection::open(fixture.dir.path().join("state.db")).unwrap();
+    raw.execute("INSERT INTO records(id,kind,project_id,goal_id,task_id,version,body) VALUES(?1,'checkpoint',?2,?3,?4,1,?5)",rusqlite::params![record.id.to_string(),record.scope.project_id.to_string(),record.scope.goal_id.unwrap().to_string(),record.scope.task_id.unwrap().to_string(),serde_json::to_string(&record).unwrap()]).unwrap();
+    raw.execute(
+        "INSERT INTO checkpoint_heads(project_id,goal_id,task_id,record_id) VALUES(?1,?2,?3,?4)",
+        rusqlite::params![
+            record.scope.project_id.to_string(),
+            record.scope.goal_id.unwrap().to_string(),
+            record.scope.task_id.unwrap().to_string(),
+            record.id.to_string()
+        ],
+    )
+    .unwrap();
+    fixture.gates.waiting.store(false, Ordering::SeqCst);
+    let error = fixture
+        .engine
+        .resume_gate(fixture.task.id)
+        .await
+        .unwrap_err();
+    assert!(
+        error.to_string().contains("checkpoint source changed"),
+        "{error:#}"
+    );
+    assert_eq!(fixture.gates.calls.lock().unwrap().len(), calls);
+    let snapshot = fixture.engine.snapshot(fixture.task.id).unwrap();
+    assert_eq!(
+        snapshot.history[snapshot.active.unwrap()].state,
+        AttemptState::Waiting
+    );
+}
+
+#[tokio::test]
+async fn checkpoint_drift_before_pr_or_merge_claim_never_invokes_external_gate() {
+    for phase in [Phase::Pr, Phase::MergeGate] {
+        let fixture = Fixture::new(WorkflowClass::Quick);
+        fixture
+            .sources
+            .snapshot
+            .lock()
+            .unwrap()
+            .source_versions
+            .insert("checkpoint:head".into(), "none".into());
+        fixture
+            .engine
+            .initialize(fixture.task.id, None)
+            .await
+            .unwrap();
+        if phase == Phase::MergeGate {
+            fixture.finish().await;
+            fixture
+                .engine
+                .request_finalization(fixture.task.id, "fixture finalization".into())
+                .await
+                .unwrap();
+            fixture.gates.waiting.store(true, Ordering::SeqCst);
+            assert!(matches!(
+                fixture
+                    .engine
+                    .step(fixture.task.id, BTreeMap::new())
+                    .await
+                    .unwrap(),
+                StepResult::Waiting {
+                    phase: Phase::MergeGate,
+                    ..
+                }
+            ));
+        } else {
+            for _ in 0..100 {
+                let snapshot = fixture.engine.snapshot(fixture.task.id).unwrap();
+                if snapshot.active.is_none()
+                    && snapshot
+                        .configured_phases
+                        .iter()
+                        .find(|p| !snapshot.completed.contains_key(p))
+                        == Some(&phase)
+                {
+                    fixture.gates.waiting.store(true, Ordering::SeqCst);
+                }
+                if matches!(
+                    fixture
+                        .engine
+                        .step(fixture.task.id, BTreeMap::new())
+                        .await
+                        .unwrap(),
+                    StepResult::Waiting {
+                        phase: Phase::Pr,
+                        ..
+                    }
+                ) {
+                    break;
+                }
+            }
+            let snapshot = fixture.engine.snapshot(fixture.task.id).unwrap();
+            assert_eq!(snapshot.history[snapshot.active.unwrap()].phase, phase);
+            assert_eq!(
+                snapshot.history[snapshot.active.unwrap()].state,
+                AttemptState::Waiting
+            );
+        }
+        let calls = fixture.gates.calls.lock().unwrap().len();
+        let mut record = Record::new(
+            fixture.task.scope(),
+            RecordKind::Checkpoint,
+            json!({"format":"rrx.checkpoint.v1","fixture":"new irreversible authority"}),
+        );
+        record.version = 1;
+        let raw = rusqlite::Connection::open(fixture.dir.path().join("state.db")).unwrap();
+        raw.execute("INSERT INTO records(id,kind,project_id,goal_id,task_id,version,body) VALUES(?1,'checkpoint',?2,?3,?4,1,?5)",rusqlite::params![record.id.to_string(),record.scope.project_id.to_string(),record.scope.goal_id.unwrap().to_string(),record.scope.task_id.unwrap().to_string(),serde_json::to_string(&record).unwrap()]).unwrap();
+        raw.execute("INSERT INTO checkpoint_heads(project_id,goal_id,task_id,record_id) VALUES(?1,?2,?3,?4)",rusqlite::params![record.scope.project_id.to_string(),record.scope.goal_id.unwrap().to_string(),record.scope.task_id.unwrap().to_string(),record.id.to_string()]).unwrap();
+        fixture.gates.waiting.store(false, Ordering::SeqCst);
+        let error = fixture
+            .engine
+            .resume_gate(fixture.task.id)
+            .await
+            .unwrap_err();
+        assert!(
+            error.to_string().contains("checkpoint source changed"),
+            "{phase:?}: {error:#}"
+        );
+        assert_eq!(fixture.gates.calls.lock().unwrap().len(), calls);
+        let snapshot = fixture.engine.snapshot(fixture.task.id).unwrap();
+        assert_eq!(
+            snapshot.history[snapshot.active.unwrap()].state,
+            AttemptState::Waiting
+        );
+    }
+}
+
+#[tokio::test]
+async fn actor_ack_refresh_accepts_only_bookkeeping_and_preserves_changed_authority_claims() {
+    for change in ["progress", "constraints", "project_refs", "paused", "task"] {
+        let f = Fixture::new(WorkflowClass::Quick);
+        let (project, goal, task) = {
+            let store = f.store.lock().unwrap();
+            (
+                store.project(f.project.id).unwrap().unwrap(),
+                store.goal(f.task.goal_id).unwrap().unwrap(),
+                store.task(f.task.id).unwrap().unwrap(),
+            )
+        };
+        f.sources
+            .snapshot
+            .lock()
+            .unwrap()
+            .source_versions
+            .extend(crate::context_pack::instruction_versions(&project, &goal, &task).unwrap());
+        f.engine.initialize(f.task.id, None).await.unwrap();
+        let store = f.store.clone();
+        let task_id = f.task.id;
+        *f.executor.before_ack.lock().unwrap() = Some(Box::new(move || {
+            let mut store = store.lock().unwrap();
+            match change {
+                "project_refs" => {
+                    let mut p = store.project(project.id).unwrap().unwrap();
+                    p.environment_refs.push("ADDITIONAL_SCOPED_ENV_REF".into());
+                    store.put_project(&mut p).unwrap();
+                }
+                "task" => {
+                    let mut t = store.task(task_id).unwrap().unwrap();
+                    t.acceptance_criteria
+                        .push("changed while actor acknowledged".into());
+                    store.put_task(&mut t).unwrap();
+                }
+                _ => {
+                    let mut g = store.goal(goal.id).unwrap().unwrap();
+                    match change {
+                        "progress" => g.completion_criteria[0].satisfied = true,
+                        "constraints" => g.constraints.push("new mandatory rule".into()),
+                        "paused" => g.state = GoalState::Paused,
+                        _ => unreachable!(),
+                    }
+                    store.put_goal(&mut g).unwrap();
+                }
+            }
+        }));
+        let mut outcome = None;
+        for _ in 0..8 {
+            let result = f.engine.step(f.task.id, Default::default()).await;
+            if result.is_err()
+                || matches!(
+                    result,
+                    Ok(StepResult::Started {
+                        session: Some(_),
+                        ..
+                    })
+                )
+            {
+                outcome = Some(result);
+                break;
+            }
+        }
+        let outcome = outcome.expect("actor acknowledgement observed");
+        assert_eq!(f.executor.launches.lock().unwrap().len(), 1);
+        let snapshot = f.engine.snapshot(f.task.id).unwrap();
+        let attempt = &snapshot.history[snapshot.active.unwrap()];
+        assert_eq!(attempt.state, AttemptState::Running);
+        assert!(attempt.dispatch_started);
+        if change == "progress" {
+            assert!(matches!(
+                outcome,
+                Ok(StepResult::Started {
+                    phase: Phase::Implement,
+                    session: Some(_),
+                })
+            ));
+            assert!(attempt.session_id.is_some());
+        } else {
+            assert!(outcome.is_err(), "{change}: {outcome:?}");
+            assert!(attempt.session_id.is_none());
+            // Failure preserves the admitted Session and exact unresolved claim;
+            // it never silently retries or drops potentially executed work.
+            let sessions = f
+                .store
+                .lock()
+                .unwrap()
+                .records(&f.task.scope(), RecordKind::Session)
+                .unwrap();
+            assert_eq!(sessions.len(), 1);
+            let session: Session = serde_json::from_value(sessions[0].data.clone()).unwrap();
+            assert_eq!(session.state, SessionState::Running);
+        }
+    }
+}
 #[path = "tests/unbound_retry.rs"]
 mod unbound_retry;

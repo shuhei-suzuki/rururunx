@@ -3,6 +3,7 @@ pub mod adapter;
 pub mod codex;
 pub mod config;
 pub mod context;
+pub mod context_pack;
 pub mod domain;
 pub mod git;
 mod goal;

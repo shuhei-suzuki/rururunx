@@ -244,9 +244,33 @@ The command examples above describe the MVP target. Currently implemented:
   Inspect existing Task bindings locally with:
   `cargo run --example repository-context -- --state STATE.db --task TASK_UUID map`
   (or `select "task text"`, `expand file src/lib.rs`; `--include` admits a specific
-  ignored source, `--evidence` makes its full content mandatory). Workflow and
-  durable Context Pack integration remain pending. See
+  ignored source, `--evidence` makes its full content mandatory). Workflow
+  integration is being implemented separately. See
   [Issue 18 design](doc/design/issue-18-design.md) for limits and lexical accuracy.
+- Issue 19 adds the `ContextPacks` Rust API: append-only Task/Goal packs with
+  scoped artifact digests, explicit stale-reference checks, atomic context pointers,
+  and deterministic execution/consultation checkpoints. All typed semantic facts
+  survive condensation; a configurable byte window bounds transient history.
+  Goal packs reference Task packs and can observe primary rules/artifacts before
+  Tasks exist or after owned worktree cleanup. Active Task refs require separate
+  source validation; terminal refs stay historical. Typed checkpoints are immutable
+  and preparation binds the current own head; cross-Task consultation is an
+  explicit immutable snapshot.
+  The actual Workflow phase port publishes typed artifacts with mandatory/optional
+  byte estimates and preserves Cleanup provenance after disposal. Provider token
+  measurements remain null unless supplied. Automatic native event normalization
+  and CLI/TUI transport remain pending; see [Issue 19 design](doc/design/issue-19-design.md).
+  This describes unmerged component source, not deployed main. Its bounded artifact
+  encoding now streams compact JSON validation with a1-MiB byte cap and120-container
+  depth cap; it retains no encoded validation buffer. Independent component Source
+  review and full schema6/native/legacy integration acceptance remain separate gates.
+  Its standalone Task/Draft producer also caps the complete rendered frame at1MiB
+  before prepared-frame publication, including mandatory metadata and rules;
+  see the [scoped producer evidence](doc/design/issue-19-standalone-frame-evidence.md).
+  Selected retained-lifetime source now reuses Codex Control for closed file/thread
+  mechanics through a fixture-private consumer. Its source gate is pending;
+  production remains EMPTY/Unsupported. This is no native cleanup or managed
+  operation authority; see the [selected design](doc/design/issue-19-lifetime-component-design.md).
 - Library Git/worktree management with project ownership checks, protected branches,
   dirty-state checks, durable logical review locks and safe merged cleanup. CLI/workflow
   integration and interrupted-operation reconciliation are pending.
@@ -300,6 +324,8 @@ reservations until verified termination.
 The generic CLI cannot review. Workflow CLI/TUI, independent review sets (#9),
 approval routing (#10), owner/restart recovery (#14), and production Context Pack publication (#19)
 remain pending. Issue #18 repository-context selection is available independently. See [Workflow Engine](doc/design/master/workflow-engine.md).
+The unmerged Issue19 component implements typed phase artifacts; production native
+input/settlement and incompatible-writer integration remain separate pending gates.
 
 Issue #41 implements passive observation of agent preparation reservations and
 release only by their committing owner after a verified eligible preparation error.
@@ -395,6 +421,13 @@ support `--json`. Display-name ambiguity requires a UUID.
 Interrupted worktree creation or invalidated review locks can retain reservations;
 explicit audited lock reconciliation CLI is pending in restart/recovery work.
 Removal remains blocked until those reservations are reconciled.
+
+Unmerged Issue19 component schema5 typed input validation binds actual request bytes to the complete
+immutable Workflow frame or a privately prepared standalone frame hash. Ordered
+schema 4→5 fences older writers. Provider adapters must call the pure scoped
+`Store::validate_context_input` check and preserve request-to-wire correspondence;
+Session metadata alone is not evidence of delivered model input. Conservative
+checkpoint invalidation and post-PR reconciliation still depend on Issues 13/23.
 
 Shared macOS owned-process inspection is under STRICT follow-up
 [Issue 46](doc/requirements/issue-46-requirements.md). The implementation uses exact-group,

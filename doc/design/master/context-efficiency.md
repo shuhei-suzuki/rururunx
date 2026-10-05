@@ -64,8 +64,8 @@ Goal context references Task Context Packs rather than copying them wholesale.
 
 ## 4. Repository Map / Context Index
 
-Issue 18 implements the local Task-scoped `RepositoryContext` library and
-`repository-context` inspection example. It indexes exact bound worktrees with
+The local Task-scoped `RepositoryContext` library and
+`repository-context` inspection example index exact bound worktrees with
 SHA256 content/ignored-evidence/rule/config freshness, deterministic lexical
 ranking and expansion, and scoped selection evidence. Entire mandatory rules,
 evidence and requested expansions must fit; otherwise it returns `NeedsBudget`.
@@ -77,8 +77,22 @@ call's native error chain and distinguish an uncertainty latch set by a concurre
 call, which discards the current call's result without attributing the failure to it.
 Consumers should render the full error chain (`{:#}` or Debug).
 Cancellation may latch uncertainty without returning a diagnostic; verified cleanup
-and recovery remain Issue 14 responsibilities.
-Durable Context Pack publishing and workflow integration remain separate work.
+and recovery require trusted native ownership reconciliation.
+
+The `ContextPacks` service publishes typed Task and Goal artifacts atomically
+with their durable pointers and audit events. It captures primary Project sources
+read-only for Goal packs and retains terminal Task context refs as non-launchable
+history after cleanup. Goal Task refs carry explicit source-validation-required status during concurrent
+work; immutable finalized refs remain historical. Task preparation selects current
+sources under the complete
+rendered budget; dirty files, rules/config and state changes invalidate stale packs.
+Database/pointer versions are CAS guards, separate from phase-stable physical and
+instruction hashes. The actual Workflow Engine phase publication port owns launch
+ContextVersions; standalone publishers reject workflow ownership and live/Lost
+launch contexts. Goal semantic/lifecycle versions remain unchanged for typed
+pointer-only publication; the consecutive ContextVersion head is separate atomic
+authority. Stale generic Goal writes cannot restore an older typed pointer.
+See [durable pack design](../issue-19-design.md).
 
 Maintain a compact repository index inspired by repository-map approaches:
 
@@ -126,6 +140,25 @@ Checkpoint must preserve at least:
 Recent events remain verbatim for a configurable window.
 
 Condensation must be auditable and must not overwrite authoritative requirements/design artifacts.
+
+Deterministic condensation operates over typed, consecutive events.
+Goals, decisions, completed work, failures, findings, next actions, constraints,
+critical references and verification remain intact across checkpoints. Only
+explicitly transient events leave the configurable serialized-byte tail, with
+count/sequence-range/rolling-digest evidence. Typed checkpoint records are immutable
+and same-Task preparation/publication binds the current chain head or explicit
+absence. Own history is automatically included and cannot be omitted by a caller;
+it is separate from adopted consultation snapshots. Cross-Task
+consultation promotion is an explicit immutable snapshot, independent of later
+source checkpoint appends. Generic Context updates cannot move a typed pack pointer
+backward or replace its authority. Mandatory
+state overflow fails explicitly; no summarizer guesses which text is safe to drop.
+Checkpoint refs bind exact Session/Task/Goal provenance and retain historical source
+metadata. Cross-Task Consultant promotion requires the same Project/Goal and copies
+Consultant-origin semantic facts without its recent transcript, including when
+the original Task chain also contains Executor events. Native event normalization and
+checkpoint scheduling remain caller/transport integrations, not measured runtime
+model behavior.
 
 ## 7. Review Bundle
 
@@ -324,3 +357,64 @@ MVP must demonstrate:
 - per-task/per-agent token telemetry when available
 
 A dogfood comparison should measure the same representative workflow with and without Context Efficiency features and report token/cost/time differences plus any quality regressions.
+
+The bounded core supports 4096 retained events and 1 MiB per Task checkpoint,
+128 Tasks/4096 edges per Goal summary. It provides no semantic deduplication or
+checkpoint reset; mandatory overflow requires decomposition into another Task.
+Native-source draft DTOs carry no Adapter launch version. Complete rendered pack
+estimates are audited independently of optional repository slice estimates.
+
+## 17. Context publication and native input authority
+
+Actual merged main remains schema3. The unmerged Issue19 component source is schema5;
+its deterministic pack/checkpoint implementation and evidence are not production native
+acceptance. That component uses scoped immutable ContextVersion payloads, indexed own
+checkpoint heads and exact prepared-frame hash/byte checks. Goal pointer-only publication
+is distinct from semantic/lifecycle version; optional repository budget and mandatory
+facts are counted separately under the complete1-MiB input cap. Provider measurements
+remain nullable. Git/filesystem observations stay outside SharedStore.
+
+The [standalone producer correction](../issue-19-standalone-frame-evidence.md)
+applies the same complete1-MiB cap before Ready/private frame publication for Task
+and nonlaunch Draft preparation. Its explicit source budget may remain16MiB;
+mandatory rules/envelopes still count in the final frame. This is component5
+artifact preparation, not genuine6 managed admission or settlement authority.
+
+The independently scoped [artifact encoding component](../issue-19-encoding-component-design.md)
+streams the existing compact1-MiB artifact validation and caps container depth at120.
+Typed reader guards run before digest/clone/decode; opaque provenance keeps its prior
+path. Accepted hashes/bytes and publication authority are unchanged. This component
+retains no encoded validation buffer, but it does not bound already-materialized
+Store rows or total heap usage. Its Source gate and full native acceptance are separate.
+
+The sole pending incompatible-writer/managed native contract is the
+[Issue19 design](../issue-19-design.md#canonical-schema6-native-writer-predicate-table)
+and its stable S6 acceptance inventory. It requires actual owned admission/settlement,
+current grants, compact bounded evidence and real19/23/43/60/native composition. Public
+JSON, terminal labels and synthetic fixture proofs never confer production ownership,
+cleanup or review independence. Candidate schema6 is not implemented or an ordinary
+user upgrade; migration and supported native readiness are separate pending gates.
+
+The pending Design36 correction keeps the sole preparation/operation in its genuine
+supervisor across adapter errors and caller Drop; adapters borrow setup access.
+Managed condensation stages evidence without changing the live checkpoint head,
+then publishes only after genuine settlement and phase closure. Receipt64KiB and
+operation4MiB are distinct complete-row limits. Local selected-child/reader custody
+in60 and the unavailable native6 backend do not themselves produce that authority.
+
+Design37 is the proposed finite correction to Design36: the sole retained
+supervisor lends revocable actor message access, owns effect resources before
+adapter unwind/await, and every new Task input waits on durable ordered staged
+publication. Frozen receipts are64KiB complete encoded records, separately from
+4-MiB operations; status-aware factual UUID negatives grant no native ownership.
+No actual producer/backend/epoch or source acceptance is created by this design.
+
+
+The selected [retained-lifetime mechanical component](../issue-19-lifetime-component-design.md)
+has two Design5 approvals. Its current source candidate reuses actual Codex Control
+and registry consumers, counting three declared frames and retaining join custody
+outside caller futures. A CLOSED file/thread fixture reaches the existing context
+error arms before Git/native effects; no production constructor is available.
+Independent Source review, actual native producers, schema6 and all parent OPEN
+findings remain required. A mechanically joined fixture never earns a native
+settlement, managed phase permission or whole Issue19 acceptance.

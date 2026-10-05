@@ -310,6 +310,54 @@ Goal may continue automatically only inside those boundaries.
 - optional native-goal adapter capability
 - provider-independent continuation
 
+Current proposed19/43 exact native/marker authority uses raw Goal versions. The
+mandatory 4+ parallel Tasks/follow-up/two-Project availability gate is not met merely
+by safe stale-version refusal. Candidate23/24 controller composition derives factual
+progress from Task facts/separate bounded Records, avoiding Goal-row rewrites on
+every poll/completion; ready accepted Tasks may run concurrently. Authoritative
+DAG/follow-up acceptance queues until exact owned native phase closure (binding
+plus closure/non-success closure), not settlement receipt alone, or
+deliberately revokes under existing admission gates. It does not refresh original
+marker pins or exempt external bookkeeping. Actual composed controller/native tests
+must demonstrate progress, exact currency and safe held/recovery outcomes before
+whole-source/MVP acceptance; this proposed path is not an implemented controller.
+A durable pending authoritative-change barrier blocks new native markers for that
+Goal without rewriting Goal.version; healthy in-flight phases drain before the actual
+trusted controller atomically applies/clears it. Lost/unknown closure retains the
+barrier for real recovery rather than certifying progress.
+
+Typed Goal context publication has separate metadata authority: `Goal.version`
+tracks semantic/lifecycle changes, while `ContextVersion.version` is a consecutive
+immutable head and the Goal's context pointer changes in the same Immediate
+transaction with its audit. Pointer-only publication does not increment the Goal
+semantic version or invalidate admitted Task input authority. Generic stale Goal
+writes cannot restore an older typed pointer. Concurrent differing publications
+compete on the latest ContextVersion head; identical publications reuse that head.
+Consumers of a Goal pack must validate its exact head/pointer/digest, independently
+of Goal semantic version. Goal packs are non-launchable summaries.
+
+### Native input authority
+
+Goal progress/pointer publication cannot substitute for Task input or lifecycle
+authority. The context design owns complete frame publication, source/head currency,
+continuation and native ownership boundaries. See
+[context publication and native input authority](context-efficiency.md#17-context-publication-and-native-input-authority)
+for the normative contract and its implementation boundary; the Goal design does
+not duplicate those predicates.
+
+
+The incompatible managed native/Goal authority remains the pending
+[Issue19 contract](../issue-19-design.md#canonical-schema6-native-writer-predicate-table).
+Actual main is schema3; unmerged component5 pack publication is not accepted managed
+Goal/native settlement. Real23 typed Goal writers must preserve the latest pack pointer
+separately from semantic version; actual source composition/production gates are pending.
+
+The pending composed typed Goal-writer inventory explicitly includes19 non-launchable
+context-pointer publication (context_version/updated_at only, unchanged semantic
+version), preserving accepted definitions and separate consecutive head CAS; see the
+[proposed composition contract](../issue-19-design.md#design34-complete-factual-workflow-succession-and-scoped-authority-exits).
+It is not an implemented23 authority exception or native launch grant.
+
 ## Current implementation foundation
 
 Goal snapshots and scoped Task references persist through the SQLite Store.
