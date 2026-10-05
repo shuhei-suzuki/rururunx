@@ -1,0 +1,12 @@
+diff --git a/crates/rrx/src/workflow.rs b/crates/rrx/src/workflow.rs
+index 55e0213..98b7b7a 100644
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -1900,7 +1900,6 @@ impl WorkflowEngine {
+                 .copied()
+                 .find(|p| *p != phase && !snapshot.workflow.completed.contains_key(p))
+             {
+-                require_formal_review_ready(next)?;
+             }
+         }
+         let source = if phase == Phase::Cleanup {

@@ -1,0 +1,12 @@
+diff --git a/crates/rrx/src/workflow.rs b/crates/rrx/src/workflow.rs
+index 55e0213..88b054c 100644
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -613,7 +613,6 @@ impl WorkflowEngine {
+         class: WorkflowClass,
+         generation: u64,
+     ) -> Result<ContextVersion> {
+-        require_formal_review_ready(phase)?;
+         let (config, source, selected_budget) = self.inputs(project, task, phase, class).await?;
+         ensure!(
+             same_sources(expected, &source),

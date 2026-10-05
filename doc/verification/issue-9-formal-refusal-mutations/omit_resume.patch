@@ -1,0 +1,12 @@
+diff --git a/crates/rrx/src/workflow.rs b/crates/rrx/src/workflow.rs
+index 55e0213..9dc237d 100644
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -1628,7 +1628,6 @@ impl WorkflowEngine {
+                 || (irreversible(attempt.phase) && attempt.state == AttemptState::Failed),
+             "only a definitive waiting gate or failed external gate can resume"
+         );
+-        require_formal_review_ready(attempt.phase)?;
+         let status = if let Some(id) = attempt.session_id {
+             let agent = self
+                 .registry

@@ -1,0 +1,12 @@
+diff --git a/crates/rrx/src/workflow.rs b/crates/rrx/src/workflow.rs
+index 55e0213..cedaccc 100644
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -2086,7 +2086,6 @@ impl WorkflowEngine {
+             );
+         }
+         drop(store);
+-        require_formal_review_ready(attempt.phase)?;
+         snapshot.workflow.retries.push(RetryEvent {
+             prior_attempt: index,
+             reason,

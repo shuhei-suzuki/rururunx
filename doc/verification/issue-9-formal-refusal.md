@@ -1,0 +1,31 @@
+# Issue9 selected formal-refusal component
+
+The selected integration Design3 received two independent APPROVE results with no
+Critical/High/Medium findings. Source implements the downcastable
+`ReviewGatingUnavailable` at current Workflow formal review, protected downstream,
+successor Context Pack, retry, resume and finalization consumers. Existing native
+status and factual journal observation/cancellation remain unchanged. No Store,
+schema, ReviewSet certificate, private allocation or native producer is added.
+
+At source `0023c4fa0cc170191618c6e84800169671ba21d5`, eleven actual consumer controls
+pass in Debug and Release. They use audited schema3 factual history and existing
+Session grammar; terminal fixture rows do not prove native settlement. Whole DB
+snapshots cover all row bodies, versions, Contexts, Sessions, locks and audits.
+Eleven committed compiled operators cause actual assertions; restored source passes
+all eleven controls. Capture-only/status-only omissions are explicitly distinguished
+from actual gate, legacy completion and successor-publication cuts. The explicit
+successor+pack pair is compound credit, not two individual authority kills.
+
+fmt, clippy `-D warnings`, Debug build and Release build pass. The default parallel
+full workspace run remains RED: 234 pass / 162 fail / 26 ignored, including two
+doctests. Twenty-nine Workflow failures report the deliberately unavailable formal
+gating policy. The remaining 133 failures include native Git/inspection cleanup
+uncertainty and latch cascades across Codex, Grok, adapter and Context fixtures;
+whole causes and contribution are UNKNOWN. No old-head rerun, deadline/parallelism
+change, fake-ready override, deleted/ignored test or regression waiver is used.
+This selected source is not deployable whole Workflow/ReviewSet acceptance.
+
+Normal main docs-only PR70 composition changes no Rust source. Raw private logs
+are retained locally with hashes in the [bounded evidence](issue-9-formal-refusal-source1.json).
+Independent immutable source reviews and exact final CI remain pending. Whole
+Issue9, genuine19/43/native profile/migration and final16 MVP gates remain OPEN.

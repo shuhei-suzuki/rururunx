@@ -1,0 +1,12 @@
+diff --git a/crates/rrx/src/workflow.rs b/crates/rrx/src/workflow.rs
+index 55e0213..7f6b2f1 100644
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -831,7 +831,6 @@ impl WorkflowEngine {
+             self.persist(&mut snapshot, None)?;
+             return Ok(StepResult::Finished);
+         };
+-        require_formal_review_ready(phase)?;
+         let (config, source, selected_budget) = self
+             .inputs(
+                 &snapshot.project,

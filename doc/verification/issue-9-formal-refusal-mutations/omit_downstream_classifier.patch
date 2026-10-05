@@ -1,0 +1,13 @@
+diff --git a/crates/rrx/src/workflow.rs b/crates/rrx/src/workflow.rs
+index 55e0213..596dc5c 100644
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -28,7 +28,7 @@ impl std::fmt::Display for ReviewGatingUnavailable {
+ impl std::error::Error for ReviewGatingUnavailable {}
+ 
+ fn require_formal_review_ready(phase: Phase) -> Result<()> {
+-    if phase.actor() == Actor::Reviewer || irreversible(phase) {
++    if phase.actor() == Actor::Reviewer {
+         return Err(ReviewGatingUnavailable.into());
+     }
+     Ok(())

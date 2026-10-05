@@ -1,0 +1,258 @@
+{
+  "checked_source_head": "0023c4fa0cc170191618c6e84800169671ba21d5",
+  "docs_composed_head": "cab6efa9a0e7e7c0de4c3ec0888f36aae4f9e718",
+  "docs_only_main": "26f3a48fedce976b353a6a9fa899bc6fb13ca72a",
+  "source_diff_across_composition": "empty",
+  "selected_scope": "typed formal Workflow refusal only; no ReviewSet/native/epoch/source readiness",
+  "focused_debug": {
+    "pass": 11,
+    "fail": 0
+  },
+  "focused_release": {
+    "pass": 11,
+    "fail": 0
+  },
+  "full_debug_default_parallel_no_fail_fast": {
+    "pass": 234,
+    "fail": 162,
+    "ignored": 26,
+    "exit": 101,
+    "lib": [
+      162,
+      120,
+      23
+    ],
+    "adapter": [
+      0,
+      19,
+      0
+    ],
+    "context": [
+      2,
+      14,
+      0
+    ],
+    "grok": [
+      6,
+      9,
+      2
+    ],
+    "workflow_failures": 29,
+    "typed_refusal_occurrences": 29,
+    "other_failures": 133,
+    "other_failure_causes": "UNKNOWN; observed native Git/inspection cleanup uncertainty and cascades; no nonregression or causal attribution"
+  },
+  "checks": {
+    "fmt": 0,
+    "clippy_Dwarnings": 0,
+    "debug_build": 0,
+    "release_build": 0
+  },
+  "initial_attempts": [
+    {
+      "head": "4231dfc",
+      "compile": "fixture Option<PathBuf> did not match Session PathBuf; corrected test-only"
+    },
+    {
+      "head": "d1d212a",
+      "pass": 8,
+      "fail": 2,
+      "verified_fixture_defects": [
+        "R1 upgrades Quick toStandard; same-class risk control requiresStandard",
+        "EvidencePort executes gate during initialstep; no separateStarted result"
+      ]
+    }
+  ],
+  "compiled_mutations": [
+    {
+      "operator": "omit_step",
+      "head": "a7fd60c3c81059a26fc74953ba22215cac23c602",
+      "exit": 101,
+      "compiled": true,
+      "test_assertion": true,
+      "target": "formal_entry_refuses",
+      "credit": "before-capture; central pack guard still masks authority publication",
+      "patch_sha256": "ede2782b2935eca13e9f81e04e6733e84559ff68debffbce000fccc49fe5f049",
+      "actual_assertion_excerpt": " crates/rrx/src/workflow/tests/formal_refusal.rs:254:13: assertion `left == right` failed: Quick/ImplementationReview   left: (3, 0, 0, 0, 0)  right: (2, 0, 0, 0, 0) note: run with `RUST_BACKTRACE=1` "
+    },
+    {
+      "operator": "omit_pack",
+      "head": "0694e4a9a58636ad041f3b46a93a64ba7effca3c",
+      "exit": 101,
+      "compiled": true,
+      "test_assertion": true,
+      "target": "central_pack_refuses",
+      "credit": "central capture/publication; same-class risk update is otherwise persisted",
+      "patch_sha256": "8dc257effce1f457a9905e2a4f953ceb2fae9d0f8add605e6fde5747db09ed81",
+      "actual_assertion_excerpt": " crates/rrx/src/workflow/tests/formal_refusal.rs:6:24: called `Result::unwrap_err()` on an `Ok` value: WorkflowSnapshot { workflow: Standard, risk: R1, generation: 1, context_version: 10, context_fres"
+    },
+    {
+      "operator": "omit_evaluate",
+      "head": "0bcb2b1c119b638827654618d4cacac6a2dd25cd",
+      "exit": 101,
+      "compiled": true,
+      "test_assertion": true,
+      "target": "active_zero_journal",
+      "credit": "external gate invocation/journal; Passed guard still masks completion",
+      "patch_sha256": "8b6f6941a6188a0b95db9201b5fadb7d9d43b337e00a77a053033f617925748b",
+      "actual_assertion_excerpt": " crates/rrx/src/workflow/tests/formal_refusal.rs:267:9: assertion `left == right` failed   left: [(\"audit\", [[\"Integer(1)\", \"Text([50, 98, 49, 56, 102, 54, 55, 99, 45, 50, 52, 57, 53, 45, 52, 48, 52, "
+    },
+    {
+      "operator": "omit_passed_block",
+      "head": "771b8d8b60d481b8f91bb18e4a0885811a419915",
+      "exit": 101,
+      "compiled": true,
+      "test_assertion": true,
+      "target": "protected_passed_journal",
+      "credit": "actual legacy review completion; Cleanup completion has no prepare_pack fallback",
+      "patch_sha256": "d92ddf2cacbd852f9cedf7fb863ca427dbd0dfa9ed40f841ed038bd330325a8f",
+      "actual_assertion_excerpt": " crates/rrx/src/workflow/tests/formal_refusal.rs:6:24: called `Result::unwrap_err()` on an `Ok` value: Completed { phase: RequirementsReview } note: run with `RUST_BACKTRACE=1` environment variable to"
+    },
+    {
+      "operator": "omit_successor",
+      "head": "dd24c91b0750bf804ec8689d52239d130934dea1",
+      "exit": 101,
+      "compiled": true,
+      "test_assertion": true,
+      "target": "protected_passed_journal",
+      "credit": "before-capture; central successor pack still masks publication",
+      "patch_sha256": "7af990b4ea224771f7c99e5a999fadbf92fc93e3bfdf8ce032a047654f1dd1fd",
+      "actual_assertion_excerpt": " crates/rrx/src/workflow/tests/formal_refusal.rs:296:13: assertion `left == right` failed: Tests   left: (3, 0, 0, 0, 0)  right: (2, 0, 0, 0, 0) note: run with `RUST_BACKTRACE=1` environment variable "
+    },
+    {
+      "operator": "omit_retry",
+      "head": "51e2ba470640b209721ae804378921f3053f1a60",
+      "exit": 101,
+      "compiled": true,
+      "test_assertion": true,
+      "target": "retry_review_refuses",
+      "credit": "RetryEvent and active/Task mutation",
+      "patch_sha256": "942ef7f3afc0014e9558e7fd41c1ae1e13ddf67c2948c6ea35d39bf5780bc1d5",
+      "actual_assertion_excerpt": " crates/rrx/src/workflow/tests/formal_refusal.rs:6:24: called `Result::unwrap_err()` on an `Ok` value: () note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace test workflow::t"
+    },
+    {
+      "operator": "omit_resume",
+      "head": "4627844c9d1df154aa4ef63c602ddf14e235b4e5",
+      "exit": 101,
+      "compiled": true,
+      "test_assertion": true,
+      "target": "resume_refuses",
+      "credit": "bound historical reviewer status-before-refusal; evaluate masks new gate",
+      "patch_sha256": "04712707817b557e6a02337ac38d8c7020202abe5a755dcb501dc3a0f314edc1",
+      "actual_assertion_excerpt": " crates/rrx/src/workflow/tests/formal_refusal.rs:332:13: assertion `left == right` failed   left: (3, 0, 0, 0, 1)  right: (3, 0, 0, 0, 0) note: run with `RUST_BACKTRACE=1` environment variable to disp"
+    },
+    {
+      "operator": "omit_finalization",
+      "head": "0ee5da82b01f9f4c7444093eb7a7de2d8cd3163e",
+      "exit": 101,
+      "compiled": true,
+      "test_assertion": true,
+      "target": "quick_finished_history",
+      "credit": "before-capture; central MergeGate pack masks publication",
+      "patch_sha256": "b215244a6dfdb6ca516851f81676e484e8bfd76e0a3c39d30425567eff6db04f",
+      "actual_assertion_excerpt": " crates/rrx/src/workflow/tests/formal_refusal.rs:411:5: assertion `left == right` failed   left: (3, 0, 0, 0, 0)  right: (2, 0, 0, 0, 0) note: run with `RUST_BACKTRACE=1` environment variable to displ"
+    },
+    {
+      "operator": "overbroad_poll",
+      "head": "59e0729e35dc385df6182e5ecca6b0777b356726",
+      "exit": 101,
+      "compiled": true,
+      "test_assertion": true,
+      "target": "retained_running_lost",
+      "credit": "actual running/Lost owner observation preservation",
+      "patch_sha256": "8f6e68951c1320d20386e5d24685a06090c11058398896fe094327362720f9b3",
+      "actual_assertion_excerpt": " crates/rrx/src/workflow/tests/formal_refusal.rs:573:70: called `Result::unwrap()` on an `Err` value: formal ReviewSet gating unavailable; production authority and native profiles are not composed (#9"
+    },
+    {
+      "operator": "omit_downstream_classifier",
+      "head": "f8dd04e1ed13e4bf2b1865249a093a8b0d9069b6",
+      "exit": 101,
+      "compiled": true,
+      "test_assertion": true,
+      "target": "formal_entry_refuses",
+      "credit": "actual Pr/MergeGate/Cleanup dispatch/completion path",
+      "patch_sha256": "fa44ea4f979a1ada6d427ef7f977fb7aa53a48fe99ddea888adcc79ac289ff92",
+      "actual_assertion_excerpt": " crates/rrx/src/workflow/tests/formal_refusal.rs:6:24: called `Result::unwrap_err()` on an `Ok` value: Completed { phase: Pr } note: run with `RUST_BACKTRACE=1` environment variable to display a backt"
+    },
+    {
+      "operator": "compound_successor_pack",
+      "head": "d4c9d5648fca21614d5d8dcc1e268301667f0c7a",
+      "exit": 101,
+      "compiled": true,
+      "test_assertion": true,
+      "target": "protected_passed_journal",
+      "credit": "explicit pair omission permits protected successor ContextVersion publication",
+      "patch_sha256": "a965a638bb4e4cdabc9d64ae6196633dcd7fabd288eec9e28c6032873cdf48f8",
+      "actual_assertion_excerpt": " crates/rrx/src/workflow/tests/formal_refusal.rs:6:24: called `Result::unwrap_err()` on an `Ok` value: Completed { phase: Tests } note: run with `RUST_BACKTRACE=1` environment variable to display a ba"
+    }
+  ],
+  "restored_control": {
+    "pass": 11,
+    "fail": 0,
+    "code_equals_checked_head": true
+  },
+  "logs": [
+    {
+      "name": "source1-focused.log",
+      "sha256": "187272d2fe0f10547948597101ad0aa95a5e5c66f13d5ad57f7982678676683f",
+      "test_results": []
+    },
+    {
+      "name": "source1-focused2.log",
+      "sha256": "a72f81847786aa363bc4f738575e8dea0c031191e0dbc17e680cff5329260a61",
+      "test_results": [
+        "test result: FAILED. 8 passed; 2 failed; 0 ignored; 0 measured; 294 filtered out; finished in 5.24s"
+      ]
+    },
+    {
+      "name": "source1-focused3.log",
+      "sha256": "e66ffc4399ae0971c452ad2e9bf3c9b318879c3050d2d0805591f3bf7420aa74",
+      "test_results": [
+        "test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 294 filtered out; finished in 8.09s"
+      ]
+    },
+    {
+      "name": "source1-full.log",
+      "sha256": "5be4e905c0c55e00b14e8020aa6d55cd92518a31d6914a9289c810d288a6f397",
+      "test_results": [
+        "test result: FAILED. 162 passed; 120 failed; 23 ignored; 0 measured; 0 filtered out; finished in 29.35s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: FAILED. 0 passed; 19 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.06s",
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.69s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.02s",
+        "test result: ok. 1 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.86s",
+        "test result: FAILED. 2 passed; 14 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.99s",
+        "test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 14.17s",
+        "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.18s",
+        "test result: FAILED. 6 passed; 9 failed; 2 ignored; 0 measured; 0 filtered out; finished in 11.93s",
+        "test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 35.79s",
+        "test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.15s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.31s"
+      ]
+    },
+    {
+      "name": "source1-clippy.log",
+      "sha256": "b1816c0c76d67692207608b406586418f062309037cd7b24ef59b0e27be47b00",
+      "test_results": []
+    },
+    {
+      "name": "source1-debug-build.log",
+      "sha256": "59639588a6f1826f129cbcd121edc07279dab94786f5fa5bde6b3439b2e845cc",
+      "test_results": []
+    },
+    {
+      "name": "source1-release-build.log",
+      "sha256": "d7181665e903b69e4b2c1449a9dcc56fbfe2363c5d288d6255943f10f083c643",
+      "test_results": []
+    },
+    {
+      "name": "source1-release-focused.log",
+      "sha256": "ba568257e6ac2e3dde1daf1e20c54da4a7dc8c2b4fdc6b49b4e0b3bc656db848",
+      "test_results": [
+        "test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 294 filtered out; finished in 1.27s"
+      ]
+    }
+  ],
+  "acceptance": "Selected source review pending. Whole9/19/43/native/MVP and full regression/CI readiness OPEN. No tests deleted/ignored or fake readiness introduced."
+}

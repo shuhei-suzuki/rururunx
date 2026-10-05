@@ -1,0 +1,12 @@
+diff --git a/crates/rrx/src/workflow.rs b/crates/rrx/src/workflow.rs
+index 55e0213..7d9c1f3 100644
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -1230,6 +1230,7 @@ impl WorkflowEngine {
+             .get(index)
+             .context("invalid active phase index")?;
+         let phase = attempt.phase;
++        require_formal_review_ready(phase)?;
+         if attempt.state == AttemptState::Waiting {
+             return Ok(StepResult::Waiting {
+                 phase,

@@ -1,0 +1,12 @@
+diff --git a/crates/rrx/src/workflow.rs b/crates/rrx/src/workflow.rs
+index 55e0213..38fbe6e 100644
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -1460,7 +1460,6 @@ impl WorkflowEngine {
+                 && snapshot.workflow.completed.contains_key(&Phase::Pr),
+             "finalization requires finished QUICK PR evidence"
+         );
+-        require_formal_review_ready(Phase::MergeGate)?;
+         let (_, source, _) = self
+             .inputs(
+                 &snapshot.project,
