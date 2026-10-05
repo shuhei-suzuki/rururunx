@@ -70,7 +70,7 @@ impl ManagedWorkflowGates {
                 && attempt.generation == workflow.generation
                 && attempt.claimed_observations == attempt.observations.len()
                 && context.version == task.context_version
-                && true /* mutation: omit exact full Context frame */
+                && serde_json::to_value(context)? == serde_json::to_value(&invocation.context)?
                 && serde_json::to_value(&invocation.prior_observations)?
                     == serde_json::to_value(&attempt.observations)?
                 && serde_json::to_value(&invocation.prerequisites)?
