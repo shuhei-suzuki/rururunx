@@ -175,6 +175,25 @@ next official quota observation pool-wide. Do not create unlimited retries.
 
 ## 5. Git capture, snapshots and publication
 
+Retained-result inspection after retirement/restart has a separate Runtime-only
+read capability. Validate the current owner epoch and the complete indexed
+Ready/Published artifact snapshot before effects; its historical executor unit
+must retain the same Scope. No old generation/Session permission is reopened.
+Persist a `retained_git` intent containing artifact ID/version, manifest digest,
+current reader epoch and finite action before spawning current Runtime Git. The
+allowlist contains only exact commit/base `rev-parse`, complete graph `rev-list`
+and `fsck`. Disable lazy fetching/replacement objects for this historical reader,
+use an operation cookie distinct from the producing unit, and omit native IPC/
+profile grants. Do not require old executor/profile/temp paths. Git resolution
+uses the current Runtime PATH and canonical executable; the receipt hashes its
+path reference, not its contents/version. No implicit qualification claim follows.
+Bound manifest reads to 128 KiB plus one sentinel byte, Git output/wait and
+in-flight epoch/artifact checks. Confirm a helper receipt only in a transaction
+that revalidates the same artifact/epoch. Drop, timeout, invalidation or lost epoch
+keeps an unknown helper observation. Public publication CAS rechecks the complete
+verified artifact snapshot, rather than trusting only its ID. Historical read
+failure never writes Task work, accepted evidence or cleanup disposition.
+
 State layout (names are logical; path validation forbids nesting state/result
 storage under a Task workspace or aliasing sibling namespaces):
 

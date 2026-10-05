@@ -15,5 +15,6 @@ pub mod process;
 pub mod quota;
 pub mod resources;
 pub mod results;
+pub(crate) mod retained_io;
 pub(crate) use results::{ReadonlyCompletion, WorkflowPublication};
 pub mod tools;

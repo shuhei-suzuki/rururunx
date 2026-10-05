@@ -1,6 +1,150 @@
 use super::*;
 
+// Historical inspection has current Runtime read authority, not the producing
+// Task's native/finalization authority. Retired generations remain inspectable.
+fn validate_retained_inspection(
+    connection: &Connection,
+    epoch: u64,
+    artifact: &ResultArtifact,
+) -> Result<()> {
+    let current: u64 = connection.query_row(
+        "SELECT epoch FROM runtime_epoch WHERE singleton=1",
+        [],
+        |r| r.get(0),
+    )?;
+    ensure!(
+        current == epoch && epoch > 0,
+        "retained reader epoch retired"
+    );
+    let recorded = self_artifact_tx(connection, artifact.id)?;
+    ensure!(
+        matches!(
+            recorded.state,
+            ArtifactState::Ready | ArtifactState::Published
+        ) && serde_json::to_value(&recorded)? == serde_json::to_value(artifact)?
+            && valid_oid(&recorded.revision)
+            && valid_oid(&recorded.base_sha)
+            && recorded.manifest_sha256.len() == 64
+            && recorded
+                .manifest_sha256
+                .bytes()
+                .all(|b| b.is_ascii_hexdigit()),
+        "retained reader artifact snapshot changed"
+    );
+    let unit = unit_tx(connection, recorded.unit_id)?;
+    ensure!(
+        unit.scope == recorded.scope && unit.kind == UnitKind::Executor,
+        "retained reader producing unit mismatch"
+    );
+    Ok(())
+}
+
 impl Store {
+    pub(crate) fn validate_retained_inspection(
+        &self,
+        epoch: u64,
+        artifact: &ResultArtifact,
+    ) -> Result<()> {
+        validate_retained_inspection(&self.connection, epoch, artifact)
+    }
+    pub(crate) fn reserve_retained_inspection(
+        &mut self,
+        epoch: u64,
+        artifact: &ResultArtifact,
+        id: OperationId,
+        action: &str,
+    ) -> Result<()> {
+        ensure!(
+            matches!(
+                action,
+                "commit_ref" | "base_ref" | "commit_graph" | "base_graph" | "fsck"
+            ),
+            "unsupported retained reader action"
+        );
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        validate_retained_inspection(&tx, epoch, artifact)?;
+        let effect = ManagedEffect {
+            id,
+            unit_id: artifact.unit_id,
+            scope: artifact.scope.clone(),
+            kind: "retained_git".into(),
+            idempotency_key: format!("retained-{id}"),
+            expected_target: format!(
+                "artifact:{}:{}:epoch:{epoch}:{}:{action}",
+                artifact.id, artifact.version, artifact.manifest_sha256
+            ),
+            state: EffectState::Pending,
+            receipt: BTreeMap::new(),
+            version: 1,
+        };
+        let (p, g, t) = scope_keys(&effect.scope)?;
+        tx.execute("INSERT INTO managed_effects(id,unit_id,project_id,goal_id,task_id,idempotency_key,state,version,body) VALUES(?1,?2,?3,?4,?5,?6,'pending',1,?7)",
+            params![id.to_string(),effect.unit_id.to_string(),p,g,t,effect.idempotency_key,serde_json::to_string(&effect)?])?;
+        append_event(
+            &tx,
+            &artifact.scope,
+            "execution.retained_reader_intent",
+            json!({"unit":artifact.unit_id,"artifact":artifact.id,"version":artifact.version,"epoch":epoch,"operation":id,"action":action}),
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+    pub(crate) fn finish_retained_inspection(
+        &mut self,
+        epoch: u64,
+        artifact: &ResultArtifact,
+        id: OperationId,
+        exit: Option<i32>,
+        group_error: bool,
+        program_digest: &str,
+    ) -> Result<()> {
+        ensure!(
+            program_digest.len() == 64 && program_digest.bytes().all(|b| b.is_ascii_hexdigit()),
+            "invalid retained reader program reference digest"
+        );
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        validate_retained_inspection(&tx, epoch, artifact)?;
+        let mut effect = effect_tx(&tx, id)?;
+        ensure!(
+            effect.unit_id == artifact.unit_id
+                && effect.scope == artifact.scope
+                && effect.kind == "retained_git"
+                && effect.version == 1
+                && effect.state == EffectState::Pending
+                && effect.expected_target.starts_with(&format!(
+                    "artifact:{}:{}:epoch:{epoch}:{}:",
+                    artifact.id, artifact.version, artifact.manifest_sha256
+                )),
+            "retained helper intent changed"
+        );
+        effect.state = EffectState::Confirmed;
+        effect.version = 2;
+        effect.receipt = BTreeMap::from([
+            (
+                "exit".into(),
+                exit.map_or_else(|| "signal".into(), |code| code.to_string()),
+            ),
+            (
+                "group_cleanup".into(),
+                if group_error { "unknown" } else { "requested" }.into(),
+            ),
+            ("program_reference_sha256".into(), program_digest.into()),
+        ]);
+        ensure!(tx.execute("UPDATE managed_effects SET state='confirmed',version=2,body=?1 WHERE id=?2 AND version=1 AND state='pending'",
+            params![serde_json::to_string(&effect)?,id.to_string()])? == 1, "retained helper CAS conflict");
+        append_event(
+            &tx,
+            &artifact.scope,
+            "execution.effect_reconciled",
+            json!({"unit":artifact.unit_id,"operation":id,"state":EffectState::Confirmed}),
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
     pub fn result_artifact(&self, id: ArtifactId) -> Result<ResultArtifact> {
         self_artifact_tx(&self.connection, id)
     }
@@ -87,7 +231,7 @@ impl Store {
     pub(crate) fn publish_execution_result(
         &mut self,
         authority: &ExecutionAuthority,
-        id: ArtifactId,
+        verified: &ResultArtifact,
         expected_task: u64,
     ) -> Result<ResultArtifact> {
         let tx = self
@@ -107,11 +251,13 @@ impl Store {
             unit.work == Some(WorkOutcome::Success) && unit.kind == UnitKind::Executor,
             "result requires known successful executor work"
         );
+        let id = verified.id;
         let mut artifact = self_artifact_tx(&tx, id)?;
         ensure!(
             artifact.unit_id == unit.id
                 && artifact.scope == unit.scope
-                && artifact.state == ArtifactState::Ready,
+                && artifact.state == ArtifactState::Ready
+                && serde_json::to_value(&artifact)? == serde_json::to_value(verified)?,
             "ready artifact binding mismatch"
         );
         let mut task: Task = read_tx(&tx, "tasks", &unit.scope.task_id.unwrap().to_string())?

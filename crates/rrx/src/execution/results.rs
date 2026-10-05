@@ -1,5 +1,6 @@
 //! Independent retained Git objects and disposable read-only review inputs.
 use super::git_io::UnitGit;
+use super::retained_io::RetainedGit;
 use super::{RuntimeOwner, *};
 use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
@@ -7,7 +8,7 @@ use sha2::{Digest, Sha256};
 use std::{
     collections::BTreeMap,
     fs::{File, OpenOptions},
-    io::Write,
+    io::{Read, Write},
     os::unix::fs::{OpenOptionsExt, PermissionsExt},
     path::{Path, PathBuf},
     sync::Arc,
@@ -17,6 +18,10 @@ use tokio::{process::Command, sync::Mutex};
 pub struct ResultStore {
     owner: Arc<RuntimeOwner>,
     gate: Mutex<()>,
+}
+enum RetainedReader<'a> {
+    Current(&'a UnitGit),
+    Historical(&'a RetainedGit),
 }
 /// Nonserializable proof minted by retained graph/manifest verification, never
 /// by an evidence string or a Ready ledger label. SQL rechecks the full snapshot.
@@ -117,7 +122,7 @@ impl ResultSnapshot {
         };
         let io = UnitGit::new(self.owner.clone(), &unit, false)?;
         ResultStore::new(self.owner.clone())
-            .verify_inner(&self.retained, Some(&io))
+            .verify_inner(&self.retained, RetainedReader::Current(&io))
             .await?;
         self.verify().await?;
         let store = self
@@ -366,7 +371,10 @@ impl ResultStore {
         Ok(artifact)
     }
     pub async fn verify(&self, artifact: &ResultArtifact) -> Result<()> {
-        self.verify_inner(artifact, None).await
+        let io = RetainedGit::new(self.owner.clone(), artifact)?;
+        self.verify_inner(artifact, RetainedReader::Historical(&io))
+            .await?;
+        io.validate()
     }
     pub(crate) async fn workflow_publication(
         &self,
@@ -394,7 +402,8 @@ impl ResultStore {
             "publication verification requires exact successful executor artifact"
         );
         let io = UnitGit::new(self.owner.clone(), &unit, false)?;
-        self.verify_inner(&artifact, Some(&io)).await?;
+        self.verify_inner(&artifact, RetainedReader::Current(&io))
+            .await?;
         {
             let store = self
                 .owner
@@ -413,7 +422,7 @@ impl ResultStore {
             artifact,
         })
     }
-    async fn verify_inner(&self, artifact: &ResultArtifact, io: Option<&UnitGit>) -> Result<()> {
+    async fn verify_inner(&self, artifact: &ResultArtifact, io: RetainedReader<'_>) -> Result<()> {
         ensure!(
             matches!(
                 artifact.state,
@@ -438,7 +447,10 @@ impl ResultStore {
                         .join("manifest.json"),
             "artifact storage mismatch"
         );
-        let bytes = std::fs::read(&artifact.manifest)?;
+        let mut bytes = Vec::new();
+        File::open(&artifact.manifest)?
+            .take(128 * 1024 + 1)
+            .read_to_end(&mut bytes)?;
         ensure!(
             bytes.len() <= 128 * 1024 && hex(&bytes) == artifact.manifest_sha256,
             "artifact manifest corruption"
@@ -462,7 +474,7 @@ impl ResultStore {
                 text(
                     &retained_git(
                         &artifact.repository,
-                        io,
+                        &io,
                         [
                             "rev-parse",
                             "--verify",
@@ -475,14 +487,14 @@ impl ResultStore {
             );
             retained_git(
                 &artifact.repository,
-                io,
+                &io,
                 ["rev-list", "--objects", "--missing=error", oid],
             )
             .await?;
         }
         retained_git(
             &artifact.repository,
-            io,
+            &io,
             ["fsck", "--full", "--strict", "--no-dangling"],
         )
         .await?;
@@ -499,7 +511,7 @@ impl ResultStore {
             .store
             .lock()
             .map_err(|_| anyhow::anyhow!("state poisoned"))?
-            .publish_execution_result(authority, artifact.id, task_version)
+            .publish_execution_result(authority, artifact, task_version)
     }
     pub async fn snapshot(&self, unit: &ExecutionUnit) -> Result<ResultSnapshot> {
         self.owner
@@ -535,7 +547,8 @@ impl ResultStore {
             "snapshot artifact binding mismatch"
         );
         let io = UnitGit::new(self.owner.clone(), unit, true)?;
-        self.verify_inner(&artifact, Some(&io)).await?;
+        self.verify_inner(&artifact, RetainedReader::Current(&io))
+            .await?;
         ensure!(
             !unit.worktree.exists() && unit.worktree.symlink_metadata().is_err(),
             "snapshot paths are never reused"
@@ -638,12 +651,12 @@ pub(crate) fn git_command_for(root: &Path, program: &Path) -> Result<Command> {
 }
 async fn retained_git<const N: usize>(
     root: &Path,
-    io: Option<&UnitGit>,
+    io: &RetainedReader<'_>,
     args: [&str; N],
 ) -> Result<Vec<u8>> {
     match io {
-        Some(io) => io.run(root, args).await,
-        None => git(root, args).await,
+        RetainedReader::Current(io) => io.run(root, args).await,
+        RetainedReader::Historical(io) => io.run(args).await,
     }
 }
 pub(crate) async fn git<I, S>(root: &Path, args: I) -> Result<Vec<u8>>

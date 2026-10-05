@@ -113,8 +113,21 @@ fn new_generation_closes_old_reviewers_without_erasing_known_work_or_artifacts()
     artifact.manifest_sha256 = "d".repeat(64);
     store.ready_result(&artifact, 1).unwrap();
     let current_task = store.task(task.id).unwrap().unwrap();
+    let mut stale_verified = artifact.clone();
+    stale_verified
+        .dependencies
+        .insert("rules".into(), "changed".into());
+    assert!(
+        store
+            .publish_execution_result(&unit.authority(), &stale_verified, current_task.version)
+            .is_err()
+    );
+    assert_eq!(
+        store.result_artifact(artifact.id).unwrap().state,
+        ArtifactState::Ready
+    );
     let published = store
-        .publish_execution_result(&unit.authority(), artifact.id, current_task.version)
+        .publish_execution_result(&unit.authority(), &artifact, current_task.version)
         .unwrap();
     let current_task = store.task(task.id).unwrap().unwrap();
     let mut old = Vec::new();

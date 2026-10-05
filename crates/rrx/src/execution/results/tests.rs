@@ -5,6 +5,7 @@ use crate::{
     project::{AddProject, ProjectRegistry},
 };
 use serde_json::json;
+mod retained_tests;
 
 pub(crate) async fn fixture() -> (tempfile::TempDir, Arc<RuntimeOwner>, Task) {
     let dir = tempfile::tempdir().unwrap();

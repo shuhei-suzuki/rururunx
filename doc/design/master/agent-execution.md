@@ -73,6 +73,16 @@ snapshot content; Review Engine/Approval Broker bind artifact and generation;
 Goal completion depends on accepted workflow evidence, not native exit zero.
 SQLite migration and all native/public API changes receive STRICT treatment.
 
+Historical retained-result inspection uses the current Runtime epoch and an exact
+ledger artifact snapshot, independently of the producing Task's retired generation
+or closed permissions. Each finite read-only Git command has a durable scoped
+intent before spawn, an independent operation cookie, bounded output/wait and
+epoch/artifact revalidation before its receipt. It never restores native or
+finalization authority or requires historical executor/profile/temp paths. It
+resolves the current Runtime's canonical Git executable; a receipt hashes that
+path reference, not binary contents or a qualified version. Missing Git refuses
+inspection. Inspection failures do not alter accepted work or cleanup results.
+
 Phase1 consists of independently reviewed requirements/design only. Phase2
 implements a coordinated profile without an unsafe intermediate launch path.
 Phase3 validates actual four-Task native runs, sibling cancellation, crash/restart,
