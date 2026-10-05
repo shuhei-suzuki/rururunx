@@ -79,3 +79,41 @@ Phase3 validates actual four-Task native runs, sibling cancellation, crash/resta
 detached helpers, quota waiting/recovery and auth/settings/hooks on both OSes.
 Hosted CI fixtures and controlled authenticated runs are labelled separately.
 README Status changes only after Phase3; unverified behavior stays unverified.
+
+## 6. Staged Docker command profile
+
+The Phase2 component candidate supports managed `run`/`create` and filtered `ps`
+through the installed rrx tool entry. It is not qualified with an actual Docker
+daemon yet. It selects client/server 28 with API 1.48–1.51 and uses API 1.48 for
+managed commands. Docker's [API matrix](https://docs.docker.com/reference/api/engine/)
+documents those 28.x API versions and the effect of `DOCKER_API_VERSION`; this is
+a protocol selection, not evidence that every patch or template has run. Other
+versions, remote transports, relative configuration roots, `DOCKER_HOST` and raw
+Compose profiles refuse this managed path before creation. They are explicit
+coverage limits, not native Agent availability or a requirement to install Docker.
+
+Runtime probes, the actual shim and historical cleanup bind the same canonical
+Docker configuration-directory digest, explicit context name and observed engine
+digest. The shim transmits a directory-reference digest and host-override flag;
+the Runtime checks these before probes, and the shim rechecks the granted reference
+before spawn. Credentials/configuration files are not read, copied or substituted.
+Recorded context names alone cannot establish the actual engine. Inaccessible or
+changed references refuse; the ordinary inherited authentication context remains
+the CLI's responsibility.
+
+Cleanup verifies four namespace labels plus recorded creation operation and name
+before a full-ID kill, reinspects identity/running state and removes non-forcibly.
+Each mutation intent retains its exact container and engine digest before spawn;
+the typed attempted action exists before waiting for acknowledgement. Timeouts
+retain unknown acknowledgement and confirmation for that exact action. Inventories
+can change: the Docker report reserves 128 remaining identities across the first
+and final container inventories, networks and volumes; cookie observations reserve
+the other 896 identities of the persisted 1024 bound. Partial reports enforce the
+same cap and record limited coverage rather than complete absence.
+
+Unexpected matching networks/volumes are reported, not deleted without registered
+creation/attachment evidence. Image-declared anonymous volumes, raw Docker API
+delegation and unsupported Compose are not fully tracked by this finite profile.
+No global prune, forced removal, complete workload collection or resource-release
+claim follows from an empty list. Worktrees/ports remain retained or quarantined;
+operational Runtime integration and actual OS/Docker/native qualification are pending.

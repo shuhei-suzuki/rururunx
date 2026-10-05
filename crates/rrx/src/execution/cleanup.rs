@@ -118,7 +118,7 @@ impl CleanupService {
                             discovery.coverage.identity_changed
                         ),
                     );
-                    if discovery.processes.len() > 928 {
+                    if discovery.processes.len() > 1024 - super::docker::MAX_REMAINING {
                         observation
                             .errors
                             .push("cookie_action_limit_exceeded".into());
@@ -126,12 +126,16 @@ impl CleanupService {
                     observation.coverage.insert(
                         "cookie_actions".into(),
                         format!(
-                            "matches={},max=928,poll_budget_ms=500",
+                            "matches={},max=896,poll_budget_ms=500",
                             discovery.processes.len()
                         ),
                     );
                     let started = Instant::now();
-                    for process in discovery.processes.into_iter().take(928) {
+                    for process in discovery
+                        .processes
+                        .into_iter()
+                        .take(1024 - super::docker::MAX_REMAINING)
+                    {
                         let identity = process.identity();
                         let target = format!(
                             "pid:{}@{}:{}",
@@ -180,15 +184,7 @@ impl CleanupService {
                 }
             }
             let docker = super::docker::cleanup(self.owner.clone(), &claim).await;
-            observation
-                .coverage
-                .insert("docker".into(), docker.coverage);
-            observation.remaining.extend(docker.remaining);
-            observation.errors.extend(docker.errors);
-            observation.actions.extend(docker.actions);
-            if !observation.remaining.is_empty() {
-                observation.outcome = CleanupOutcome::Leftovers;
-            }
+            append_docker(&mut observation, docker);
             observation.at = crate::domain::now_ms();
             self.owner
                 .store
@@ -198,6 +194,21 @@ impl CleanupService {
             observations.push(observation);
         }
         Ok(observations)
+    }
+}
+
+pub(crate) fn append_docker(
+    observation: &mut CleanupObservation,
+    docker: super::docker::DockerCleanup,
+) {
+    observation
+        .coverage
+        .insert("docker".into(), docker.coverage);
+    observation.remaining.extend(docker.remaining);
+    observation.errors.extend(docker.errors);
+    observation.actions.extend(docker.actions);
+    if !observation.remaining.is_empty() {
+        observation.outcome = CleanupOutcome::Leftovers;
     }
 }
 

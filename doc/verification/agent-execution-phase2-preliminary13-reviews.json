@@ -1,0 +1,387 @@
+{
+  "source_commit": "39f077f6eea2531f58357348af81de488f462fec",
+  "review_kind": "Independent preliminary component reviews; not Phase2 acceptance",
+  "reports": [
+    {
+      "review": "Independent STRICT preliminary component source review, round 13",
+      "source_commit": "39f077f6eea2531f58357348af81de488f462fec",
+      "baseline_commit": "6350c9f7ddf3808bd38247689b358975a7282fdf",
+      "approved_contract_commit": "9a11d03f1b1676c2c3c8a24b6b3fd328759f7db5",
+      "verdict": "request_changes",
+      "counts": {
+        "Critical": 0,
+        "High": 0,
+        "Medium": 3,
+        "Low": 0
+      },
+      "findings": [
+        {
+          "id": "M-M1",
+          "severity": "Medium",
+          "title": "Runtime Docker qualification does not bind the shim's actual Docker configuration routing",
+          "locations": [
+            {
+              "path": "crates/rrx/src/execution/docker.rs",
+              "lines": [
+                116,
+                122
+              ]
+            },
+            {
+              "path": "crates/rrx/src/execution/ipc.rs",
+              "lines": [
+                23,
+                31
+              ]
+            },
+            {
+              "path": "crates/rrx/src/execution/ipc.rs",
+              "lines": [
+                174,
+                177
+              ]
+            },
+            {
+              "path": "crates/rrx/src/execution/ipc.rs",
+              "lines": [
+                347,
+                369
+              ]
+            }
+          ],
+          "evidence": "Qualification/probes execute in the Runtime's inherited Docker CLI environment. The grant communicates only the named context and API version. ToolRequest carries no Docker routing/config reference, while execute() creates the actual Docker child in the shim's independently inherited environment without pinning or validating DOCKER_CONFIG. A same-named context under a different Docker config root can therefore refer to a different daemon than the recorded qualified engine. The new DOCKER_HOST rejection also checks only Runtime ambient state, not the actual native shim's state. No direct binary/raw API bypass is needed: this is the managed Docker entry itself.",
+          "impact": "The current managed grant can create labeled resources on a target that its docker_target ledger and historical cleanup do not describe. Cleanup of the recorded context cannot establish what happened on the actually used daemon. This is a managed-target consistency defect, not a universal same-user sandbox or credential-isolation claim.",
+          "contract": "R4 requires a declared managed resource policy and unsupported routing overrides to be identified/refused; design section 7 requires the actual qualified command policy, and section 9 requires exact recorded Docker target reconciliation.",
+          "minimal_fix": "Bind qualification, grant execution and historical cleanup to the same declared nonsecret Docker routing/config context, or refuse a differing/unknown shim routing context before creation. Preserve official authentication handling and defaults; do not copy credentials or accept a caller-supplied engine string as authority.",
+          "causal_controls": [
+            "Account-free real shim/IPC fixture with Runtime and shim routing to two distinct synthetic config roots, both containing a context named default. Make the Docker fixture select its synthetic engine by DOCKER_CONFIG. Assert divergence is refused before run/create and a matching configuration reaches the exact recorded target.",
+            "Cover differing shim DOCKER_HOST versus absent Runtime DOCKER_HOST as a separate actual entry control under the supported CLI routing semantics; do not infer target equality from context name alone.",
+            "An omission of the actual routing binding must fail the managed caller's target/ledger oracle. No actual Docker daemon or private configuration files are required."
+          ],
+          "controls_executed": false,
+          "confidence": 0.94
+        },
+        {
+          "id": "M-M2",
+          "severity": "Medium",
+          "title": "Cancellation during Docker mutation loses its exact action target from durable intent and observation",
+          "locations": [
+            {
+              "path": "crates/rrx/src/execution/docker.rs",
+              "lines": [
+                342,
+                359
+              ]
+            },
+            {
+              "path": "crates/rrx/src/execution/docker.rs",
+              "lines": [
+                386,
+                402
+              ]
+            },
+            {
+              "path": "crates/rrx/src/execution/docker.rs",
+              "lines": [
+                469,
+                490
+              ]
+            },
+            {
+              "path": "crates/rrx/src/state/execution/cleanup.rs",
+              "lines": [
+                28,
+                37
+              ]
+            },
+            {
+              "path": "crates/rrx/src/execution/docker.rs",
+              "lines": [
+                259,
+                274
+              ]
+            }
+          ],
+          "evidence": "Kill/remove actions are appended to the report only after io.run(...).await returns. The five-second cleanup timeout can drop that await after the Docker request has taken effect but before helper acknowledgement. The HelperGuard then persists an Unknown docker_cleanup effect, but its expected_target is merely 'container-kill' or 'container-remove', not the exact container ID/qualified target. The returned partial report has no corresponding attempted action either. Thus the durable pre-effect registration and timeout receipt cannot identify which exact resource the uncertain mutation addressed.",
+          "impact": "Historical recovery and diagnostics lose the action-to-resource association at a required crash/cancellation boundary. It is still conservative Unknown and does not release a lease or claim work success, but the currently implemented exact-target effect producer is incomplete.",
+          "contract": "R6 records attempted action and safe resource identity; R8 requires intent before each managed effect and explicit pending/confirmed/unknown reconciliation. Design section 9 requires ID/operation-qualified Docker cleanup.",
+          "minimal_fix": "Register a bounded exact resource/action/qualified-target identity before spawn, and initialize the in-progress typed action before awaiting mutation. On timeout/drop retain Unknown/NotAttempted or unavailable confirmation for that exact action. Do not record command arguments, raw diagnostics, credentials, or fabricate successful effects.",
+          "causal_controls": [
+            "Extend the actual controlled Docker fixture so kill and remove each perform their synthetic mutation and then block before emitting an acknowledgement. Force the enclosing timeout/cancellation and inspect both persisted managed effect and returned/persisted cleanup receipt.",
+            "Require the precise container ID plus action identity to survive, alongside Unknown acknowledgement and no fabricated Exited/Absent confirmation. Keep sibling targets untouched.",
+            "Moving action publication back after the await, or replacing exact expected target with only the generic action name, must fail that causal oracle."
+          ],
+          "controls_executed": false,
+          "confidence": 0.98
+        },
+        {
+          "id": "M-M3",
+          "severity": "Medium",
+          "title": "Changing inventories can exceed the combined cleanup receipt bound and discard the entire observation",
+          "locations": [
+            {
+              "path": "crates/rrx/src/execution/docker.rs",
+              "lines": [
+                312,
+                340
+              ]
+            },
+            {
+              "path": "crates/rrx/src/execution/docker.rs",
+              "lines": [
+                419,
+                453
+              ]
+            },
+            {
+              "path": "crates/rrx/src/execution/docker.rs",
+              "lines": [
+                259,
+                274
+              ]
+            },
+            {
+              "path": "crates/rrx/src/execution/cleanup.rs",
+              "lines": [
+                134,
+                197
+              ]
+            },
+            {
+              "path": "crates/rrx/src/state/execution/cleanup.rs",
+              "lines": [
+                134,
+                140
+              ]
+            }
+          ],
+          "evidence": "Each inventory permits 32 IDs. The initial container inventory may retain 32 unregistered/unavailable IDs. A later final container inventory can contain 32 different IDs, after which 32 networks and 32 volumes can be retained: 128 distinct remaining IDs. The final inner ensure(remaining<=96) returns an error, but cleanup_for retains the already-populated 128-element report and only adds an incomplete category; it does not enforce the declared cap on the error/partial path. The outer service reserves space for only 96 Docker IDs by allowing 928 process remaining entries, then unconditionally extends with Docker data. 928+128=1056 exceeds Store's 1024 bound, so finish_execution_cleanup refuses the complete receipt. This involves valid per-response bounds and mutable inventories, not an oversized malformed CLI response.",
+          "impact": "A legal bounded observation sequence can prevent persistence of all cookie/Docker action and uncertainty facts, after probes or mutation attempts have already run. The claim retry deadline remains, but that sweep's factual receipt is lost. Existing tests use effectively stable inventories and do not cover this composition.",
+          "contract": "R6/R7 require bounded resource observations to persist independently of Task progression, and design section 9 requires bounded cleanup retries with retained partial uncertainty.",
+          "minimal_fix": "Enforce one complete report budget across initial/final inventories and every partial/error/timeout return. Reserve actual composition headroom, cap retained IDs safely and record overflow/unknown coverage rather than passing an oversized receipt to Store. Never erase required action identity or convert truncation to complete absence.",
+          "causal_controls": [
+            "An account-free fixture returns 32 old unresolved container IDs on the first list and 32 different matching IDs on the final list, plus 32 matching networks and 32 volumes. Verify the returned partial report itself respects its declared bound and records truncation.",
+            "Compose that real Docker report with a controlled maximum process observation through the actual outer persistence consumer. The complete CleanupObservation must fit and persist while preserving unknown coverage and sibling/known-work/artifact invariants.",
+            "An omitted partial-return cap or independently summed headroom must fail the persisted observation oracle, not merely a helper length assertion."
+          ],
+          "controls_executed": false,
+          "confidence": 0.98
+        }
+      ],
+      "prior_own_findings": [
+        {
+          "id": "K-M1",
+          "round": 11,
+          "disposition": "Round12 source closure retained for cookie actions. Docker mutation timeout gap above is a distinct new consumer; it is not reopening unchanged cookie classification."
+        },
+        {
+          "id": "J-M1",
+          "round": 10,
+          "disposition": "Previously verified source closure retained; Linux tracker UID code unchanged."
+        },
+        {
+          "id": "J-L1",
+          "round": 10,
+          "disposition": "Previously verified source closure retained; guarded environment cleanup code unchanged."
+        }
+      ],
+      "reviewed_guarantees": [
+        "New qualification registers a scoped docker_target intent, records finite client/server/API metadata and an engine digest, refuses a non-Unix context, and refuses a changed engine on requalification.",
+        "Historical helpers validate the current exact cleanup claim before each spawn and poll the same claim while awaiting bounded capture. They use a separate cookie and no stored numeric process ID adoption.",
+        "Cleanup requires recorded docker_create operation/name and complete Runtime/Project/Task/unit labels before kill. It reinspects running/name/operation/labels before non-forced removal; it does not perform global prune or delete unregistered networks/volumes.",
+        "Returned inspection templates select safe identity and namespace labels rather than full environment, mount/auth inspect output. Rrx does not read Docker auth storage.",
+        "Known work, retained artifacts and Task progression remain separate from cleanup; no Reclaimed outcome or wholesale resource release is introduced in this component.",
+        "Pending/unknown creation records are retained for deterministic namespace reconciliation rather than blindly rerunning run/create.",
+        "New Docker probes reuse the scoped UnitGit command registration/capture path with docker_probe kind and preserve existing Git helper behavior."
+      ],
+      "coverage": [
+        "Read fixed production Docker module completely, complete Python protocol fixture and all added Rust Docker tests.",
+        "Read new cleanup composition and reserve_cleanup_helper/validate_cleanup_claim consumers, managed effect reserve/reconcile and HelperGuard.",
+        "Inspected actual tool plan/docker argument policy, resource profile environment/routing, IPC request/grant/execution/cancellation, and UnitGit helper registration/capture consumers.",
+        "Read approved requirements R4/R6/R7/R8 and design sections 7/9 for the cited boundaries."
+      ],
+      "limitations": [
+        "Read-only immutable source review; not final Phase2/native/Docker/Runtime/MVP acceptance.",
+        "No tests/builds, actual Docker/provider/model/account/auth/network operation, environment/configuration probes, process signals or host mutations were performed. No parent test claims are inherited.",
+        "Only this /private/tmp report was written. No worktree source edits or dirty/later source reads.",
+        "No peer/aggregate/progress reports were read.",
+        "Actual Docker 28 CLI/template/API/routing conformance and OS helper behavior remain execution gates, separate from the source control-flow findings.",
+        "Pending production Sources/Gates/RuntimeCLI, optional user scope, path release and broader tool profiles are not counted as findings merely for being absent.",
+        "Cooperative cookies/labels are not a security sandbox or complete-death proof; arbitrary raw same-user bypass remains outside the selected guarantee."
+      ],
+      "live_handles": [],
+      "commands_closed": true
+    },
+    {
+      "reviewer": "agent_execution_phase0_review_b",
+      "round": 13,
+      "source_commit": "39f077f6eea2531f58357348af81de488f462fec",
+      "baseline_commit": "6350c9f7ddf3808bd38247689b358975a7282fdf",
+      "approved_contract_commit": "9a11d03f1b1676c2c3c8a24b6b3fd328759f7db5",
+      "review_kind": "Independent read-only preliminary STRICT component source review",
+      "verdict": "REQUEST_CHANGES",
+      "severity_counts": {
+        "C": 0,
+        "H": 1,
+        "M": 1,
+        "L": 0
+      },
+      "findings": [
+        {
+          "id": "H1",
+          "severity": "H",
+          "title": "Runtime Docker qualification does not bind the shim's actual Docker configuration namespace",
+          "primary_location": {
+            "file": "crates/rrx/src/execution/ipc.rs",
+            "start_line": 174,
+            "end_line": 177
+          },
+          "related_locations": [
+            {
+              "file": "crates/rrx/src/execution/docker.rs",
+              "start_line": 116,
+              "end_line": 122
+            },
+            {
+              "file": "crates/rrx/src/execution/docker.rs",
+              "start_line": 174,
+              "end_line": 208
+            },
+            {
+              "file": "crates/rrx/src/execution/git_io.rs",
+              "start_line": 91,
+              "end_line": 117
+            },
+            {
+              "file": "crates/rrx/src/execution/ipc.rs",
+              "start_line": 278,
+              "end_line": 296
+            },
+            {
+              "file": "crates/rrx/src/execution/ipc.rs",
+              "start_line": 321,
+              "end_line": 369
+            },
+            {
+              "file": "crates/rrx/src/execution/resources.rs",
+              "start_line": 66,
+              "end_line": 104
+            },
+            {
+              "file": "crates/rrx/src/execution/docker.rs",
+              "start_line": 469,
+              "end_line": 479
+            }
+          ],
+          "evidence": "qualify_native probes Docker from the Runtime process and records the context name/engine selected by its inherited environment. The request carries neither an actual native target proof nor a Docker configuration-namespace check. The grant adds only --context <name> and DOCKER_API_VERSION. execute_grant launches in the Agent/shim's inherited environment, removes only Git namespace overrides, and does not bind or compare DOCKER_CONFIG/HOME. Consequently the same context name can resolve through a different Docker config directory in a normal child command or hook. Historical cleanup again runs under the Runtime environment and only knows the Runtime-qualified engine.",
+          "causal_sequence": [
+            "The Runtime uses Docker config directory A, where context 'default' or another accepted name selects local Unix engine A.",
+            "A legitimate Task command/hook invokes the managed docker shim with DOCKER_CONFIG pointing to directory B, where the same context name selects engine B (potentially an unsupported transport). This is an environment change within the existing managed shim path, not a raw binary or intentional escape.",
+            "Runtime qualification proves engine A and grants a labeled run/create with --context <that-name>.",
+            "The granted official CLI inherits directory B and performs the effect on engine B. The recorded docker_target remains engine A. Subsequent Runtime cleanup cannot locate or correctly reconcile the effect on B and can falsely qualify the endpoint/transport used for creation."
+          ],
+          "impact": "A current managed effect can run against an engine or transport that was never qualified. This invalidates the target provenance used by historical cleanup and the local-only mount/port assumptions, even though mandatory Task labels and operation/name checks remain present. The finding does not claim that distinct random container IDs alone cause a sibling kill; it establishes an unqualified target and a cleanup provenance mismatch reachable through ordinary inherited settings/hooks.",
+          "recommended_change": "Make qualification and execution refer to the same actual native Docker configuration/endpoint namespace before granting an effect. For example, obtain a bounded nonsecret engine/transport proof from a read-only official CLI probe in the shim's own inherited context, journal it and bind it to the grant and historical reconciliation; or explicitly refuse unsupported namespace differences before effects. Do not read, copy or forward Docker auth files or silently replace native settings. A context name alone is not the binding.",
+          "proposed_causal_controls_not_executed": [
+            "Use an account-free fake official CLI and two configuration-directory namespaces mapping the same context name to different engine IDs. Exercise the real IPC grant/execution path with the native shim namespace differing from Runtime. Assert refusal before create or correct binding to the actual native engine; engine A's proof must never authorize B's effect.",
+            "Repeat with B advertising a non-Unix transport and with different HOME-derived default configuration namespaces. Confirm no credentials/config payloads are read or transported.",
+            "Keep the existing same-namespace engine-change/label/operation controls, and distinguish fixture target binding from future real Docker qualification."
+          ],
+          "confidence": "Verified by fixed-source environment inheritance, request/grant fields and probe/execution tracing; no Docker configuration probe or native effect was performed."
+        },
+        {
+          "id": "M1",
+          "severity": "M",
+          "title": "Timeout during Docker kill/remove loses the typed attempted action and exact uncertain target",
+          "primary_location": {
+            "file": "crates/rrx/src/execution/docker.rs",
+            "start_line": 342,
+            "end_line": 359
+          },
+          "related_locations": [
+            {
+              "file": "crates/rrx/src/execution/docker.rs",
+              "start_line": 259,
+              "end_line": 269
+            },
+            {
+              "file": "crates/rrx/src/execution/docker.rs",
+              "start_line": 386,
+              "end_line": 402
+            },
+            {
+              "file": "crates/rrx/src/execution/docker.rs",
+              "start_line": 469,
+              "end_line": 499
+            },
+            {
+              "file": "crates/rrx/src/state/execution/cleanup.rs",
+              "start_line": 10,
+              "end_line": 46
+            },
+            {
+              "file": "crates/rrx/src/execution/docker/tests.rs",
+              "start_line": 308,
+              "end_line": 342
+            }
+          ],
+          "evidence": "DockerKill and DockerRemove action records are appended only after io.run(...).await returns. The outer five-second timeout can drop cleanup_inner while that await is pending after the official CLI has already sent or completed the daemon operation. The typed action for that container is then absent. reserve_cleanup_helper records a generic expected_target such as 'container-kill' or 'container-remove', not the container ID/engine tuple, so its Unknown helper receipt cannot recover which selected target was attempted. The current timeout fixture delays post-kill inspection, after the kill await returned and the action was appended; it does not cover timeout inside kill/remove.",
+          "causal_sequence": [
+            "Discover and independently verify a registered exact container, then record/spawn its cleanup CLI helper.",
+            "The helper issues kill or remove, but delays its response/exit beyond the cleanup deadline.",
+            "The timeout drops the awaited future; HelperGuard records generic uncertainty, while the later report.actions.push is never reached.",
+            "The returned/persisted historical observation contains a generic reconciliation error and may contain no action or remaining identity for that known attempted container. With multiple candidates, the generic helper target cannot identify the attempted one."
+          ],
+          "impact": "Bounded cleanup reports omit an effect that may already have occurred and lose its exact target at the acknowledged uncertainty boundary. The overall report remains incomplete and does not claim Reclaimed, so this is a reconciliation/reporting defect rather than accepted-result corruption or a sibling-deletion claim.",
+          "recommended_change": "Register the exact nonsecret engine/container/action identity before the effect and append an Unknown/NotAttempted-or-unconfirmed typed action before awaiting the CLI. Update it on successful receipt and independent confirmation; ensure timeout retains an uncertain record and target for every in-flight destructive operation. Preserve partial records for earlier completed operations and keep action/remaining bounds.",
+          "proposed_causal_controls_not_executed": [
+            "Modify the account-free fixture to apply kill and then block inside the kill command before exit. Assert the timeout report and durable intent retain that container's exact DockerKill action with uncertainty, plus a named incomplete result.",
+            "Repeat for remove, including a command that removes the container and then blocks before acknowledgement.",
+            "Exercise two containers where the first operation completes and the second times out inside the destructive command. Both the completed first record and uncertain second target must survive, while sibling containers/Tasks remain unchanged."
+          ],
+          "confidence": "Verified from await-before-record ordering, timeout cancellation and the generic durable helper expected_target; controls were not executed."
+        }
+      ],
+      "prior_own_findings_disposition": [
+        {
+          "round": 11,
+          "id": "M1",
+          "disposition": "REMAINS_CLOSED_STATIC_FOR_COOKIE_ACTIONS",
+          "evidence": "Typed cookie termination and exit-error categories added in the approved round12 component remain present. Round13 M1 identifies the different new Docker in-flight timeout producer, not a regression to cookie error erasure."
+        },
+        {
+          "round": 12,
+          "id": "component_review",
+          "disposition": "PRIOR_COMPONENT_APPROVAL_UNCHANGED_IN_SCOPE",
+          "evidence": "The typed observation model, bounded historical history API and legacy actions default remain intact; the new Docker consumers introduce the findings above."
+        },
+        {
+          "round": 10,
+          "id": "M1_and_L1",
+          "disposition": "REMAIN_CLOSED_STATIC",
+          "evidence": "The unchanged tracker still uses pidfd readiness and RAII temporary environment cleanup, without secure-erasure or complete membership claims."
+        }
+      ],
+      "additional_verified_source_observations": [
+        "Docker target and each Runtime probe/cleanup helper have SQLite intents before helper spawn. Historical cleanup validates its epoch/job/exact-unit claim and uses a separate helper cookie, preventing old native-cookie scans from selecting that Runtime helper.",
+        "Normal cleanup verifies engine metadata, exact full container ID, Runtime/Project/Task/unit labels, operation UUID and deterministic registered creation name before kill. It rechecks labels/name/operation before non-forced removal. Container IDs absent from registered matching tuples and foreign unit labels are not destructive targets.",
+        "The finite profile supports local named Unix-socket contexts and bounded Docker 28/API responses, rejects Runtime DOCKER_HOST-only targeting and raw Compose/shared resource operations, and never globally prunes or deletes unexpected shared networks/volumes. Runtime endpoint qualification alone does not close H1.",
+        "Cookie actions are capped at 928; managed container cleanup at 32 containers/two actions each, and unexpected network/volume inventories at 32 each. Partial reports are retained by borrowing the report across the cleanup timeout. Empty/unavailable Docker observations do not produce aggregate Reclaimed, and unconfirmed resources remain quarantined.",
+        "Committed account-free source controls cover sibling labels/operation mismatch, engine change before cleanup, unsupported transport, stale cleanup claims and post-kill inspection timeout. They were inspected but not executed and do not cover the exact two causal cases reported above."
+      ],
+      "limits": [
+        "Only fixed git source objects at the stated source/baseline/approved contract were read. No dirty or subsequent source, peer reports, aggregate review documents or progress documents were inspected.",
+        "No tests, builds, actual Docker/native agents, accounts, network/configuration probes, process signals, host changes or repository source edits were performed. Proposed controls are not observed passing tests and parent test claims are not inherited.",
+        "Actual Docker CLI/context/engine behavior and authenticated native settings/hooks/sandbox compatibility remain unqualified by this static review; source fixtures do not establish daemon or OS conformance.",
+        "Runtime/Gates/CLI integration, optional user scopes and path/port release are explicitly unfinished. Their absence alone is not a finding, and this is not completed Phase2/native/MVP approval.",
+        "Docker observations and cookie scans remain incomplete/non-atomic best-effort hygiene. No complete delegation, scope-empty, process-death or security-sandbox guarantee is established."
+      ],
+      "owned_handles": {
+        "live_command_sessions": [],
+        "native_processes_started": [],
+        "tool_status": "All read-only command calls completed without session_id; no owned command, Docker process, Agent, discovered-process or worker handle remains."
+      }
+    }
+  ],
+  "root_disposition": "Verified three distinct defects: Docker config routing mismatch; mutation-ack timeout missing exact intent/action identity; changing inventories exceed composed persistence budget. Corrections and causal controls are pending verification on a new fixed commit. Fixture-only ambient endpoint isolation at 52b43e6 did not correct these production defects."
+}

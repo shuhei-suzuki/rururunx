@@ -29,6 +29,8 @@ struct ToolRequest {
     git_parent: Option<OperationId>,
     #[serde(default)]
     git_index: Option<PathBuf>,
+    #[serde(default)]
+    docker_routing: Option<docker::DockerRouting>,
 }
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", content = "value", rename_all = "snake_case")]
@@ -54,6 +56,8 @@ struct Grant {
     args: Vec<String>,
     environment: BTreeMap<String, String>,
     tool_bin: PathBuf,
+    #[serde(default)]
+    docker_routing: Option<docker::DockerRouting>,
 }
 async fn write_frame<T: Serialize>(
     stream: &mut (impl AsyncWrite + Unpin),
@@ -172,7 +176,8 @@ async fn serve(owner: Arc<RuntimeOwner>, mut stream: UnixStream) -> Result<()> {
             .iter().any(|root|request.cwd.starts_with(root)),"tool cwd outside declared namespace");
         let operation=OperationId::new();let mut plan=tools::plan(&profile,&unit,&request.tool,&request.args,operation)?;
         if request.tool=="docker" {
-            let target=super::docker::qualify_native(owner.clone(),&unit).await?;
+            let target=super::docker::qualify_native(owner.clone(),&unit,
+                request.docker_routing.as_ref().context("Docker routing reference missing")?).await?;
             let mut args=vec!["--context".into(),target.context];args.append(&mut plan.args);plan.args=args;
             plan.environment.insert("DOCKER_API_VERSION".into(),"1.48".into());
         }
@@ -213,7 +218,7 @@ async fn serve(owner: Arc<RuntimeOwner>, mut stream: UnixStream) -> Result<()> {
         let exchanged=async {
             let mut environment=profile.namespace_environment(&unit.cookie,owner.ipc_path());
             environment.extend(plan.environment);
-            write_frame(&mut stream,&Frame::Granted(Grant {operation,program:plan.program,args:plan.args,environment,tool_bin:profile.tool_bin.clone()})).await?;
+            write_frame(&mut stream,&Frame::Granted(Grant {operation,program:plan.program,args:plan.args,environment,tool_bin:profile.tool_bin.clone(),docker_routing:request.docker_routing.clone()})).await?;
             let (mut reader,mut writer)=stream.split();
             let mut decoder=Decoder::default();let mut started=false;let mut cancelled=false;
             let mut deadline=tokio::time::Instant::now()+Duration::from_secs(1800);
@@ -275,6 +280,11 @@ pub fn tool_entry() -> Result<Option<i32>> {
     } else {
         None
     };
+    let docker_routing = if name == "docker" {
+        Some(docker::routing_environment()?)
+    } else {
+        None
+    };
     let request = ToolRequest {
         unit: std::env::var("RRX_UNIT_ID")?.parse()?,
         cookie: std::env::var("RRX_PROCESS_COOKIE")?,
@@ -293,6 +303,7 @@ pub fn tool_entry() -> Result<Option<i32>> {
             .map(|s| s.parse())
             .transpose()?,
         git_index,
+        docker_routing,
     };
     let socket =
         std::env::var_os("RRX_RUNTIME_SOCKET").context("Runtime IPC missing; refusing tool")?;
@@ -330,6 +341,12 @@ async fn execute(
     cwd: &Path,
     stdout: Stdio,
 ) -> Result<(Option<i32>, Vec<u8>)> {
+    if let Some(routing) = &grant.docker_routing {
+        ensure!(
+            !routing.host_override && *routing == docker::routing_environment()?,
+            "Docker routing changed before tool execution"
+        );
+    }
     ensure!(
         grant.program.is_absolute(),
         "managed program must be absolute"
@@ -429,6 +446,7 @@ mod tests {
                 cwd: unit.worktree.clone(),
                 git_parent: None,
                 git_index: None,
+                docker_routing: None,
             },
         )
         .await?;
@@ -596,6 +614,7 @@ mod tests {
             cwd: unit.worktree.clone(),
             git_parent: None,
             git_index: None,
+            docker_routing: None,
         })
         .unwrap();
         let socket = serde_json::to_string(&owner.ipc_path()).unwrap();

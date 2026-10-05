@@ -2,13 +2,65 @@
 //! by rrx; the installed CLI retains its normal inherited authentication context.
 use super::*;
 use anyhow::{Context, Result, ensure};
+use serde::{Deserialize, Serialize};
+use std::os::unix::ffi::OsStrExt;
 use std::{collections::BTreeMap, path::Path, sync::Arc, time::Duration};
+
+pub(crate) const MAX_REMAINING: usize = 128;
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct DockerRouting {
+    config: String,
+    pub(crate) host_override: bool,
+}
+pub(crate) fn routing_environment() -> Result<DockerRouting> {
+    let root = std::env::var_os("DOCKER_CONFIG")
+        .map(std::path::PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("HOME").map(|home| std::path::PathBuf::from(home).join(".docker"))
+        })
+        .context("Docker configuration reference unavailable")?;
+    routing_reference(&root, std::env::var_os("DOCKER_HOST").is_some())
+}
+fn routing_reference(root: &Path, host_override: bool) -> Result<DockerRouting> {
+    ensure!(
+        root.is_absolute(),
+        "relative Docker configuration is unsupported"
+    );
+    let mut ancestor = root;
+    let mut suffix = Vec::new();
+    while !ancestor.try_exists()? {
+        suffix.push(
+            ancestor
+                .file_name()
+                .context("invalid Docker configuration reference")?,
+        );
+        ancestor = ancestor
+            .parent()
+            .context("Docker configuration has no existing ancestor")?;
+    }
+    let mut canonical = ancestor.canonicalize()?;
+    ensure!(
+        canonical.is_dir(),
+        "Docker configuration ancestor is not a directory"
+    );
+    for component in suffix.iter().rev() {
+        canonical.push(component);
+    }
+    // Only a digest of a directory reference travels. No configuration or
+    // authentication file is read, copied, transferred or replaced.
+    Ok(DockerRouting {
+        config: results::hex(canonical.as_os_str().as_bytes()),
+        host_override,
+    })
+}
 
 const VERSION_FORMAT: &str =
     "{{json .Client.Version}}\n{{json .Server.Version}}\n{{json .Server.APIVersion}}";
 const ENGINE_FORMAT: &str = "{{json .ID}}";
 #[derive(Clone)]
 pub(crate) struct DockerTarget {
+    pub config: String,
     pub context: String,
     pub engine: String,
     pub client: String,
@@ -18,6 +70,7 @@ pub(crate) struct DockerTarget {
 impl DockerTarget {
     fn receipt(&self) -> BTreeMap<String, String> {
         BTreeMap::from([
+            ("config".into(), self.config.clone()),
             ("transport".into(), "unix".into()),
             ("context".into(), self.context.clone()),
             ("engine".into(), self.engine.clone()),
@@ -39,6 +92,7 @@ impl DockerTarget {
                 .with_context(|| format!("Docker target {key} missing"))
         };
         let target = Self {
+            config: get("config")?,
             context: get("context")?,
             engine: get("engine")?,
             client: get("client")?,
@@ -48,6 +102,8 @@ impl DockerTarget {
         ensure!(get("transport")? == "unix", "unsupported Docker transport");
         ensure!(
             context_name(&target.context)
+                && target.config.len() == 64
+                && target.config.bytes().all(|b| b.is_ascii_hexdigit())
                 && target.engine.len() == 64
                 && target.engine.bytes().all(|b| b.is_ascii_hexdigit()),
             "Docker target metadata invalid"
@@ -105,7 +161,12 @@ fn args(context: &str, command: &[&str]) -> Vec<String> {
 pub(crate) async fn qualify_native(
     owner: Arc<RuntimeOwner>,
     unit: &ExecutionUnit,
+    caller: &DockerRouting,
 ) -> Result<DockerTarget> {
+    ensure!(
+        !caller.host_override && *caller == routing_environment()?,
+        "managed Docker routing differs from Runtime qualification"
+    );
     qualify_inner(owner, unit, None).await
 }
 async fn qualify_inner(
@@ -130,6 +191,13 @@ async fn qualify_inner(
         .into_iter()
         .find(|e| e.kind == "docker_target");
     let previous = existing.as_ref().map(DockerTarget::recorded).transpose()?;
+    let routing = routing_environment()?;
+    if let Some(previous) = &previous {
+        ensure!(
+            previous.config == routing.config,
+            "Docker configuration reference changed"
+        );
+    }
     let intent = if previous.is_none() {
         let id = OperationId::new();
         let mut store = owner
@@ -202,6 +270,7 @@ async fn qualify_inner(
             ensure!(previous.engine == engine, "Docker engine identity changed");
         }
         Ok::<_, anyhow::Error>(DockerTarget {
+            config: routing.config,
             context,
             engine,
             client,
@@ -269,11 +338,19 @@ async fn cleanup_for(
             .errors
             .push("docker_reconciliation_incomplete".into());
     }
+    normalize_report(&mut report);
+    report
+}
+fn normalize_report(report: &mut DockerCleanup) {
     report.remaining.sort();
     report.remaining.dedup();
+    if report.remaining.len() > MAX_REMAINING {
+        report.remaining.truncate(MAX_REMAINING);
+        report.errors.push("docker_remaining_limit_exceeded".into());
+        report.coverage = "limited; no full release confirmation".into();
+    }
     report.errors.sort();
     report.errors.dedup();
-    report
 }
 async fn cleanup_inner(
     owner: Arc<RuntimeOwner>,
@@ -300,6 +377,13 @@ async fn cleanup_inner(
             .find(|e| e.kind == "docker_target")
             .context("Docker target missing")?,
     )?;
+    if fixture.is_none() {
+        let routing = routing_environment()?;
+        ensure!(
+            !routing.host_override && routing.config == target.config,
+            "historical Docker routing differs from recorded target"
+        );
+    }
     let profile = resources::ResourceManager::new(owner.clone()).profile(&claim.unit)?;
     let program = fixture
         .or_else(|| profile.real_tools.get("docker").map(|p| p.as_path()))
@@ -343,22 +427,24 @@ async fn cleanup_inner(
         }
         if selected.running {
             io.check_engine().await?;
-            let killed = io
-                .run(
-                    "container-kill",
-                    &args(&target.context, &["container", "kill", id]),
-                )
-                .await;
+            let action = report.actions.len();
             report.actions.push(CleanupAction {
                 target: format!("container:{id}"),
                 action: CleanupActionKind::DockerKill,
-                outcome: if killed.is_ok() {
-                    CleanupActionOutcome::Sent
-                } else {
-                    CleanupActionOutcome::Unknown
-                },
+                outcome: CleanupActionOutcome::Unknown,
                 confirmation: CleanupConfirmation::NotAttempted,
             });
+            let killed = io
+                .run(
+                    &format!("container-kill:{id}:{}", target.engine),
+                    &args(&target.context, &["container", "kill", id]),
+                )
+                .await;
+            report.actions[action].outcome = if killed.is_ok() {
+                CleanupActionOutcome::Sent
+            } else {
+                CleanupActionOutcome::Unknown
+            };
         }
         // Recheck the exact label/name/operation tuple before non-forced removal.
         let stopped = match io.inspect(id).await {
@@ -386,22 +472,24 @@ async fn cleanup_inner(
             action.confirmation = CleanupConfirmation::Exited;
         }
         io.check_engine().await?;
-        let removed = io
-            .run(
-                "container-remove",
-                &args(&target.context, &["container", "rm", id]),
-            )
-            .await;
+        let action = report.actions.len();
         report.actions.push(CleanupAction {
             target: format!("container:{id}"),
             action: CleanupActionKind::DockerRemove,
-            outcome: if removed.is_ok() {
-                CleanupActionOutcome::Confirmed
-            } else {
-                CleanupActionOutcome::Unknown
-            },
+            outcome: CleanupActionOutcome::Unknown,
             confirmation: CleanupConfirmation::NotAttempted,
         });
+        let removed = io
+            .run(
+                &format!("container-remove:{id}:{}", target.engine),
+                &args(&target.context, &["container", "rm", id]),
+            )
+            .await;
+        report.actions[action].outcome = if removed.is_ok() {
+            CleanupActionOutcome::Confirmed
+        } else {
+            CleanupActionOutcome::Unknown
+        };
     }
     io.check_engine().await?;
     let final_ids = io.inventory("container", &profile.docker_labels).await?;
@@ -450,7 +538,7 @@ async fn cleanup_inner(
     report.errors.sort();
     report.errors.dedup();
     ensure!(
-        report.remaining.len() <= 96 && report.errors.len() <= 16,
+        report.remaining.len() <= MAX_REMAINING && report.errors.len() <= 16,
         "Docker receipt exceeds bound"
     );
     Ok(())
