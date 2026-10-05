@@ -557,7 +557,7 @@ async fn git_value(root: &Path, args: &[&str], deadline: tokio::time::Instant) -
         args,
         deadline,
         latch,
-        #[cfg(all(test, target_os = "macos"))]
+        #[cfg(test)]
         None,
     )
     .await
@@ -568,7 +568,7 @@ async fn git_value_owned(
     args: &[&str],
     deadline: tokio::time::Instant,
     latch: Arc<AtomicBool>,
-    #[cfg(all(test, target_os = "macos"))] plan: Option<crate::adapter::ProcessInspectionPlan>,
+    #[cfg(test)] git_context: Option<crate::adapter::TestGitContext>,
 ) -> Result<String> {
     ensure!(
         !latch.load(Ordering::SeqCst),
@@ -584,40 +584,15 @@ async fn git_value_owned(
     let arguments = std::iter::once("--no-optional-locks".to_string())
         .chain(args.iter().map(|s| s.to_string()))
         .collect::<Vec<_>>();
-    #[cfg(all(test, target_os = "macos"))]
-    let observed = match plan {
-        Some(plan) => {
-            crate::adapter::bounded_git_raw_with_plan(
-                executable,
-                root,
-                &arguments,
-                git::native_environment(),
-                deadline,
-                uncertain.clone(),
-                plan,
-            )
-            .await
-        }
-        None => {
-            crate::adapter::bounded_git_raw(
-                executable,
-                root,
-                &arguments,
-                git::native_environment(),
-                deadline,
-                uncertain.clone(),
-            )
-            .await
-        }
-    };
-    #[cfg(not(all(test, target_os = "macos")))]
-    let observed = crate::adapter::bounded_git_raw(
+    let observed = crate::adapter::bounded_git_raw_selected(
         executable,
         root,
         &arguments,
         git::native_environment(),
         deadline,
         uncertain.clone(),
+        #[cfg(test)]
+        git_context,
     )
     .await;
     let observed = observed.map_err(|e| anyhow::anyhow!("bounded context Git: {e:?}"));
@@ -1446,7 +1421,7 @@ mod tests {
             &["--version"],
             deadline(),
             latch.clone(),
-            Some(plan.clone()),
+            Some(crate::adapter::TestGitContext::with_plan(plan.clone())),
         )
         .await;
         let cause = format!("{:#}", result.unwrap_err());

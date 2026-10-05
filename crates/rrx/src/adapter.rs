@@ -1,6 +1,6 @@
 //! Thin native process contracts. Context selection and workflow decisions belong upstream.
-pub mod grok;
 mod git_owner;
+pub mod grok;
 #[cfg(test)]
 pub(crate) use git_owner::TestGitContext;
 #[cfg(target_os = "macos")]
@@ -486,6 +486,8 @@ pub struct GenericCliAdapter {
     store: SharedStore,
     git_executable: Option<PathBuf>,
     #[cfg(test)]
+    git_context: Option<TestGitContext>,
+    #[cfg(test)]
     before_running_write: Option<(
         Arc<tokio::sync::Notify>,
         Arc<tokio::sync::Notify>,
@@ -515,6 +517,8 @@ impl GenericCliAdapter {
             command,
             store,
             git_executable: None,
+            #[cfg(test)]
+            git_context: None,
             #[cfg(test)]
             before_running_write: None,
             #[cfg(test)]
@@ -619,6 +623,8 @@ impl AgentAdapter for GenericCliAdapter {
                     self.git_executable.as_deref(),
                     reservation.process_uncertain.clone(),
                     expected,
+                    #[cfg(test)]
+                    self.git_context.clone(),
                 )
                 .await?;
                 let mut command = Command::new(executable);
@@ -642,7 +648,9 @@ impl AgentAdapter for GenericCliAdapter {
             let mut child = match launch {
                 Ok(child) => ProcessGroup::new(child, reservation.process_uncertain.clone())?,
                 Err(e) => {
-                    session.state = if e.kind == ErrorKind::SessionLost || reservation.process_uncertain.load(Ordering::SeqCst) {
+                    session.state = if e.kind == ErrorKind::SessionLost
+                        || reservation.process_uncertain.load(Ordering::SeqCst)
+                    {
                         SessionState::Lost
                     } else {
                         SessionState::Failed
@@ -1127,6 +1135,7 @@ async fn validate_git(
     executable: Option<&Path>,
     process_uncertain: Arc<AtomicBool>,
     expected: (u64, u64, u64),
+    #[cfg(test)] git_context: Option<TestGitContext>,
 ) -> AdapterResult<()> {
     let (project, task, goal) = {
         let store = store
@@ -1163,14 +1172,18 @@ async fn validate_git(
         let executable = executable.clone();
         let environment = crate::git::native_environment();
         let process_uncertain = process_uncertain.clone();
+        #[cfg(test)]
+        let git_context = git_context.clone();
         async move {
-            bounded_git(
+            bounded_git_selected(
                 &executable,
                 &cwd,
                 &args,
                 environment,
                 deadline,
                 process_uncertain,
+                #[cfg(test)]
+                git_context,
             )
             .await
         }
@@ -1286,6 +1299,52 @@ pub(crate) async fn bounded_git(
         .map_err(|_| error(ErrorKind::ParseFailure, "invalid Git metadata encoding"))
 }
 
+async fn bounded_git_selected(
+    executable: &Path,
+    cwd: &Path,
+    args: &[String],
+    environment: Vec<(std::ffi::OsString, std::ffi::OsString)>,
+    deadline: tokio::time::Instant,
+    process_uncertain: Arc<AtomicBool>,
+    #[cfg(test)] context: Option<TestGitContext>,
+) -> AdapterResult<String> {
+    let output = bounded_git_raw_selected(
+        executable,
+        cwd,
+        args,
+        environment,
+        deadline,
+        process_uncertain,
+        #[cfg(test)]
+        context,
+    )
+    .await?;
+    String::from_utf8(output)
+        .map(|value| value.trim().to_string())
+        .map_err(|_| error(ErrorKind::ParseFailure, "invalid Git metadata encoding"))
+}
+async fn bounded_git_raw_selected(
+    executable: &Path,
+    cwd: &Path,
+    args: &[String],
+    environment: Vec<(std::ffi::OsString, std::ffi::OsString)>,
+    deadline: tokio::time::Instant,
+    process_uncertain: Arc<AtomicBool>,
+    #[cfg(test)] context: Option<TestGitContext>,
+) -> AdapterResult<Vec<u8>> {
+    git_owner::run(
+        executable,
+        cwd,
+        args,
+        environment,
+        deadline,
+        process_uncertain,
+        #[cfg(test)]
+        context,
+    )
+    .await
+}
+
 /// Preserve NUL-delimited inventory bytes; scalar callers retain trimming above.
 pub(crate) async fn bounded_git_raw(
     executable: &Path,
@@ -1338,15 +1397,25 @@ async fn bounded_git_raw_inner(
     #[cfg(all(test, target_os = "macos"))] plan: Option<ProcessInspectionPlan>,
 ) -> AdapterResult<Vec<u8>> {
     git_owner::run(
-        executable, cwd, args, environment, deadline, process_uncertain,
+        executable,
+        cwd,
+        args,
+        environment,
+        deadline,
+        process_uncertain,
         #[cfg(test)]
         {
             #[cfg(target_os = "macos")]
-            { plan.map(TestGitContext::with_plan) }
+            {
+                plan.map(TestGitContext::with_plan)
+            }
             #[cfg(not(target_os = "macos"))]
-            { None }
+            {
+                None
+            }
         },
-    ).await
+    )
+    .await
 }
 async fn read_git_output(reader: impl AsyncRead + Unpin) -> AdapterResult<Vec<u8>> {
     let mut bytes = vec![];
