@@ -1,6 +1,7 @@
 # Issue 6 environment admission component: verification
 
-Current state: Design2 proposed; no Rust implementation or source/native acceptance.
+Current state: Design3 proposed; Design1/2 not qualified. No Rust implementation or
+source/native acceptance.
 Ordinary Codex availability remains EMPTY. This consumes existing Issue51 policy
 only; no native workload/backend, managed ownership, settlement or configuration
 origin producer exists from these artifacts.
@@ -51,3 +52,43 @@ tree gates are not relabeled as those later main runs.
 
 No component test, names DTO, callback or source proposal closes #6/51/19/58/60/14,
 IPC02, native defaults/custom-provider compatibility, Task attach or four-plus MVP.
+
+## Design2, public immutable `9884ec3`
+
+Two fresh peer-free native manual zero-tool sessions reviewed eighteen public inputs
+byte-compared with immutable Git blobs; common packet size 470,502 bytes. Both
+returned request_changes and verified actual retained selected-group cleanup/reap
+and joined stdin writer. Normal auth/settings/rules/hooks/model/effort were retained.
+
+| Review | Native session | Findings | Observed cost | Native API duration |
+| --- | --- | --- | --- | --- |
+| A2 | `89b99c82-27c3-48b8-8bf5-e7f76c5f7fdf` | 0 high, 1 medium, 5 low | $2.584572 | 540,736 ms |
+| B2 | `8d072a7b-9832-4957-9acc-1779068473b2` | 0 high, 3 medium, 5 low | $2.670736 | 585,877 ms |
+
+Verified against existing51/current source: conflicts apply to ALL retained
+non-control baseline names, including locale/terminal names. Main effective config
+needs the same pure reference predicate as discovery; extraction shape, errors and
+bounds must be explicit. Pre-exec publication must leave Preparing intact and really
+adds versioned session.saved events. Design3 proposes these finite corrections plus
+the real-stop test seam, exact ordered constructor filter, own candidate inspection
+and master-doc targets. It carries default-provider conformance as OPEN, never infers
+optional/auth requiredness or origin, and adds no new native configuration probe.
+
+Read-only omitted-authority checks found Project.environment_refs is always serialized
+as an array; native RPC MAX_MESSAGE is 4MiB. The shared Git helper forwards ambient
+OS pairs except nine routing names: no credential-free claim is justified. Ordinary
+EMPTY still refuses before Codex preparation; that Git environment/ownership residual
+stays OPEN under #51/#60. No shared source or existing authority is changed here.
+
+Docs CI trigger `6264702`, run 37244374385, checked synthetic merge `5f66ed4` with
+complete tree equal to the trigger. Linux passed; macOS context had 5 passed/11 failed,
+first actual inspection deadline 259,014µs with zero stdout/WouldBlock/status pending,
+then owned kill/wait reap. Cause UNKNOWN. Trigger `9884ec3`, run 37245485070, checked
+`bedbfd5` with complete tree equal to that trigger; both OS jobs/every step passed.
+These are different docs/source compositions, not a same-head rerun or failure-cause
+proof. Actual parents/tree/job steps and the failed exact facts are preserved in
+the adjacent CI record. Historical main and failed-harness evidence remains separate.
+
+Design3 still needs fresh independent qualification. These results do not approve
+Design2 retrospectively, authorize source through an unqualified design, release
+historical owned resources or qualify a native workload/backend/settlement producer.
