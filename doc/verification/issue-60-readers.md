@@ -372,3 +372,18 @@ A new default full run at the actual committed67-composed source will capture
 current stage diagnostics; the change is cfg(test) observation/source-composition,
 not a production availability fix or a same-old-head rerun. The old full Debug
 and Release failures remain explicit blockers until disposition is supported.
+
+Current composed1b37c78 full DEFAULT Debug and distinct full DEFAULT Release
+both FAILED: each library304 PASS/24 ignored (48.58s/48.12s), then adapter
+integration18 PASS/1 FAIL (10.28s/11.14s). The sole failure is the existing
+first-Pending cancellation assertion expecting LOST, observing FAILED. These
+runs stopped after that target; later workspace targets did not execute.
+The first Pending poll cannot establish actual spawn in the independent owner.
+The timing inference is removed; unread-stdin's exact Failed assertion remains.
+The private actual Generic consumer already pauses before AuthorizeSpawn and
+after actual StdChild creation, requires exact Failed/unreserved vs Lost/reserved,
+and verifies no late rewrite. It now additionally calls actual public second
+start in the held live case and requires StateConflict. No arbitrary state
+alternatives, uncertainty guard, production code, timing or cleanup changed.
+Old9c environment/watchdog failures remain failed/cause AND regression UNKNOWN;
+the current1b37 results do not establish their cause or full workspace readiness.

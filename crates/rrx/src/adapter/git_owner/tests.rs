@@ -719,6 +719,7 @@ async fn actual_generic_launch_drop_distinguishes_admitted_from_live_git() {
             GenericCliAdapter::new("fake".into(), vec!["/bin/cat".into()], store.clone()).unwrap();
         adapter.git_context = Some(context.clone());
         let request = super::super::tests::fixture_request(project, &task, worktree);
+        let retry_request = request.clone();
         let launch = tokio::spawn(async move { adapter.start(request).await });
         pause.reached().await;
         launch.abort();
@@ -737,6 +738,16 @@ async fn actual_generic_launch_drop_distinguishes_admitted_from_live_git() {
         assert_eq!(saved.state, expected);
         assert_eq!(crate::git::executor_reserved(&saved), live);
         assert!(saved.pid.is_none() && saved.native_ref.is_none());
+        if live {
+            let retry =
+                GenericCliAdapter::new("fake".into(), vec!["/bin/cat".into()], store.clone())
+                    .unwrap();
+            assert_eq!(
+                retry.start(retry_request).await.unwrap_err().kind,
+                ErrorKind::StateConflict,
+                "the actual public start must reject the live Git loss reservation"
+            );
+        }
         drop(release);
         released(&context).await;
         let after = store.lock().unwrap().session(saved.id).unwrap().unwrap().0;
