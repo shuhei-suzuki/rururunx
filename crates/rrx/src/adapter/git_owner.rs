@@ -391,7 +391,7 @@ impl Drop for FrameGuard {
 /// Vaults own resources before effects; frames borrow them and cannot drop them on unwind.
 struct OpRecord {
     ticket: Arc<Ticket>,
-    context: Context,
+    _context: Context,
     supervisor: Mutex<Option<thread::JoinHandle<()>>>,
     worker: Mutex<Option<thread::JoinHandle<()>>>,
     runtime: Mutex<Option<Runtime>>,
@@ -416,7 +416,7 @@ impl OpRecord {
                 cancel_wake: Notify::new(),
                 commands: OnceLock::new(),
             }),
-            context,
+            _context: context,
             supervisor: Mutex::new(None),
             worker: Mutex::new(None),
             runtime: Mutex::new(None),
@@ -702,7 +702,7 @@ async fn supervisor_work(
         // Child remains anchored in NativeAssets during fallible registrations.
         (|| -> AdapterResult<()> {
             #[cfg(test)]
-            if record.context.hooks.initialized_error {
+            if record._context.hooks.initialized_error {
                 return Err(error(
                     ErrorKind::LaunchFailure,
                     "Git pipe initialization failed",
@@ -722,7 +722,7 @@ async fn supervisor_work(
         })()
     };
     #[cfg(test)]
-    if record.context.hooks.supervisor_panic {
+    if record._context.hooks.supervisor_panic {
         panic!("synthetic Git supervisor inner panic");
     }
     let observed = if initialized.is_ok() {
@@ -981,14 +981,14 @@ fn first_cleanup(_record: &OpRecord, native: &mut NativeAssets) {
     }
     native.signal_issued = true;
     #[cfg(test)]
-    if _record.context.hooks.worker_panic {
+    if _record._context.hooks.worker_panic {
         panic!("synthetic Git native worker panic");
     }
     let result = match native.group {
         None => Err(io::Error::other("Git child group binding unavailable")),
         Some(pid) => {
             #[cfg(all(test, target_os = "macos"))]
-            let signal = match &_record.context.plan {
+            let signal = match &_record._context.plan {
                 Some(plan) => plan.signal(pid),
                 None => kill_process_group(pid, Signal::KILL),
             };
@@ -997,7 +997,7 @@ fn first_cleanup(_record: &OpRecord, native: &mut NativeAssets) {
             #[cfg(target_os = "macos")]
             let result = resolve_macos_signal_result(signal, || {
                 #[cfg(test)]
-                if let Some(plan) = &_record.context.plan
+                if let Some(plan) = &_record._context.plan
                     && let Some(observation) = plan.inspect(pid.as_raw_nonzero().get())
                 {
                     return observation;
