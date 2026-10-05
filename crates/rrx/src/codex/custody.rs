@@ -56,6 +56,8 @@ impl Pool {
             accepted: AtomicUsize::new(0),
             inflight: AtomicUsize::new(0),
             effects: AtomicUsize::new(0),
+            #[cfg(test)]
+            effect_requests: AtomicUsize::new(0),
             unknown: AtomicBool::new(false),
             worker_uncertain: AtomicBool::new(false),
             joined: AtomicBool::new(false),
@@ -230,6 +232,9 @@ pub(super) struct Inventory {
     accepted: AtomicUsize,
     inflight: AtomicUsize,
     effects: AtomicUsize,
+    // Closed-fixture creation requests can create a resource; fixed Notes cannot.
+    #[cfg(test)]
+    effect_requests: AtomicUsize,
     unknown: AtomicBool,
     worker_uncertain: AtomicBool,
     joined: AtomicBool,
@@ -259,6 +264,12 @@ impl Inventory {
         self.effects.load(Ordering::SeqCst) != 0
             || self.accepted.load(Ordering::SeqCst) != 0
             || self.inflight.load(Ordering::SeqCst) != 0
+    }
+    pub fn outstanding_effects(&self) -> bool {
+        let effects = self.effects.load(Ordering::SeqCst) != 0;
+        #[cfg(test)]
+        let effects = effects || self.effect_requests.load(Ordering::SeqCst) != 0;
+        effects
     }
     pub fn joined(&self) -> bool {
         self.joined.load(Ordering::SeqCst)
@@ -307,9 +318,11 @@ impl Inventory {
                     "preparation effects revoked",
                 ));
             }
+            self.effect_requests.fetch_add(1, Ordering::SeqCst);
             self.accepted.fetch_add(1, Ordering::SeqCst);
             if self.sender.try_send(Request::Create(spec, reply)).is_err() {
                 self.accepted.fetch_sub(1, Ordering::SeqCst);
+                self.effect_requests.fetch_sub(1, Ordering::SeqCst);
                 return Err(failure(ErrorKind::StateConflict, "preparation inbox full"));
             }
         }
@@ -458,6 +471,8 @@ fn run(inventory: &Arc<Inventory>, mut receiver: mpsc::Receiver<Request>) -> Cre
             let Ok(request) = receiver.try_recv() else {
                 break;
             };
+            #[cfg(test)]
+            let effect_request = matches!(&request, Request::Create(..));
             inventory.inflight.fetch_add(1, Ordering::SeqCst);
             #[cfg(test)]
             let mut reply_after_retirement = None;
@@ -505,6 +520,10 @@ fn run(inventory: &Arc<Inventory>, mut receiver: mpsc::Receiver<Request>) -> Cre
             }
             inventory.inflight.fetch_sub(1, Ordering::SeqCst);
             inventory.accepted.fetch_sub(1, Ordering::SeqCst);
+            #[cfg(test)]
+            if effect_request {
+                inventory.effect_requests.fetch_sub(1, Ordering::SeqCst);
+            }
             // The response can enter the actor's no-work error arm immediately.
             // Publish it only after that request's bookkeeping is retired.
             #[cfg(test)]

@@ -601,6 +601,8 @@ mod custody_mechanics {
         custody.retirement_target(if note_pending { 2 } else { 1 });
         before.release();
         wait(|| custody.accepted() == 1).await;
+        assert!(custody.outstanding_effects());
+        assert!(control.holds_resources());
         if note_pending {
             control
                 .take_endpoint()
@@ -618,9 +620,22 @@ mod custody_mechanics {
         let early_reply = tokio::time::timeout(Duration::from_secs(2), after.reached())
             .await
             .is_ok();
+        assert!(!note_pending || early_reply, "actual queued Note must overlap the actor error arm");
         if early_reply {
             after.release();
-            control.wait_finished().await.unwrap();
+            let outcome = control.wait_finished().await.unwrap();
+            if note_pending {
+                assert!(matches!(outcome, Outcome::FreshUnpublished { .. }));
+                wait(|| adapter.registry().unwrap().is_empty()).await;
+                // No-work registry bookkeeping is independent of actual job
+                // custody: the blocked custodian cannot have joined/refunded.
+                assert_eq!(factory.pool.used(), 3);
+                assert!(!custody.joined());
+                assert!(custody.outstanding());
+                assert!(!custody.outstanding_effects());
+                assert!(control.original_disposition().is_none());
+                assert!(!matches!(control.preparation.state().unwrap(), Admission::Consumed));
+            }
         }
         drop(pause);
         after.reached().await;

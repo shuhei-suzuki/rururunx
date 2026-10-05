@@ -190,8 +190,20 @@ impl Control {
         pool.drain();
     }
     pub fn holds_resources(&self) -> bool {
-        self.custody()
-            .is_some_and(|c| c.outstanding() || (c.created() && c.unknown()))
+        self.custody().is_some_and(|c| {
+            // An exact normal pre-work disposition can leave fixed metadata to
+            // drain. Pool custody still retains every job until actual joins.
+            // Preparing/Lost and all created/unknown effects keep their hold.
+            let no_work = matches!(
+                &*self.phase.borrow(),
+                Phase::Finished(outcome) if matches!(outcome.as_ref(),
+                    Outcome::FreshUnpublished { .. } | Outcome::RestoredBeforeAdmission { .. })
+            );
+            if no_work && !c.created() && !c.unknown() && !c.outstanding_effects() {
+                return false;
+            }
+            c.outstanding() || (c.created() && c.unknown())
+        })
     }
     pub fn original_disposition(&self) -> Option<Outcome> {
         let phase = self.subscribe().borrow().clone();
@@ -212,10 +224,9 @@ impl Control {
         }
     }
     pub fn finish_no_work(&self, outcome: Outcome) {
-        if self
-            .custody()
-            .is_some_and(|c| c.outstanding() || (c.created() && c.unknown()))
-        {
+        if self.custody().is_some_and(|c| {
+            c.outstanding_effects() || (c.created() && (c.outstanding() || c.unknown()))
+        }) {
             let cause = outcome.cause().cloned().unwrap_or(Cause::Failed(
                 ErrorKind::StateConflict,
                 "preparation custody held".into(),
