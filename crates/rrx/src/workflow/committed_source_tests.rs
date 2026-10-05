@@ -1018,3 +1018,285 @@ async fn actual_first_adoption_refuses_payload_drift_and_stale_task_cas_before_n
         );
     }
 }
+
+#[derive(Clone, Copy, Debug)]
+enum GateClaimFault {
+    TaskVersion,
+    ProjectVersion,
+    FullContext,
+    ForeignScope,
+    Phase,
+    Prerequisites,
+    PriorObservations,
+    SourcePayload,
+}
+struct GateClaimControl {
+    gate: execution::workflow_gates::ManagedWorkflowGates,
+    owner: Arc<execution::RuntimeOwner>,
+    fault: GateClaimFault,
+    checked: std::sync::Mutex<bool>,
+}
+impl PhaseGates for GateClaimControl {
+    fn complete(
+        &self,
+        mut invocation: PhaseInvocation,
+        transport: Option<SessionStatus>,
+    ) -> WorkflowFuture<'_, GateOutcome> {
+        Box::pin(async move {
+            if invocation.phase != Phase::Worktree {
+                return self.gate.complete(invocation, transport).await;
+            }
+            let scope = invocation.task.scope();
+            let (unit, effects, receipts) = {
+                let store = self.owner.store.lock().unwrap();
+                let units = store.execution_units(Some(&scope)).unwrap();
+                assert_eq!(units.len(), 1);
+                let unit = units[0].clone();
+                (
+                    unit.clone(),
+                    serde_json::to_value(store.managed_effects(unit.id).unwrap()).unwrap(),
+                    serde_json::to_value(store.records(&scope, RecordKind::Verification).unwrap())
+                        .unwrap(),
+                )
+            };
+            match self.fault {
+                GateClaimFault::TaskVersion => invocation.task.version += 1,
+                GateClaimFault::ProjectVersion => invocation.project.version += 1,
+                GateClaimFault::FullContext => {
+                    invocation.context.data["generation"] = serde_json::json!(999_999);
+                }
+                GateClaimFault::ForeignScope => {
+                    invocation.sources.scope.goal_id = Some(GoalId::new());
+                }
+                GateClaimFault::Phase => invocation.phase = Phase::Issue,
+                GateClaimFault::Prerequisites => {
+                    assert_eq!(invocation.prerequisites.len(), 1);
+                    assert_eq!(invocation.prerequisites[0].phase, Phase::Issue);
+                    invocation.prerequisites.clear();
+                }
+                GateClaimFault::PriorObservations => {
+                    assert!(invocation.prior_observations.is_empty());
+                    invocation.prior_observations.push(GateObservation {
+                        sources: invocation.sources.clone(),
+                        outcome: None,
+                        error: Some("injected foreign observation claim".into()),
+                        at: now_ms(),
+                    });
+                }
+                GateClaimFault::SourcePayload => {
+                    invocation
+                        .sources
+                        .payload
+                        .push_str("\ninjected source body\n");
+                }
+            }
+            let result = self.gate.complete(invocation, transport).await;
+            assert!(result.is_err(), "{:?} was accepted", self.fault);
+            let expected = match self.fault {
+                GateClaimFault::TaskVersion
+                | GateClaimFault::ProjectVersion
+                | GateClaimFault::ForeignScope => "foreign, stale or inactive gate owners",
+                GateClaimFault::FullContext
+                | GateClaimFault::Phase
+                | GateClaimFault::Prerequisites
+                | GateClaimFault::PriorObservations => {
+                    "exact Evaluating Context/claim/prerequisites"
+                }
+                GateClaimFault::SourcePayload => {
+                    "initial gate differs from prepared committed input"
+                }
+            };
+            let error = result.unwrap_err();
+            assert!(
+                format!("{error:#}").contains(expected),
+                "{:?}: {error:#}",
+                self.fault
+            );
+            {
+                let store = self.owner.store.lock().unwrap();
+                assert_eq!(
+                    serde_json::to_value(store.managed_effects(unit.id).unwrap()).unwrap(),
+                    effects,
+                    "{:?} added or changed a managed helper effect",
+                    self.fault
+                );
+                assert_eq!(
+                    serde_json::to_value(store.records(&scope, RecordKind::Verification).unwrap())
+                        .unwrap(),
+                    receipts,
+                    "{:?} recorded a successful receipt",
+                    self.fault
+                );
+                assert_eq!(
+                    serde_json::to_value(store.execution_unit(unit.id).unwrap()).unwrap(),
+                    serde_json::to_value(&unit).unwrap(),
+                    "{:?} changed the prepared unit",
+                    self.fault
+                );
+                assert!(
+                    store
+                        .records(&scope, RecordKind::Session)
+                        .unwrap()
+                        .is_empty()
+                );
+                assert!(store.result_artifacts(&scope).unwrap().is_empty());
+            }
+            *self.checked.lock().unwrap() = true;
+            Err(error)
+        })
+    }
+}
+
+#[tokio::test]
+async fn production_gate_claim_inputs_refuse_before_helpers_receipts_or_native_effects() {
+    for fault in [
+        GateClaimFault::TaskVersion,
+        GateClaimFault::ProjectVersion,
+        GateClaimFault::FullContext,
+        GateClaimFault::ForeignScope,
+        GateClaimFault::Phase,
+        GateClaimFault::Prerequisites,
+        GateClaimFault::PriorObservations,
+        GateClaimFault::SourcePayload,
+    ] {
+        let f = Fixture::new("codex", WorkflowClass::Standard).await;
+        // This existing helper installs actual acceptance criteria; no fixture Passed gate is used.
+        drop(f.production_engine(""));
+        let prepared = f.sources.prepare(f.task.id, "codex").await.unwrap();
+        let control = Arc::new(GateClaimControl {
+            gate: execution::workflow_gates::ManagedWorkflowGates::new(
+                f.owner.clone(),
+                f.sources.clone(),
+            )
+            .unwrap(),
+            owner: f.owner.clone(),
+            fault,
+            checked: std::sync::Mutex::new(false),
+        });
+        let engine = WorkflowEngine::new(
+            f.owner.store(),
+            f.registry.clone(),
+            f.config.clone(),
+            f.sources.clone(),
+            control.clone(),
+        )
+        .unwrap();
+        engine.initialize(f.task.id, None).await.unwrap();
+        assert!(matches!(
+            engine.step(f.task.id, BTreeMap::new()).await.unwrap(),
+            StepResult::Completed {
+                phase: Phase::Issue
+            }
+        ));
+        assert!(matches!(
+            engine.step(f.task.id, BTreeMap::new()).await.unwrap(),
+            StepResult::Waiting {
+                phase: Phase::Worktree,
+                ..
+            }
+        ));
+        assert!(
+            *control.checked.lock().unwrap(),
+            "{fault:?} did not reach actual gate"
+        );
+        let snapshot = engine.snapshot(f.task.id).unwrap();
+        assert!(!snapshot.completed.contains_key(&Phase::Worktree));
+        let attempt = &snapshot.history[snapshot.active.unwrap()];
+        assert_eq!(attempt.phase, Phase::Worktree);
+        assert_eq!(attempt.state, AttemptState::Evaluating);
+        assert_eq!(attempt.observations.len(), 1);
+        assert!(attempt.observations[0].outcome.is_none());
+        f.assert_no_native(prepared.id);
+        engine
+            .cancel(f.task.id, "claim negative control finished".into())
+            .unwrap();
+    }
+}
+
+struct RememberGateClaim {
+    gate: execution::workflow_gates::ManagedWorkflowGates,
+    invocation: std::sync::Mutex<Option<PhaseInvocation>>,
+}
+impl PhaseGates for RememberGateClaim {
+    fn complete(
+        &self,
+        invocation: PhaseInvocation,
+        transport: Option<SessionStatus>,
+    ) -> WorkflowFuture<'_, GateOutcome> {
+        Box::pin(async move {
+            if invocation.phase == Phase::Worktree {
+                *self.invocation.lock().unwrap() = Some(invocation.clone());
+            }
+            self.gate.complete(invocation, transport).await
+        })
+    }
+}
+#[tokio::test]
+async fn production_gate_closed_claim_cannot_be_replayed_into_another_receipt() {
+    let f = Fixture::new("codex", WorkflowClass::Quick).await;
+    drop(f.production_engine(""));
+    let prepared = f.sources.prepare(f.task.id, "codex").await.unwrap();
+    let control = Arc::new(RememberGateClaim {
+        gate: execution::workflow_gates::ManagedWorkflowGates::new(
+            f.owner.clone(),
+            f.sources.clone(),
+        )
+        .unwrap(),
+        invocation: std::sync::Mutex::new(None),
+    });
+    let engine = WorkflowEngine::new(
+        f.owner.store(),
+        f.registry.clone(),
+        f.config.clone(),
+        f.sources.clone(),
+        control.clone(),
+    )
+    .unwrap();
+    engine.initialize(f.task.id, None).await.unwrap();
+    assert!(matches!(
+        engine.step(f.task.id, BTreeMap::new()).await.unwrap(),
+        StepResult::Completed {
+            phase: Phase::Worktree
+        }
+    ));
+    let invocation = control.invocation.lock().unwrap().take().unwrap();
+    let workflow = serde_json::to_value(engine.snapshot(f.task.id).unwrap()).unwrap();
+    let (effects, receipts) = {
+        let store = f.owner.store.lock().unwrap();
+        (
+            serde_json::to_value(store.managed_effects(prepared.id).unwrap()).unwrap(),
+            serde_json::to_value(
+                store
+                    .records(&f.task.scope(), RecordKind::Verification)
+                    .unwrap(),
+            )
+            .unwrap(),
+        )
+    };
+    let error = control.gate.complete(invocation, None).await.unwrap_err();
+    assert!(format!("{error:#}").contains("foreign, stale or inactive gate owners"));
+    {
+        let store = f.owner.store.lock().unwrap();
+        assert_eq!(
+            serde_json::to_value(store.managed_effects(prepared.id).unwrap()).unwrap(),
+            effects
+        );
+        assert_eq!(
+            serde_json::to_value(
+                store
+                    .records(&f.task.scope(), RecordKind::Verification)
+                    .unwrap()
+            )
+            .unwrap(),
+            receipts
+        );
+    }
+    assert_eq!(
+        serde_json::to_value(engine.snapshot(f.task.id).unwrap()).unwrap(),
+        workflow
+    );
+    f.assert_no_native(prepared.id);
+    engine
+        .cancel(f.task.id, "closed claim control finished".into())
+        .unwrap();
+}
