@@ -240,7 +240,7 @@ Issue9's [staged formal-refusal design](doc/design/issue-9-formal-refusal-integr
 maps the approved unavailable-review contract to actual Workflow consumers. It is
 staged in this branch: new formal Review/Pr/MergeGate/Cleanup/finalization consumers
 return typed `ReviewGatingUnavailable`. Legacy single-reviewer behavior describes
-main/history only; full regression remains red, and positive
+the pre-change main baseline/history only; full regression remains red, and positive
 ReviewSet/native-profile, ownership and migration gates remain open.
 The command examples above describe the MVP target. Currently implemented:
 - Issue 18 adds the Task-scoped `RepositoryContext` Rust API for lexical repository
@@ -296,7 +296,8 @@ Install [Rust with rustup](https://www.rust-lang.org/tools/install) and Git.
 The schema3 baseline Rust workflow library defines QUICK/STANDARD/STRICT phases
 through adapters and explicit evidence ports. This staged Issue9 source refuses
 new formal reviews, PR/merge/cleanup gates and finalization; legacy success below
-is factual history, not current formal authority. The retained nonformal engine commits each milestone before tests/review, persists
+is factual history, not current formal authority. The retained nonformal engine
+commits each milestone before tests/review, persists
 phase/context history atomically, and raises
 workflow requirements when risk or scoped policy changes. Missing test/review/PR/
 merge integrations wait for evidence; review exit zero alone cannot pass a gate.

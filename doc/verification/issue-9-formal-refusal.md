@@ -27,5 +27,12 @@ This selected source is not deployable whole Workflow/ReviewSet acceptance.
 
 Normal main docs-only PR70 composition changes no Rust source. Raw private logs
 are retained locally with hashes in the [bounded evidence](issue-9-formal-refusal-source1.json).
-Independent immutable source reviews and exact final CI remain pending. Whole
+Source1 has two independent selected APPROVE results with no Critical/High/Medium;
+both closed before reading either result. Shared stale status wording was verified
+and corrected. A speculative matrix Low was cheaply covered with all eight configured
+class/Reviewer combinations at entry/retry/resume. No production code changed.
+CI37262802366 is RED: Linux218 pass/29 typed-refusal fail/16 ignored; macOS was
+matrix-cancelled, both build steps skipped. Actual checkoutaaa6f6f has the same
+fulltree4c8bbd and all293pathblobs as source12cc. No bothOSgreen qualification.
+The finite docs/test delta and its exact final CI remain pending. Whole
 Issue9, genuine19/43/native profile/migration and final16 MVP gates remain OPEN.
