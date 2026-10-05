@@ -109,7 +109,7 @@ impl ManagedWorkflowGates {
             status.terminal()
                 && status.session.state == SessionState::Exited
                 && status.failure.is_none()
-                && true
+                && native.work == Some(WorkOutcome::Success)
                 && unit.work == Some(WorkOutcome::Success)
                 && unit.state == UnitState::WorkKnown
                 && unit.kind == UnitKind::Executor
