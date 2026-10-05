@@ -157,6 +157,45 @@
     "Finite mechanical composition only; production selection None and Create factory test-only.",
     "No effect-commit linearization, complete native cleanup, managed backend, private producers, settlement or whole Issue/MVP credit.",
     "Source-only reviews and a historical unqualified wrapper result do not become merge/native approval.",
-    "Docs-only final head CI and independent limited disposition review pending."
-  ]
+    "This d938 capture preceded final disposition; subsequent d7 final CI and two limited merge reviews are recorded separately below."
+  ],
+  "final_head_gate": {
+    "run": 37269371978,
+    "head": "d7bfca346dea56b615497b7cd88535e4a7bb8fd0",
+    "actual_checkout": "cf98c7bd73380392ffb805d74d1b24e37e1a17df",
+    "parents": [
+      "26f3a48fedce976b353a6a9fa899bc6fb13ca72a",
+      "d7bfca346dea56b615497b7cd88535e4a7bb8fd0"
+    ],
+    "tree": "0149e85bed9a1391de76386f0932da919f8419ba",
+    "all_tree_entries_equal": true,
+    "entries": 286,
+    "log_sha256": "5c05e2eb92652b1be649daab403a63c6b33d93505604bb3bba898fbff6aa586d",
+    "log_bytes": 382446,
+    "both_os_every_step_success": true,
+    "scope": "Final docs-only head. CI Debug workspace TEST plus fmt/lint and both BUILDs, not Release TEST; prior d938 actual full D/R PASS unchanged code. Conditional reviews now satisfied; whole/native/MVP open."
+  },
+  "limited_merge_disposition": {
+    "reviewed_head": "d7bfca346dea56b615497b7cd88535e4a7bb8fd0",
+    "independent_reviewers": 2,
+    "verdicts": [
+      "APPROVE",
+      "APPROVE"
+    ],
+    "findings_each": {
+      "critical": 0,
+      "high": 0,
+      "medium": 0,
+      "low": 0
+    },
+    "independence": "Both read-only reviews completed before peer findings were shared. No new tests or native inference performed by reviewers.",
+    "approval_scope": "Selected mechanical composition only; final exact-head every-step both-OS CI and complete tree equality conditions were verified before merge. Not wholeIssue19/native/backend/MVP acceptance.",
+    "risk": "STRICT private lifecycle component; ordinary custody None and factory test-only",
+    "merge_pr": 69,
+    "merge_commit": "9d2daeddeaa40330bacc0a21cb0922119eb588c3",
+    "merge_complete_tree_equals_reviewed_head": true,
+    "issue19_closed": false,
+    "root_owned_finished_worktree_and_merged_branch_normally_removed": true,
+    "older_unqualified_cleanup_and_hold_retained": true
+  }
 }
