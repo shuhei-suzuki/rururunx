@@ -1,8 +1,9 @@
-# Issue 6: existing name-only environment admission integration (Design3)
+# Issue 6: existing name-only environment admission integration (Design4)
 
 Status: proposed STRICT component integration; design/source qualification pending.
-Design1 `6264702` and Design2 `9884ec3` were not qualified. This proposal composes main
-`cf8a1e7c4ab74367ad175bedcfb60e28cb6bfc8b`. Production Codex availability stays
+Design1 `6264702`, Design2 `9884ec3` and Design3 `4a60fa2` were not qualified as a pair.
+This proposal normally composes main `5b4a3147b2b2cd4ed88642741f6b25c4c5f3441b`.
+Production Codex availability stays
 EMPTY. No native workload backend, managed operation, setup/settlement receipt,
 custodian or native-origin provenance producer is introduced.
 
@@ -10,7 +11,8 @@ custodian or native-origin provenance producer is introduced.
 
 Merged Issue51 requirements 1–8 supply the existing policy: bounded names-only
 environment selection, a last current Session/environment check before native exec,
-effect-free own-only checkpoint, and opaque rejection without credential stripping.
+own-only checkpoint without environment authority, and opaque rejection without
+credential stripping.
 Consume `EnvironmentAdmission::new`, `Store::check_environment_admission` and
 `Store::put_session_with_environment_if_current`. The DTO contains non-control
 baseline names and caller names, never values. The Store streams current foreign
@@ -61,17 +63,24 @@ TERM, TMPDIR, TEMP, TMP, NODE_OPTIONS, NODE_PATH, SSL_CERT_FILE, SSL_CERT_DIR,
 NODE_EXTRA_CA_CERTS, OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_API_BASE, XAI_API_KEY,
 ANTHROPIC_API_KEY, SSH_AUTH_SOCK, SSH_ASKPASS, EDITOR and VISUAL; plus LC_, XDG_,
 CODEX_ prefixes and case-insensitive *_PROXY suffix. Explicit compatibility delta:
-USER and LOGNAME join that whitelist to preserve trusted OS login identity when
-present. Do not synthesize missing values. No other native prefix/variable is added.
+USER and LOGNAME join that whitelist to preserve inherited runtime identity when
+present. These process-environment values are not
+kernel-attested identity, and no native need is claimed from the historical component
+evidence, which omitted them. This explicitly requested compatibility addition is
+unqualified native behavior until the required defaults/hooks/auth gates pass.
+Do not synthesize missing values. No other native prefix/variable is added.
 
 The exact private control predicate is baseline membership AND (invalid registry
 name OR registry-forbidden name OR member of the finite additions {USER, LOGNAME}).
 Admitted syntactically invalid baseline names remain unownable global controls,
 preserved privately and excluded from the DTO. Do not reject an entire host for a
 name that no valid Project can own. Foreign control declarations cannot strip or
-replace the baseline. Reject owning control declarations only when the name is in
-this provider's baseline membership. Other valid own metadata not forwarded by
-Codex is not a blanket Project rejection. Credentials/credential-location prefixes
+replace the baseline. Reject owning control declarations when the name satisfies
+this provider's membership predicate, including USER/LOGNAME even if their value was
+absent from this frozen snapshot. This deliberate metadata-eligibility change means
+such own declarations for another provider also refuse Codex; no caller is needed.
+Other valid own metadata outside Codex's membership is not a blanket rejection.
+Credentials/credential-location prefixes
 never become controls; structural tests keep OPENAI_API_KEY, XAI_API_KEY and
 ANTHROPIC_API_KEY non-control and assert the finite additions exactly.
 
@@ -105,13 +114,22 @@ names, for Registered/Blocked/Removed states; no values, foreign query or filesy
 read. It is never invoked from another Project's rejection. Invalid/unknown own
 metadata retains the Store's opaque failure; the method grants no launch authority.
 
-Malformed/GIT_/NUL caller input preserves InvalidInput. Invalid/control own refs,
+As in Issue51, validate own references/control declarations before caller-map syntax,
+then malformed/GIT_/NUL caller input uses InvalidInput (a change from Codex's current
+OwnershipMismatch). A combined invalid-own plus malformed-caller case therefore uses
+the opaque own-reference InvalidConfiguration. Invalid/control own refs,
 reserved RRX_, unsupported caller names, undeclared/foreign-only eligible caller
 names, different frozen credential values and baseline conflicts use the same
 fixed opaque InvalidConfiguration category, `native environment authority
 unavailable`, including the Store EnvironmentAuthority mapping. Never emit foreign
-IDs, names, versions, values or inventory. Own stale/lifecycle/Session/lock errors
-retain their existing precedence and kinds.
+IDs, names, versions, values or inventory. Existing own stale/lifecycle/Session/lock
+checks retain their kinds and precede selection when they observe the conflict.
+The initial read-only scope check and environment check are separate SQLite reads,
+not a new transaction: an own edit between them can be observed as an opaque
+environment refusal. That refusal remains before effects/publication; do not claim
+one atomic initial snapshot or deterministic stale-kind precedence across that race.
+Each later pre-exec/consumed CAS retains the existing transactional own-version
+precedence; explicit own edits at those windows must be StateConflict.
 
 Intentional changes and test migrations:
 
@@ -122,17 +140,36 @@ Intentional changes and test migrations:
 | Any valid owning-declared arbitrary caller value passed | Existing51 ordinary OR exact frozen native value rule; unsupported/different values refused |
 | Full foreign Project decode/equality | Own Project equality, Goal/Task/locks remain exact; foreign refs alone determine environment policy |
 | Effective config restores an arbitrary runtime key/header | No value restoration; explicit unproven-reference refusal described below |
-| Own invalid refs/undeclared caller errors have different kinds | Fixed opaque environment category, preserving malformed caller and stale-own precedence |
-| USER/LOGNAME omitted | Present trusted constructor values forwarded; own/caller override refused |
+| Own invalid refs return InvalidInput; undeclared caller returns OwnershipMismatch | Fixed opaque InvalidConfiguration |
+| Malformed/GIT_/NUL caller returns OwnershipMismatch | InvalidInput after own-reference validation; combined-invalid order is explicit |
+| USER/LOGNAME omitted | Inherited constructor values forwarded; owning declarations and caller overrides refused, including absent-value own declarations; native qualification pending |
+| Missing/null selected-provider entry yields zero refs | Same zero-reported-ref outcome; no inferred/default/built-in conformance |
+| Empty/over-128-byte selected id or non-object provider/settings can yield zero refs | Explicit Unsupported identifier bound or ParseFailure shape refusal; conservative unqualified-default limitation |
 | Public new() never captures environment | Frozen constructor selection can fail opaquely on unsupported bounds; successful construction still leaves ordinary availability EMPTY |
 | No extra pre-exec Session publications | Up to three unchanged-content session.saved writes/version increments per fresh/resume attempt; no new consumption/dispatch intent |
 
 Old strip/pass-through/custom-reference policy assertions migrate to these declared
-outcomes. Existing ordinary unavailable tests, own currency/cancellation, native
+outcomes. Existing own currency/cancellation, native
 defaults/auth/hooks/config, consumed-input/Lost facts and shared cleanup semantics
-remain unchanged. Synthetic fixture constructors migrate to the common injected
-constructor so no real credentials enter fake children. The new OS identity
-forwarding is tested as an explicit compatibility change, not described as unchanged.
+retain their current purpose. All eighteen unit-test new() calls in session.rs
+must migrate to the common injected iterator constructor, including ordinary
+unavailable tests; no test captures ambient credentials then overwrites a baseline.
+The two external integration calls in tests/codex_unavailable.rs are already inside
+an env_clear re-executed child with synthetic HOME/PATH. Add a pre-constructor
+expected-name/value boolean guard there; no unknown value is printed or captured
+by the adapter. No example or production factory currently constructs CodexAdapter.
+Ordinary EMPTY behavior remains, but this construction migration is intentional.
+
+Current caller producer inventory: Workflow prepare_agent forwards its input map
+unchanged. Codex ownership::Fixture creates an empty LaunchRequest.environment;
+all session fixtures inherit that empty map. Policy unit tests alone provide
+OPENAI_API_KEY and CUSTOM_NATIVE_KEY synthetic maps: differing OPENAI_API_KEY moves
+to opaque refusal; arbitrary CUSTOM_NATIVE_KEY is unsupported, never restored.
+Other policy names (ONLY_A, CUSTOM_HEADER, UNSELECTED_SECRET, FOREIGN_SECRET,
+ARBITRARY_SECRET) are synthetic baseline/config/metadata, not caller keys.
+RRX_SYNTHETIC_NATIVE_DIRECTORY is exported by the generated fixture executable;
+RRX_EMPTY_FIXTURE is a sanitized test-child locator. Neither is a LaunchRequest
+caller channel. No production or Codex-fixture caller RRX_ producer was found.
 
 ## Initial selection, every new exec, and consumed input
 
@@ -191,14 +228,18 @@ child. Subsequent new exec/current-input boundaries recheck current authority;
 cleanup/outcome remains factual. This mechanism never certifies full workload death,
 MCP/hooks containment, native provenance or physical revocation.
 
-## Effect-free checkpoint and fresh resume
+## Own-only checkpoint and fresh resume
 
 Remove the foreign roster from ScopeSnapshot entirely. Capture still exact-compares
 the owning persisted Project with request.project; Goal/Task/complete exact nullable
 locks remain strict. Checkpoint refreshes own metadata under immutable repository/
 worktree identity and higher-version prepared input, using existing own-only
 `put_session_if_current` in its atomic registry/control/Store request replacement.
-It selects no values, checks no foreign refs and confers no environment authority.
+It performs no selected-native environment decision, checks no foreign refs and
+confers no environment authority. It is NOT effect-free: existing preparation
+publishes Starting and executes Git with the unselected ambient helper environment.
+That #51/#60 residual remains OPEN; its own-only checkpoint positive proves currency
+semantics only, never credential isolation, resource custody or native settlement.
 
 A relevant foreign change or caller-key removal before checkpoint must not make
 that checkpoint fail. Resume uses the explicitly checkpointed Project and fresh
@@ -232,8 +273,9 @@ environment names). No inferred includeLayers origin or built-in-provider expans
 | --- | --- |
 | Config not an object; non-string non-null selection | Fixed opaque ParseFailure |
 | Absent/null model_provider | Zero reported references; no default/provider/auth conformance inferred |
-| Empty selected id; absent/null model_providers; selected id missing | UnsupportedCapability; no invented built-in/default entry |
-| Non-object model_providers or selected entry | Fixed opaque ParseFailure |
+| Absent/null model_providers; selected entry absent/null | Zero reported references, same as absent selection; no invented built-in/default entry |
+| Empty or over-128-byte selected id | Fixed opaque UnsupportedCapability identifier limitation |
+| Non-null non-object model_providers or selected entry | Fixed opaque ParseFailure shape limitation |
 | Selected object, absent/null env_key and env_http_headers | Zero reported references |
 | Non-string non-null env_key, non-object non-null headers, non-string header value | Fixed opaque ParseFailure |
 | Reported valid references all present and non-control | Same frozen selection; no restoration |
@@ -275,6 +317,10 @@ booleans, Store/watch/audit/frame facts before error labels. Include:
 - Constructor freeze/filter/control/bounds, shared API-key and foreign-only collision,
   exact/different native caller values, ordinary-value precedence, OS identity,
   invalid admitted global-control names and malformed owning refs; opaque errors.
+  Assert all named routing/identity whitelist members, CODEX_* and *_PROXY stay
+  controls through the shared registry predicate; API keys stay non-control.
+  Assert USER/LOGNAME own and caller refusals with both present and absent values;
+  these are inherited runtime metadata, not proof of native or kernel identity.
   Assert non-UTF-8/GIT_PROXY exclusion before suffix matching, raw OS values, bounds
   constructor refusal and ordinary EMPTY after valid construction. Explicit own
   candidate inspection reads only that Project's names and never another rejection.
@@ -285,7 +331,10 @@ booleans, Store/watch/audit/frame facts before error labels. Include:
   non-array refs and non-string elements are unknown authority and deny opaquely.
   A relevant name after a long roster cannot be skipped.
 - Actual second-Store replacement hooks immediately before version/discovery/main
-  exec: relevant change denies that particular NEW child/canary; earlier selected
+  exec: both foreign relevant changes and own-ref edits deny that particular NEW
+  child/canary; own edits assert transactional StateConflict and coherent versions.
+  Initial own edits after capture are separately observed before publication without
+  claiming atomic preflight/error-kind precedence. Earlier selected
   children may have run and must clean up factually. Post-CAS real stop uses the
   specified hook: assert no child, real stop outcome and coherent Store/watch.
   Matching controls prove each path reaches its exec unchanged, still Preparing
@@ -309,7 +358,9 @@ booleans, Store/watch/audit/frame facts before error labels. Include:
 Compiled actual-consumer mutants cover constructor filtering/control/freeze/bounds,
 DTO baseline/caller population, exact-value comparison, initial check omission,
 EACH pre-exec CAS omission, post-CAS cancellation check omission, wrongly consuming
-pre-exec publication, main reference-check omission, consumed CAS omission,
+pre-exec publication, discovery reference-check omission killed on no-main-entry,
+main reference-check omission killed on no-account/thread/model/consumption,
+consumed CAS omission,
 arbitrary reference restoration,
 and reintroduced roster equality at start/checkpoint/resume. Bind each to its precise
 canary/entry/Store assertion. Checkpoint is not an environment-CAS mutation target.

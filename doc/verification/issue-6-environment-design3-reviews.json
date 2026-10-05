@@ -1,0 +1,260 @@
+{
+  "scope": "Design3 textual proposal only; pair not qualified, not source/native qualification",
+  "head": "4a60fa2b2c7eeb12e5a346cd89683cb8c0412681",
+  "independent_peer_free": true,
+  "native_defaults_and_rules_preserved": true,
+  "zero_operation_tools": true,
+  "reports": [
+    {
+      "head": "4a60fa2b2c7eeb12e5a346cd89683cb8c0412681",
+      "section": "A3",
+      "native_session": "53681696-71f9-46f6-b31a-417068a68250",
+      "review": {
+        "verdict": "approve",
+        "findings": [
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "116-130, 227-242",
+            "problem": "The extraction table changes current provider_environment behavior for several reported shapes, but the compatibility table does not list these changes. Today these shapes pass with zero restored references: model_provider names an id with no model_providers entry, the id is empty, model_providers is absent or non-object, or the selected entry is non-object. JSON Index yields Null and settings.get returns None. The proposal makes them UnsupportedCapability or ParseFailure. The table also gives no outcome for a selected id longer than 128 bytes. As a result, an explicit selection whose entry is not reported is refused, while an absent model_provider passes. These are two reporting shapes that may resolve to the same native route.",
+            "causal_scenario": "A component fixture or migrated policy test reports model_provider set to a built-in-style id with no model_providers entry. Current source admits it with zero references. The proposed predicate refuses it after discovery cleanup. The test migration described as 'old strip/pass-through/custom-reference assertions migrate' never declares this pass-to-refusal change, and the oversize-id case has no specified kind to assert.",
+            "required_fix": "Add explicit compatibility rows for each pass-to-refusal shape. Mark them as conservative, unqualified-default limitations, not native-default conformance. Specify the outcome kind for a nonempty selected id over 128 bytes. State that the differing treatment of absent versus explicitly selected providers is an intentional open limitation, not evidence about native defaults."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "108-114, 125",
+            "problem": "Line 108 says malformed, GIT_ and NUL caller input 'preserves InvalidInput'. Current Codex native_environment returns OwnershipMismatch for a caller key containing '=' or NUL, for a value containing NUL, and for a GIT_ key (which can never be own-declared). Current own-ref validation failure is InvalidInput, which the proposal moves to InvalidConfiguration. The proposal also does not fix the order between own-invalid-ref InvalidConfiguration and malformed-caller InvalidInput when both are present.",
+            "causal_scenario": "An existing test asserting OwnershipMismatch for a NUL-bearing caller value is migrated under the belief that the kind is 'preserved'. Separately, a request with both an invalid own ref and a malformed caller key gets an implementation-chosen kind that no test pins down.",
+            "required_fix": "Restate the change as OwnershipMismatch to InvalidInput for malformed, GIT_ and NUL caller input, and add it to the compatibility table. Define the exact precedence between owning-reference validation and malformed-caller validation, consistent with the Issue51 ordering, and add one combined-input regression."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "11-13, 194-202, 298-300",
+            "problem": "The checkpoint is called 'effect-free' and is said to 'select no values', which overstates what it does. prepare_checkpoint publishes a Starting Session. It then runs verify_git_preparing through bounded_git with crate::git::native_environment(), which passes all ambient OS pairs except nine Git routing names. Issue51 requirement 7 forbids foreign roster inspection at checkpoint but does not call it effect-free. The required positive test (relevant foreign declaration before checkpoint permits checkpoint) therefore executes runtime Git children carrying a foreign-declared credential name's value. Lines 166-171 declare this shared Git residual open, but the checkpoint section does not.",
+            "causal_scenario": "Project B declares ANTHROPIC_API_KEY. A's checkpoint succeeds as specified and runs Git (hooks, fsmonitor and helpers reachable) with that value in its environment. The passing checkpoint positive could later be cited as two-Project environment isolation evidence, even though the selection never covered this exec.",
+            "required_fix": "Replace 'effect-free' with 'environment-authority-free / own-only'. State in the checkpoint section that its Git preflight inherits the unselected ambient environment under the open #51/#60 residual. Mark the checkpoint positive as evidence of own-only currency only, never of environment isolation."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "63-76, 126",
+            "problem": "USER and LOGNAME are added to Codex membership and classified as finite-addition controls. The only justification is 'trusted OS login identity'. Ambient USER is not OS-attested; it is inherited process state. Because the own-control rejection keys on membership, not presence, a Project that declares registry-valid USER or LOGNAME is refused for Codex even when neither is in the frozen ambient environment and nothing is forwarded. This conflicts with line 74 ('valid own metadata not forwarded by Codex is not a blanket Project rejection'). The change is also outside the names-only Issue51 integration scope.",
+            "causal_scenario": "A Project declares USER so a Generic or Workflow caller map can carry it to another provider. After this change, every Codex launch for that Project fails opaquely with InvalidConfiguration, including on hosts where USER is unset.",
+            "required_fix": "Either drop the USER/LOGNAME delta from this integration, or give concrete native-need evidence. Reconcile the contradiction with line 74 by either rejecting only names present in the frozen baseline or explicitly listing absent-name rejection as an intended compatibility change. Drop the word 'trusted' unless it is substantiated."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "108-114, 139-143",
+            "problem": "Within one synchronous context, ScopeSnapshot::capture and the resume record check each acquire and release the Store mutex. The initial check_environment_admission then reads current own refs from SQLite separately. A second-connection own Project edit between capture and the initial decision (for example, removing a caller key) produces the opaque environment InvalidConfiguration instead of the stale-own StateConflict that line 113 says retains precedence. Both refuse before effects, but the precedence guarantee is not exact.",
+            "causal_scenario": "A second Store removes the owning TZ ref after capture's equality check but before the initial decision. The caller TZ is now undeclared, and the request returns 'native environment authority unavailable' instead of 'native Project snapshot is stale or foreign'.",
+            "required_fix": "Run the initial decision under the same Store lock as the own-Project equality and version read. Alternatively, re-verify the own Project version inside the initial decision before evaluating caller ownership, so stale-own StateConflict deterministically precedes the environment category. Add a regression for this window."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "287-294, 301-315",
+            "problem": "The mutant list includes 'main reference-check omission' but no discovery-side predicate omission. Removing the discovery check is masked by the identical main check, so the claimed 'discovery cleanup precedes refusal, with no main exec' property has no compiled mutant bound to it. The second-Store hooks also name only 'relevant change'. They do not explicitly cover an own-reference mutation between snapshot and each pre-exec CAS, which Issue51 acceptance requires and which must surface as stale-own StateConflict.",
+            "causal_scenario": "An implementation omits the discovery predicate. All listed mutants and tests still pass, because the main-server check refuses after a main exec that the design says must not occur. Separately, an own-ref removal before the discovery or main CAS is never exercised, so a regression in precedence goes undetected.",
+            "required_fix": "Add a compiled discovery-predicate-omission mutant killed by the no-main-exec entry sentinel. Add explicit own-ref mutation cases at each pre-exec hook, asserting StateConflict, no new child, and coherent Store and watch versions."
+          }
+        ],
+        "limitations": [
+          "Manual read-only review: no grep or build was possible, so other consumers of policy::native_environment, provider_environment, ScopeSnapshot.projects, recheck/recheck_scope, Session record versions, or bounded_git and launch_preparing outside the supplied excerpts could not be enumerated.",
+          "Tests, the full native RPC implementation, other provider consumers, and the full Codex module set were not supplied, so fixture migration feasibility and existing fixed version/audit assertions could not be checked.",
+          "No native config/read output for default or built-in providers was supplied. Nothing here infers native default, auth, provider or header semantics, and the zero-reference shape is not treated as native-default acceptance.",
+          "The shared runtime Git environment residual is declared OPEN under #51/#60 and was not counted as a defect. It covers git::native_environment passing all ambient pairs to launch, checkpoint and approval Git children.",
+          "Existing F1 semantics are open producer work and were not evaluated as defects of this proposal. These are: RestoredBeforeAdmission or FailedBeforeAdmission publication after selected version, discovery or main execs, re-resumability after such restores, and acceptance of a discovery/main selected-provider divergence.",
+          "Whether a borrow-safe placement of the &mut Reservation before-spawn callback alongside reservation.ownership.group() exists was not verified at source level.",
+          "The feasibility of the synchronous cfg(test) post-CAS hook on a multi-thread runtime was reasoned from the excerpts only and was not executed."
+        ]
+      },
+      "usage": {
+        "input_tokens": 2,
+        "cache_creation_input_tokens": 190380,
+        "cache_read_input_tokens": 2160,
+        "output_tokens": 71496,
+        "output_tokens_details": {
+          "thinking_tokens": 68105
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 190380,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 71496,
+            "cache_read_input_tokens": 2160,
+            "cache_creation_input_tokens": 190380,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 190380
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard"
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 2,
+          "outputTokens": 71496,
+          "cacheReadInputTokens": 2160,
+          "cacheCreationInputTokens": 190380,
+          "webSearchRequests": 0,
+          "costUSD": 2.9534000000000002,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 68105,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "cost_usd": 2.9534000000000002,
+      "duration_api_ms": 682392,
+      "cleanup_verified": true,
+      "guardian_version": "v4-explicit-runtime-preflight",
+      "review_mode": "fresh-independent-strict-design-review"
+    },
+    {
+      "head": "4a60fa2b2c7eeb12e5a346cd89683cb8c0412681",
+      "section": "B3",
+      "native_session": "c807211d-2cb6-488c-a611-2bf33a258d35",
+      "review": {
+        "verdict": "request_changes",
+        "findings": [
+          {
+            "severity": "medium",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "212-240, 254-265",
+            "problem": "The extraction table treats two cases differently even though both report no references. An absent or null model_provider yields zero references and proceeds (row 234). A reported selected id with absent/null model_providers, or with no entry for that id, yields UnsupportedCapability (row 235). Values are never restored (lines 215, 225), so the child gets the identical frozen selection either way. Refusing the missing-entry case adds no isolation; it only makes the outcome depend on how the configuration is written. Current provider_environment (policy.rs 418-430) indexes a missing entry as Null and proceeds. The proposal therefore also regresses explicitly selected unreported providers, and the compatibility table (line 124) does not name this change.",
+            "causal_scenario": "Two hosts use the same effective native provider. Host 1 leaves model_provider unset; config/read reports no selection, so the attempt gets zero references and continues to main re-exec. Host 2 writes the provider id explicitly in user config, or native config/read materializes the selection, and config/read reports no model_providers entry for that id. Host 2 is refused UnsupportedCapability after discovery exec and cleanup. Both children would have received byte-identical selected environments. Issue6 requirement 3 says native user configuration must not be ignored and native defaults remain authoritative.",
+            "required_fix": "Use one outcome for every shape that reports no references. Preferred: classify 'selected id with no reported entry' and 'absent/null model_providers' like an absent selection, as zero reported references, with no default, built-in or auth conformance inferred. Alternatively, give a causal reason why a reported selection with an unreported entry must refuse while an unreported selection proceeds. In either case, list the changed outcome for explicitly selected unreported providers in the compatibility table and add a matching test migration."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "108-114, 125",
+            "problem": "The design says malformed, GIT_ and NUL caller input 'preserves InvalidInput', and the table says malformed caller precedence is preserved. Current Codex behavior differs. native_environment (policy.rs 347-354) returns OwnershipMismatch for '=' or NUL in keys, NUL in values, empty keys and undeclared keys. GIT_ caller keys reach that same branch because a valid Project cannot declare them. Only invalid own refs currently return InvalidInput (policy.rs 336-341). So malformed-caller handling is changing kind, not being preserved.",
+            "causal_scenario": "An existing Codex test asserts OwnershipMismatch for a caller map containing 'A=B', a NUL value or a GIT_DIR key. After implementation it receives InvalidInput. The design labels this outcome unchanged, so the migration is either missed or treated as an unexplained regression during source review.",
+            "required_fix": "Add explicit table rows: malformed/GIT_/NUL caller input changes from OwnershipMismatch to InvalidInput, and undeclared caller keys change from OwnershipMismatch to opaque InvalidConfiguration. Record the corresponding test migrations."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "231-243, 305-306",
+            "problem": "The deterministic extraction table leaves some reported shapes without an outcome. (1) A nonempty selected id longer than 128 bytes is bounded by line 242, but no row says whether it is ParseFailure or UnsupportedCapability. (2) A selected entry that is present with explicit JSON null fits both row 235 ('selected id missing') and row 236 ('non-object selected entry'). Those rows give different outcomes, and the obvious serde_json indexing implementation cannot tell missing from null. Line 305 then requires covering every table row.",
+            "causal_scenario": "Two implementations both satisfy the table text. One maps a null selected entry to UnsupportedCapability via Value indexing; the other maps it to ParseFailure via Map::get. The same reported config gets different error categories, and a 'cover EVERY row' test cannot fix the expected outcome.",
+            "required_fix": "Add explicit rows for an over-bound selected id and for a present-but-null selected entry, separate from a missing entry. Require the implementation to tell missing from null without relying on lossy Value indexing."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "63-68, 126, 135",
+            "problem": "USER and LOGNAME are added to the native whitelist and to the finite control additions, with only the stated aim of preserving trusted OS login identity. No observed native need is given, unlike Issue51's documented NODE_TLS_REJECT_UNAUTHORIZED addition. The change also has an unstated consequence. Own control declarations are refused when the name is in baseline membership (lines 72-73), so any Project that declares USER or LOGNAME for another provider now has its Codex launches refused. The native child environment also changes relative to the historical 0.160.0 component evidence.",
+            "causal_scenario": "A Project declares USER as an ordinary reference for a non-Codex provider. Before the change, its Codex launches ignored that declaration. After the change, every Codex launch for that Project fails with opaque InvalidConfiguration, even though no caller passes USER. Nothing in the design shows the added forwarding was needed for native correctness.",
+            "required_fix": "Give causal evidence or a primary runtime reference for why the Codex child needs USER/LOGNAME, or drop the delta. If kept, state the new own-declaration refusal in the compatibility table and in the required tests, and state that historical native evidence was gathered without these variables."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "67-76, 275-279",
+            "problem": "The structural checks cover only part of Issue51 requirement 3's classification drift check. They assert that the three API keys are non-control and that the finite additions are exact. They do not assert that the named Codex whitelist routing/identity members stay controls through registry-forbidden membership: HOME, PATH, SHELL, TMPDIR, TEMP, TMP, NODE_OPTIONS, NODE_PATH, SSL_CERT_FILE, SSL_CERT_DIR, NODE_EXTRA_CA_CERTS, OPENAI_BASE_URL, OPENAI_API_BASE, SSH_AUTH_SOCK, SSH_ASKPASS, EDITOR, VISUAL, the CODEX_ prefix and the *_PROXY suffix. The Codex control predicate depends entirely on the shared registry predicate for these names.",
+            "causal_scenario": "A later registry change removes EDITOR or SSH_AUTH_SOCK from environment_routing_forbidden. Codex then silently reclassifies it as a non-control scoped reference. It enters the DTO, a foreign declaration starts refusing other Codex Projects, and own exact-value caller passing becomes eligible. No Codex structural test fails.",
+            "required_fix": "Add a structural assertion that each named Codex whitelist routing/identity member, and the CODEX_/*_PROXY membership forms, classify as control. Keep the existing non-control assertions for the three API keys."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "49-52, 127, 130-135, 269-272",
+            "problem": "Public new() now captures vars_os() at construction, yet the design says existing ordinary unavailable tests 'remain unchanged'. Every existing in-process call to CodexAdapter::new now captures the ambient environment, including real credentials, and can fail construction on host-dependent bounds. This includes external integration-crate tests, which cannot reach a private injected constructor. Issue51 acceptance requires constructor isolation by sanitized re-exec or a reviewed injection path, with no ambient credential capture. Only fixtures that launch fake children are said to migrate.",
+            "causal_scenario": "An existing integration test or example constructs CodexAdapter::new in-process to check the ordinary Unsupported refusal. The real OPENAI_API_KEY and other whitelisted values are now copied into adapter memory. On a host with an unusual long LC_ or XDG_ name, construction returns InvalidConfiguration before the asserted Unsupported refusal, so the result depends on the host environment.",
+            "required_fix": "Inventory every CodexAdapter::new call site in unit tests, integration tests and examples. Move each one to the injected constructor or a sanitized env_clear re-exec, or state explicitly why ambient capture without forwarding is acceptable there. Correct the 'unchanged' wording accordingly."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "40-46, 130-135",
+            "problem": "Issue51 requirement 2 says all current producers and harnesses must be analyzed before implementation for RRX_ or other now-refused caller channels. The design says only that Codex component fixtures 'construct requests directly'. It does not list the caller-map contents those fixtures use. Store::put_project does not validate environment_refs, so fixtures can persist RRX_ or other arbitrary refs and pass matching caller values to fake native children.",
+            "causal_scenario": "A Codex fixture inserts a Project declaring RRX_FIXTURE_MODE directly through the Store and passes it in LaunchRequest.environment to steer the fake native script. After implementation, every such fixture fails with opaque InvalidConfiguration before reaching the behavior it was meant to exercise, which masks the intended assertions and any mutant kills.",
+            "required_fix": "Add a producer/harness inventory naming every caller key used by current Codex fixtures. Move any RRX_ or other now-refused channels into fixture-owned executable data, as Issue51 did for Grok, and state that no production RRX_ producer exists."
+          }
+        ],
+        "limitations": [
+          "Tests are not supplied: no Codex unit or integration tests, native examples or crates/rrx/tests harnesses. Fixture caller maps, existing CodexAdapter::new call sites, version/audit-count assertions and RRX_ channel use could not be verified.",
+          "crates/rrx/src/codex/session.rs beyond line 2688, availability.rs beyond line 100, and protocol.rs outside the supplied excerpts were not supplied. The codex module root and its public exports were not supplied either.",
+          "Real installed Codex config/read effective shapes were not supplied: default, built-in and custom providers, profiles and layers. Native default/custom provider conformance and configuration provenance are explicitly OPEN and were not assessed. No reference-origin, required-auth or optional-header semantics are inferred.",
+          "Endpoint/header provenance of permitted references was not assessed. A worktree or project-layer provider routing a present non-control whitelisted credential to a custom endpoint is part of that OPEN provenance gate.",
+          "The shared Git preflight environment (crate::git::native_environment forwards all ambient pairs except nine routing names) is an explicitly OPEN #51/#60 residual and was not treated as a defect of this proposal.",
+          "Workflow consumers beyond the supplied prepare_agent excerpt were not supplied. Other provider consumers (Claude, Generic) were not supplied. So it is unverified whether any consumer depends on Codex Session record versions or session.saved event counts, which the proposal increments up to three more times per attempt.",
+          "Full native RPC implementation, NativeRpc::initialize and native startup behavior were not supplied. Which auth, hook, MCP or history effects occur before config/read in discovery or main server startup was not independently verified.",
+          "This review covers design text against the supplied source only. No compilation, execution, mutation or native probe was performed or requested."
+        ]
+      },
+      "usage": {
+        "input_tokens": 2,
+        "cache_creation_input_tokens": 190373,
+        "cache_read_input_tokens": 2160,
+        "output_tokens": 58326,
+        "output_tokens_details": {
+          "thinking_tokens": 54157
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 190373,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 58326,
+            "cache_read_input_tokens": 2160,
+            "cache_creation_input_tokens": 190373,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 190373
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard"
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 2,
+          "outputTokens": 58326,
+          "cacheReadInputTokens": 2160,
+          "cacheCreationInputTokens": 190373,
+          "webSearchRequests": 0,
+          "costUSD": 2.6899439999999997,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 54157,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "cost_usd": 2.6899439999999997,
+      "duration_api_ms": 563040,
+      "cleanup_verified": true,
+      "guardian_version": "v4-explicit-runtime-preflight",
+      "review_mode": "fresh-independent-strict-design-review"
+    }
+  ]
+}

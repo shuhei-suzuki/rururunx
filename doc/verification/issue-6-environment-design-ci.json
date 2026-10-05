@@ -228,6 +228,127 @@
         }
       ],
       "historical_failures_reclassified": false
+    },
+    {
+      "scope": "docs-only proposal CI; not source/native qualification",
+      "trigger_head": "4a60fa2b2c7eeb12e5a346cd89683cb8c0412681",
+      "run": 37248292985,
+      "conclusion": "failure",
+      "actual_checkout": "430bf630257a1682a80cc55a432539716c21e99f",
+      "actual_parents": [
+        "cf8a1e7c4ab74367ad175bedcfb60e28cb6bfc8b",
+        "4a60fa2b2c7eeb12e5a346cd89683cb8c0412681"
+      ],
+      "actual_tree": "a46cd7ff68f9bab3df1615d5c3381610acacc349",
+      "head_tree": "a46cd7ff68f9bab3df1615d5c3381610acacc349",
+      "complete_tree_equal": true,
+      "jobs": [
+        {
+          "name": "check (macos-latest)",
+          "conclusion": "failure",
+          "steps": [
+            {
+              "name": "Set up job",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run actions/checkout@v4",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run dtolnay/rust-toolchain@1.91.1",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run cargo fmt --all -- --check",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run cargo clippy --locked --workspace --all-targets -- -D warnings",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run cargo test --locked --workspace",
+              "conclusion": "failure"
+            },
+            {
+              "name": "Run cargo build --locked --workspace",
+              "conclusion": "skipped"
+            },
+            {
+              "name": "Run cargo build --locked --release --workspace",
+              "conclusion": "skipped"
+            },
+            {
+              "name": "Post Run actions/checkout@v4",
+              "conclusion": "success"
+            },
+            {
+              "name": "Complete job",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "check (ubuntu-latest)",
+          "conclusion": "success",
+          "steps": [
+            {
+              "name": "Set up job",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run actions/checkout@v4",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run dtolnay/rust-toolchain@1.91.1",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run cargo fmt --all -- --check",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run cargo clippy --locked --workspace --all-targets -- -D warnings",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run cargo test --locked --workspace",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run cargo build --locked --workspace",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run cargo build --locked --release --workspace",
+              "conclusion": "success"
+            },
+            {
+              "name": "Post Run actions/checkout@v4",
+              "conclusion": "success"
+            },
+            {
+              "name": "Complete job",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ],
+      "historical_failures_reclassified": false,
+      "failure": {
+        "suite": "macOS library",
+        "passed": 270,
+        "failed": 1,
+        "ignored": 23,
+        "first_failure": "codex::session::tests::saturated_actual_owners_refuse_before_insert_or_eviction at session.rs5605",
+        "observed": "PSdeadline_loop_entry stdout0bytes/WouldBlock/statuspending; inspector kill_requested_then_wait_reaped; owned native cleanup unverified SessionLost; initial Git cleanup SessionLost",
+        "observation_us": 359838,
+        "spawn_us": 1324,
+        "cleanup_us": 13,
+        "cause": "UNKNOWN"
+      }
     }
   ]
 }
