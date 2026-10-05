@@ -9,6 +9,8 @@ use std::{
     time::{Duration, Instant},
 };
 
+pub(crate) const MAX_COOKIE_MATCHES: usize = 1024 - super::docker::MAX_REMAINING;
+
 /// The worker holds the owner only during a sweep. Dropping it aborts its
 /// scheduler; an OS worker carries neither the owner lock nor SQLite state.
 pub struct CleanupWorker {
@@ -118,7 +120,7 @@ impl CleanupService {
                             discovery.coverage.identity_changed
                         ),
                     );
-                    if discovery.processes.len() > 1024 - super::docker::MAX_REMAINING {
+                    if discovery.processes.len() > MAX_COOKIE_MATCHES {
                         observation
                             .errors
                             .push("cookie_action_limit_exceeded".into());
@@ -126,16 +128,13 @@ impl CleanupService {
                     observation.coverage.insert(
                         "cookie_actions".into(),
                         format!(
-                            "matches={},max=896,poll_budget_ms=500",
-                            discovery.processes.len()
+                            "matches={},max={},poll_budget_ms=500",
+                            discovery.processes.len(),
+                            MAX_COOKIE_MATCHES
                         ),
                     );
                     let started = Instant::now();
-                    for process in discovery
-                        .processes
-                        .into_iter()
-                        .take(1024 - super::docker::MAX_REMAINING)
-                    {
+                    for process in discovery.processes.into_iter().take(MAX_COOKIE_MATCHES) {
                         let identity = process.identity();
                         let target = format!(
                             "pid:{}@{}:{}",

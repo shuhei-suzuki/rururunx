@@ -492,7 +492,7 @@ async fn docker_changing_inventories_fit_the_actual_cookie_persistence_budget() 
         coverage: BTreeMap::new(),
         // Controlled maximum process observation; these are synthetic receipt
         // identities, not live processes or a tracker conformance claim.
-        remaining: (0..1024 - MAX_REMAINING)
+        remaining: (0..super::super::cleanup::MAX_COOKIE_MATCHES)
             .map(|n| format!("pid:{}@1:0", n + 1))
             .collect(),
         errors: vec![],
