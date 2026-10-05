@@ -647,6 +647,21 @@ mod tests {
         for line in slice.payload().lines() {
             serde_json::from_str::<serde_json::Value>(line).unwrap();
         }
+        let sections: Vec<serde_json::Value> = slice
+            .payload()
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        assert!(sections.iter().any(|section| section["kind"] == "mandatory"
+            && section["path"] == "rules"
+            && section["body"] == required["rules"]));
+        assert!(
+            sections
+                .iter()
+                .any(|section| section["kind"] == "committed_source"
+                    && section["path"] == "evidence.txt"
+                    && section["body"] == "proof \"\\\n日本語")
+        );
         let exact = Budget {
             bytes: length,
             estimated_tokens: length,
@@ -880,6 +895,15 @@ mod tests {
                 "a".repeat(40),
                 BTreeMap::new(),
                 vec![file("a", b"1"), file("a", b"2")]
+            )
+            .is_err()
+        );
+        assert!(
+            CommittedIndex::build(
+                scope.clone(),
+                "a".repeat(40),
+                BTreeMap::new(),
+                vec![file("a", b"same"), file("a", b"same")]
             )
             .is_err()
         );
