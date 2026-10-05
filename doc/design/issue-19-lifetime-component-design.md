@@ -254,7 +254,7 @@ Selected unit/actual controlled fixtures must prove all of these at the real con
 
 - Custodied closed/missing runtime: no lock/drop deadlock; actual actor/custodian
   join and held counters observed through the same protocol. Omit-lock-release fails.
-- Actor context Err with worker normal return gives exact Phase::CustodyHeld plus
+- Actor context Err with worker normal return gives exact Phase::Finished(Outcome::CustodyHeld) plus
   custody::Joined (Phase unchanged); worker panic gives custody::Unknown.
 - Full revoked request inbox cannot lose cleanup carried in the worker join value.
   A queue-only-cleanup mutant fails this actual consumer.
