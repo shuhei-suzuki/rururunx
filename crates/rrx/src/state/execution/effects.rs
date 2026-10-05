@@ -1,12 +1,28 @@
 use super::*;
 
 impl Store {
+    pub(crate) fn reserve_execution_helper(&mut self,authority:&ExecutionAuthority,id:OperationId,native:bool,path:&std::path::Path)->Result<()> {
+        ensure!(path.is_absolute(),"helper path must be absolute");
+        let tx=self.connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        validate_authority(&tx,authority,native,!native)?;
+        let effect=ManagedEffect {id,unit_id:authority.unit_id,scope:authority.scope.clone(),kind:"git_helper".into(),
+            idempotency_key:format!("git-helper-{id}"),expected_target:path.to_string_lossy().into(),state:EffectState::Pending,
+            receipt:BTreeMap::new(),version:1};
+        let (p,g,t)=scope_keys(&effect.scope)?;
+        tx.execute("INSERT INTO managed_effects(id,unit_id,project_id,goal_id,task_id,idempotency_key,state,version,body) VALUES(?1,?2,?3,?4,?5,?6,'pending',1,?7)",
+            params![id.to_string(),effect.unit_id.to_string(),p,g,t,effect.idempotency_key,serde_json::to_string(&effect)?])?;
+        tx.commit()?;Ok(())
+    }
     pub(crate) fn reserve_managed_effect(&mut self,authority:&ExecutionAuthority,effect:&ManagedEffect) -> Result<()> {
         ensure!(effect.unit_id==authority.unit_id && effect.scope==authority.scope && effect.state==EffectState::Pending
             && effect.version==1 && effect.receipt.is_empty() && !effect.expected_target.is_empty()
             && effect.expected_target.len()<=4096 && effect.idempotency_key.len()<=256 && !effect.idempotency_key.is_empty(),"invalid effect intent");
         let tx=self.connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
         validate_authority(&tx,authority,true,false)?;
+        if matches!(effect.kind.as_str(),"publish"|"merge"|"deploy") {
+            let ambiguous:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM managed_effects WHERE project_id=?1 AND state IN ('pending','unknown') AND json_extract(body,'$.kind')=?2 AND json_extract(body,'$.expected_target')=?3)",params![effect.scope.project_id.to_string(),effect.kind,effect.expected_target],|r|r.get(0))?;
+            ensure!(!ambiguous,"unknown external target outcome requires reconciliation before this phase");
+        }
         let (p,g,t)=scope_keys(&effect.scope)?;
         tx.execute("INSERT INTO managed_effects(id,unit_id,project_id,goal_id,task_id,idempotency_key,state,version,body) VALUES(?1,?2,?3,?4,?5,?6,'pending',1,?7)",
             params![effect.id.to_string(),effect.unit_id.to_string(),p,g,t,effect.idempotency_key,serde_json::to_string(effect)?])?;

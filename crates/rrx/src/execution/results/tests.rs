@@ -61,3 +61,47 @@ async fn cancellation_wins_publication_without_losing_captured_draft() {
     assert_eq!(owner.store.lock().unwrap().execution_unit(unit.id).unwrap().work,Some(WorkOutcome::Success));
     let (retry,_)=attempts.prepare(task.id,"codex","Implement",None).await.unwrap();assert_ne!(retry.worktree,unit.worktree);
 }
+
+#[tokio::test]
+async fn cancellation_while_waiting_for_common_git_prevents_preparation_spawn() {
+    let (_dir,owner,task)=fixture().await;
+    let gate=owner.git_gate.lock().await;
+    let worker_owner=owner.clone();
+    let worker=tokio::spawn(async move {
+        super::super::attempts::AttemptManager::new(worker_owner).prepare(task.id,"codex","Implement",None).await
+    });
+    let unit=tokio::time::timeout(std::time::Duration::from_secs(10),async {
+        loop {
+            let units=owner.store.lock().unwrap().execution_units(None).unwrap();
+            if let Some(unit)=units.into_iter().find(|u|u.state==UnitState::Preparing){break unit;}
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    }).await.unwrap();
+    owner.store.lock().unwrap().retire_execution(&unit.authority(),false).unwrap();
+    drop(gate);
+    assert!(worker.await.unwrap().is_err());
+    assert!(!unit.worktree.exists());
+    assert!(owner.store.lock().unwrap().managed_effects(unit.id).unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn preparation_failure_closes_authority_and_keeps_fresh_retry_admissible() {
+    let (_dir,owner,task)=fixture().await;
+    let project=owner.store.lock().unwrap().project(task.project_id).unwrap().unwrap();
+    // Known before spawn, after durable reservation: an ordinary filesystem failure.
+    std::fs::write(&project.worktree_root,"not a directory").unwrap();
+    let attempts=super::super::attempts::AttemptManager::new(owner.clone());
+    assert!(attempts.prepare(task.id,"codex","Implement",None).await.is_err());
+    let old=owner.store.lock().unwrap().execution_units(Some(&task.scope())).unwrap().pop().unwrap();
+    assert!(!old.native_effects_open && !old.result_finalization_open);
+    assert_eq!(old.work,Some(WorkOutcome::Unknown));
+    assert_eq!(old.cleanup,CleanupOutcome::Unknown);
+    assert!(!owner.store.lock().unwrap().execution_leases(old.id).unwrap().is_empty());
+    std::fs::remove_file(&project.worktree_root).unwrap();
+    let (retry,profile)=attempts.prepare(task.id,"codex","Implement",None).await.unwrap();
+    assert_ne!(retry.worktree,old.worktree);
+    for args in [vec!["diff","--output=/tmp/unrelated"],vec!["show","--ext-diff"],vec!["log","--textconv"]] {
+        let args=args.into_iter().map(str::to_owned).collect::<Vec<_>>();
+        assert!(super::super::tools::plan(&profile,&retry,"git",&args,OperationId::new()).is_err());
+    }
+}

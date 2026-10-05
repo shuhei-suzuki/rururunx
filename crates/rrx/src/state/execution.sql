@@ -21,6 +21,16 @@ CREATE TABLE execution_units (
 );
 CREATE UNIQUE INDEX one_active_executor ON execution_units(task_id)
     WHERE kind='executor' AND (native_effects_open=1 OR result_finalization_open=1);
+CREATE TABLE execution_context (
+    unit_id TEXT PRIMARY KEY NOT NULL REFERENCES execution_units(id),
+    project_version INTEGER NOT NULL CHECK(project_version>0),
+    goal_version INTEGER NOT NULL CHECK(goal_version>0),
+    governing_digest TEXT NOT NULL CHECK(length(governing_digest)=64)
+);
+CREATE TRIGGER execution_context_no_update BEFORE UPDATE ON execution_context
+BEGIN SELECT RAISE(ABORT,'admission context is immutable'); END;
+CREATE TRIGGER execution_context_no_delete BEFORE DELETE ON execution_context
+BEGIN SELECT RAISE(ABORT,'admission context is immutable'); END;
 CREATE TABLE task_execution (
     task_id TEXT PRIMARY KEY NOT NULL, project_id TEXT NOT NULL, goal_id TEXT NOT NULL,
     generation INTEGER NOT NULL CHECK(generation>=0), active_unit TEXT,
@@ -47,6 +57,23 @@ CREATE TABLE artifact_dependencies (
     artifact_id TEXT NOT NULL REFERENCES result_artifacts(id),
     name TEXT NOT NULL, digest TEXT NOT NULL, PRIMARY KEY(artifact_id,name)
 );
+CREATE TRIGGER artifact_published_identity BEFORE UPDATE ON result_artifacts
+WHEN OLD.state IN ('published','invalid') AND NOT (
+    OLD.state='published' AND NEW.state='invalid' AND NEW.version=OLD.version+1
+    AND OLD.id=NEW.id AND OLD.unit_id=NEW.unit_id AND OLD.project_id=NEW.project_id
+    AND OLD.goal_id=NEW.goal_id AND OLD.task_id=NEW.task_id
+    AND json_remove(OLD.body,'$.state','$.version')=json_remove(NEW.body,'$.state','$.version')
+) BEGIN SELECT RAISE(ABORT,'published artifact identity is immutable'); END;
+CREATE TRIGGER artifact_published_no_delete BEFORE DELETE ON result_artifacts
+WHEN OLD.state IN ('published','invalid')
+BEGIN SELECT RAISE(ABORT,'published artifact is retained'); END;
+CREATE TRIGGER artifact_dependency_no_update BEFORE UPDATE ON artifact_dependencies
+BEGIN SELECT RAISE(ABORT,'artifact dependency is immutable'); END;
+CREATE TRIGGER artifact_dependency_no_delete BEFORE DELETE ON artifact_dependencies
+BEGIN SELECT RAISE(ABORT,'artifact dependency is immutable'); END;
+CREATE TRIGGER artifact_dependency_closed BEFORE INSERT ON artifact_dependencies
+WHEN (SELECT state FROM result_artifacts WHERE id=NEW.artifact_id) NOT IN ('staging','ready')
+BEGIN SELECT RAISE(ABORT,'artifact dependencies closed'); END;
 CREATE TABLE resource_leases (
     id TEXT PRIMARY KEY NOT NULL, unit_id TEXT NOT NULL,
     project_id TEXT NOT NULL, goal_id TEXT NOT NULL, task_id TEXT NOT NULL,
@@ -55,7 +82,7 @@ CREATE TABLE resource_leases (
     port_start INTEGER, port_end INTEGER,
     state TEXT NOT NULL CHECK(state IN ('reserved','creating','active','quarantined','released')),
     version INTEGER NOT NULL CHECK(version>0), body TEXT NOT NULL CHECK(json_valid(body)),
-    CHECK((kind='ports' AND port_start BETWEEN 1024 AND 65535 AND port_end BETWEEN port_start AND 65535)
+    CHECK((kind='ports' AND port_start IS NOT NULL AND port_end IS NOT NULL AND port_start BETWEEN 1024 AND 65535 AND port_end BETWEEN port_start AND 65535)
         OR (kind<>'ports' AND port_start IS NULL AND port_end IS NULL)),
     FOREIGN KEY(unit_id,project_id,goal_id,task_id) REFERENCES execution_units(id,project_id,goal_id,task_id)
 );

@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{collections::BTreeMap, fs::{File, OpenOptions}, io::Write, os::unix::fs::{OpenOptionsExt, PermissionsExt}, path::{Path,PathBuf}, sync::Arc};
 use tokio::{process::Command, sync::Mutex};
+use super::git_io::UnitGit;
 
 pub struct ResultStore {owner:Arc<RuntimeOwner>,gate:Mutex<()>}
 #[cfg(test)]mod tests;
@@ -40,14 +41,13 @@ impl ResultStore {
         ensure!(unit.kind==UnitKind::Executor && unit.work==Some(WorkOutcome::Success),"capture requires known successful executor");
         let project=self.owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?.project(unit.scope.project_id)?.context("Project missing")?;
         let source=self.owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?.task(unit.scope.task_id.context("Task missing")?)?.context("Task missing")?;
-        // Keep existing exact canonical/common-directory/protected-base checks for executors.
-        {let store=self.owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?;
-            crate::git::WorktreeManager::status(&store,source.id)?;}
-        let format=text(&git(&unit.worktree,["rev-parse","--show-object-format"]).await?)?;
+        let io=UnitGit::new(self.owner.clone(),&unit,false)?;
+        io.ownership(&project,&source).await?;
+        let format=io.text(&unit.worktree,["rev-parse","--show-object-format"]).await?;
         ensure!(matches!(format.as_str(),"sha1"|"sha256"),"unsupported Git object format");
         ensure!(revision.len()==if format=="sha1" {40}else{64},"OID format mismatch");
-        git(&unit.worktree,["merge-base","--is-ancestor",unit.base_sha.as_str(),revision]).await?;
-        ensure!(text(&git(&unit.worktree,["rev-parse","--verify",&format!("{revision}^{{commit}}")]).await?)?==revision,"result is not exact commit");
+        io.run(&unit.worktree,["merge-base","--is-ancestor",unit.base_sha.as_str(),revision]).await?;
+        ensure!(io.text(&unit.worktree,["rev-parse","--verify",&format!("{revision}^{{commit}}")]).await?==revision,"result is not exact commit");
         qualified_content(&unit.worktree,revision).await?;
         let _guard=self.gate.lock().await;
         let repository=self.owner.root.join("projects").join(project.id.to_string()).join("results.git");
@@ -61,18 +61,15 @@ impl ResultStore {
         std::fs::create_dir_all(repository.parent().context("result parent missing")?)?;
         ensure!(!repository.starts_with(&unit.worktree) && !unit.worktree.starts_with(&repository),"results overlap executor");
         if !repository.exists() {
-            let mut cmd=Command::new("git");cmd.args(["init","--bare",&format!("--object-format={format}")]).arg(&repository);
-            process::capture(&mut cmd).await?;
+            io.run(repository.parent().context("repository parent missing")?,["init","--bare",&format!("--object-format={format}"),repository.to_str().context("repository UTF-8")?]).await?;
         }
         ensure!(!repository.join("objects/info/alternates").exists(),"result alternates forbidden");
-        ensure!(text(&git(&repository,["rev-parse","--show-object-format"]).await?)?==format,"repository format changed");
+        ensure!(io.text(&repository,["rev-parse","--show-object-format"]).await?==format,"repository format changed");
         // fetch copies object graphs over upload-pack. No clone-local hardlinks or alternates.
-        let mut command=git_command(&repository)?;
-        command.args(["-c","fetch.fsckObjects=true","fetch","--no-tags","--no-write-fetch-head","--no-recurse-submodules","--"])
-            .arg(&unit.worktree).arg(format!("{revision}:refs/rrx/{id}/commit")).arg(format!("{}:refs/rrx/{id}/base",unit.base_sha));
-        process::capture(&mut command).await?;
-        git(&repository,["fsck","--full","--strict","--no-dangling"]).await?;
-        for oid in [revision,unit.base_sha.as_str()] {git(&repository,["rev-list","--objects","--missing=error",oid]).await?;}
+        io.run(&repository,["-c","fetch.fsckObjects=true","fetch","--no-tags","--no-write-fetch-head","--no-recurse-submodules","--",
+            unit.worktree.to_str().context("worktree UTF-8")?,&format!("{revision}:refs/rrx/{id}/commit"),&format!("{}:refs/rrx/{id}/base",unit.base_sha)]).await?;
+        io.run(&repository,["fsck","--full","--strict","--no-dangling"]).await?;
+        for oid in [revision,unit.base_sha.as_str()] {io.run(&repository,["rev-list","--objects","--missing=error",oid]).await?;}
         std::fs::create_dir_all(directory.parent().context("artifact root missing")?)?;
         std::fs::create_dir(&directory)?;
         let bytes=serde_json::to_vec(&ResultManifest{artifact:id,unit:unit.id,revision:revision.into(),base:unit.base_sha.clone(),object_format:format,sources})?;
@@ -108,18 +105,16 @@ impl ResultStore {
         let artifact=self.owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?.result_artifact(unit.artifact_id.context("snapshot artifact missing")?)?;
         ensure!(artifact.scope==unit.scope && artifact.revision==unit.base_sha && artifact.state==ArtifactState::Published,"snapshot artifact binding mismatch");
         self.verify(&artifact).await?;
+        let io=UnitGit::new(self.owner.clone(),unit,true)?;
         ensure!(!unit.worktree.exists() && !unit.worktree.symlink_metadata().is_ok(),"snapshot paths are never reused");
         let output=self.owner.root.join("units").join(unit.id.to_string()).join("output");
         std::fs::create_dir_all(&output)?;
-        let mut command=Command::new("git");command.args(["clone","--no-local","--no-hardlinks","--no-checkout","--"]).arg(&artifact.repository).arg(&unit.worktree);
-        process::capture(&mut command).await.context("clone independent snapshot")?;
+        io.run(&output,["clone","--no-local","--no-hardlinks","--no-checkout","--",artifact.repository.to_str().context("repository UTF-8")?,unit.worktree.to_str().context("source UTF-8")?]).await.context("clone independent snapshot")?;
         ensure!(!unit.worktree.join(".git/objects/info/alternates").exists(),"snapshot alternates forbidden");
         // The result repo retains private refs; clone's default head refspec does not select them.
-        let mut fetch=git_command(&unit.worktree)?;
-        fetch.args(["fetch","--no-tags","--no-write-fetch-head","--no-recurse-submodules","--"])
-            .arg(&artifact.repository).arg(format!("{}:refs/rrx/input",artifact.revision)).arg(format!("{}:refs/rrx/base",artifact.base_sha));
-        process::capture(&mut fetch).await.context("import exact retained snapshot graph")?;
-        git(&unit.worktree,["checkout","--detach",artifact.revision.as_str()]).await.context("checkout retained snapshot SHA")?;
+        io.run(&unit.worktree,["fetch","--no-tags","--no-write-fetch-head","--no-recurse-submodules","--",
+            artifact.repository.to_str().context("repository UTF-8")?,&format!("{}:refs/rrx/input",artifact.revision),&format!("{}:refs/rrx/base",artifact.base_sha)]).await.context("import exact retained snapshot graph")?;
+        io.run(&unit.worktree,["checkout","--detach",artifact.revision.as_str()]).await.context("checkout retained snapshot SHA")?;
         qualified_content(&unit.worktree,&artifact.revision).await?;
         let digest=tracked_digest(&unit.worktree).await?;
         readonly_tree(&unit.worktree,true)?;
@@ -158,16 +153,16 @@ fn readonly_tree(path:&Path,apply:bool)->Result<()> {
     else {ensure!(m.permissions().mode() & 0o222==0,"snapshot regained write permissions");}
     Ok(())
 }
-async fn qualified_content(root:&Path,revision:&str)->Result<()> {
+pub(crate) async fn qualified_content(root:&Path,revision:&str)->Result<()> {
     let tree=git(root,["ls-tree","-r","-z",revision]).await?;
     for line in tree.split(|b|*b==0).filter(|s|!s.is_empty()) {
         ensure!(!line.starts_with(b"160000 "),"submodules require a qualified profile");
         ensure!(!line.starts_with(b"120000 "),"source symlinks require a qualified profile");
     }
     // LFS pointers are ordinary Git blobs, not their required external content.
-    let objects=git(root,["grep","-l","-I","-e","version https://git-lfs.github.com/spec/v1",revision,"--"]).await;
-    // git grep exit 1 means no match; inspect blobs independently below rather than treating every failure as absence.
-    if let Ok(found)=objects {ensure!(found.is_empty(),"LFS content requires a qualified profile");}
+    let mut command=git_command(root)?;command.args(["grep","-l","-I","-e","version https://git-lfs.github.com/spec/v1",revision,"--"]);
+    let observed=process::capture_observed(&mut command).await?;
+    ensure!(observed.receipt.status.code()==Some(1) || (observed.receipt.status.success() && observed.stdout.is_empty()),"LFS pointer scan found unsupported content or failed");
     let attrs=git(root,["ls-tree","-r","--name-only",revision]).await?;
     for name in std::str::from_utf8(&attrs)?.lines().filter(|n|n.ends_with(".gitattributes")) {
         let bytes=git(root,["show",&format!("{revision}:{name}")]).await?;

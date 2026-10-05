@@ -137,3 +137,64 @@ fn body_corruption_cannot_redirect_unit_or_lease_authority() {
     store.connection.execute("UPDATE execution_units SET body=?1 WHERE id=?2",params![serde_json::to_string(&corrupt).unwrap(),unit.id.to_string()]).unwrap();
     assert!(store.execution_unit(unit.id).is_err());assert!(store.retire_execution(&unit.authority(),false).is_err());
 }
+
+#[test]
+fn quota_bucket_body_cannot_impersonate_another_indexed_row() {
+    let (mut store,t,epoch)=fixture();let unit=store.reserve_execution(draft(&t,epoch),t.version).unwrap();
+    let a=QuotaObservation {provider:"codex".into(),account_key:"unknown".into(),bucket:"a".into(),window_id:"old".into(),
+        status:QuotaStatus::Exhausted,used_percent:Some(100.0),resets_at:None,observed_at:now_ms(),source_version:"fixture".into(),confirmed_subscription:true};
+    let b=QuotaObservation {bucket:"b".into(),status:QuotaStatus::Available,used_percent:Some(1.0),..a.clone()};
+    store.observe_quota(&a).unwrap();store.observe_quota(&b).unwrap();
+    assert_eq!(store.quota_observations("codex","unknown").unwrap().len(),2);
+    store.connection.execute("UPDATE quota_windows SET body=?1 WHERE bucket='a'",[serde_json::to_string(&b).unwrap()]).unwrap();
+    assert!(store.quota_observations("codex","unknown").is_err());
+    assert!(store.reserve_execution_quota(&unit.authority(),"codex","unknown",6,2,3,now_ms()+60001).is_err());
+    assert!(store.observe_quota(&a).is_err());
+}
+
+#[test]
+fn exhaustion_without_reset_recovers_only_through_the_current_pool_probe() {
+    let (mut store,t,epoch)=fixture();let unit=store.reserve_execution(draft(&t,epoch),t.version).unwrap();
+    let at=now_ms();let exhausted=QuotaObservation {provider:"codex".into(),account_key:"unknown".into(),bucket:"all".into(),window_id:"unknown-all".into(),
+        status:QuotaStatus::Exhausted,used_percent:Some(100.0),resets_at:None,observed_at:at,source_version:"fixture".into(),confirmed_subscription:true};
+    store.observe_quota(&exhausted).unwrap();
+    let available=QuotaObservation {status:QuotaStatus::Available,used_percent:Some(10.0),observed_at:at+60001,..exhausted.clone()};
+    store.observe_quota(&available).unwrap();
+    assert_eq!(store.quota_observations("codex","unknown").unwrap()[0].status,QuotaStatus::Exhausted);
+    assert!(store.observe_quota_from_probe(&available,&unit.authority()).is_err());
+    assert_eq!(store.reserve_execution_quota(&unit.authority(),"codex","unknown",6,2,3,at+60001).unwrap(),quotas::QuotaAdmission::Admitted);
+    let probe=store.execution_unit(unit.id).unwrap();
+    store.observe_quota_from_probe(&available,&probe.authority()).unwrap();
+    assert_eq!(store.quota_observations("codex","unknown").unwrap()[0].status,QuotaStatus::Available);
+    store.retire_execution(&probe.authority(),false).unwrap();
+    assert!(store.observe_quota_from_probe(&available,&probe.authority()).is_err());
+}
+
+#[test]
+fn governing_instruction_change_fences_effects_but_preserves_historical_retirement() {
+    let (mut store,t,epoch)=fixture();let unit=store.reserve_execution(draft(&t,epoch),t.version).unwrap();
+    let mut goal=store.goal(t.goal_id).unwrap().unwrap();
+    goal.blockers.push("bookkeeping".into());store.put_goal(&mut goal).unwrap();
+    assert!(store.validate_execution(&unit.authority(),true,false).is_ok());
+    goal.constraints.push("new accepted constraint".into());store.put_goal(&mut goal).unwrap();
+    assert!(store.validate_execution(&unit.authority(),true,false).is_err());
+    assert!(store.finish_execution(&unit.authority(),WorkOutcome::Success,Disposition::Completed).is_err());
+    store.retire_execution(&unit.authority(),false).unwrap();
+    let current=store.task(t.id).unwrap().unwrap();let retry=store.reserve_execution(draft(&current,epoch),current.version).unwrap();
+    let mut project=store.project(t.project_id).unwrap().unwrap();project.rule_refs.push(PathBuf::from("/new/rules"));store.put_project(&mut project).unwrap();
+    assert!(store.validate_execution(&retry.authority(),true,false).is_err());
+    store.retire_execution(&retry.authority(),false).unwrap();
+}
+
+#[test]
+fn unknown_remote_effect_gates_its_target_phase_without_blocking_local_retry() {
+    let (mut store,t,epoch)=fixture();let unit=store.reserve_execution(draft(&t,epoch),t.version).unwrap();
+    let effect=ManagedEffect {id:OperationId::new(),unit_id:unit.id,scope:unit.scope.clone(),kind:"publish".into(),idempotency_key:"first-publish".into(),
+        expected_target:"origin/pr/123".into(),state:EffectState::Pending,receipt:BTreeMap::new(),version:1};
+    store.reserve_managed_effect(&unit.authority(),&effect).unwrap();store.retire_execution(&unit.authority(),false).unwrap();
+    let current=store.task(t.id).unwrap().unwrap();let retry=store.reserve_execution(draft(&current,epoch),current.version).unwrap();
+    let later=ManagedEffect {id:OperationId::new(),unit_id:retry.id,idempotency_key:"later-publish".into(),..effect.clone()};
+    assert!(store.reserve_managed_effect(&retry.authority(),&later).is_err());
+    let local=ManagedEffect {kind:"local-test".into(),idempotency_key:"local-test".into(),..later};
+    store.reserve_managed_effect(&retry.authority(),&local).unwrap();
+}

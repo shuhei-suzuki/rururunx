@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 const MUTABLE_TABLES: &[&str] = &[
     "projects", "goals", "tasks", "records", "context_versions", "usage", "audit",
-    "runtime_epoch", "execution_units", "task_execution", "session_units",
+    "runtime_epoch", "execution_units", "execution_context", "task_execution", "session_units",
     "result_artifacts", "artifact_dependencies", "resource_leases", "managed_effects",
     "cleanup_jobs", "cleanup_observations", "quota_pools", "quota_windows", "quota_leases", "quota_waiters",
 ];
@@ -130,9 +130,21 @@ fn validate_authority(tx:&Connection,authority:&ExecutionAuthority,native:bool,f
         let task:Task=read_tx(tx,"tasks",&unit.scope.task_id.context("Task required")?.to_string())?.context("unknown Task")?;
         ensure!(task.scope()==unit.scope && !task_terminal(task.state),"inactive/foreign Task");
         ensure!(project.state==ProjectState::Registered && !matches!(goal.state,GoalState::Paused|GoalState::Completed|GoalState::Cancelled|GoalState::Failed),"inactive Project/Goal");
+        let saved:String=tx.query_row("SELECT governing_digest FROM execution_context WHERE unit_id=?1",[unit.id.to_string()],|r|r.get(0))?;
+        ensure!(saved==governing_digest(&project,&goal)?,"governing instructions changed; fresh admission required");
         if unit.kind==UnitKind::Executor {ensure!(task.worktree.as_ref()==Some(&unit.worktree) && task.branch==unit.branch,"executor projection changed");}
     }
     Ok(unit)
+}
+fn governing_digest(project:&Project,goal:&Goal)->Result<String> {
+    use sha2::{Digest,Sha256};
+    // Scheduling/status/evidence bookkeeping does not rewrite the accepted instruction frame.
+    let criteria=goal.completion_criteria.iter().map(|c|(&c.id,&c.description)).collect::<Vec<_>>();
+    let frame=json!({"project":[project.id,project.root,project.repository_identity,project.base_branch,
+        project.config_ref,project.rule_refs,project.environment_refs],
+        "goal":[goal.id,goal.project_id,goal.title,goal.objective,criteria,goal.constraints,
+        goal.non_goals,goal.source_refs,goal.context_version,goal.dag]});
+    Ok(format!("{:x}",Sha256::digest(serde_json::to_vec(&frame)?)))
 }
 fn insert_lease(tx:&Transaction<'_>,lease:&ResourceLease) -> Result<()> {
     let (p,g,t)=scope_keys(&lease.scope)?;
@@ -193,14 +205,14 @@ impl Store {
             else {prior.context("review/verifier requires admitted artifact generation")?};
         if unit.kind==UnitKind::Executor {
             ensure!(unit.worktree.parent()==Some(project.worktree_root.as_path()) && unit.branch.as_ref().is_some_and(|b|b.starts_with("rrx/") && b!=&project.base_branch),"invalid fresh executor namespace");
-            let pending:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM managed_effects WHERE task_id=?1 AND state IN ('pending','unknown') AND json_extract(body,'$.kind') IN ('publish','merge','deploy'))",[task.id.to_string()],|r|r.get(0))?;
-            ensure!(!pending,"unknown external effect requires reconciliation");
         } else {
             let artifact=self_artifact_tx(&tx,unit.artifact_id.context("snapshot requires artifact")?)?;
             ensure!(artifact.scope==unit.scope && artifact.state==ArtifactState::Published && artifact.revision==unit.base_sha,"snapshot artifact/scope mismatch");
         }
         unit.version=1;
         insert_unit(&tx,&unit)?;
+        tx.execute("INSERT INTO execution_context(unit_id,project_version,goal_version,governing_digest) VALUES(?1,?2,?3,?4)",
+            params![unit.id.to_string(),project.version,goal.version,governing_digest(&project,&goal)?])?;
         if unit.kind==UnitKind::Executor {
             tx.execute("INSERT INTO task_execution(task_id,project_id,goal_id,generation,active_unit) VALUES(?1,?2,?3,?4,?5) ON CONFLICT(task_id) DO UPDATE SET generation=excluded.generation,active_unit=excluded.active_unit",
                 params![task.id.to_string(),task.project_id.to_string(),task.goal_id.to_string(),unit.generation,unit.id.to_string()])?;
@@ -310,6 +322,7 @@ fn effect_tx(connection:&Connection,id:OperationId)->Result<ManagedEffect> {
 mod artifacts;
 mod effects;
 mod quotas;
+pub(crate) use quotas::QuotaAdmission;
 mod migration;
 mod sessions;
 pub(super) use sessions::logically_retired_session;

@@ -9,3 +9,6 @@ pub mod results;
 pub mod resources;
 pub mod attempts;
 pub mod tools;
+mod claude_wire;
+pub mod quota;
+mod git_io;

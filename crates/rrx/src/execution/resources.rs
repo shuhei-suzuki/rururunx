@@ -18,7 +18,7 @@ impl ResourceProfile {
         let inherited=std::env::var_os("PATH").context("PATH is required")?;
         let mut paths=vec![self.tool_bin.clone()];paths.extend(std::env::split_paths(&inherited));
         let path=std::env::join_paths(paths)?.into_string().map_err(|_|anyhow::anyhow!("PATH must be UTF-8"))?;
-        Ok(BTreeMap::from([
+        let mut overlay=BTreeMap::from([
             ("PATH".into(),path),("RRX_UNIT_ID".into(),self.unit.to_string()),("RRX_PROCESS_COOKIE".into(),cookie.into()),
             ("RRX_PROFILE".into(),self.root.join("profile.json").to_string_lossy().into()),("RRX_RUNTIME_SOCKET".into(),ipc.to_string_lossy().into()),
             ("RRX_TMPDIR".into(),self.temp.to_string_lossy().into()),("TMPDIR".into(),self.temp.to_string_lossy().into()),
@@ -27,10 +27,15 @@ impl ResourceProfile {
             ("COMPOSE_PROJECT_NAME".into(),self.docker_project.clone()),("CARGO_TARGET_DIR".into(),self.output.join("cargo-target").to_string_lossy().into()),
             ("GRADLE_USER_HOME".into(),self.cache.join("gradle").to_string_lossy().into()),
             ("SCCACHE_DIR".into(),self.cache.join("sccache").to_string_lossy().into()),
-            ("GIT_CONFIG_COUNT".into(),"3".into()),("GIT_CONFIG_KEY_0".into(),"gc.auto".into()),("GIT_CONFIG_VALUE_0".into(),"0".into()),
-            ("GIT_CONFIG_KEY_1".into(),"maintenance.auto".into()),("GIT_CONFIG_VALUE_1".into(),"false".into()),
-            ("GIT_CONFIG_KEY_2".into(),"core.fsmonitor".into()),("GIT_CONFIG_VALUE_2".into(),"false".into()),
-        ]))
+        ]);
+        // Preserve inherited config entries, including required hooks, without reading/copying their values.
+        let count=std::env::var("GIT_CONFIG_COUNT").ok().map(|s|s.parse::<usize>()).transpose()?.unwrap_or(0);
+        ensure!(count<=128,"inherited Git config overlay exceeds bound");
+        overlay.insert("GIT_CONFIG_COUNT".into(),(count+3).to_string());
+        for (i,(key,value)) in [("gc.auto","0"),("maintenance.auto","false"),("core.fsmonitor","false")].into_iter().enumerate() {
+            overlay.insert(format!("GIT_CONFIG_KEY_{}",count+i),key.into());overlay.insert(format!("GIT_CONFIG_VALUE_{}",count+i),value.into());
+        }
+        Ok(overlay)
     }
     pub(crate) fn validate(&self,owner:&RuntimeOwner,unit:&ExecutionUnit)->Result<()> {
         ensure!(self.unit==unit.id && self.runtime==owner.instance && self.project==unit.scope.project_id.to_string()

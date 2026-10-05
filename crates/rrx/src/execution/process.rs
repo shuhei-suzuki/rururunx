@@ -13,6 +13,7 @@ pub(crate) struct ProcessReceipt {
     pub(crate) status:ExitStatus,
     pub(crate) group_error:Option<String>,
 }
+pub(crate) struct CommandCapture {pub stdout:Vec<u8>,pub receipt:ProcessReceipt}
 impl OwnedProcess {
     pub(crate) fn spawn(command: &mut Command) -> Result<Self> {
         command.process_group(0).kill_on_drop(true);
@@ -61,8 +62,15 @@ pub(crate) async fn bounded_read(reader: impl AsyncRead + Unpin,limit:usize) -> 
 }
 
 pub(crate) async fn capture(command:&mut Command) -> Result<Vec<u8>> {
+    let observed=capture_observed(command).await?;
+    ensure!(observed.receipt.status.success(),"managed command failed (exit {:?})",observed.receipt.status.code());
+    Ok(observed.stdout)
+}
+pub(crate) async fn capture_observed(command:&mut Command) -> Result<CommandCapture> {
     command.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
-    let mut child=OwnedProcess::spawn(command)?;
+    capture_child(OwnedProcess::spawn(command)?).await
+}
+pub(crate) async fn capture_child(mut child:OwnedProcess) -> Result<CommandCapture> {
     let stdout=child.child.stdout.take().context("stdout missing")?;
     let stderr=child.child.stderr.take().context("stderr missing")?;
     let readers=async {tokio::try_join!(bounded_read(stdout,4*1024*1024),bounded_read(stderr,256*1024))};
@@ -81,6 +89,5 @@ pub(crate) async fn capture(command:&mut Command) -> Result<Vec<u8>> {
     let receipt=child.stop_and_reap().await?;
     let (out,_)=collected.context("command timed out")??;
     // Do not copy arbitrary tool stderr into an audit receipt (it may be sensitive).
-    ensure!(receipt.status.success(),"managed command failed (exit {:?})",receipt.status.code());
-    Ok(out)
+    Ok(CommandCapture {stdout:out,receipt})
 }

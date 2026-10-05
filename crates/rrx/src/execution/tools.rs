@@ -19,6 +19,7 @@ pub(crate) fn plan(profile:&ResourceProfile,unit:&ExecutionUnit,tool:&str,args:&
             ensure!(!args.iter().any(|a|a=="-c" || a.starts_with("--config-env") || a.starts_with("--git-dir") || a.starts_with("--work-tree") || a=="-C"),"Git namespace/config override is unsupported");
             let sub=args.first().context("Git subcommand required")?;
             let read=matches!(sub.as_str(),"status"|"log"|"show"|"diff"|"rev-parse"|"cat-file"|"ls-files"|"ls-tree"|"check-ignore"|"check-attr"|"merge-base"|"rev-list"|"describe");
+            ensure!(!args.iter().any(|a|a.starts_with("--out") || a.starts_with("--textconv") || a.starts_with("--ext-diff") || a=="--no-index" || a=="--paginate"),"Git output/external-diff override is unsupported");
             let write=matches!(sub.as_str(),"add"|"restore"|"checkout"|"switch"|"commit"|"update-ref"|"branch"|"reset"|"rm"|"fetch"|"cherry-pick"|"merge");
             ensure!(read || (write && unit.kind==UnitKind::Executor),"Git command is unsupported by this unit profile");
             ensure!(!args.iter().any(|a|a=="--shared" || a.starts_with("--reference") || a=="--system" || a=="--global"),"shared/global Git operation is unsupported");
