@@ -381,6 +381,24 @@ pub(in crate::state) fn invalidate_epoch(c: &Connection) -> Result<()> {
     Ok(())
 }
 impl Store {
+    /// Coherent current source-owned Task for Context rendering. A projected
+    /// Workflow Task is not yet a durable authority body. No recovery row leaves
+    /// existing opaque/legacy source semantics unchanged.
+    pub(crate) fn recovered_source_task(&mut self, task: TaskId) -> Result<Option<Task>> {
+        let tx = self.connection.transaction()?;
+        let current = if let Some(row) = row(&tx, task)? {
+            ensure!(
+                row.state == "installed",
+                "source recovery is not installed/current"
+            );
+            validate_row(&tx, &row)?;
+            Some(snapshot(&tx, task)?.task)
+        } else {
+            None
+        };
+        tx.commit()?;
+        Ok(current)
+    }
     pub(crate) fn begin_retained_source_recovery(
         &mut self,
         task: TaskId,
