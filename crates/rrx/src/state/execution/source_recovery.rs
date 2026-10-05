@@ -315,7 +315,7 @@ pub(crate) fn validate_binding(c: &Connection, binding: &SourceReadBinding) -> R
             },
         "source recovery claim replaced/closed"
     );
-    Ok(())
+    validate_row(c, &row)
 }
 pub(in crate::state) fn validate_task(c: &Connection, task: TaskId) -> Result<()> {
     if let Some(row) = row(c, task)? {
