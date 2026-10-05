@@ -424,13 +424,15 @@ and native acceptance remain open.
 Selected Git reader lifetime has two independent Requirements4 approvals. The
 [Design2](doc/design/issue-60-reader-design.md), approved by two independent reviewers, now has a committed selected Git
 Child/readers implementation independent of caller runtime. Two independent
-Source2–4 reviews approve their limited component deltas without C/H/M; Source5
-Low corrections await fresh source/CI gates. Full-source/native acceptance remains
-unqualified. Current f072 full default Debug passed425 top-level Rust tests+2docs;
+Source2–5 reviews approve their limited component deltas without C/H/M; Source5's
+three evidence-precision Lows are dispositioned in the ledger. Full-source/native
+acceptance remains unqualified. Local macOS f072 full default Debug passed425 top-level Rust tests+2docs;
 distinct full Release TEST FAILED308/6 (library PASS/FAIL; later targets unrun).
 Older35f0/fd406 and historical failures remain failed/cause AND regression UNKNOWN.
 The default suite now includes a concurrent private audit child; no causal role is
 inferred. e295 public bothOS CI passed DEBUG TEST and RELEASE BUILD, not RELEASE
-TEST. The [finite ledger](doc/verification/issue-60-readers.md) is27 compiled runs/
+TEST. Source5 e30 CI failed in one macOS Codex cleanup consumer; Linux all steps
+passed. The required final context remains unqualified, with cause/contribution/
+regression UNKNOWN. The [finite ledger](doc/verification/issue-60-readers.md) is27 compiled runs/
 23 operators/25 intended kills/TWO masked survivors with zero credit; M14/M17 are
-diagnostics-only, R23 selection-only. Shared native lifetime and full #60/F1 remain open.
+diagnostics-only, R23 selector-non-vacuity only. Shared native lifetime and full #60/F1 remain open.

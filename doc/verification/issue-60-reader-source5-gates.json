@@ -150,5 +150,28 @@
       ]
     }
   ],
-  "old_full_failures_preserved": "35f0 / fd406 and all prior failed heads; cause AND regression UNKNOWN"
+  "old_full_failures_preserved": "35f0 / fd406 and all prior failed heads; cause AND regression UNKNOWN",
+  "platform": "local macOS (aarch64-apple-darwin); single local observation, not both-OS coverage",
+  "toolchain": "Rust 1.91.1; existing verification toolchain, no profile qualification",
+  "explicit_release_timeouts": [
+    {
+      "consumer": "native_references_and_ordinary_callers_keep_exact_scoped_alternatives",
+      "child": "reference_child",
+      "message": "Timeout: Git ownership preflight timed out",
+      "capacity_unavailable_suffix_present": false,
+      "active_jobs": null,
+      "retained_unresolved_jobs": null,
+      "original_log_line": 437
+    },
+    {
+      "consumer": "live_reference_change_rejects_actual_resume_before_spawn",
+      "child": "resume_admission_child",
+      "message": "Timeout: Git ownership preflight timed out",
+      "capacity_unavailable_suffix_present": false,
+      "active_jobs": null,
+      "retained_unresolved_jobs": null,
+      "original_log_line": 479
+    }
+  ],
+  "timeout_discriminator_limit": "No capacity-wait suffix in these two observed errors. Bare text is also used for already-expired admission, observation expiry and cancellation; it does not identify which bare path, child creation, cause, contribution or regression."
 }

@@ -722,7 +722,8 @@ watchdogs expired: checkpoint last boundary1/case7/fixture, resume last
 boundary2/case5/resumed_terminal, actual parent-observed SIGKILL. Distinct full
 default Release TEST FAILED: library308PASS/6FAIL/24ignored in66.45s, later targets
 unrun. Failures were owning-start StateConflict-prefix, stop Failed versus Stopped,
-irrelevant-checkpoint case0/terminal with explicit Git5s Timeout, completed-resume
+irrelevant-checkpoint case0/terminal with the bare exact message
+`Timeout: Git ownership preflight timed out` (no `capacity_unavailable` suffix), completed-resume
 Failed versus Exited, missing expected earlier-state assertion, and resume watchdog
 last boundary2/case6/fixture. Native dispatched=false/not_attempted receipts do not
 prove that no Git operation spawned. Cause AND regression remain UNKNOWN. No
@@ -771,8 +772,10 @@ or a lost-operand guarantee. New R23 makes a selector stale; the actual trusted
 binary inventory rejects it before audited Git/native jobs start. Both sources
 were restored exactly; private restored parent1PASS and child44PASS/1ignored3.03s.
 The cumulative ledger is27 compiled runs/23 distinct operators/25 intended kill
-runs plus the two historical masked survivors with zero credit. R23 is selection
-oracle coverage; R19 tests the combined poison/lost predicate with both true,
+runs plus the two historical masked survivors with zero credit. R23 covers only
+the per-selector non-vacuity arm, not omit-skip/scalar-exclusion/cardinality
+sensitivity; those remain source-traced with passing positive controls only.
+R19 tests the combined poison/lost predicate with both true,
 not separate lost-half sensitivity. R21 was the single-test audit-mode witness
 with `RRX_PRIVATE_GIT_POOL_AUDIT=1`, not the45-test parent's filter/status oracle.
 Exact commands, environment, tested blobs and fd406→e295→f072 path inventories
@@ -792,17 +795,71 @@ The workload composition differs from35f0. Either copy failing is a failed gate;
 no cause, regression or exoneration is inferred, no skip-only diagnostic run or
 serialization is used, and existing deadlines/latches remain unchanged.
 
-[Current gates](issue-60-reader-source5-gates.json) at f072799: full default Debug
+[Current local macOS gates](issue-60-reader-source5-gates.json) at f072799: full default Debug
 PASS425 top-level Rust tests+2docs/27ignored, with nested44audit and1ordinary-library
 child counted separately. Distinct full Release TEST FAILED: library308PASS/
 6FAIL/24ignored in72.22s; later workspace targets unrun. Four Grok children
 observed exit101: absent-baseline transport predicate, native-reference explicit
 Git5s Timeout, stop Failed versus Stopped, and resume-admission explicit Git5s
-Timeout. Two watchdogs expired60001ms with actual parent-observed SIGKILL, both
+Timeout. Both exact messages are `Timeout: Git ownership preflight timed out`,
+with no `capacity_unavailable` suffix or counts. Two watchdogs expired60001ms with actual parent-observed SIGKILL, both
 last boundary1/2 case6/resumed_terminal. Native dispatched=false/not_attempted
 does not prove no Git spawn. Cause, contribution AND regression UNKNOWN. The
 audit child44PASS/1ignored7.56s does not replace this failed full gate. Fmt,
 all-target Clippy-Dwarnings and both BUILDs passed. All older35f0/fd406 and historical
-full failures stay failed and separately scoped. Fresh Source5 source/CI gates
-and Root's disposition remain pending. PR64 stays DRAFT/HOLD; no native/F1/full60
+full failures stay failed and separately scoped. Source5 outcomes and current CI
+are recorded below; Root's disposition remains pending. PR64 stays DRAFT/HOLD; no native/F1/full60
 or shared-producer readiness is granted by any of these controls or metadata.
+
+### Source5 closed outcomes, precision dispositions and failed required CI
+
+At immutable public e30ce2f, both independent Source5 native read-only commands
+completed with actual owned cleanup verified before either findings body was read.
+Both approve the limited test/docs delta, with zero C/H/M: ownership one Low,
+capacity two Low. The [raw findings](issue-60-reader-source5-findings.json) retain
+their launch-time pending-peer/CI notes, raw-result hashes and narrow approval
+scope. They do not approve full TEST, merge, native/F1, whole60 or MVP acceptance.
+
+All three Lows were verified from the same repository and original logs, then
+corrected as evidence-only changes. No normative requirement, production/test
+byte, deadline, observer/profile, latch or internal parallelism is changed:
+
+- R23's compiled stale-selector operator killed the per-selector non-vacuity
+  assertion only. Omit-skip wiring, scalar-exclusion and cardinality checks have
+  passing positive controls and source reasoning, but no executed omission
+  sensitivity. R23 earns none of those other arms.
+- f072's full Debug/Release gates are single **local macOS** observations, now
+  marked as such in the gate artifact and status paragraphs. Current Linux
+  execution is separately recorded in the required CI below.
+- f072 Release's reference-child line437 and resume-admission line479, plus
+  fd406 Release's irrelevant-checkpoint line462, each contain the exact bare
+  `Timeout: Git ownership preflight timed out`. No `capacity_unavailable` suffix
+  or occupancy counts were printed; unavailable counts are not zero. The suffix
+  exists only after an actual capacity wait; the bare text is also used for
+  already-expired admission, observation expiry and cancellation. These messages
+  do not identify which bare path occurred, whether Git spawned, or a cause,
+  contribution or regression. Original logs were read, without any rerun.
+
+[Required CI37268381965](issue-60-reader-source5-ci.json) at e30 **FAILED**.
+Both OS jobs actually checked out c26ff80f94a56d91a47fa443c3415543adf611df,
+parents26f3a48/e30ce2f, complete tree72e5c5eb equal to the triggering head.
+Linux passed every job step, including the current42-entry inventory,
+audit41PASS/1ignored3.09s and signal-parity control. macOS's audit separately
+passed44/1ignored6.55s, but its full library failed313PASS/1FAIL/24ignored109.52s.
+The failing Codex consumer was
+`abnormal_supervisor_drop_clears_the_installed_live_approval_journal`, whose
+session.rs6005 unwrap returned SessionLost during owned cleanup. Inspector facts:
+deadline_loop_entry; stdout/stderr each1read,0bytes,1WouldBlock,EOFpending;
+status1poll/pending, exit unavailable, validation not reached; observation310711us,
+spawn2245us; inspector kill requested then direct-child wait/reap25us. These
+inspector-child facts grant no owned target-group cleanup. Later macOS workspace
+targets were unrun and both builds skipped. Linux success and the passing audit
+are no substitute for the failed macOS required context. CI is DEBUG TEST plus
+RELEASE BUILD, not RELEASE TEST.
+
+This new Codex failure, f072 Release308/6 and all previous failed full gates remain
+separately FAILED. Cause, contribution AND regression remain UNKNOWN. No old-head
+rerun, timeout/latch reset, skip-only acceptance, serialization or deadline waiver
+was used. All own Source5 suites/mutations/review commands are closed. PR64 stays
+DRAFT/HOLD; Root's merge disposition is pending, and full60/native16/F1, shared
+producer qualification, availability and recovery remain OPEN.

@@ -346,14 +346,16 @@ a Git-local actual std Child worker, caller-runtime-independent supervisor/runti
 and both reader joins, four counted jobs per call/global64. Shared native
 ProcessGroup/new/reap/Drop stays unchanged. The finite ledger is27 compiled runs/
 23 operators/25 intended kills, withTWO prior masked worker-join survivors retaining
-zero credit; M14/M17 cover diagnostics only and R23 checks test selection. Source2–4
-approvals address limited component deltas; Source5's verified Low corrections
-await fresh source/CI gates. Public e295 bothOS CI passed DEBUG TEST and RELEASE
-BUILD with full tested-tree equality, not RELEASE TEST. Current f072 full Debug
+zero credit; M14/M17 cover diagnostics only and R23 checks selector non-vacuity only. Source2–5
+approvals address limited component deltas; Source5's three evidence-precision Lows
+are dispositioned in the ledger. Public e295 bothOS CI passed DEBUG TEST and RELEASE
+BUILD with full tested-tree equality, not RELEASE TEST. Local macOS f072 full Debug
 passed425 top-level Rust tests+2docs; distinct full Release TEST failed308/6,
 later targets unrun. Older35f0 and fd406 full failures remain failed, cause AND
 regression UNKNOWN. The new default suite also includes a concurrent private audit
-process; no causality or exoneration is inferred. See the current
+process; no causality or exoneration is inferred. Source5 e30 CI failed in one macOS
+Codex cleanup consumer, with Linux all steps passed; cause/contribution/regression
+UNKNOWN and final required context unqualified. See the current
 [ledger](../../verification/issue-60-readers.md) for exact scope and history.
 These process-local holders
 grant no durable/full-workload proof or availability qualification.

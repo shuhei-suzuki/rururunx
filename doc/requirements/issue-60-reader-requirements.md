@@ -1,14 +1,15 @@
-# Issue60 selected Git reader lifetime — Requirements4/Design2 approved; Source5 candidate, full acceptance unqualified
+# Issue60 selected Git reader lifetime — Requirements4/Design2 and limited Source5 approved; full acceptance unqualified
 
 Risk: STRICT. Status: Requirements4 at a8e8a8b received two independent native
 approvals, no Critical/High/Medium findings, two Low findings each. Design2
 at46f819b has two independent approvals/no C/H/M; Source1 at a92c4d0 returned
 request_changes. Source2 at81e7c29 has two component-delta approvals/no C/H/M;
-limited Source3 at675471c and Source4 ate29567a likewise have two approvals/no C/H/M.
-Source5 implements verified test/credit Low corrections; its fresh source/CI gates
-are pending. Current f072 full Debug passed; full Release TEST failed308/6 with
+limited Source3 at675471c, Source4 ate29567a and Source5 ate30ce2f likewise have two
+approvals/no C/H/M. Source5's three evidence-precision Lows are dispositioned in the
+ledger. Local macOS f072 full Debug passed; full Release TEST failed308/6 with
 later targets unrun. All older failed gates remain failed/cause AND regression
-UNKNOWN. Full source/native acceptance remains unqualified; current facts are in
+UNKNOWN. Source5 e30 CI failed in one macOS Codex cleanup consumer; Linux all steps
+passed, final required context unqualified. Full source/native acceptance remains unqualified; current facts are in
 the [verification ledger](../verification/issue-60-readers.md).
 The four requirements
 Low findings are verified precision items
