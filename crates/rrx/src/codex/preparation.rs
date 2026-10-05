@@ -466,6 +466,77 @@ mod tests {
     use super::*;
     use std::sync::atomic::Ordering;
 
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn selected_exec_budget_includes_synchronous_admission_without_spawn() {
+        use super::super::environment::{
+            ExecEnvironment, ExecSite, Selection, SpawnBoundary, TestHooks,
+        };
+        let directory = tempfile::tempdir().unwrap();
+        let preparation = Preparation::new();
+        let selection = Selection::fixture_empty();
+        let hooks = Arc::new(TestHooks::default());
+        let uncertain = Arc::new(AtomicBool::new(false));
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        let mut admitted = false;
+        let mut admission = || {
+            admitted = true;
+            // Consume the caller's unchanged budget inside the real callback.
+            // The fixture does not change the production deadline or restart it.
+            while tokio::time::Instant::now() <= deadline {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            Ok(())
+        };
+        let result = bounded_git(
+            &crate::codex::availability::component_availability(),
+            Path::new("/bin/sh"),
+            directory.path(),
+            &["-c".into(), "printf synthetic".into()],
+            ExecEnvironment::Selected(&selection),
+            Some(SpawnBoundary::new(&mut admission).traced(hooks.clone(), 1, ExecSite::Version)),
+            deadline,
+            uncertain.clone(),
+            &preparation,
+        )
+        .await;
+        assert!(admitted);
+        assert!(matches!(result, Err(ref error) if error.kind == ErrorKind::Timeout));
+        assert!(hooks.counts(1, ExecSite::Version) == (0, 0));
+        assert!(!uncertain.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn ambient_git_ignores_selected_admission_and_trace() {
+        use super::super::environment::{ExecEnvironment, ExecSite, SpawnBoundary, TestHooks};
+        let directory = tempfile::tempdir().unwrap();
+        let preparation = Preparation::new();
+        let hooks = Arc::new(TestHooks::default());
+        let uncertain = Arc::new(AtomicBool::new(false));
+        let mut called = false;
+        let mut admission = || {
+            called = true;
+            Err(failure(
+                ErrorKind::InvalidConfiguration,
+                "synthetic selected refusal",
+            ))
+        };
+        let result = bounded_git(
+            &crate::codex::availability::component_availability(),
+            Path::new("/bin/sh"),
+            directory.path(),
+            &["-c".into(), "printf synthetic".into()],
+            ExecEnvironment::Ambient(Vec::new()),
+            Some(SpawnBoundary::new(&mut admission).traced(hooks.clone(), 1, ExecSite::Version)),
+            tokio::time::Instant::now() + Duration::from_secs(5),
+            uncertain.clone(),
+            &preparation,
+        )
+        .await;
+        assert!(matches!(result, Ok(ref output) if output == "synthetic"));
+        assert!(!called && hooks.counts(1, ExecSite::Version) == (0, 0));
+        assert!(!uncertain.load(Ordering::SeqCst));
+    }
+
     #[tokio::test]
     async fn cancelled_git_wait_reaps_owned_group_and_keeps_cancellation_cause() {
         let directory = tempfile::tempdir().unwrap();

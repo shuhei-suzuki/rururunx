@@ -296,5 +296,34 @@ The caller-count control is strengthened to declare every eligible synthetic nam
 in the own Project, so a deleted count guard cannot be masked by undeclared-caller
 refusal. Other per-name/aggregate caller bounds retain structural/unit-only status.
 A private archive preserves the exact source inputs for causal mutations; it is
-never clean-head acceptance. Full release, current-source gates and immutable
-source reviews remain pending.
+never clean-head acceptance. Current-source gates and immutable source reviews
+remain pending.
+
+
+Clean `69801b2` full DEFAULT workspace release FAILED: 275 passed/7 failed/24 ignored,
+70.16s. Seven Grok controls failed: actual stop after admission (Failed versus
+Stopped); changed native reference before start (Git Timeout versus configuration
+refusal); own reference edits before resume (Git Timeout) and start (expected
+StateConflict absent); unrelated checkpoint (Git Timeout); before-spawn stop
+receipt (stop Timeout); unrelated resume parent (60,002ms watchdog, reaped SIGKILL,
+last boundary2 case7 fixture). Cause UNKNOWN. All own Codex tests passed within
+that failed whole run; this does not convert the workspace gate into success or
+prove nested workload cleanup. The debug and release failures remain distinct.
+
+Thirteen private archived mutations compiled and assertion-failed, with original
+production source bytes restored after each run. Actual controls distinguish raw
+public-constructor capture/control exclusion, initial refusal, all three exact-site
+pre-exec CAS omissions after independent edits, consumption-to-wire CAS and both
+config predicates. Constructor GIT membership is unit-only. Final cancellation
+mutants distinguish Version and the first server site Discovery; no separate Main
+credit is claimed. Archived restoration controls passed9/ignored1 in5.71s. The
+terminal test log is available, but the original tool handle was lost at context
+compaction; no new outer-wrapper cleanup assertion is inferred from that log. The
+adjacent mutation record preserves these distinctions. Private archive results
+never replace clean-head/native acceptance.
+
+Two additional helper controls pin selected admission spending the original five
+second deadline without spawning, and unselected ambient Git ignoring the selected
+callback/counters. These controls keep every production deadline, default internal
+concurrency, shared cleanup implementation and ordinary EMPTY availability unchanged.
+Their current committed results and independent source qualification are pending.
