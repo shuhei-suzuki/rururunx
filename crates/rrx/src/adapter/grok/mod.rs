@@ -12,6 +12,8 @@ mod fixture_support;
 mod ownership;
 mod protocol;
 #[cfg(test)]
+mod reader_tests;
+#[cfg(test)]
 #[path = "../../../tests/support/grok_receipt.rs"]
 mod receipt_support;
 #[cfg(all(test, target_os = "macos"))]
@@ -80,6 +82,8 @@ struct OwnedEntry {
     #[cfg(test)]
     before_environment_admission: Option<EnvironmentHook>,
     #[cfg(test)]
+    git_context: Option<TestGitContext>,
+    #[cfg(test)]
     checkpoint_environment: Option<EnvironmentHook>,
     #[cfg(test)]
     after_environment_admission: Option<EnvironmentHook>,
@@ -123,6 +127,8 @@ pub struct GrokAdapter {
     #[cfg(test)]
     before_environment_admission: Option<EnvironmentHook>,
     #[cfg(test)]
+    git_context: Option<TestGitContext>,
+    #[cfg(test)]
     checkpoint_environment: Option<EnvironmentHook>,
     #[cfg(test)]
     after_environment_admission: Option<EnvironmentHook>,
@@ -165,6 +171,8 @@ impl GrokAdapter {
         Ok(Self {
             #[cfg(test)]
             before_environment_admission: None,
+            #[cfg(test)]
+            git_context: None,
             #[cfg(test)]
             checkpoint_environment: None,
             #[cfg(test)]
@@ -282,6 +290,8 @@ impl GrokAdapter {
         let entry = Arc::new(OwnedEntry {
             #[cfg(test)]
             before_environment_admission: self.before_environment_admission.clone(),
+            #[cfg(test)]
+            git_context: self.git_context.clone(),
             #[cfg(test)]
             checkpoint_environment: self.checkpoint_environment.clone(),
             #[cfg(test)]
@@ -602,7 +612,13 @@ impl AgentAdapter for GrokAdapter {
             let snapshot = ScopeSnapshot::capture(&self.store, &request, &self.agent)?;
             let mut ownership = ProcessOwnership::default();
             snapshot
-                .verify_git(&request, &mut ownership, OwnershipStage::Checkpoint)
+                .verify_git(
+                    &request,
+                    &mut ownership,
+                    OwnershipStage::Checkpoint,
+                    #[cfg(test)]
+                    entry.git_context.clone(),
+                )
                 .await?;
             #[cfg(test)]
             if let Some(hook) = entry.checkpoint_environment.clone() {
@@ -1140,8 +1156,12 @@ async fn supervise(mut actor: Actor, load: Option<String>) {
     let mut index = None;
     let result=async {
         actor.owner()?;
-        let observed_binding=actor.snapshot.verify_git(&actor.request,&mut ownership,OwnershipStage::PreSpawn).await?;binding=Some(observed_binding);actor.owner()?;
-        index=Some(index_digest(&actor.request.worktree,&mut ownership,OwnershipStage::PreSpawn).await?);
+        let observed_binding=actor.snapshot.verify_git(&actor.request,&mut ownership,OwnershipStage::PreSpawn,
+            #[cfg(test)] actor.entry.git_context.clone(),
+        ).await?;binding=Some(observed_binding);actor.owner()?;
+        index=Some(index_digest(&actor.request.worktree,&mut ownership,OwnershipStage::PreSpawn,
+            #[cfg(test)] actor.entry.git_context.clone(),
+        ).await?);
         let root=actor.request.worktree.clone();baseline=Some(filesystem(move||Inventory::capture(&root)).await?);
         if actor.request.role==SessionRole::Executor {
             let root=actor.request.worktree.clone();let project=actor.request.project.clone();actor.files=Some(Arc::new(Mutex::new(filesystem(move||ScopedFiles::new(root,&project)).await?)));
@@ -1185,7 +1205,9 @@ async fn supervise(mut actor: Actor, load: Option<String>) {
         for (key,value) in [("model",model.as_ref()),("reasoning_effort",effort.as_ref())]{if let Some(value)=value
             && !options.as_array().is_some_and(|a|a.iter().any(|v|v["id"]==key && v["currentValue"]==*value)){return Err(failure(ErrorKind::InvalidConfiguration,"native model/effort configuration did not match"));}}
         let info=actor.request("_x.ai/session/info",json!({"sessionId":native}),Duration::from_secs(15)).await?;actor.inventory_gate(&info)?;
-        actor.snapshot.verify_binding(&actor.request,&mut ownership,binding.as_ref().expect("preflight binding"),OwnershipStage::InSessionBinding).await?;actor.owner()?;profile.as_ref().expect("owned profile").verify()?;
+        actor.snapshot.verify_binding(&actor.request,&mut ownership,binding.as_ref().expect("preflight binding"),OwnershipStage::InSessionBinding,
+            #[cfg(test)] actor.entry.git_context.clone(),
+        ).await?;actor.owner()?;profile.as_ref().expect("owned profile").verify()?;
         actor.prompt=uuid::Uuid::new_v4().to_string();
         let mut params=json!({"sessionId":native,"prompt":[{"type":"text","text":format!("Prepared Task input follows:\n\n{}",actor.request.input.payload)}],"_meta":{"promptId":actor.prompt,"screenMode":"headless"}});
         if let Some(schema)=&actor.entry.schema{params["_meta"]["outputSchema"]=schema.clone();}
@@ -1282,12 +1304,16 @@ async fn supervise(mut actor: Actor, load: Option<String>) {
                     &mut ownership,
                     binding.as_ref().expect("owned binding"),
                     OwnershipStage::Reconciliation,
+                    #[cfg(test)]
+                    actor.entry.git_context.clone(),
                 )
                 .await?;
             let current_index = index_digest(
                 &actor.request.worktree,
                 &mut ownership,
                 OwnershipStage::Reconciliation,
+                #[cfg(test)]
+                actor.entry.git_context.clone(),
             )
             .await?;
             if index.as_ref() != Some(&current_index) {
@@ -1475,15 +1501,18 @@ async fn index_digest(
     root: &Path,
     ownership: &mut ProcessOwnership,
     stage: OwnershipStage,
+    #[cfg(test)] git_context: Option<TestGitContext>,
 ) -> AdapterResult<String> {
     let executable = resolve_executable("git")?;
-    let bytes = bounded_git_raw(
+    let bytes = super::bounded_git_raw_selected(
         &executable,
         root,
         &["ls-files".into(), "--stage".into(), "-z".into()],
         crate::git::native_environment(),
         tokio::time::Instant::now() + Duration::from_secs(5),
         ownership.group(stage),
+        #[cfg(test)]
+        git_context,
     )
     .await?;
     Ok(digest(&bytes))
@@ -1692,6 +1721,8 @@ mod registry_tests {
             #[cfg(test)]
             before_environment_admission: None,
             #[cfg(test)]
+            git_context: None,
+            #[cfg(test)]
             checkpoint_environment: None,
             #[cfg(test)]
             after_environment_admission: None,
@@ -1824,6 +1855,8 @@ mod registry_tests {
         let entry = Arc::new(OwnedEntry {
             #[cfg(test)]
             before_environment_admission: None,
+            #[cfg(test)]
+            git_context: None,
             #[cfg(test)]
             checkpoint_environment: None,
             #[cfg(test)]

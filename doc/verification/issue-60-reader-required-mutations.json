@@ -1,0 +1,178 @@
+{
+  "base_head": "fd406b6e03f7314fae0a17f5828f7edbf6d2bdea",
+  "runs": [
+    {
+      "id": "M60-R18",
+      "base_head": "fd406b6e03f7314fae0a17f5828f7edbf6d2bdea",
+      "mutant_head": "d84cd9369f98a16b6f3ab53ddc3a7065be406e4f",
+      "operator": "diff --git a/crates/rrx/src/adapter/git_owner.rs b/crates/rrx/src/adapter/git_owner.rs\nindex 3d717ab..3cbb5a8 100644\n--- a/crates/rrx/src/adapter/git_owner.rs\n+++ b/crates/rrx/src/adapter/git_owner.rs\n@@ -1287,8 +1287,7 @@ fn native_worker(\n                     if let Some(pause) = &record._context.hooks.before_worker_authorize {\n                         pause.block();\n                     }\n-                    if record.ticket.cancel.load(Ordering::SeqCst)\n-                        || record.ticket.lost.load(Ordering::SeqCst)\n+                    if false\n                     {\n                         record.native_settled.store(true, Ordering::SeqCst);\n                         if let Some(sender) = spawned.take() {\n",
+      "patch_sha256": "dfd8807eedbfd352f952bdc80d204f927f8c2e11a5a36753bf6b9a86d635e648",
+      "test": "adapter::git_owner::tests::cancelled_authorized_command_never_creates_a_child",
+      "compiled": true,
+      "exit": 101,
+      "assertion_killed": true,
+      "seconds": 17.52,
+      "platform": "Darwin",
+      "production_pool_audit_process": false,
+      "log_sha256": "559b1107cbbbc1ddafab72d980cd31d06088c83af0cfb433311bf82ddad87c47",
+      "excerpts": [
+        "thread 'adapter::git_owner::tests::cancelled_authorized_command_never_creates_a_child' (241496738) panicked at crates/rrx/src/adapter/git_owner/tests.rs:343:5:",
+        "assertion `left == right` failed: cancelled authorization created an actual Child",
+        "  left: 1",
+        " right: 0",
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 337 filtered out; finished in 0.01s"
+      ],
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "rrx",
+        "--lib",
+        "adapter::git_owner::tests::cancelled_authorized_command_never_creates_a_child",
+        "--",
+        "--exact",
+        "--nocapture"
+      ],
+      "explicit_test_environment": {},
+      "credit": "direct ticket.cancel; worker cancel operand after dequeue only; no CallGuard delivery or lost-operand credit"
+    },
+    {
+      "id": "M60-R19",
+      "base_head": "fd406b6e03f7314fae0a17f5828f7edbf6d2bdea",
+      "mutant_head": "52b02cbbd43efd4ce465e94aa4234fcaf60610e9",
+      "operator": "diff --git a/crates/rrx/src/adapter/git_owner.rs b/crates/rrx/src/adapter/git_owner.rs\nindex 3d717ab..8bda9d5 100644\n--- a/crates/rrx/src/adapter/git_owner.rs\n+++ b/crates/rrx/src/adapter/git_owner.rs\n@@ -184,7 +184,7 @@ impl GitPool {\n     fn release(&self, record: &Arc<OpRecord>) {\n         // Bookkeeping poison after actual settlement holds slots without fabricating\n         // native Unknown. Caller flag/result remain governed by own settlement.\n-        if record.ticket.publication.is_poisoned() || record.ticket.lost.load(Ordering::SeqCst) {\n+        if false {\n             return;\n         }\n         if let Ok(mut pool) = self.state.lock() {\n",
+      "patch_sha256": "5464e6ba2968a9d5eef0cb61ec3ecc16073243d22fa7c101dd71c12eafcca9e3",
+      "test": "adapter::git_owner::tests::publication_poison_after_actual_settlement_still_retains_permits",
+      "compiled": true,
+      "exit": 101,
+      "assertion_killed": true,
+      "seconds": 3.715,
+      "platform": "Darwin",
+      "production_pool_audit_process": false,
+      "log_sha256": "b29c77b476b84c6e916fc4a9939a7c9894150827e61f7fb0c6e6852c84226c3f",
+      "excerpts": [
+        "thread 'adapter::git_owner::tests::publication_poison_after_actual_settlement_still_retains_permits' (241499982) panicked at crates/rrx/src/adapter/git_owner/tests.rs:687:13:",
+        "thread 'adapter::git_owner::tests::publication_poison_after_actual_settlement_still_retains_permits' (241499982) panicked at crates/rrx/src/adapter/git_owner/tests.rs:705:5:",
+        "  left: 0",
+        " right: 4",
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 337 filtered out; finished in 0.02s"
+      ],
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "rrx",
+        "--lib",
+        "adapter::git_owner::tests::publication_poison_after_actual_settlement_still_retains_permits",
+        "--",
+        "--exact",
+        "--nocapture"
+      ],
+      "explicit_test_environment": {},
+      "credit": "combined poison/lost predicate omission; both halves true in poison case, no separate lost-half sensitivity"
+    },
+    {
+      "id": "M60-R20",
+      "base_head": "fd406b6e03f7314fae0a17f5828f7edbf6d2bdea",
+      "mutant_head": "957549935e1d8b2f805ed4fcd88c27d454d4c210",
+      "operator": "diff --git a/crates/rrx/src/adapter/git_owner.rs b/crates/rrx/src/adapter/git_owner.rs\nindex 3d717ab..0f7f9b4 100644\n--- a/crates/rrx/src/adapter/git_owner.rs\n+++ b/crates/rrx/src/adapter/git_owner.rs\n@@ -1349,7 +1349,7 @@ fn native_worker(\n                                 pid\n                             };\n                             native.group = pid;\n-                            if pid.is_some() {\n+                            if true {\n                                 let child = native.child.as_mut().unwrap();\n                                 let mut endpoints = record.endpoints.lock().unwrap();\n                                 endpoints.stdout = child.stdout.take();\n",
+      "patch_sha256": "4961d4dba3516c89692b326006b6797cd05ca66f573bb0578a440a85d6fcd554",
+      "test": "adapter::git_owner::tests::invalid_binding_retains_actual_child_before_any_pipe_or_pid_adoption",
+      "compiled": true,
+      "exit": 101,
+      "assertion_killed": true,
+      "seconds": 4.055,
+      "platform": "Darwin",
+      "production_pool_audit_process": false,
+      "log_sha256": "db0396ea90ee38144428d054a3fdc524e8b59c014f0a794b3272c5cbce37d036",
+      "excerpts": [
+        "thread 'adapter::git_owner::tests::invalid_binding_retains_actual_child_before_any_pipe_or_pid_adoption' (241502758) panicked at crates/rrx/src/adapter/git_owner/tests.rs:1127:5:",
+        "assertion failed: child.stdout.is_some() && child.stderr.is_some()",
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 337 filtered out; finished in 0.00s"
+      ],
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "rrx",
+        "--lib",
+        "adapter::git_owner::tests::invalid_binding_retains_actual_child_before_any_pipe_or_pid_adoption",
+        "--",
+        "--exact",
+        "--nocapture"
+      ],
+      "explicit_test_environment": {}
+    },
+    {
+      "id": "M60-R21",
+      "base_head": "fd406b6e03f7314fae0a17f5828f7edbf6d2bdea",
+      "mutant_head": "dbaf609ee1731729928fd4941dd4fa88043a545e",
+      "operator": "diff --git a/crates/rrx/src/adapter/git_owner.rs b/crates/rrx/src/adapter/git_owner.rs\nindex 3d717ab..94f7beb 100644\n--- a/crates/rrx/src/adapter/git_owner.rs\n+++ b/crates/rrx/src/adapter/git_owner.rs\n@@ -467,9 +467,7 @@ pub(super) async fn run(\n     #[cfg(test)]\n     let (pool, context) = match test {\n         Some(test) => (\n-            test.pool\n-                .clone()\n-                .expect(\"private Git context requires an isolated pool\"),\n+            production_pool(),\n             test.context.clone(),\n         ),\n         None => (production_pool(), Context::default()),\n",
+      "patch_sha256": "61da346dcc0d3e5cfd5f412ba255362bba9262151bfeb571b055a23a88d2b5f4",
+      "test": "adapter::git_owner::tests::destructive_private_controls_leave_fresh_production_pool_unchanged",
+      "compiled": true,
+      "exit": 101,
+      "assertion_killed": true,
+      "seconds": 9.645,
+      "platform": "Darwin",
+      "production_pool_audit_process": true,
+      "log_sha256": "626ab96b9bcf8c34f25538a97bb584f5861a699dcec4038d03d12e431bd9cf55",
+      "excerpts": [
+        "thread 'adapter::git_owner::tests::destructive_private_controls_leave_fresh_production_pool_unchanged' (241508222) panicked at crates/rrx/src/adapter/git_owner.rs:252:5:",
+        "assertion `left == right` failed: private controls changed production retained occupancy",
+        "  left: 4",
+        " right: 0",
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 337 filtered out; finished in 0.00s"
+      ],
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "rrx",
+        "--lib",
+        "adapter::git_owner::tests::destructive_private_controls_leave_fresh_production_pool_unchanged",
+        "--",
+        "--exact",
+        "--nocapture"
+      ],
+      "explicit_test_environment": {
+        "RRX_PRIVATE_GIT_POOL_AUDIT": "1"
+      },
+      "credit": "single-test audit-mode missing-exec witness; no parent selection/exit propagation sensitivity"
+    },
+    {
+      "id": "M60-R22",
+      "base_head": "fd406b6e03f7314fae0a17f5828f7edbf6d2bdea",
+      "mutant_head": "4cab977ae19585c292486912b66b3b2e8c76e1d6",
+      "operator": "diff --git a/crates/rrx/src/adapter/git_owner.rs b/crates/rrx/src/adapter/git_owner.rs\nindex 3d717ab..37ee7c1 100644\n--- a/crates/rrx/src/adapter/git_owner.rs\n+++ b/crates/rrx/src/adapter/git_owner.rs\n@@ -1480,6 +1480,7 @@ fn first_cleanup(_record: &OpRecord, native: &mut NativeAssets) {\n                     Some(SignalAttempt { actual, injected });\n                 injected.map_or(actual, Err)\n             };\n+            let signal = signal.or(Ok(()));\n             #[cfg(test)]\n             if _record._context.hooks.worker_panic {\n                 panic!(\"synthetic Git native worker panic after signal\");\n",
+      "patch_sha256": "190fa0a3ad7f653b13c827ba58e00e23c975e79a892922d6c1f2fcde1011d16f",
+      "test": "adapter::git_owner::tests::selected_owned_signal_result_parity_preserves_os_specific_unknown",
+      "compiled": true,
+      "exit": 101,
+      "assertion_killed": true,
+      "seconds": 9.098,
+      "platform": "Darwin",
+      "production_pool_audit_process": false,
+      "log_sha256": "7b49e91d6cadb1dfe2929f198be71d446cdc475cde8251bc1e135160e067df97",
+      "excerpts": [
+        "thread 'adapter::git_owner::tests::selected_owned_signal_result_parity_preserves_os_specific_unknown' (241513501) panicked at crates/rrx/src/adapter/git_owner/tests.rs:165:32:",
+        "called `Result::unwrap_err()` on an `Ok` value: []",
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 337 filtered out; finished in 0.02s"
+      ],
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "rrx",
+        "--lib",
+        "adapter::git_owner::tests::selected_owned_signal_result_parity_preserves_os_specific_unknown",
+        "--",
+        "--exact",
+        "--nocapture"
+      ],
+      "explicit_test_environment": {}
+    }
+  ],
+  "exact_restore_after_every_run": true,
+  "no_linux_mutant_execution_claim": true
+}

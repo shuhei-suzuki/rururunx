@@ -1,0 +1,202 @@
+{
+  "reviewed_head": "675471c94f1525d1b236d23058582506eec532e6",
+  "both_closed_owned_cleanup_verified": true,
+  "limited_delta_approval_only": true,
+  "reviews": {
+    "ownership": {
+      "raw_sha256": "033ab5c791f65c645c2afdd755ce079bd19e55bb7f1e63234db41718f0afce54",
+      "result": {
+        "head": "675471c94f1525d1b236d23058582506eec532e6",
+        "section": "reader-source3-ownership",
+        "native_session": "9ca55497-81c2-4c61-8bb4-e1eacdbadb8f",
+        "review": {
+          "verdict": "approve",
+          "assessment": "Limited Source3 delta review of public 675471c against Requirements4 and Design2, using the full current tests.rs and the exact 81e7c29..675471c diff. The diff touches only crates/rrx/src/adapter/git_owner/tests.rs (5078115..6c540e7) and docs/ledgers. Production git_owner.rs (39822ff), adapter.rs, context.rs and the Grok sources are byte-unchanged from the 81e7 source that both Source2 reviews approved. So this delta introduces no ownership, cancellation, retained-resource, four-job, precedence or consumer-wiring change. I traced the two new and changed actual consumers against the unchanged production code:\n\n(1) The pre-expired control (tests.rs:56-75) now requires the exact bare 'Git ownership preflight timed out'. On a deadline that has already passed, run() returns at git_owner.rs:61-64 before any lock or allocation, with waited_for_capacity still false. The flag stays false and no record is created.\n\n(2) The release-wake re-entry control (tests.rs:76-132) holds all 16 actual operations at the post-initialization pause; entries==16 and held_jobs==64 are asserted. It then pins the real refused admission future and polls it once with a noop waker. That poll runs the deadline check, the Notified enable, the locked refusal, waited_for_capacity=true, and timeout_at (git_owner.rs:57-91). The future returns Pending with its Notified registered in pool.available. The test then sleeps until the original 30 ms deadline and drops the pause, so the 16 original supervisors join, settle and release; each release calls notify_waiters (git_owner.rs:182-185). After released() reports the pool empty, it re-polls the held future. Tokio's Timeout polls the inner Notified first, so the future resolves Ok and re-enters the loop. It then takes the waited branch at 58-60 rather than the map_err at 89-91. The compiled M60-R17 inversion makes that consumer report the bare text, which confirms that branch was reached. admission_timeout then samples 0/0 under a fresh lock. That is consistent with the corrected label that counts are sampled at expiry, not at the last refusal (design 474-476, ledger 453-454).\n\nThe refused request sets no flag, and its absent executable never spawned: an admission would have left Pending, or 4 retained jobs on the opaque spawn Err. CallGuard holds no record, so dropping the held future is inert. No fake clock, new task, production hook, deadline or budget change is introduced. The R15 credit relabel (direct ticket.cancel(), with the caller abort as teardown only) matches tests.rs:877 and 890. One compiled operator, two kills, diagnostic-branch credit only: that is consistent with cumulative 20 runs / 17 operators / 18 kills, with the two masked historical survivors at zero credit.\n\nI found no Critical, High or Medium defect. The two Low items concern test robustness and evidence binding. This approves only this limited component delta. It does not override the failed full gates, and it is not merge, source, native, whole60, F1 or MVP acceptance. No cause or regression is inferred.",
+          "findings": [
+            {
+              "id": "R60-S3-01",
+              "severity": "Low",
+              "file": "crates/rrx/src/adapter/git_owner/tests.rs",
+              "line": 99,
+              "claim": "The re-entry control's 30 ms deadline is computed before the first manual poll that must return Pending. Scheduling delay under the default parallel full suite can fail the control spuriously, without any defect.",
+              "evidence": "The deadline is set to now+30ms at line 99, and line 112 asserts the first poll is Pending. If more than 30 ms passes before run()'s deadline check (git_owner.rs:57), the call returns the bare text Ready. If the deadline passes between the locked refusal and the Sleep poll inside timeout_at (89-91), it returns the suffixed Err Ready. Both outcomes fail line 112. This is a false-negative risk only: it cannot grant false credit, because the M17 kill confirms the 58-60 branch on a correct run. However, the same full default Debug and Release gates already contain unexplained timing-sensitive failures.",
+              "fix": "Give the held request a wider original deadline (for example 1 s); the test already waits with sleep_until(deadline) before releasing, so only test duration changes. Alternatively, assert the first-poll state with a diagnostic that distinguishes a scheduling miss from a production regression. No production change is needed."
+            },
+            {
+              "id": "R60-S3-02",
+              "severity": "Low",
+              "file": "doc/verification/issue-60-reader-source3-controls.json",
+              "line": 2,
+              "claim": "The Source3 control and mutation evidence is bound to head a5aef47, not to the reviewed head 675471c, and the artifact records no tested tests.rs blob. Its restored consumer-1 positive control also has a null raw-log hash.",
+              "evidence": "All four positive runs and the mutation base/source_equal name a5aef47 or private heads 42c8d4c/b7c9e46. The reviewed public head is 675471c, and the exact diff shows tests.rs 5078115..6c540e7. The artifact records the production blob 39822ff only inside the operator patch index. 'production_diff_vs81e7: EMPTY' is asserted, but there is no a5aef47..675471c equality or tests.rs blob binding. restored_controls[0].raw_log_hash is null and refers only to a tool-terminal id. The hashed a5aef47 Debug and Release positive runs partly compensate.",
+              "fix": "Record the tested tests.rs blob (expected 6c540e7) and git_owner.rs blob (39822ff) in the Source3 controls artifact, and state that a5aef47..675471c is docs/ledger-only, or rerun the two controls at 675471c. Keep the null-hash restored control at its present reduced credit."
+            }
+          ],
+          "unresolved_blockers": [
+            "Full DEFAULT Debug at 35f0cda (production-equal to 81e7 and 675471c) FAILED: library 306 PASS / 3 FAIL / 24 ignored. The failures are the own-start StateConflict-prefix child, whose actual value is absent, and the unrelated checkpoint and resume children at the 60 s watchdog with SIGKILL. Later workspace targets did not execute. Cause and regression are UNKNOWN. No full default suite has been run at 675471c, whose test file adds a control.",
+            "Full DEFAULT Release at 35f0cda FAILED: library 307 PASS / 2 FAIL / 24 ignored (checkpoint and resume watchdog SIGKILL). Cause and regression are UNKNOWN. Source2 CI 37258392978, with all steps green on both OS at 81e7 (actual checkout 8da165ce, tree equal), ran only Debug TEST and Release BUILD. It does not rename or explain the local failures, and Release TEST remains unrun in CI.",
+            "All historical failed gates remain FAILED, with cause and regression UNKNOWN: 9c574a2 Debug and Release, 1b37c78 Debug and Release, 5b09c6d Debug, and Source1 CI 37253446382 (Ubuntu FAIL, macOS cancelled). The private diagnostic probes are investigation only: they did not reproduce the failures and carry no gate or cause credit.",
+            "Public both-OS CI for the current head 675471c, with actual checkout, parents and tree proof, is pending. The second independent limited Source3 review is pending. PR64 remains DRAFT and not merge-ready.",
+            "Mutation coverage is finite. There are still no operators for the Spawning-authorization cancel check (git_owner.rs:853), the worker AuthorizeSpawn cancel/lost check (1228-1229), the release poison/lost skip (179), first_cleanup signal-outcome parity on both OS (1389-1424, including Linux PERM staying Unknown), the forced Retained settled=false (151), or the endpoint-transfer guard (1288-1293). R14 and R17 are diagnostics-only. R01-R12 were not rerun at the current production blob, although their guard lines are present.",
+            "No control asserts that production-pool retained occupancy is unchanged across the private destructive controls (Design2 378-380). The removed fallback converts misuse into a panic but does not execute that invariant.",
+            "Availability limits remain explicitly OPEN: ambiguous spawn Err and cleanup or reap Unknown permanently retain 4 slots; global 64-slot cross-Project coupling and exhaustion; fairness (#50); retry amplification; and the absent Grok checkpoint-to-resume Unknown fence. Capacity facts are diagnostic derived pressure only.",
+            "Unmigrated or OPEN inventory: Generic and Grok Tokio post-spawn wrapper Err before native owner registration, shared ProcessGroup new/reap/Drop, synchronous git.rs, Codex private Git copies, and bootstrap and shared-scope producers. Whole60, F1, native3/runtime16, durable restart recovery and effect/delegation authority also remain OPEN; this process-local selected-Git component certifies none of them."
+          ]
+        },
+        "usage": {
+          "input_tokens": 2,
+          "cache_creation_input_tokens": 122911,
+          "cache_read_input_tokens": 666980,
+          "output_tokens": 10384,
+          "output_tokens_details": {
+            "thinking_tokens": 7194
+          },
+          "server_tool_use": {
+            "web_search_requests": 0,
+            "web_fetch_requests": 0
+          },
+          "service_tier": "standard",
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 122911,
+            "ephemeral_5m_input_tokens": 0
+          },
+          "inference_geo": "not_available",
+          "iterations": [
+            {
+              "input_tokens": 2,
+              "output_tokens": 10384,
+              "cache_read_input_tokens": 666980,
+              "cache_creation_input_tokens": 122911,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 122911
+              },
+              "type": "message"
+            }
+          ],
+          "speed": "standard"
+        },
+        "model_usage": {
+          "claude-opus-5-5": {
+            "inputTokens": 6,
+            "outputTokens": 123195,
+            "thinkingTokens": 111697,
+            "cacheReadInputTokens": 671300,
+            "cacheCreationInputTokens": 1180568,
+            "webSearchRequests": 0,
+            "costUSD": 12.042728,
+            "contextWindow": 1000000,
+            "maxOutputTokens": 128000,
+            "canonicalModel": "claude-opus-5-5",
+            "provider": "firstParty",
+            "costBasis": "list"
+          }
+        },
+        "cost_usd": 12.042728,
+        "duration_api_ms": 1204443,
+        "cleanup_verified": true,
+        "meter_scope": "raw_native_resumed_session_fields_unverified_operation_inventory"
+      }
+    },
+    "capacity": {
+      "raw_sha256": "4edaa3962ae46a06eb6edebd7fccaedd52d3632c39a28090358a8ba8b7d8894b",
+      "result": {
+        "head": "675471c94f1525d1b236d23058582506eec532e6",
+        "section": "reader-source3-capacity",
+        "native_session": "5f2b184d-0cdd-4564-8f46-f48a3785d723",
+        "review": {
+          "verdict": "approve",
+          "assessment": "Limited Source3 delta re-review of public 675471c against 81e7c29, focused on capacity and test credit. In the exact diff the only code file that changes is crates/rrx/src/adapter/git_owner/tests.rs (5078115 to 6c540e7); everything else is docs and ledgers. Production git_owner.rs (39822ff), adapter.rs, context.rs and the Grok sources are byte-equal to the source both Source2 reviews approved. No production behavior, job, deadline, signal, reader, cleanup or consumer equation changed, so no new production CHM can arise from this delta.\n\nPrior Source2 Lows, as now verified:\n\n(1) R60-S2-01 is resolved. The pre-expired control now asserts the exact bare 'Git ownership preflight timed out' (tests.rs:72). The new control actual_release_wake_after_expiry_keeps_waited_diagnostic_without_new_effects (tests.rs:77-132) drives the waited re-entry branch at git_owner.rs:57-60 through the real admission future:\n- 16 actual child operations are paused after initialization; entries==16 and held_jobs==64.\n- The refused future is first-polled with a noop waker. This runs one locked refusal, sets waited_for_capacity, enables the Notified and registers the Sleep.\n- sleep_until guarantees the original 30ms deadline has passed before any release.\n- The 16 calls are released and joined. Each release calls notify_waiters while holding the pool lock (git_owner.rs:182-185), so `released()` cannot observe an empty pool before the waiter has been notified.\n- On re-poll, Tokio's Timeout polls the inner Notified before the delay, so it returns Ready(Ok). The loop-top expiry check then fires with waited=true, before any admission, even though capacity is now free.\n\nThe assertions are deterministic: kind Timeout, suffix 0/0, refused flag false, held_jobs 0. Any admission would have attempted the missing executable and permanently retained 4 slots with the flag set true, so these assertions also exclude any spawn attempt. M60-R17, inverting the condition at line 58, kills both consumers at their exact messages. Consumer 1 returned the bare text under the mutant, which proves the re-entry branch rather than the map_err path at 89-91 actually executed at this source. Credit is correctly limited to the diagnostic discriminator.\n\n(2) CAP2-1 is resolved by the chosen disposition. Design (474-476) and the ledger (453-454, 557-560) now state that counts are a fresh snapshot at expiry, not at the last refusal, may be below 64, and grant no authority. The new control's 0/0 result directly demonstrates that semantics.\n\n(3) CAP2-2 / R60-S2-02 is resolved. The ledger (486-488, 560-563) now attributes R15 to native-mutex-independent registration after a direct ticket.cancel(), with the caller abort as teardown only. CallGuard drop wiring stays credited to R05 and the Generic/Context controls.\n\nThe Source2 CI 37258392978 provenance (checkout 8da165ce, parents 768f843/81e7c29, tree equal to 81e7c29, every step successful on both OS) is factual, and is correctly scoped as Debug TEST plus Release BUILD only. It does not erase the local 35f0 full Debug/Release failures and is not CI for the current head. No introduced Critical, High or Medium component or test-credit defect found. Two Low evidence-precision items follow. This approval covers only the limited delta. It is not source, merge, full-gate, native, F1, whole60 or MVP acceptance, and it infers no failure cause.",
+          "findings": [
+            {
+              "id": "S3-CAP-1",
+              "severity": "Low",
+              "file": "doc/verification/issue-60-reader-source3-controls.json",
+              "line": 2,
+              "claim": "Nothing in the Source3 control and mutation evidence is blob-bound to the reviewed test source. The runs name head a5aef47, mutant base 42c8d4c and restored private head b7c9e46. The reviewed public head is 675471c, whose tests.rs is 6c540e7. The artifact has no source_blobs list like the Source2 gates artifact, and the restored release-wake positive control has no raw log hash.",
+              "evidence": "source3-controls.json records `head: a5aef47...` (2-48), `base_head: 42c8d4c...` (51), `source_equal: a5aef47` (90) and `restored_private_head: b7c9e46` (98). Neither tests.rs 6c540e7 nor git_owner.rs 39822ff is listed. The release-wake restored control has `raw_log_hash: null` (102-107); this is disclosed, not invented. The Source2 gates artifact did bind its tested blobs. The exact 81e7..675471c diff shows tests.rs 6c540e7, but nothing in the evidence ties the passing and killed runs to that blob. Ledger lines 579-589 state that a5aef47 changes only tests/docs, but do not state that a5aef47..675471c is docs-only.",
+              "fix": "Add a source_blobs (or equality) record proving that a5aef47 and the mutant base 42c8d4c carry tests.rs 6c540e7 and git_owner.rs 39822ff, or that a5aef47..675471c touches only docs. Keep the null raw hash disclosed; do not replace it with an invented value."
+            },
+            {
+              "id": "S3-CAP-2",
+              "severity": "Low",
+              "file": "crates/rrx/src/adapter/git_owner/tests.rs",
+              "line": 126,
+              "claim": "The positive release-wake assertion cannot tell by itself which code path produced the message. Both the waited re-entry branch (git_owner.rs:58-60) and the timeout_at map_err path (89-91) produce the identical suffixed text. Branch attribution therefore rests only on the M60-R17 kill at this exact source and on locked Tokio's Timeout polling its inner future before its delay. A future change to that ordering, or a missed notify, would leave the control passing while silently losing coverage of 58-60.",
+              "evidence": "Both paths return `self.admission_timeout()` with the same counts at expiry (0/0 after all releases). The control's only discriminating facts are the identical message, flag false and held_jobs 0. Under the inverted-condition mutant, consumer 1 returned the bare text (source3-controls.json lines 82-85), which proves the branch actually executed at the current source. This affects credit precision only; no production defect follows.",
+              "fix": "Keep the credit tied to the recorded R17 kill at the bound source blobs, and state the dependency on Tokio's inner-first poll order. Optionally, add a test-only observation of waiter readiness before the re-poll (for example, polling a separately enabled Notified on the same pool) so the positive control proves the release wake independently. Do not change production code."
+            }
+          ],
+          "unresolved_blockers": [
+            "Full DEFAULT Debug at 35f0, whose production source equals current 81e7/675471c, FAILED: library 306 PASS / 3 FAIL / 24 ignored (the own-start StateConflict-prefix child, plus the unrelated checkpoint and resume children hitting the 60s watchdog with SIGKILL). Later workspace targets did not execute. Cause AND regression UNKNOWN.",
+            "Full DEFAULT Release at 35f0 FAILED: library 307 PASS / 2 FAIL / 24 ignored (checkpoint and resume 60s watchdogs with SIGKILL). Cause AND regression UNKNOWN. The Source2 CI Debug TEST pass, the Release BUILD pass, the targeted Source3 controls and the private probes do not substitute for or rewrite these full TEST gates. No current full Release TEST passes.",
+            "All historical failures remain FAILED and unqualified: 9c574a2 Debug and Release, 1b37c78 Debug and Release, 5b09 Debug, and the Source1 public CI 37253446382 (Ubuntu FAIL, macOS fail-fast cancelled).",
+            "Required both-OS CI for the current candidate head (675471c, or the a5aef47 test commit), with actual checkout, parents and tree proof, is pending. The 37258392978 success covers 81e7 only. The second independent Source3 limited-delta review is pending. PR64 remains a draft and is not merge-ready.",
+            "Mutation coverage remains finite: 20 compiled consumer runs, 17 operators and 18 kills, with two masked historical R04 survivors at zero credit; M14 and M17 are diagnostic-only. Operators are still missing for: the Spawning-authorization cancel check (git_owner.rs:853), the worker AuthorizeSpawn cancel/lost check (1228-1229), the release poison/lost skip (179), the forced Retained settled=false (151), the endpoint-transfer guard (1288-1293), and first_cleanup signal-outcome parity on both OS (1389-1424). The macOS TestPlan has no Linux PERM-to-Unknown differential control.",
+            "No control asserts that production-pool retained occupancy is unchanged across the private destructive controls (Design2 378-380). Removing the fallback only turns misuse into a panic.",
+            "Explicitly OPEN availability limits remain unapproved: ambiguous spawn Err (including pre-fork std failures) and cleanup or reap Unknown permanently retain 4 slots; global 64-slot cross-Project coupling and process-lifetime exhaustion; fairness (#50); retry amplification through unfenced Grok checkpoint or non-executor starts; and the Grok checkpoint-to-resume Unknown fence. There is no recovery or release port.",
+            "Unmigrated or OPEN inventory: Generic and Grok Tokio post-spawn wrapper Err before owner registration, shared ProcessGroup new/reap/Drop, synchronous git.rs, Codex private Git copies, bootstrap and shared-scope producers. Whole60, F1, native3/runtime16 mixed workload, durable restart recovery and effect/delegation authority also remain OPEN; this process-local selected-Git component certifies none of them."
+          ]
+        },
+        "usage": {
+          "input_tokens": 2,
+          "cache_creation_input_tokens": 124301,
+          "cache_read_input_tokens": 655950,
+          "output_tokens": 12182,
+          "output_tokens_details": {
+            "thinking_tokens": 8740
+          },
+          "server_tool_use": {
+            "web_search_requests": 0,
+            "web_fetch_requests": 0
+          },
+          "service_tier": "standard",
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 124301,
+            "ephemeral_5m_input_tokens": 0
+          },
+          "inference_geo": "not_available",
+          "iterations": [
+            {
+              "input_tokens": 2,
+              "output_tokens": 12182,
+              "cache_read_input_tokens": 655950,
+              "cache_creation_input_tokens": 124301,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 124301
+              },
+              "type": "message"
+            }
+          ],
+          "speed": "standard"
+        },
+        "model_usage": {
+          "claude-opus-5-5": {
+            "inputTokens": 6,
+            "outputTokens": 115353,
+            "thinkingTokens": 105187,
+            "cacheReadInputTokens": 660270,
+            "cacheCreationInputTokens": 1170928,
+            "webSearchRequests": 0,
+            "costUSD": 11.806562,
+            "contextWindow": 1000000,
+            "maxOutputTokens": 128000,
+            "canonicalModel": "claude-opus-5-5",
+            "provider": "firstParty",
+            "costBasis": "list"
+          }
+        },
+        "cost_usd": 11.806562,
+        "duration_api_ms": 1136124,
+        "cleanup_verified": true,
+        "meter_scope": "raw_native_resumed_session_fields_unverified_operation_inventory"
+      }
+    }
+  },
+  "verified_low_dispositions": {
+    "source_blob_binding": "git-derived triplets added; tested-to-reviewed all4changedpaths doc-only; nullrestoredrawhash retained/reducedcredit",
+    "positive_branch_attribution": "depends on bound M17 intendedkill and lockedTokio inner-first polling, not positive message alone",
+    "30ms_first_poll_risk": "no observed occurrence/productiondefect; retain false-negative schedulingrisk, no budget/parallel change or arbitraryReady allowance"
+  }
+}

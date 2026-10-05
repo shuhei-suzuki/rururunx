@@ -557,7 +557,7 @@ async fn git_value(root: &Path, args: &[&str], deadline: tokio::time::Instant) -
         args,
         deadline,
         latch,
-        #[cfg(all(test, target_os = "macos"))]
+        #[cfg(test)]
         None,
     )
     .await
@@ -568,7 +568,7 @@ async fn git_value_owned(
     args: &[&str],
     deadline: tokio::time::Instant,
     latch: Arc<AtomicBool>,
-    #[cfg(all(test, target_os = "macos"))] plan: Option<crate::adapter::ProcessInspectionPlan>,
+    #[cfg(test)] git_context: Option<crate::adapter::TestGitContext>,
 ) -> Result<String> {
     ensure!(
         !latch.load(Ordering::SeqCst),
@@ -584,40 +584,15 @@ async fn git_value_owned(
     let arguments = std::iter::once("--no-optional-locks".to_string())
         .chain(args.iter().map(|s| s.to_string()))
         .collect::<Vec<_>>();
-    #[cfg(all(test, target_os = "macos"))]
-    let observed = match plan {
-        Some(plan) => {
-            crate::adapter::bounded_git_raw_with_plan(
-                executable,
-                root,
-                &arguments,
-                git::native_environment(),
-                deadline,
-                uncertain.clone(),
-                plan,
-            )
-            .await
-        }
-        None => {
-            crate::adapter::bounded_git_raw(
-                executable,
-                root,
-                &arguments,
-                git::native_environment(),
-                deadline,
-                uncertain.clone(),
-            )
-            .await
-        }
-    };
-    #[cfg(not(all(test, target_os = "macos")))]
-    let observed = crate::adapter::bounded_git_raw(
+    let observed = crate::adapter::bounded_git_raw_selected(
         executable,
         root,
         &arguments,
         git::native_environment(),
         deadline,
         uncertain.clone(),
+        #[cfg(test)]
+        git_context,
     )
     .await;
     let observed = observed.map_err(|e| anyhow::anyhow!("bounded context Git: {e:?}"));
@@ -1419,6 +1394,146 @@ fn expansion_paths(map: &RepositoryMap, expansion: &Expansion) -> Result<BTreeSe
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn actual_late_reap_keeps_context_latch_after_real_worker_settlement() {
+        let directory = tempfile::tempdir().unwrap();
+        let context = crate::adapter::TestGitContext::reap_after_cutoff();
+        let latch = Arc::new(AtomicBool::new(false));
+        let result = git_value_owned(
+            Path::new("/usr/bin/git"),
+            directory.path(),
+            &["--version"],
+            tokio::time::Instant::now() + std::time::Duration::from_secs(5),
+            latch.clone(),
+            Some(context.clone()),
+        )
+        .await
+        .unwrap_err();
+        assert!(format!("{result:#}").contains("Git child death not confirmed after cleanup"));
+        assert!(
+            latch.load(Ordering::SeqCst),
+            "late reap bypassed Context latch"
+        );
+        context.wait_until_released().await;
+        assert!(latch.load(Ordering::SeqCst));
+        assert_eq!(context.held_jobs(), 0);
+    }
+    #[tokio::test]
+    async fn actual_dropped_git_future_sets_context_latch_before_late_settlement() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().to_owned();
+        let (context, pause) = crate::adapter::TestGitContext::paused_after_spawn();
+        let latch = Arc::new(AtomicBool::new(false));
+        let own_latch = latch.clone();
+        let own_context = context.clone();
+        let call = tokio::spawn(async move {
+            git_value_owned(
+                Path::new("/usr/bin/git"),
+                &root,
+                &["--version"],
+                tokio::time::Instant::now() + std::time::Duration::from_secs(5),
+                own_latch,
+                Some(own_context),
+            )
+            .await
+        });
+        pause.reached().await;
+        call.abort();
+        assert!(call.await.unwrap_err().is_cancelled());
+        assert!(
+            latch.load(Ordering::SeqCst),
+            "own bounded future must freeze before GitObservation drops"
+        );
+        assert_eq!(context.held_jobs(), 4);
+        drop(pause);
+        context.wait_until_released().await;
+        assert!(
+            latch.load(Ordering::SeqCst),
+            "late settlement cannot clear Context's frozen latch"
+        );
+        let denied = git_value_owned(
+            Path::new("/usr/bin/git"),
+            directory.path(),
+            &["--version"],
+            tokio::time::Instant::now() + std::time::Duration::from_secs(5),
+            latch,
+            Some(context.clone()),
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            denied
+                .to_string()
+                .contains("earlier context Git cleanup uncertain")
+        );
+        assert_eq!(context.held_jobs(), 0, "latch refuses before new admission");
+    }
+    #[tokio::test]
+    async fn actual_output_open_error_keeps_context_latch_after_reader_late_settlement() {
+        let directory = tempfile::tempdir().unwrap();
+        let context = crate::adapter::TestGitContext::pending_output();
+        let latch = Arc::new(AtomicBool::new(false));
+        let result = git_value_owned(
+            Path::new("/usr/bin/git"),
+            directory.path(),
+            &["--version"],
+            tokio::time::Instant::now() + std::time::Duration::from_secs(5),
+            latch.clone(),
+            Some(context.clone()),
+        )
+        .await
+        .unwrap_err();
+        let cause = format!("{result:#}");
+        assert!(
+            cause.contains("ProcessFailure")
+                && cause.contains("Git output remained open after cleanup"),
+            "{cause}"
+        );
+        assert!(latch.load(Ordering::SeqCst));
+        context.wait_until_released().await;
+        assert!(latch.load(Ordering::SeqCst));
+        assert_eq!(context.held_jobs(), 0);
+    }
+    #[tokio::test]
+    async fn opaque_attempted_git_error_keeps_original_cause_and_context_latch() {
+        let directory = tempfile::tempdir().unwrap();
+        let context = crate::adapter::TestGitContext::missing_executable();
+        let latch = Arc::new(AtomicBool::new(false));
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+        let result = git_value_owned(
+            Path::new("/usr/bin/git"),
+            directory.path(),
+            &["--version"],
+            deadline,
+            latch.clone(),
+            Some(context.clone()),
+        )
+        .await;
+        let cause = format!("{:#}", result.unwrap_err());
+        assert!(cause.contains("ProcessFailure"), "{cause}");
+        assert!(latch.load(Ordering::SeqCst));
+        assert_eq!(context.held_jobs(), 4);
+        let subsequent = git_value_owned(
+            Path::new("/usr/bin/git"),
+            directory.path(),
+            &["--version"],
+            deadline,
+            latch,
+            Some(context.clone()),
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            subsequent
+                .to_string()
+                .contains("earlier context Git cleanup uncertain")
+        );
+        assert_eq!(
+            context.held_jobs(),
+            4,
+            "latch must refuse before another job"
+        );
+    }
     #[cfg(target_os = "macos")]
     #[tokio::test]
     async fn real_git_unknown_cleanup_preserves_cause_and_latches_later_context_launches() {
@@ -1432,7 +1547,7 @@ mod tests {
             &["--version"],
             deadline(),
             latch.clone(),
-            None,
+            Some(crate::adapter::TestGitContext::isolated()),
         )
         .await
         .unwrap();
@@ -1446,7 +1561,7 @@ mod tests {
             &["--version"],
             deadline(),
             latch.clone(),
-            Some(plan.clone()),
+            Some(crate::adapter::TestGitContext::with_plan(plan.clone())),
         )
         .await;
         let cause = format!("{:#}", result.unwrap_err());

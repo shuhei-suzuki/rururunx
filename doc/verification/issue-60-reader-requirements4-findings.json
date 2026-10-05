@@ -1,0 +1,72 @@
+{
+  "scope": "Requirements4 approval; derived Low precision carried into Design1; no reader design/source approval",
+  "reviews": [
+    {
+      "head": "a8e8a8b21b9f11c68f12d1ade51ad5c8c14fe81a",
+      "native_session": "e0bdd4dc-5102-4f3e-bc44-0a21c01f9689",
+      "verdict": "approve",
+      "cleanup_verified": true,
+      "raw_result_sha256": "36e62d3ee3eff6e378ea52810721aa1ce3e992d2ccf1d6dc758acd636d934d52",
+      "findings": [
+        {
+          "id": "R60RD4-L1-no-anchor-retention-observer",
+          "severity": "Low",
+          "file": "doc/requirements/issue-60-git-reader-contract-draft.md",
+          "line": 226,
+          "claim": "Clause 13 requires a healthy supervisor to continue late observation, and lists only 'terminal group/reap error or lost supervisor/driver' as the cases where all four permits are retained without late observation. It does not list the new ambiguous spawn Err, which has no anchor to observe. That leaves unclear whether the supervisor task must stay alive forever or may finish while its slot stays retained.",
+          "evidence": "- draft:64-66 and 157-158 retain Unknown, the flag and all four permits when spawn returns Err with no Child.\n- draft:226-228 says a healthy supervisor MUST continue late observation and releases permits only after group, Child, readers and cleanup settle.\n- draft:233-234 lists only terminal group/reap error and lost supervisor/driver as no-observation retention cases.\n- draft:229-232 defines terminal slot release only after healthy completion.",
+          "fix": "Add the ambiguous spawn Err with no Child to the terminal retention cases in clause 13. State that the supervisor completes and its execution frame destroys it, while all four slots remain retained, with no late observer, and no release or clear.",
+          "verification": "Verified against current requirement clauses and actual Context/Generic direct executable routes; derived precision, no new source or authority.",
+          "disposition": "Design1 terminal no-Child retention destroys the supervisor future but permanently holds all4 slots; no fabricated late observer."
+        },
+        {
+          "id": "R60RD4-L2-new-context-unknown-control-pool",
+          "severity": "Low",
+          "file": "doc/requirements/issue-60-git-reader-contract-draft.md",
+          "line": 33,
+          "claim": "The private-pool routing lists name only the existing 7+1 fixtures and new Generic/Grok consumers. Gate 2 now adds a Context nonexistent-executable control that, under the new retention rule, permanently holds four permits.",
+          "evidence": "- draft:32-35 routes the existing seven adapter calls, the Context unknown-plan call, and 'new Generic/Grok saturation or Unknown consumers' to private pools.\n- requirements:152 likewise names only current 7+1 and new Generic/Grok consumers.\n- requirements:129-131 requires a real nonexistent-executable control that asserts the Context latch. It runs through git_value_owned (context.rs:565-622) and, per draft:64-66, retains all four permits forever.\n- Only the general sentence at draft:35 ('Production retained occupancy must be unchanged') implicitly covers it.",
+          "fix": "Extend both lists to every new Unknown or destructive consumer control, explicitly including Context git_value_owned and direct bounded_git callers. These must be routed through cfg(test) private pools with an unchanged production retained count.",
+          "verification": "Verified against current requirement clauses and actual Context/Generic direct executable routes; derived precision, no new source or authority.",
+          "disposition": "Both documents and Design1 extend private-pool actual-route isolation to every new destructive/Unknown consumer, including Context/direct Git."
+        }
+      ],
+      "unresolved_blockers": []
+    },
+    {
+      "head": "a8e8a8b21b9f11c68f12d1ade51ad5c8c14fe81a",
+      "native_session": "0f60fea3-8864-40f4-ad83-2c70aceb359a",
+      "verdict": "approve",
+      "cleanup_verified": true,
+      "raw_result_sha256": "e1112b55c81f3a5023accb69d5c08d3b570b8ad4b1c050f7f006e0b02e0b64dd",
+      "findings": [
+        {
+          "id": "L1",
+          "severity": "Low",
+          "file": "doc/requirements/issue-60-git-reader-contract-draft.md",
+          "line": 33,
+          "claim": "The private-pool routing rule covers only 'new Generic/Grok saturation or Unknown consumers'. Gate 2 now also requires a destructive Context nonexistent-executable control whose permits are retained permanently, and that test is not on the list.",
+          "evidence": "- Draft 157-159: an ambiguous spawn Err retains all four permits and can consume capacity permanently.\n- Requirements 129-131: the real nonexistent-executable control must keep the permits and latch Context.\n- Draft 32-35 and requirements 152 route through a cfg(test) private pool only the current 7+1 fixtures and new Generic/Grok consumers. The 'production retained occupancy unchanged' rule (draft 35) applies only to those experiments.\n- The Context route can attempt a spawn of a nonexistent path directly through git_value_owned (context.rs:565-622).",
+          "fix": "Extend the routing rule to every new test that leaves Unknown or retained permits, including the Context nonexistent-executable control. Each such test must go through the actual consumer path with a cfg(test) private pool, under the same production-occupancy-unchanged and non-poller teardown or deliberate-retention rules.",
+          "verification": "Verified against current requirement clauses and actual Context/Generic direct executable routes; derived precision, no new source or authority.",
+          "disposition": "Both documents and Design1 extend private-pool actual-route isolation to every new destructive/Unknown consumer, including Context/direct Git."
+        },
+        {
+          "id": "L2",
+          "severity": "Low",
+          "file": "doc/requirements/issue-60-git-reader-contract-draft.md",
+          "line": 169,
+          "claim": "The no-attempt clear-point wording is imprecise.",
+          "evidence": "- 'keeps/clears the flag' (draft 169) and 'keep/clear the flag' (requirements 132) can be read as keeping the flag true.\n- Draft 62-63 says 'live in-budget genuine native return proving no native OS spawn was attempted'; the word 'native' in 'genuine native return' is a leftover from the earlier wording.\n- The intended meaning, consistent with draft 58-59 and requirements 65-67, is: the flag stays false if it was never set, and is cleared on the live in-budget settled return if it was set at admitted\u2192spawning.",
+          "fix": "Replace the wording with: 'For a proven no-native-spawn-attempt refusal, the flag stays false if never set, or is cleared on the live in-budget settled return if it was set at admitted\u2192spawning. A caller Drop after spawning still freezes it true.'",
+          "verification": "Verified against current requirement clauses and actual Context/Generic direct executable routes; derived precision, no new source or authority.",
+          "disposition": "Both documents explicitly distinguish never-set false, live settled clear after admitted\u2192spawning, and frozen true on Drop."
+        }
+      ],
+      "unresolved_blockers": []
+    }
+  ],
+  "historical_cause": "UNKNOWN",
+  "historical_regression": "UNKNOWN",
+  "whole60_native16_F1": "OPEN"
+}

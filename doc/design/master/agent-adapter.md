@@ -340,6 +340,34 @@ result credit only.
 Reader/driver retention and every existing Drop/reap gap remain separate/open. The
 Grok receipt below stays unclassified; facts cannot grant cleanup or alter clean.
 
+The selected Git reader Requirements4 has two independent approvals; its
+[Design2](../issue-60-reader-design.md) has two independent approvals. The committed candidate implements
+a Git-local actual std Child worker, caller-runtime-independent supervisor/runtime
+and both reader joins, four counted jobs per call/global64. Shared native
+ProcessGroup/new/reap/Drop stays unchanged. The finite ledger is27 compiled runs/
+23 operators/25 intended kills, withTWO prior masked worker-join survivors retaining
+zero credit; M14/M17 cover diagnostics only and R23 checks selector non-vacuity only. Source2–5
+approvals address limited component deltas; Source5's three evidence-precision Lows
+are dispositioned in the ledger. Public e295 bothOS CI passed DEBUG TEST and RELEASE
+BUILD with full tested-tree equality, not RELEASE TEST. Earlier local macOS f072 full Debug
+passed425 top-level Rust tests+2docs; distinct full Release TEST failed308/6,
+later targets unrun. Older35f0 and fd406 full failures remain failed, cause AND
+regression UNKNOWN. The new default suite also includes a concurrent private audit
+process; no causality or exoneration is inferred. Source5 e30 CI failed in one macOS
+Codex cleanup consumer, with Linux all steps passed; cause/contribution/regression
+UNKNOWN. Normal main custody composition777 subsequently passed first local
+macOS full default Debug and distinct Release TEST, each445 top-level Rust tests+
+2docs/27ignored, plus fmt/Clippy/both BUILDs. Two independent static read-only
+reviews approve only this composition without findings. CI37270293297 passed
+every step on bothOS with complete tested-tree equality. Final docs-only checks
+remain before limited component merge; old failures stay FAILED/UNKNOWN and
+whole60/native/backend/F1/MVP remain OPEN. Production custody is None, its file
+factory is test-only, and ordinary Codex remains EMPTY; no ownership/capability
+is transferred between the separate custody and selected Git pools. See the current
+[ledger](../../verification/issue-60-readers.md) for exact scope and history.
+These process-local holders
+grant no durable/full-workload proof or availability qualification.
+
 ### Grok terminal supervision receipts
 
 The existing scoped `grok.turn_observed` event carries `cleanup_receipt` after

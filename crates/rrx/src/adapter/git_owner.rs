@@ -1,0 +1,1510 @@
+//! Selected Git calls have an independent, finite process-local owner.
+//! Four slots account for the supervisor, two readers and the native worker.
+//! This is not a durable operation capability or complete native containment.
+use super::*;
+use std::{
+    ffi::OsString,
+    io,
+    panic::{AssertUnwindSafe, catch_unwind},
+    process::{Child as StdChild, Command as StdCommand, ExitStatus},
+    sync::{OnceLock, mpsc as std_mpsc},
+    thread,
+};
+use tokio::{
+    runtime::Runtime,
+    sync::{Notify, oneshot},
+};
+
+const JOBS: usize = 4;
+const CAPACITY: usize = 64;
+const WINDOW: Duration = Duration::from_millis(250);
+#[cfg(test)]
+static TEST_POOLS: OnceLock<Mutex<Vec<Arc<GitPool>>>> = OnceLock::new();
+
+#[cfg(test)]
+mod tests;
+
+/// Retention is explicit. No Drop implementation releases capacity or native assets.
+struct PoolState {
+    records: Vec<Arc<OpRecord>>,
+}
+pub(super) struct GitPool {
+    state: Mutex<PoolState>,
+    available: Notify,
+}
+impl GitPool {
+    fn new() -> Arc<Self> {
+        Arc::new(Self {
+            state: Mutex::new(PoolState {
+                records: Vec::with_capacity(CAPACITY / JOBS),
+            }),
+            available: Notify::new(),
+        })
+    }
+    async fn run(
+        self: &Arc<Self>,
+        request: Request,
+        flag: Arc<AtomicBool>,
+        context: Context,
+    ) -> AdapterResult<Vec<u8>> {
+        let mut guard = CallGuard {
+            record: None,
+            returned: false,
+        };
+        let mut waited_for_capacity = false;
+        let record = loop {
+            // Expiry precedes capacity and setup; no new uncertainty on refusal.
+            if tokio::time::Instant::now() >= request.deadline {
+                if waited_for_capacity {
+                    return Err(self.admission_timeout());
+                }
+                return Err(error(
+                    ErrorKind::Timeout,
+                    "Git ownership preflight timed out",
+                ));
+            }
+            let waiter = self.available.notified();
+            tokio::pin!(waiter);
+            waiter.as_mut().enable();
+            let admitted = {
+                let mut pool = self.state.lock().map_err(|_| {
+                    error(ErrorKind::LaunchFailure, "Git owner admission unavailable")
+                })?;
+                if pool.records.len() < CAPACITY / JOBS {
+                    let record = Arc::new(OpRecord::new(flag.clone(), context.clone()));
+                    pool.records.push(record.clone());
+                    Some(record)
+                } else {
+                    None
+                }
+            };
+            if let Some(record) = admitted {
+                // No await between allocation and start: cancellation cannot strand
+                // an unstarted reservation. FrameReady follows storing the actual handle.
+                guard.record = Some(record.clone());
+                self.start(record.clone(), request)?;
+                break record;
+            }
+            waited_for_capacity = true;
+            tokio::time::timeout_at(request.deadline, waiter)
+                .await
+                .map_err(|_| self.admission_timeout())?;
+        };
+        loop {
+            let waiter = record.ticket.result_wake.notified();
+            tokio::pin!(waiter);
+            waiter.as_mut().enable();
+            let result = {
+                let mut publication = record
+                    .ticket
+                    .publication
+                    .lock()
+                    .unwrap_or_else(|poison| poison.into_inner());
+                if let Some(outcome) = publication.result.take() {
+                    // The live return is the ONLY settled flag clear. Terminal loss,
+                    // cancellation or late settlement cannot clear a frozen result.
+                    if outcome.settled && publication.state != State::FrozenUnknown {
+                        record.ticket.flag.store(false, Ordering::SeqCst);
+                        publication.state = State::ReturnedSettled;
+                    } else if publication.state != State::CancelledBeforeSpawn {
+                        publication.state = State::FrozenUnknown;
+                    }
+                    Some(outcome.primary)
+                } else {
+                    None
+                }
+            };
+            if let Some(result) = result {
+                guard.returned = true;
+                return result;
+            }
+            waiter.await;
+        }
+    }
+    fn start(self: &Arc<Self>, record: Arc<OpRecord>, request: Request) -> AdapterResult<()> {
+        let (ready, began) = std_mpsc::sync_channel(1);
+        let owner = self.clone();
+        let thread_record = record.clone();
+        let handle = thread::Builder::new()
+            .name("rrx-git-owner".into())
+            .spawn(move || {
+                let mut liveness = FrameGuard {
+                    ticket: thread_record.ticket.clone(),
+                    armed: true,
+                };
+                if began.recv().is_err() {
+                    thread_record.ticket.owner_loss();
+                    return;
+                }
+                let completed =
+                    catch_unwind(AssertUnwindSafe(|| supervise(&thread_record, request)));
+                #[cfg(test)]
+                if let Some(pause) = &thread_record._context.hooks.before_terminal_publication {
+                    pause.block();
+                }
+                match completed {
+                    Ok(Completion::Settled(outcome)) => {
+                        // Inner future is gone, native worker joined and vaults emptied
+                        // before publishing/releasing. No native Drop follows release.
+                        thread_record.ticket.publish(outcome);
+                        owner.release(&thread_record);
+                        liveness.armed = false;
+                    }
+                    Ok(Completion::Retained(mut outcome)) => {
+                        // Retention can never grant a live caller a settled clear.
+                        outcome.settled = false;
+                        thread_record.ticket.publish(outcome);
+                        liveness.armed = false;
+                    }
+                    Err(_) => thread_record.ticket.owner_loss(),
+                }
+                #[cfg(test)]
+                thread_record
+                    .frame_actions_completed
+                    .store(true, Ordering::SeqCst);
+            });
+        match handle {
+            Ok(handle) => {
+                *record.supervisor.lock().unwrap_or_else(|p| p.into_inner()) = Some(handle);
+                if ready.send(()).is_err() {
+                    record.ticket.owner_loss();
+                }
+                Ok(())
+            }
+            Err(_) => {
+                // Explicit no-job release; no Git attempt or supervisor exists.
+                self.release(&record);
+                Err(error(
+                    ErrorKind::LaunchFailure,
+                    "Git owner thread unavailable",
+                ))
+            }
+        }
+    }
+    fn release(&self, record: &Arc<OpRecord>) {
+        // Bookkeeping poison after actual settlement holds slots without fabricating
+        // native Unknown. Caller flag/result remain governed by own settlement.
+        if record.ticket.publication.is_poisoned() || record.ticket.lost.load(Ordering::SeqCst) {
+            return;
+        }
+        if let Ok(mut pool) = self.state.lock() {
+            pool.records.retain(|entry| !Arc::ptr_eq(entry, record));
+            self.available.notify_waiters();
+        }
+    }
+    fn admission_timeout(&self) -> AdapterError {
+        // Derived process-local pressure, not fresh process inspection/authority.
+        // Units are Rust work-job slots, four for every retained record.
+        let facts = match self.state.lock() {
+            Ok(pool) => {
+                let mut active = 0usize;
+                let mut retained = 0usize;
+                for record in &pool.records {
+                    let count = if record.ticket.retained.load(Ordering::SeqCst) {
+                        &mut retained
+                    } else {
+                        &mut active
+                    };
+                    *count = count.saturating_add(JOBS).min(CAPACITY);
+                }
+                format!("active_jobs={active},retained_unresolved_jobs={retained}")
+            }
+            Err(_) => "occupancy=unavailable".into(),
+        };
+        error(
+            ErrorKind::Timeout,
+            format!("Git ownership preflight timed out; capacity_unavailable{{{facts}}}"),
+        )
+    }
+}
+fn production_pool() -> Arc<GitPool> {
+    static POOL: OnceLock<Arc<GitPool>> = OnceLock::new();
+    POOL.get_or_init(GitPool::new).clone()
+}
+
+#[derive(Clone, Default)]
+struct Context {
+    #[cfg(all(test, target_os = "macos"))]
+    plan: Option<ProcessInspectionPlan>,
+    #[cfg(test)]
+    hooks: TestHooks,
+}
+#[cfg(test)]
+#[derive(Clone)]
+pub(crate) struct TestGitContext {
+    pool: Option<Arc<GitPool>>,
+    context: Context,
+}
+#[cfg(test)]
+fn assert_private_pool_isolation() {
+    if std::env::var_os("RRX_PRIVATE_GIT_POOL_AUDIT").is_none() {
+        return;
+    }
+    let retained = production_pool()
+        .state
+        .lock()
+        .expect("production pool poisoned during private-pool audit")
+        .records
+        .iter()
+        .filter(|record| record.ticket.retained.load(Ordering::SeqCst))
+        .count()
+        * JOBS;
+    assert_eq!(
+        retained, 0,
+        "private controls changed production retained occupancy"
+    );
+}
+#[cfg(test)]
+impl Drop for TestGitContext {
+    fn drop(&mut self) {
+        // The dedicated subprocess selects the checked private-control inventory;
+        // the ordinary production-pool scalar contract is explicitly excluded.
+        // Unrelated default-parallel tests cannot change its fresh baseline.
+        // A failing control already failed; avoid double-panic during unwind.
+        if !thread::panicking() {
+            assert_private_pool_isolation();
+        }
+    }
+}
+#[cfg(test)]
+impl TestGitContext {
+    pub(crate) fn isolated() -> Self {
+        assert_private_pool_isolation();
+        let pool = GitPool::new();
+        let mut inventory = TEST_POOLS
+            .get_or_init(|| Mutex::new(Vec::with_capacity(256)))
+            .lock()
+            .unwrap();
+        assert!(
+            inventory.len() < 256,
+            "finite test owner inventory exhausted"
+        );
+        inventory.push(pool.clone());
+        Self {
+            pool: Some(pool),
+            context: Context::default(),
+        }
+    }
+    pub(crate) fn missing_executable() -> Self {
+        let mut context = Self::isolated();
+        context.context.hooks.missing_executable = true;
+        context
+    }
+    pub(crate) fn initializer_failure() -> Self {
+        let mut context = Self::isolated();
+        context.context.hooks.initialized_error = true;
+        context
+    }
+    pub(crate) fn paused_after_spawn() -> (Self, TestGitPause) {
+        let mut context = Self::isolated();
+        let pause = Arc::new(TestPause::default());
+        context.context.hooks.after_spawn = Some(pause.clone());
+        (context, TestGitPause(TestRelease(pause)))
+    }
+    pub(crate) async fn wait_until_released(&self) {
+        let pool = self.pool.as_ref().unwrap();
+        tokio::time::timeout(Duration::from_secs(3), async {
+            loop {
+                let notified = pool.available.notified();
+                tokio::pin!(notified);
+                notified.as_mut().enable();
+                if pool.state.lock().unwrap().records.is_empty() {
+                    return;
+                }
+                notified.await;
+            }
+        })
+        .await
+        .unwrap();
+    }
+    pub(crate) fn missing_matching(prefix: &[&str], ordinal: usize) -> Self {
+        assert!(ordinal > 0 && !prefix.is_empty());
+        let mut context = Self::isolated();
+        context.context.hooks.missing_matching = Some((
+            prefix.iter().map(|value| (*value).to_owned()).collect(),
+            ordinal,
+        ));
+        context
+    }
+    pub(crate) fn pending_output() -> Self {
+        let mut context = Self::isolated();
+        context.context.hooks.pending_stdout = true;
+        context
+    }
+    pub(crate) fn reap_after_cutoff() -> Self {
+        let mut context = Self::isolated();
+        context.context.hooks.reap_after_cutoff = Some(Arc::new(TestPause::default()));
+        context
+    }
+    pub(crate) fn invalid_binding() -> Self {
+        let mut context = Self::isolated();
+        context.context.hooks.invalid_binding = true;
+        context
+    }
+    pub(crate) fn held_jobs(&self) -> usize {
+        self.pool
+            .as_ref()
+            .unwrap()
+            .state
+            .lock()
+            .unwrap()
+            .records
+            .len()
+            * JOBS
+    }
+    #[cfg(target_os = "macos")]
+    pub(crate) fn with_plan(plan: ProcessInspectionPlan) -> Self {
+        let mut context = Self::isolated();
+        context.context.plan = Some(plan);
+        context
+    }
+}
+#[cfg(test)]
+#[derive(Clone, Default)]
+struct TestHooks {
+    initialized_error: bool,
+    invalid_binding: bool,
+    worker_panic: bool,
+    supervisor_panic: bool,
+    before_authorize: Option<Arc<TestPause>>,
+    before_worker_authorize: Option<Arc<TestPause>>,
+    before_terminal_publication: Option<Arc<TestPause>>,
+    after_spawn: Option<Arc<TestPause>>,
+    after_reap_send: Option<Arc<TestPause>>,
+    before_cleanup_ack: Option<Arc<TestPause>>,
+    before_reader_initialization: Option<Arc<TestPause>>,
+    after_cancel_cleanup: Option<Arc<TestPause>>,
+    reap_after_cutoff: Option<Arc<TestPause>>,
+    facts: Arc<Mutex<Option<ReaderFacts>>>,
+    after_primary_panic: bool,
+    pending_stderr: bool,
+    pending_stdout: bool,
+    stdout_reader_panic: bool,
+    missing_executable: bool,
+    missing_matching: Option<(Vec<String>, usize)>,
+    matching_calls: Arc<std::sync::atomic::AtomicUsize>,
+    signal_result: Option<rustix::io::Errno>,
+    signal_attempt: Arc<Mutex<Option<SignalAttempt>>>,
+}
+#[cfg(test)]
+#[derive(Clone, Copy)]
+struct SignalAttempt {
+    actual: Result<(), rustix::io::Errno>,
+    injected: Option<rustix::io::Errno>,
+}
+#[cfg(test)]
+#[derive(Default)]
+struct TestPause {
+    entered: AtomicBool,
+    entries: std::sync::atomic::AtomicUsize,
+    reached: Notify,
+    released: Mutex<bool>,
+    wake: std::sync::Condvar,
+}
+#[cfg(test)]
+impl TestPause {
+    fn block(&self) {
+        self.entries.fetch_add(1, Ordering::SeqCst);
+        self.entered.store(true, Ordering::SeqCst);
+        self.reached.notify_waiters();
+        let mut released = self.released.lock().unwrap();
+        while !*released {
+            released = self.wake.wait(released).unwrap();
+        }
+    }
+    async fn reached(&self) {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                let reached = self.reached.notified();
+                tokio::pin!(reached);
+                reached.as_mut().enable();
+                if self.entered.load(Ordering::SeqCst) {
+                    return;
+                }
+                reached.await;
+            }
+        })
+        .await
+        .unwrap();
+    }
+    fn release(&self) {
+        *self.released.lock().unwrap() = true;
+        self.wake.notify_all();
+    }
+}
+#[cfg(test)]
+pub(crate) struct TestGitPause(TestRelease);
+#[cfg(test)]
+impl TestGitPause {
+    pub(crate) async fn reached(&self) {
+        self.0.0.reached().await;
+    }
+}
+#[cfg(test)]
+struct TestRelease(Arc<TestPause>);
+#[cfg(test)]
+impl Drop for TestRelease {
+    fn drop(&mut self) {
+        self.0.release();
+    }
+}
+
+struct Request {
+    executable: PathBuf,
+    cwd: PathBuf,
+    args: Vec<String>,
+    environment: Vec<(OsString, OsString)>,
+    deadline: tokio::time::Instant,
+}
+pub(super) async fn run(
+    executable: &Path,
+    cwd: &Path,
+    args: &[String],
+    environment: Vec<(OsString, OsString)>,
+    deadline: tokio::time::Instant,
+    flag: Arc<AtomicBool>,
+    #[cfg(test)] test: Option<TestGitContext>,
+) -> AdapterResult<Vec<u8>> {
+    #[cfg(test)]
+    let (pool, context) = match test {
+        Some(test) => (
+            test.pool
+                .clone()
+                .expect("private Git context requires an isolated pool"),
+            test.context.clone(),
+        ),
+        None => (production_pool(), Context::default()),
+    };
+    #[cfg(not(test))]
+    let (pool, context) = (production_pool(), Context::default());
+    pool.run(
+        Request {
+            executable: executable.to_owned(),
+            cwd: cwd.to_owned(),
+            args: args.to_vec(),
+            environment,
+            deadline,
+        },
+        flag,
+        context,
+    )
+    .await
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum State {
+    Admitted,
+    CancelledBeforeSpawn,
+    Spawning,
+    Live,
+    FrozenUnknown,
+    ReturnedSettled,
+}
+struct Publication {
+    state: State,
+    result: Option<Outcome>,
+    primary: Option<AdapterError>,
+}
+struct Outcome {
+    primary: AdapterResult<Vec<u8>>,
+    settled: bool,
+}
+struct Ticket {
+    publication: Mutex<Publication>,
+    flag: Arc<AtomicBool>,
+    cancel: AtomicBool,
+    lost: AtomicBool,
+    retained: AtomicBool,
+    result_wake: Notify,
+    cancel_wake: Notify,
+    commands: OnceLock<std_mpsc::SyncSender<NativeCommand>>,
+    cancel_sent: AtomicBool,
+}
+impl Ticket {
+    fn command(&self, command: NativeCommand) {
+        if let Some(sender) = self.commands.get() {
+            if matches!(command, NativeCommand::Cancel)
+                && self.cancel_sent.swap(true, Ordering::SeqCst)
+            {
+                return;
+            }
+            let _ = sender.try_send(command);
+        }
+    }
+    fn cancel(&self) {
+        if self.publication.is_poisoned() {
+            self.owner_loss();
+            return;
+        }
+        if !self.cancel.swap(true, Ordering::SeqCst) {
+            let mut publication = self.publication.lock().unwrap_or_else(|p| p.into_inner());
+            match publication.state {
+                State::Admitted => publication.state = State::CancelledBeforeSpawn,
+                State::Spawning | State::Live => publication.state = State::FrozenUnknown,
+                _ => {}
+            }
+            self.command(NativeCommand::Cancel);
+            self.cancel_wake.notify_one();
+        }
+    }
+    fn owner_loss(&self) {
+        self.retained.store(true, Ordering::SeqCst);
+        if !self.lost.swap(true, Ordering::SeqCst) {
+            let poisoned = self.publication.is_poisoned();
+            let mut publication = self.publication.lock().unwrap_or_else(|p| p.into_inner());
+            if publication.result.is_none()
+                && !matches!(
+                    publication.state,
+                    State::FrozenUnknown | State::ReturnedSettled | State::CancelledBeforeSpawn
+                )
+            {
+                let before = publication.state == State::Admitted && !poisoned;
+                publication.state = if before {
+                    State::CancelledBeforeSpawn
+                } else {
+                    State::FrozenUnknown
+                };
+                if poisoned {
+                    self.flag.store(true, Ordering::SeqCst);
+                }
+                let primary = publication.primary.take().unwrap_or_else(|| {
+                    error(
+                        if before {
+                            ErrorKind::LaunchFailure
+                        } else {
+                            ErrorKind::SessionLost
+                        },
+                        "Git owner execution lost",
+                    )
+                });
+                publication.result = Some(Outcome {
+                    primary: Err(primary),
+                    settled: false,
+                });
+            }
+            self.command(NativeCommand::Lost);
+            self.cancel_wake.notify_one();
+        }
+        self.result_wake.notify_one();
+    }
+    fn establish(&self, primary: &AdapterError) {
+        let mut publication = self.publication.lock().unwrap_or_else(|p| p.into_inner());
+        if publication.primary.is_none() {
+            publication.primary = Some(error(primary.kind, primary.message.clone()));
+        }
+    }
+    fn publish(&self, outcome: Outcome) {
+        if !outcome.settled {
+            self.retained.store(true, Ordering::SeqCst);
+        }
+        if self.publication.is_poisoned() {
+            self.owner_loss();
+            return;
+        }
+        let mut publication = self.publication.lock().unwrap_or_else(|p| p.into_inner());
+        if publication.result.is_none() && publication.state != State::ReturnedSettled {
+            if !outcome.settled && publication.state != State::CancelledBeforeSpawn {
+                publication.state = State::FrozenUnknown;
+            }
+            publication.result = Some(outcome);
+        }
+        self.result_wake.notify_one();
+    }
+}
+struct CallGuard {
+    record: Option<Arc<OpRecord>>,
+    returned: bool,
+}
+impl Drop for CallGuard {
+    fn drop(&mut self) {
+        if !self.returned
+            && let Some(record) = &self.record
+        {
+            record.ticket.cancel();
+        }
+    }
+}
+struct FrameGuard {
+    ticket: Arc<Ticket>,
+    armed: bool,
+}
+impl Drop for FrameGuard {
+    fn drop(&mut self) {
+        if self.armed {
+            self.ticket.owner_loss();
+        }
+    }
+}
+
+/// Vaults own resources before effects; frames borrow them and cannot drop them on unwind.
+struct OpRecord {
+    ticket: Arc<Ticket>,
+    _context: Context,
+    supervisor: Mutex<Option<thread::JoinHandle<()>>>,
+    worker: Mutex<Option<thread::JoinHandle<()>>>,
+    runtime: Mutex<Option<Runtime>>,
+    readers: Mutex<Readers>,
+    endpoints: Mutex<Endpoints>,
+    native: Mutex<NativeAssets>,
+    native_settled: AtomicBool,
+    #[cfg(test)]
+    reader_lanes: std::sync::atomic::AtomicUsize,
+    #[cfg(test)]
+    frame_actions_completed: AtomicBool,
+    #[cfg(test)]
+    returned_children: std::sync::atomic::AtomicUsize,
+}
+impl OpRecord {
+    fn new(flag: Arc<AtomicBool>, context: Context) -> Self {
+        Self {
+            ticket: Arc::new(Ticket {
+                publication: Mutex::new(Publication {
+                    state: State::Admitted,
+                    result: None,
+                    primary: None,
+                }),
+                flag,
+                cancel: AtomicBool::new(false),
+                lost: AtomicBool::new(false),
+                retained: AtomicBool::new(false),
+                result_wake: Notify::new(),
+                cancel_wake: Notify::new(),
+                commands: OnceLock::new(),
+                cancel_sent: AtomicBool::new(false),
+            }),
+            _context: context,
+            supervisor: Mutex::new(None),
+            worker: Mutex::new(None),
+            runtime: Mutex::new(None),
+            readers: Mutex::new(Readers::default()),
+            endpoints: Mutex::new(Endpoints::default()),
+            native: Mutex::new(NativeAssets::default()),
+            native_settled: AtomicBool::new(false),
+            #[cfg(test)]
+            reader_lanes: std::sync::atomic::AtomicUsize::new(0),
+            #[cfg(test)]
+            frame_actions_completed: AtomicBool::new(false),
+            #[cfg(test)]
+            returned_children: std::sync::atomic::AtomicUsize::new(0),
+        }
+    }
+}
+#[derive(Default)]
+struct Endpoints {
+    stdout: Option<std::process::ChildStdout>,
+    stderr: Option<std::process::ChildStderr>,
+}
+#[derive(Default)]
+struct NativeAssets {
+    child: Option<StdChild>,
+    group: Option<Pid>,
+    signal_issued: bool,
+    cleanup: Option<io::Result<()>>,
+    reaped: bool,
+    #[cfg(test)]
+    signals: usize,
+}
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum JoinState {
+    #[default]
+    NotStarted,
+    NotObserved,
+    Returned,
+    Panicked,
+    Cancelled,
+}
+impl JoinState {
+    fn settled(self) -> bool {
+        !matches!(self, Self::NotObserved)
+    }
+}
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct ReaderFact {
+    join: JoinState,
+    abort_requested: bool,
+    read_ok: bool,
+    read_error: Option<ErrorKind>,
+}
+impl ReaderFact {
+    fn observe(&mut self, result: &Result<AdapterResult<Vec<u8>>, tokio::task::JoinError>) {
+        match result {
+            Ok(read) => {
+                self.join = JoinState::Returned;
+                self.read_ok = read.is_ok();
+                self.read_error = read.as_ref().err().map(|error| error.kind);
+            }
+            Err(error) => {
+                self.join = if error.is_cancelled() {
+                    JoinState::Cancelled
+                } else {
+                    JoinState::Panicked
+                };
+            }
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct ReaderFacts {
+    stdout: ReaderFact,
+    stderr: ReaderFact,
+}
+#[derive(Default)]
+struct Readers {
+    stdout: Option<JoinHandle<AdapterResult<Vec<u8>>>>,
+    stderr: Option<JoinHandle<AdapterResult<Vec<u8>>>>,
+    facts: ReaderFacts,
+}
+impl Readers {
+    fn abort(&mut self) {
+        if !self.facts.stdout.join.settled()
+            && let Some(task) = &self.stdout
+        {
+            self.facts.stdout.abort_requested = true;
+            task.abort();
+        }
+        if !self.facts.stderr.join.settled()
+            && let Some(task) = &self.stderr
+        {
+            self.facts.stderr.abort_requested = true;
+            task.abort();
+        }
+    }
+    fn settled(&self) -> bool {
+        self.facts.stdout.join.settled() && self.facts.stderr.join.settled()
+    }
+    async fn join_stdout(&mut self) -> AdapterResult<Vec<u8>> {
+        let Some(handle) = self.stdout.as_mut() else {
+            return Ok(Vec::new());
+        };
+        let result = handle.await;
+        self.facts.stdout.observe(&result);
+        result.map_err(|e| error(ErrorKind::ProcessFailure, e.to_string()))?
+    }
+    async fn join_stderr(&mut self) -> AdapterResult<()> {
+        let Some(handle) = self.stderr.as_mut() else {
+            return Ok(());
+        };
+        let result = handle.await;
+        self.facts.stderr.observe(&result);
+        result
+            .map_err(|e| error(ErrorKind::ProcessFailure, e.to_string()))?
+            .map(|_| ())
+    }
+    async fn finish_joins(&mut self) {
+        if !self.facts.stdout.join.settled() {
+            let _ = self.join_stdout().await;
+        }
+        if !self.facts.stderr.join.settled() {
+            let _ = self.join_stderr().await;
+        }
+    }
+}
+#[cfg(test)]
+fn freeze_reader_facts(record: &OpRecord, readers: &Readers) {
+    let mut facts = record._context.hooks.facts.lock().unwrap();
+    if facts.is_none() {
+        *facts = Some(readers.facts);
+    }
+}
+enum NativeCommand {
+    AuthorizeSpawn,
+    CleanupAndReap,
+    Cancel,
+    Lost,
+}
+struct Stages {
+    spawned: oneshot::Sender<AdapterResult<Option<Pid>>>,
+    cleanup: oneshot::Sender<io::Result<()>>,
+    reaped: oneshot::Sender<io::Result<ExitStatus>>,
+}
+enum Completion {
+    Settled(Outcome),
+    Retained(Outcome),
+}
+fn supervisor_lost() -> AdapterError {
+    error(ErrorKind::SessionLost, "Git owner execution lost")
+}
+
+fn supervise(record: &Arc<OpRecord>, request: Request) -> Completion {
+    let runtime = match tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(runtime) => runtime,
+        Err(_) => {
+            return Completion::Settled(Outcome {
+                primary: Err(error(
+                    ErrorKind::LaunchFailure,
+                    "Git owner runtime unavailable",
+                )),
+                settled: true,
+            });
+        }
+    };
+    *record.runtime.lock().unwrap() = Some(runtime);
+    // The actual Runtime stays inside the preallocated vault across inner unwind.
+    let mut runtime_vault = record.runtime.lock().unwrap();
+    let runtime = runtime_vault.as_ref().unwrap();
+    let signals = {
+        let _entered = runtime.enter();
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::child())
+    };
+    let mut signals = match signals {
+        Ok(signals) => signals,
+        Err(_) => {
+            drop(runtime_vault.take());
+            return Completion::Settled(Outcome {
+                primary: Err(error(
+                    ErrorKind::LaunchFailure,
+                    "Git owner signal setup unavailable",
+                )),
+                settled: true,
+            });
+        }
+    };
+    let (commands, receive) = std_mpsc::sync_channel(4);
+    let _ = record.ticket.commands.set(commands);
+    let (spawn_sender, spawn_receiver) = oneshot::channel();
+    let (cleanup_sender, cleanup_receiver) = oneshot::channel();
+    let (reap_sender, reap_receiver) = oneshot::channel();
+    let worker_record = record.clone();
+    let deadline = request.deadline;
+    let worker = thread::Builder::new()
+        .name("rrx-git-native".into())
+        .spawn(move || {
+            // These Senders belong to this frame, never the retained vault. Unwind
+            // disconnects pending stages and wakes the independent supervisor.
+            native_worker(
+                &worker_record,
+                request,
+                receive,
+                Stages {
+                    spawned: spawn_sender,
+                    cleanup: cleanup_sender,
+                    reaped: reap_sender,
+                },
+            );
+        });
+    let worker = match worker {
+        Ok(handle) => handle,
+        Err(_) => {
+            drop(signals);
+            drop(runtime_vault.take());
+            return Completion::Settled(Outcome {
+                primary: Err(error(
+                    ErrorKind::LaunchFailure,
+                    "Git native worker unavailable",
+                )),
+                settled: true,
+            });
+        }
+    };
+    *record
+        .worker
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner()) = Some(worker);
+    #[cfg(test)]
+    if let Some(pause) = &record._context.hooks.before_authorize {
+        pause.block();
+    }
+    {
+        let mut publication = record.ticket.publication.lock().unwrap();
+        if publication.state == State::Admitted && !record.ticket.cancel.load(Ordering::SeqCst) {
+            publication.state = State::Spawning;
+            record.ticket.flag.store(true, Ordering::SeqCst);
+            record.ticket.command(NativeCommand::AuthorizeSpawn);
+        } else {
+            record.ticket.command(NativeCommand::Cancel);
+        }
+    }
+    let mut readers = record.readers.lock().unwrap();
+    let outcome = runtime.block_on(supervisor_work(
+        record,
+        deadline,
+        &mut signals,
+        &mut readers,
+        spawn_receiver,
+        cleanup_receiver,
+        reap_receiver,
+    ));
+    #[cfg(test)]
+    freeze_reader_facts(record, &readers);
+    if !outcome.settled {
+        // Publish the frozen caller outcome before late observations. Same frame,
+        // same handles/wait; no replacement observer or flag clear is permitted.
+        record.ticket.publish(Outcome {
+            primary: outcome
+                .primary
+                .as_ref()
+                .map(Clone::clone)
+                .map_err(|e| error(e.kind, e.message.clone())),
+            settled: false,
+        });
+    }
+    let terminal_native = record.native_settled.load(Ordering::SeqCst);
+    if !terminal_native {
+        return Completion::Retained(outcome);
+    }
+    if !readers.settled() {
+        runtime.block_on(readers.finish_joins());
+    }
+    if !readers.settled() {
+        return Completion::Retained(outcome);
+    }
+    // Joining the actual worker, not receiving its result, precedes success.
+    let worker = record.worker.lock().unwrap().take().unwrap();
+    if worker.join().is_err() {
+        record.ticket.owner_loss();
+        return Completion::Retained(Outcome {
+            primary: Err(supervisor_lost()),
+            settled: false,
+        });
+    }
+    if record.ticket.lost.load(Ordering::SeqCst) {
+        return Completion::Retained(outcome);
+    }
+    *readers = Readers::default();
+    drop(readers);
+    drop(signals);
+    record.native.lock().unwrap().child.take();
+    drop(runtime_vault.take());
+    // Dropping the stored supervisor handle detaches only its nonblocking epilogue,
+    // after all work/assets are destroyed; no resource settlement is inferred.
+    record.supervisor.lock().unwrap().take();
+    Completion::Settled(outcome)
+}
+
+async fn supervisor_work(
+    record: &OpRecord,
+    deadline: tokio::time::Instant,
+    signals: &mut tokio::signal::unix::Signal,
+    readers: &mut Readers,
+    spawned: oneshot::Receiver<AdapterResult<Option<Pid>>>,
+    cleanup: oneshot::Receiver<io::Result<()>>,
+    mut reaped: oneshot::Receiver<io::Result<ExitStatus>>,
+) -> Outcome {
+    let pid = match spawned.await {
+        Ok(Ok(Some(pid))) => pid,
+        Ok(Ok(None)) => {
+            return Outcome {
+                primary: Err(error(
+                    ErrorKind::LaunchFailure,
+                    "Git launch cancelled before spawn",
+                )),
+                settled: true,
+            };
+        }
+        Ok(Err(primary)) => {
+            return Outcome {
+                primary: Err(primary),
+                settled: false,
+            };
+        }
+        Err(_) => {
+            record.ticket.owner_loss();
+            return Outcome {
+                primary: Err(supervisor_lost()),
+                settled: false,
+            };
+        }
+    };
+    {
+        let mut publication = record.ticket.publication.lock().unwrap();
+        if publication.state == State::Spawning {
+            publication.state = State::Live;
+        }
+    }
+    #[cfg(test)]
+    if let Some(pause) = &record._context.hooks.before_reader_initialization {
+        pause.block();
+    }
+    let initialized = {
+        let _entered = tokio::runtime::Handle::current().enter();
+        // Never held across native spawn, KILL, inspection or Child::wait.
+        let mut endpoints = record.endpoints.lock().unwrap();
+        let stdout = endpoints.stdout.take();
+        let stderr = endpoints.stderr.take();
+        // Child remains anchored in NativeAssets during fallible registrations.
+        (|| -> AdapterResult<()> {
+            #[cfg(test)]
+            if record._context.hooks.initialized_error {
+                return Err(error(
+                    ErrorKind::LaunchFailure,
+                    "Git pipe initialization failed",
+                ));
+            }
+            let stdout =
+                stdout.ok_or_else(|| error(ErrorKind::LaunchFailure, "Git stdout unavailable"))?;
+            let stderr =
+                stderr.ok_or_else(|| error(ErrorKind::LaunchFailure, "Git stderr unavailable"))?;
+            let stdout = tokio::process::ChildStdout::from_std(stdout)
+                .map_err(|_| error(ErrorKind::LaunchFailure, "Git stdout registration failed"))?;
+            let stderr = tokio::process::ChildStderr::from_std(stderr)
+                .map_err(|_| error(ErrorKind::LaunchFailure, "Git stderr registration failed"))?;
+            #[cfg(test)]
+            if record._context.hooks.pending_stdout {
+                readers.stdout = Some(tokio::spawn(async move {
+                    let endpoint = stdout;
+                    std::future::pending::<()>().await;
+                    drop(endpoint);
+                    Ok(Vec::new())
+                }));
+            } else if record._context.hooks.stdout_reader_panic {
+                readers.stdout = Some(tokio::spawn(async move {
+                    let _endpoint = stdout;
+                    panic!("synthetic Git stdout reader panic");
+                }));
+            } else {
+                readers.stdout = Some(tokio::spawn(read_git_output(stdout)));
+            }
+            #[cfg(not(test))]
+            {
+                readers.stdout = Some(tokio::spawn(read_git_output(stdout)));
+            }
+            readers.facts.stdout.join = JoinState::NotObserved;
+            #[cfg(test)]
+            if record._context.hooks.pending_stderr {
+                readers.stderr = Some(tokio::spawn(async move {
+                    let endpoint = stderr;
+                    std::future::pending::<()>().await;
+                    drop(endpoint);
+                    Ok(Vec::new())
+                }));
+            } else {
+                readers.stderr = Some(tokio::spawn(read_git_output(stderr)));
+            }
+            #[cfg(not(test))]
+            {
+                readers.stderr = Some(tokio::spawn(read_git_output(stderr)));
+            }
+            readers.facts.stderr.join = JoinState::NotObserved;
+            Ok(())
+        })()
+    };
+    #[cfg(test)]
+    record.reader_lanes.store(
+        usize::from(readers.stdout.is_some()) + usize::from(readers.stderr.is_some()),
+        Ordering::SeqCst,
+    );
+    #[cfg(test)]
+    if let Some(pause) = &record._context.hooks.after_spawn {
+        pause.block();
+    }
+    #[cfg(test)]
+    if record._context.hooks.supervisor_panic {
+        panic!("synthetic Git supervisor inner panic");
+    }
+    let observed = if initialized.is_ok() {
+        tokio::select! {
+            result = tokio::time::timeout_at(deadline, observe(pid, signals)) => match result {
+                Ok(Ok(())) => Ok(()),
+                Ok(Err(e)) => Err(error(ErrorKind::SessionLost, format!("Git child observation failed: {e}"))),
+                Err(_) => Err(error(ErrorKind::Timeout, "Git ownership preflight timed out")),
+            },
+            _ = cancelled(&record.ticket) => Err(error(ErrorKind::Timeout, "Git ownership preflight timed out")),
+        }
+    } else {
+        initialized
+    };
+    // Observe future is destroyed before authorizing actual owning Child::wait.
+    record.ticket.command(NativeCommand::CleanupAndReap);
+    let cleanup = match cleanup.await {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(e)) => Err(error(
+            ErrorKind::SessionLost,
+            format!("native process group cleanup failed: {e}"),
+        )),
+        Err(_) => {
+            record.ticket.owner_loss();
+            Err(supervisor_lost())
+        }
+    };
+    let mut reap_pending = false;
+    let mut primary = match cleanup {
+        Err(e) => Err(e),
+        Ok(()) => match tokio::time::timeout(WINDOW, &mut reaped).await {
+            Ok(Ok(Ok(exit))) => Ok(exit),
+            Ok(Ok(Err(e))) => Err(error(
+                ErrorKind::SessionLost,
+                format!("Git child reap failed: {e}"),
+            )),
+            Ok(Err(_)) => {
+                record.ticket.owner_loss();
+                Err(supervisor_lost())
+            }
+            Err(_) => {
+                reap_pending = true;
+                #[cfg(test)]
+                if let Some(pause) = &record._context.hooks.reap_after_cutoff {
+                    // The ACTUAL worker waits until the existing reap window expires.
+                    // Then the SAME worker observes actual Child::wait before this
+                    // decision; no synthetic successful reap, extra job or budget.
+                    pause.release();
+                    let limit = std::time::Instant::now() + Duration::from_secs(3);
+                    while !record.native_settled.load(Ordering::SeqCst) {
+                        assert!(
+                            std::time::Instant::now() < limit,
+                            "actual late reap missing"
+                        );
+                        thread::yield_now();
+                    }
+                }
+                Err(error(
+                    ErrorKind::SessionLost,
+                    "Git child death not confirmed after cleanup",
+                ))
+            }
+        },
+    };
+    if primary.is_ok()
+        && let Err(e) = observed
+    {
+        primary = Err(e);
+    }
+    if let Err(e) = &primary {
+        record.ticket.establish(e);
+        readers.abort();
+    }
+    let output_deadline = tokio::time::Instant::now() + WINDOW;
+    let output = tokio::time::timeout_at(output_deadline, async {
+        let stdout = readers.join_stdout().await;
+        if let Err(e) = &stdout {
+            record.ticket.establish(e);
+            readers.abort();
+        }
+        let stderr = readers.join_stderr().await;
+        if stdout.is_ok()
+            && let Err(e) = &stderr
+        {
+            record.ticket.establish(e);
+        }
+        stdout.and_then(|out| stderr.map(|_| out))
+    })
+    .await;
+    if output.is_err() {
+        readers.abort();
+    }
+    let output = output.unwrap_or_else(|_| {
+        let publication = record
+            .ticket
+            .publication
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        Err(publication
+            .primary
+            .as_ref()
+            .map(|e| error(e.kind, e.message.clone()))
+            .unwrap_or_else(|| {
+                error(
+                    ErrorKind::ProcessFailure,
+                    "Git output remained open after cleanup",
+                )
+            }))
+    });
+    let primary = match primary {
+        Err(e) => Err(e),
+        Ok(exit) => match output {
+            Err(e) => Err(e),
+            Ok(output) if exit.success() => Ok(output),
+            Ok(_) => Err(error(
+                ErrorKind::OwnershipMismatch,
+                "Git ownership preflight failed",
+            )),
+        },
+    };
+    if let Err(e) = &primary {
+        record.ticket.establish(e);
+    }
+    #[cfg(test)]
+    if primary.is_err() && record._context.hooks.after_primary_panic {
+        panic!("synthetic Git loss after primary");
+    }
+    // A deadline return is frozen before awaiting the same outstanding wait late.
+    let settled =
+        !reap_pending && record.native_settled.load(Ordering::SeqCst) && readers.settled();
+    if !settled {
+        #[cfg(test)]
+        freeze_reader_facts(record, readers);
+        record.ticket.publish(Outcome {
+            primary: primary
+                .as_ref()
+                .map(Clone::clone)
+                .map_err(|e| error(e.kind, e.message.clone())),
+            settled: false,
+        });
+        // Only an outstanding original wait can be observed late. Returned errors
+        // and cleanup loss never authorize a repeated wait or replacement worker.
+        if reap_pending {
+            let _ = reaped.await;
+        }
+    }
+    Outcome { primary, settled }
+}
+async fn cancelled(ticket: &Ticket) {
+    loop {
+        let wake = ticket.cancel_wake.notified();
+        tokio::pin!(wake);
+        wake.as_mut().enable();
+        if ticket.cancel.load(Ordering::SeqCst) || ticket.lost.load(Ordering::SeqCst) {
+            return;
+        }
+        wake.await;
+    }
+}
+async fn observe(pid: Pid, signals: &mut tokio::signal::unix::Signal) -> io::Result<()> {
+    loop {
+        match waitid(
+            WaitId::Pid(pid),
+            WaitIdOptions::EXITED | WaitIdOptions::NOWAIT | WaitIdOptions::NOHANG,
+        ) {
+            Ok(Some(_)) => return Ok(()),
+            Ok(None) => {}
+            Err(rustix::io::Errno::INTR) => continue,
+            Err(e) => return Err(e.into()),
+        }
+        if signals.recv().await.is_none() {
+            return Err(io::Error::other("SIGCHLD observer closed"));
+        }
+    }
+}
+
+fn native_worker(
+    record: &OpRecord,
+    request: Request,
+    receiver: std_mpsc::Receiver<NativeCommand>,
+    stages: Stages,
+) {
+    let mut spawned = Some(stages.spawned);
+    let mut cleanup = Some(stages.cleanup);
+    let mut reaped = Some(stages.reaped);
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        loop {
+            let Ok(command) = receiver.recv() else {
+                return;
+            }; // Not a relied-on loss mechanism.
+            match command {
+                NativeCommand::AuthorizeSpawn => {
+                    #[cfg(test)]
+                    if let Some(pause) = &record._context.hooks.before_worker_authorize {
+                        pause.block();
+                    }
+                    if record.ticket.cancel.load(Ordering::SeqCst)
+                        || record.ticket.lost.load(Ordering::SeqCst)
+                    {
+                        record.native_settled.store(true, Ordering::SeqCst);
+                        if let Some(sender) = spawned.take() {
+                            let _ = sender.send(Ok(None));
+                        }
+                        return;
+                    }
+                    #[cfg(test)]
+                    let selected_missing =
+                        record._context.hooks.missing_matching.as_ref().is_some_and(
+                            |(prefix, ordinal)| {
+                                request.args.starts_with(prefix)
+                                    && record
+                                        ._context
+                                        .hooks
+                                        .matching_calls
+                                        .fetch_add(1, Ordering::SeqCst)
+                                        + 1
+                                        == *ordinal
+                            },
+                        );
+                    #[cfg(test)]
+                    let executable = if record._context.hooks.missing_executable || selected_missing
+                    {
+                        Path::new("/rrx-synthetic-missing-git-executable")
+                    } else {
+                        &request.executable
+                    };
+                    #[cfg(not(test))]
+                    let executable = &request.executable;
+                    let mut command = StdCommand::new(executable);
+                    command
+                        .args(&request.args)
+                        .current_dir(&request.cwd)
+                        .env_clear()
+                        .envs(request.environment.iter().map(|(key, value)| (key, value)))
+                        .stdin(Stdio::null())
+                        .stdout(Stdio::piped())
+                        .stderr(Stdio::piped())
+                        .process_group(0);
+                    let mut native = record.native.lock().unwrap();
+                    let child = command.spawn();
+                    let result = match child {
+                        Ok(child) => {
+                            native.child = Some(child); // Anchor before binding/stdio/wrapping.
+                            #[cfg(test)]
+                            record.returned_children.fetch_add(1, Ordering::SeqCst);
+                            let raw = native.child.as_ref().unwrap().id();
+                            let pid = if raw > 1 && raw <= i32::MAX as u32 {
+                                Pid::from_raw(raw as i32)
+                            } else {
+                                None
+                            };
+                            #[cfg(test)]
+                            let pid = if record._context.hooks.invalid_binding {
+                                None
+                            } else {
+                                pid
+                            };
+                            native.group = pid;
+                            if pid.is_some() {
+                                let child = native.child.as_mut().unwrap();
+                                let mut endpoints = record.endpoints.lock().unwrap();
+                                endpoints.stdout = child.stdout.take();
+                                endpoints.stderr = child.stderr.take();
+                            }
+                            pid.map(Some).ok_or_else(|| {
+                                error(ErrorKind::LaunchFailure, "invalid native PID")
+                            })
+                        }
+                        Err(e) => Err(error(ErrorKind::ProcessFailure, e.to_string())),
+                    };
+                    let failed = result.is_err();
+                    if let Some(sender) = spawned.take() {
+                        let _ = sender.send(result);
+                    }
+                    if failed {
+                        return;
+                    }
+                }
+                NativeCommand::Cancel | NativeCommand::Lost => {
+                    let mut native = record.native.lock().unwrap();
+                    if native.child.is_none() {
+                        record.native_settled.store(true, Ordering::SeqCst);
+                        if let Some(sender) = spawned.take() {
+                            let _ = sender.send(Ok(None));
+                        }
+                        return;
+                    }
+                    first_cleanup(record, &mut native);
+                    #[cfg(test)]
+                    if let Some(pause) = &record._context.hooks.after_cancel_cleanup {
+                        pause.block();
+                    }
+                    if record.ticket.lost.load(Ordering::SeqCst) {
+                        return;
+                    }
+                }
+                NativeCommand::CleanupAndReap => {
+                    let mut native = record.native.lock().unwrap();
+                    first_cleanup(record, &mut native);
+                    let result = native.cleanup.as_ref().unwrap();
+                    let succeeded = result.is_ok();
+                    #[cfg(test)]
+                    if let Some(pause) = &record._context.hooks.before_cleanup_ack {
+                        pause.block();
+                    }
+                    if let Some(sender) = cleanup.take() {
+                        let _ = sender.send(match result {
+                            Ok(()) => Ok(()),
+                            Err(e) => Err(io::Error::new(e.kind(), e.to_string())),
+                        });
+                    }
+                    if !succeeded {
+                        return;
+                    }
+                    #[cfg(test)]
+                    if let Some(pause) = &record._context.hooks.reap_after_cutoff {
+                        pause.block();
+                    }
+                    let result = native.child.as_mut().unwrap().wait();
+                    if result.is_ok() {
+                        native.reaped = true;
+                        record.native_settled.store(true, Ordering::SeqCst);
+                    }
+                    if let Some(sender) = reaped.take() {
+                        let _ = sender.send(result);
+                    }
+                    #[cfg(test)]
+                    if let Some(pause) = &record._context.hooks.after_reap_send {
+                        // Reap and native facts are already complete. Hold this
+                        // ACTUAL worker without using the native vault lock as a
+                        // second fence that could mask the required worker.join.
+                        drop(native);
+                        pause.block();
+                    }
+                    return;
+                }
+            }
+        }
+    }));
+    if result.is_err() {
+        // Retain actual anchor after panic. First cleanup only if never attempted;
+        // the bit is stored BEFORE KILL/inspection and prevents implicit retry.
+        let mut native = record.native.lock().unwrap_or_else(|p| p.into_inner());
+        if native.child.is_some() && !native.signal_issued {
+            first_cleanup(record, &mut native);
+        }
+        record.ticket.owner_loss();
+    }
+}
+fn first_cleanup(_record: &OpRecord, native: &mut NativeAssets) {
+    if native.signal_issued {
+        return;
+    }
+    native.signal_issued = true;
+
+    #[cfg(test)]
+    {
+        native.signals += 1;
+    }
+    let result = match native.group {
+        None => Err(io::Error::other("Git child group binding unavailable")),
+        Some(pid) => {
+            #[cfg(all(test, target_os = "macos"))]
+            let signal = match &_record._context.plan {
+                Some(plan) => plan.signal(pid),
+                None => kill_process_group(pid, Signal::KILL),
+            };
+            #[cfg(not(all(test, target_os = "macos")))]
+            let signal = kill_process_group(pid, Signal::KILL);
+            #[cfg(test)]
+            let signal = {
+                let actual = signal;
+                let injected = match _record._context.hooks.signal_result {
+                    // The actual first owned-group KILL still occurs. This models
+                    // its result at the production resolver, not real OS denial.
+                    Some(injected)
+                        if matches!(
+                            actual,
+                            Ok(()) | Err(rustix::io::Errno::SRCH | rustix::io::Errno::PERM)
+                        ) =>
+                    {
+                        Some(injected)
+                    }
+                    _ => None,
+                };
+                *_record._context.hooks.signal_attempt.lock().unwrap() =
+                    Some(SignalAttempt { actual, injected });
+                injected.map_or(actual, Err)
+            };
+            #[cfg(test)]
+            if _record._context.hooks.worker_panic {
+                panic!("synthetic Git native worker panic after signal");
+            }
+            #[cfg(target_os = "macos")]
+            let result = resolve_macos_signal_result(signal, || {
+                #[cfg(test)]
+                if let Some(plan) = &_record._context.plan
+                    && let Some(observation) = plan.inspect(pid.as_raw_nonzero().get())
+                {
+                    return observation;
+                }
+                macos_group_is_dead(pid)
+            });
+            #[cfg(not(target_os = "macos"))]
+            let result = match signal {
+                Ok(()) | Err(rustix::io::Errno::SRCH) => Ok(()),
+                Err(e) => Err(e.into()),
+            };
+            result
+        }
+    };
+    if result.is_ok() {
+        native.group = None;
+    }
+    native.cleanup = Some(result);
+}

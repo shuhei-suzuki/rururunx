@@ -1,0 +1,354 @@
+{
+  "head": "5b09c6ddcc06abb7a489616ce9e35a2ed9ccd0c9",
+  "clean_before_checks": true,
+  "format_check_exit": 0,
+  "gates": [
+    {
+      "name": "full_default_debug",
+      "exit_code": 101,
+      "log_sha256": "6b216be308da54240e06a9f68a2a83dc1fb396e7d00447f3b664e6b61052a8b2",
+      "log_bytes": 55054,
+      "scope": "lib290 PASS/14 FAIL/24 ignored; later targets not executed",
+      "results": [
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 327 filtered out; finished in 7.66s",
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 327 filtered out; finished in 10.88s",
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 327 filtered out; finished in 11.11s",
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 327 filtered out; finished in 17.10s",
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 327 filtered out; finished in 17.37s",
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 327 filtered out; finished in 16.19s",
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 327 filtered out; finished in 17.59s",
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 327 filtered out; finished in 17.75s",
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 327 filtered out; finished in 19.30s",
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 327 filtered out; finished in 16.88s",
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 327 filtered out; finished in 11.94s",
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 327 filtered out; finished in 13.74s",
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 327 filtered out; finished in 14.26s",
+        "test result: FAILED. 290 passed; 14 failed; 24 ignored; 0 measured; 0 filtered out; finished in 113.47s"
+      ]
+    },
+    {
+      "name": "full_default_release",
+      "exit_code": 0,
+      "log_sha256": "fbdf1f3458070f295dd85845900b1c16bc155962c8b6b76dd6da7df3b0add321",
+      "log_bytes": 47549,
+      "scope": "415 top-level Rust PASS/27 ignored plus2 doctests; nested ordinary child1 PASS separate",
+      "results": [
+        "test result: ok. 304 passed; 0 failed; 24 ignored; 0 measured; 0 filtered out; finished in 45.17s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.64s",
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.37s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s",
+        "test result: ok. 1 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.23s",
+        "test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 21.28s",
+        "test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.18s",
+        "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+        "test result: ok. 15 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 28.24s",
+        "test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.74s",
+        "test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s"
+      ]
+    },
+    {
+      "name": "clippy_all_targets",
+      "exit_code": 0,
+      "log_sha256": "f58ff04a1db94ac2b44b58246618d28a999ff8f39bd1aac96432dde1bdda6b8d",
+      "log_bytes": 170,
+      "scope": "workspace/all-targets/-D warnings",
+      "results": []
+    },
+    {
+      "name": "debug_build",
+      "exit_code": 0,
+      "log_sha256": "a178c7902ac24dda0e2c0cd4cf0e47a2a6976ef30481cb4015f2f71620380d8b",
+      "log_bytes": 72,
+      "scope": "workspace debug BUILD",
+      "results": []
+    },
+    {
+      "name": "release_build",
+      "exit_code": 0,
+      "log_sha256": "2d5694fb348541fae3d68a033b004800c9c79f8f6edb468d5763b1d8f389597a",
+      "log_bytes": 62,
+      "scope": "workspace release BUILD, distinct from release TEST",
+      "results": []
+    }
+  ],
+  "failed_debug_tests": [
+    "adapter::grok::environment_tests::absent_native_baseline_cannot_be_introduced_by_declared_caller",
+    "adapter::grok::environment_tests::actual_stop_after_admission_never_spawns_and_keeps_snapshots_coherent",
+    "adapter::grok::environment_tests::initial_and_resume_selection_keep_invalid_and_live_ownership_guards",
+    "adapter::grok::environment_tests::live_reference_change_rejects_actual_resume_before_spawn",
+    "adapter::grok::environment_tests::native_references_and_ordinary_callers_keep_exact_scoped_alternatives",
+    "adapter::grok::environment_tests::owning_reference_change_after_snapshot_rejects_resume",
+    "adapter::grok::environment_tests::owning_reference_change_after_snapshot_rejects_start",
+    "adapter::grok::environment_tests::owning_reference_refresh_and_existing_consultant_reservation_guards_remain_required",
+    "adapter::grok::environment_tests::unrelated_foreign_changes_do_not_revoke_checkpoint",
+    "adapter::grok::environment_tests::unrelated_foreign_changes_do_not_revoke_resume",
+    "adapter::grok::environment_tests::unrelated_foreign_changes_do_not_revoke_start",
+    "adapter::grok::receipt_tests::completed_resume_receipts_keep_exact_attempt_windows_and_trace",
+    "adapter::grok::receipt_tests::completed_turn_unknown_cleanup_transports_inspector_facts_without_changing_receipt",
+    "adapter::grok::receipt_tests::dispatched_unknown_receipt_retains_result_error_and_reservation"
+  ],
+  "default_internal_parallelism": true,
+  "deadlines_latches_unknown_and_watchdogs_unchanged": true,
+  "source_files": [
+    {
+      "path": ".github/workflows/ci.yml",
+      "blob": "fae2d45999b972ed8a97c38a74b819bbcce088bc"
+    },
+    {
+      "path": "Cargo.lock",
+      "blob": "ef796d3a72aa0d6e67430580aa693b5807c07ead"
+    },
+    {
+      "path": "Cargo.toml",
+      "blob": "1709e725120ed00aff17d9cb7d046f536d3eaa0a"
+    },
+    {
+      "path": "crates/rrx/Cargo.toml",
+      "blob": "553d39807d6ca050569dc8c7128377c40618509b"
+    },
+    {
+      "path": "crates/rrx/examples/native_codex_protocol.rs",
+      "blob": "a019d5907be1f547ad96a9ad1f15ee10b5d4ba11"
+    },
+    {
+      "path": "crates/rrx/examples/native_codex_session.rs",
+      "blob": "a019d5907be1f547ad96a9ad1f15ee10b5d4ba11"
+    },
+    {
+      "path": "crates/rrx/examples/repository-context.rs",
+      "blob": "98a7ace4160efcf01a70509acbe88b97516a8007"
+    },
+    {
+      "path": "crates/rrx/src/adapter.rs",
+      "blob": "31f72364fbe7651963bbe9fe304e8084f54ccab1"
+    },
+    {
+      "path": "crates/rrx/src/adapter/git_owner.rs",
+      "blob": "4edb92867cc7c4944f9202b100803b425012100b"
+    },
+    {
+      "path": "crates/rrx/src/adapter/git_owner/tests.rs",
+      "blob": "207c87b149a92a3b075fd6161bf45cfe2ec4fff2"
+    },
+    {
+      "path": "crates/rrx/src/adapter/grok/cleanup.rs",
+      "blob": "15a55b0bb065299188d5fecddd5b3e2342695091"
+    },
+    {
+      "path": "crates/rrx/src/adapter/grok/environment.rs",
+      "blob": "1382f391407cb739a805f62b1f816845d0ae1c1d"
+    },
+    {
+      "path": "crates/rrx/src/adapter/grok/environment_tests.rs",
+      "blob": "4a7d1de052712c67f0a545255cc9b901b9e6d14b"
+    },
+    {
+      "path": "crates/rrx/src/adapter/grok/environment_workflow_tests.rs",
+      "blob": "5922ccdbb894e889990941d7e42f2aae23dc26be"
+    },
+    {
+      "path": "crates/rrx/src/adapter/grok/files.rs",
+      "blob": "252b5b46abdbbb5f19308e1d6e76cc4459ff7b20"
+    },
+    {
+      "path": "crates/rrx/src/adapter/grok/mod.rs",
+      "blob": "840f049b1b5c1d57d0ed4f359a26fa3e2c92795e"
+    },
+    {
+      "path": "crates/rrx/src/adapter/grok/ownership.rs",
+      "blob": "e673e0f3804bf7323206ce95eb248aebb070c9c1"
+    },
+    {
+      "path": "crates/rrx/src/adapter/grok/protocol.rs",
+      "blob": "be115305356fdebe0d659c41db26304ebb43e29a"
+    },
+    {
+      "path": "crates/rrx/src/adapter/grok/reader_tests.rs",
+      "blob": "cf2cff5e0064086659c0518251be0305bb35eef7"
+    },
+    {
+      "path": "crates/rrx/src/adapter/grok/receipt_tests.rs",
+      "blob": "d0dd5baa208c5a9beb9a41bd5b36ee49be042953"
+    },
+    {
+      "path": "crates/rrx/src/adapter/grok/schema.rs",
+      "blob": "a0016eb7e3ca3001fb8eafded9466d855ad434af"
+    },
+    {
+      "path": "crates/rrx/src/adapter/inspection.rs",
+      "blob": "376b6556758129eaa7c585a452ebe1dd387c40e3"
+    },
+    {
+      "path": "crates/rrx/src/adapter/inspection/diagnostic_tests.rs",
+      "blob": "cb923bd7784726bd1ae6e60e83981cac64119c77"
+    },
+    {
+      "path": "crates/rrx/src/adapter/inspection/diagnostics.rs",
+      "blob": "9b6078660ecf31aaec5f40d2652f0ed6ee9140cf"
+    },
+    {
+      "path": "crates/rrx/src/codex/attempt.rs",
+      "blob": "8c929c2bebcff3e1dbad92b23221c0a93b9f558a"
+    },
+    {
+      "path": "crates/rrx/src/codex/availability.rs",
+      "blob": "ca8abbfa125d01b5c7457a92b44416c73327b9ff"
+    },
+    {
+      "path": "crates/rrx/src/codex/mod.rs",
+      "blob": "09142b47c2a9f73fa28739fbb1ad4977c6ec6bce"
+    },
+    {
+      "path": "crates/rrx/src/codex/ownership.rs",
+      "blob": "38fafd413c71f75235ce3c6ca9d458813623252d"
+    },
+    {
+      "path": "crates/rrx/src/codex/policy.rs",
+      "blob": "551920f8fddf4f67199dbff378ed9b644c1a35a7"
+    },
+    {
+      "path": "crates/rrx/src/codex/preparation.rs",
+      "blob": "67e4795fb09e8435bfbdec48f656dd5474a615f0"
+    },
+    {
+      "path": "crates/rrx/src/codex/protocol.rs",
+      "blob": "6ba832caf4a4aadc5ad6a631ff075db3d7d90b36"
+    },
+    {
+      "path": "crates/rrx/src/codex/session.rs",
+      "blob": "73ec2483d8f923cbdcfbd8ce05b1ce325d0e3dfb"
+    },
+    {
+      "path": "crates/rrx/src/codex/transport.rs",
+      "blob": "787870bd8960935758246d38a01c00776e84a34a"
+    },
+    {
+      "path": "crates/rrx/src/config.rs",
+      "blob": "fd167b8723654f3b096e27c5c99f903ec59bcd1d"
+    },
+    {
+      "path": "crates/rrx/src/context.rs",
+      "blob": "59ac19a37b137c34323187b011ed3c917aa05a95"
+    },
+    {
+      "path": "crates/rrx/src/domain.rs",
+      "blob": "f3f70b8667c1894afdf7c7425472f29eb5aeb3e5"
+    },
+    {
+      "path": "crates/rrx/src/git.rs",
+      "blob": "ec5ca45bd0c4ed5b2edaada8bfe51f07a6ff3e2b"
+    },
+    {
+      "path": "crates/rrx/src/goal.rs",
+      "blob": "3cc75b6b87d226cff5ec7254fab61ea1ece5268f"
+    },
+    {
+      "path": "crates/rrx/src/lib.rs",
+      "blob": "3efb39c15e3ffdd845dce8cf209fc910ae84dbb6"
+    },
+    {
+      "path": "crates/rrx/src/main.rs",
+      "blob": "52ecc16c349dfec3a46cddef4ae22835ad4cc52e"
+    },
+    {
+      "path": "crates/rrx/src/project.rs",
+      "blob": "07a829bad7eb0394e616323e7e5887d56af8b873"
+    },
+    {
+      "path": "crates/rrx/src/state/environment.rs",
+      "blob": "8f7f937b90751540a5f5bcbbaffa8befb5af257c"
+    },
+    {
+      "path": "crates/rrx/src/state/mod.rs",
+      "blob": "7af6f7603629f22a0c690a9b49bc498ee34467df"
+    },
+    {
+      "path": "crates/rrx/src/state/native_dispatch_tests.rs",
+      "blob": "235ce98943278f7a31f8c9baa42f1ddc426c1b03"
+    },
+    {
+      "path": "crates/rrx/src/state/schema.sql",
+      "blob": "bfa8119e6d66900f6bcf26638321730077cb3d0c"
+    },
+    {
+      "path": "crates/rrx/src/workflow.rs",
+      "blob": "99139650e4a4f36b4213fe5020445a5e5589e620"
+    },
+    {
+      "path": "crates/rrx/src/workflow/tests.rs",
+      "blob": "eba92d51455fc74165a491fb26f9b3e573a614a5"
+    },
+    {
+      "path": "crates/rrx/src/workflow/tests/unbound_retry.rs",
+      "blob": "dc5daf15a6c62c2569f56cc3f4a6580af310f33e"
+    },
+    {
+      "path": "crates/rrx/tests/adapter.rs",
+      "blob": "b2c1d1d4cfb50c1dc108ebba1780027636aff996"
+    },
+    {
+      "path": "crates/rrx/tests/cli.rs",
+      "blob": "9b36d8f55c43059ab852c2c28ed78e8e97e2ba83"
+    },
+    {
+      "path": "crates/rrx/tests/codex_unavailable.rs",
+      "blob": "f4605649c00eb05cb88d0803fe004212101d8747"
+    },
+    {
+      "path": "crates/rrx/tests/context.rs",
+      "blob": "06a76f548b1cb0983852f8100efbc6f95239bd25"
+    },
+    {
+      "path": "crates/rrx/tests/git.rs",
+      "blob": "836f1eaf77f872f54869382800156a5ce00ac25d"
+    },
+    {
+      "path": "crates/rrx/tests/goal_graph.rs",
+      "blob": "42f8e14ca354e1ae1eb570b6702919390687f560"
+    },
+    {
+      "path": "crates/rrx/tests/grok.rs",
+      "blob": "67eefbe8be75955950d68c6902b8bed71c9447a5"
+    },
+    {
+      "path": "crates/rrx/tests/project.rs",
+      "blob": "b366ba343bc6223bce8e76575e287a20b2bc67b4"
+    },
+    {
+      "path": "crates/rrx/tests/state.rs",
+      "blob": "0c096ee3d3221b01e757277f8168a74755f0f17c"
+    },
+    {
+      "path": "crates/rrx/tests/support/grok_fake.py",
+      "blob": "dfae67dde3a2852da177d7372be1e343c47f451f"
+    },
+    {
+      "path": "crates/rrx/tests/support/grok_fixture.rs",
+      "blob": "a311f9275922f02a75d11f5f784ad0d67422ca98"
+    },
+    {
+      "path": "crates/rrx/tests/support/grok_receipt.rs",
+      "blob": "be44dba15627e18ba4ccd1dcbc0c2164e8fe4a14"
+    }
+  ],
+  "source_file_count": 60,
+  "current_debug_failure_facts": [
+    "irrelevant checkpoint boundary1/case0 and resume boundary2/case0: fixture/start/terminal; initial start Git ownership preflight Timeout",
+    "initial_and_resume_selection_keep_invalid_and_live_ownership_guards: watchdog_expired60001ms; actualSIGKILL; stdout running1test only/stderr empty; no static progress stage available for this case",
+    "Other actual failures include initial transport/canary expectations and receipt expected native dispatch/Lost but Failed/pre-native receipt; native false dispatch cannot prove no prior/current Git spawn"
+  ],
+  "cause": "UNKNOWN",
+  "regression_status": "UNKNOWN",
+  "historical_failures_preserved": [
+    "9c574a2 full Debug",
+    "9c574a2 full Release",
+    "1b37c78 full Debug",
+    "1b37c78 full Release"
+  ],
+  "current_release_does_not_close_debug_failure": true,
+  "overlap": "No own native reviewer/mutation suite during current full gates; peer workload has no measured causal attribution",
+  "acceptance": "Candidate selected component UNREVIEWED; whole60/F1/native16 and current fullDebug acceptance remain open"
+}

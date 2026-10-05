@@ -1,0 +1,307 @@
+{
+  "component": "Issue60 selected Git reader ownership",
+  "gate": "Reader Requirements1",
+  "status": "request_changes twice; Requirements2 candidate corrections NOT approved",
+  "source_modified": false,
+  "historical_failure_cause": "UNKNOWN",
+  "historical_failure_regression": "UNKNOWN",
+  "reviews": [
+    {
+      "reviewer": "ownership",
+      "head": "20c1fdfc0d6c8b9c1661e4a24e8d42aa5a7265ef",
+      "native_session": "e0bdd4dc-5102-4f3e-bc44-0a21c01f9689",
+      "raw_sha256": "13acc0f9e68a1d2551eeef1ef900ef3d456d6569e0753036f021a9236b967fc2",
+      "cleanup_verified": true,
+      "verdict": "request_changes",
+      "unresolved_blockers_at_review": [
+        "R60RD-H1-generic-returned-unknown: the stated Generic Lost outcome contradicts the frozen equation at adapter.rs:631-641",
+        "R60RD-M1-late-settlement-observer: late settlement has no permitted observer under the no-retry and no-hold-join rules",
+        "R60RD-M2-runtime-bound-resources: post-shutdown reap and join guarantee is unspecified, risking raw-PID reaping",
+        "R60RD-M3-existing-unknown-fixtures-pool: existing Unknown fixtures would consume the production pool"
+      ],
+      "findings": [
+        {
+          "id": "R60RD-H1-generic-returned-unknown",
+          "severity": "High",
+          "file": "doc/requirements/issue-60-git-reader-contract-draft.md",
+          "line": 136,
+          "claim": "Clause 13 says Generic Reservation chooses Lost rather than Failed for retained Unknown. The same clause keeps original primary kinds and says existing equations stay unchanged (line 139). The actual Generic returned-error path never reads the flag, so the stated outcome cannot be reached under the candidate's own constraints.",
+          "evidence": "adapter.rs:628-641 sets Lost only when e.kind == SessionLost, saves, then disarms (reservation.session = None). process_uncertain is read only in Reservation::drop (adapter.rs:457-468), which runs on future drop or after a failed save (642-645). The candidate creates new Unknown returns that keep non-SessionLost kinds: group-binding LaunchFailure (draft:45-46, 91-92), output_open ProcessFailure with not_observed joins (draft:104, 121-123), and reader-kind or Timeout returns whose peer join is not observed within the single budget (draft:111-118, 127-128). validate_git propagates these with ? (adapter.rs:1165-1213). Generic would then persist FAILED rather than Lost, the state adapter.rs:1741-1742 shows as executor_reserved, while the pool still holds unresolved anchors and permits (draft:32-33).",
+          "fix": "Choose one of two options. (a) Declare an explicit Generic consumer-equation change at adapter.rs:631: Lost when kind is SessionLost or the bounded call returned with its per-call flag retained true. Add impact analysis, design and source gates, and real Generic tests for binding LaunchFailure, output_open, peer not_observed and Timeout not_observed. (b) Remove the Generic Lost claim and record that Generic persists FAILED for a returned non-SessionLost Unknown as an OPEN gap. Do not rewrite primary kinds to SessionLost to get the outcome.",
+          "verification": "verified",
+          "candidate_disposition": "Explicit Generic live-error equation change in clauses13/requirements; original API kind retained; actual Unknown Lost versus settled Failed consumer gates pending.",
+          "implementation_accepted": false
+        },
+        {
+          "id": "R60RD-M1-late-settlement-observer",
+          "severity": "Medium",
+          "file": "doc/requirements/issue-60-git-reader-contract-draft.md",
+          "line": 131,
+          "claim": "Late settlement and permit release, and the 'late reader completion' acceptance case, need something that keeps observing after the caller returns. The candidate forbids retry and hold-join without assigning that observation to a reserved job. It also never says whether re-awaiting the same direct-child wait after the existing 250ms reap timeout counts as a retry.",
+          "evidence": "draft:118-119 retains unobserved handles at budget expiry. draft:131-133 releases permits only after late settlement is observed. requirements:100 requires late reader completion. Against that: draft:66-68 says no new retry, draft:72 says no unbounded fallback or hold-join task, and requirements:106 says no hidden fallback or hold-join scheduling. After supervisor failure or runtime shutdown, draft:61-63 leaves only a non-poller cleanup lane. Current source has no observer to preserve: it drops the wait future at 250ms (adapter.rs:1359-1366) and abandons aborted handles (1373-1379, 1399-1406).",
+          "fix": "Name the already-reserved job, inside the four permits, that keeps awaiting the same JoinHandles and the same direct-child wait after the caller returns. State that continuing to await them after the caller-visible budget is observation, not a retry. State that a returned reap error is terminal Unknown. State that if the supervisor is lost, no late observation occurs and all four permits stay retained. Add acceptance coverage for both the late-settlement case and the no-observer case.",
+          "verification": "verified",
+          "candidate_disposition": "Same reserved healthy supervisor continues existing Child wait/joins; returned reap error terminal; lost supervisor retains without promised observer.",
+          "implementation_accepted": false
+        },
+        {
+          "id": "R60RD-M2-runtime-bound-resources",
+          "severity": "Medium",
+          "file": "doc/requirements/issue-60-git-reader-contract-draft.md",
+          "line": 65,
+          "claim": "The contract requires observed reap and joins after first cleanup, including when the caller runtime has shut down. It never requires that the runtime-bound process resources survive that runtime. As written, the requirement is either unimplementable or invites reaping by raw PID, which would allow numeric resurrection.",
+          "evidence": "In current source the Child, its piped stdio and the reader tasks are created in the calling Tokio context (adapter.rs:1343-1356), and so is the SIGCHLD stream used by observe_exit (adapter.rs:349). Tokio process I/O and wait registrations belong to the runtime driver that was active when they were created. draft:37-40 only requires retention 'independently of caller future/runtime', and draft:61-63 only requires a non-poller first-cleanup lane, yet draft:65-66 requires observed reap and joins. If a blocking lane reaped the leader with waitid, it would bypass the Tokio Child spawned with kill_on_drop(true) (adapter.rs:1341). That Child's later drop or orphan handling could then signal or wait a reused PID, contradicting draft:46 and draft:68.",
+          "fix": "Add a requirement covering the Child, its stdio endpoints, readers, exit observation and reap. Option 1: they are created in and driven by a context that survives caller runtime shutdown, verified against locked Tokio 1.53.1. Option 2: caller-runtime shutdown after spawn ends in retained Unknown with permits held for the process lifetime. Forbid any reap outside the owning Child object. Make acceptance gate 2 test whichever guarantee is chosen.",
+          "verification": "verified",
+          "candidate_disposition": "All resource creation/driving in caller-shutdown-independent owning context; no outside-Child reap; locked primary facts added.",
+          "implementation_accepted": false
+        },
+        {
+          "id": "R60RD-M3-existing-unknown-fixtures-pool",
+          "severity": "Medium",
+          "file": "doc/requirements/issue-60-git-reader-contract-draft.md",
+          "line": 29,
+          "claim": "Existing cleanup-failure fixtures go through the production entry. Under the no-retry retention rule they would permanently occupy half of the production pool in the shared test process. The candidate does not require migrating them, and does not define what happens to retained anchors when a cfg(test) private pool is torn down.",
+          "evidence": "adapter.rs:1607-1629 makes seven bounded_git_raw_with_plan calls with ProcessInspectionPlan::unknown, and context.rs:1443-1451 makes one more. TestPlan::unknown kills the group, returns PERM, then fails inspection (inspection.rs:1207-1219, 1226-1243), so kill_group fails and cleanup_group returns an error (adapter.rs:1436-1447). Under draft:65-68 those anchors and permits are retained with no retry. That is 8 of 16 operations and 32 of 64 permits held for the life of the test binary, contrary to draft:29-31 (private experiments cannot consume the production pool or serialize other tests) and the four-progress requirement (draft:21). Separately, dropping a private pool that still holds a ProcessGroup with group_owned=true runs a synchronous kill_group and inspection inside Drop (adapter.rs:449-456) on the dropping thread, contrary to draft:56-58 and 70-71.",
+          "fix": "List these existing actual-consumer fixtures as requiring cfg(test) private-pool routing through the same real consumer entry, in the same way the existing cfg(test) plan parameter is threaded. Specify private-pool teardown for retained anchors: either non-poller cleanup before assertions or deliberate retention. Either way, no production capacity, async poller or unrelated test may be affected.",
+          "verification": "verified",
+          "candidate_disposition": "Current seven adapter plus one Context Unknown fixtures must route actual cfg(test) private pools; teardown non-poller/actual settlement or deliberate retention.",
+          "implementation_accepted": false
+        },
+        {
+          "id": "R60RD-L1-grok-checkpoint-sink",
+          "severity": "Low",
+          "file": "doc/requirements/issue-60-git-reader-contract-draft.md",
+          "line": 135,
+          "claim": "The explicit consumer-outcome list leaves out the Grok checkpoint verify_git consumer, which has no uncertainty sink.",
+          "evidence": "grok/mod.rs:596-599 uses a local ProcessOwnership::default() that is discarded on error. ownership.rs:120 ignores the Checkpoint stage when sampling, and agent-adapter.md:366-370 records the same. draft:143-144 counts verify_git initial/refresh consumers, but draft:135-137 only claims that the receipt clean operand becomes false.",
+          "fix": "State explicitly that a Checkpoint-stage Unknown only fails that checkpoint call and feeds no receipt, clean operand or durable state. Keep it OPEN rather than implied by the Grok outcome.",
+          "verification": "verified",
+          "candidate_disposition": "Checkpoint caller explicitly Err plus pool retention only; no receipt/durable effect; checkpoint-to-resume conflict remains OPEN.",
+          "implementation_accepted": false
+        },
+        {
+          "id": "R60RD-L2-non-git-site-inventory",
+          "severity": "Low",
+          "file": "doc/requirements/issue-60-reader-requirements.md",
+          "line": 33,
+          "claim": "The unmigrated inventory omits non-Git native sites that share the same constructor, Drop and reader-detach gaps.",
+          "evidence": "Generic executor calls ProcessGroup::new on a consumed Child at adapter.rs:629, and its supervise aborts stdout/stderr without joining at adapter.rs:1543-1553. Grok's native child does the same at grok/mod.rs:1154, with a stderr abort without join at 1260-1264. requirements:33-34 and draft:148-150 list only synchronous git.rs, the runtime registry and future copies.",
+          "fix": "List these sites as explicitly unmigrated and unchanged, so that neither a Git-local owner nor an additive shared port can be read as covering them.",
+          "verification": "verified",
+          "candidate_disposition": "Generic and Grok native constructor/abort sites explicitly unchanged/unmigrated.",
+          "implementation_accepted": false
+        },
+        {
+          "id": "R60RD-L3-drop-settlement-linearization",
+          "severity": "Low",
+          "file": "doc/requirements/issue-60-git-reader-contract-draft.md",
+          "line": 43,
+          "claim": "Two sentences in clause 8 give different outcomes for one race: a caller Drop after the driver has observed complete settlement but before the live return.",
+          "evidence": "draft:43-44 ('freezes uncertainty until complete settlement was already observed') allows the flag to clear in that race. draft:51-52 ('clears once only on the live, in-budget complete-settlement return') forbids clearing without a live return. Context reads the flag at context.rs:626 and again in GitObservation::drop at context.rs:662.",
+          "fix": "Name the single linearization point and its outcome for this race, for example: cleared only by the live return, otherwise frozen true. Keep it consistent with the pending caller/publication linearization gate.",
+          "verification": "verified",
+          "candidate_disposition": "Only live in-budget return clears; driver result-ready/late observation never clears after Drop/Unknown.",
+          "implementation_accepted": false
+        }
+      ]
+    },
+    {
+      "reviewer": "capacity",
+      "head": "20c1fdfc0d6c8b9c1661e4a24e8d42aa5a7265ef",
+      "native_session": "0f60fea3-8864-40f4-ad83-2c70aceb359a",
+      "raw_sha256": "6be4c518c7015a13e11b5f000ff3b2f835d2e029eef0518e0f172f33203f6ae0",
+      "cleanup_verified": true,
+      "verdict": "request_changes",
+      "unresolved_blockers_at_review": [
+        "R1: Generic live-return Unknown outcome conflicts with the unchanged launch-error equation at adapter.rs:630-646",
+        "R2-R6: Medium contract omissions and contradictions that must be revised before a requirements approval"
+      ],
+      "findings": [
+        {
+          "id": "R1",
+          "severity": "High",
+          "file": "doc/requirements/issue-60-git-reader-contract-draft.md",
+          "line": 136,
+          "claim": "'Generic Reservation chooses Lost rather than Failed' for not_observed or Unknown outcomes cannot be achieved while 'Existing equations stay unchanged' (draft 139-140; requirements 72).",
+          "evidence": "Under the candidate, several outcomes become Unknown while keeping a primary kind other than SessionLost:\n- output_open (ProcessFailure) is Unknown by construction (draft 121-123).\n- A pending peer after a stdout/stderr read error keeps the reader kind (111-113).\n- An observe-deadline Timeout with unobserved joins stays Timeout.\n- A group-binding failure keeps LaunchFailure and is retained as Unknown (45-46).\n\nGeneric validate_git errors reach adapter.rs:630-646. There the state is `if e.kind == ErrorKind::SessionLost {Lost} else {Failed}`, the save runs, and `reservation.session = None` (639) disarms the reservation. reservation.process_uncertain is never read on this path; only Reservation::drop (457-468) reads it.\n\nSo a live caller that receives Unknown output_open persists FAILED and releases the durable executor reservation. The existing test at adapter.rs:1920-1928 already asserts FAILED for a Git Timeout.",
+          "fix": "Choose one of two options:\n(a) Explicitly authorize, as a separately impact-gated Generic consumer equation change, that the launch-error path persists Lost when `e.kind == SessionLost || reservation.process_uncertain.load()`. Add a real-consumer test and a mutant for output_open and pending-peer Unknown.\n(b) Retract the 'Lost rather than Failed' claim and record Generic's live-return Unknown outcome (Failed, reservation released, holders retained only process-locally) as a stated residual.",
+          "verification": "verified",
+          "candidate_disposition": "Same explicit Generic live-error exception; no error-kind rewrite.",
+          "implementation_accepted": false
+        },
+        {
+          "id": "R2",
+          "severity": "Medium",
+          "file": "doc/requirements/issue-60-git-reader-contract-draft.md",
+          "line": 143,
+          "claim": "The current-caller inventory and the Grok outcome claim ('Grok stage uncertainty makes its receipt clean operand false', line 136-137) omit the Grok checkpoint caller. That caller discards Unknown flags with no receipt, Session or reservation effect.",
+          "evidence": "- The checkpoint path builds a local `ProcessOwnership::default()` and runs `verify_git(..., OwnershipStage::Checkpoint).await?` (grok/mod.rs:596-599). The flags are dropped and never sampled.\n- ownership.rs:120 maps Checkpoint to `{}`.\n- The master design (agent-adapter.md:366-370) confirms that checkpoint ownership never enters a receipt or clean operand.\n- After an earlier successful checkpoint, resume checks only entry.cleaned, state and input version (mod.rs:644-656). It can relaunch native Grok while a failed checkpoint's Git holders stay unresolved.\n- Requirements gate 2 (line 102) requires flags, permits and anchors to be shown 'at the actual consuming boundary', but this consumer has no flag consumption.",
+          "fix": "Name the checkpoint verify_git caller in clause 14. State its unchanged outcome: the original error is returned, flags are discarded, there is no receipt, Session or reservation effect, and only pool retention applies. Exclude it from the receipt-clean claim and require a consumer test that asserts Err plus pool retention. Any stronger checkpoint retention needs its own gate.",
+          "verification": "verified",
+          "candidate_disposition": "Checkpoint inventory and residual corrected; no receipt claim.",
+          "implementation_accepted": false
+        },
+        {
+          "id": "R3",
+          "severity": "Medium",
+          "file": "doc/requirements/issue-60-git-reader-contract-draft.md",
+          "line": 65,
+          "claim": "After caller-runtime shutdown or supervisor failure, clause 9 requires first cleanup to proceed to 'observed reap and joins'. But no reserved capacity is assigned to do that work, and the runtime facility it relies on is unverified.",
+          "evidence": "- Clause 7 (lines 16-18) forbids any replacement, fallback or monitor job and makes driver work fit within the four reserved capacities.\n- Once the supervisor is cancelled or panics, nothing assigns reap and join observation to the cleanup job or the driver core.\n- Current source spawns the Child with tokio::process::Command on the caller's runtime (adapter.rs:1332-1347).\n- observe_exit registers tokio::signal on the current runtime (349).\n- reap uses tokio Child::wait (408).\n- The verification record (issue-60-readers.md:19-24) checks only locked-Tokio JoinHandle detach and cancel semantics. It does not cover process or signal registration lifetime once the spawning runtime has shut down.",
+          "fix": "State the required outcome when the supervisor is lost. Either a named, already-reserved capacity must finish reap and join observation, with the Child, stdio, SIGCHLD and reader registrations required to outlive the caller runtime and the locked tokio 1.53.1 process/signal basis recorded; or the operation stays retained Unknown with no reap claim. Gate 2 must then assert whichever outcome is chosen.",
+          "verification": "verified",
+          "candidate_disposition": "Healthy same supervisor observer assigned; lost supervisor only first cleanup on existing lane then retained Unknown; owning context independent.",
+          "implementation_accepted": false
+        },
+        {
+          "id": "R4",
+          "severity": "Medium",
+          "file": "doc/requirements/issue-60-git-reader-contract-draft.md",
+          "line": 29,
+          "claim": "The requirements combine three things that conflict: production routing always uses the single global pool, a cleanup failure retains its four permits for the process lifetime, and private test experiments 'cannot consume the production pool or serialize other tests'. They do not migrate the existing real-route Unknown fixtures or require a test-only pool route through real consumers.",
+          "evidence": "- A cleanup failure retains anchors, permits and Unknown with no retry (draft 66-67) and can consume capacity permanently (32-34).\n- adapter.rs:1607-1630 runs seven Unknown cleanup failures through bounded_git_raw_with_plan.\n- context.rs:1443-1451 runs another through git_value_owned.\n- Under line 28-29 these go to the global pool and would hold 32 of the 64 permits in the shared, parallel test binary.\n- Gate 2 (requirements 98-102) and gate 4 (107-109, 'No caller-only copied helper can substitute for real routing') add more real-consumer cleanup and reap failure tests.\n- Gate 3's 'destructive private pool isolation' does not say how a private pool reaches the real consumers.",
+          "fix": "Require a cfg(test)-only private-pool parameter routed through each real consumer entry used by saturation or Unknown tests (bounded_git_raw_with_plan, git_value_owned, and Generic and Grok cfg(test) fields), leaving production routing unchanged. Migrate the existing fixtures at adapter.rs:1588-1631 and context.rs:1424-1480. Require evidence that real-route tests leave the production pool's retained-unresolved count unchanged.",
+          "verification": "verified",
+          "candidate_disposition": "All existing actual Unknown fixtures plus new destructive consumers require cfg(test) private-pool routing; production retained count unchanged.",
+          "implementation_accepted": false
+        },
+        {
+          "id": "R5",
+          "severity": "Medium",
+          "file": "doc/requirements/issue-60-reader-requirements.md",
+          "line": 54,
+          "claim": "The rules for clearing the caller flag contradict each other. Under a permissive reading, a pre-effect spawn failure permanently latches Context.",
+          "evidence": "- The flag is published true at admitted\u2192spawning (draft 40-41).\n- The requirements doc (54-55) says it 'clears only on a live, in-budget complete-settlement return'.\n- Draft 51-52 repeats 'clears once only' on that path.\n- Draft 44 says spawn failure 'may clear', which is optional.\n- Clause 11 (89-91) classifies Command::spawn failure as pre-effect.\n- Clause 13 (130) forbids a false latch on proven pre-effect refusal.\n- Current source sets the flag only after spawn succeeds (adapter.rs:1343-1347, new at 334).\n- Context latches whenever the per-call flag is true (context.rs:624-628, 660-664). A transient spawn failure such as EAGAIN or EMFILE would therefore block all Context Git for the process lifetime, and Grok would mark the stage uncertain.",
+          "fix": "In both documents, enumerate the clear points as mandatory: a live complete-settlement return, and a live Command::spawn failure return that proves no Child was produced. Admission expiry, and cancellation that wins before spawning, never set the flag.",
+          "verification": "verified_with_primary_source_refinement",
+          "candidate_disposition": "Both clear points mandatory; only genuine native OS spawn no actual Child is pre-effect. Tokio spawn Err alone is insufficient because wrapper can fail after std spawn.",
+          "implementation_accepted": false
+        },
+        {
+          "id": "R6",
+          "severity": "Medium",
+          "file": "doc/requirements/issue-60-git-reader-contract-draft.md",
+          "line": 131,
+          "claim": "Releasing permits on late settlement is only permitted ('may ... only after'), never required. Nothing requires the retained owner to keep observing after it returns Unknown, so gate 2's 'late reader completion' has no defined expected result.",
+          "evidence": "- output_open is Unknown by construction even when the aborted readers end immediately afterwards (draft 121-123).\n- A reap timeout under load is also Unknown.\n- Line 32-34 allows permanent consumption.\n- An implementation that never releases those four permits still complies.\n- Thirteen such transient events would exhaust the 16 slots and break the 'Four operations must genuinely progress concurrently' requirement (draft 21) across Generic, Grok and Context for the process lifetime.\n- Requirements line 101 lists 'late reader completion' with no permit outcome.",
+          "fix": "Require the retained owner to keep observing within its already-reserved supervisor capacity after returning Unknown, with no new job. Require that once complete settlement is observed, it releases all four permits, while caller flags and the Context latch stay unchanged. Make gate 2 assert both the release and the unchanged flag and latch. Otherwise, state permanent retention explicitly and qualify the four-progress requirement.",
+          "verification": "verified",
+          "candidate_disposition": "Healthy supervisor MUST release all four only after all actual resources/jobs observed settled; flag/latch immutable. Lost supervisor retains.",
+          "implementation_accepted": false
+        },
+        {
+          "id": "R7",
+          "severity": "Low",
+          "file": "doc/requirements/issue-60-git-reader-contract-draft.md",
+          "line": 28,
+          "claim": "The single process-global pool, with permanent retention of unresolved holders, couples Git admission across Projects. This is not recorded as a residual against the product requirements on Project isolation and fairness.",
+          "evidence": "- Product requirements list 'Git operations' under \u00a732.2 Project isolation (product-requirements.md:821) and fairness at line 1240 (#50).\n- Acceptance #47 (line 1237) requires Git operations to stay isolated across Projects.\n- Under draft 28-34, unresolved holders from one Project can reduce or exhaust Git admission for every Project for the process lifetime.",
+          "fix": "Add an explicit residual: Git capacity is coupled across Projects and not isolated by this component, and Project isolation and fairness acceptance remain OPEN.",
+          "verification": "verified",
+          "candidate_disposition": "Global capacity Project coupling and fairness/isolation50 acceptance explicitly OPEN.",
+          "implementation_accepted": false
+        },
+        {
+          "id": "R8",
+          "severity": "Low",
+          "file": "doc/requirements/issue-60-reader-requirements.md",
+          "line": 90,
+          "claim": "Several passages are ambiguous and weaken how decisively the requirements can be judged.",
+          "evidence": "- 'Exactly four-plus selected operations' (requirements 90) is ambiguous.\n- 'freezes uncertainty until complete settlement was already observed' (draft 43-44) does not say observed by whom.\n- Clause 12 (draft 117) says 'cleanup/reap/observe errors', while the clause 11 table separates 'caller observe deadline' from 'child observation error'.",
+          "fix": "Use 'at least four'. State that a Drop after spawning leaves the flag true unless a live settled return had already cleared it. In clause 12, list the observe-deadline Timeout path explicitly.",
+          "verification": "verified",
+          "candidate_disposition": "At least four healthy/free; postspawning Drop remains true unless live return cleared; observe-deadline Timeout abort path explicit.",
+          "implementation_accepted": false
+        }
+      ]
+    }
+  ],
+  "additional_verified_primary_fact": {
+    "fact": "Locked Tokio native std spawn precedes fallible wrapper, stdio and signal registration; Err/no returned Tokio Child does not prove no actual process. Rust std Child Drop does not stop or wait for that child.",
+    "no_historical_occurrence_or_causality_claim": true,
+    "sources": [
+      {
+        "repository": "tokio-rs/tokio",
+        "ref": "tokio-1.53.1",
+        "path": "tokio/src/process/mod.rs",
+        "url": "https://github.com/tokio-rs/tokio/blob/tokio-1.53.1/tokio/src/process/mod.rs",
+        "public_blob": "fb233cb4eb2af27a347565f5382c8836837e7c3f",
+        "sha256": "dcde12e2e92a4f07d27b86cecbed2a125dad1f6126fc4d07462317a41b54f0a9",
+        "locked_crate_bytes_equal": true,
+        "ranges": [
+          [
+            854,
+            870
+          ],
+          [
+            948,
+            965
+          ],
+          [
+            1340,
+            1351
+          ]
+        ]
+      },
+      {
+        "repository": "tokio-rs/tokio",
+        "ref": "tokio-1.53.1",
+        "path": "tokio/src/process/unix/mod.rs",
+        "url": "https://github.com/tokio-rs/tokio/blob/tokio-1.53.1/tokio/src/process/unix/mod.rs",
+        "public_blob": "03cc7fddafac5f2498c13090210e01af380151ba",
+        "sha256": "6c084b4a1821ee5cb6008226c39df65a88ca7615c6b5b114102fa6627fd4250b",
+        "locked_crate_bytes_equal": true,
+        "ranges": [
+          [
+            116,
+            145
+          ],
+          [
+            361,
+            376
+          ]
+        ]
+      },
+      {
+        "repository": "tokio-rs/tokio",
+        "ref": "tokio-1.53.1",
+        "path": "tokio/src/io/poll_evented.rs",
+        "url": "https://github.com/tokio-rs/tokio/blob/tokio-1.53.1/tokio/src/io/poll_evented.rs",
+        "public_blob": "77f46deabd08e64c0c27fbc71f8f6b9424aaec4e",
+        "sha256": "334619a06d840de8d5d7037bee6d6f48accf5e8e1252460841637a512fa233f8",
+        "locked_crate_bytes_equal": true,
+        "ranges": [
+          [
+            106,
+            123
+          ]
+        ]
+      },
+      {
+        "repository": "rust-lang/rust",
+        "ref": "1.91.1",
+        "path": "library/std/src/process.rs",
+        "url": "https://github.com/rust-lang/rust/blob/1.91.1/library/std/src/process.rs",
+        "public_blob": "48265de90c4d696ee2e164d97885f51293ce604e",
+        "sha256": "5e35c91e82adeee121316a8cb82ea6af0a4ce3b2c93824b24383c93ce4f9f5c4",
+        "locked_crate_bytes_equal": false,
+        "ranges": [
+          [
+            181,
+            200
+          ]
+        ]
+      }
+    ]
+  },
+  "retained_open": [
+    "full60 workload/effect/default-deny/delegation/durable owner",
+    "runtime shutdown/lost-driver availability",
+    "native6 StageB common ports",
+    "Grok checkpoint resume-conflict enforcement",
+    "non-Git constructor/reader sites",
+    "cross-Project capacity/fairness50",
+    "native16 actual mixed-workload acceptance"
+  ]
+}

@@ -618,35 +618,10 @@ async fn concurrent_snapshot_updates_are_not_overwritten_and_identity_survives_r
 }
 
 #[tokio::test]
-async fn cancelled_preflight_keeps_uncertain_session_reserved_and_large_unread_stdin_is_failed() {
-    let fixture = Fixture::new();
-    let adapter = fixture.adapter("/bin/cat");
-    let mut launch = adapter.start(fixture.request.clone());
-    std::future::poll_fn(|context| {
-        assert!(
-            launch.as_mut().poll(context).is_pending(),
-            "preflight should yield for native Git"
-        );
-        std::task::Poll::Ready(())
-    })
-    .await;
-    drop(launch);
-    let records = fixture
-        .store
-        .lock()
-        .unwrap()
-        .records(&fixture.request.scope, RecordKind::Session)
-        .unwrap();
-    assert_eq!(records.len(), 1);
-    assert_eq!(records[0].data["state"], "LOST");
-    assert_eq!(
-        adapter
-            .start(fixture.request.clone())
-            .await
-            .unwrap_err()
-            .kind,
-        ErrorKind::StateConflict
-    );
+async fn large_unread_stdin_is_failed() {
+    // Cancellation before/after an actual Git spawn is deterministically covered
+    // by git_owner::tests::actual_generic_launch_drop_distinguishes_admitted_from_live_git.
+    // The first Pending poll alone cannot prove that the independent owner spawned.
     let fixture = Fixture::new();
     let adapter = fixture.adapter("exit 0");
     let mut request = fixture.request.clone();

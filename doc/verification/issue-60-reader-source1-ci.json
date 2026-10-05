@@ -1,0 +1,52 @@
+{
+  "run": 37253446382,
+  "trigger_head": "a92c4d092b895ba2ffc6366565ecda8bc3fe1dbd",
+  "actual_checkouts": {
+    "check (ubuntu-latest)": "ed5c43ce483e87d51630f711eb1ba66ec1203ad3",
+    "check (macos-latest)": "ed5c43ce483e87d51630f711eb1ba66ec1203ad3"
+  },
+  "parents": [
+    "768f84319cd2a73e14cd39336eb12d99e9be81a7",
+    "a92c4d092b895ba2ffc6366565ecda8bc3fe1dbd"
+  ],
+  "tested_tree": "b0b8949568e6563590907dfe8d5d256d879e8471",
+  "trigger_tree": "b0b8949568e6563590907dfe8d5d256d879e8471",
+  "tested_tree_equals_trigger": true,
+  "jobs": {
+    "check (ubuntu-latest)": {
+      "conclusion": "failure",
+      "steps": {
+        "Set up job": "success",
+        "Run actions/checkout@v4": "success",
+        "Run dtolnay/rust-toolchain@1.91.1": "success",
+        "Run cargo fmt --all -- --check": "success",
+        "Run cargo clippy --locked --workspace --all-targets -- -D warnings": "success",
+        "Run cargo test --locked --workspace": "failure",
+        "Run cargo build --locked --workspace": "skipped",
+        "Run cargo build --locked --release --workspace": "skipped",
+        "Post Run actions/checkout@v4": "success",
+        "Complete job": "success"
+      }
+    },
+    "check (macos-latest)": {
+      "conclusion": "cancelled",
+      "steps": {
+        "Set up job": "success",
+        "Run actions/checkout@v4": "success",
+        "Run dtolnay/rust-toolchain@1.91.1": "success",
+        "Run cargo fmt --all -- --check": "success",
+        "Run cargo clippy --locked --workspace --all-targets -- -D warnings": "success",
+        "Run cargo test --locked --workspace": "cancelled",
+        "Run cargo build --locked --workspace": "skipped",
+        "Run cargo build --locked --release --workspace": "skipped",
+        "Post Run actions/checkout@v4": "success",
+        "Complete job": "success"
+      }
+    }
+  },
+  "log_sha256": "037a6daa025f7ec88de15f3bcf7d125373df01d8420dc488ea4b92726096c5d0",
+  "scope": "UNAPPROVEDreaderSource1; Ubuntuactualfour-operationconsumerFAIL/Maccancelled; noReleaseTEST/nativequalification",
+  "failure": "Ubuntu267 PASS1 FAIL17 ignored: four actual Git fixture real_native assertion; Mac cancelled fail-fast, no independent Mac failure",
+  "cause": "read-only verified fixture proxy acquires ReadersMutex before actual Child spawn",
+  "underlying_full_debug_cause": "UNKNOWN"
+}

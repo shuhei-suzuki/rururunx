@@ -1,0 +1,18 @@
+{
+  "id": "M60-R04-corrected",
+  "base_head": "068bebda55b794797898634d09ca403d70ba3965",
+  "mutant_head": "9ee62d9ad03b04d349e32fd5d569dc98f6bbed56",
+  "operator_same_as_prior_survivor": true,
+  "patch": "diff --git a/crates/rrx/src/adapter/git_owner.rs b/crates/rrx/src/adapter/git_owner.rs\nindex 2f46519..9e961c3 100644\n--- a/crates/rrx/src/adapter/git_owner.rs\n+++ b/crates/rrx/src/adapter/git_owner.rs\n@@ -834,7 +834,8 @@ fn supervise(record: &Arc<OpRecord>, request: Request) -> Completion {\n     }\n     // Joining the actual worker, not receiving its result, precedes success.\n     let worker = record.worker.lock().unwrap().take().unwrap();\n-    if worker.join().is_err() {\n+    drop(worker);\n+    if false {\n         record.ticket.owner_loss();\n         return Completion::Retained(Outcome {\n             primary: Err(supervisor_lost()),\n",
+  "patch_sha256": "8baa230005d05b8ba724e9a5f07b9c737e554b507d1bf4430fab9c3cc3bcbefe",
+  "compiled": true,
+  "exit": 0,
+  "assertion_killed": false,
+  "seconds": 12.497,
+  "log": "/private/tmp/rururunx-issue60-M60-R04-corrected.log",
+  "log_sha256": "9ff494ca565c8b03c0481138049dd5d0aa3b423d5a8a5421d29e491cffb45e8f",
+  "excerpts": [
+    "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 326 filtered out; finished in 3.02s"
+  ],
+  "disposition": "survived_no_credit; actual native vault lock masks omitted join while test worker pause holds guard"
+}
