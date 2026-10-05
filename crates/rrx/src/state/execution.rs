@@ -622,7 +622,7 @@ impl Store {
             read_tx(&tx, "projects", &task.project_id.to_string())?.context("Project missing")?;
         let goal: Goal =
             read_tx(&tx, "goals", &task.goal_id.to_string())?.context("Goal missing")?;
-        let unsettled: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM managed_effects WHERE unit_id=?1 AND (state NOT IN ('confirmed','resolved') OR json_extract(body,'$.kind')<>'git_helper' OR json_extract(body,'$.receipt.exit') IS NOT '0'))",[unit.id.to_string()], |r| r.get(0))?;
+        let unsettled: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM managed_effects WHERE unit_id=?1 AND (state NOT IN ('confirmed','resolved') OR json_extract(body,'$.kind')<>'git_helper'))",[unit.id.to_string()], |r| r.get(0))?;
         let admitted: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM quota_leases WHERE unit_id=?1) OR EXISTS(SELECT 1 FROM quota_waiters WHERE unit_id=?1)",[unit.id.to_string()],|r|r.get(0))?;
         ensure!(
             !unsettled && !admitted,
