@@ -289,7 +289,7 @@ pub(super) async fn bounded_git(
     cwd: &Path,
     args: &[String],
     environment: super::environment::ExecEnvironment<'_>,
-    mut before_spawn: Option<&mut (dyn FnMut() -> AdapterResult<()> + Send)>,
+    mut before_spawn: Option<super::environment::SpawnBoundary<'_>>,
     deadline: tokio::time::Instant,
     uncertain: Arc<AtomicBool>,
     preparation: &Preparation,
@@ -314,8 +314,11 @@ pub(super) async fn bounded_git(
         .kill_on_drop(true)
         .process_group(0);
     environment.apply(&mut command);
-    if let Some(before_spawn) = before_spawn.as_mut() {
-        before_spawn()?;
+    if !environment.selected() {
+        before_spawn = None;
+    }
+    if let Some(boundary) = before_spawn.as_mut() {
+        boundary.admit()?;
     }
     // The original deadline includes CAS time; no restart or extension.
     if tokio::time::Instant::now() >= deadline {
@@ -326,9 +329,15 @@ pub(super) async fn bounded_git(
     }
     // No await occurs between the cancellation check and taking child ownership.
     preparation.check()?;
+    if let Some(boundary) = &before_spawn {
+        boundary.spawn_attempt();
+    }
     let child = command.spawn().map_err(|error| {
         preparation.failed(failure(ErrorKind::ProcessFailure, error.to_string()))
     })?;
+    if let Some(boundary) = &before_spawn {
+        boundary.spawned();
+    }
     let mut child =
         ProcessGroup::new(child, uncertain).map_err(|error| preparation.failed(error))?;
     let mut stdout = tokio::spawn(read_output(

@@ -17,7 +17,7 @@ use tokio::sync::{mpsc, oneshot, watch};
 use super::{
     attempt::{CallerGuard, Control, Outcome, Phase, TaskGuard},
     availability::{Availability, Site, UNAVAILABLE},
-    environment::{ExecEnvironment, FrozenEnvironment, Selection},
+    environment::{ExecEnvironment, ExecSite, FrozenEnvironment, Selection, SpawnBoundary},
     ownership::{ProcessOwnership, ScopeSnapshot, filesystem},
     policy::{DecisionPolicy, verify_auth_readiness},
     preparation::{Admission, Cause},
@@ -119,6 +119,8 @@ pub struct CodexAdapter {
     availability: Availability,
     #[cfg(test)]
     gates: Arc<TestGates>,
+    #[cfg(test)]
+    environment_hooks: Arc<super::environment::TestHooks>,
 }
 struct Entry {
     status: watch::Receiver<SessionStatus>,
@@ -307,6 +309,8 @@ struct Reservation {
     attempt: Arc<Control>,
     #[cfg(test)]
     gates: Arc<TestGates>,
+    #[cfg(test)]
+    environment_hooks: Arc<super::environment::TestHooks>,
 }
 impl Reservation {
     fn finish_preparation_error(
@@ -530,9 +534,15 @@ impl Reservation {
             }
         }
     }
-    fn before_exec(&mut self, authority: &ScopeSnapshot) -> AdapterResult<()> {
+    fn before_exec(&mut self, authority: &ScopeSnapshot, _site: ExecSite) -> AdapterResult<()> {
         let attempt = self.attempt.clone();
-        attempt.preparation.before_exec(|| {
+        #[cfg(test)]
+        self.environment_hooks.call(
+            Arc::as_ptr(&attempt) as usize,
+            _site,
+            super::environment::HookPoint::PreCas,
+        );
+        let outcome = attempt.preparation.before_exec(|| {
             let environment = self.environment.as_ref().ok_or_else(|| {
                 failure(
                     ErrorKind::StateConflict,
@@ -559,7 +569,14 @@ impl Reservation {
             }
             self.attempt.publish(status);
             Ok(())
-        })
+        });
+        #[cfg(test)]
+        self.environment_hooks.call(
+            Arc::as_ptr(&attempt) as usize,
+            _site,
+            super::environment::HookPoint::PostCas,
+        );
+        outcome
     }
     fn persist(&mut self) -> AdapterResult<()> {
         let attempt = self.attempt.clone();
@@ -754,6 +771,8 @@ impl CodexAdapter {
             availability: Availability::default(),
             #[cfg(test)]
             gates: Arc::new(TestGates::default()),
+            #[cfg(test)]
+            environment_hooks: Arc::new(super::environment::TestHooks::default()),
         })
     }
     /// Bounded own-Project names only; grants no execution or native availability.
@@ -795,6 +814,8 @@ impl CodexAdapter {
             availability: self.availability.clone(),
             #[cfg(test)]
             gates: self.gates.clone(),
+            #[cfg(test)]
+            environment_hooks: self.environment_hooks.clone(),
         }
     }
     fn register_fresh(
@@ -1211,6 +1232,8 @@ impl CodexAdapter {
                 attempt: control.clone(),
                 #[cfg(test)]
                 gates: self.gates.clone(),
+                #[cfg(test)]
+                environment_hooks: self.environment_hooks.clone(),
             };
             pin_starting_input(&mut reservation.session, &request, Some(&status.session))?;
             Ok((status, snapshot, reservation))
@@ -1415,6 +1438,12 @@ impl CodexAdapter {
             } else {
                 0
             };
+            #[cfg(test)]
+            self.environment_hooks.call(
+                Arc::as_ptr(&control) as usize,
+                ExecSite::Initial,
+                super::environment::HookPoint::Initial,
+            );
             let environment = Arc::new(self.baseline.select(&self.store, &request)?);
             pin_starting_input(&mut session, &request, resume.as_ref())?;
             let evidence = self
@@ -1449,6 +1478,8 @@ impl CodexAdapter {
                 attempt: control.clone(),
                 #[cfg(test)]
                 gates: self.gates.clone(),
+                #[cfg(test)]
+                environment_hooks: self.environment_hooks.clone(),
             };
             Ok((snapshot, previous_cumulative, reservation))
         })();
@@ -1501,13 +1532,17 @@ impl CodexAdapter {
         let environment = reservation.environment.clone().ok_or_else(|| failure(ErrorKind::StateConflict, "native environment selection missing"))?;
         self.availability.record(Site::Version);
         let version_group = reservation.ownership.group();
+        let mut admit = || reservation.before_exec(&snapshot, ExecSite::Version);
+        let boundary = SpawnBoundary::new(&mut admit);
+        #[cfg(test)]
+        let boundary = boundary.traced(self.environment_hooks.clone(), Arc::as_ptr(&control) as usize, ExecSite::Version);
         let version = super::preparation::bounded_git(
             &self.availability,
             &executable,
             &request.worktree,
             &["--version".into()],
             ExecEnvironment::Selected(&environment),
-            Some(&mut || reservation.before_exec(&snapshot)),
+            Some(boundary),
             tokio::time::Instant::now() + std::time::Duration::from_secs(5),
             version_group,
             &control.preparation,
@@ -1517,13 +1552,17 @@ impl CodexAdapter {
         #[cfg(test)]
         self.gates.wait(TestPoint::BeforeBootstrap).await;
         let discovery_group = reservation.ownership.group();
+        let mut admit = || reservation.before_exec(&snapshot, ExecSite::Discovery);
+        let boundary = SpawnBoundary::new(&mut admit);
+        #[cfg(test)]
+        let boundary = boundary.traced(self.environment_hooks.clone(), Arc::as_ptr(&control) as usize, ExecSite::Discovery);
         let mut discovery = NativeServer::launch_preparing(
             &self.availability,
             &executable,
             &request.worktree,
             None,
             ExecEnvironment::Selected(&environment),
-            Some(&mut || reservation.before_exec(&snapshot)),
+            Some(boundary),
             discovery_group,
             &control.preparation,
         )
@@ -1560,13 +1599,17 @@ impl CodexAdapter {
             ));
         }
         let main_group = reservation.ownership.group();
+        let mut admit = || reservation.before_exec(&snapshot, ExecSite::Main);
+        let boundary = SpawnBoundary::new(&mut admit);
+        #[cfg(test)]
+        let boundary = boundary.traced(self.environment_hooks.clone(), Arc::as_ptr(&control) as usize, ExecSite::Main);
         let mut native = NativeServer::launch_preparing(
             &self.availability,
             &executable,
             &request.worktree,
             Some(&policy),
             ExecEnvironment::Selected(&environment),
-            Some(&mut || reservation.before_exec(&snapshot)),
+            Some(boundary),
             main_group,
             &control.preparation,
         )
@@ -2748,6 +2791,9 @@ fn decision_event(
 
 #[cfg(test)]
 mod tests {
+    mod environment_controls {
+        include!("environment_controls.rs");
+    }
     use super::super::ownership::tests::Fixture;
     use super::*;
     use crate::domain::{ProjectId, Scope};
@@ -2809,6 +2855,13 @@ mod tests {
         );
         plain.availability.set_git_input(git.clone());
         let before = no_effect_snapshot(&plain, &owned.request.scope);
+        assert!(
+            plain
+                .environment_candidates(owned.request.project.id)
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(no_effect_snapshot(&plain, &owned.request.scope), before);
         assert!(plain.capabilities().is_empty());
         assert_unavailable(plain.probe());
         let started = plain.start(owned.request.clone()).await;
@@ -3043,6 +3096,8 @@ mod tests {
                 inference_started: false,
                 attempt: Control::new(None).0,
                 gates: Arc::new(TestGates::default()),
+                #[cfg(test)]
+                environment_hooks: Arc::new(super::environment::TestHooks::default()),
             };
             reservation.persist().unwrap();
             reservation.session.state = if runtime_broker {
@@ -3643,6 +3698,8 @@ mod tests {
                 inference_started: !uncertain,
                 attempt: Control::new(None).0,
                 gates: Arc::new(TestGates::default()),
+                #[cfg(test)]
+                environment_hooks: Arc::new(super::environment::TestHooks::default()),
             };
             reservation.session.state = SessionState::Starting;
             reservation.session.pid = Some(42);
@@ -4111,6 +4168,8 @@ mod tests {
                     inference_started: false,
                     attempt: Control::new(None).0,
                     gates: Arc::new(TestGates::default()),
+                    #[cfg(test)]
+                    environment_hooks: Arc::new(super::environment::TestHooks::default()),
                 };
                 reservation.persist().unwrap();
                 let (mut rpc, mut wire, peer) = rpc_peer().await;
@@ -4945,7 +5004,7 @@ mod tests {
         let executable = parent.join("synthetic-codex");
         let marker = parent.join("native-bootstrap-ready");
         let quoted = format!("'{}'", marker.to_str().unwrap().replace('\'', "'\\''"));
-        std::fs::write(&executable,format!("#!/bin/sh\nif [ \"$1\" = '--version' ]; then printf '%s\\n' 'codex-cli 0.160.0'; exit 0; fi\nprintf '%s' \"$$\" > {quoted}\nexec /bin/sleep 30\n")).unwrap();
+        std::fs::write(&executable,format!("#!/bin/sh\nif [ \"$1\" = '--version' ]; then printf version > {version_entry}; if [ \"${{OPENAI_API_KEY-}}\" = 'synthetic-codex-marker' ]; then printf present > {version_canary}; fi; printf '%s\\n' 'codex-cli 0.160.0'; exit 0; fi\nprintf '%s' \"$$\" > {quoted}\nexec /bin/sleep 30\n")).unwrap();
         std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o700)).unwrap();
         (executable, marker)
     }
@@ -5452,6 +5511,8 @@ mod tests {
         let binary = std::env::current_exe().unwrap();
         let script = format!(
             "#!/bin/sh\nif [ \"$1\" = '--version' ]; then printf '%s\\n' 'codex-cli 0.160.0'; exit 0; fi\nprintf '%s\\n' \"$@\" > {args}\nexport RRX_SYNTHETIC_NATIVE_DIRECTORY={directory}\nprintf '%s' \"$$\" > {leader}\nexec {binary} --exact codex::session::tests::synthetic_owned_native_rpc_child --ignored --nocapture\n",
+            version_entry = quoted_path(&directory.join("version-entry")),
+            version_canary = quoted_path(&directory.join("version-canary")),
             args = quoted_path(&directory.join("arguments")),
             directory = quoted_path(&directory),
             leader = quoted_path(&directory.join("leader")),
@@ -5516,6 +5577,9 @@ mod tests {
         let directory = PathBuf::from(
             std::env::var_os("RRX_SYNTHETIC_NATIVE_DIRECTORY").expect("private fixture directory"),
         );
+        if std::env::var_os("OPENAI_API_KEY").is_some_and(|v| v == "synthetic-codex-marker") {
+            std::fs::write(directory.join("selected-canary"), "present").unwrap();
+        }
         let arguments = std::fs::read_to_string(directory.join("arguments")).unwrap();
         let args: Vec<_> = arguments.lines().collect();
         let socket = args

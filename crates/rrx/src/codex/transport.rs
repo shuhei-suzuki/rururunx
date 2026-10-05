@@ -139,7 +139,7 @@ impl NativeServer {
         workspace: &Path,
         policy: Option<&DecisionPolicy>,
         environment: super::environment::ExecEnvironment<'_>,
-        mut before_spawn: Option<&mut (dyn FnMut() -> AdapterResult<()> + Send)>,
+        mut before_spawn: Option<super::environment::SpawnBoundary<'_>>,
         uncertain: Arc<AtomicBool>,
         preparation: &Preparation,
     ) -> AdapterResult<Self> {
@@ -196,16 +196,25 @@ impl NativeServer {
             .kill_on_drop(true)
             .process_group(0);
         environment.apply(&mut command);
-        if let Some(before_spawn) = before_spawn.as_mut() {
-            before_spawn()?;
+        if !environment.selected() {
+            before_spawn = None;
+        }
+        if let Some(boundary) = before_spawn.as_mut() {
+            boundary.admit()?;
         }
         preparation.check()?;
+        if let Some(boundary) = &before_spawn {
+            boundary.spawn_attempt();
+        }
         let child = command.spawn().map_err(|_| {
             preparation.failed(failure(
                 ErrorKind::LaunchFailure,
                 "native Codex app-server could not start",
             ))
         })?;
+        if let Some(boundary) = &before_spawn {
+            boundary.spawned();
+        }
         let mut process =
             ProcessGroup::new(child, uncertain).map_err(|error| preparation.failed(error))?;
         let pid = process.child.id().expect("validated owned child PID");

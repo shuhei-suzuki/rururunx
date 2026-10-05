@@ -95,6 +95,12 @@ impl FrozenEnvironment {
         frozen.admission(std::iter::empty())?;
         Ok(frozen)
     }
+    #[cfg(test)]
+    pub fn value_matches(&self, name: &str, expected: &OsStr) -> bool {
+        self.values
+            .get(name)
+            .is_some_and(|value| value.as_os_str() == expected)
+    }
     fn admission(
         &self,
         caller: impl IntoIterator<Item = String>,
@@ -257,6 +263,9 @@ pub(super) enum ExecEnvironment<'a> {
     Selected(&'a Selection),
 }
 impl ExecEnvironment<'_> {
+    pub fn selected(&self) -> bool {
+        matches!(self, Self::Selected(_))
+    }
     pub fn apply(&self, command: &mut tokio::process::Command) {
         match self {
             Self::Ambient(pairs) => {
@@ -389,7 +398,7 @@ mod tests {
                 "v".into()
             )])) == ErrorKind::InvalidConfiguration
         );
-        let bytes = (0..256).map(|i| (format!("LC_{i:03}{}", "x".repeat(250)).into(), "v".into()));
+        let bytes = (0..257).map(|i| (format!("LC_{i:03}{}", "x".repeat(250)).into(), "v".into()));
         assert!(kind(FrozenEnvironment::new(bytes)) == ErrorKind::InvalidConfiguration);
     }
     #[test]
@@ -517,5 +526,114 @@ mod tests {
             kind(selection.verify_references(&json!({"model_provider":"","model_providers":3})))
                 == ErrorKind::UnsupportedCapability
         );
+    }
+}
+
+#[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
+pub(super) enum ExecSite {
+    #[cfg(test)]
+    Initial,
+    Version,
+    Discovery,
+    Main,
+}
+/// Synchronous bounded admission at the already configured command's selected exec.
+pub(super) struct SpawnBoundary<'a> {
+    admit: &'a mut (dyn FnMut() -> AdapterResult<()> + Send),
+    #[cfg(test)]
+    trace: Option<(std::sync::Arc<TestHooks>, usize, ExecSite)>,
+}
+impl<'a> SpawnBoundary<'a> {
+    pub fn new(admit: &'a mut (dyn FnMut() -> AdapterResult<()> + Send)) -> Self {
+        Self {
+            admit,
+            #[cfg(test)]
+            trace: None,
+        }
+    }
+    pub fn admit(&mut self) -> AdapterResult<()> {
+        (self.admit)()
+    }
+    #[cfg(test)]
+    pub fn traced(
+        mut self,
+        hooks: std::sync::Arc<TestHooks>,
+        attempt: usize,
+        site: ExecSite,
+    ) -> Self {
+        self.trace = Some((hooks, attempt, site));
+        self
+    }
+    pub fn spawn_attempt(&self) {
+        #[cfg(test)]
+        if let Some((hooks, attempt, site)) = &self.trace {
+            hooks.count(*attempt, *site, false)
+        }
+    }
+    pub fn spawned(&self) {
+        #[cfg(test)]
+        if let Some((hooks, attempt, site)) = &self.trace {
+            hooks.count(*attempt, *site, true)
+        }
+    }
+}
+#[cfg(test)]
+#[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
+pub(super) enum HookPoint {
+    Initial,
+    PreCas,
+    PostCas,
+}
+#[cfg(test)]
+type Hook = Box<dyn FnOnce(usize) + Send>;
+#[cfg(test)]
+#[derive(Default)]
+pub(super) struct TestHooks {
+    callbacks: std::sync::Mutex<BTreeMap<(ExecSite, HookPoint), Hook>>,
+    counts: std::sync::Mutex<BTreeMap<(usize, ExecSite), (usize, usize)>>,
+}
+#[cfg(test)]
+impl TestHooks {
+    pub fn install(
+        &self,
+        site: ExecSite,
+        point: HookPoint,
+        callback: impl FnOnce(usize) + Send + 'static,
+    ) {
+        assert!(
+            self.callbacks
+                .lock()
+                .unwrap()
+                .insert((site, point), Box::new(callback))
+                .is_none()
+        );
+    }
+    pub fn call(&self, attempt: usize, site: ExecSite, point: HookPoint) {
+        // Release the hook registry before invoking a caller-owned std rendezvous.
+        let callback = self.callbacks.lock().unwrap().remove(&(site, point));
+        if let Some(callback) = callback {
+            callback(attempt)
+        }
+    }
+    fn count(&self, attempt: usize, site: ExecSite, success: bool) {
+        let mut counts = self.counts.lock().unwrap();
+        let count = counts.entry((attempt, site)).or_default();
+        if success { count.1 += 1 } else { count.0 += 1 }
+    }
+    pub fn counts(&self, attempt: usize, site: ExecSite) -> (usize, usize) {
+        self.counts
+            .lock()
+            .unwrap()
+            .get(&(attempt, site))
+            .copied()
+            .unwrap_or_default()
+    }
+    pub fn total(&self, site: ExecSite) -> (usize, usize) {
+        self.counts
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|((_, s), _)| *s == site)
+            .fold((0, 0), |a, (_, b)| (a.0 + b.0, a.1 + b.1))
     }
 }

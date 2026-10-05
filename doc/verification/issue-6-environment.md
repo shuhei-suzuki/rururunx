@@ -260,3 +260,14 @@ complete tree `623287d4ac965ecf3f1657304069c56607c8e5ed` equal to the trigger. E
 step on both OS jobs passed. This docs-only gate is not implementation/native
 proof, a historical failure rerun, or a cleanup release for old held wrappers.
 Ordinary availability is EMPTY; whole #6 and Stage B gates remain OPEN.
+
+## Initial source stage (qualification pending)
+
+Clean `42985bb` all-target offline locked cargo check passed. Its first four pure
+environment controls had three passes and one failure: a synthetic aggregate-bound
+fixture used exactly 65,536 bytes and incorrectly expected overflow. The next
+fixture uses 257 distinct 256-byte names (65,792 bytes), without changing DTO or
+production bounds. This is a test-input correction, not a timing/native cause.
+Per-site selected-only spawn tracing, synchronous test hooks, actual synthetic
+launch controls and env-cleared raw public-constructor controls are being added;
+source acceptance, mutation/full checks and independent reviews remain pending.
