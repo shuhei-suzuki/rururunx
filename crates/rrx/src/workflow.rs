@@ -745,7 +745,31 @@ impl WorkflowEngine {
         class: WorkflowClass,
         generation: u64,
     ) -> Result<ContextVersion> {
-        let (config, source, selected_budget) = self.inputs(project, task, phase, class).await?;
+        // Evidence/artifact bookkeeping may already be added to this private
+        // projected Task. Recovered Sources require the complete durable DTO;
+        // its claim validates whole P/G/Workflow/Context and governing pins.
+        let durable = self
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("state poisoned"))?
+            .recovered_source_task(task.id)?;
+        if let Some(current) = &durable {
+            ensure!(
+                current.scope() == task.scope()
+                    && current.version == task.version
+                    && crate::execution::workflow_source::task_digest(current)?
+                        == crate::execution::workflow_source::task_digest(task)?,
+                "projected Context Task instructions/authority changed"
+            );
+            ensure!(
+                expected.source_versions.get("instructions:task")
+                    == Some(&crate::execution::workflow_source::task_digest(current)?),
+                "projected Context differs from actual source instructions"
+            );
+        }
+        let (config, source, selected_budget) = self
+            .inputs(project, durable.as_ref().unwrap_or(task), phase, class)
+            .await?;
         ensure!(
             same_sources(expected, &source),
             "authority changed while preparing phase Context Pack"

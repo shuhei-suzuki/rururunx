@@ -106,6 +106,17 @@ artifact/frame/source pins. Caller Project/Task DTOs must equal the current bodi
 The installed cache is not independent authority. `take_initial_executor` returns
 None for the recovered route; it cannot fabricate PreparedExecutor provenance.
 
+The actual Engine adds private evidence/artifact bookkeeping to a projected Task
+before `prepare_pack`. For a recovered Task only, that consumer obtains the
+complete durable current Task through a coherent validated recovery snapshot;
+exact Scope/version and unchanged Task instruction digest must match the private
+projection and its source. The source producer still validates original full
+governing Project/Goal pins and full caller DTOs. Render `committed_input` using
+that durable DTO; `make_context` retains the original projected Task, phase/class/
+budget and the final typed transition CAS. No generic metadata drift is ratified;
+non-recovery opaque Sources retain their existing behavior. This is Context
+rendering provenance, not Task-driver or native permission.
+
 Existing legitimate transitions do change Task/Workflow/Context bookkeeping.
 Advance pins only inside the original typed producer's transaction, using sealed
 pre-write recovery validation and exact checked resulting bodies. Needed hooks:
