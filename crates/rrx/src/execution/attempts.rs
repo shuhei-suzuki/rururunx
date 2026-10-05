@@ -30,7 +30,7 @@ impl AttemptManager {
         ensure!(project.worktree_root.canonicalize()?==project.worktree_root,"worktree namespace must be canonical");
         let _common=self.owner.git_gate.lock().await;
         // Unit/resources are already durable. Native preparation hooks inherit the same resource profile.
-        let mut command=results::git_command(&project.root);
+        let mut command=results::git_command(&project.root)?;
         command.args(["worktree","add","-b"]).arg(&branch).arg(&path).arg(&base)
             .envs(profile.environment(&unit.cookie,self.owner.ipc_path())?);
         process::capture(&mut command).await?;

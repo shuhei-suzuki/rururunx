@@ -67,7 +67,7 @@ impl ResultStore {
         ensure!(!repository.join("objects/info/alternates").exists(),"result alternates forbidden");
         ensure!(text(&git(&repository,["rev-parse","--show-object-format"]).await?)?==format,"repository format changed");
         // fetch copies object graphs over upload-pack. No clone-local hardlinks or alternates.
-        let mut command=git_command(&repository);
+        let mut command=git_command(&repository)?;
         command.args(["-c","fetch.fsckObjects=true","fetch","--no-tags","--no-write-fetch-head","--no-recurse-submodules","--"])
             .arg(&unit.worktree).arg(format!("{revision}:refs/rrx/{id}/commit")).arg(format!("{}:refs/rrx/{id}/base",unit.base_sha));
         process::capture(&mut command).await?;
@@ -124,12 +124,12 @@ impl ResultStore {
     }
 }
 
-pub(crate) fn git_command(root:&Path)->Command {
-    let mut c=Command::new("git");c.arg("-C").arg(root).args(["-c","gc.auto=0","-c","maintenance.auto=false","-c","core.fsmonitor=false"]);
-    c.env("GIT_OPTIONAL_LOCKS","0").env_remove("GIT_DIR").env_remove("GIT_WORK_TREE").env_remove("GIT_INDEX_FILE").env_remove("GIT_OBJECT_DIRECTORY").env_remove("GIT_ALTERNATE_OBJECT_DIRECTORIES");c
+pub(crate) fn git_command(root:&Path)->Result<Command> {
+    let mut c=Command::new(super::resources::resolve_program("git")?);c.arg("-C").arg(root).args(["-c","gc.auto=0","-c","maintenance.auto=false","-c","core.fsmonitor=false"]);
+    c.env("GIT_OPTIONAL_LOCKS","0").env_remove("GIT_DIR").env_remove("GIT_WORK_TREE").env_remove("GIT_INDEX_FILE").env_remove("GIT_OBJECT_DIRECTORY").env_remove("GIT_ALTERNATE_OBJECT_DIRECTORIES");Ok(c)
 }
 pub(crate) async fn git<I,S>(root:&Path,args:I)->Result<Vec<u8>> where I:IntoIterator<Item=S>,S:AsRef<std::ffi::OsStr> {
-    process::capture(git_command(root).args(args)).await
+    process::capture(git_command(root)?.args(args)).await
 }
 pub(crate) fn text(bytes:&[u8])->Result<String>{Ok(std::str::from_utf8(bytes)?.trim().to_owned())}
 pub(crate) fn hex(bytes:&[u8])->String{format!("{:x}",Sha256::digest(bytes))}
