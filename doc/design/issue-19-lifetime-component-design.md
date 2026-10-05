@@ -1,12 +1,13 @@
 # Issue19 retained preparation lifetime component
 
-Status: selected MECHANICAL Design4 gate, not whole Issue19 authority/native readiness.
+Status: selected MECHANICAL Design5 gate, not whole Issue19 authority/native readiness.
 Parent Design37 at75cdae974da1ce9afa0a6de4e2cafc5065e60748 was rejected by both native
 reviews. Its broad open findings are retained in the adjacent ledger. Absence of a
 lifetime High/Medium in those rejected reviews is NOT this component's approval.
 Selected Designs1/2 were rejected. Design3 obtained one approval and one local
-registry-disposition Medium. Design4 fixes that disposition and the verified local
-fixture/runtime ordering precision; TWO explicit
+registry-disposition Medium. Design4 fixed that disposition, obtained one approval
+and one local uncreated-worker accounting Medium. Design5 fixes ONLY that
+reservation disposition and verified local precision; TWO explicit
 selected approvals precede code. Parent OPEN findings remain outside this gate.
 It implements existing retained-custody/cancellation requirements; no new WHAT,
 public native capability, migration, managed trait or receipt facade is introduced.
@@ -71,8 +72,8 @@ is the mechanical proof. No additional bootstrap, reader, reaper or waiter is
 created. Ordinary unavailable native resources remain unavailable; no CLOSED native
 profile constructor exists. A missing complete declaration refuses before creation. The real native profile/6F1/60 job sets are unavailable,
 not inferred from the fixture. Reserve atomically; insufficient capacity starts
-zero jobs/effects. Release only genuinely joined jobs; uncertainty retains their
-reservation. Explicit pool counters are NOT Drop-released RAII permits. Each
+zero jobs/effects. Release only genuinely joined jobs OR the explicitly observed creator-owned
+NotCreated disposition below; uncertainty retains its own reservation. Explicit pool counters are NOT Drop-released RAII permits. Each
 fixture injects an isolated private pool through the SAME constructor/reservation/
 consumer code; production has one process-wide pool. Unknown fixtures cannot
 consume another test's capacity or require serial Cargo execution. Queue memory/resource reservation has its own finite bound below.
@@ -169,7 +170,8 @@ counters, workers receive disconnected Begin and perform zero resource effects.
 A DISTINCT monotonic Control job-revocation latch prevents every NEW endpoint effect,
 independently of Preparation's first-cause/Consumed/CheckpointCommitted/Failing states.
 Explicit stop/custody cancellation revokes synchronously before publishing the stop
-request. CallerGuard::drop ALWAYS sets job revocation while armed, including Consumed and
+request. A Held entry returns typed held/no-native-stop refusal after revocation;
+its closed native stop channel never skips the latch or fabricates Lost. CallerGuard::drop ALWAYS sets job revocation while armed, including Consumed and
 Failing, but preserves existing consumed-turn no-interrupt behavior: no new native
 stop message and no Preparation::Consumed reset. Normal return disarms CallerGuard,
 so the disarmed Err-return fixture endpoint remains usable until explicit revocation.
@@ -200,7 +202,8 @@ Phase remains the provider actor's single-final logical result. Custody has a
 SEPARATE private fact: Installing/Tracking/Joined/Unknown, plus registered jobs,
 accepted requests and in-flight callbacks. The custodian records genuine actor/worker join and drained-request facts.
 Only pool housekeeping, after also joining the custodian itself outside locks,
-derives final Joined over ALL three declared frames; actual custodian loss derives
+derives final Joined over all actually created declared frames (and the observed
+NotCreated disposition for a never-created worker); actual custodian loss derives
 Unknown, never provider terminal success. It NEVER overwrites Phase::Finished or published Lost.
 When an actor would select a no-work/restored result while effect resources remain,
 it selects one private Outcome::CustodyHeld with cause and retained non-authoritative
@@ -224,7 +227,9 @@ Starting publication, Git or native effects and cannot record this disposition o
 any other outcome. Store/body publication is unchanged. Entry owns this retained
 intent, so actor/transition Drop cannot lose it. Before taking the registry lock, register_fresh, register_existing and explicit
 terminal eviction perform existing-frame pool housekeeping to observe finished
-custodian joins. Under the registry lock they then call ONE reconciliation predicate. It requires the same current Control,
+custodian joins. Under the registry lock they then call ONE reconciliation predicate.
+register_fresh sweeps ALL retained intents (bounded by32 entries) BEFORE its len()
+capacity check; register_existing/eviction apply it at least to their target. It requires the same current Control,
 its exact Finished(CustodyHeld) outcome/disposition, genuine custody::Joined (ALL three
 declared frames actually joined, inbox drained, in-flight zero), and no published
 Lost. It then removes the fresh entry or restores exact previous_control/stop and
@@ -277,10 +282,27 @@ with refused/optional requests while the worker finishes: its join result still
 carries cleanup, no dropped fact or spurious Unknown. Counters for accepted requests
 retire only after handling. Detached-before-install handle loss is explicitly
 Unknown with retained counters, NEVER a fake no-work proof; the bounded creation
-control reaches this seam. Wrapped never-Begun/cancelled actor and opaque thread
-spawn failure conservatively retain isolated-pool attention/slots unless actual
-join observations prove that component frame closed; this availability cost is
-explicit, no native Lost clearing or absence inferred from Err.
+control reaches this seam. The sole custodian returns a typed WorkerDisposition::NotCreated ONLY if factory
+creation was never requested, or its revocation/generation check refused before
+ANY worker thread spawn attempt. This fact is part of the creator
+JoinHandle return value, never request JSON or a caller assertion. The pool
+releases that unused worker slot only AFTER actually joining the custodian outside
+locks; no extra job/reaper is introduced. All actually created frames must still
+be joined and requests drained before final Joined. An attempted thread spawn with
+opaque Err, detached-before-install handle loss or creator panic NEVER means
+NotCreated and retains the uncertain frame's slot. Actor join Cancelled/panic
+stays custody::Unknown and retains that actor slot; it does not prevent release of
+a separately proven worker-NotCreated or normal custodian-joined slot.
+
+Custodied closed runtime has an exact mechanical result: the cancelled actor join
+is Unknown and keeps ONE actor slot; a normally joined custodian returning
+WorkerDisposition::NotCreated releases its own and the unused worker slot. Missing
+runtime still reserves/creates ZERO slots. Wrapped never-Begun actor/opaque spawn
+results are observed through that same total per-frame disposition, never
+absence inferred from Err. This availability cost is explicit and no Lost is
+cleared. The delayed registry disposition remains stricter: it requires an
+actually CREATED and genuinely joined worker plus joined actor/custodian, so
+NotCreated cannot launder a held resource or execute that original intent.
 
 ## Causal checks and source gate
 
@@ -288,13 +310,15 @@ Commit source before checks/review; preserve exact head and default parallel fai
 Selected unit/actual controlled fixtures must prove all of these at the real consumer:
 
 - Custodied closed runtime: no lock/drop deadlock; actual actor/custodian joins or
-  held attention through the same protocol. Missing runtime starts zero frames,
+  held attention through the same protocol: cancelled actor keeps1, normal creator
+  join+NotCreated free2. Missing runtime starts zero frames,
   leaves counters zero and preserves original no-work registration. Omit-precheck
   and omit-lock-release alter the corresponding actual consumer.
 - Hold the worker on an explicit release gate until the actor publishes exact
   Phase::Finished(Outcome::CustodyHeld); then release and observe custody::Joined
-  with Phase unchanged. Reverse ordering (worker joined before the error arm)
-  yields the original no-work result. Worker panic gives custody::Unknown.
+  with Phase unchanged. Reverse ordering (worker join recorded by the custodian, zero accepted/in-flight requests, BEFORE
+  the error arm) yields the original no-work result; actor/custodian slots remain
+  reserved until housekeeping. Worker panic gives custody::Unknown.
 - Full revoked request inbox cannot lose cleanup carried in the worker join value.
   A queue-only-cleanup mutant fails this actual consumer.
 - Caller Drop/cancellation during preparation leaves the actual resource custodian
@@ -320,6 +344,10 @@ Selected unit/actual controlled fixtures must prove all of these at the real con
   remain available; omitted reconciliation fails actual capacity. Foreign/advanced
   Control and published Lost never restore/remove. Omitted outstanding guard hides
   the actual worker and fails the prereconciliation negative control.
+- More than21 sequential caller-Drop-before-factory attempts on the SAME isolated
+  pool replenish after actual actor/custodian joins and observed NotCreated;
+  omitted NotCreated disposition exhausts actual capacity. Opaque spawn Err remains
+  held; an Err-to-NotCreated mutant cannot refund its unknown slot.
 - More than64/3 sequential completed fixtures replenish through actual custodian
   reaping; no-reap/self-release and Drop-permit mutants fail real accounting.
 - Capacity exhaustion starts zero jobs. Unknown jobs retain slots; genuinely joined
