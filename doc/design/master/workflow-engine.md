@@ -16,6 +16,13 @@ Design, ImpactAnalysis and review/test/external phases explicitly wait for their
 qualified integrations. Runtime/CLI wiring and native qualification remain pending;
 this port alone cannot complete a Task.
 
+The independently reviewed [ReviewEngine integration](../review-engine-integration-design.md)
+defines N-member collective approval, qualified admission schedules and successful
+owned-result counting. Its [native result supplement](../native-result-receipts-design.md)
+defines durable acquisition before completion projection. These are implementation
+contracts; collective rounds, result receipts and verification gates are not
+available from these design approvals alone.
+
 ## 1. Goal
 
 Represent the current development process as an executable stateful workflow while allowing lighter paths for small changes.

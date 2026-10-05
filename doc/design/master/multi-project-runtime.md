@@ -8,6 +8,12 @@ remain baseline descriptions, not acceptance of that proposal.
 **Status:** Draft
 **Scope:** MVP multi-project orchestration
 
+The independently reviewed [Runtime/Scheduler integration](../runtime-scheduler-integration-design.md)
+composes Project/Goal driver fairness with actual native quota admission and
+separates preparation Task capacity from native permits. Implementation and
+qualification remain pending; the current effective global cap is6, and a requested
+configuration of12 is not an established execution capability.
+
 ## 1. Goal
 
 Allow one rururunx Runtime to supervise multiple repositories/projects, Goals, and Tasks concurrently without mixing project state, rules, context, worktrees, or credentials.

@@ -8,6 +8,12 @@ remain baseline descriptions, not acceptance of that proposal.
 **Status:** Draft
 **Scope:** MVP first-class Goal orchestration
 
+The independently reviewed [Runtime/Scheduler integration](../runtime-scheduler-integration-design.md)
+defines typed accepted Goal authority, actual prerequisite evidence, fair driver
+claims and private retained/pre-input source recovery. These ports and the
+operational CLI remain implementation work; structural DAG support alone does
+not execute or complete a Goal.
+
 ## 1. Goal
 
 Provide a provider-independent long-running objective above individual Tasks.

@@ -1,0 +1,235 @@
+{
+  "schema": "phase2_production_gate_claim_checkpoint_v1",
+  "source": "a79a3051d41bc122e1e7e88cb7399c3cdfb83787",
+  "previous_production_checkpoint": "b6e21db36310ebf233865b24e8aa7a24c6ef834f",
+  "change": "282 appended account-free gate-control lines only; relevant production bytes equal prior b6 checkpoint. Intervening integration changes are documentation.",
+  "qualification": "Fixed clean source, macOS26.6.2/25G83 arm64, Rust/Cargo1.91.1, Git2.49.0, offline fixtures, RUST_TEST_THREADS=4.",
+  "checks": {
+    "source": "a79a3051d41bc122e1e7e88cb7399c3cdfb83787",
+    "threads": 4,
+    "checks": [
+      {
+        "name": "clippy",
+        "command": [
+          "cargo",
+          "clippy",
+          "--workspace",
+          "--all-targets",
+          "--offline",
+          "--target-dir",
+          "/private/tmp/rrx-phase2-target",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "exit_code": 0,
+        "elapsed_seconds": 8.322793960571289,
+        "log": "/private/tmp/rrx-phase2-production-gates-clippy3.log",
+        "sha256": "8d370e36915326171b7645ed2f9a9257a360f71c712a2f3d5996de041aa772a3"
+      },
+      {
+        "name": "build",
+        "command": [
+          "cargo",
+          "build",
+          "--workspace",
+          "--offline",
+          "--target-dir",
+          "/private/tmp/rrx-phase2-target"
+        ],
+        "exit_code": 0,
+        "elapsed_seconds": 0.210860013961792,
+        "log": "/private/tmp/rrx-phase2-production-gates-build3.log",
+        "sha256": "299f16a2c523be18fef769975d2df00e0505521db047540feea3a74b94666887"
+      },
+      {
+        "name": "fmt",
+        "command": [
+          "cargo",
+          "fmt",
+          "--all",
+          "--",
+          "--check"
+        ],
+        "exit_code": 0,
+        "elapsed_seconds": 0.4688858985900879,
+        "log": "/private/tmp/rrx-phase2-production-gates-fmt3.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "name": "regression",
+        "command": [
+          "cargo",
+          "test",
+          "--workspace",
+          "--offline",
+          "--target-dir",
+          "/private/tmp/rrx-phase2-target"
+        ],
+        "exit_code": 0,
+        "elapsed_seconds": 219.19269800186157,
+        "log": "/private/tmp/rrx-phase2-production-gates-regression3.log",
+        "sha256": "53eb97e0cab82dcb05a1dfb37dc5a02d2e0498e3a7dfc91fece9cbb55c88679d"
+      }
+    ]
+  },
+  "primary_regression": {
+    "passed": 559,
+    "failed": 0,
+    "ignored": 30,
+    "raw_passed_failed_ignored": [
+      604,
+      0,
+      31
+    ],
+    "excluded_duplicate_passes": 45,
+    "excluded_child_ignored": 1,
+    "breakdown": {
+      "rrx_lib": 439,
+      "integration": 113,
+      "tracker_lib": 4,
+      "tracker_discovery": 1,
+      "doctest": 2
+    }
+  },
+  "delegated_controls_mutations": {
+    "source_commit": "99b71c3804f086512a8f3d557147907c4d6f8140",
+    "baseline": "37c5cc434d8f9c46d4a0f5f86a0285421a773899",
+    "source_tree": "df4ee7e00ec202d1b0fe45981d7d5d524477948e",
+    "worktree": "/Users/shuheisuzuki/Documents/dev/rururunx/worktree/agent-execution-gate-claim-tests",
+    "branch": "test/agent-execution-gate-claims",
+    "changes": "Only append 282 lines to crates/rrx/src/workflow/committed_source_tests.rs; no production or pre-existing test edits.",
+    "controls": [
+      {
+        "name": "production_gate_claim_inputs_refuse_before_helpers_receipts_or_native_effects",
+        "result": "PASS",
+        "cases": [
+          "TaskVersion",
+          "ProjectVersion",
+          "FullContext",
+          "ForeignScope",
+          "Phase",
+          "Prerequisites",
+          "PriorObservations",
+          "SourcePayload"
+        ],
+        "checks": "Actual Standard Issue qualified production gate succeeds; actual Evaluating Worktree invocation is modified before real ManagedWorkflowGates. Gate must error before changed/added UnitGit managed effect, Verification receipt, Unit mutation, native Session or artifact. Engine retains unknown gate observation and never completes Worktree."
+      },
+      {
+        "name": "production_gate_closed_claim_cannot_be_replayed_into_another_receipt",
+        "result": "PASS",
+        "checks": "Actual qualified Worktree production gate completes; old captured invocation replay errors with helpers/receipts/Workflow unchanged and no native effects."
+      }
+    ],
+    "mutations": [
+      {
+        "commit": "121d586e67f7032a177824e2f7b07012dd06536e",
+        "guard": "Exact Task invocation frame equality omitted",
+        "result": "COMPILED_RUNTIME_ASSERTION_KILL",
+        "exit": 101,
+        "assertion": "TaskVersion was accepted",
+        "restore": "b2495b0b44492946a99fc080645e3199eb3a9c1c"
+      },
+      {
+        "commit": "f16f0c1f662821ae552fc6c1578c98d44f03e2df",
+        "guard": "Exact full Context equality omitted",
+        "result": "COMPILED_RUNTIME_ASSERTION_KILL",
+        "exit": 101,
+        "assertion": "FullContext was accepted",
+        "restore": "ce0455c7b83589cfc38ba482fd82bc2328c6d70c"
+      }
+    ],
+    "restored_controls": {
+      "commit": "ce0455c7b83589cfc38ba482fd82bc2328c6d70c",
+      "tree": "df4ee7e00ec202d1b0fe45981d7d5d524477948e",
+      "source_tree_equal": true,
+      "result": "2 PASS 0 FAIL",
+      "mutation_history_branch": "test/agent-execution-gate-claim-mutations",
+      "temporary_mutation_worktree": "normal removed after clean restoration"
+    },
+    "checks": {
+      "format": "PASS",
+      "diff_check": "PASS",
+      "source_worktree_clean": true
+    },
+    "environment": {
+      "os": "macOS 26.6.2 build25G83 aarch64",
+      "rust": "1.91.1",
+      "git_in_test_PATH": "2.49.0",
+      "cargo": "offline",
+      "target": "/private/tmp/rrx-phase2-gate-claim-target"
+    },
+    "limitations": [
+      "Account-free isolated Git/Store/Workflow preparation fixtures. No authenticated native CLI or subscription use.",
+      "New negative controls stop before native Session/input; positive is real qualified initial gate only.",
+      "No full workspace regression/lint or independent source review claimed here; parent will arrange postchecks/review.",
+      "No Linux, Phase2 completion, native compatibility, four-Task acceptance or MVP approval."
+    ],
+    "logs": [
+      {
+        "path": "/private/tmp/rrx-phase2-gate-claim-control.log",
+        "bytes": 3629,
+        "sha256": "5f8ba854f7bd8f479c26c84036acfadd020c15fa1405150c90e3e59c82c4e156"
+      },
+      {
+        "path": "/private/tmp/rrx-phase2-gate-closed-claim-control.log",
+        "bytes": 412,
+        "sha256": "5ff126f22e84726a4d8d57ae2ba12e0de1b182a82c3f6e0cc67fa7c7464263ee"
+      },
+      {
+        "path": "/private/tmp/rrx-phase2-gate-task-claim-mutant.log",
+        "bytes": 1121,
+        "sha256": "d104de0dbf5851781746cfaeb977e0d55687c852ae3d307793e8b52cec68be3f"
+      },
+      {
+        "path": "/private/tmp/rrx-phase2-gate-context-claim-mutant.log",
+        "bytes": 1006,
+        "sha256": "56e6105529b61f765a098113c146476be55787378b2e9b1c1b829920be972b36"
+      },
+      {
+        "path": "/private/tmp/rrx-phase2-gate-claim-restored-controls.log",
+        "bytes": 619,
+        "sha256": "aa1d0acf1c446794ff16d8fbd29d85906efde6e966ba87fc2e38cb3d18cdfeaa"
+      }
+    ]
+  },
+  "independent_test_source_review": {
+    "source_commit": "99b71c3804f086512a8f3d557147907c4d6f8140",
+    "review_type": "Independent STRICT static component test-source review",
+    "verdict": "APPROVE",
+    "counts": {
+      "Critical": 0,
+      "High": 0,
+      "Medium": 0,
+      "Low": 0
+    },
+    "findings": [],
+    "coverage": [
+      "Complete commit delta is282 appended lines in committed_source_tests.rs only; production and existing test bytes are unchanged.",
+      "Eight distinct GateClaimFault cases reach actual ManagedWorkflowGates.complete through a real Workflow Worktree Evaluating claim: TaskVersion, ProjectVersion, full Context data, source foreign Scope, phase, exact prerequisites, prior observations and source payload. Error categories match the production claim/verify_initial producer ordering.",
+      "The eight cases snapshot actual managed effect bodies, scoped Verification records and complete prepared Unit before the real gate call, then require unchanged bodies, no Session or result artifact and actual checked reachability. Workflow records the error observation but does not accept Worktree evidence; this expected Workflow bookkeeping is separate from no gate/native effect.",
+      "The closed-claim replay captures a real passed Worktree invocation, invokes the real gate again after phase closure, requires stale-owner rejection, unchanged effects/receipts and whole Workflow snapshot, and no native input. It demonstrates closed invocation replay refusal through the existing stale Task/owner check; it does not isolate every downstream closed-claim predicate.",
+      "The production_engine fixture helper is used only to install acceptance criteria before preparation, not to inject a Passed result. Initial Issue/Worktree gates, registered preparation and cancellation use actual consumers. Scoped cancellation retires Sources; new tests do not create an authenticated provider process.",
+      "Lexical Store guards end before awaits. Wrappers mutate owned invocation copies, leave production authority unchanged and retain the private prepared capability until actual cancellation."
+    ],
+    "limits": [
+      "Static test-source approval only; no executed test, build, mutation sensitivity, native/auth/account/OS conformance, Phase2 or MVP acceptance.",
+      "Self-authored CommittedIndex/core and Runtime docs are excluded from independent approval.",
+      "No peer findings/reports, logs, mutable/later source or external/native operations accessed.",
+      "Replay is rejected by an already-stale owner projection and is not a causal test of removing only the downstream Evaluating-state predicate. No such extra mutation credit is granted."
+    ],
+    "live_handles": [],
+    "commands_closed": true
+  },
+  "parent_verification": [
+    "Read exact appended delta and actual assertion-failure/restored logs; checked all five raw log hashes/lengths.",
+    "Task and full-Context mutants compiled and failed their intended runtime assertion; restored2 controls passed on identical baseline tree.",
+    "Closed claim replay fails earlier stale-owner projection; no causal Evaluating-only predicate mutation credit.",
+    "Parent current-source full checks passed; delegated controls alone did not qualify a full workspace."
+  ],
+  "limitations": [
+    "Not actual authenticated native Agent, four simultaneous Tasks, Linux/native settings/hooks/subscription, process-death, security sandbox, installed binary or MVP qualification.",
+    "Historical unrestricted Source32 three fixture failures remain unresolved; current regression is bounded to four test threads.",
+    "No Runtime/CLI construction, ReviewEngine, verifier or external gate implementation follows from these controls."
+  ]
+}

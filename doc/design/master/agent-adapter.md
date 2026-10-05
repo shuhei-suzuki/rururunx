@@ -8,6 +8,12 @@ remain baseline descriptions, not acceptance of that proposal.
 **Status:** Draft
 **Scope:** MVP adapter contract
 
+The independently reviewed [native result supplement](../native-result-receipts-design.md)
+specifies acknowledged-input/Session-bound final answer acquisition and atomic
+receipt-before-watch publication. It requires new collectors and persistence ports;
+current ephemeral native results and generated schema shapes alone do not certify
+Review verdicts or authenticated provider compatibility.
+
 ## 1. Goal
 
 Allow rururunx to use heterogeneous native coding agents without hard-coding workflow logic to a provider.

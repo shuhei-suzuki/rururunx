@@ -423,7 +423,8 @@ cleanup jobs; no physical settlement deadline is claimed for host-native hooks.
 
 Implementation sequence after requirements/design independent approval:
 
-1. Schema6, immutable round/member ports, grant/CAS/fencing and migration controls.
+1. Next assigned schema (currently8 after Native6 and Published-frame recovery7),
+   immutable round/member ports, grant/CAS/fencing and migration controls.
 2. Owned provider answer acquisition/receipt and strict parser, exact public
    NativeAdapter/NativeSessions/member Session/input consumers.
 3. Production bundle/activation/attribution readiness and independent fresh snapshot

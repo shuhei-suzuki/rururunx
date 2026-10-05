@@ -425,3 +425,12 @@ must compose before their gates can pass. Goal evaluator/accepted definition and
 CLI Runtime are not supplied by the current source baseline. No optional browser,
 PWA/native Goal or privileged service is introduced to fill these gaps. This design
 does not claim final Phase2, whole #14/#23/#24/#27, or MVP completion.
+
+## Implementation allocation after independent design review
+
+Native result receipts own schema6. Published-frame source recovery is the first
+Runtime dependency delivery and owns schema7; future ReviewRound moves to8. The
+full driver/Goal/Runtime schema needs the next coordinated number. This ordering
+changes allocation only, not reviewed authority/CAS requirements. The first source
+recovery delivery implements section5.1; fresh pre-input section5.2 remains an
+explicit unsupported integration until its genuine producer is implemented.

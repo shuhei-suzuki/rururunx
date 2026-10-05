@@ -866,6 +866,46 @@ no mutated code enters Phase2. Cleanup is best effort and this is not a security
 sandbox. No Linux/current-install/native/default-unrestricted acceptance follows;
 the earlier unrestricted source32 failures remain unresolved.
 
+## Production gate claim and next integration checkpoint
+
+Fixed clean source `a79a3051d41bc122e1e7e88cb7399c3cdfb83787` adds two actual
+production-gate controls, covering eight altered invocation inputs and replay of a
+closed claim. A independently approved the appended test source `99b71c38`; no
+production bytes changed from the prior gate checkpoint. The parent read the real
+assertion logs and verified all five delegated log hashes. Task/full-Context guard
+omissions compiled and failed their intended assertions; restored controls passed
+on the exact baseline tree. Closed replay is rejected by the earlier stale-owner
+check and does not qualify a separate Evaluating-predicate omission.
+
+Current bounded full checks passed: **559 primary passed, 0 failed, 30 ignored**;
+all-target Clippy `-D warnings`, build and fmt also passed. Raw604 passes exclude
+the same45 duplicate child passes. The [additive claim checkpoint](agent-execution-phase2-gate-claims-checkpoint.json)
+preserves the delegated controls, mutations, raw review and exact parent checks;
+the previous checkpoint is retained unchanged. No actual provider, four-Task,
+Linux or unrestricted-parallel qualification is inferred.
+
+The [Runtime/Scheduler design](../design/runtime-scheduler-integration-design.md)
+and [ReviewEngine design](../design/review-engine-integration-design.md) passed
+independent requirements/design reviews after corrections. The parent verified
+missing restart Sources authority, inherited finite channel/cohort admission and
+failure-content counting predicates against pinned actual consumers. Revised
+private recovery and collective approval contracts close these design findings;
+they do not establish available production ports. The
+[integration design ledger](agent-execution-phase2-integration-design-reviews.json)
+retains original findings and all re-reviews instead of dropping earlier failures.
+
+The [native result supplement](../design/native-result-receipts-design.md) also
+passed independent A/C static reviews. It specifies actual acknowledged input and
+native identity, bounded answer acquisition, durable receipt and terminal updates
+before watch publication, historical-only fenced drafts, and ordered schema6.
+Schema6 is assigned to that implementation; existing source still uses schema5.
+Published-frame recovery is assigned7 after Native6; future ReviewRound moves
+to8. Fresh pre-input recovery remains a later integration, explicitly unsupported.
+The local Codex-generated schema is protocol-shape evidence, not authenticated
+model/native qualification. Review counting/member grants and Runtime construction
+remain separate source work. These component approvals permit continued Phase2
+implementation, not Phase2/MVP completion or Phase3 account use.
+
 ## Remaining Phase2 and acceptance work
 
 - Qualified milestone content, verifier/reviewer/external gate consumers and
