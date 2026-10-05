@@ -866,3 +866,75 @@ async fn spawned_initializer_failure_and_unknown_cleanup_keep_actual_anchor_and_
     // Real first KILL precedes a forced real-inspector malformed observation;
     // cleanup Unknown cannot authorize a Child::wait or resource release.
 }
+
+#[tokio::test]
+async fn four_actual_git_operations_have_independent_native_and_reader_lanes() {
+    let (_directory, _store, _project, _task, worktree) = super::super::tests::preflight_fixture();
+    let executable = resolve_executable("git").unwrap();
+    let mut context = TestGitContext::isolated();
+    let pause = Arc::new(TestPause::default());
+    let release = TestRelease(pause.clone());
+    context.context.hooks.after_spawn = Some(pause);
+    let mut calls = Vec::new();
+    for _ in 0..4 {
+        let executable = executable.clone();
+        let worktree = worktree.clone();
+        let context = context.clone();
+        calls.push(tokio::spawn(async move {
+            run(
+                &executable,
+                &worktree,
+                &["rev-parse".into(), "HEAD".into()],
+                vec![],
+                tokio::time::Instant::now() + Duration::from_secs(5),
+                Arc::new(AtomicBool::new(false)),
+                Some(context),
+            )
+            .await
+        }));
+    }
+    let records = tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            let records = context
+                .pool
+                .as_ref()
+                .unwrap()
+                .state
+                .lock()
+                .unwrap()
+                .records
+                .clone();
+            if records.len() == 4
+                && records
+                    .iter()
+                    .all(|record| record.readers.try_lock().is_err())
+            {
+                break records;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    let real_native = records.iter().all(|record| {
+        let native = record.native.lock().unwrap();
+        native.child.as_ref().is_some_and(|child| child.id() > 1)
+            && native.group.is_some()
+            && !native.reaped
+            && !native.signal_issued
+            && record.worker.lock().unwrap().is_some()
+    });
+    drop(release);
+    let mut outputs = Vec::new();
+    for call in calls {
+        outputs.push(call.await.unwrap().unwrap());
+    }
+    released(&context).await;
+    assert_eq!(records.len() * JOBS, 16);
+    assert!(real_native);
+    assert_eq!(outputs.len(), 4);
+    assert!(outputs.iter().all(|output| output == &outputs[0]));
+    assert_eq!(outputs[0].len(), 41);
+    // Four actual native Git operations are simultaneously owned. Their leaders
+    // may already be zombies; this does not assert concurrent CPU execution.
+}

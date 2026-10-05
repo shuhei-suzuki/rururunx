@@ -352,3 +352,23 @@ lines add bounded static stage/boundary/case and parent observation/exit/elapsed
 facts. They preserve60s watchdog, internal parallelism, readers, signals, cleanup
 order and existing assertions. Neither they nor this composition identify a
 historic process-inspection cause or grant complete nested settlement.
+
+
+The third same M60-R04 operator now COMPILED/ASSERTION-KILLED at the explicit
+`caller returned before its actual native worker joined` assertion (test0.02s).
+Correct unmasked bcbd694 consumer passed1/3.02s. Matrix has14 compiled runs,
+12 distinct operators:12 scoped actual-consumer kills and two retained M04
+survivors with zero kill credit. Only the cfg(test) guard-drop/pause changes;
+production join and cleanup are unchanged. No obsolete run is relabeled.
+
+Timeout precision: validate_git/verify_git each share one existing5s deadline
+across their whole sequence. Native dispatched=false/pre_spawn uncertainty=false
+in9c receipts does NOT prove no Git process spawned; settled previous/current
+Git children can leave that flag false. Admission expiry, observation expiry
+and cancel share the existing timeout text. No reason for those failures is
+identified by that text or by the false native-agent dispatch flag.
+
+A new default full run at the actual committed67-composed source will capture
+current stage diagnostics; the change is cfg(test) observation/source-composition,
+not a production availability fix or a same-old-head rerun. The old full Debug
+and Release failures remain explicit blockers until disposition is supported.
