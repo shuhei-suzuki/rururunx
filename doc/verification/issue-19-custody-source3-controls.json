@@ -1,0 +1,149 @@
+{
+  "reviewed_source": "226d1ab128890ae42b014629e85d7d66c4a9a6ae",
+  "caller_observation_correction": "9687bae3c8f2c9bd05a269df7792fc623d32ff82",
+  "mutations": {
+    "base": "226d1ab128890ae42b014629e85d7d66c4a9a6ae",
+    "tree": "563fac41f79130fe17ad4136cc49b0bb08abd435",
+    "variants": [
+      {
+        "name": "taskguard_only_revocation",
+        "head": "8341be7afa869929ebfbd6383551d8a41f5bc809",
+        "base": "226d1ab128890ae42b014629e85d7d66c4a9a6ae",
+        "filter": "custodied_missing_and_closed_runtime_have_exact_no_effect_accounting",
+        "exit": 101,
+        "compiled": true,
+        "intended_assertion": "TaskGuard must revoke before Lost",
+        "intended_failure": true,
+        "log_sha256": "57181983363cb352ae1d4a6e9ea406b7cb6ae95bdfdafee25c8d4e153258c3a4",
+        "seconds": 8.63
+      },
+      {
+        "name": "both_closed_runtime_lock_consumers",
+        "head": "a7b8060a6555d98f7fa9ebef9ceaa9a846c8a237",
+        "base": "226d1ab128890ae42b014629e85d7d66c4a9a6ae",
+        "filter": "custody_mechanics",
+        "exit": 101,
+        "compiled": true,
+        "intended_assertion": "closed scheduler cannot deadlock custodied task installation",
+        "intended_failure": true,
+        "log_sha256": "3ba29f2719ab7f680b34f83348e02557ceb22b445add1fa3d0637663e47c953c",
+        "seconds": 9.47,
+        "both_consumer_assertions": true
+      }
+    ],
+    "gates": [
+      {
+        "name": "restored-debug",
+        "exit": 0,
+        "sha256": "dde960974d98bed226e6292885b92c6b48a42e00e73987f4fe354df17c597ad3"
+      },
+      {
+        "name": "restored-release",
+        "exit": 0,
+        "sha256": "2ef7b9ccb1e4c7bf856e0b2e50746afaa8855498045639b2b6010d0e2df188e6"
+      },
+      {
+        "name": "fmt",
+        "exit": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "name": "clippy",
+        "exit": 0,
+        "sha256": "35b609c4692c91e07e52603b60f963832c2a065e487e37601f210716f31803f0"
+      }
+    ],
+    "restored_clean": true,
+    "scope": "Sensitivity variants of two existing boundary families; no additional distinct guarantee or native cleanup credit. Both synthetic deadlock consumers bounded; mutant threads end at test-process exit."
+  },
+  "caller_boundary_checks": {
+    "head": "9687bae3c8f2c9bd05a269df7792fc623d32ff82",
+    "gates": [
+      {
+        "name": "debug",
+        "exit": 0,
+        "sha256": "4231ae8ff5491267a665b3a911f96176f221e9de33774414e6f69fa5a7d1bb27"
+      },
+      {
+        "name": "release",
+        "exit": 0,
+        "sha256": "9401f1ad1c950f3feb680e61e14bb5293d4a0bd84677bf05fc0280ae9c165e95"
+      }
+    ]
+  },
+  "full_release": {
+    "head": "9687bae3c8f2c9bd05a269df7792fc623d32ff82",
+    "args": [
+      "cargo",
+      "test",
+      "--locked",
+      "--release",
+      "--workspace"
+    ],
+    "exit": 101,
+    "seconds": 85.28,
+    "sha256": "c00866a033985dfab68d27ba4b64ce4257b9d7450caf74d18b439929e3ad5aa4",
+    "clean_after": true
+  },
+  "full_release_result": {
+    "library_passed": 288,
+    "library_failed": 2,
+    "library_ignored": 23,
+    "seconds": 54.12,
+    "remaining_workspace": "not executed",
+    "failures": [
+      {
+        "test": "owning_reference_refresh_and_existing_consultant_reservation_guards_remain_required",
+        "observation": "actual child exit101 observed9244ms; current-attempt canary absent"
+      },
+      {
+        "test": "before_spawn_stop_receipt_has_only_preflight_creation_trace",
+        "observation": "child failed after9.74s; owned native stop not yet verified Timeout"
+      }
+    ]
+  },
+  "independent_read_only_reviews": [
+    {
+      "reviewer": "issue4_adapter",
+      "head": "226d1ab128890ae42b014629e85d7d66c4a9a6ae",
+      "verdict": "approve",
+      "critical_high_medium": 0,
+      "low": 1,
+      "low_description": "jobs_revoked observation was after wait_finished and drain"
+    },
+    {
+      "reviewer": "native_provider_recon",
+      "head": "226d1ab128890ae42b014629e85d7d66c4a9a6ae",
+      "verdict": "approve",
+      "findings": []
+    }
+  ],
+  "independent_four_line_rereviews": [
+    {
+      "reviewer": "issue4_adapter",
+      "head": "9687bae3c8f2c9bd05a269df7792fc623d32ff82",
+      "verdict": "approve",
+      "findings": []
+    },
+    {
+      "reviewer": "native_provider_recon",
+      "head": "9687bae3c8f2c9bd05a269df7792fc623d32ff82",
+      "verdict": "approve",
+      "findings": []
+    }
+  ],
+  "method": "Read-only workspace code/delta reviews by two existing independent agents; no native inference or independent test execution. Both initial reviews closed before peer findings shared. Both four-line re-reviews closed before source edits.",
+  "prior_native_delta_review_qualification": {
+    "source": "f6b18af1f27c56ee1d32957b8da5b2979588c946",
+    "A": "terminal source approval content; wrapper exit1 owned_cleanup_unverified; NOT a qualified approval. Later group death and reaped anchors do not clear prior Unknown.",
+    "B": "wrapper exit0 cleanup_verified true; scoped source approve0CHM with five Low; no merge/fullgate/native approval."
+  },
+  "limits": [
+    "Two sensitivity variants of existing boundary families; no new distinct guarantee count.",
+    "No revoke-after-Lost ordering mutant or effect-commit linearization guarantee.",
+    "Helper Timeout leaves synthetic thread unjoined until test-process exit; no cleanup or native settlement credit.",
+    "Historical full Debug failures and current full Release failures remain unexplained; no same-head retry or timeout/parallelism/latch waiver.",
+    "Earlier f6 CI does not cover226/968 controls; latest final-head CI pending.",
+    "Production pool remains None; Create is cfg(test)-only; whole19/native/MVP remain open."
+  ]
+}
