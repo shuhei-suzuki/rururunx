@@ -1,11 +1,12 @@
 # Issue19 retained preparation lifetime component
 
-Status: selected MECHANICAL Design2 gate, not whole Issue19 authority/native readiness.
+Status: selected MECHANICAL Design3 gate, not whole Issue19 authority/native readiness.
 Parent Design37 at75cdae974da1ce9afa0a6de4e2cafc5065e60748 was rejected by both native
 reviews. Its broad open findings are retained in the adjacent ledger. Absence of a
 lifetime High/Medium in those rejected reviews is NOT this component's approval.
-Selected Design1 was also rejected. Design2 below corrects its verified custody/
-join/accounting/re-registration mechanics; TWO explicit selected approvals precede code.
+Selected Designs1/2 were also rejected. Design3 below corrects the remaining
+installation/completion/queue-delivery and exact-consumer seams; TWO explicit
+selected approvals precede code. Parent OPEN findings remain outside this gate.
 It implements existing retained-custody/cancellation requirements; no new WHAT,
 public native capability, migration, managed trait or receipt facade is introduced.
 
@@ -100,7 +101,7 @@ Session publication or settlement. Those semantic requests require their future
 actual original-frame/native producer and remain unavailable here.
 
 Use a bounded64-request inbox. Each canonical JSON metadata encoding is at most4096
-actual UTF8 bytes, checked by a bounded streaming JSON writer before enqueue, so queued metadata≤256KiB; referenced immutable payload/resource
+actual UTF8 bytes, checked by a bounded streaming JSON writer before enqueue, so queued ENCODED metadata≤256KiB (not physical RSS/allocator-capacity proof); referenced immutable payload/resource
 bytes retain their existing separately charged bounds, never an unbounded hidden
 message. No serialized closure/operation credential or copied prepared frame enters
 the inbox. Job registration/actual resource ownership precedes the first request.
@@ -137,7 +138,11 @@ For a custodied Control: reserve declared three frames; create/install custodian
 handle under Begin; mark TaskOwner::Installing; spawn the actor WRAPPED to wait for
 its own Begin; store the actor JoinHandle into that same heap inventory and its
 AbortHandle/identity in a new Observed state; then send Begin. The actor cannot
-create resources before installation. TaskGuard/release_task marks its logical
+create resources before installation. NO pool, inventory, Control.task or registry
+lock is held across runtime.spawn, Begin send/disconnection, actor future Drop or
+other synchronously dropping operations. Separate post-spawn acquisition installs
+the handle even if the closed runtime already dropped the actor. No lock is held
+across create/await/join/resource destruction. TaskGuard/release_task marks its logical
 Released state but NEVER drops the custodian-owned actor JoinHandle. Closed/missing
 runtime and no-custody legacy paths preserve their existing Running/Released tests.
 The observed branch is total over Installing/Observed/Released, including completion
@@ -156,9 +161,12 @@ counters, workers receive disconnected Begin and perform zero resource effects.
 A DISTINCT monotonic Control job-revocation latch prevents every NEW endpoint effect,
 independently of Preparation's first-cause/Consumed/CheckpointCommitted/Failing states.
 Explicit stop/custody cancellation revokes synchronously before publishing the stop
-request. CallerGuard preserves existing consumed-turn no-interrupt behavior; it can
-revoke NEW mechanical setup access without injecting native interruption or changing
-Preparation::Consumed. Already-owned jobs still deliver cleanup facts. The handler
+request. CallerGuard::drop ALWAYS sets job revocation while armed, including Consumed and
+Failing, but preserves existing consumed-turn no-interrupt behavior: no new native
+stop message and no Preparation::Consumed reset. Normal return disarms CallerGuard,
+so a successful post-return actor endpoint remains usable until explicit revocation. Authoritative local cleanup facts are returned by their OWN JoinHandle outcome,
+not this saturable request inbox. Already-owned jobs retain that outcome until the
+custodian observes the join; optional progress refusal cannot lose cleanup facts. The handler
 checks the latch/generation immediately before effect; no recreated endpoint or queue
 message can clear it. No native semantic grant implements this mechanical latch.
 
@@ -175,11 +183,81 @@ published Lost or authorize native resume. Existing already-no-effect paths with
 created resources/requests retain their previous behavior. These guards introduce no
 managed receipt, current-frame refresh or native recovery exception.
 
+
+## Single completion owner and concrete fixture consumer
+
+Phase remains the provider actor's single-final logical result. Custody has a
+SEPARATE private fact: Installing/Tracking/Joined/Unknown, plus registered jobs,
+accepted requests and in-flight callbacks. Only the custodian derives Joined after
+actual joins and drained requests; actual custodian loss derives Unknown, never
+provider terminal success. It NEVER overwrites Phase::Finished or published Lost.
+When an actor would select a no-work/restored result while effect resources remain,
+it selects one private Outcome::CustodyHeld with cause and retained non-authoritative
+snapshot, whose snapshot()/no-work selectors return NONE. Phase is Finished with
+that held result; TaskGuard does not fabricate Lost merely for a KNOWN joinable worker.
+wait_finished returns this exact held result. The later normal worker join makes the
+separate custody fact Joined, leaves Phase unchanged and releases only genuinely
+joined component slots. Worker panic/unobservable completion makes custody Unknown;
+TaskGuard's independent genuine actor panic/drop continues its existing Lost behavior.
+No held Phase authorizes native resume/recovery/success. register_existing and terminal
+eviction reject Held/Unknown/outstanding facts; RegisteredTransition preserves the
+same Control/exclusion, never restores/removes it from a no-work label. This is
+mechanical bookkeeping, not a managed settlement or new native recovery exception.
+
+Lock discipline uses short isolated acquisitions. Custodian never takes registry,
+Store or Preparation.admission while holding pool/inventory/Control.task. Registry
+consumers read compact custody counters/status with a leaf snapshot; they do not
+reap/join there. Pool admission collects finished handles, unlocks, joins/reconciles,
+then reacquires counters. Synchronous actor Drop can safely query custody or take
+registry because runtime.spawn holds NONE of those locks. Add both custodied
+closed-runtime and missing-runtime fixtures, not only old no-custody tests.
+
+Exact opt-in is a private complete declaration on Control, injected with its pool
+and CLOSED file factory through a fixture-private CodexAdapter input. Ordinary
+production has NO factory and EMPTY remains first. Existing selected native/F4 paths
+with no custody opt-in are explicitly UNMIGRATED and retain their existing behavior;
+none earns this component's retained resource proof. spawn_launch/spawn_checkpoint
+reserve the declared three frames BEFORE capturing Registered/TaskGuard in a future.
+Known capacity refusal routes through existing refused_before_work only when the
+actual inventory has zero effects/requests, and starts zero frames/resources.
+
+With opt-in, ONE named call seam in each actual prepare_launch/prepare_checkpoint
+runs the factory through the registered custodian immediately after availability
+require and BEFORE context capture/Git/native preflight. The controlled factory
+creates the actual file/worker in outer custody, then returns a labelled injected
+context Err into the SAME existing context-error outcome arm. These negative
+registry controls do not continue to native/Git effects. No-factory legacy paths
+have no resource call; ordinary public EMPTY rejects before reaching either path.
+Previous-snapshot registry construction is an EXPLICIT fixture-only factual history
+seam, not SQL/private native allocation, validated UUID ownership or a production
+constructor. It earns NO native provenance/binding/admission/settlement credit. It
+allows the actual RegisteredTransition/register_existing/outcome guard to be tested
+with a real newly owned file/worker; omission must rearm/hide that actual custody,
+not merely trigger an unrelated lifecycle/currency guard. Managed producer and
+native previous-snapshot provenance remain unavailable.
+
+Cleanup results are fixed typed std worker return values stored until join. New-effect
+requests check revocation BEFORE enqueue and again at handler effect. Fill the inbox
+with refused/optional requests while the worker finishes: its join result still
+carries cleanup, no dropped fact or spurious Unknown. Counters for accepted requests
+retire only after handling. Detached-before-install handle loss is explicitly
+Unknown with retained counters, NEVER a fake no-work proof; the bounded creation
+control reaches this seam. Wrapped never-Begun/cancelled actor and opaque thread
+spawn failure conservatively retain isolated-pool attention/slots unless actual
+join observations prove that component frame closed; this availability cost is
+explicit, no native Lost clearing or absence inferred from Err.
+
 ## Causal checks and source gate
 
 Commit source before checks/review; preserve exact head and default parallel failures.
 Selected unit/actual controlled fixtures must prove all of these at the real consumer:
 
+- Custodied closed/missing runtime: no lock/drop deadlock; actual actor/custodian
+  join and held counters observed through the same protocol. Omit-lock-release fails.
+- Actor context Err with worker normal return gives exact Phase::CustodyHeld plus
+  custody::Joined (Phase unchanged); worker panic gives custody::Unknown.
+- Full revoked request inbox cannot lose cleanup carried in the worker join value.
+  A queue-only-cleanup mutant fails this actual consumer.
 - Caller Drop/cancellation during preparation leaves the actual resource custodian
   alive; the inventory/permits remain until real cleanup AND joins are observed.
 - Fail/panic after resource creation but before adapter return retains the installed
