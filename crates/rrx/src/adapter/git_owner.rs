@@ -255,6 +255,11 @@ impl TestGitContext {
         ));
         context
     }
+    pub(crate) fn pending_output() -> Self {
+        let mut context = Self::isolated();
+        context.context.hooks.pending_stdout = true;
+        context
+    }
     pub(crate) fn invalid_binding() -> Self {
         let mut context = Self::isolated();
         context.context.hooks.invalid_binding = true;
@@ -292,6 +297,7 @@ struct TestHooks {
     facts: Arc<Mutex<Option<ReaderFacts>>>,
     after_primary_panic: bool,
     pending_stderr: bool,
+    pending_stdout: bool,
     stdout_reader_panic: bool,
     missing_executable: bool,
     missing_matching: Option<(Vec<String>, usize)>,
@@ -925,7 +931,14 @@ async fn supervisor_work(
             let stderr = tokio::process::ChildStderr::from_std(stderr)
                 .map_err(|_| error(ErrorKind::LaunchFailure, "Git stderr registration failed"))?;
             #[cfg(test)]
-            if record._context.hooks.stdout_reader_panic {
+            if record._context.hooks.pending_stdout {
+                readers.stdout = Some(tokio::spawn(async move {
+                    let endpoint = stdout;
+                    std::future::pending::<()>().await;
+                    drop(endpoint);
+                    Ok(Vec::new())
+                }));
+            } else if record._context.hooks.stdout_reader_panic {
                 readers.stdout = Some(tokio::spawn(async move {
                     let _endpoint = stdout;
                     panic!("synthetic Git stdout reader panic");

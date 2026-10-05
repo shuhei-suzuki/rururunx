@@ -1445,6 +1445,32 @@ mod tests {
         assert_eq!(context.held_jobs(), 0, "latch refuses before new admission");
     }
     #[tokio::test]
+    async fn actual_output_open_error_keeps_context_latch_after_reader_late_settlement() {
+        let directory = tempfile::tempdir().unwrap();
+        let context = crate::adapter::TestGitContext::pending_output();
+        let latch = Arc::new(AtomicBool::new(false));
+        let result = git_value_owned(
+            Path::new("/usr/bin/git"),
+            directory.path(),
+            &["--version"],
+            tokio::time::Instant::now() + std::time::Duration::from_secs(5),
+            latch.clone(),
+            Some(context.clone()),
+        )
+        .await
+        .unwrap_err();
+        let cause = format!("{result:#}");
+        assert!(
+            cause.contains("ProcessFailure")
+                && cause.contains("Git output remained open after cleanup"),
+            "{cause}"
+        );
+        assert!(latch.load(Ordering::SeqCst));
+        context.wait_until_released().await;
+        assert!(latch.load(Ordering::SeqCst));
+        assert_eq!(context.held_jobs(), 0);
+    }
+    #[tokio::test]
     async fn opaque_attempted_git_error_keeps_original_cause_and_context_latch() {
         let directory = tempfile::tempdir().unwrap();
         let context = crate::adapter::TestGitContext::missing_executable();

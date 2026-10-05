@@ -786,3 +786,76 @@ async fn invalid_binding_retains_actual_child_before_any_pipe_or_pid_adoption() 
     // The injected invalid-binding branch proves retained actual ownership;
     // it is not a claim that the OS returned such a PID or that this child reaped.
 }
+
+#[tokio::test]
+async fn unobserved_output_cutoff_releases_late_without_rewriting_frozen_facts() {
+    let context = TestGitContext::pending_output();
+    let flag = Arc::new(AtomicBool::new(false));
+    let failure = shell(context.clone(), "exit 0", flag.clone())
+        .await
+        .unwrap_err();
+    assert_eq!(failure.kind, ErrorKind::ProcessFailure);
+    assert_eq!(failure.message, "Git output remained open after cleanup");
+    assert!(flag.load(Ordering::SeqCst));
+    let frozen = context.context.hooks.facts.lock().unwrap().unwrap();
+    assert_eq!(frozen.stdout.join, JoinState::NotObserved);
+    assert!(frozen.stdout.abort_requested);
+    assert!(!frozen.stdout.read_ok && frozen.stdout.read_error.is_none());
+    assert_eq!(frozen.stderr.join, JoinState::NotObserved);
+    context.wait_until_released().await;
+    assert!(flag.load(Ordering::SeqCst));
+    assert_eq!(context.context.hooks.facts.lock().unwrap().unwrap(), frozen);
+    // The real endpoint is owned by an injected pending reader future. This
+    // exercises the production cutoff/late join, not an escaped writer cause.
+}
+
+#[tokio::test]
+async fn actual_generic_output_open_original_kind_remains_lost_after_late_release() {
+    let (_directory, store, project, task, worktree) = super::super::tests::preflight_fixture();
+    let context = TestGitContext::pending_output();
+    let mut adapter =
+        GenericCliAdapter::new("fake".into(), vec!["/bin/cat".into()], store.clone()).unwrap();
+    adapter.git_context = Some(context.clone());
+    let failure = adapter
+        .start(super::super::tests::fixture_request(
+            project, &task, worktree,
+        ))
+        .await
+        .unwrap_err();
+    assert_eq!(failure.kind, ErrorKind::ProcessFailure);
+    assert_eq!(failure.message, "Git output remained open after cleanup");
+    context.wait_until_released().await;
+    let records = store
+        .lock()
+        .unwrap()
+        .records(&task.scope(), RecordKind::Session)
+        .unwrap();
+    let saved: Session = serde_json::from_value(records[0].data.clone()).unwrap();
+    assert_eq!(saved.state, SessionState::Lost);
+    assert!(crate::git::executor_reserved(&saved));
+    assert!(saved.pid.is_none() && saved.native_ref.is_none());
+    assert_eq!(context.held_jobs(), 0);
+}
+
+#[cfg(target_os = "macos")]
+#[tokio::test]
+async fn spawned_initializer_failure_and_unknown_cleanup_keep_actual_anchor_and_jobs() {
+    let plan = ProcessInspectionPlan::unknown(inspection::UnknownObservation::Malformed);
+    let mut context = TestGitContext::with_plan(plan.clone());
+    context.context.hooks.initialized_error = true;
+    let flag = Arc::new(AtomicBool::new(false));
+    let failure = shell(context.clone(), "exec /bin/sleep 30", flag.clone())
+        .await
+        .unwrap_err();
+    assert_eq!(failure.kind, ErrorKind::SessionLost);
+    plan.assert_diagnostics_transport(&failure.message);
+    assert!(flag.load(Ordering::SeqCst));
+    assert_eq!(context.held_jobs(), 4);
+    let record = context.pool.as_ref().unwrap().state.lock().unwrap().records[0].clone();
+    let native = record.native.lock().unwrap();
+    assert!(native.child.is_some() && native.signal_issued && !native.reaped);
+    assert!(native.cleanup.as_ref().unwrap().is_err());
+    assert_eq!(native.signals, 1);
+    // Real first KILL precedes a forced real-inspector malformed observation;
+    // cleanup Unknown cannot authorize a Child::wait or resource release.
+}
