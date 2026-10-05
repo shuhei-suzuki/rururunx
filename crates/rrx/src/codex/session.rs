@@ -5560,11 +5560,26 @@ mod tests {
         writeln!(file, "{value}").unwrap();
     }
     fn journal_values(directory: &std::path::Path) -> Vec<Value> {
-        std::fs::read_to_string(directory.join("journal"))
-            .unwrap_or_default()
+        let contents = std::fs::read_to_string(directory.join("journal")).unwrap_or_default();
+        let complete_len = contents.rfind('\n').map_or(0, |index| index + 1);
+        contents[..complete_len]
             .lines()
             .map(|line| serde_json::from_str(line).unwrap())
             .collect()
+    }
+
+    #[test]
+    fn journal_values_ignores_an_in_progress_trailing_record() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("journal");
+        let first = json!({"method":"turn/start","id":1});
+        let second = json!({"method":"turn/interrupt","id":2});
+
+        std::fs::write(&path, format!("{first}\n{{\"method\":\"turn/")).unwrap();
+        assert_eq!(journal_values(directory.path()), vec![first.clone()]);
+
+        std::fs::write(&path, format!("{first}\n{second}\n")).unwrap();
+        assert_eq!(journal_values(directory.path()), vec![first, second]);
     }
     async fn socket_send(
         socket: &mut tokio_tungstenite::WebSocketStream<tokio::net::UnixStream>,
