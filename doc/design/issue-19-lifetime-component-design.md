@@ -184,7 +184,9 @@ message can clear it. No native semantic grant implements this mechanical latch.
 
 Actual reused session consumers MUST check outstanding effect/resources/accepted
 requests: refused_before_work, prepare_launch/checkpoint context-error outcomes,
-RegisteredTransition::drop restore/remove, register_existing and terminal eviction.
+RegisteredTransition::drop restore/remove and register_existing. This Codex
+registry has no terminal eviction implementation; saturation refuses new entries
+and public release remains unsupported.
 No RestoredBeforeAdmission/FreshUnpublished/CheckpointCommitted no-work classification
 or old-control restoration/removal is allowed while such custody remains. Retain the
 exact same registry Control/exclusion and explicit held outcome; registration refuses.
@@ -215,7 +217,7 @@ the separate custody fact Joined, leave Phase unchanged and release only genuine
 joined component slots. Worker panic/unobservable completion makes custody Unknown;
 TaskGuard's independent genuine actor panic/drop continues its existing Lost behavior.
 No held Phase authorizes native resume/recovery/success. For Finished(CustodyHeld) or outstanding CREATED effects/requests, while custody
-is Installing, Tracking or Unknown, register_existing and terminal eviction reject it and
+is Installing, Tracking or Unknown, register_existing rejects it and
 RegisteredTransition preserves the same Control/exclusion. Zero-effect bookkeeping-only custody retains the existing
 no-work registry remove/restore behavior even while actor/custodian joins are pending.
 Closed-runtime unpublished Lost therefore removes its fresh registry entry, while
@@ -229,11 +231,12 @@ and SessionId before RegisteredTransition leaves; previous_control is genuine
 original in-memory identity, not a reconstructed Session. The arm is before
 Starting publication, Git or native effects and cannot record this disposition on
 any other outcome. Store/body publication is unchanged. Entry owns this retained
-intent, so actor/transition Drop cannot lose it. Before taking the registry lock, register_fresh, register_existing and explicit
-terminal eviction perform existing-frame pool housekeeping to observe finished
+intent on this normal context-error path. Genuine actor abandonment publishes Lost
+without a restoration intent and remains recovery-pending. Before taking the
+registry lock, register_fresh and register_existing perform existing-frame pool housekeeping to observe finished
 custodian joins. Under the registry lock they then call ONE reconciliation predicate.
 register_fresh sweeps ALL retained intents (bounded by32 entries) BEFORE its len()
-capacity check; register_existing/eviction apply it at least to their target. It requires the same current Control,
+capacity check; register_existing applies it at least to its target. It requires the same current Control,
 its exact Finished(CustodyHeld) outcome/disposition, genuine custody::Joined (ALL three
 declared frames actually joined, inbox drained, in-flight zero), and no published
 Lost. It then removes the fresh entry or restores exact previous_control/stop and

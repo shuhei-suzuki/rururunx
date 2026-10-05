@@ -1,7 +1,8 @@
 # Issue #19 curated preparation custody integration
 
-Status: selected composition controls verified; full regression failed and
-independent composition review pending. Not merge-ready. Whole Issue #19 and
+Status: first independent composition review completed; its queued-abandonment
+defect was reproduced and fixed. Delta review remains pending and full regression
+failed. Not merge-ready. Whole Issue #19 and
 native readiness remain open.
 
 ## Immutable inputs and scope
@@ -10,9 +11,10 @@ Base main: `768f84319cd2a73e14cd39336eb12d99e9be81a7`.
 Selected approved source: `857950094ae9732d31d6c11d773e7fe96adbae02`.
 Historical source evidence: `a8aa95108bfe2fc098f5333f7bb5cf445c4c74a9`.
 
-Only five code paths are imported: Codex attempt.rs, custody.rs,
+The initial composition imported only five code paths: Codex attempt.rs, custody.rs,
 custody_tests.rs, mod.rs and session.rs. Every imported code blob is identical
-to the selected source. Main attempt/session/mod blobs match the approved
+to the selected source at initial code head94350f. The later verified abandonment
+fix and bounded closed-runtime control are recorded below. Main attempt/session/mod blobs match the approved
 Design5 baseline `3a12ef787e6bcf1cdb5f6732fdc18b2c482b783a` exactly.
 Thus the main-to-source code diff is the selected mechanical component.
 The broad parent PR #39's other 29 paths, including Context Pack, Context,
@@ -46,7 +48,10 @@ Any later green run records its own observation and does not explain old failure
 
 No ordinary native capability, ready backend, native cleanup certificate, private
 producer, schema upgrade or full parent acceptance is added. Production custody
-selection remains None; the closed fixture creates no native/Git subprocess.
+selection remains None. The closed resource factory itself creates no native/Git
+subprocess. Fixture setup does execute git init/add/commit, and checkpoint setup
+uses real Git/process inspection; those consumers can contribute shared host load.
+No causal contribution to the failed regressions has been established.
 
 ## Actual curated code checks
 
@@ -136,3 +141,105 @@ latch. The saved Pending/WouldBlock facts are prior polls, not facts at the
 deadline. Mac builds were skipped; Linux every CI step succeeded. No same-head
 retry or source correction was performed. This observation remains separate
 from the original857 failure and the curated94350f full regression.
+
+## First composition reviews and verified delta
+
+Both independent reviews of public895a621 closed with command exit0 and verified
+owned wrapper cleanup before either result was inspected. ReviewerA session
+04d0dcad-0800-40ec-8242-875a3dc398dc approved with5 Low; reviewerB session
+9d8ba90b-bd6c-46b1-b28e-628425eae632 approved with4 Low. Neither approved merge,
+full regression, native activation or MVP acceptance. The exact first-round
+findings and scope limits are retained in
+[the review record](issue-19-custody-source1-reviews.json).
+
+B's queued-abandonment finding was reproduced at test-onlye712cefb: actual
+actor abort returned SessionLost and disarmed CallerGuard; a previously accepted
+Create subsequently opened the file. The test failed at the intended file-effect
+assertion after actual worker/custodian joins, not at a setup or deadline failure.
+Reproduction log SHA256:
+`baa6f29102b4b2f65b02a6432bbecfbf09dd0f6db1167e47b2950fe6f8657e15`.
+
+Code fix876024296c79b6e2d6479112d860a8640443e701 adds exactly two calls:
+TaskGuard and RegisteredTransition's genuine abandonment branches revoke new
+mechanical jobs before publishing Lost. Either guard can publish first, so both
+must defend that boundary. Normal Finished completion and the normal disarmed
+error-return endpoint remain unchanged. The cancelled actor slot remains Unknown;
+actual NotCreated worker and custodian joins free only their own two slots.
+The exact retained entry has no deferred recovery disposition. No native stop,
+new capability, producer, preparation-consumption or first-cause change is added.
+
+The two missing design-required mutation controls were addressed by test-only
+bb81801594a0f540291bea89c51cebdce8049db9. The actual custodied closed-runtime
+spawn now runs on a helper thread with the existing2s observation bound; its
+normal completion joins that helper. The fixture never queues a resource factory
+or starts an OS child. A deliberately deadlocked mutant can fail within the bound;
+its detached synthetic thread is terminated by test-process exit, which earns no
+join, native cleanup or complete resource-settlement credit.
+
+Three additional distinct operators were compiled on exactbb818015 in an owned
+mutation worktree: remove both abandonment revocations (one boundary), omit the
+pre-reservation runtime check, and move the actual Control.task mutex release
+until after runtime.spawn. Each failed at its intended consumer assertion.
+The first driver's expected assertion text was wrong: it reported false for the
+abandonment kill and exited1 at its final classification assertion, although the
+compiled test had exited101 at the actual file-effect assertion. This raw record
+is retained. Manual inspection of its immutable log established the intended
+failure; no mutant execution was rerun to obtain a passing driver classification.
+The verified per-mutant commit/patch/log hashes are in
+[the mutation record](issue-19-custody-source2-mutations.json).
+
+Exact full treeee8a541be2f714fb2e526471e2959b91e1bc4f44 was restored clean to
+bb818015. Restored Debug19PASS2.77s, Release19PASS2.67s, fmt and all-target
+warnings-denied clippy passed. All owned mutation commands closed before normal
+mutation-worktree removal. The earlier16 operators retain their original94350f
+observation; these3 additions make19 distinct operators across those respective
+baselines, not a new19-operator run on bb818015.
+
+A's early-reply2s overlap oracle remains timing-dependent: if a broken actor is
+not scheduled within its detection window, that mutant can survive. The earlier
+observed kill is retained with this limitation; no deadline/parallelism increase,
+serial run or timing-independent guarantee is claimed. The worker-spawn-Err plus
+queued Note and future pre-created handler-panic issues remain unreproduced
+activation requirements. The resource-already-joined/context-error, Lost with no
+deferred intent, nonexistent terminal eviction and fixture-versus-factory Git
+wording have been corrected in the design/master/current evidence.
+
+## Exact fix regression and prior CI observation
+
+At clean8760242, focused Debug19 and Release19 passed, affected Release
+Codex122 passed/1 ignored (42.53s), and fmt, all-target warnings-denied clippy,
+Debug build and Release build passed. Full default Debug remains RED:
+library284 passed/6 failed/23 ignored in65.46s, with later workspace targets
+unrun. All19 mechanics passed. This distinct required run follows an actual
+production fix; it is not a same-head retry of94350f. Full Release workspace tests
+were not run. The later bb818015 changes only the bounded test control; its
+restored focused/lint checks do not replace this failed workspace gate.
+
+- live_reference_change_rejects_actual_resume_before_spawn: Git preflight Timeout,
+  nondispatched/not-attempted receipt, actual child exit101 observed10687ms.
+- absent_native_baseline_cannot_be_introduced_by_declared_caller: expected transport
+  success failed; actual failure string unprinted, child exit101 observed10696ms.
+- owning_reference_change_after_snapshot_rejects_start: expected StateConflict
+  prefix failed; actual failure string unprinted, child exit101 observed10706ms.
+- unrelated_foreign_changes_do_not_revoke_start: kind0 Git preflight Timeout,
+  nondispatched/not-attempted receipt, actual exit101 observed10718ms.
+- unrelated_foreign_changes_do_not_revoke_resume: original60002ms watchdog;
+  last boundary2/case7/terminal, actual child SIGKILL/reap.
+- unrelated_foreign_changes_do_not_revoke_checkpoint: original60002ms watchdog;
+  last boundary1/case8/terminal, actual child SIGKILL/reap.
+
+Cause and component contribution remain unknown. Prior parent94350f/857/a8 failures
+and current8760242 failures are separate observations, without a budget/latch or
+acceptance waiver. Full Debug log SHA256:
+`513b4ed900c90392c090e95351088043ff278b574e247e121bb7a3b486fd8651`.
+Affected Release log SHA256:
+`45ad5f6ffb79790d78c8d989b03d18a75b8f0c4aa7ea84d248a7fa0ffc95e329`.
+
+Prior exact895a621 CI37258294171 succeeded at every macOS/Linux step. Actual
+checkout e3355fe9b377d56d8bf9f5266c3f2039aef7638c has parents768f843/895a621
+and complete treedcc8a5008b6a4e51ecde376dca8a2d7f5acf4439 identical to895a621.
+It ran workspace Debug tests and Release builds, not full Release tests; it does
+not cover the later fix/test delta or explain the local failures. Log SHA256:
+`977b6d8daed6d8dc591ab25c730415ff35843dd0d8b70fa939ba98d9e1db5936`.
+The new immutable delta still requires independent review and final-head CI;
+workspace failure keeps this draft composition unmerged.
