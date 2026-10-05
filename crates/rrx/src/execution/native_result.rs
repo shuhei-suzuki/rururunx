@@ -224,10 +224,7 @@ impl NativeResultReceipt {
         );
         // Initial acquisition profile is text-only. Retaining an arbitrary Value here
         // would bypass decoded-content/depth bounds for non-complete receipts.
-        ensure!(
-            self.structured_output.is_none(),
-            "structured native content profile is unsupported"
-        );
+        // Mutation: omit the text-only structured-content refusal.
         if let Some(prefix) = &self.prefix {
             ensure!(
                 prefix.prefix.len() <= PREFIX_BYTES
