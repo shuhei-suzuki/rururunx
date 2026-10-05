@@ -581,6 +581,15 @@ through registered, bounded UnitGit reads; a SHA attached to a live filesystem
 inventory is insufficient. Repository-map selection retains mandatory rules,
 scope/version identity, complete inventory bounds and explicit skipped content.
 Legacy context readers and #46/#60 ps observation are not extended as a fallback.
+This also replaces the separate tracked rule/config ingress in `Workflow.inputs`
+and `prepare_pack`: the prepared committed-source frame supplies their exact
+bytes, hashes and parsed policy from the same base commit, instead of the legacy
+live `load_rules` producer. Sources.capture alone cannot replace that consumer,
+which currently forbids `rules:` keys and independently prepends live rules.
+Explicitly declared supported external noncredential rule references retain
+their separate scoped, hashed dependency policy; they are not falsely described
+as committed objects. First adoption validates the complete prepared source/rule
+frame against its Context; unsupported origins refuse without a live fallback.
 
 At the first real Executor phase (Implement for Quick, Requirements for
 Standard/Strict), the capability revalidates the actual prepared namespace and
@@ -616,6 +625,10 @@ helpers and repeat adoption; abandonment/restart retirement; old-writer guard
 failure and current-writer success. Removing each decisive grant/CAS guard must
 make its consumer control fail. This contract is a Phase2 implementation plan,
 not evidence of production source ports or native compatibility.
+An actual initialize/prepare_pack control must distinguish tracked rule/config A
+at the base commit from live Project bytes B: payload, rule hashes and selected
+policy use A or explicitly refuse, never silently use B. Omitting the rule-frame
+wiring while retaining the committed repository index must fail this control.
 
 ## 11. CLI, observability and verification plan
 
