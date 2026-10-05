@@ -179,10 +179,12 @@ fn schema5_replaces_contract4_guards_and_fences_already_open_writer() {
         [Uuid::new_v4().to_string()],
     )
     .unwrap();
-    for table in MUTABLE_TABLES
-        .iter()
-        .filter(|table| !matches!(**table, "native_invocations" | "native_results"))
-    {
+    for table in MUTABLE_TABLES.iter().filter(|table| {
+        !matches!(
+            **table,
+            "native_invocations" | "native_results" | "source_recoveries"
+        )
+    }) {
         for action in ["INSERT", "UPDATE", "DELETE"] {
             old.execute_batch(&format!("CREATE TRIGGER writer_{table}_{action} BEFORE {action} ON {table} WHEN rrx_writer_contract_version()<>4 BEGIN SELECT RAISE(ABORT,'incompatible rrx writer contract'); END;")).unwrap();
         }

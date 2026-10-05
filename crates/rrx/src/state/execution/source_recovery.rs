@@ -193,8 +193,9 @@ fn snapshot(c: &Connection, task_id: TaskId) -> Result<Snapshot> {
     let mut columns = scoped_columns(&context.scope);
     columns.extend([("owner", json!(owner)), ("version", json!(context.version))]);
     check_indexed(c, "context_versions", &columns)?;
+    // Validate an existing historical Workflow, not an invented initial row.
+    crate::workflow::validate_transition(&task, &record, Some(&record))?;
     crate::workflow::validate_context(&task, &record, &context)?;
-    crate::workflow::validate_transition(&task, &record, None)?;
     let id = workflow
         .sources
         .artifact
