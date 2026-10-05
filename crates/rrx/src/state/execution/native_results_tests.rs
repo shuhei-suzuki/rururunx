@@ -270,6 +270,7 @@ fn populated_receipt(
         prefix: None,
         answer_sha256: Some(digest(b"answer")),
         terminal_sha256: Some(digest(b"terminal")),
+        wire: None,
         observed_work: WorkOutcome::Success,
         disposition: Disposition::Completed,
         diagnostics: vec![],

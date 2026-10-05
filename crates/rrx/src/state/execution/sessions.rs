@@ -2,6 +2,7 @@ use super::*;
 
 impl Store {
     /// Journal a new native Session before spawn, without changing the Task version.
+    #[cfg(test)]
     pub(crate) fn register_execution_session(
         &mut self,
         authority: &ExecutionAuthority,
@@ -10,47 +11,7 @@ impl Store {
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let mut unit = validate_authority(&tx, authority, true, false)?;
-        ensure!(
-            unit.state == UnitState::Preparing
-                && unit.phase != WORKFLOW_SOURCE_BOOTSTRAP
-                && valid_oid(&unit.base_sha)
-                && unit.session_id.is_none()
-                && session.scope == unit.scope
-                && session.worktree == unit.worktree
-                && session.state == SessionState::Starting
-                && session.pid.is_none()
-                && session.native_ref.is_none()
-                && session.provider == unit.provider,
-            "invalid new execution Session"
-        );
-        ensure!(
-            matches!(
-                (unit.kind, session.role),
-                (UnitKind::Executor, SessionRole::Executor)
-                    | (UnitKind::Reviewer, SessionRole::Reviewer)
-                    | (UnitKind::Verifier, SessionRole::Consultant)
-            ),
-            "Session/unit role mismatch"
-        );
-        let mut record = Record::new(
-            unit.scope.clone(),
-            RecordKind::Session,
-            serde_json::to_value(session)?,
-        );
-        record.id = RecordId(session.id.0);
-        write_record_tx(&tx, &record)?;
-        let (p, g, t) = scope_keys(&unit.scope)?;
-        tx.execute("INSERT INTO session_units(session_id,unit_id,project_id,goal_id,task_id,dispatch_state) VALUES(?1,?2,?3,?4,?5,'pending')",params![session.id.to_string(),unit.id.to_string(),p,g,t])?;
-        unit.session_id = Some(session.id);
-        unit.state = UnitState::DispatchPending;
-        write_unit(&tx, &mut unit)?;
-        append_event(
-            &tx,
-            &unit.scope,
-            "execution.session_intent",
-            json!({"unit":unit.id,"session":session.id}),
-        )?;
+        let unit = register_session_tx(&tx, authority, session)?;
         tx.commit()?;
         Ok(unit)
     }
@@ -100,27 +61,9 @@ impl Store {
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let unit = unit_tx(&tx, unit_id)?;
-        ensure!(
-            !unit.native_effects_open,
-            "close logical authority before transport closure"
-        );
-        let record = checked_session_record(&tx, &unit, session, expected)?;
-        let next = write_record_tx(&tx, &record)?;
-        tx.execute(
-            "UPDATE session_units SET dispatch_state=?1 WHERE session_id=?2 AND unit_id=?3",
-            params![
-                if session.state == SessionState::Lost {
-                    "unknown"
-                } else {
-                    "terminal"
-                },
-                session.id.to_string(),
-                unit.id.to_string()
-            ],
-        )?;
+        let version = close_session_tx(&tx, unit_id, session, expected)?;
         tx.commit()?;
-        Ok(next.version)
+        Ok(version)
     }
 }
 fn session_unit_tx(connection: &Connection, id: SessionId) -> Result<Option<ExecutionUnit>> {
@@ -248,4 +191,81 @@ pub(in crate::state) fn logically_retired_session(
             && !unit.result_finalization_open
             && unit.kind != UnitKind::Legacy,
     )
+}
+
+pub(super) fn register_session_tx(
+    tx: &Transaction<'_>,
+    authority: &ExecutionAuthority,
+    session: &Session,
+) -> Result<ExecutionUnit> {
+    let mut unit = validate_authority(tx, authority, true, false)?;
+    ensure!(
+        unit.state == UnitState::Preparing
+            && unit.phase != WORKFLOW_SOURCE_BOOTSTRAP
+            && valid_oid(&unit.base_sha)
+            && unit.session_id.is_none()
+            && session.scope == unit.scope
+            && session.worktree == unit.worktree
+            && session.state == SessionState::Starting
+            && session.pid.is_none()
+            && session.native_ref.is_none()
+            && session.provider == unit.provider,
+        "invalid new execution Session"
+    );
+    ensure!(
+        matches!(
+            (unit.kind, session.role),
+            (UnitKind::Executor, SessionRole::Executor)
+                | (UnitKind::Reviewer, SessionRole::Reviewer)
+                | (UnitKind::Verifier, SessionRole::Consultant)
+        ),
+        "Session/unit role mismatch"
+    );
+    let mut record = Record::new(
+        unit.scope.clone(),
+        RecordKind::Session,
+        serde_json::to_value(session)?,
+    );
+    record.id = RecordId(session.id.0);
+    write_record_tx(tx, &record)?;
+    let (p, g, t) = scope_keys(&unit.scope)?;
+    tx.execute("INSERT INTO session_units(session_id,unit_id,project_id,goal_id,task_id,dispatch_state) VALUES(?1,?2,?3,?4,?5,'pending')",params![session.id.to_string(),unit.id.to_string(),p,g,t])?;
+    unit.session_id = Some(session.id);
+    unit.state = UnitState::DispatchPending;
+    write_unit(tx, &mut unit)?;
+    append_event(
+        tx,
+        &unit.scope,
+        "execution.session_intent",
+        json!({"unit":unit.id,"session":session.id}),
+    )?;
+    Ok(unit)
+}
+
+pub(super) fn close_session_tx(
+    tx: &Transaction<'_>,
+    unit_id: UnitId,
+    session: &Session,
+    expected: u64,
+) -> Result<u64> {
+    let unit = unit_tx(tx, unit_id)?;
+    ensure!(
+        !unit.native_effects_open,
+        "close logical authority before transport closure"
+    );
+    let record = checked_session_record(tx, &unit, session, expected)?;
+    let next = write_record_tx(tx, &record)?;
+    tx.execute(
+        "UPDATE session_units SET dispatch_state=?1 WHERE session_id=?2 AND unit_id=?3",
+        params![
+            if session.state == SessionState::Lost {
+                "unknown"
+            } else {
+                "terminal"
+            },
+            session.id.to_string(),
+            unit.id.to_string()
+        ],
+    )?;
+    Ok(next.version)
 }
