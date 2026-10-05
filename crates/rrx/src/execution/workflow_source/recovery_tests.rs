@@ -355,3 +355,203 @@ async fn source_claim_checks_helper_admission_competition_and_full_dto_currency(
     );
     assert!(capture(&sources, project, task).await.is_err());
 }
+
+#[tokio::test]
+async fn actual_recovery_future_drop_invalidates_only_its_uninstalled_claim() {
+    let f = published().await;
+    let sources = Arc::new(ManagedWorkflowSources::new(f.owner.clone(), f.config).unwrap());
+    let (reached, observed) = tokio::sync::oneshot::channel();
+    let (_release, paused) = tokio::sync::oneshot::channel();
+    let worker = sources.clone();
+    let task_id = f.task;
+    let recovering = tokio::spawn(async move {
+        worker
+            .recover_retained_inner(
+                task_id,
+                Some(RecoveryPause {
+                    after_verify: false,
+                    reached,
+                    release: paused,
+                }),
+            )
+            .await
+    });
+    tokio::time::timeout(Duration::from_secs(15), observed)
+        .await
+        .unwrap()
+        .unwrap();
+    let effects_before = f
+        .owner
+        .store
+        .lock()
+        .unwrap()
+        .managed_effects(f.artifact.unit_id)
+        .unwrap();
+    recovering.abort();
+    assert!(recovering.await.unwrap_err().is_cancelled());
+    let (project, task) = owners(&f.owner, f.task);
+    assert!(capture(&sources, project, task).await.is_err());
+    assert_eq!(
+        serde_json::to_value(
+            f.owner
+                .store
+                .lock()
+                .unwrap()
+                .managed_effects(f.artifact.unit_id)
+                .unwrap()
+        )
+        .unwrap(),
+        serde_json::to_value(effects_before).unwrap()
+    );
+    assert_eq!(
+        f.owner
+            .store
+            .lock()
+            .unwrap()
+            .result_artifact(f.artifact.id)
+            .unwrap()
+            .state,
+        ArtifactState::Published
+    );
+    // Actual next reconstruction is possible; no row reconstructs an old capability.
+    sources.recover_retained(f.task).await.unwrap();
+    let (project, task) = owners(&f.owner, f.task);
+    assert!(capture(&sources, project, task).await.is_ok());
+}
+
+#[tokio::test]
+async fn final_recovery_acceptance_refuses_instruction_and_epoch_races() {
+    for epoch_change in [false, true] {
+        let f = published().await;
+        let sources = Arc::new(ManagedWorkflowSources::new(f.owner.clone(), f.config).unwrap());
+        let (reached, observed) = tokio::sync::oneshot::channel();
+        let (release, paused) = tokio::sync::oneshot::channel();
+        let worker = sources.clone();
+        let task_id = f.task;
+        let recovering = tokio::spawn(async move {
+            worker
+                .recover_retained_inner(
+                    task_id,
+                    Some(RecoveryPause {
+                        after_verify: true,
+                        reached,
+                        release: paused,
+                    }),
+                )
+                .await
+        });
+        tokio::time::timeout(Duration::from_secs(15), observed)
+            .await
+            .unwrap()
+            .unwrap();
+        if epoch_change {
+            f.owner
+                .store
+                .lock()
+                .unwrap()
+                .begin_execution_epoch()
+                .unwrap();
+        } else {
+            let (_, mut task) = owners(&f.owner, f.task);
+            task.title = "post-read instruction drift".into();
+            f.owner.store.lock().unwrap().put_task(&mut task).unwrap();
+        }
+        let effects = f
+            .owner
+            .store
+            .lock()
+            .unwrap()
+            .managed_effects(f.artifact.unit_id)
+            .unwrap();
+        release.send(()).unwrap();
+        assert!(
+            recovering.await.unwrap().is_err(),
+            "complete reads cannot ratify changed acceptance authority"
+        );
+        let (project, task) = owners(&f.owner, f.task);
+        assert!(capture(&sources, project, task).await.is_err());
+        assert_eq!(
+            serde_json::to_value(
+                f.owner
+                    .store
+                    .lock()
+                    .unwrap()
+                    .managed_effects(f.artifact.unit_id)
+                    .unwrap()
+            )
+            .unwrap(),
+            serde_json::to_value(effects).unwrap()
+        );
+        assert_eq!(
+            f.owner
+                .store
+                .lock()
+                .unwrap()
+                .result_artifact(f.artifact.id)
+                .unwrap()
+                .state,
+            ArtifactState::Published
+        );
+    }
+}
+
+#[tokio::test]
+async fn recovery_rejects_bad_manifest_and_complete_caller_dto_drift() {
+    use std::os::unix::fs::PermissionsExt;
+    let f = published().await;
+    let sources = ManagedWorkflowSources::new(f.owner.clone(), f.config).unwrap();
+    let original = std::fs::read(&f.artifact.manifest).unwrap();
+    let permissions = std::fs::metadata(&f.artifact.manifest)
+        .unwrap()
+        .permissions();
+    std::fs::set_permissions(&f.artifact.manifest, std::fs::Permissions::from_mode(0o600)).unwrap();
+    std::fs::write(&f.artifact.manifest, b"{}\n").unwrap();
+    assert!(
+        sources.recover_retained(f.task).await.is_err(),
+        "corrupt retained manifest cannot install a frame"
+    );
+    let (project, task) = owners(&f.owner, f.task);
+    assert!(
+        capture(&sources, project.clone(), task.clone())
+            .await
+            .is_err()
+    );
+    std::fs::write(&f.artifact.manifest, original).unwrap();
+    std::fs::set_permissions(&f.artifact.manifest, permissions).unwrap();
+    sources.recover_retained(f.task).await.unwrap();
+    let mut different_task = task.clone();
+    different_task.blockers.push("caller-only metadata".into());
+    let mut different_project = project.clone();
+    different_project.name = "caller-only name".into();
+    let effects = f
+        .owner
+        .store
+        .lock()
+        .unwrap()
+        .managed_effects(f.artifact.unit_id)
+        .unwrap();
+    assert!(
+        capture(&sources, project.clone(), different_task)
+            .await
+            .is_err()
+    );
+    assert!(
+        capture(&sources, different_project, task.clone())
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        serde_json::to_value(
+            f.owner
+                .store
+                .lock()
+                .unwrap()
+                .managed_effects(f.artifact.unit_id)
+                .unwrap()
+        )
+        .unwrap(),
+        serde_json::to_value(effects).unwrap(),
+        "caller mismatch refuses before retained helpers"
+    );
+    assert!(capture(&sources, project, task).await.is_ok());
+}
