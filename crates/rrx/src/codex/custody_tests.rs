@@ -385,6 +385,10 @@ mod custody_mechanics {
             .await
             .expect("abandoned actor must return its caller error")
             .unwrap_err();
+        assert!(
+            control.jobs_revoked(),
+            "caller error observation must already see abandoned jobs revoked"
+        );
         assert_eq!(error.kind, ErrorKind::SessionLost);
         assert!(matches!(
             tokio::time::timeout(Duration::from_secs(2), control.wait_finished())
