@@ -251,6 +251,8 @@ struct TestHooks {
     before_authorize: Option<Arc<TestPause>>,
     after_spawn: Option<Arc<TestPause>>,
     after_reap_send: Option<Arc<TestPause>>,
+    before_cleanup_ack: Option<Arc<TestPause>>,
+    facts: Arc<Mutex<Option<ReaderFacts>>>,
     after_primary_panic: bool,
     pending_stderr: bool,
     missing_executable: bool,
@@ -529,32 +531,80 @@ struct NativeAssets {
     #[cfg(test)]
     signals: usize,
 }
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum JoinState {
+    #[default]
+    NotStarted,
+    NotObserved,
+    Returned,
+    Panicked,
+    Cancelled,
+}
+impl JoinState {
+    fn settled(self) -> bool {
+        !matches!(self, Self::NotObserved)
+    }
+}
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct ReaderFact {
+    join: JoinState,
+    abort_requested: bool,
+    read_ok: bool,
+    read_error: Option<ErrorKind>,
+}
+impl ReaderFact {
+    fn observe(&mut self, result: &Result<AdapterResult<Vec<u8>>, tokio::task::JoinError>) {
+        match result {
+            Ok(read) => {
+                self.join = JoinState::Returned;
+                self.read_ok = read.is_ok();
+                self.read_error = read.as_ref().err().map(|error| error.kind);
+            }
+            Err(error) => {
+                self.join = if error.is_cancelled() {
+                    JoinState::Cancelled
+                } else {
+                    JoinState::Panicked
+                };
+            }
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct ReaderFacts {
+    stdout: ReaderFact,
+    stderr: ReaderFact,
+}
 #[derive(Default)]
 struct Readers {
     stdout: Option<JoinHandle<AdapterResult<Vec<u8>>>>,
     stderr: Option<JoinHandle<AdapterResult<Vec<u8>>>>,
-    stdout_joined: bool,
-    stderr_joined: bool,
+    facts: ReaderFacts,
 }
 impl Readers {
-    fn abort(&self) {
-        if let Some(task) = &self.stdout {
+    fn abort(&mut self) {
+        if !self.facts.stdout.join.settled()
+            && let Some(task) = &self.stdout
+        {
+            self.facts.stdout.abort_requested = true;
             task.abort();
         }
-        if let Some(task) = &self.stderr {
+        if !self.facts.stderr.join.settled()
+            && let Some(task) = &self.stderr
+        {
+            self.facts.stderr.abort_requested = true;
             task.abort();
         }
     }
     fn settled(&self) -> bool {
-        (self.stdout.is_none() || self.stdout_joined)
-            && (self.stderr.is_none() || self.stderr_joined)
+        self.facts.stdout.join.settled() && self.facts.stderr.join.settled()
     }
     async fn join_stdout(&mut self) -> AdapterResult<Vec<u8>> {
         let Some(handle) = self.stdout.as_mut() else {
             return Ok(Vec::new());
         };
         let result = handle.await;
-        self.stdout_joined = true;
+        self.facts.stdout.observe(&result);
         result.map_err(|e| error(ErrorKind::ProcessFailure, e.to_string()))?
     }
     async fn join_stderr(&mut self) -> AdapterResult<()> {
@@ -562,18 +612,25 @@ impl Readers {
             return Ok(());
         };
         let result = handle.await;
-        self.stderr_joined = true;
+        self.facts.stderr.observe(&result);
         result
             .map_err(|e| error(ErrorKind::ProcessFailure, e.to_string()))?
             .map(|_| ())
     }
     async fn finish_joins(&mut self) {
-        if !self.stdout_joined {
+        if !self.facts.stdout.join.settled() {
             let _ = self.join_stdout().await;
         }
-        if !self.stderr_joined {
+        if !self.facts.stderr.join.settled() {
             let _ = self.join_stderr().await;
         }
+    }
+}
+#[cfg(test)]
+fn freeze_reader_facts(record: &OpRecord, readers: &Readers) {
+    let mut facts = record._context.hooks.facts.lock().unwrap();
+    if facts.is_none() {
+        *facts = Some(readers.facts);
     }
 }
 enum NativeCommand {
@@ -669,7 +726,10 @@ fn supervise(record: &Arc<OpRecord>, request: Request) -> Completion {
             });
         }
     };
-    *record.worker.lock().unwrap() = Some(worker);
+    *record
+        .worker
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner()) = Some(worker);
     #[cfg(test)]
     if let Some(pause) = &record._context.hooks.before_authorize {
         pause.block();
@@ -694,6 +754,8 @@ fn supervise(record: &Arc<OpRecord>, request: Request) -> Completion {
         cleanup_receiver,
         reap_receiver,
     ));
+    #[cfg(test)]
+    freeze_reader_facts(record, &readers);
     if !outcome.settled {
         // Publish the frozen caller outcome before late observations. Same frame,
         // same handles/wait; no replacement observer or flag clear is permitted.
@@ -815,6 +877,7 @@ async fn supervisor_work(
             let stderr = tokio::process::ChildStderr::from_std(stderr)
                 .map_err(|_| error(ErrorKind::LaunchFailure, "Git stderr registration failed"))?;
             readers.stdout = Some(tokio::spawn(read_git_output(stdout)));
+            readers.facts.stdout.join = JoinState::NotObserved;
             #[cfg(test)]
             if record._context.hooks.pending_stderr {
                 readers.stderr = Some(tokio::spawn(async move {
@@ -830,6 +893,7 @@ async fn supervisor_work(
             {
                 readers.stderr = Some(tokio::spawn(read_git_output(stderr)));
             }
+            readers.facts.stderr.join = JoinState::NotObserved;
             Ok(())
         })()
     };
@@ -954,6 +1018,8 @@ async fn supervisor_work(
     // A deadline return is frozen before awaiting the same outstanding wait late.
     let settled = record.native_settled.load(Ordering::SeqCst) && readers.settled();
     if !settled {
+        #[cfg(test)]
+        freeze_reader_facts(record, readers);
         record.ticket.publish(Outcome {
             primary: primary
                 .as_ref()
@@ -1085,6 +1151,10 @@ fn native_worker(
                     first_cleanup(record, &mut native);
                     let result = native.cleanup.as_ref().unwrap();
                     let succeeded = result.is_ok();
+                    #[cfg(test)]
+                    if let Some(pause) = &record._context.hooks.before_cleanup_ack {
+                        pause.block();
+                    }
                     if let Some(sender) = cleanup.take() {
                         let _ = sender.send(match result {
                             Ok(()) => Ok(()),

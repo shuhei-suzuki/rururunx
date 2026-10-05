@@ -7,7 +7,7 @@ async fn shell(
 ) -> AdapterResult<Vec<u8>> {
     run(
         Path::new("/bin/sh"),
-        Path::new("/private/tmp"),
+        Path::new("/tmp"),
         &["-c".into(), script.into()],
         vec![],
         tokio::time::Instant::now() + Duration::from_secs(5),
@@ -59,7 +59,7 @@ async fn expired_refusal_precedes_capacity_and_has_no_job_or_flag() {
     let flag = Arc::new(AtomicBool::new(false));
     let result = run(
         Path::new("/nonexistent"),
-        Path::new("/private/tmp"),
+        Path::new("/tmp"),
         &[],
         vec![],
         tokio::time::Instant::now(),
@@ -77,7 +77,7 @@ async fn actual_std_spawn_then_initialization_failure_is_settled() {
     let mut context = TestGitContext::isolated();
     context.context.hooks.initialized_error = true;
     let flag = Arc::new(AtomicBool::new(false));
-    let failure = shell(context.clone(), "exec sleep 30", flag.clone())
+    let failure = shell(context.clone(), "exec /bin/sleep 30", flag.clone())
         .await
         .unwrap_err();
     assert_eq!(failure.kind, ErrorKind::LaunchFailure);
@@ -90,7 +90,7 @@ async fn opaque_attempted_spawn_error_retains_exact_four_slots() {
     let flag = Arc::new(AtomicBool::new(false));
     let failure = run(
         Path::new("/rrx-no-such-executable"),
-        Path::new("/private/tmp"),
+        Path::new("/tmp"),
         &[],
         vec![],
         tokio::time::Instant::now() + Duration::from_secs(5),
@@ -111,7 +111,7 @@ async fn unchanged_scalar_contract_trims_metadata() {
     let flag = Arc::new(AtomicBool::new(false));
     let output = super::super::bounded_git(
         Path::new("/bin/sh"),
-        Path::new("/private/tmp"),
+        Path::new("/tmp"),
         &["-c".into(), "printf ' a \n'".into()],
         vec![],
         tokio::time::Instant::now() + Duration::from_secs(5),
@@ -271,7 +271,7 @@ async fn sixteen_actual_owner_records_bound_all_four_job_lanes() {
     let rejected_flag = Arc::new(AtomicBool::new(false));
     let refused = run(
         Path::new("/rrx-must-not-spawn"),
-        Path::new("/private/tmp"),
+        Path::new("/tmp"),
         &[],
         vec![],
         tokio::time::Instant::now() + Duration::from_millis(30),
@@ -312,6 +312,14 @@ async fn actual_stdout_cap_failure_aborts_and_observes_pending_peer() {
     assert_eq!(error.message, "Git metadata exceeds output budget");
     assert!(!flag.load(Ordering::SeqCst));
     released(&context).await;
+    let facts = context.context.hooks.facts.lock().unwrap().unwrap();
+    assert_eq!(facts.stdout.join, JoinState::Returned);
+    assert_eq!(facts.stdout.read_error, Some(ErrorKind::InvalidInput));
+    assert!(!facts.stdout.abort_requested);
+    assert_eq!(facts.stderr.join, JoinState::Cancelled);
+    assert!(facts.stderr.abort_requested);
+    assert!(!facts.stderr.read_ok);
+    assert!(facts.stderr.read_error.is_none());
 }
 
 #[tokio::test]
@@ -498,4 +506,174 @@ async fn generic_live_launch_error_uses_actual_git_flag_without_retyping_error()
             released(&context).await;
         }
     }
+}
+
+#[tokio::test]
+async fn slow_cleanup_ack_does_not_consume_the_distinct_reap_window() {
+    let mut context = TestGitContext::isolated();
+    let pause = Arc::new(TestPause::default());
+    let release = TestRelease(pause.clone());
+    context.context.hooks.before_cleanup_ack = Some(pause.clone());
+    let flag = Arc::new(AtomicBool::new(false));
+    let task = tokio::spawn(shell(context.clone(), "printf cleanup", flag.clone()));
+    pause.reached().await;
+    // Hold the already-counted native worker beyond the reap window. Its cleanup
+    // result is established, but no stage acknowledgement has been delivered.
+    tokio::time::sleep(WINDOW + Duration::from_millis(30)).await;
+    let premature = task.is_finished();
+    drop(release);
+    let result = task.await.unwrap();
+    released(&context).await;
+    assert!(!premature);
+    assert_eq!(result.unwrap(), b"cleanup");
+    assert!(!flag.load(Ordering::SeqCst));
+}
+
+#[test]
+#[ignore = "explicit child entry for the owned process-group fixture"]
+fn owned_alternate_group_fixture_child() {
+    let mode = std::env::var("RRX_GIT_OWNER_FIXTURE_MODE").unwrap();
+    let root = PathBuf::from(std::env::var_os("RRX_GIT_OWNER_FIXTURE_ROOT").unwrap());
+    if mode == "moved" {
+        let raw: i32 = std::env::var("RRX_GIT_OWNER_FIXTURE_GROUP")
+            .unwrap()
+            .parse()
+            .unwrap();
+        let group = Pid::from_raw(raw).unwrap();
+        rustix::process::setpgid(None, Some(group)).unwrap();
+    } else {
+        assert_eq!(mode, "anchor");
+    }
+    std::fs::write(root.join(format!("{mode}.ready")), b"ready").unwrap();
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    while !root.join(format!("{mode}.release")).exists() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "owned fixture release missing"
+        );
+        thread::sleep(Duration::from_millis(5));
+    }
+    std::process::exit(0);
+}
+
+struct AlternateFixture {
+    child: StdChild,
+    root: PathBuf,
+}
+impl Drop for AlternateFixture {
+    fn drop(&mut self) {
+        // These are solely our fixture's release files and actual direct Child.
+        // This guard runs on the synchronous test thread, never an async poller.
+        let _ = std::fs::write(self.root.join("moved.release"), b"release");
+        let _ = std::fs::write(self.root.join("anchor.release"), b"release");
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+async fn fixture_ready(path: &Path) {
+    tokio::time::timeout(Duration::from_secs(3), async {
+        while !path.exists() {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+}
+
+#[test]
+fn blocked_owning_child_wait_freezes_then_same_jobs_settle_late() {
+    let directory = tempfile::tempdir().unwrap();
+    let executable = std::env::current_exe().unwrap();
+    let args = vec![
+        "--ignored".to_owned(),
+        "--exact".to_owned(),
+        "adapter::git_owner::tests::owned_alternate_group_fixture_child".to_owned(),
+        "--nocapture".to_owned(),
+    ];
+    let child = StdCommand::new(&executable)
+        .args(&args)
+        .env_clear()
+        .env("RRX_GIT_OWNER_FIXTURE_MODE", "anchor")
+        .env("RRX_GIT_OWNER_FIXTURE_ROOT", directory.path())
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .process_group(0)
+        .spawn()
+        .unwrap();
+    let anchor = AlternateFixture {
+        child,
+        root: directory.path().to_owned(),
+    };
+    let context = TestGitContext::isolated();
+    let flag = Arc::new(AtomicBool::new(false));
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let (failure, record, frozen, retained, facts, late_facts) = runtime.block_on(async {
+        fixture_ready(&directory.path().join("anchor.ready")).await;
+        let environment = vec![
+            ("RRX_GIT_OWNER_FIXTURE_MODE".into(), "moved".into()),
+            (
+                "RRX_GIT_OWNER_FIXTURE_ROOT".into(),
+                directory.path().as_os_str().to_owned(),
+            ),
+            (
+                "RRX_GIT_OWNER_FIXTURE_GROUP".into(),
+                anchor.child.id().to_string().into(),
+            ),
+        ];
+        // Deadline applies to observation, followed by the unchanged 250ms owning
+        // reap window. The original group becomes empty but this direct child lives.
+        let call_executable = executable.clone();
+        let call_root = directory.path().to_owned();
+        let call_args = args.clone();
+        let call_flag = flag.clone();
+        let call_context = context.clone();
+        let call = tokio::spawn(async move {
+            run(
+                &call_executable,
+                &call_root,
+                &call_args,
+                environment,
+                tokio::time::Instant::now() + Duration::from_secs(1),
+                call_flag,
+                Some(call_context),
+            )
+            .await
+        });
+        fixture_ready(&directory.path().join("moved.ready")).await;
+        let record = context.pool.as_ref().unwrap().state.lock().unwrap().records[0].clone();
+        let failure = tokio::time::timeout(Duration::from_secs(3), call)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap_err();
+        let frozen = flag.load(Ordering::SeqCst);
+        let retained = context.held_jobs();
+        let facts = context.context.hooks.facts.lock().unwrap().unwrap();
+        // The native vault is intentionally held by the actual blocking wait.
+        assert!(record.native.try_lock().is_err());
+        // Cancellation remains a short signal while that wait is blocked.
+        record.ticket.cancel();
+        std::fs::write(directory.path().join("moved.release"), b"release").unwrap();
+        released(&context).await;
+        let late_facts = context.context.hooks.facts.lock().unwrap().unwrap();
+        (failure, record, frozen, retained, facts, late_facts)
+    });
+    drop(runtime);
+    drop(anchor);
+    assert_eq!(failure.kind, ErrorKind::SessionLost);
+    assert_eq!(
+        failure.message,
+        "Git child death not confirmed after cleanup"
+    );
+    assert!(frozen && flag.load(Ordering::SeqCst));
+    assert_eq!(retained, JOBS);
+    assert_eq!(facts, late_facts);
+    assert!(facts.stdout.join.settled() && facts.stderr.join.settled());
+    assert!(record.runtime.lock().unwrap().is_none());
+    assert!(record.worker.lock().unwrap().is_none());
+    assert!(record.native.lock().unwrap().child.is_none());
 }
