@@ -12,7 +12,7 @@ use serde_json::{Value, json};
 
 use crate::domain::*;
 
-pub const SCHEMA_VERSION: i64 = 4;
+pub const SCHEMA_VERSION: i64 = 5;
 mod execution;
 pub(crate) use execution::QuotaAdmission;
 pub(crate) use execution::cleanup::CleanupClaim;
@@ -153,6 +153,9 @@ impl Store {
                 for next in (locked_version + 1)..=SCHEMA_VERSION {
                     if next == 4 {
                         execution::install_schema(&tx)?;
+                    }
+                    if next == 5 {
+                        execution::install_writer_guards(&tx)?;
                     }
                     tx.pragma_update(None, "user_version", next)?;
                 }

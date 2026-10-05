@@ -10,6 +10,76 @@ pub struct AttemptManager {
     owner: Arc<RuntimeOwner>,
     resources: ResourceManager,
 }
+
+/// Live preparation provenance. It cannot be reconstructed from a ledger row.
+/// Dropping it retires the owned preparation, without claiming process recovery.
+pub struct PreparedExecutor {
+    owner: Arc<RuntimeOwner>,
+    unit: ExecutionUnit,
+    _guard: owner::PreparationGuard,
+}
+impl PreparedExecutor {
+    pub fn unit(&self) -> &ExecutionUnit {
+        &self.unit
+    }
+
+    /// Read an ordinary tracked file from the exact prepared commit, never HEAD
+    /// or the worktree bytes. Symlinks and submodules are not file inputs.
+    pub async fn read_committed_file(&self, path: &str) -> Result<Vec<u8>> {
+        ensure!(
+            !path.is_empty()
+                && path.len() <= 4096
+                && !path.contains('\0')
+                && std::path::Path::new(path)
+                    .components()
+                    .all(|c| matches!(c, std::path::Component::Normal(_))),
+            "committed source path must be relative"
+        );
+        let io = UnitGit::new(self.owner.clone(), &self.unit, true)?;
+        let entries = io
+            .run(
+                &self.unit.worktree,
+                [
+                    "--literal-pathspecs",
+                    "ls-tree",
+                    "-z",
+                    "--full-tree",
+                    &self.unit.base_sha,
+                    "--",
+                    path,
+                ],
+            )
+            .await?;
+        let mut entries = entries.split(|byte| *byte == 0).filter(|e| !e.is_empty());
+        let entry = entries.next().context("committed source file missing")?;
+        ensure!(entries.next().is_none(), "ambiguous committed source path");
+        let tab = entry
+            .iter()
+            .position(|byte| *byte == b'\t')
+            .context("invalid committed source entry")?;
+        let (header, name) = (&entry[..tab], &entry[tab + 1..]);
+        let header = std::str::from_utf8(header)?;
+        let fields = header.split(' ').collect::<Vec<_>>();
+        ensure!(
+            fields.len() == 3
+                && matches!(fields[0], "100644" | "100755")
+                && fields[1] == "blob"
+                && valid_oid(fields[2])
+                && name == path.as_bytes(),
+            "committed source is not an exact ordinary file"
+        );
+        let size: usize = io
+            .text(&self.unit.worktree, ["cat-file", "-s", fields[2]])
+            .await?
+            .parse()?;
+        ensure!(size <= 256 * 1024, "committed source exceeds file bound");
+        let bytes = io
+            .run(&self.unit.worktree, ["cat-file", "blob", fields[2]])
+            .await?;
+        ensure!(bytes.len() == size, "committed blob size mismatch");
+        Ok(bytes)
+    }
+}
 impl AttemptManager {
     pub fn new(owner: Arc<RuntimeOwner>) -> Self {
         Self {
@@ -24,7 +94,28 @@ impl AttemptManager {
         phase: &str,
         base: Option<&str>,
     ) -> Result<(ExecutionUnit, ResourceProfile)> {
+        ensure!(
+            phase != WORKFLOW_SOURCE_BOOTSTRAP,
+            "reserved preparation phase"
+        );
         self.prepare_inner(task, provider, phase, base, None).await
+    }
+    /// Pre-register the first Workflow's Git source namespace. This is not a
+    /// native launch capability or a successful work/result artifact.
+    pub async fn prepare_workflow_source(
+        &self,
+        task: crate::domain::TaskId,
+        provider: &str,
+    ) -> Result<PreparedExecutor> {
+        let (unit, _) = self
+            .prepare_inner(task, provider, WORKFLOW_SOURCE_BOOTSTRAP, None, None)
+            .await?;
+        let guard = owner::PreparationGuard::new(self.owner.clone(), &unit);
+        Ok(PreparedExecutor {
+            owner: self.owner.clone(),
+            unit,
+            _guard: guard,
+        })
     }
     pub(crate) async fn prepare_workflow(
         &self,

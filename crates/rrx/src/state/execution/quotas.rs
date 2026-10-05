@@ -170,6 +170,10 @@ impl Store {
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         let mut unit = validate_authority(&tx, authority, true, false)?;
+        ensure!(
+            unit.phase != WORKFLOW_SOURCE_BOOTSTRAP,
+            "source preparation cannot consume native capacity"
+        );
         ensure!(unit.provider == provider, "foreign quota provider");
         tx.execute(
             "INSERT INTO quota_pools(provider,account_key) VALUES(?1,?2) ON CONFLICT DO NOTHING",

@@ -79,6 +79,142 @@ fn session(unit: &ExecutionUnit) -> Session {
 }
 
 #[test]
+fn workflow_source_bootstrap_refuses_session_capacity_and_non_git_intents() {
+    let (mut store, task, epoch) = fixture();
+    let mut spec = draft(&task, epoch);
+    spec.phase = WORKFLOW_SOURCE_BOOTSTRAP.into();
+    let unit = store.reserve_execution(spec, task.version).unwrap();
+    let unit = store
+        .transition_execution(&unit.authority(), UnitState::Preparing)
+        .unwrap();
+    assert!(
+        store
+            .register_execution_session(&unit.authority(), &session(&unit))
+            .is_err()
+    );
+    assert!(
+        store
+            .reserve_execution_quota(&unit.authority(), "codex", "unknown", 6, 2, 3, now_ms())
+            .is_err()
+    );
+    for kind in ["native_version", "docker_probe"] {
+        assert!(
+            store
+                .reserve_execution_helper(
+                    &unit.authority(),
+                    OperationId::new(),
+                    true,
+                    &unit.worktree,
+                    kind
+                )
+                .is_err()
+        );
+    }
+    let effect = ManagedEffect {
+        id: OperationId::new(),
+        unit_id: unit.id,
+        scope: unit.scope.clone(),
+        kind: "native_input".into(),
+        idempotency_key: "input".into(),
+        expected_target: "turn".into(),
+        state: EffectState::Pending,
+        receipt: BTreeMap::new(),
+        version: 1,
+    };
+    assert!(
+        store
+            .reserve_managed_effect(&unit.authority(), &effect)
+            .is_err()
+    );
+    assert!(store.managed_effects(unit.id).unwrap().is_empty());
+    assert_eq!(store.execution_unit(unit.id).unwrap().version, unit.version);
+    assert_eq!(
+        store
+            .records(&task.scope(), RecordKind::Session)
+            .unwrap()
+            .len(),
+        0
+    );
+    assert_eq!(
+        store
+            .connection
+            .query_row("SELECT COUNT(*) FROM quota_pools", [], |r| r
+                .get::<_, u64>(0))
+            .unwrap(),
+        0
+    );
+    // The allowed helper still gets a real, journaled intent.
+    let helper = OperationId::new();
+    store
+        .reserve_execution_helper(
+            &unit.authority(),
+            helper,
+            true,
+            &unit.worktree,
+            "git_helper",
+        )
+        .unwrap();
+    assert_eq!(store.managed_effect(helper).unwrap().kind, "git_helper");
+}
+
+#[test]
+fn schema5_replaces_contract4_guards_and_fences_already_open_writer() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("state.db");
+    // Genuine schema-4 layout and connection-local contract-4 function.
+    let old = Connection::open(&path).unwrap();
+    old.create_scalar_function(
+        "rrx_writer_contract_version",
+        0,
+        rusqlite::functions::FunctionFlags::SQLITE_UTF8
+            | rusqlite::functions::FunctionFlags::SQLITE_DETERMINISTIC
+            | rusqlite::functions::FunctionFlags::SQLITE_INNOCUOUS,
+        |_| Ok(4_i64),
+    )
+    .unwrap();
+    old.execute_batch(include_str!("../schema.sql")).unwrap();
+    old.execute_batch(include_str!("../execution.sql")).unwrap();
+    old.execute(
+        "INSERT INTO runtime_epoch(singleton,instance_id,epoch) VALUES(1,?1,0)",
+        [Uuid::new_v4().to_string()],
+    )
+    .unwrap();
+    for table in MUTABLE_TABLES {
+        for action in ["INSERT", "UPDATE", "DELETE"] {
+            old.execute_batch(&format!("CREATE TRIGGER writer_{table}_{action} BEFORE {action} ON {table} WHEN rrx_writer_contract_version()<>4 BEGIN SELECT RAISE(ABORT,'incompatible rrx writer contract'); END;")).unwrap();
+        }
+    }
+    old.pragma_update(None, "application_id", APPLICATION_ID)
+        .unwrap();
+    old.pragma_update(None, "user_version", 4).unwrap();
+    let mut cached = old
+        .prepare("UPDATE runtime_epoch SET epoch=epoch+1 WHERE singleton=1")
+        .unwrap();
+    cached.execute([]).unwrap();
+    let mut current = Store::open(&path).unwrap();
+    assert_eq!(current.schema_version().unwrap(), 5);
+    assert!(cached.execute([]).is_err());
+    assert!(
+        old.execute(
+            "UPDATE runtime_epoch SET epoch=epoch+1 WHERE singleton=1",
+            []
+        )
+        .is_err()
+    );
+    assert_eq!(
+        old.query_row("SELECT epoch FROM runtime_epoch", [], |r| r
+            .get::<_, u64>(0))
+            .unwrap(),
+        1
+    );
+    assert_eq!(current.begin_execution_epoch().unwrap().1, 2);
+    let guards: u64 = current.connection.query_row("SELECT COUNT(*) FROM sqlite_schema WHERE type='trigger' AND name LIKE 'writer_%' AND sql LIKE '%<>5%'", [], |r| r.get(0)).unwrap();
+    assert_eq!(guards, (MUTABLE_TABLES.len() * 3) as u64);
+    // The unrelated append-only guard remains installed across the upgrade.
+    assert!(current.connection.query_row("SELECT 1 FROM sqlite_schema WHERE type='trigger' AND name='cleanup_observation_no_update'", [], |r| r.get::<_, i64>(0)).is_ok());
+}
+
+#[test]
 fn new_generation_closes_old_reviewers_without_erasing_known_work_or_artifacts() {
     let (mut store, task, epoch) = fixture();
     let unit = store
@@ -914,7 +1050,7 @@ fn pre_open_legacy_writer_and_cached_statement_cannot_write_after_upgrade() {
     let mut cached=old.prepare("UPDATE projects SET version=version+1,body=json_set(body,'$.version',version+1) WHERE root='/p'").unwrap();
     cached.execute([]).unwrap();
     let upgraded = Store::open(&path).unwrap();
-    assert_eq!(upgraded.schema_version().unwrap(), 4);
+    assert_eq!(upgraded.schema_version().unwrap(), SCHEMA_VERSION);
     assert!(cached.execute([]).is_err());
     for sql in [
         "UPDATE projects SET version=version+1 WHERE root='/p'",

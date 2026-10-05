@@ -44,7 +44,11 @@ impl Store {
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        validate_authority(&tx, authority, native, !native)?;
+        let unit = validate_authority(&tx, authority, native, !native)?;
+        ensure!(
+            unit.phase != WORKFLOW_SOURCE_BOOTSTRAP || kind == "git_helper",
+            "source preparation only permits registered Git helpers"
+        );
         let effect = ManagedEffect {
             id,
             unit_id: authority.unit_id,
@@ -82,7 +86,11 @@ impl Store {
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        validate_authority(&tx, authority, true, false)?;
+        let unit = validate_authority(&tx, authority, true, false)?;
+        ensure!(
+            unit.phase != WORKFLOW_SOURCE_BOOTSTRAP,
+            "source preparation cannot issue native or delegated effects"
+        );
         if matches!(effect.kind.as_str(), "publish" | "merge" | "deploy") {
             let ambiguous:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM managed_effects WHERE project_id=?1 AND state IN ('pending','unknown') AND json_extract(body,'$.kind')=?2 AND json_extract(body,'$.expected_target')=?3)",params![effect.scope.project_id.to_string(),effect.kind,effect.expected_target],|r|r.get(0))?;
             ensure!(

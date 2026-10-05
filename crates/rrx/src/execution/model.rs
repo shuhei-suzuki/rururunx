@@ -3,6 +3,9 @@ use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, path::PathBuf};
 use uuid::Uuid;
 
+/// Registered Git preparation is permitted; native admission is not.
+pub(crate) const WORKFLOW_SOURCE_BOOTSTRAP: &str = "workflow_source_bootstrap";
+
 macro_rules! identity {
     ($name:ident) => {
         #[derive(

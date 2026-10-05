@@ -42,6 +42,147 @@ async fn terminal(sessions: &NativeSessions, handle: &ManagedSessionRef) -> Nati
     .await
     .unwrap()
 }
+
+#[tokio::test]
+async fn workflow_source_bootstrap_reads_commit_and_refuses_native_before_effects() {
+    for provider in ["claude", "codex"] {
+        let (dir, owner, task) = results::tests::fixture().await;
+        let attempts = attempts::AttemptManager::new(owner.clone());
+        assert!(
+            attempts
+                .prepare(task.id, provider, WORKFLOW_SOURCE_BOOTSTRAP, None)
+                .await
+                .is_err()
+        );
+        assert!(
+            owner
+                .store
+                .lock()
+                .unwrap()
+                .execution_units(Some(&task.scope()))
+                .unwrap()
+                .is_empty()
+        );
+        let prepared = attempts
+            .prepare_workflow_source(task.id, provider)
+            .await
+            .unwrap();
+        let unit = prepared.unit().clone();
+        assert_eq!(unit.phase, WORKFLOW_SOURCE_BOOTSTRAP);
+        assert_eq!(unit.state, UnitState::Preparing);
+        assert_eq!(unit.work, None);
+        assert_eq!(unit.session_id, None);
+        assert_eq!(unit.artifact_id, None);
+        assert!(valid_oid(&unit.base_sha));
+        assert_eq!(
+            prepared.read_committed_file("answer.txt").await.unwrap(),
+            b"base\n"
+        );
+        // The file and branch HEAD can change; the input object does not.
+        std::fs::write(unit.worktree.join("answer.txt"), "later\n").unwrap();
+        results::git(&unit.worktree, ["add", "answer.txt"])
+            .await
+            .unwrap();
+        results::git(
+            &unit.worktree,
+            [
+                "-c",
+                "user.name=Fixture",
+                "-c",
+                "user.email=fixture@example.invalid",
+                "-c",
+                "commit.gpgsign=false",
+                "commit",
+                "-m",
+                "later",
+            ],
+        )
+        .await
+        .unwrap();
+        assert_ne!(
+            results::text(
+                &results::git(&unit.worktree, ["rev-parse", "HEAD"])
+                    .await
+                    .unwrap()
+            )
+            .unwrap(),
+            unit.base_sha
+        );
+        assert_eq!(
+            prepared.read_committed_file("answer.txt").await.unwrap(),
+            b"base\n"
+        );
+        let before = owner
+            .store
+            .lock()
+            .unwrap()
+            .managed_effects(unit.id)
+            .unwrap();
+        for path in ["../answer.txt", "/answer.txt", "./answer.txt", ""] {
+            assert!(prepared.read_committed_file(path).await.is_err());
+        }
+        assert_eq!(
+            owner
+                .store
+                .lock()
+                .unwrap()
+                .managed_effects(unit.id)
+                .unwrap()
+                .len(),
+            before.len()
+        );
+        let sessions = NativeSessions::new(owner.clone()).unwrap();
+        let error = sessions
+            .start_inner(
+                input(&unit, "complete"),
+                None,
+                None,
+                Some(program(dir.path(), provider)),
+            )
+            .await
+            .err()
+            .unwrap();
+        assert!(error.to_string().contains("native input identity mismatch"));
+        let store = owner.store.lock().unwrap();
+        let current = store.execution_unit(unit.id).unwrap();
+        assert_eq!(current.work, None);
+        assert_eq!(current.session_id, None);
+        assert_eq!(current.state, UnitState::Preparing);
+        assert!(current.native_effects_open && current.result_finalization_open);
+        let effects = store.managed_effects(unit.id).unwrap();
+        assert_eq!(effects.len(), before.len());
+        assert!(
+            effects
+                .iter()
+                .all(|e| e.kind == "git_helper" && e.state == EffectState::Confirmed)
+        );
+        let events = store.events(&unit.scope, 0, 1000).unwrap();
+        let reserved = events
+            .iter()
+            .position(|e| e.kind == "execution.attempt_reserved")
+            .unwrap();
+        let bound = events
+            .iter()
+            .position(|e| e.kind == "execution.base_bound")
+            .unwrap();
+        assert!(reserved < bound);
+        drop(store);
+        drop(prepared);
+        let retired = owner.store.lock().unwrap().execution_unit(unit.id).unwrap();
+        assert!(!retired.native_effects_open && !retired.result_finalization_open);
+        assert_eq!(retired.work, Some(WorkOutcome::Unknown));
+        assert_eq!(retired.disposition, Disposition::Lost);
+        assert!(unit.worktree.exists()); // retirement is not successful disposal
+        let (retry, _) = attempts
+            .prepare(task.id, provider, "Implement", None)
+            .await
+            .unwrap();
+        assert_ne!(retry.id, unit.id);
+        assert_ne!(retry.worktree, unit.worktree);
+        assert!(retry.generation > unit.generation);
+        attempts.retire(&retry.authority(), false).unwrap();
+    }
+}
 #[tokio::test]
 async fn four_protocol_fixture_sessions_keep_sibling_work_when_one_is_cancelled() {
     let (dir, owner, task) = results::tests::fixture().await;

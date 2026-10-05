@@ -36,16 +36,7 @@ pub(super) fn install_schema(tx: &Transaction<'_>) -> Result<()> {
         "INSERT INTO runtime_epoch(singleton,instance_id,epoch) VALUES(1,?1,0)",
         [Uuid::new_v4().to_string()],
     )?;
-    // This guard is connection-local, not a persisted flag a pre-open old client inherits.
-    for table in MUTABLE_TABLES {
-        for action in ["INSERT", "UPDATE", "DELETE"] {
-            tx.execute_batch(&format!(
-                "CREATE TRIGGER writer_{table}_{action} BEFORE {action} ON {table} \
-                 WHEN rrx_writer_contract_version()<>4 BEGIN \
-                 SELECT RAISE(ABORT,'incompatible rrx writer contract'); END;"
-            ))?;
-        }
-    }
+    install_writer_guards(tx)?;
     // Register historical paths without promoting native liveness or work success.
     let mut tasks = tx.prepare("SELECT body FROM tasks")?;
     let old = tasks
@@ -99,6 +90,22 @@ pub(super) fn install_schema(tx: &Transaction<'_>) -> Result<()> {
                 version: 1,
             };
             insert_lease(tx, &lease)?;
+        }
+    }
+    Ok(())
+}
+
+pub(super) fn install_writer_guards(tx: &Transaction<'_>) -> Result<()> {
+    // Replace only contract guards; retain all append-only and identity triggers.
+    // The function is connection-local, not a persisted flag inherited by old writers.
+    for table in MUTABLE_TABLES {
+        for action in ["INSERT", "UPDATE", "DELETE"] {
+            tx.execute_batch(&format!(
+                "DROP TRIGGER IF EXISTS writer_{table}_{action}; \
+                 CREATE TRIGGER writer_{table}_{action} BEFORE {action} ON {table} \
+                 WHEN rrx_writer_contract_version()<>{SCHEMA_VERSION} BEGIN \
+                 SELECT RAISE(ABORT,'incompatible rrx writer contract'); END;"
+            ))?;
         }
     }
     Ok(())

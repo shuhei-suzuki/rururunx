@@ -183,6 +183,7 @@ impl NativeSessions {
             .validate_execution(&input.authority, true, false)?;
         ensure!(
             matches!(unit.state, UnitState::Preparing | UnitState::WaitingQuota)
+                && unit.phase != WORKFLOW_SOURCE_BOOTSTRAP
                 && unit.session_id.is_none()
                 && input.artifact == unit.artifact_id
                 && input.input.scope == unit.scope
