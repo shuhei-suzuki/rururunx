@@ -151,6 +151,24 @@ async fn cancelled_live_call_does_not_drop_runtime_or_clear_its_flag() {
     task.abort();
     let _ = task.await;
     assert!(flag.load(Ordering::SeqCst));
+    let record = context.pool.as_ref().unwrap().state.lock().unwrap().records[0].clone();
+    // Supervisor remains paused, so only the already-counted native worker can
+    // issue first cleanup from the caller's bounded Cancel message.
+    tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            if record
+                .native
+                .try_lock()
+                .is_ok_and(|native| native.signal_issued)
+            {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(record.native.lock().unwrap().signals, 1);
     drop(release);
     released(&context).await;
     assert!(flag.load(Ordering::SeqCst));
@@ -460,9 +478,11 @@ async fn caller_runtime_shutdown_keeps_independent_owner_and_frozen_flag() {
 }
 #[tokio::test]
 async fn generic_live_launch_error_uses_actual_git_flag_without_retyping_error() {
-    for unknown in [false, true] {
+    for (unknown, invalid_binding) in [(false, false), (true, false), (true, true)] {
         let (_directory, store, project, task, worktree) = super::super::tests::preflight_fixture();
-        let context = if unknown {
+        let context = if invalid_binding {
+            TestGitContext::invalid_binding()
+        } else if unknown {
             TestGitContext::missing_executable()
         } else {
             TestGitContext::initializer_failure()
@@ -478,7 +498,7 @@ async fn generic_live_launch_error_uses_actual_git_flag_without_retyping_error()
             .unwrap_err();
         assert_eq!(
             result.kind,
-            if unknown {
+            if unknown && !invalid_binding {
                 ErrorKind::ProcessFailure
             } else {
                 ErrorKind::LaunchFailure
@@ -741,4 +761,27 @@ async fn observed_reader_panic_is_distinct_from_abort_and_native_loss() {
     assert!(!facts.stdout.read_ok && facts.stdout.read_error.is_none());
     assert_eq!(facts.stderr.join, JoinState::Cancelled);
     assert!(facts.stderr.abort_requested);
+}
+
+#[tokio::test]
+async fn invalid_binding_retains_actual_child_before_any_pipe_or_pid_adoption() {
+    let context = TestGitContext::invalid_binding();
+    let flag = Arc::new(AtomicBool::new(false));
+    let error = shell(context.clone(), "exit 0", flag.clone())
+        .await
+        .unwrap_err();
+    assert_eq!(error.kind, ErrorKind::LaunchFailure);
+    assert!(flag.load(Ordering::SeqCst));
+    assert_eq!(context.held_jobs(), 4);
+    let record = context.pool.as_ref().unwrap().state.lock().unwrap().records[0].clone();
+    let native = record.native.lock().unwrap();
+    let child = native.child.as_ref().unwrap();
+    assert!(child.id() > 1);
+    assert!(child.stdout.is_some() && child.stderr.is_some());
+    assert!(native.group.is_none() && !native.signal_issued && !native.reaped);
+    assert_eq!(native.signals, 0);
+    assert!(record.runtime.lock().unwrap().is_some());
+    assert!(record.worker.lock().unwrap().is_some());
+    // The injected invalid-binding branch proves retained actual ownership;
+    // it is not a claim that the OS returned such a PID or that this child reaped.
 }

@@ -255,6 +255,11 @@ impl TestGitContext {
         ));
         context
     }
+    pub(crate) fn invalid_binding() -> Self {
+        let mut context = Self::isolated();
+        context.context.hooks.invalid_binding = true;
+        context
+    }
     pub(crate) fn held_jobs(&self) -> usize {
         self.pool
             .as_ref()
@@ -277,6 +282,7 @@ impl TestGitContext {
 #[derive(Clone, Default)]
 struct TestHooks {
     initialized_error: bool,
+    invalid_binding: bool,
     worker_panic: bool,
     supervisor_panic: bool,
     before_authorize: Option<Arc<TestPause>>,
@@ -1185,6 +1191,12 @@ fn native_worker(
                                 Pid::from_raw(raw as i32)
                             } else {
                                 None
+                            };
+                            #[cfg(test)]
+                            let pid = if record._context.hooks.invalid_binding {
+                                None
+                            } else {
+                                pid
                             };
                             native.group = pid;
                             pid.map(Some).ok_or_else(|| {
