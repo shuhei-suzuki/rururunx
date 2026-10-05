@@ -1,0 +1,148 @@
+{
+  "base": "5b7c235afaeca84ffcf890401e86be6355e25037",
+  "mutant_head": "785bb57f1fb3f4a15d7fa361df1dcd244f04f55c",
+  "patch_sha256": "7fee95c3672d552ea49ecb1a12bfa11b33fa18dedaa097b2d0d5f55948d80a46",
+  "intended_assertion_kill": true,
+  "gates": [
+    {
+      "name": "mutant",
+      "args": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "rrx",
+        "--lib",
+        "revoked_create_response_is_pending_until_own_request_retires"
+      ],
+      "exit": 101,
+      "seconds": 12.68,
+      "sha256": "4e2253508908e4e60678501218c168b873cf2b3c9a8259a53aa6e06febb00065"
+    },
+    {
+      "name": "restored-debug",
+      "args": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "rrx",
+        "--lib",
+        "custody_mechanics"
+      ],
+      "exit": 0,
+      "seconds": 6.57,
+      "sha256": "02016a50ad8a637e49d5a0d96ffd1d59c448bb0540d02d2c03270b6708722c2f"
+    },
+    {
+      "name": "restored-release",
+      "args": [
+        "cargo",
+        "test",
+        "--locked",
+        "--release",
+        "-p",
+        "rrx",
+        "--lib",
+        "custody_mechanics"
+      ],
+      "exit": 0,
+      "seconds": 20.4,
+      "sha256": "192a7291c6e4de11fbcab28cb043fcfc213cc5772492736aab0944ac7debb274"
+    },
+    {
+      "name": "fmt",
+      "args": [
+        "cargo",
+        "fmt",
+        "--all",
+        "--",
+        "--check"
+      ],
+      "exit": 0,
+      "seconds": 0.35,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "clippy",
+      "args": [
+        "cargo",
+        "clippy",
+        "--locked",
+        "--workspace",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exit": 0,
+      "seconds": 6.77,
+      "sha256": "306da541d592c5dfde7a8c9d93be280c86159e3314ae3bda2b491bd4bf339fce"
+    }
+  ],
+  "restored_clean": true,
+  "scope": "Sensitivity variant of prior reply-before-own-request-retirement boundary; actual oneshot consumer poll after actual handler retirement gate. No new distinct guarantee/operator count or native/registry/settlement credit.",
+  "direct_consumer_checks": {
+    "head": "5b7c235afaeca84ffcf890401e86be6355e25037",
+    "gates": [
+      {
+        "name": "debug",
+        "args": [
+          "cargo",
+          "test",
+          "--locked",
+          "-p",
+          "rrx",
+          "--lib",
+          "revoked_create_response_is_pending_until_own_request_retires"
+        ],
+        "exit": 0,
+        "seconds": 5.56,
+        "sha256": "ad248c67cf513632cdebf6ca2107da821170d904fd16d02b6d820dacdc6fd1af"
+      },
+      {
+        "name": "release",
+        "args": [
+          "cargo",
+          "test",
+          "--locked",
+          "--release",
+          "-p",
+          "rrx",
+          "--lib",
+          "revoked_create_response_is_pending_until_own_request_retires"
+        ],
+        "exit": 0,
+        "seconds": 16.21,
+        "sha256": "d861c3581b18c42eaa7dd8c9726bccd70fc7897e7848af15702289627486ad53"
+      }
+    ]
+  },
+  "independent_reviews": [
+    {
+      "reviewer": "issue26_registry",
+      "head": "5b7c235afaeca84ffcf890401e86be6355e25037",
+      "baseline": "fa61da7288358e96ce3c659a8c770f0c866b02be",
+      "verdict": "approve",
+      "findings": [],
+      "method": "read-only source and supplied immutable evidence; no own test/native execution"
+    },
+    {
+      "reviewer": "native_provider_recon",
+      "head": "5b7c235afaeca84ffcf890401e86be6355e25037",
+      "baseline": "fa61da7288358e96ce3c659a8c770f0c866b02be",
+      "verdict": "approve",
+      "findings": [],
+      "method": "read-only source and supplied immutable evidence; no own test/native execution"
+    }
+  ],
+  "both_reviews_closed_before_peer_findings_shared": true,
+  "owned_mutation_worktree": "normally removed after actual cargo commands waited and exact clean source/tree restored",
+  "unresolved_gates": [
+    "Older adapter error-arm overlap oracle remains timing-dependent; new direct response control covers receiver boundary only.",
+    "Historical full Debug876 RED and full Release968 RED288/2/23 remain unexplained and are not retried or waived.",
+    "fa61 CI37265599043 bothOS every step success with complete284blob/tree equality; does not cover later5b7 test addition.",
+    "New final-head CI pending; no full Release TEST in CI.",
+    "Production pool None/Create cfgtest; native/registry/managed producer/settlement/whole19/MVP unqualified."
+  ]
+}

@@ -316,3 +316,38 @@ fulltree396ce6618ace6fc76c41261d9811f6bd65ff9847 equal to f6. It executed
 Debug workspace tests and Release builds, not full Release tests. It does not
 cover the later226/968 test changes or discharge the local failed gates.
 Final-head CI remains pending; PR69 stays draft and unmerged.
+
+
+## Direct response ordering control
+
+At clean5b7c235, one53-line test addition polls the actual Factory.run/Create
+oneshot response after the handler's retirement_reached gate. The response must
+remain Pending while its own accepted/effect request remains1. An early-send
+mutant already published its real oneshot result before this gate; direct polling
+observes that result without relying on scheduling of an adapter actor. No
+implementation-side early-reply flag is used. After releasing retirement, the
+actual StateConflict response arrives, the retained actor/custodian join and
+NotCreated accounting returns the isolated pool to0; the file is absent.
+
+The direct control passed Debug/Release in0.01s each. The single compiled mutant
+785bb57f failed at the intended actual-response assertion in0.01s. Its patch is
+a sensitivity variant of the historical reply-before-own-request-retirement
+boundary, adding no distinct operator/guarantee count. Exact5b7 was restored clean;
+all20 controls passed Debug2.51s/Release2.57s, with fmt and warnings-denied
+all-target clippy passing. Root-owned cargo commands exited and were waited
+before normal mutation-worktree removal. Failed-assertion RAII releases pauses
+and the actor sender, but earns no failure-path complete join/cleanup credit.
+
+Two existing independent read-only reviewers approved exactly the53-line test
+delta with no findings; neither independently ran tests/native inference.
+[The finite record](issue-19-custody-direct-response.json) binds source, mutant,
+patch/log hashes and their exact review scope. The existing adapter error-arm
+control and its timing Low remain separate; direct response sensitivity does not
+prove in-flight effect commitment, native cleanup or whole consumer acceptance.
+
+BothOS CI37265599043 succeeded on reviewedfa61: actualcheckout4b213df has
+parents26f3/fa61 and fulltreeccb1017a/all284pathblobs equal to fa61. This was
+Debug workspace TEST plus Debug/Release BUILD, not full Release TEST. It does
+not cover the later5b7 test addition. Current-source final CI remains pending;
+local full Debug876 and Release968 failures remain open with unknown causes.
+No same-head retry, deadline/parallelism change or full-gate waiver is applied.
