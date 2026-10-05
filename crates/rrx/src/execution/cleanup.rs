@@ -402,7 +402,7 @@ mod tests {
             );
             assert_eq!(
                 serde_json::to_value(store.result_artifact(published.id).unwrap()).unwrap(),
-                serde_json::to_value(published).unwrap()
+                serde_json::to_value(&published).unwrap()
             );
             assert_eq!(
                 serde_json::to_value(store.task(task.id).unwrap().unwrap()).unwrap(),
@@ -428,7 +428,7 @@ mod tests {
                     .all(|l| l.state == LeaseState::Reserved)
             );
         }
-        result.verify(&artifact).await.unwrap();
+        result.verify(&published).await.unwrap();
         assert!(cleanup.sweep_once().await.unwrap().is_empty());
     }
     #[tokio::test]
