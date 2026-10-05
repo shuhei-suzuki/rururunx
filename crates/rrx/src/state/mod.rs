@@ -1629,7 +1629,7 @@ fn bump(version: &mut u64) -> Result<()> {
         .context("snapshot version overflow")?;
     Ok(())
 }
-fn read_tx<T: DeserializeOwned>(tx: &Transaction<'_>, table: &str, id: &str) -> Result<Option<T>> {
+fn read_tx<T: DeserializeOwned>(tx: &Connection, table: &str, id: &str) -> Result<Option<T>> {
     let body: Option<String> = tx
         .query_row(
             &format!("SELECT body FROM {table} WHERE id=?1"),

@@ -2,6 +2,7 @@
 use super::*;
 use crate::execution::{model::key, *};
 use uuid::Uuid;
+use std::collections::BTreeMap;
 
 const MUTABLE_TABLES: &[&str] = &[
     "projects", "goals", "tasks", "records", "context_versions", "usage", "audit",
@@ -87,8 +88,8 @@ fn validate_authority(tx:&Connection,authority:&ExecutionAuthority,native:bool,f
     ensure!(generation==authority.generation,"execution generation retired");
     ensure!(!native || unit.native_effects_open,"native effect permission closed");
     ensure!(!finalize || unit.result_finalization_open,"result finalization permission closed");
-    let project:Project=read(tx,"projects",&unit.scope.project_id.to_string())?.context("unknown Project")?;
-    let goal:Goal=read(tx,"goals",&unit.scope.goal_id.context("Goal required")?.to_string())?.context("unknown Goal")?;
+    let project:Project=read_tx(tx,"projects",&unit.scope.project_id.to_string())?.context("unknown Project")?;
+    let goal:Goal=read_tx(tx,"goals",&unit.scope.goal_id.context("Goal required")?.to_string())?.context("unknown Goal")?;
     ensure!(project.state==ProjectState::Registered && !matches!(goal.state,GoalState::Paused|GoalState::Completed|GoalState::Cancelled|GoalState::Failed),"inactive Project/Goal");
     Ok(unit)
 }

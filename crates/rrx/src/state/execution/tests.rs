@@ -1,5 +1,6 @@
 use super::*;
 use crate::config::WorkflowClass;
+use std::path::PathBuf;
 
 fn fixture() -> (Store,Task,u64) {
     let mut store=Store::memory().unwrap();
