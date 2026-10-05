@@ -1,9 +1,9 @@
 # Issue 6: existing name-only environment admission integration (Design7)
 
-Status: proposed STRICT component integration; design/source qualification pending.
+Status: STRICT component Design7 independently qualified (two approve, 0 CHM); source qualification pending.
 Design1 `6264702`, Design2 `9884ec3`, Design3 `4a60fa2`, Design4 `e85d85b`
 Design5 `55369e9` and Design6 `f0fc37c` were not qualified as pairs.
-No Rust implementation has begun.
+Rust component implementation has begun; independent source/native acceptance is pending.
 This proposal normally composes main `768f84319cd2a73e14cd39336eb12d99e9be81a7`.
 Production Codex availability stays
 EMPTY. No native workload backend, managed operation, setup/settlement receipt,

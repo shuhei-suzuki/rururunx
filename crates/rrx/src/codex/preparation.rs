@@ -1,7 +1,6 @@
 //! Private preparation cancellation. Owned children remain outside cancellable
 //! waits so cancellation cannot replace verified cleanup with future destruction.
 use std::{
-    ffi::OsString,
     path::Path,
     process::Stdio,
     sync::{Arc, Mutex, atomic::AtomicBool},
@@ -180,6 +179,34 @@ impl Preparation {
             }
         }
     }
+    /// Last selected exec admission: publication must remain in Preparing.
+    pub(super) fn before_exec<T>(
+        &self,
+        publish: impl FnOnce() -> AdapterResult<T>,
+    ) -> AdapterResult<T> {
+        let mut admission = self
+            .admission
+            .lock()
+            .map_err(|_| failure(ErrorKind::StateFailure, "native preparation cause poisoned"))?;
+        match &*admission {
+            Admission::Preparing => {}
+            Admission::Cancelled => return Err(Cause::Cancelled.error()),
+            Admission::Failing(cause) => return Err(cause.error()),
+            _ => {
+                return Err(failure(
+                    ErrorKind::StateConflict,
+                    "native attempt already admitted",
+                ));
+            }
+        }
+        match publish() {
+            Ok(value) => Ok(value),
+            Err(error) => {
+                *admission = Admission::Failing(Cause::Failed(error.kind, error.message.clone()));
+                Err(error)
+            }
+        }
+    }
     fn commit<T>(
         &self,
         checkpoint: Option<u64>,
@@ -261,7 +288,8 @@ pub(super) async fn bounded_git(
     executable: &Path,
     cwd: &Path,
     args: &[String],
-    environment: Vec<(OsString, OsString)>,
+    environment: super::environment::ExecEnvironment<'_>,
+    mut before_spawn: Option<&mut (dyn FnMut() -> AdapterResult<()> + Send)>,
     deadline: tokio::time::Instant,
     uncertain: Arc<AtomicBool>,
     preparation: &Preparation,
@@ -280,12 +308,22 @@ pub(super) async fn bounded_git(
         .args(args)
         .current_dir(cwd)
         .env_clear()
-        .envs(environment)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true)
         .process_group(0);
+    environment.apply(&mut command);
+    if let Some(before_spawn) = before_spawn.as_mut() {
+        before_spawn()?;
+    }
+    // The original deadline includes CAS time; no restart or extension.
+    if tokio::time::Instant::now() >= deadline {
+        return Err(preparation.failed(failure(
+            ErrorKind::Timeout,
+            "Git ownership preflight timed out",
+        )));
+    }
     // No await occurs between the cancellation check and taking child ownership.
     preparation.check()?;
     let child = command.spawn().map_err(|error| {
@@ -441,7 +479,8 @@ mod tests {
                         "rrx-owned-fixture".into(),
                         ready.to_str().unwrap().into(),
                     ],
-                    Vec::new(),
+                    super::super::environment::ExecEnvironment::Ambient(Vec::new()),
+                    None,
                     tokio::time::Instant::now() + Duration::from_secs(5),
                     uncertain,
                     &preparation,
@@ -507,7 +546,8 @@ mod tests {
                 "rrx-owned-fixture".into(),
                 marker.to_str().unwrap().into(),
             ],
-            Vec::new(),
+            super::super::environment::ExecEnvironment::Ambient(Vec::new()),
+            None,
             tokio::time::Instant::now() + Duration::from_secs(5),
             uncertain.clone(),
             &preparation,

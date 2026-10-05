@@ -419,3 +419,12 @@ diagnostic slice; final metadata-head CI remains pending under the recorded part
 gate disposition. Local full release555 FAILED, cause and regression status unknown.
 No backend availability fix or owned-reader/workload settlement is claimed; full #60
 and native acceptance remain open.
+
+Codex environment API migration (source component, native availability still EMPTY):
+`rrx::codex::policy::native_environment` is removed. Construct `CodexAdapter` with
+its normal constructor; it freezes the native OS environment once. Inspect only
+own declared candidate names with `CodexAdapter::environment_candidates`. Selected
+values and provider-reference validation remain private. This repository's current
+0.1.0 source is installed by path and has no observed crates.io release; a future
+published breaking release needs the 0.2 compatibility/version gate. No publishing
+action or complete native-default/custom-provider compatibility is claimed here.

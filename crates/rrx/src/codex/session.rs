@@ -17,8 +17,9 @@ use tokio::sync::{mpsc, oneshot, watch};
 use super::{
     attempt::{CallerGuard, Control, Outcome, Phase, TaskGuard},
     availability::{Availability, Site, UNAVAILABLE},
+    environment::{ExecEnvironment, FrozenEnvironment, Selection},
     ownership::{ProcessOwnership, ScopeSnapshot, filesystem},
-    policy::{DecisionPolicy, native_environment, provider_environment, verify_auth_readiness},
+    policy::{DecisionPolicy, verify_auth_readiness},
     preparation::{Admission, Cause},
     protocol::{
         ApprovalLedger, Event, NativeRpc, OperationDecision, RpcId, TokenCounters, UsageTracker,
@@ -114,6 +115,7 @@ pub struct CodexAdapter {
     store: SharedStore,
     sessions: Arc<Mutex<HashMap<SessionId, Entry>>>,
     runtime_broker: bool,
+    baseline: Arc<FrozenEnvironment>,
     availability: Availability,
     #[cfg(test)]
     gates: Arc<TestGates>,
@@ -297,6 +299,7 @@ struct Reservation {
     session: Session,
     version: u64,
     published_attempt: bool,
+    environment: Option<Arc<Selection>>,
     ownership: ProcessOwnership,
     armed: bool,
     resume_publication: Option<ResumePublication>,
@@ -487,6 +490,12 @@ impl Reservation {
             "input_sha256":format!("{:x}",Sha256::digest(request.input.payload.as_bytes())),
             "authority_versions":authority.versions(),
         });
+        let environment = self.environment.as_ref().ok_or_else(|| {
+            failure(
+                ErrorKind::StateConflict,
+                "native environment selection missing",
+            )
+        })?;
         let attempt = self.attempt.clone();
         let admitted = attempt.preparation.consume(|| {
             #[cfg(test)]
@@ -496,11 +505,12 @@ impl Reservation {
                 .map_err(|_| failure(ErrorKind::StateFailure, "state store poisoned"))
                 .and_then(|mut store| {
                     store
-                        .put_session_if_current(
+                        .put_session_with_environment_if_current(
                             &self.session,
                             self.version,
                             authority.versions(),
                             &authority.lock_versions(),
+                            &environment.admission,
                         )
                         .map_err(super::ownership::state_error)
                 })
@@ -519,6 +529,37 @@ impl Reservation {
                 Err(error)
             }
         }
+    }
+    fn before_exec(&mut self, authority: &ScopeSnapshot) -> AdapterResult<()> {
+        let attempt = self.attempt.clone();
+        attempt.preparation.before_exec(|| {
+            let environment = self.environment.as_ref().ok_or_else(|| {
+                failure(
+                    ErrorKind::StateConflict,
+                    "native environment selection missing",
+                )
+            })?;
+            let mut store = self
+                .store
+                .lock()
+                .map_err(|_| failure(ErrorKind::StateFailure, "state store poisoned"))?;
+            self.version = store
+                .put_session_with_environment_if_current(
+                    &self.session,
+                    self.version,
+                    authority.versions(),
+                    &authority.lock_versions(),
+                    &environment.admission,
+                )
+                .map_err(super::ownership::state_error)?;
+            self.published_attempt = true;
+            let status = empty_status(self.session.clone());
+            if let Some(publication) = &self.resume_publication {
+                publication.sender.send_replace(status.clone());
+            }
+            self.attempt.publish(status);
+            Ok(())
+        })
     }
     fn persist(&mut self) -> AdapterResult<()> {
         let attempt = self.attempt.clone();
@@ -689,6 +730,14 @@ impl Drop for Reservation {
 
 impl CodexAdapter {
     pub fn new(agent: String, executable: PathBuf, store: SharedStore) -> AdapterResult<Self> {
+        Self::with_environment(agent, executable, store, std::env::vars_os())
+    }
+    fn with_environment(
+        agent: String,
+        executable: PathBuf,
+        store: SharedStore,
+        pairs: impl IntoIterator<Item = (std::ffi::OsString, std::ffi::OsString)>,
+    ) -> AdapterResult<Self> {
         if agent.trim().is_empty() || agent.len() > 128 || !executable.is_absolute() {
             return Err(failure(
                 ErrorKind::InvalidConfiguration,
@@ -701,10 +750,18 @@ impl CodexAdapter {
             store,
             sessions: Arc::new(Mutex::new(HashMap::new())),
             runtime_broker: false,
+            baseline: Arc::new(FrozenEnvironment::new(pairs)?),
             availability: Availability::default(),
             #[cfg(test)]
             gates: Arc::new(TestGates::default()),
         })
+    }
+    /// Bounded own-Project names only; grants no execution or native availability.
+    pub fn environment_candidates(
+        &self,
+        project: crate::domain::ProjectId,
+    ) -> AdapterResult<BTreeSet<String>> {
+        self.baseline.candidates(&self.store, project)
     }
     /// Opt-in integration for a trusted runtime Approval Broker. Native policy
     /// must already select its user/client route; automatic review is retained
@@ -712,6 +769,10 @@ impl CodexAdapter {
     pub fn with_runtime_broker(mut self) -> Self {
         self.runtime_broker = true;
         self
+    }
+    #[cfg(test)]
+    fn fixture_new(agent: String, executable: PathBuf, store: SharedStore) -> AdapterResult<Self> {
+        Self::with_environment(agent, executable, store, std::iter::empty())
     }
     #[cfg(test)]
     fn component_fixture(self) -> Self {
@@ -730,6 +791,7 @@ impl CodexAdapter {
             store: self.store.clone(),
             sessions: self.sessions.clone(),
             runtime_broker: self.runtime_broker,
+            baseline: self.baseline.clone(),
             availability: self.availability.clone(),
             #[cfg(test)]
             gates: self.gates.clone(),
@@ -1141,6 +1203,7 @@ impl CodexAdapter {
                 session: status.session.clone(),
                 version,
                 published_attempt: false,
+                environment: None,
                 ownership: ProcessOwnership::default(),
                 armed: false,
                 resume_publication: Some(publication),
@@ -1352,6 +1415,7 @@ impl CodexAdapter {
             } else {
                 0
             };
+            let environment = Arc::new(self.baseline.select(&self.store, &request)?);
             pin_starting_input(&mut session, &request, resume.as_ref())?;
             let evidence = self
                 .registry()?
@@ -1377,6 +1441,7 @@ impl CodexAdapter {
                 session,
                 version: expected_version,
                 published_attempt: false,
+                environment: Some(environment),
                 ownership: ProcessOwnership::default(),
                 armed: false,
                 resume_publication,
@@ -1433,35 +1498,33 @@ impl CodexAdapter {
             Ok(executable)
         }))
         .await?;
-        let baseline: Vec<_> = std::env::vars_os().collect();
-        let environment = native_environment(
-            baseline.iter().cloned(),
-            &snapshot.projects,
-            &snapshot.project,
-            &request.environment,
-        )?;
+        let environment = reservation.environment.clone().ok_or_else(|| failure(ErrorKind::StateConflict, "native environment selection missing"))?;
         self.availability.record(Site::Version);
+        let version_group = reservation.ownership.group();
         let version = super::preparation::bounded_git(
             &self.availability,
             &executable,
             &request.worktree,
             &["--version".into()],
-            environment.clone(),
+            ExecEnvironment::Selected(&environment),
+            Some(&mut || reservation.before_exec(&snapshot)),
             tokio::time::Instant::now() + std::time::Duration::from_secs(5),
-            reservation.ownership.group(),
+            version_group,
             &control.preparation,
         )
         .await?;
         super::protocol::verify_native_version(&version)?;
         #[cfg(test)]
         self.gates.wait(TestPoint::BeforeBootstrap).await;
+        let discovery_group = reservation.ownership.group();
         let mut discovery = NativeServer::launch_preparing(
             &self.availability,
             &executable,
             &request.worktree,
             None,
-            environment.clone(),
-            reservation.ownership.group(),
+            ExecEnvironment::Selected(&environment),
+            Some(&mut || reservation.before_exec(&snapshot)),
+            discovery_group,
             &control.preparation,
         )
         .await?;
@@ -1476,23 +1539,17 @@ impl CodexAdapter {
                     json!({"cwd":request.worktree,"includeLayers":false}),
                 ))
                 .await?;
+            environment.verify_references(&config["config"])?;
             let policy = if request.role == SessionRole::Executor {
                 DecisionPolicy::for_executor(&config["config"])
             } else {
                 DecisionPolicy::from_native(&config["config"])
             }?;
-            let environment = provider_environment(
-                &config["config"],
-                &baseline,
-                &snapshot.projects,
-                &snapshot.project,
-                &request.environment,
-            )?;
-            Ok::<_, crate::adapter::AdapterError>((policy, environment))
+            Ok::<_, crate::adapter::AdapterError>(policy)
         }
         .await.map_err(|error|control.preparation.failed(error));
-        let (policy, environment) =
-            result_after_cleanup(discovered, discovery.shutdown().await.map(|_| ()))?;
+        let policy = result_after_cleanup(discovered, discovery.shutdown().await.map(|_| ()))?;
+        reservation.session.pid = None;
         if self.runtime_broker
             && request.role == SessionRole::Executor
             && !policy.permits_runtime_broker()
@@ -1502,13 +1559,15 @@ impl CodexAdapter {
                 "native approval policy does not expose the runtime-broker client route; native reviewer retained",
             ));
         }
+        let main_group = reservation.ownership.group();
         let mut native = NativeServer::launch_preparing(
             &self.availability,
             &executable,
             &request.worktree,
             Some(&policy),
-            environment,
-            reservation.ownership.group(),
+            ExecEnvironment::Selected(&environment),
+            Some(&mut || reservation.before_exec(&snapshot)),
+            main_group,
             &control.preparation,
         )
         .await?;
@@ -1523,6 +1582,7 @@ impl CodexAdapter {
                     json!({"cwd":request.worktree,"includeLayers":false}),
                 ))
                 .await?;
+            environment.verify_references(&config["config"])?;
             policy.verify_configuration(&config["config"])?;
             let account = control.preparation.wait(native
                 .rpc
@@ -2744,7 +2804,8 @@ mod tests {
             std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700)).unwrap();
         }
         let plain = Arc::new(
-            CodexAdapter::new("codex".into(), executable.clone(), owned.store.clone()).unwrap(),
+            CodexAdapter::fixture_new("codex".into(), executable.clone(), owned.store.clone())
+                .unwrap(),
         );
         plain.availability.set_git_input(git.clone());
         let before = no_effect_snapshot(&plain, &owned.request.scope);
@@ -2761,7 +2822,7 @@ mod tests {
         assert!(!marker.exists() && !git_marker.exists());
         assert_unavailable(started);
         let adapter = Arc::new(
-            CodexAdapter::new("codex".into(), executable, owned.store.clone())
+            CodexAdapter::fixture_new("codex".into(), executable, owned.store.clone())
                 .unwrap()
                 .with_runtime_broker(),
         );
@@ -2975,6 +3036,7 @@ mod tests {
                 session: status.session.clone(),
                 version: 0,
                 published_attempt: false,
+                environment: Some(Arc::new(Selection::fixture_empty())),
                 ownership: ProcessOwnership::default(),
                 armed: false,
                 resume_publication: None,
@@ -3057,7 +3119,7 @@ mod tests {
                 .unwrap();
             self.evidence.lock().unwrap().completed = true;
             let adapter = Arc::new(
-                CodexAdapter::new(
+                CodexAdapter::fixture_new(
                     "codex".into(),
                     "/definitely-missing-codex".into(),
                     self.reservation.store.clone(),
@@ -3570,6 +3632,7 @@ mod tests {
                 session: previous.session.clone(),
                 version,
                 published_attempt: false,
+                environment: Some(Arc::new(Selection::fixture_empty())),
                 ownership: ProcessOwnership::default(),
                 armed: false,
                 resume_publication: Some(ResumePublication {
@@ -4041,6 +4104,7 @@ mod tests {
                     session,
                     version: 0,
                     published_attempt: false,
+                    environment: Some(Arc::new(Selection::fixture_empty())),
                     ownership: ProcessOwnership::default(),
                     armed: false,
                     resume_publication: None,
@@ -4910,7 +4974,7 @@ mod tests {
         let owned = Fixture::new(true);
         let (executable, marker) = bootstrap_fixture(&owned);
         let adapter = Arc::new(
-            CodexAdapter::new("codex".into(), executable, owned.store.clone())
+            CodexAdapter::fixture_new("codex".into(), executable, owned.store.clone())
                 .unwrap()
                 .component_fixture(),
         );
@@ -4953,7 +5017,7 @@ mod tests {
             let owned = Fixture::new(true);
             let (executable, marker) = bootstrap_fixture(&owned);
             let adapter = Arc::new(
-                CodexAdapter::new("codex".into(), executable, owned.store.clone())
+                CodexAdapter::fixture_new("codex".into(), executable, owned.store.clone())
                     .unwrap()
                     .component_fixture(),
             );
@@ -5596,7 +5660,7 @@ mod tests {
         let owned = Fixture::new(false);
         let (executable, directory) = wire_fixture(&owned, "complete");
         let adapter = Arc::new(
-            CodexAdapter::new("codex".into(), executable, owned.store.clone())
+            CodexAdapter::fixture_new("codex".into(), executable, owned.store.clone())
                 .unwrap()
                 .component_fixture(),
         );
@@ -5651,7 +5715,7 @@ mod tests {
         let owned = Fixture::new(false);
         let (executable, directory) = wire_fixture(&owned, "complete");
         let adapter = Arc::new(
-            CodexAdapter::new("codex".into(), executable, owned.store.clone())
+            CodexAdapter::fixture_new("codex".into(), executable, owned.store.clone())
                 .unwrap()
                 .component_fixture(),
         );
@@ -5695,7 +5759,7 @@ mod tests {
         let owned = Fixture::new(false);
         let (executable, directory) = wire_fixture(&owned, "complete");
         let adapter = Arc::new(
-            CodexAdapter::new("codex".into(), executable, owned.store.clone())
+            CodexAdapter::fixture_new("codex".into(), executable, owned.store.clone())
                 .unwrap()
                 .component_fixture(),
         );
@@ -5733,7 +5797,7 @@ mod tests {
             let (executable, directory) =
                 wire_fixture(&owned, if pending { "approval" } else { "complete" });
             let adapter = Arc::new(
-                CodexAdapter::new("codex".into(), executable, owned.store.clone())
+                CodexAdapter::fixture_new("codex".into(), executable, owned.store.clone())
                     .unwrap()
                     .component_fixture()
                     .with_runtime_broker(),
@@ -5824,7 +5888,7 @@ mod tests {
         let owned = Fixture::new(true);
         let (executable, directory) = wire_fixture(&owned, "complete");
         let adapter = Arc::new(
-            CodexAdapter::new("codex".into(), executable, owned.store.clone())
+            CodexAdapter::fixture_new("codex".into(), executable, owned.store.clone())
                 .unwrap()
                 .component_fixture(),
         );
@@ -5998,7 +6062,7 @@ mod tests {
     async fn abnormal_supervisor_drop_clears_the_installed_live_approval_journal() {
         let owned = Fixture::new(true);
         let (executable, directory) = wire_fixture(&owned, "approval");
-        let adapter = CodexAdapter::new("codex".into(), executable, owned.store.clone())
+        let adapter = CodexAdapter::fixture_new("codex".into(), executable, owned.store.clone())
             .unwrap()
             .component_fixture()
             .with_runtime_broker();
@@ -6166,7 +6230,7 @@ mod tests {
             let owned = Fixture::new(true);
             let (executable, directory) = wire_fixture(&owned, mode);
             let adapter = Arc::new(
-                CodexAdapter::new("codex".into(), executable, owned.store.clone())
+                CodexAdapter::fixture_new("codex".into(), executable, owned.store.clone())
                     .unwrap()
                     .component_fixture(),
             );
@@ -6280,7 +6344,7 @@ mod tests {
     async fn resumed_supervised_transition_allows_actual_approval_usage_and_exact_one_reply() {
         let owned = Fixture::new(true);
         let (executable, directory) = wire_fixture(&owned, "complete");
-        let adapter = CodexAdapter::new("codex".into(), executable, owned.store.clone())
+        let adapter = CodexAdapter::fixture_new("codex".into(), executable, owned.store.clone())
             .unwrap()
             .component_fixture()
             .with_runtime_broker();
@@ -6365,7 +6429,7 @@ mod tests {
         let owned = Fixture::new(true);
         let (executable, directory) = wire_fixture(&owned, "ack_hold");
         let adapter = Arc::new(
-            CodexAdapter::new("codex".into(), executable, owned.store.clone())
+            CodexAdapter::fixture_new("codex".into(), executable, owned.store.clone())
                 .unwrap()
                 .component_fixture(),
         );
@@ -6442,7 +6506,7 @@ mod tests {
             let owned = Fixture::new(true);
             let (executable, directory) = wire_fixture(&owned, "complete");
             let adapter = Arc::new(
-                CodexAdapter::new("codex".into(), executable, owned.store.clone())
+                CodexAdapter::fixture_new("codex".into(), executable, owned.store.clone())
                     .unwrap()
                     .component_fixture(),
             );
@@ -6556,7 +6620,7 @@ mod tests {
         let owned = Fixture::new(true);
         let (executable, directory) = wire_fixture(&owned, "complete");
         let adapter = Arc::new(
-            CodexAdapter::new("codex".into(), executable, owned.store.clone())
+            CodexAdapter::fixture_new("codex".into(), executable, owned.store.clone())
                 .unwrap()
                 .component_fixture(),
         );
@@ -6667,7 +6731,7 @@ mod tests {
         assert!(configured.status.success());
         let (executable, native_marker) = bootstrap_fixture(&owned);
         let adapter = Arc::new(
-            CodexAdapter::new("codex".into(), executable, owned.store.clone())
+            CodexAdapter::fixture_new("codex".into(), executable, owned.store.clone())
                 .unwrap()
                 .component_fixture(),
         );
@@ -6709,7 +6773,7 @@ mod tests {
         let owned = Fixture::new(true);
         let (executable, directory) = wire_fixture(&owned, "ack_timeout");
         let adapter = Arc::new(
-            CodexAdapter::new("codex".into(), executable, owned.store.clone())
+            CodexAdapter::fixture_new("codex".into(), executable, owned.store.clone())
                 .unwrap()
                 .component_fixture(),
         );

@@ -1,8 +1,8 @@
 # Issue 6 environment admission component: verification
 
 Current state: Design7 qualified by two independent native design reviews;
-Design1/2/3/4/5/6 remain not qualified as pairs. Source implementation and its
-independent acceptance are pending; no native acceptance.
+Design1/2/3/4/5/6 remain not qualified as pairs. Source implementation is in progress; its
+independent acceptance is pending; no native acceptance.
 Ordinary Codex availability remains EMPTY. This consumes existing Issue51 policy
 only; no native workload/backend, managed ownership, settlement or configuration
 origin producer exists from these artifacts.

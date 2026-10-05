@@ -1,6 +1,5 @@
 //! A private native server process. Runtime scope/prepared-input checks belong to
 //! the AgentAdapter before launch; this transport never adopts an existing daemon.
-use std::ffi::OsString;
 use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::process::{ExitStatus, Stdio};
@@ -139,7 +138,8 @@ impl NativeServer {
         executable: &Path,
         workspace: &Path,
         policy: Option<&DecisionPolicy>,
-        environment: Vec<(OsString, OsString)>,
+        environment: super::environment::ExecEnvironment<'_>,
+        mut before_spawn: Option<&mut (dyn FnMut() -> AdapterResult<()> + Send)>,
         uncertain: Arc<AtomicBool>,
         preparation: &Preparation,
     ) -> AdapterResult<Self> {
@@ -190,12 +190,15 @@ impl NativeServer {
             .arg(format!("unix://{}", socket.display()))
             .current_dir(workspace)
             .env_clear()
-            .envs(environment)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true)
             .process_group(0);
+        environment.apply(&mut command);
+        if let Some(before_spawn) = before_spawn.as_mut() {
+            before_spawn()?;
+        }
         preparation.check()?;
         let child = command.spawn().map_err(|_| {
             preparation.failed(failure(
@@ -703,7 +706,11 @@ mod tests {
                     &executable,
                     &cwd,
                     None,
-                    vec![("RRX_FIXTURE_READY".into(), ready.into_os_string())],
+                    super::super::environment::ExecEnvironment::Ambient(vec![(
+                        "RRX_FIXTURE_READY".into(),
+                        ready.into_os_string(),
+                    )]),
+                    None,
                     uncertain,
                     &preparation,
                 )
