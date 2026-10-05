@@ -1,0 +1,253 @@
+{
+  "source_commit": "f567756d8f5fe63438645e281801af815c10e4c4",
+  "review_kind": "Independent preliminary component reviews; not Phase2 acceptance",
+  "reports": [
+    {
+      "review": "Independent STRICT preliminary component source review, round 10",
+      "source_commit": "f567756d8f5fe63438645e281801af815c10e4c4",
+      "baseline_commit": "fad0bc5cefab6248d59efaafddd0481e57d2cffd",
+      "approved_contract_commit": "9a11d03f1b1676c2c3c8a24b6b3fd328759f7db5",
+      "verdict": "request_changes",
+      "counts": {
+        "Critical": 0,
+        "High": 0,
+        "Medium": 1,
+        "Low": 1
+      },
+      "findings": [
+        {
+          "id": "J-M1",
+          "severity": "Medium",
+          "title": "Linux process UID is inferred from procfs inode ownership, silently excluding restricted same-user processes from coverage",
+          "locations": [
+            {
+              "path": "crates/rrx-process-tracker/src/linux.rs",
+              "lines": [
+                50,
+                66
+              ]
+            },
+            {
+              "path": "crates/rrx-process-tracker/src/linux.rs",
+              "lines": [
+                99,
+                109
+              ]
+            }
+          ],
+          "evidence": "identity assigns Identity.uid from fs::metadata(/proc/<pid>).uid(), which is the filesystem owner of that proc directory rather than an observation of the process effective UID. discover treats a differing value as an ordinary foreign-user process and skips it without any unavailable-identity/environment coverage count. Linux changes proc inode ownership to root for non-dumpable processes. An otherwise same-effective-user child with dumpability disabled is therefore silently skipped rather than reported as an inaccessible same-user observation. In root execution, that same filesystem-owner substitution can also misclassify a nonroot restricted process as same-user. The pidfd keeps signaling tied to an exact lifetime, but does not repair the UID classification.",
+          "impact": "The documented same-user selection and bounded coverage metadata are inaccurate for a supported class of Linux processes. This is not a claim that complete Task reclamation is possible or that a false native result is currently accepted; Tracker is not yet a cleanup consumer. The problem already exists in its discovery producer and would hide an expected coverage limitation.",
+          "contract": {
+            "path": "doc/design/agent-execution-design.md",
+            "commit": "9a11d03f1b1676c2c3c8a24b6b3fd328759f7db5",
+            "lines": [
+              437,
+              450
+            ],
+            "requirement": "typed process identity; accessible same-user matching; denied/inaccessible scans recorded as coverage limitations"
+          },
+          "minimal_fix": "Read the actual effective UID from bounded process identity metadata, for example the effective field of /proc/<pid>/status, and include it in the existing before/after lifetime checks. If a trustworthy UID cannot be observed, increment identity_unavailable and do not classify the process as foreign merely from directory ownership. Preserve pidfd binding before cookie reads and the no-raw-PID signaling fallback.",
+          "causal_controls": [
+            "Linux owned-child control: a child of the same unprivileged effective UID sets its own dumpability to zero, reports readiness and self-expires. Discovery must record the denied/unavailable same-user observation rather than silently skip it with no coverage limitation.",
+            "Keep an ordinary accessible owned-cookie positive and different-cookie sibling negative. Verify effective UID parsing, malformed/missing status handling and identity-change refusal with bounded public fixture data.",
+            "An inode-owner-for-process-UID omission must fail the actual UID/coverage oracle. Do not require a privileged/root process control or change host ptrace/dumpability policy."
+          ],
+          "verification": "The source reads filesystem UID and uses it as process UID. Linux dumpability/proc ownership behavior was assessed statically from the platform contract; this reviewer did not execute Linux or a process control. The SDK inspection in this review was macOS-only.",
+          "confidence": 0.91
+        },
+        {
+          "id": "J-L1",
+          "severity": "Low",
+          "title": "Partial environment read errors skip the stated buffer overwrite path",
+          "locations": [
+            {
+              "path": "crates/rrx-process-tracker/src/linux.rs",
+              "lines": [
+                117,
+                135
+              ]
+            },
+            {
+              "path": "crates/rrx-process-tracker/src/lib.rs",
+              "symbol": "matches_environment/discard comment"
+            }
+          ],
+          "evidence": "The read closure allocates a Vec and calls read_to_end(&mut bytes)? before either discard branch. Read::read_to_end may append bytes and then return an error. That early question-mark return drops the partially populated buffer without discard; the outer error arm only updates coverage. The comment claiming other bytes are overwritten before the temporary buffer is dropped is therefore not true for this error path.",
+          "impact": "This is an incomplete source-level best-effort wipe and an overstatement of privacy handling. No durable secret logging, public environment disclosure or physical secure-erasure guarantee is demonstrated.",
+          "minimal_fix": "Retain the read result, discard the accumulated buffer before returning any read error, or use one private drop guard for the transient buffer. Keep the original coverage/error behavior. Do not introduce a universal physical-memory-erasure claim.",
+          "causal_controls": [
+            "A private bounded Read helper used by the real File path can be exercised with a reader that yields bytes and then an error. Check the cleanup branch runs on that error, alongside oversize and normal match/nonmatch branches. No credentials or live foreign process environments are needed."
+          ],
+          "verification": "Verified from immutable control flow and Read::read_to_end error semantics; not executed.",
+          "confidence": 0.97
+        }
+      ],
+      "reviewed_guarantees_and_limits": [
+        "Linux opens pidfd before reading a matching environment and subsequently checks both birth/UID observation equality and live fdinfo PID association. It never falls back to numeric-PID signaling when a pidfd is absent. A successful signal is correctly distinct from exit or full workload cleanup.",
+        "Birth parsing uses stat field 22 via offset 19 after the closing comm parenthesis. The pidfd association check rejects an exited old handle against a reused PID. No live race control was executed here.",
+        "macOS uses public proc_listpids/proc_pidinfo/sysctl interfaces; PROC_UID_ONLY, proc_bsdinfo fields and PROC_PIDTBSDINFO size declarations were cross-checked against installed CommandLineTools SDK sys/proc_info.h/libproc.h/sys/sysctl.h. Exact struct return size is checked before assume_init. KERN_PROCARGS2 parsing skips the executable/padding and argc arguments before matching only cookie fields.",
+        "macOS discovered-PID signal and exit observations explicitly return Unsupported/None. There is no discovered numeric kill or private entitlement fallback.",
+        "Unsafe is confined to the standalone macOS module under its crate-local audited lint exception; main rrx retains workspace unsafe forbid. Tracker has no rrx/SQLite dependency.",
+        "Bounds cover inspected process count, per-process environment bytes and between-call time checks. The documented deadline cannot interrupt a blocking kernel call; this review does not turn it into a hard real-time limit.",
+        "Public Discovery/Identity/Coverage/Termination and Debug omit argv/environment/cookie values. Duplicate cookie fields refuse matching. Temporary raw buffers remain private.",
+        "Core Drop now retires still-open native authority as Lost, reads the actual latest persisted Session version, projects only existing Unit work/disposition into conservative terminal labels, and republishes the durable Unit/Session to its watch. It preserves previously known work and quota wait provenance instead of inventing new completion from cleanup.",
+        "The potential work-None-to-Exited else arm was inspected against current production closure producers: finish/retire/Task/epoch fencing set a work outcome before closing native effects. No supported current producer was identified that reaches that arm with a managed nonterminal Session and no known/unknown work. Arbitrary raw forged DB rows were not treated as a reproduced defect.",
+        "The new runtime-drop control checks durable Unit/Session and watch consistency for ordinary Running and held quota retry. It was read, not executed; physical helper cleanup is not proved by those assertions."
+      ],
+      "prior_own_findings": [
+        {
+          "id": "H-M1",
+          "previous_round": 8,
+          "disposition": "prior round9 source closure retained; no relevant Workflow wait-claim code changed in this delta"
+        }
+      ],
+      "limitations": [
+        "This is fixed-source static component review, not final Phase2/native/Runtime/MVP acceptance.",
+        "No test/build, real Agent/model/account/auth/network operation, signal, host policy change, service install or WT edit was performed. Only this report was written to /private/tmp.",
+        "No dirty/later source, peer reports, progress.md or aggregate review JSON was read.",
+        "Only installed public macOS SDK declarations were inspected in addition to fixed Git source/approved contract. OS execution, Linux kernel conformance, macOS actual discovery and binary ABI/link qualification remain unverified by this reviewer.",
+        "Tracker remains unconnected to native cleanup/Janitor. Production Sources/Gates, Runtime CLI, Docker/cookie reconciliation and optional profiles remain incomplete; their announced absence is not counted as a finding.",
+        "Coverage is never a full Task membership or death certificate; cookies are cooperative provenance, not a same-user security boundary."
+      ],
+      "live_handles": [],
+      "commands_closed": true
+    },
+    {
+      "reviewer": "agent_execution_phase0_review_b",
+      "round": 10,
+      "source_commit": "f567756d8f5fe63438645e281801af815c10e4c4",
+      "baseline_commit": "fad0bc5cefab6248d59efaafddd0481e57d2cffd",
+      "approved_contract_commit": "9a11d03f1b1676c2c3c8a24b6b3fd328759f7db5",
+      "review_kind": "Independent read-only preliminary STRICT component source review",
+      "verdict": "REQUEST_CHANGES",
+      "severity_counts": {
+        "C": 0,
+        "H": 0,
+        "M": 1,
+        "L": 1
+      },
+      "findings": [
+        {
+          "id": "M1",
+          "severity": "M",
+          "title": "Linux exited() tests PID identity disappearance rather than pidfd exit readiness",
+          "primary_location": {
+            "file": "crates/rrx-process-tracker/src/linux.rs",
+            "start_line": 28,
+            "end_line": 48
+          },
+          "related_locations": [
+            {
+              "file": "crates/rrx-process-tracker/src/lib.rs",
+              "start_line": 134,
+              "end_line": 136
+            },
+            {
+              "file": "crates/rrx-process-tracker/tests/discovery.rs",
+              "start_line": 92,
+              "end_line": 100
+            }
+          ],
+          "evidence": "Handle::exited returns Some(true) only when /proc/self/fdinfo/<pidfd>'s Pid field becomes -1. It never observes the pidfd's poll/readiness event. A terminated child can remain a zombie with its PID still attached until its parent reaps it; PID identity removal and process exit are distinct events. The committed Linux fixture first calls Child::try_wait until it reaps the child, then checks exited(), so it covers identity disappearance but cannot detect the earlier false-negative exit state.",
+          "causal_sequence": [
+            "Discover an owned same-user child while it is alive, retaining the matching pidfd.",
+            "Let the child exit or send termination through the retained handle, but deliberately leave its parent alive without calling wait/try_wait.",
+            "The pidfd has an exit readiness event while the child is still a zombie. The current code continues to report Some(false) because fdinfo still supplies the attached PID.",
+            "Only after the parent reaps the child does the current implementation return Some(true)."
+          ],
+          "impact": "The public exited() API conflates a stopped workload with unreaped PID bookkeeping. An eventual cleanup consumer can report an already terminated process as still alive or delay historical cleanup indefinitely when its parent does not reap. This finding does not claim that signaling can hit a reused PID or that Task results currently depend on the tracker; the tracker is not yet connected to native cleanup.",
+          "recommended_change": "Use a nonblocking pidfd poll/readiness observation for process exit, without consuming another parent's wait status. Keep fdinfo identity checks for binding discovery to the retained handle; they answer a different question. If identity disappearance is separately useful, give it a distinct documented API/state.",
+          "proposed_causal_controls_not_executed": [
+            "On Linux, retain a discovered pidfd, allow an owned child to exit without reaping it, and assert exited()==Some(true) before the parent's wait call. Then reap it and assert the result remains true.",
+            "Keep an alive-child control returning Some(false), a no-pidfd control returning None, and the retained-handle/PID-reuse safety control."
+          ],
+          "confidence": "Source establishes that only fdinfo PID removal is checked. The unreaped-child distinction is a Linux process-lifecycle issue; no Linux execution or proposed causal control was performed in this review."
+        },
+        {
+          "id": "L1",
+          "severity": "L",
+          "title": "An error after a partial Linux environment read skips the claimed temporary-buffer wipe",
+          "primary_location": {
+            "file": "crates/rrx-process-tracker/src/linux.rs",
+            "start_line": 117,
+            "end_line": 135
+          },
+          "related_locations": [
+            {
+              "file": "crates/rrx-process-tracker/src/lib.rs",
+              "start_line": 157,
+              "end_line": 168
+            },
+            {
+              "file": "crates/rrx-process-tracker/src/linux.rs",
+              "start_line": 138,
+              "end_line": 139
+            }
+          ],
+          "evidence": "The read closure appends the full accessible environment into a Vec. read_to_end uses ? before either discard call, so an I/O error after any successful partial read drops the accumulated bytes without discard. The outer Err path merely increments environment_unavailable and continues. This contradicts the internal statement that all non-cookie contents are overwritten before the temporary buffer is dropped. Public Discovery/Debug output still contains no environment values; this is a buffer-lifecycle/documentation defect, not observed credential disclosure.",
+          "causal_sequence": [
+            "The bounded reader appends one chunk of environment bytes, including fields unrelated to the cookie.",
+            "A later read returns an error before EOF.",
+            "The ? operator exits the closure and drops the nonempty Vec before discard is called."
+          ],
+          "impact": "Environment memory on this failure path does not receive the same explicit cleanup as success and over-limit paths. The privacy promise must account for errors; a plain fill before deallocation also should not be described as a compiler-proof secure erasure guarantee.",
+          "recommended_change": "Ensure all exits scrub the temporary environment buffer, preferably with a bounded buffer whose RAII cleanup cannot be skipped by ?. Use an appropriate erasure primitive if secure erasure is intended, or narrow the claim to avoiding parsing/retention/output of unrelated fields. Do not include raw read errors or environment values in diagnostics.",
+          "proposed_causal_controls_not_executed": [
+            "Factor the bounded read into an injectable reader control that returns bytes and then an I/O error. Verify the error cleanup path invokes the same buffer cleanup as normal EOF and over-limit refusal.",
+            "Keep public debug/serialization controls proving that only identities and aggregate coverage counts escape the crate."
+          ],
+          "confidence": "Verified directly from the ? early return and the absence of a buffer Drop guard; no I/O fault was injected."
+        }
+      ],
+      "prior_own_findings_disposition": [
+        {
+          "round": 9,
+          "id": "M1",
+          "disposition": "CLOSED_STATIC",
+          "evidence": "crates/rrx/src/execution/native.rs:1273-1338 now persists abnormal live-supervisor retirement as Disposition::Lost, uses the actual persisted Session/version for terminal closure, rereads the unit, and projects committed authority/work/disposition/wait_reason/cleanup into the watch value. It also handles a previously cancelled or known-work unit without inventing a new Unknown work result. The new dropped_executor_runtime_preserves_durable_lost_subscription_and_session fixture source covers ordinary and retained-quota retry drops, but was not executed by this review.",
+          "limits": "Normal, cancelled, known-work and abandoned-loss projections were traced statically; this is not an observed native runtime or process cleanup qualification."
+        },
+        {
+          "round": 8,
+          "id": "M1",
+          "disposition": "REMAINS_CLOSED_STATIC",
+          "evidence": "Normal quota-retry and terminal producers still copy the durable wait reason into their watch updates; the previously inconsistent abnormal Drop producer is now covered above."
+        },
+        {
+          "round": 7,
+          "id": "H1",
+          "disposition": "REMAINS_CLOSED_STATIC",
+          "evidence": "The actual retirement path retains readonly permission/waiter/lease closure before executor generation advancement."
+        },
+        {
+          "round": 6,
+          "id": "H1_original_withdrawn",
+          "disposition": "REMAINS_WITHDRAWN",
+          "evidence": "The original live-executor replacement sequence was blocked by the partial UNIQUE active-executor constraint and transaction ordering; it remains excluded from counts."
+        }
+      ],
+      "additional_verified_source_observations": [
+        "The tracker is a standalone crate with no rrx dependency. The rrx crate keeps workspace unsafe_code=forbid; only the tracker's macOS module locally permits unsafe FFI. No license field or license-related file was changed in the reviewed source diff.",
+        "The macOS FFI destinations have initialized/bounded allocations or a full MaybeUninit proc_bsdinfo allocation. Returned struct size is checked before field interpretation, sysctl count is checked against the buffer before parsing, and proc_listpids interpretation is clamped to the initialized PID buffer. This source inspection did not identify an out-of-bounds pointer or invalid field read; it does not itself verify SDK ABI/runtime support or entitlements.",
+        "macOS parsing skips the executable/padding and argc argument fields before cookie matching. Matching uses an exact NUL-delimited RRX_PROCESS_COOKIE field, rejects duplicate cookie fields, and does not select an argv cookie in the committed parser fixture. Unusual argv/layout and actual kernel responses still require qualification.",
+        "Linux opens the pidfd before reading environment and verifies the pidfd's indexed PID and sampled uid/birth identity after cookie matching. It retains that same OwnedFd for pidfd_send_signal; no raw-PID signaling fallback is present. A missing handle is reported in coverage and yields Unsupported termination.",
+        "macOS discovered-PID signaling and exit certainty are explicitly unsupported; terminate returns Unsupported and exited returns None. This does not claim complete macOS descendant cleanup.",
+        "Discovery bounds process count, environment read size and time checked between OS calls. Coverage records inaccessible environment/identity/handles, changed identity and truncation/time limits. Public values contain identities and aggregate counts, not argv or environment payloads; Cookie Debug is redacted.",
+        "The committed same-user child fixture isolates cookie matching from a sibling and scopes its signaling assertions to Linux retained pidfds. Its source and the Drop fixture were inspected, not executed."
+      ],
+      "limits": [
+        "Only immutable source objects at the stated source/baseline/contract were reviewed. Dirty/later source, peer reports, aggregated reviews and progress documents were not consulted.",
+        "No builds, tests, native agents, accounts, credentials, network calls, external operations or process signals were performed. The review does not inherit or certify any parent's macOS test execution; Linux behavior remains unexecuted here.",
+        "No public SDK header or kernel ABI qualification was run. FFI allocation/bounds correctness is separated from actual macOS API availability and OS conformance.",
+        "The tracker is still unconnected to Native cleanup/Janitor. Production Sources/Gates, Runtime CLI, Docker and optional-scope backends remain unfinished; their absence alone is not a finding in this component review.",
+        "Cookies can be stripped and observations race; discovered matching processes do not constitute complete Task membership or a complete-death/custody guarantee. This remains a cooperative tracker, not a security sandbox.",
+        "Authenticated Claude/Codex settings/hooks/sandbox behavior, actual subscription exhaustion/recovery, four native concurrent Tasks, OS crash/isolation rows and cargo-install readiness remain unverified. This verdict is not final Phase2 approval."
+      ],
+      "owned_handles": {
+        "live_command_sessions": [],
+        "native_processes_started": [],
+        "tool_status": "All read-only shell commands completed without a session_id; no owned command, Agent or discovered-process handle remains."
+      }
+    }
+  ]
+}

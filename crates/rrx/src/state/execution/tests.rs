@@ -672,6 +672,205 @@ fn normal_terminal_cleanup_keeps_finalization_and_result_publication_races_cance
 }
 
 #[test]
+fn cleanup_claim_waits_for_finalization_and_preserves_known_work_and_sibling() {
+    let (mut store, task, epoch) = fixture();
+    let unit = store
+        .reserve_execution(draft(&task, epoch), task.version)
+        .unwrap();
+    let known = store
+        .finish_execution(
+            &unit.authority(),
+            WorkOutcome::Success,
+            Disposition::Completed,
+        )
+        .unwrap();
+    let at = now_ms().saturating_add(1000);
+    assert!(store.due_execution_cleanup(at, 4).unwrap().is_empty());
+    assert!(
+        store
+            .claim_execution_cleanup(unit.id, epoch, at)
+            .unwrap()
+            .is_none()
+    );
+    store.retire_execution(&known.authority(), false).unwrap();
+    let mut sibling = Task::new(
+        task.project_id,
+        task.goal_id,
+        "cleanup sibling".into(),
+        "codex".into(),
+    );
+    store.put_task(&mut sibling).unwrap();
+    let second = store
+        .reserve_execution(draft(&sibling, epoch), sibling.version)
+        .unwrap();
+    let lease = ResourceLease {
+        id: LeaseId::new(),
+        unit_id: second.id,
+        scope: second.scope.clone(),
+        kind: ResourceKind::Ports,
+        namespace: "host".into(),
+        value: "31000-31031".into(),
+        port_start: Some(31000),
+        port_end: Some(31031),
+        state: LeaseState::Reserved,
+        version: 1,
+    };
+    store
+        .reserve_execution_leases(&second.authority(), std::slice::from_ref(&lease))
+        .unwrap();
+    let before_task = store.task(task.id).unwrap().unwrap();
+    let before = store.execution_unit(unit.id).unwrap();
+    assert_eq!(store.due_execution_cleanup(at, 4).unwrap(), vec![unit.id]);
+    let claim = store
+        .claim_execution_cleanup(unit.id, epoch, at)
+        .unwrap()
+        .unwrap();
+    assert!(
+        store
+            .claim_execution_cleanup(unit.id, epoch, at)
+            .unwrap()
+            .is_none()
+    );
+    let observation = CleanupObservation {
+        unit_id: unit.id,
+        at,
+        outcome: CleanupOutcome::Leftovers,
+        coverage: BTreeMap::from([("cookie".into(), "bounded observation".into())]),
+        remaining: vec!["fixture-last-seen".into()],
+        errors: vec![],
+    };
+    store
+        .finish_execution_cleanup(&claim, &observation)
+        .unwrap();
+    let after = store.execution_unit(unit.id).unwrap();
+    assert_eq!(after.version, before.version);
+    assert_eq!(after.work, Some(WorkOutcome::Success));
+    assert_eq!(after.disposition, before.disposition);
+    assert_eq!(after.cleanup, CleanupOutcome::Leftovers);
+    assert_eq!(after.worktree, before.worktree);
+    assert_eq!(
+        serde_json::to_value(store.task(task.id).unwrap().unwrap()).unwrap(),
+        serde_json::to_value(before_task).unwrap()
+    );
+    assert_eq!(
+        store.execution_unit(second.id).unwrap().authority(),
+        second.authority()
+    );
+    assert!(
+        store
+            .validate_execution(&second.authority(), true, false)
+            .is_ok()
+    );
+    assert_eq!(
+        store.execution_leases(second.id).unwrap()[0].state,
+        lease.state
+    );
+    assert_eq!(
+        store.execution_leases(second.id).unwrap()[0].version,
+        lease.version
+    );
+    assert!(
+        store
+            .finish_execution_cleanup(&claim, &observation)
+            .is_err()
+    );
+}
+
+#[test]
+fn cleanup_backlog_fences_expired_claims_and_old_runtime_epochs() {
+    let (mut store, task, epoch) = fixture();
+    let unit = store
+        .reserve_execution(draft(&task, epoch), task.version)
+        .unwrap();
+    let lease = ResourceLease {
+        id: LeaseId::new(),
+        unit_id: unit.id,
+        scope: unit.scope.clone(),
+        kind: ResourceKind::Worktree,
+        namespace: task.project_id.to_string(),
+        value: unit.worktree.to_string_lossy().into_owned(),
+        port_start: None,
+        port_end: None,
+        state: LeaseState::Reserved,
+        version: 1,
+    };
+    store
+        .reserve_execution_leases(&unit.authority(), std::slice::from_ref(&lease))
+        .unwrap();
+    store.retire_execution(&unit.authority(), false).unwrap();
+    let at = now_ms().saturating_add(1000);
+    let first = store
+        .claim_execution_cleanup(unit.id, epoch, at)
+        .unwrap()
+        .unwrap();
+    let second = store
+        .claim_execution_cleanup(unit.id, epoch, at + 60_000)
+        .unwrap()
+        .unwrap();
+    let observation = CleanupObservation {
+        unit_id: unit.id,
+        at: at + 60_000,
+        outcome: CleanupOutcome::Unknown,
+        coverage: BTreeMap::new(),
+        remaining: vec![],
+        errors: vec!["unavailable".into()],
+    };
+    assert!(
+        store
+            .finish_execution_cleanup(&first, &observation)
+            .is_err()
+    );
+    assert_eq!(
+        store.execution_leases(unit.id).unwrap()[0].state,
+        LeaseState::Reserved
+    );
+    store
+        .finish_execution_cleanup(&second, &observation)
+        .unwrap();
+    assert_eq!(
+        store.execution_leases(unit.id).unwrap()[0].state,
+        LeaseState::Quarantined
+    );
+    let third = store
+        .claim_execution_cleanup(unit.id, epoch, at + 120_000)
+        .unwrap()
+        .unwrap();
+    let (_, successor) = store.begin_execution_epoch().unwrap();
+    assert!(successor > epoch);
+    assert!(
+        store
+            .finish_execution_cleanup(&third, &observation)
+            .is_err()
+    );
+    assert!(
+        store
+            .claim_execution_cleanup(unit.id, epoch, at + 180_000)
+            .is_err()
+    );
+    assert!(
+        store
+            .claim_execution_cleanup(unit.id, successor, at + 180_000)
+            .unwrap()
+            .is_some()
+    );
+    assert_eq!(
+        store
+            .connection
+            .query_row(
+                "SELECT COUNT(*) FROM cleanup_observations WHERE unit_id=?1",
+                [unit.id.to_string()],
+                |row| row.get::<_, u64>(0)
+            )
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        store.execution_unit(unit.id).unwrap().work,
+        Some(WorkOutcome::Unknown)
+    );
+}
+
+#[test]
 fn pre_open_legacy_writer_and_cached_statement_cannot_write_after_upgrade() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("state.db");

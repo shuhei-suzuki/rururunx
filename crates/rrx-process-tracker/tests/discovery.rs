@@ -89,14 +89,21 @@ fn exact_cookie_discovers_only_the_owned_match_and_never_signals_its_sibling() {
             process.atomic_signal_available(),
             "runner requires pidfd for this conformance control"
         );
+        assert_eq!(process.exited().unwrap(), Some(false));
         assert_eq!(process.terminate(), Termination::Sent);
         let at = Instant::now();
-        while matched.0.try_wait().unwrap().is_none() {
+        // Observe kernel exit readiness BEFORE the parent reaps the zombie.
+        while process.exited().unwrap() != Some(true) {
             assert!(at.elapsed() < Duration::from_secs(10));
             std::thread::sleep(Duration::from_millis(10));
         }
+        let stat = std::fs::read_to_string(format!("/proc/{}/stat", matched.0.id())).unwrap();
+        assert_eq!(
+            stat.rsplit_once(')').unwrap().1.split_whitespace().next(),
+            Some("Z")
+        );
+        matched.0.wait().unwrap();
         assert_eq!(process.exited().unwrap(), Some(true));
-        // The retained exited handle stays harmless regardless of PID reuse.
         assert_eq!(process.terminate(), Termination::AlreadyExited);
     }
     assert!(sibling.0.try_wait().unwrap().is_none());

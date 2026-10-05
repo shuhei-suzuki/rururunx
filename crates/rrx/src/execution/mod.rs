@@ -6,6 +6,7 @@ pub mod owner;
 pub use owner::RuntimeOwner;
 pub mod attempts;
 mod claude_wire;
+pub mod cleanup;
 pub(crate) mod git_io;
 pub mod ipc;
 pub mod native;

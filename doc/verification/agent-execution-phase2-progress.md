@@ -297,8 +297,8 @@ FFI. rrx's workspace unsafe forbid is unchanged. Only this crate's macOS module
 permits audited unsafe; it depends on OS wrappers and no rrx/SQLite APIs. Its
 bounded same-user enumeration returns exact cookie matches, birth identities and
 coverage categories; no argv/environment values or cookie appear in public
-results/debug output. Temporary environment buffers are filtered for the cookie
-and overwritten before discard. macOS never signals a discovered raw PID.
+results/debug output. Temporary environment buffers are filtered for the cookie. Explicit buffer
+cleanup is a source-level attempt, not compiler-proof secure memory erasure. macOS never signals a discovered raw PID.
 Linux opens a pidfd before reading the process environment and checks both birth
 identity and the fd's current process association after the read; signals use
 only that retained handle and report send/denial/unknown separately from exit.
@@ -322,13 +322,67 @@ This observation is retained as a limitation of the frozen legacy path, not a
 reason to extend its ps-based observations. Production retained-source integration
 must use the scoped authority path instead of that global latch.
 
+Round10 [independent reports](agent-execution-phase2-preliminary10-reviews.json)
+requested two distinct Medium corrections and the same Low correction. Linux
+now reads the effective UID from bounded `/proc/<pid>/status`, rather than
+procfs inode ownership. Non-dumpable processes can have root-owned procfs files
+without changing effective UID; this behavior is documented in
+[Linux proc_pid(5)](https://man7.org/linux/man-pages/man5/proc_pid.5.html).
+Unavailable metadata is reported as coverage uncertainty. Exit observation now
+polls the retained pidfd without reaping; exit readiness and PID disappearance
+are distinct, as documented in
+[Linux pidfd_open(2)](https://man7.org/linux/man-pages/man2/pidfd_open.2.html).
+The Linux fixture leaves its terminated child unreaped until readiness is
+observed. A same-user non-dumpable child control checks actual UID classification
+and, for unprivileged execution, denied environment coverage. These Linux controls
+have not been compiled or run on this Mac; they are not OS conformance evidence.
+A private temporary-buffer guard attempts cleanup on normal, over-limit and
+partial-read-error exits. The latter injects an error after bytes are read and
+checks the actual error category; no physical secure-erasure claim follows.
+
+NativeSessions now owns a periodic historical CleanupWorker, also usable through
+an explicit bounded sweep. The worker holds only a weak RuntimeOwner between
+sweeps; its Drop aborts the scheduler. Each sweep claims at most four closed units
+using the current owner epoch and cleanup-job version CAS before OS observations.
+Both native and result-finalization permissions must be closed, so a broad cookie
+scan cannot stop retained-result capture helpers. Claims have a durable retry
+reservation; expired/replayed/old-epoch observations cannot amend the backlog.
+Each observation quarantines only its unit's unreleased leases. It never changes
+Task/Workflow/evidence, unit work, accepted artifact or the unit authority version.
+Scans retain aggregate unavailable/changed/limited coverage, not environment or
+argv contents. Kernel calls are not subject to a hard interruption deadline.
+Linux termination uses only retained pidfds; macOS discovered-PID termination
+remains Unsupported. Docker and filesystem/port release are still pending, so an
+empty observation does not claim all tracked resources reclaimed. Last-seen
+matches that cannot be stopped are reported separately from unknown coverage.
+
+Two transactional controls passed: finalization-open jobs remain unclaimed, and
+cleanup preserves successful work plus a sibling's authority/leases; expired
+claim and epoch replay are refused without partial observations. Two additional
+service controls passed on macOS: a real retained/published commit survives a
+cookie sweep while its sibling child stays live, and an idle worker does not
+retain the owner lock. The first matched child remains live and reports leftovers
+on this Mac, consistent with unsupported discovered-PID signaling. These are
+owned synthetic child/component controls, not authenticated Agent acceptance.
+
+The full macOS workspace regression passed 395 rrx library tests, four tracker
+unit tests, 112 rrx primary integration tests, one tracker child-discovery control
+and two doctests, zero failures and 28 primary ignored cases. A preliminary
+broad test filter unintentionally selected legacy process/socket controls under
+the restricted shell, which reported permission failures; the actual new ledger
+fixture also initially used an inadmissible Active initial lease and was corrected
+to Reserved. The precise ledger controls and subsequent authorized full run
+passed. Clippy initially caught a redundant buffer borrow and test-module
+placement; both were corrected. No frozen ps observation, credential behavior,
+real subscription or Linux runtime qualification was added by these checks.
+
 - Full current-source/retained-graph qualification and production source/evidence
   ports; Runtime orchestration and operational CLI.
 - Required native/Git settings and hooks, dependency qualification and remaining
   scoped preparation/retained-inspection helpers; full finite tool profiles and
   installed-binary tool mediation tests.
-- Cookie/platform cleanup, optional Linux scope, Docker label reconciliation,
-  safe cleanup backlog and complete crash/restart/legacy reconciliation.
+- Optional Linux scope, Docker label reconciliation, filesystem/port release
+  policy and complete crash/restart/legacy reconciliation.
 - Full fixture/migration/fairness/permission/cancellation coverage, installation,
   both-OS CI and final independent coordinated STRICT source approvals.
 - Phase3 genuine Claude/Codex four-Task, crash/escape, auth/settings/hooks and

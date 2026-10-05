@@ -69,7 +69,8 @@ fn environment_offset(bytes: &[u8]) -> Option<usize> {
 }
 fn cookie_matches(pid: u32, cookie: &Cookie, cap: usize) -> io::Result<bool> {
     let mut mib = [libc::CTL_KERN, libc::KERN_PROCARGS2, pid as i32];
-    let mut bytes = vec![0_u8; cap];
+    let mut buffer = EnvironmentBuffer::new(vec![0_u8; cap]);
+    let bytes = &mut buffer.bytes;
     let mut count = bytes.len();
     // SAFETY: mib contains three initialized integers; bytes owns cap writable
     // bytes; count points to an initialized size. No new-value buffer is supplied.
@@ -87,7 +88,7 @@ fn cookie_matches(pid: u32, cookie: &Cookie, cap: usize) -> io::Result<bool> {
         Err(io::Error::last_os_error())
     } else {
         bytes.truncate(count);
-        environment_offset(&bytes)
+        environment_offset(bytes)
             .map(|at| matches_environment(&bytes[at..], cookie))
             .ok_or_else(|| {
                 io::Error::new(
@@ -96,7 +97,7 @@ fn cookie_matches(pid: u32, cookie: &Cookie, cap: usize) -> io::Result<bool> {
                 )
             })
     };
-    discard(&mut bytes);
+    drop(buffer);
     result
 }
 pub(super) fn discover(cookie: &Cookie, limits: Limits, started: Instant) -> io::Result<Discovery> {

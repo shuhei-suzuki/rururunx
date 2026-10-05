@@ -7,7 +7,7 @@ repository.workspace = true
 description = "Bounded cooperative process cookie discovery with explicit coverage limits"
 
 [dependencies]
-rustix.workspace = true
+rustix = { workspace = true, features = ["event"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 libc.workspace = true

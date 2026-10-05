@@ -542,6 +542,7 @@ dependencies = [
  "anyhow",
  "clap",
  "futures-util",
+ "rrx-process-tracker",
  "rusqlite",
  "rustix",
  "serde",

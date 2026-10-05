@@ -155,7 +155,7 @@ pub fn discover(cookie: &Cookie, limits: Limits) -> io::Result<Discovery> {
 }
 
 // Interpret only the exact cookie field. Everything else stays unparsed and is
-// overwritten before its temporary buffer is dropped. Repeated cookies refuse
+// subject to explicit cleanup on buffer drop (not secure erasure). Repeated cookies refuse
 // matching rather than choosing an arbitrary environment entry.
 fn matches_environment(bytes: &[u8], cookie: &Cookie) -> bool {
     let mut values = bytes
@@ -164,8 +164,48 @@ fn matches_environment(bytes: &[u8], cookie: &Cookie) -> bool {
     let selected = values.next() == Some(cookie.0.as_bytes());
     selected && values.next().is_none()
 }
-fn discard(bytes: &mut [u8]) {
-    bytes.fill(0);
+/// Drop covers success, over-limit and partial-read failure alike. This explicit
+/// cleanup is not a promise of compiler-proof secure memory erasure.
+struct EnvironmentBuffer {
+    bytes: Vec<u8>,
+    #[cfg(test)]
+    erased: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+}
+impl EnvironmentBuffer {
+    fn new(bytes: Vec<u8>) -> Self {
+        Self {
+            bytes,
+            #[cfg(test)]
+            erased: None,
+        }
+    }
+}
+impl Drop for EnvironmentBuffer {
+    fn drop(&mut self) {
+        self.bytes.fill(0);
+        #[cfg(test)]
+        if let Some(erased) = &self.erased {
+            erased.store(true, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+}
+#[cfg(any(target_os = "linux", test))]
+fn read_environment(
+    reader: impl std::io::Read,
+    limit: usize,
+    mut buffer: EnvironmentBuffer,
+) -> io::Result<EnvironmentBuffer> {
+    use std::io::Read;
+    reader
+        .take((limit + 1) as u64)
+        .read_to_end(&mut buffer.bytes)?;
+    if buffer.bytes.len() > limit {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "process environment exceeds bound",
+        ));
+    }
+    Ok(buffer)
 }
 
 #[cfg(test)]
@@ -201,5 +241,53 @@ mod tests {
             )
             .is_err()
         );
+    }
+    #[test]
+    fn temporary_environment_cleanup_covers_partial_read_errors_and_bounds() {
+        use std::{
+            io::Read,
+            sync::{
+                Arc,
+                atomic::{AtomicBool, Ordering},
+            },
+        };
+        struct PartialError(bool);
+        impl Read for PartialError {
+            fn read(&mut self, output: &mut [u8]) -> io::Result<usize> {
+                if self.0 {
+                    return Err(io::Error::other("injected read failure"));
+                }
+                self.0 = true;
+                let bytes = b"UNRELATED=discarded\0";
+                let count = bytes.len().min(output.len());
+                output[..count].copy_from_slice(&bytes[..count]);
+                Ok(count)
+            }
+        }
+        for (reader, limit) in [
+            (Box::new(PartialError(false)) as Box<dyn Read>, 128),
+            (Box::new(&b"too-many-bytes"[..]), 8),
+        ] {
+            let erased = Arc::new(AtomicBool::new(false));
+            let mut buffer = EnvironmentBuffer::new(Vec::new());
+            buffer.erased = Some(erased.clone());
+            let error = read_environment(reader, limit, buffer).err().unwrap();
+            assert_eq!(
+                error.kind(),
+                if limit == 128 {
+                    io::ErrorKind::Other
+                } else {
+                    io::ErrorKind::InvalidData
+                }
+            );
+            assert!(erased.load(Ordering::SeqCst));
+        }
+        let erased = Arc::new(AtomicBool::new(false));
+        let mut buffer = EnvironmentBuffer::new(Vec::new());
+        buffer.erased = Some(erased.clone());
+        let read = read_environment(&b"OTHER=x\0"[..], 128, buffer).unwrap();
+        assert!(!erased.load(Ordering::SeqCst));
+        drop(read);
+        assert!(erased.load(Ordering::SeqCst));
     }
 }

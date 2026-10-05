@@ -122,6 +122,7 @@ pub struct NativeSessions {
     limits: NativeLimits,
     owner: Arc<RuntimeOwner>,
     _tools: Arc<ipc::ToolServer>,
+    _cleanup: cleanup::CleanupWorker,
     entries: Mutex<BTreeMap<SessionId, Entry>>,
     starts: Mutex<BTreeMap<UnitId, Weak<tokio::sync::Mutex<()>>>>,
 }
@@ -131,10 +132,12 @@ impl NativeSessions {
     }
     pub(crate) fn with_limits(owner: Arc<RuntimeOwner>, limits: NativeLimits) -> Result<Self> {
         let tools = Arc::new(ipc::ToolServer::start(owner.clone())?);
+        let cleanup = cleanup::CleanupWorker::start(&owner)?;
         Ok(Self {
             limits,
             owner,
             _tools: tools,
+            _cleanup: cleanup,
             entries: Mutex::new(BTreeMap::new()),
             starts: Mutex::new(BTreeMap::new()),
         })
