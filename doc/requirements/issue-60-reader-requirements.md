@@ -6,10 +6,16 @@ at46f819b has two independent approvals/no C/H/M; Source1 at a92c4d0 returned
 request_changes. Source2 at81e7c29 has two component-delta approvals/no C/H/M;
 limited Source3 at675471c, Source4 ate29567a and Source5 ate30ce2f likewise have two
 approvals/no C/H/M. Source5's three evidence-precision Lows are dispositioned in the
-ledger. Local macOS f072 full Debug passed; full Release TEST failed308/6 with
+ledger. Earlier local macOS f072 full Debug passed; full Release TEST failed308/6 with
 later targets unrun. All older failed gates remain failed/cause AND regression
 UNKNOWN. Source5 e30 CI failed in one macOS Codex cleanup consumer; Linux all steps
-passed, final required context unqualified. Full source/native acceptance remains unqualified; current facts are in
+passed. Normal main custody composition777 passed first local macOS full default
+Debug and distinct Release TEST, each445 top-level Rust tests+2docs/27ignored,
+plus quality/builds; two independent static composition approvals have no findings.
+CI37270293297 passed every step bothOS with tested-tree equality. Final docs-only
+checks remain before limited component merge, with whole60/native/backend/F1/MVP
+OPEN. No normative requirement changes or historical cause resolution are claimed.
+Full source/native acceptance remains unqualified; current facts are in
 the [verification ledger](../verification/issue-60-readers.md).
 The four requirements
 Low findings are verified precision items

@@ -863,3 +863,59 @@ rerun, timeout/latch reset, skip-only acceptance, serialization or deadline waiv
 was used. All own Source5 suites/mutations/review commands are closed. PR64 stays
 DRAFT/HOLD; Root's merge disposition is pending, and full60/native16/F1, shared
 producer qualification, availability and recovery remain OPEN.
+
+### Normal main custody composition777 and finite disposition
+
+Normal merge7774b937 retained both public parents996d486 and new main9d2daed,
+without conflicts. [Composition evidence](issue-60-reader-custody-composition1.json)
+binds all16 incoming paths and all five changed Codex code blobs exactly to the
+reviewed main. The complete Codex tree equals main9d; selected Git/adapter/Grok/
+Context, Cargo and CI bytes equal reviewed996. The new attempt/custody/session
+mechanics add20 actual custody controls to the ordinary suite inventory. Their
+pool remains separate; ordinary production custody is None, the file factory is
+cfg(test) only, and ordinary Codex EMPTY refusal stays before selected effects.
+No shared/native capability, schema, producer or settlement grant is introduced.
+The selected audit's45mac/42Linux inventory is unchanged; new Codex controls
+outside its selectors earn no selected production-pool/Context/native proof.
+
+At clean777, the first full DEFAULT local macOS Debug TEST and distinct first
+full DEFAULT local macOS Release TEST each PASS445 top-level Rust tests+2doctests/
+27ignored. Debug136.103s and Release159.734s include library334PASS/24ignored
+44.73/46.35s and every later workspace target. Nested audit44PASS/1ignored
+4.25/4.51s and ordinary-library child1PASS are separate from445. Fmt, all-target
+Clippy-Dwarnings and both BUILDs also pass. Original command/log SHA records are
+in the evidence artifact. No original budget, latch, internal default concurrency
+or success predicate changed. This was a new actual combined source's first
+run in each mode, not a same-failed-head retry. Peer66 reported merge preparation
+and planned focused controls; possible overlap is not a failure-cause finding.
+All owned suites/builds closed before evidence publication.
+
+CI37270293297 passed **EVERY step BOTHOS**, DEBUG TEST plus RELEASE BUILD only.
+Both actual checkouts f7981fd67f362ed2cbabce95b9410bb67f6b7eae have parents9d2/777;
+tree4ec1af554b3107b7078d90b7e1d61eadf5cc374f equals the trigger. Normal fetch and
+complete mode/type/blob/path comparison of all320 entries also match. The CI
+Release BUILD is distinct from the separately executed local full Release TEST.
+
+Both independent static read-only composition reviewers closed before results
+were shared: Root and existing peer9 each APPROVE, zero C/H/M/L. Root independently
+checked side-specific source identity, private/ordinary route boundaries, raw
+gate hashes and top-level/nested count separation, both checkout lines, parents,
+complete tree and every CI step; no independent tests/native inference were run.
+Peer9's verdict/confidence0.94/STRICT and current gate checks are reported by Root;
+no separate raw structured peer artifact exists, and none is invented. These
+reviews cover only this finite composition, retaining earlier independent native
+Source5 approvals and verified evidence-only Low corrections in their own scope.
+
+Root's finite disposition permits normal **limited component** merge only after
+the final outcome-only documentation delta receives direct QUICK verification
+and its new required bothOS CI passes every step with actual complete-tree proof.
+This records conditions, not their premature fulfillment. Current metadata-head
+qualification is still pending. The mutation ledger remains27/23/25 plus two
+historical masked survivors at zero credit; none was rerun for this composition,
+and all R18/R23/diagnostic-only limits remain unchanged.
+
+Old f072 Release308/6, e30CI Codex313/1 and all older failed gates remain FAILED,
+cause/contribution/regression UNKNOWN. New combined passes neither fix nor
+exonerate historical failures. Whole60/native3/backend/F1/MVP, durable recovery,
+shared ProcessGroup/new/Drop and genuine effect/managed producer qualification
+remain OPEN. No absent privileged runtime/profile/containment service is assumed.

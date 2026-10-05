@@ -434,13 +434,19 @@ Selected Git reader lifetime has two independent Requirements4 approvals. The
 Child/readers implementation independent of caller runtime. Two independent
 Source2–5 reviews approve their limited component deltas without C/H/M; Source5's
 three evidence-precision Lows are dispositioned in the ledger. Full-source/native
-acceptance remains unqualified. Local macOS f072 full default Debug passed425 top-level Rust tests+2docs;
+acceptance remains unqualified. Earlier local macOS f072 full default Debug passed425 top-level Rust tests+2docs;
 distinct full Release TEST FAILED308/6 (library PASS/FAIL; later targets unrun).
 Older35f0/fd406 and historical failures remain failed/cause AND regression UNKNOWN.
 The default suite now includes a concurrent private audit child; no causal role is
 inferred. e295 public bothOS CI passed DEBUG TEST and RELEASE BUILD, not RELEASE
 TEST. Source5 e30 CI failed in one macOS Codex cleanup consumer; Linux all steps
 passed. The required final context remains unqualified, with cause/contribution/
-regression UNKNOWN. The [finite ledger](doc/verification/issue-60-readers.md) is27 compiled runs/
+regression UNKNOWN. Normal main custody composition777 now passed initial local
+macOS full default Debug and distinct Release TEST, each445 top-level Rust tests+
+2docs/27ignored, plus fmt/Clippy/both BUILDs. Two independent static reviews approve
+this finite composition without findings; CI37270293297 passed every step on both
+OS with complete tested-tree equality. Final docs-only checks precede any limited
+component merge. Whole60/native/backend/F1/MVP remain OPEN; these new observations
+resolve no historical failure cause. The [finite ledger](doc/verification/issue-60-readers.md) is27 compiled runs/
 23 operators/25 intended kills/TWO masked survivors with zero credit; M14/M17 are
 diagnostics-only, R23 selector-non-vacuity only. Shared native lifetime and full #60/F1 remain open.
