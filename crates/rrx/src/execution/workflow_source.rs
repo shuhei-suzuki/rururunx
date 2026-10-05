@@ -47,6 +47,7 @@ struct Frame {
     rules: String,
     versions: BTreeMap<String, String>,
     mandatory: BTreeMap<String, String>,
+    governing_digest: String,
 }
 /// Single-use private provenance for the actual first native phase.
 pub struct InitialWorkflowExecutor {
@@ -68,11 +69,12 @@ impl InitialWorkflowExecutor {
             .filter(|(k, _)| !k.starts_with("workflow:"))
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect::<BTreeMap<_, _>>();
+        let envelope: serde_json::Value = serde_json::from_str(&input.payload)?;
         ensure!(
             input.scope == self.expected.scope
                 && input.revision == self.expected.revision
                 && versions == self.expected.source_versions
-                && input.payload == self.expected.payload,
+                && envelope["payload"].as_str() == Some(self.expected.payload.as_str()),
             "first native input differs from prepared committed frame"
         );
         self.prepared
@@ -231,6 +233,11 @@ impl ManagedWorkflowSources {
                 store.goal(task.goal_id)?.context("Goal missing")?,
             )
         };
+        ensure!(
+            state.frame.governing_digest
+                == crate::state::execution_governing_digest(project, &goal)?,
+            "committed Project/Goal instructions changed; fresh input recovery required"
+        );
         let result = results::ResultStore::new(self.owner.clone());
         if let Some(unit) = unit.filter(|u| {
             u.kind == UnitKind::Executor
@@ -480,6 +487,7 @@ impl Frame {
             rules,
             versions,
             mandatory,
+            governing_digest: crate::state::execution_governing_digest(project, goal)?,
         })
     }
     fn render(&self, task: &Task, phase: Phase, budget: &ContextBudget) -> Result<SourceSnapshot> {

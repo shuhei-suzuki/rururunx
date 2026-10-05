@@ -630,6 +630,48 @@ at the base commit from live Project bytes B: payload, rule hashes and selected
 policy use A or explicitly refuse, never silently use B. Omitting the rule-frame
 wiring while retaining the committed repository index must fail this control.
 
+### 10.2. Committed source consumer and compact authority frame
+
+The managed source integration exposes one private-field committed input frame to
+Workflow.inputs. It contains the parsed policy, mandatory rules, selected payload
+and Context budget together; prepare_pack calls the same consumer. Managed sources
+always return this frame or an error. Only legacy/unmanaged integrations use the
+old independent live rule loader. Unsupported external/untracked mandatory inputs
+refuse; this implementation does not qualify an external rule reader.
+
+The producer bounds a complete exact-commit tree to 4096 files, ordinary blob reads
+to 256 KiB per file and 16 MiB total. The pure CommittedIndex keeps full inventory,
+OID/content digests, explicit unread reasons and lexical maps. Workflow/retained
+artifact dependencies use a compact complete-inventory digest plus the exact code,
+mandatory rule/config and instruction digests; they do not transmit thousands of
+per-file keys into the existing 128-dependency retained-result contract. Required
+Goal/Task text and rules remain outside the discretionary repository allocation.
+The core budget measures encoded UTF-8 bytes, not actual provider tokens. Disabled
+selection requests all readable files as mandatory, subject to the existing 128-file
+request and bounded payload limits; larger baseline workloads explicitly refuse.
+
+Initial adoption compares the actual native Context envelope's body against the
+private rendered source frame, then atomically compares the entire serialized
+Context data and all non-Workflow source versions in SQLite. Thus phase, class,
+generation, budget and payload cannot be exchanged while retaining a valid body.
+The original Context is authoritative; public SourceSnapshot metadata cannot mint
+preparation ownership. Cached source frames retain the accepted Project/Goal
+semantic digest after capability consumption. Changed governing instructions
+refuse before a new native launch; retained-result read permission does not imply
+permission to silently reuse obsolete instructions. Automatic recovery of such a
+changed initial frame remains a separate integration requirement.
+
+Subsequent actual successful executor terminals capture their exact committed
+corpus and new compact dependencies before a genuine ResultStore capture. Existing
+Ready/Published artifacts are graph/manifest verified before reuse. RetainedGit's
+finite current-Runtime reader adds an exact-artifact tree action and only ordinary
+bounded blob OIDs observed in that tree. It does not allow arbitrary object reads,
+reopen historical native/finalization grants, or depend on surviving worktree bytes.
+Per-Task source capture is serialized independently. Synchronous terminal decisions
+remove initial-source access immediately; an in-flight bounded read retains its
+abandonment guard until it completes. Task terminal fencing already forbids launch.
+These are component contracts, not four-native-Task or shipped Runtime evidence.
+
 ## 11. CLI, observability and verification plan
 
 `rrx run` resolves registered Goal/Task workflow and starts the owner scheduler;
