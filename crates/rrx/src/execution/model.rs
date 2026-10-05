@@ -40,6 +40,8 @@ identity!(UnitId);
 identity!(ArtifactId);
 identity!(LeaseId);
 identity!(OperationId);
+identity!(NativeInvocationId);
+identity!(NativeResultId);
 
 /// Stable semantic identity before a native Session exists. Versions are fetched
 /// only for this exact unit, never by Task or diagnostic recovery metadata.
