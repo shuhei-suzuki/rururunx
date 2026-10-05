@@ -280,3 +280,21 @@ Its correction preserves unchanged Sessions/events and every Git/filesystem/nati
 effect counter; a legitimate initial own-scope read is allowed. No production
 guard, deadline or concurrency changed. Both failures and test-only compile/lint
 wiring diagnostics remain private evidence; no native/backend qualification follows.
+
+Clean `7bc49f6` affected Codex DEFAULT host debug: 114 passed/2 ignored, 57.00s;
+Clippy all-target denied warnings and fmt passed. Scoped environment consumers: 9
+passed/1 explicit child entry ignored, 7.59s. Full DEFAULT workspace debug FAILED:
+279 passed/3 failed/24 ignored, 73.57s. Grok resume-admission reported Git-preflight
+Timeout (exit observed 11,307ms/reaped101, no native group or dispatch); unrelated
+checkpoint/resume parents hit 60,002/60,001ms watchdogs and reaped SIGKILL, final
+recorded stage boundary1/2 case7 fixture. Cause UNKNOWN. Direct parent cleanup does
+not attest complete nested workloads; no historical failure/load/regression or
+whole-native inference is made. These failed gates remain failed, with deadlines
+and default concurrency unchanged.
+
+The caller-count control is strengthened to declare every eligible synthetic name
+in the own Project, so a deleted count guard cannot be masked by undeclared-caller
+refusal. Other per-name/aggregate caller bounds retain structural/unit-only status.
+A private archive preserves the exact source inputs for causal mutations; it is
+never clean-head acceptance. Full release, current-source gates and immutable
+source reviews remain pending.

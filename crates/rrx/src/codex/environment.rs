@@ -478,6 +478,12 @@ mod tests {
             .collect::<BTreeMap<_, _>>();
         let baseline =
             FrozenEnvironment::new(input.iter().map(|(k, v)| (k.into(), v.into()))).unwrap();
+        request.project.environment_refs = input.keys().cloned().collect();
+        store
+            .lock()
+            .unwrap()
+            .put_project(&mut request.project)
+            .unwrap();
         request.environment = input;
         assert!(kind(baseline.select(&store, &request)) == ErrorKind::InvalidConfiguration);
         request
