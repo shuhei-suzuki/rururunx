@@ -1,0 +1,123 @@
+{
+  "scope": "Reader Design2 approved twice at46f819b; verified Low precision only; source pending",
+  "reviews": [
+    {
+      "head": "46f819bc932096adfbd11c31ae5586fd66ac8d1f",
+      "native_session": "00677738-28ea-413e-aa5b-1919c43421ac",
+      "cleanup_verified": true,
+      "reviewer": "ownership",
+      "verdict": "approve",
+      "raw_sha256": "451b53ef72cdc3f0b247c2b8352e571116827c0113392445e8e3658b392bc395",
+      "unresolved_blockers_at_review": [],
+      "findings": [
+        {
+          "id": "D2-L1-reap-window-start",
+          "severity": "Low",
+          "file": "doc/design/issue-60-reader-design.md",
+          "line": 208,
+          "claim": "The design merges cleanup and reap into one CleanupAndReap command, and has the supervisor observe 'that one wait-result channel within the existing 250ms reap window'. It does not say the window starts only after a successful cleanup result is received. If the window instead starts when the command is sent, the macOS PERM inspection inside first cleanup consumes the reap budget and turns ordinary settled operations into reap-timeout Unknown, which breaks parity.",
+          "evidence": "- Current order (adapter.rs:1369-1370 at 47830b0, 1358-1359 at 8f): cleanup_group(child).await? completes, and only then does timeout(250ms, child.reap()) start.\n- kill_group runs the macOS PERM path's /bin/ps inspection inside cleanup (adapter.rs:399-407). That inspection has its own 250ms BUDGET plus a mandatory, unbounded inspector reap.\n- Design 156 says 'owning-Child reap keeps its existing 250ms window'.\n- Design 230 lists a single CleanupAndReap message, and 225-226 mention one-shot stage channels without naming a cleanup-result stage.",
+          "fix": "State that the worker reports its first-cleanup result on its own bounded stage channel before it calls Child::wait. A cleanup error takes cleanup SessionLost precedence. The supervisor's existing 250ms reap window starts only when it receives a successful cleanup result. Add a parity mutant that starts the window at command send and must fail the macOS PERM valid-dead control.",
+          "verification": "Verified against exact46 public design and actual selected source; precision implemented in design before source, not historical cause.",
+          "disposition": "Clarified in approved-design outcome: separate cleanup stage/reap timer, explicit frame-owned result senders/atomic authorization, terminal and primary precedence, same-poll startup, preallocated retention, exact8f offsets.",
+          "source_control_executed": false
+        },
+        {
+          "id": "D2-L2-loss-vs-established-or-returned-outcome",
+          "severity": "Low",
+          "file": "doc/design/issue-60-reader-design.md",
+          "line": 129,
+          "claim": "The loss and poison handling defines only that loss cannot replace an established cleanup/reap SessionLost. Two cases are left unspecified:\n- Loss arrives after a lower primary has been established but not yet published (stdout or stderr read/join, output_open, observe Timeout, initialization error).\n- Loss or poison handling runs after the publication has already reached a returned state.\nThe phrase 'freeze Unknown/true' could be implemented as a late caller-flag write after a live settled clear.",
+          "evidence": "- Design 129-132 and 414-418: 'loss cannot reorder stdout/stderr' is ambiguous.\n- Requirements gate 4 requires returned Generic Unknown to keep its original non-SessionLost API kind.\n- Contract clause 13 (257-258) forbids late changes between the Context flag reads at context.rs:626 and context.rs:662.\n- A late true write after ReturnedSettled would latch Context through GitObservation::drop (660-664) even though confirm_git_cleanup already accepted the result, which is a false latch.",
+          "fix": "Specify the following:\n- Loss and poison handlers act only while the publication state is Admitted, Spawning or Live.\n- ReturnedSettled, FrozenUnknown and CancelledBeforeSpawn are terminal and are never rewritten. The caller flag is written only at Spawning (true) and at the live clear.\n- If a primary was already frozen when loss occurs, publish that primary's original kind as Unknown, with the flag kept true and permits retained. Use SessionLost only when no primary was established.\n- Add a control that panics the frame after an established output_open or stdout error.",
+          "verification": "Verified against exact46 public design and actual selected source; precision implemented in design before source, not historical cause.",
+          "disposition": "Clarified in approved-design outcome: separate cleanup stage/reap timer, explicit frame-owned result senders/atomic authorization, terminal and primary precedence, same-poll startup, preallocated retention, exact8f offsets.",
+          "source_control_executed": false
+        },
+        {
+          "id": "D2-L3-unreachable-disconnect-and-stale-retention-wording",
+          "severity": "Low",
+          "file": "doc/design/issue-60-reader-design.md",
+          "line": 107,
+          "claim": "The design names 'sender-disconnect' as a way the worker learns of a stop or owner loss. That disconnect can never happen while OpTicket holds native_commands and the pool retains the ticket. If any setup or stop path relied on it while the supervisor blocks joining the worker before publishing, the frame would hang. Separately, §7 still describes moving assets into a retained record, although Design2 preallocates the vaults.",
+          "evidence": "- Design 86-88 places native_commands inside OpTicket; 115-116 says the pool retains its own strong record and ticket.\n- 106-109 offers 'Cancel/Lost, or sender-disconnect' and says the supervisor 'joins the worker ... before publishing the error'.\n- 237-238 says 'disconnect is owner loss'.\n- 332-334 says 'move remaining actual assets/runtime into a private bounded retained record', while 298-313 already preallocates the OpRecord vaults.",
+          "fix": "State that every no-attempt stop or loss is delivered by an explicit Cancel or Lost try_send, together with the atomic fact, and that command-channel disconnect is never relied on. Name the message the healthy supervisor uses for a no-attempt stop. Reword §7 to say that terminal Unknown leaves the actual assets in the preallocated vaults, so no movement or allocation is required.",
+          "verification": "Verified against exact46 public design and actual selected source; precision implemented in design before source, not historical cause.",
+          "disposition": "Clarified in approved-design outcome: separate cleanup stage/reap timer, explicit frame-owned result senders/atomic authorization, terminal and primary precedence, same-poll startup, preallocated retention, exact8f offsets.",
+          "source_control_executed": false
+        }
+      ]
+    },
+    {
+      "head": "46f819bc932096adfbd11c31ae5586fd66ac8d1f",
+      "native_session": "5a3cf784-2c81-4218-a9ec-5488292ff43e",
+      "cleanup_verified": true,
+      "reviewer": "capacity",
+      "verdict": "approve",
+      "raw_sha256": "95260b5e33ed79accfd6fba48dc83cca4dcb53c78c66832642cf87aff6f95abd",
+      "unresolved_blockers_at_review": [],
+      "findings": [
+        {
+          "id": "D2-L1-reap-window-start",
+          "severity": "Low",
+          "file": "doc/design/issue-60-reader-design.md",
+          "line": 208,
+          "claim": "Section 5 merges cleanup and reap into one CleanupAndReap command and observes 'one wait-result channel within the existing250ms reap window'. It does not say the 250ms window starts only after the first-cleanup result is received. Today the window opens only after cleanup_group returns, and on macOS a zombie-only group commonly takes the PERM→trusted-inspection path.",
+          "evidence": "- adapter.rs 1369-1383: cleanup_group is awaited unbounded, then timeout(250ms, reap()) runs.\n- adapter.rs 445-453: macOS PERM requires inspection. inspection.rs BUDGET is 250ms, plus a mandatory inspector wait.\n- Design 155-156 promises 'owning-Child reap keeps its existing250ms window'.\n- Design 230 lists only Begin/CleanupAndReap/Cancel/Lost and defines no cleanup-result stage.\n- Precedence (design 281) needs cleanup SessionLost distinct from reap SessionLost.\n- If the timer starts when CleanupAndReap is sent, inspection time consumes the reap window. Settled macOS operations would then become SessionLost/Unknown, causing a false Context latch and Generic Lost.",
+          "fix": "Specify that the worker reports the first-cleanup result (Ok, or the exact 'native process group cleanup failed: {e}') on its own bounded stage before blocking in Child::wait. The supervisor awaits that result unbounded, as today, and starts the existing 250ms reap cutoff only when a successful cleanup result arrives. Add a macOS parity control in which a slow PERM inspection still yields a settled reap.",
+          "verification": "Verified against exact46 public design and actual selected source; precision implemented in design before source, not historical cause.",
+          "disposition": "Clarified in approved-design outcome: separate cleanup stage/reap timer, explicit frame-owned result senders/atomic authorization, terminal and primary precedence, same-poll startup, preallocated retention, exact8f offsets.",
+          "source_control_executed": false
+        },
+        {
+          "id": "D2-L2-command-lane-precision",
+          "severity": "Low",
+          "file": "doc/design/issue-60-reader-design.md",
+          "line": 237,
+          "claim": "Four statements about the command and result lanes are imprecise:\n- Sender-disconnect is relied on as owner loss, but the command Sender lives in OpTicket, which the pool retains strongly, so disconnect is unreachable.\n- 'Worker result disconnect' needs the worker→supervisor Sender to live on the worker's own frame.\n- 'Begin is consumed before later commands' needs Begin enqueued in the same critical section as Admitted→Spawning.\n- 'Begin' names both the caller→supervisor handshake and the worker spawn authorization.",
+          "evidence": "- Design 88: native_commands is a ticket field.\n- Design 115-116: the pool retains a strong record.\n- Design 106-108 and 237 cite sender-disconnect as loss.\n- Design 121: worker result disconnect takes the loss path.\n- Design 298-300: vaults hold actual storage, and a Sender stored there would not drop on worker unwind. The supervisor's unbounded cleanup-result await (design 155-160; contract 212) would then wait on a dead worker.\n- Design 139-145 vs 231: CallGuard::drop can enqueue Cancel between the Spawning transition and the Begin try_send. The atomic recheck keeps effects safe, but the ordering claim is false.\n- Design 101/118 vs 230: duplicate 'Begin' name.",
+          "fix": "Make these four corrections:\n- State that the worker learns of loss only from the owner_lost atomic plus the coalesced Lost try_send, never from disconnect.\n- Require the worker→supervisor result/stage Sender to be owned by the worker thread frame, so any worker unwind disconnects it.\n- Enqueue the worker's spawn authorization inside the publication-lock section that performs Admitted→Spawning.\n- Rename one of the two 'Begin' messages.",
+          "verification": "Verified against exact46 public design and actual selected source; precision implemented in design before source, not historical cause.",
+          "disposition": "Clarified in approved-design outcome: separate cleanup stage/reap timer, explicit frame-owned result senders/atomic authorization, terminal and primary precedence, same-poll startup, preallocated retention, exact8f offsets.",
+          "source_control_executed": false
+        },
+        {
+          "id": "D2-L3-published-result-and-pool-poison-precedence",
+          "severity": "Low",
+          "file": "doc/design/issue-60-reader-design.md",
+          "line": 323,
+          "claim": "There are two precedence gaps:\n- (a) Only an established cleanup/reap SessionLost is protected from a later owner_lost. An already published ResultReady with another primary (for example output_open ProcessFailure Unknown) could be re-typed as SessionLost.\n- (b) Pool poison at the healthy terminal action 'publishes loss' even for a fully settled operation whose own vaults are destroyed. That gives the caller a false SessionLost, frozen flag and Context latch.",
+          "evidence": "- Design 129-130 protects only cleanup/reap.\n- Design 323-325: poison publishes loss.\n- Requirements 156-158: Generic must persist Lost with the original non-SessionLost API kind.\n- Contract 227-229: no false latch on fully observed successful settlement.\n- Pool poison does not affect this operation's own ticket or vault settlement facts.",
+          "fix": "(a) State that a published ResultReady always wins and a later loss affects only retention.\n(b) Separate the poison cases:\n- Ticket poison: loss, as now.\n- Pool poison after observed settlement: publish the settled Outcome but skip the release; retain all four slots and deny new admission.",
+          "verification": "Verified against exact46 public design and actual selected source; precision implemented in design before source, not historical cause.",
+          "disposition": "Clarified in approved-design outcome: separate cleanup stage/reap timer, explicit frame-owned result senders/atomic authorization, terminal and primary precedence, same-poll startup, preallocated retention, exact8f offsets.",
+          "source_control_executed": false
+        },
+        {
+          "id": "D2-L4-unstarted-reservation-cancellation",
+          "severity": "Low",
+          "file": "doc/design/issue-60-reader-design.md",
+          "line": 110,
+          "claim": "Explicit release is allowed only when Builder::spawn fails, and the permit bundle has no releasing Drop. The design does not forbid an await point between successful admission and OpReservation::start. A caller cancellation in that gap would leak four slots permanently, even though no job or attempt exists.",
+          "evidence": "- Design 98-102: admit yields OpReservation; start spawns the thread.\n- Design 71-73: admission awaits Notify and retries.\n- Design 110-113 and 320: no releasing Drop or unwind path.\n- Contract 26-27: a proven pre-effect refusal creates no new uncertainty or retained job.",
+          "fix": "Require the final allocation under the pool lock and start() to run in one poll with no intervening await. Alternatively, define an explicit no-job release for a never-started OpReservation that is dropped before any thread exists.",
+          "verification": "Verified against exact46 public design and actual selected source; precision implemented in design before source, not historical cause.",
+          "disposition": "Clarified in approved-design outcome: separate cleanup stage/reap timer, explicit frame-owned result senders/atomic authorization, terminal and primary precedence, same-poll startup, preallocated retention, exact8f offsets.",
+          "source_control_executed": false
+        },
+        {
+          "id": "D2-L5-impact-citations",
+          "severity": "Low",
+          "file": "doc/design/issue-60-reader-design.md",
+          "line": 397,
+          "claim": "Several impact-table offsets that the table states are 'original8f95adb' do not match that source.",
+          "evidence": "- 'scalar1250' is validate_git's Ok(()); the scalar bounded_git is at original 1253-1273 (current 1264-1284).\n- 'read_git_output1422–1432' is at original 1416-1430 (current 1427-1441).\n- bounded_git_raw_inner ends at original 1415, not 1421.",
+          "fix": "Correct these citations in the table, or cite the current post-merge offsets with the exact head named.",
+          "verification": "Verified against exact46 public design and actual selected source; precision implemented in design before source, not historical cause.",
+          "disposition": "Clarified in approved-design outcome: separate cleanup stage/reap timer, explicit frame-owned result senders/atomic authorization, terminal and primary precedence, same-poll startup, preallocated retention, exact8f offsets.",
+          "source_control_executed": false
+        }
+      ]
+    }
+  ]
+}

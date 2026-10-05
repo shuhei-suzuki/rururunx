@@ -341,10 +341,10 @@ Reader/driver retention and every existing Drop/reap gap remain separate/open. T
 Grok receipt below stays unclassified; facts cannot grant cleanup or alter clean.
 
 The selected Git reader Requirements4 has two independent approvals; its
-[Design2 candidate](../issue-60-reader-design.md) remains UNAPPROVED. It proposes
+[Design2](../issue-60-reader-design.md) has two independent approvals. It proposes
 a Git-local actual std Child worker, caller-runtime-independent supervisor/runtime
 and both reader joins, four counted jobs per call/global64. Shared native
-ProcessGroup/new/reap/Drop stays unchanged. Design/source/actual consumer gates
+ProcessGroup/new/reap/Drop stays unchanged. Source/actual consumer gates
 remain pending; these process-local holders grant no durable/full-workload proof.
 
 ### Grok terminal supervision receipts

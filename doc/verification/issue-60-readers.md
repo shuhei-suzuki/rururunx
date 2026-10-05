@@ -1,6 +1,6 @@
 # Issue60 selected Git reader lifetime verification
 
-Status: Requirements4 approved at a8e8a8b; Design2 UNAPPROVED; no reader
+Status: Requirements4 approved at a8e8a8b; Design2 approved at46f819b with verified Low precision; no reader
 implementation or acceptance. Earlier diagnostic/environment partial gates are separate.
 Base2c6ae9d includes diagnostic partialPR61 and environment partialPR53. Their
 independent approvals do not authorize this reader/owner-driver change. Parent60
@@ -207,3 +207,29 @@ This is merge-context/docs-baseline evidence, not reviewed-head equality or
 reader Source/ReleaseTEST acceptance. Private finite CI provenance/inventory
 retains that difference; Design2/source gates still pending. Historical reds,
 cause AND regression UNKNOWN; whole60/F1/native16 remain OPEN.
+
+Reader Design2 at46f819bc932096adfbd11c31ae5586fd66ac8d1f completed BOTH
+independent own-session delta reviews: ownership APPROVE/3Low, capacity APPROVE/
+5Low, no C/H/M or unresolved blockers; actual wrapper cleanup_verified=true.
+The finite [raw-hash/findings ledger](issue-60-reader-design2-findings.json) records
+all eight instances and verified precision. These weak wrapper facts certify no
+full native workload. Separate cleanup-stage completion now starts the existing
+250ms reap window; command authorization is atomic with Spawning; worker-frame
+Senders alone disconnect on unwind; terminal results retain primary kind and
+never receive a late flag write. Pool-only poison after real own settlement holds
+slots without false native Unknown. Allocation/start has no intervening await;
+Unknown resources remain in preallocated vaults. Actual controls/mutants are
+source-pending. No requirements authority, job, deadline or backend is added.
+
+Both reviews closed before normal main cf8a1e7 integration. Incoming28 files are
+Workflow unbound-dispatch retry guard, Store marker predicate, pure controls and
+docs. Adapter/common selected inspector/Context/Grok/Cargo source inputs are
+IDENTICAL to reviewed46; no native/common ownership behavior is inherited.
+Design2 CI37244640967 allstepsbothOS SUCCESS: actual checkout2baa4f44277304bf3a821b312adb1fcde10b33af
+parents47830b0/46f819b, COMPLETE tree equals triggering46. This remains docs
+DEBUG test plus release BUILD only, not reader Source/Release TEST acceptance.
+Separate main cf8 CI37244736209 macOS Codex ownership inspector deadline and
+Root23 composed364139d full RELEASE two Grok env isolated-child60s watchdog
+failures remain FAILED, cause AND regression UNKNOWN. Cleanup returned in the
+watchdog helper does not prove all nested jobs settled; no component fix or
+inspector scheduling cause is inferred. Whole60/F1/native16 remain OPEN.

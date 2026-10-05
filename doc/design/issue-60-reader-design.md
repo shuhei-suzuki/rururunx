@@ -1,9 +1,9 @@
-# Issue60 selected Git owner/readers — Design2 candidate
+# Issue60 selected Git owner/readers — Design2 approved; source pending
 
 Risk: STRICT. Requirements4 at a8e8a8b has two independent APPROVE/no C/H/M;
 its four verified Low refinements appear in this design and the requirements
 outcome ledger. Design1 at8f95adb returned request_changes from both independent reviewers.
-All16 findings are recorded and verified below; this Design2 is UNAPPROVED. No reader source, test, availability
+All16 findings are recorded and verified below. Design2 at46f819b has two independent APPROVE/no C/H/M; the eight nonblocking Low instances are verified and clarified below. No reader source, test, availability
 or F1 acceptance exists. Existing shared native ProcessGroup/new/reap/Drop stays
 unchanged. Current source references originally used public8f95adb; Design2 normally
 composes main47830b0. Incoming common changes are additive visibility/trait methods,
@@ -96,17 +96,21 @@ struct Outcome { primary: AdapterResult<Vec<u8>>, resource_settled: bool, facts:
 ```
 
 `GitPool::admit(deadline)` yields a private `OpReservation`, never a Store lease.
+The final successful allocation and `start` run in the SAME poll with no
+intervening await; an unstarted reservation cannot be abandoned at an await.
 `OpReservation::start(request,ticket)` starts the supervisor std thread with
 fallible Builder::spawn. The actual JoinHandle is stored in the reserved pool
-record BEFORE a one-shot Begin handshake permits the thread to initialize/start
-Git. A start failure, or caller cancellation before Begin, proves no Git attempt.
+record BEFORE a one-shot FrameReady handshake permits the thread to initialize/start
+Git. A start failure, or caller cancellation before FrameReady, proves no Git attempt.
 A created supervisor does not perform native Git work while the caller is storing
 its handle. The supervisor builds its private current-thread Tokio runtime and
 registers its SIGCHLD listener, then creates/stores the actual native worker
 JoinHandle before authorizing any Git spawn. The bounded command Sender is installed in outer NativeLink/ticket BEFORE
 worker creation; a worker created during a failing setup still receives Cancel/
-Lost, or sender-disconnect, without Git authorization. The worker waits for that
-authorization; setup failure requests no-attempt stop and joins the worker on the supervisor thread before publishing the error.
+Lost through explicit nonblocking messages plus their atomic facts, without Git
+authorization. Command disconnect is never relied on: the pool retains the ticket
+and its Sender. The worker waits for AuthorizeSpawn; a healthy setup failure sends
+Cancel for a no-attempt stop and joins the worker before publishing the error.
 A failure BEFORE any supervisor thread was created can explicitly release its
 unstarted reservation after measured no-job/no-attempt proof; this is not a
 releasing Drop/unwind path. Once a frame/thread exists, only its explicit healthy
@@ -115,7 +119,7 @@ No caller-runtime handle, signal registration or stdio registration is borrowed.
 The pool retains its own strong operation record before effects, so caller Drop
 cannot destroy the ticket, native link or supervisor assets.
 
-A frame-owned liveness/publication guard is installed before Begin. Its Drop and
+A frame-owned liveness/publication guard is installed before FrameReady. Its Drop and
 outer catch_unwind Err arm set owner_lost and publish loss without native work,
 then result_wake.notify_one() stores a permit even before a waiter exists. Worker
 result disconnect/panic takes the same path. The caller registers/enables its
@@ -126,10 +130,14 @@ Loss while still Admitted atomically changes it to CancelledBeforeSpawn, prevent
 any later Spawning, returns pre-effect LaunchFailure and leaves the flag untouched;
 all four slots remain retained fail-closed until the healthy terminal release,
 which loss does not grant. Loss after Spawning returns SessionLost/frozen true,
-feeding actual Context latch/Generic Lost/Grok unclean. Loss never replaces an
-already established cleanup/reap SessionLost with a lower-priority error. A poisoned
-publication mutex is inspected via into_inner solely for retention/notification:
-freeze Unknown/true, return SessionLost, never clear/release or resume admission.
+feeding actual Context latch/Generic Lost/Grok unclean. Loss/poison handlers mutate only Admitted, Spawning or Live. ReturnedSettled,
+FrozenUnknown and CancelledBeforeSpawn are terminal and never rewritten; an
+already published result always wins. Any established primary, including stdout/
+stderr read error or output_open ProcessFailure, keeps its original kind when
+loss freezes resource uncertainty. SessionLost applies only without an established
+primary. A poisoned publication mutex is inspected via into_inner solely for
+retention/notification of an active state: freeze Unknown/true, never clear/release
+or resume admission. It cannot write true after a live settled clear.
 No normal result path may wait forever for a lost owner to publish ResultReady.
 This does not add a total operation-time bound to legitimate pending native cleanup.
 Startup and each fallible command keep assets in outer storage, including unsent
@@ -139,7 +147,8 @@ no counters are reset. Loss handlers are inside this same reserved frame/job.
 The publication mutex linearizes admitted→spawning against CallGuard::drop:
 Drop wins Admitted→CancelledBeforeSpawn and prevents native spawn, without
 setting the caller flag. Spawning wins sets caller uncertainty=true BEFORE native
-spawn; later Drop freezes true and signals cancel nonblocking. Drop never sends OS signals,
+spawn and enqueues AuthorizeSpawn INSIDE that same publication critical section;
+Cancel cannot precede its authorization message after Spawning. Later Drop freezes true and signals cancel nonblocking. Drop never sends OS signals,
 waits, joins, takes native assets or invokes group Drop. It uses atomics, separate
 cancel Notify and a nonblocking try_send to the already bounded native command
 lane; it never waits on a mutex held by native work. CallGuard is owned INSIDE
@@ -205,8 +214,11 @@ non-adoptable token derived from the worker's pinned actual Child. The worker is
 not permitted to reap while this observation is active. The supervisor ends/drops
 that observer before sending the CleanupAndReap command. Only the native worker
 calls actual Child::wait AFTER successful first group cleanup, on its ALREADY
-counted reserved thread. The supervisor observes that one wait-result channel
-within the existing250ms reap window. Timeout publishes the same SessionLost,
+counted reserved thread. The worker first reports FIRST-cleanup Ok or its exact
+SessionLost on a separate bounded stage, before calling Child::wait. The supervisor
+awaits cleanup without a new cutoff, as the current helper does. ONLY receipt of
+successful cleanup starts the existing250ms reap window for that same wait-result
+channel. Neither command-send time nor inspection time consumes the reap window. Timeout publishes the same SessionLost,
 retains the still-running actual wait/Child/slot and proceeds to the one output
 settlement window; the SAME supervisor can late-await the same result afterwards.
 Cancellation still publishes its atomic fact and nonblocking bounded message
@@ -223,19 +235,25 @@ loop, late periodic reap polling, blocking wait or outside waitpid on an async
 poller. Mandatory/native wait is not a hard total operation-time bound.
 
 Every worker message/endpoint transfer is bounded to its one operation. Use
-finite one-shot stage channels/nonblocking sends; a full/disconnected channel
+finite one-shot stage channels/nonblocking sends; the worker-to-supervisor
+stage/result Senders live on the WORKER FRAME, never in a retained vault/ticket,
+so worker unwind disconnects the pending stage. Unsent actual endpoints remain
+in outer native storage. A full/disconnected channel
 retains the unsent actual endpoints/outcome on the owner rather than blocking
 first-cleanup delivery. There is no unbounded queue of commands/results.
 The worker parks on a capacity-bounded command channel (capacity4) rather than
-5ms polling. Its finite message set is Begin, CleanupAndReap, Cancel and Lost;
-no recurring retries/monitor messages. Begin is consumed before later commands.
+5ms polling. Its finite message set is AuthorizeSpawn, CleanupAndReap, Cancel and Lost;
+no recurring retries/monitor messages. AuthorizeSpawn is enqueued during the
+Spawning transition before later commands. FrameReady names the distinct
+caller-to-supervisor pre-setup handshake.
 CallGuard Drop sends Cancel once, owner_lost CAS coalesces Lost once even when
 both catch_unwind and guard Drop run, and the
 healthy supervisor sends CleanupAndReap once. Nonblocking try_send plus the
 atomic fact ensures full/disconnected delivery cannot erase cancellation/loss.
 A full channel already contains at most the finite earlier commands, which must
-be consumed with cancel/lost state rechecked before any effect; disconnect is
-owner loss. Neither caller nor supervisor blocks sending. Worker handles its
+be consumed with cancel/lost state rechecked before any effect; command Sender disconnect is unreachable while the retained ticket exists
+and is never an owner-loss mechanism. Worker stage/result disconnect instead
+uses frame-owned Senders and is owner loss. Neither caller nor supervisor blocks sending. Worker handles its
 atomic states after every received command. There is no parked polling cadence.
 If cancellation/failed supervisor wins before a healthy cleanup command, it
 performs FIRST cleanup once and caches that result; a later healthy command uses
@@ -264,7 +282,7 @@ Worker launch/poison/panic/exit facts never substitute for observed group/Child.
 
 ReaderPair retains each handle in OUTER OpAssets; the inner supervisor borrows
 handles for await. Catching inner unwind cannot drop/detach them. The owning runtime
-and outer assets survive failure by moving into bounded retained storage. A healthy
+and outer assets survive failure in the PREALLOCATED retained vaults. A healthy
 supervisor collects stdout then stderr; read_git_output retains OUTPUT_LIMIT+1
 capture/InvalidInput behavior and the original read/join error kinds. Stderr failure
 observed by the runtime does not reorder a still-pending stdout's primary outcome.
@@ -295,7 +313,7 @@ late-release. Readers on a retained but no-longer-driven runtime remain unobserv
 
 ## 7. Terminal execution frame and retention storage
 
-A preallocated OpRecord is retained by the pool BEFORE thread Begin. It owns the
+A preallocated OpRecord is retained by the pool BEFORE thread FrameReady. It owns the
 runtime/reader asset vault and native asset vault through strong references; actual
 Child/pipe/JoinHandle storage is assigned there before the next fallible step.
 Each execution frame exclusively borrows its own vault into inner work. These
@@ -320,17 +338,19 @@ no resource/job is pending, and drops reader/runtime/native settled resources BE
 terminal permit release. The permit bundle has NO releasing Drop/RAII path: unwind/Drop retains all4.
 ONLY the explicit healthy terminal frame action releases. It first publishes a
 settled Outcome after the actual worker join/resource destruction. Its final
-action only updates pool/counters/Notify. It validates unpoisoned pool/ticket
-bookkeeping before settled publication and release; poison instead publishes loss
-and retains slots. No native wait/cleanup/runtime destruction/blocking join follows release. The thread's
+action only updates pool/counters/Notify. Ticket poison retains active loss as above. If pool bookkeeping alone is poisoned
+AFTER actual own settlement and vault destruction, publish the settled Outcome and
+permit the normal live clear; skip slot release, retain all4 slots and deny admission.
+Pool accounting poison cannot fabricate native Unknown or a Context latch. No native wait/cleanup/runtime destruction/blocking join follows release. The thread's
 nonblocking return epilogue is not a new work job; no OS-thread-join certificate is
 claimed for the supervisor. Its actual thread handle is accounted/stored during the
 job and may be dropped only at this terminal frame action, after work is complete.
 This explicit inner-future/frame boundary is the clause13 design choice; no extra
 reaper/monitor job is introduced to observe its own execution.
 
-On terminal Unknown, move remaining actual assets/runtime into a private bounded
-retained record BEFORE the frame completes. All four permits remain held even if
+On terminal Unknown, leave remaining actual assets/runtime in the already
+preallocated private bounded record BEFORE the frame completes; no transfer or
+retention allocation is needed after effects. All four permits remain held even if
 some resource did not start or its job already ended. Opaque no-Child Err stores
 measured absence plus the terminal uncertainty, not a fictional Child. Pool storage
 is at most16 operation records; ownership movement under its mutex never performs
@@ -394,11 +414,11 @@ citations and inspect exact input/source equality, not blindly copy offsets.
 
 | Changed symbol/site | Actual consumers | Impact / required disposition |
 | --- | --- | --- |
-| bounded_git_raw_inner adapter1317–1421 → git_owner | Generic validate_git1148–1163, Grok ownership425–450/index1467–1483, Context588–622, scalar1250 | replace Git-only custody; same command/env/argv and primary kinds/text/fact forwarding, explicit Lost exception below |
+| bounded_git_raw_inner adapter1317–1415 → git_owner | Generic validate_git1148–1163, Grok ownership425–450/index1467–1483, Context588–622, scalar1253–1273 | replace Git-only custody; same command/env/argv and primary kinds/text/fact forwarding, explicit Lost exception below |
 | global64/4-per-op/max16/32 and admission/frame | all above | new bounded process-local pressure and conservative terminal holds; actual cap/four-progress/late-release controls; fairness50 OPEN |
 | CallGuard/owner_lost/separate wakes | Generic Reservation457–468/live630–646, ContextGitObservation660–664, Grok flags/receipt | real cancellation/loss controls, no late clear, no hang, pre-effect vs post-effect precedence |
 | native std Child binding/signal/reap | current ProcessGroup365–405/438–441 and cleanup1434–1455 serve differential baseline only | Git-local equivalent, no shared native new/reap/Drop behavior edit; full signal/TestPlan/errorfact parity |
-| reader handles/budget64KiB+1/single250ms | read_git_output1422–1432, Generic/Grok/Context return paths | actual both joins, primary stdout ordering, observed cancellation and pending peer; cap/deadlines unchanged |
+| reader handles/budget64KiB+1/single250ms | read_git_output1416–1430, Generic/Grok/Context return paths | actual both joins, primary stdout ordering, observed cancellation and pending peer; cap/deadlines unchanged |
 | cfg(test) GitTestContext/private holder | existing adapter1586–1631/context1422–1480 plus new real routes | actual isolation + no async retained Runtime drop/production pollution; never global or tasklocal override |
 | Generic live launch Err630–646 | start/Store reservation/launch audit | ONLY equation exception Lost for SessionLost OR own Git flag; original ErrorKind/persistence/error priority preserved |
 | native Generic/Grok/common ProcessGroup and Grok registry tests1508–1514 | all existing native tests/current Codex EMPTY private tests | no behavior edits; direct reused new/read_git_output/cleanup remain unchanged; compile/default suites verify composition |
@@ -419,7 +439,14 @@ SessionLost keeps its established primary; loss cannot reorder stdout/stderr.
 No 5ms component worker/reap polling is added; the trusted inspector's existing
 5ms cadence/250ms and all existing deadlines remain unchanged.
 
-Two independent immutable native Design2 delta reviews must approve before Source.
+Two independent immutable native Design2 delta reviews APPROVED at46f819b.
+The verified nonblocking precision adds controls for slow macOS PERM cleanup then
+settled reap (timer-start mutant), frame panic after established stdout/output_open
+primary, terminal result plus late loss, pool-only poison after actual settlement,
+and no await between allocation/start. These are source-pending controls, not
+executed proof or extra jobs/deadlines. Normal main cf8 integration changes only
+Workflow unbound-retry/Store marker guard/tests/docs; selected adapter/Context/Grok/
+inspector/Cargo inputs are identical to46. Source gates remain required.
 Source gates include two independent native reviews with verified fixes/rereviews,
 meaningful actual controls/mutants, appropriate default debug/release tests, fmt/
 all-target Clippy/builds, both OS required CI with actual checkout/parents/tree proof.
