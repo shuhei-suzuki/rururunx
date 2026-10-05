@@ -2,8 +2,6 @@
 //! Four slots account for the supervisor, two readers and the native worker.
 //! This is not a durable operation capability or complete native containment.
 use super::*;
-#[cfg(test)]
-use std::sync::atomic::{AtomicU64, AtomicUsize};
 use std::{
     ffi::OsString,
     io,
@@ -20,57 +18,6 @@ use tokio::{
 const JOBS: usize = 4;
 const CAPACITY: usize = 64;
 const WINDOW: Duration = Duration::from_millis(250);
-
-// Root's temporary cfg(test)-only diagnostic probe. No authority or source gate.
-#[cfg(test)]
-static PROBE_ORDINAL: AtomicU64 = AtomicU64::new(0);
-#[cfg(test)]
-static PROBE_LINES: AtomicUsize = AtomicUsize::new(0);
-#[cfg(test)]
-fn probe_kind(args: &[String]) -> &'static str {
-    match args.first().map(String::as_str) {
-        Some("check-ref-format") => "check_ref_format",
-        Some("rev-parse") => "rev_parse",
-        Some("rev-list") => "rev_list",
-        Some("symbolic-ref") => "symbolic_ref",
-        Some("status") => "status",
-        Some("diff") => "diff",
-        Some("ls-files") => "ls_files",
-        Some("diff-index") => "diff_index",
-        _ => "other",
-    }
-}
-#[cfg(test)]
-fn probe_line(stage: &'static str, probe: Option<&Probe>, kind: &'static str) {
-    // At most 64 value-free lines per child; no arguments, paths, env or PID.
-    if PROBE_LINES
-        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| {
-            (n < 64).then_some(n + 1)
-        })
-        .is_ok()
-    {
-        if let Some(probe) = probe {
-            eprintln!(
-                "root_git_probe stage={stage} kind={kind} operation={} elapsed_us={} waitid_calls={} sigchld_received={}",
-                probe.ordinal,
-                probe.started.elapsed().as_micros(),
-                probe.waits.load(Ordering::SeqCst),
-                probe.signals.load(Ordering::SeqCst)
-            );
-        } else {
-            eprintln!("root_git_probe stage={stage} kind={kind}");
-        }
-    }
-}
-#[cfg(test)]
-struct Probe {
-    kind: &'static str,
-    ordinal: u64,
-    started: std::time::Instant,
-    waits: AtomicUsize,
-    signals: AtomicUsize,
-    observation_failed: AtomicBool,
-}
 #[cfg(test)]
 static TEST_POOLS: OnceLock<Mutex<Vec<Arc<GitPool>>>> = OnceLock::new();
 
@@ -107,8 +54,6 @@ impl GitPool {
         let record = loop {
             // Expiry precedes capacity and setup; no new uncertainty on refusal.
             if tokio::time::Instant::now() >= request.deadline {
-                #[cfg(test)]
-                probe_line("admission_deadline", None, probe_kind(&request.args));
                 return Err(error(
                     ErrorKind::Timeout,
                     "Git ownership preflight timed out",
@@ -122,12 +67,7 @@ impl GitPool {
                     error(ErrorKind::LaunchFailure, "Git owner admission unavailable")
                 })?;
                 if pool.records.len() < CAPACITY / JOBS {
-                    let record = Arc::new(OpRecord::new(
-                        flag.clone(),
-                        context.clone(),
-                        #[cfg(test)]
-                        probe_kind(&request.args),
-                    ));
+                    let record = Arc::new(OpRecord::new(flag.clone(), context.clone()));
                     pool.records.push(record.clone());
                     Some(record)
                 } else {
@@ -143,11 +83,7 @@ impl GitPool {
             }
             tokio::time::timeout_at(request.deadline, waiter)
                 .await
-                .map_err(|_| {
-                    #[cfg(test)]
-                    probe_line("capacity_deadline", None, probe_kind(&request.args));
-                    error(ErrorKind::Timeout, "Git ownership preflight timed out")
-                })?;
+                .map_err(|_| error(ErrorKind::Timeout, "Git ownership preflight timed out"))?;
         };
         loop {
             let waiter = record.ticket.result_wake.notified();
@@ -601,8 +537,6 @@ impl Drop for FrameGuard {
 
 /// Vaults own resources before effects; frames borrow them and cannot drop them on unwind.
 struct OpRecord {
-    #[cfg(test)]
-    probe: Probe,
     ticket: Arc<Ticket>,
     _context: Context,
     supervisor: Mutex<Option<thread::JoinHandle<()>>>,
@@ -614,17 +548,8 @@ struct OpRecord {
     native_terminal_error: AtomicBool,
 }
 impl OpRecord {
-    fn new(flag: Arc<AtomicBool>, context: Context, #[cfg(test)] kind: &'static str) -> Self {
+    fn new(flag: Arc<AtomicBool>, context: Context) -> Self {
         Self {
-            #[cfg(test)]
-            probe: Probe {
-                kind,
-                ordinal: PROBE_ORDINAL.fetch_add(1, Ordering::SeqCst),
-                started: std::time::Instant::now(),
-                waits: AtomicUsize::new(0),
-                signals: AtomicUsize::new(0),
-                observation_failed: AtomicBool::new(false),
-            },
             ticket: Arc::new(Ticket {
                 publication: Mutex::new(Publication {
                     state: State::Admitted,
@@ -1055,26 +980,12 @@ async fn supervisor_work(
     }
     let observed = if initialized.is_ok() {
         tokio::select! {
-            result = tokio::time::timeout_at(deadline, observe(pid, signals, #[cfg(test)] record)) => match result {
+            result = tokio::time::timeout_at(deadline, observe(pid, signals)) => match result {
                 Ok(Ok(())) => Ok(()),
                 Ok(Err(e)) => Err(error(ErrorKind::SessionLost, format!("Git child observation failed: {e}"))),
-                Err(_) => {
-                    #[cfg(test)]
-                    {
-                        record.probe.observation_failed.store(true, Ordering::SeqCst);
-                        probe_line("observation_deadline", Some(&record.probe), record.probe.kind);
-                    }
-                    Err(error(ErrorKind::Timeout, "Git ownership preflight timed out"))
-                },
+                Err(_) => Err(error(ErrorKind::Timeout, "Git ownership preflight timed out")),
             },
-            _ = cancelled(&record.ticket) => {
-                #[cfg(test)]
-                {
-                    record.probe.observation_failed.store(true, Ordering::SeqCst);
-                    probe_line("observation_cancel", Some(&record.probe), record.probe.kind);
-                }
-                Err(error(ErrorKind::Timeout, "Git ownership preflight timed out"))
-            },
+            _ = cancelled(&record.ticket) => Err(error(ErrorKind::Timeout, "Git ownership preflight timed out")),
         }
     } else {
         initialized
@@ -1208,14 +1119,8 @@ async fn cancelled(ticket: &Ticket) {
         wake.await;
     }
 }
-async fn observe(
-    pid: Pid,
-    signals: &mut tokio::signal::unix::Signal,
-    #[cfg(test)] record: &OpRecord,
-) -> io::Result<()> {
+async fn observe(pid: Pid, signals: &mut tokio::signal::unix::Signal) -> io::Result<()> {
     loop {
-        #[cfg(test)]
-        record.probe.waits.fetch_add(1, Ordering::SeqCst);
         match waitid(
             WaitId::Pid(pid),
             WaitIdOptions::EXITED | WaitIdOptions::NOWAIT | WaitIdOptions::NOHANG,
@@ -1228,8 +1133,6 @@ async fn observe(
         if signals.recv().await.is_none() {
             return Err(io::Error::other("SIGCHLD observer closed"));
         }
-        #[cfg(test)]
-        record.probe.signals.fetch_add(1, Ordering::SeqCst);
     }
 }
 
@@ -1357,17 +1260,6 @@ fn native_worker(
                         return;
                     }
                     let result = native.child.as_mut().unwrap().wait();
-                    #[cfg(test)]
-                    if record.probe.observation_failed.load(Ordering::SeqCst) {
-                        let stage = match &result {
-                            Ok(exit) if exit.success() => {
-                                "reaped_success_after_observation_failure"
-                            }
-                            Ok(_) => "reaped_unsuccessful_after_observation_failure",
-                            Err(_) => "reap_io_error_after_observation_failure",
-                        };
-                        probe_line(stage, Some(&record.probe), record.probe.kind);
-                    }
                     if result.is_ok() {
                         native.reaped = true;
                         record.native_settled.store(true, Ordering::SeqCst);
