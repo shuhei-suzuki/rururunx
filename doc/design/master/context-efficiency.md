@@ -329,5 +329,7 @@ A dogfood comparison should measure the same representative workflow with and wi
 Selected Context Git reader retention is a separate STRICT component: Requirements4
 has two approvals, and [Design2](../issue-60-reader-design.md) has two independent approvals. Context's
 existing sticky process uncertainty must never clear on late settlement. Actual
-private-pool Context/direct Git Unknown controls and reader source gates remain
-pending; no historical EOF/inspection cause or full native availability is proved.
+private-pool Context dropped-future and output-cutoff controls preserve that
+latch after late resource release. Source/mutation/CI gates remain pending; full
+default local Debug/Release failed, cause/regression unknown. No historical
+EOF/inspection cause or full native availability is proved.

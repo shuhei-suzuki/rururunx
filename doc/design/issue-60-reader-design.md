@@ -1,9 +1,9 @@
-# Issue60 selected Git owner/readers — Design2 approved; source pending
+# Issue60 selected Git owner/readers — Design2 approved; implementation gates pending
 
 Risk: STRICT. Requirements4 at a8e8a8b has two independent APPROVE/no C/H/M;
 its four verified Low refinements appear in this design and the requirements
 outcome ledger. Design1 at8f95adb returned request_changes from both independent reviewers.
-All16 findings are recorded and verified below. Design2 at46f819b has two independent APPROVE/no C/H/M; the eight nonblocking Low instances are verified and clarified below. No reader source, test, availability
+All16 findings are recorded and verified below. Design2 at46f819b has two independent APPROVE/no C/H/M; the eight nonblocking Low instances are verified and clarified below. No reader source acceptance or availability
 or F1 acceptance exists. Existing shared native ProcessGroup/new/reap/Drop stays
 unchanged. Current source references originally used public8f95adb; Design2 normally
 composes main47830b0. Incoming common changes are additive visibility/trait methods,
@@ -455,3 +455,12 @@ This design certifies no new availability backend, complete native workload, esc
 helper/service, effect/delegation authority, durable hold/replay/source freshness,
 restart recovery, default-deny enabled profile or native3/runtime16 MVP acceptance.
 Whole60/F1/native16 remain OPEN even if this bounded process-local component passes.
+
+
+Implementation status: c0ec0a2 has the private selected owner, exact reader join
+states, actual worker join and private consumer carriers described above. The
+initial controls and verified test-only fixture corrections are recorded in
+[the source ledger](../verification/issue-60-readers.md). Full default DEBUG and
+RELEASE at9c574a2 both FAILED; cause AND regression UNKNOWN. Source reviews,
+causal mutants, remaining quality/CI gates are pending. This status does not
+amend the approved design or grant full native/runtime-workload settlement.

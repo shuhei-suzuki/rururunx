@@ -180,10 +180,11 @@ async fn actual_worker_join_precedes_success_and_capacity_release() {
     let release = TestRelease(pause.clone());
     context.context.hooks.after_reap_send = Some(pause.clone());
     let flag = Arc::new(AtomicBool::new(false));
-    let task = tokio::spawn(shell(context.clone(), "printf joined", flag.clone()));
+    let mut task = tokio::spawn(shell(context.clone(), "printf joined", flag.clone()));
     pause.reached().await;
-    tokio::task::yield_now().await;
-    let premature = task.is_finished();
+    // One yield cannot prove the independent supervisor has reached join. Wait
+    // on the actual caller outcome while the already-counted worker is held.
+    let premature = tokio::time::timeout(Duration::from_secs(3), &mut task).await;
     let held = context
         .pool
         .as_ref()
@@ -196,9 +197,12 @@ async fn actual_worker_join_precedes_success_and_capacity_release() {
         * JOBS;
     let uncertain = flag.load(Ordering::SeqCst);
     drop(release);
+    assert!(
+        premature.is_err(),
+        "caller returned before its actual native worker joined"
+    );
     assert_eq!(task.await.unwrap().unwrap(), b"joined");
     released(&context).await;
-    assert!(!premature);
     assert_eq!(held, 4);
     assert!(uncertain);
     assert!(!flag.load(Ordering::SeqCst));

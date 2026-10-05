@@ -1,7 +1,7 @@
 # Issue60 selected Git reader lifetime verification
 
-Status: Requirements4 approved at a8e8a8b; Design2 approved at46f819b with verified Low precision; no reader
-implementation or acceptance. Earlier diagnostic/environment partial gates are separate.
+Status: Requirements4 approved at a8e8a8b; Design2 approved at46f819b with verified Low precision.
+Selected reader/owner implementation is committed; Source review, mutations and required gates are pending. No source acceptance. Earlier diagnostic/environment partial gates are separate.
 Base2c6ae9d includes diagnostic partialPR61 and environment partialPR53. Their
 independent approvals do not authorize this reader/owner-driver change. Parent60
 and native16/F1/runtime-workload settlement remain OPEN.
@@ -233,3 +233,103 @@ Root23 composed364139d full RELEASE two Grok env isolated-child60s watchdog
 failures remain FAILED, cause AND regression UNKNOWN. Cleanup returned in the
 watchdog helper does not prove all nested jobs settled; no component fix or
 inspector scheduling cause is inferred. Whole60/F1/native16 remain OPEN.
+
+
+Implementation checkpoint (2026-10-05 JST): normal main cf8 and then5b4a314
+composition preserves public ancestries. The latter introduces pure Task DAG
+validation and its existing Store transaction wiring; selected Git, inspector,
+Context and Grok source bodies are unchanged by that incoming merge.
+
+The new private `adapter::git_owner` reserves four counted jobs before native
+spawn: one std supervisor owning a current-thread runtime, two reader tasks,
+and one precreated std worker owning the actual std Child. Global64 jobs permits
+at most16 such operations. Actual Child is anchored before group/stdio/runtime
+registration; opaque attempted spawn Err retains Unknown and all four slots.
+Healthy resource completion requires both observed reader joins and actual native
+worker join before runtime/asset destruction and terminal capacity release.
+Abort-request and returned/panicked/cancelled reader observations are separate.
+Caller Drop only publishes a bounded cancel fact/message. The caller runtime can
+stop without destroying the owner's runtime. Lost execution retains its vaults.
+This is process-local selected Git custody, not managed operation producer,
+durable recovery, process containment or a qualified full native workload.
+
+Controls at fe127ed passed19/1 explicit child-entry ignored; bdd6bac passed21/1
+ignored and da0e932 passed22/1 ignored with default internal concurrency. Actual
+owned alternate-group fixture demonstrates that empty original group cleanup
+can precede direct Child death: the owning wait remains blocked beyond250ms,
+caller returns SessionLost/frozen flag/four held slots, and the same worker and
+readers later settle/release without clearing that returned flag. The fixture
+owns its alternate anchor and release paths; it does not signal foreign PIDs or
+claim stronger containment. Cleanup-ack delay beyond250ms preserves the separate
+reap window. Real endpoint reader panic and pending-peer injection distinguish
+observed join states. These pending-reader seams do not identify a historic EOF
+writer or prove an actual escaped writer occurred.
+
+At223e915 actual Grok actor controls4 PASS (2.32s): pre-spawn unknown,
+raw index pre-spawn/reconciliation unknown, post-native binding-refresh unknown,
+and explicit checkpoint failure. The actual receipt and persisted Lost/reserved
+Session are asserted at the relevant actor stages. Checkpoint preserves its
+original Err and does not publish the proposed input; only current fresh-input
+resume rejection is proved, not a durable checkpoint Unknown fence. Actual
+Context dropped-future control1 PASS proves CallGuard cancellation precedes
+GitObservation latch retention; late resource settlement cannot clear it.
+
+Current c0ec0a2 owner controls25 PASS/1 explicit child entry ignored (4.09s),
+including actual Generic output-open/non-SessionLost API error remaining
+persisted Lost/reserved after the same readers settle late. Actual Context
+output-open/latch control1 PASS (0.30s). Injected pending stdout owns the real
+endpoint and exercises the production output cutoff; this is not an external
+writer/OS scheduling measurement. Invalid-binding injection retains a real
+std-spawned Child and untransferred endpoints; it does not assert the OS supplied
+such an invalid PID. Initializer failure plus actual first KILL/forced malformed
+real inspector holds the actual Child and slots with cleanup Unknown.
+
+Prior implementation failures are retained:49bcf13/63bc424 compilation failed
+on env iterator/type/privacy/cfg-call mismatches;26fdfe0 compiled with an unused
+context warning corrected in dacce66. At6bb9797 the caller-runtime fixture timed
+out (16 PASS/1 FAIL); its two waiters shared a notify-one seam, corrected to
+broadcast plus explicit caller stop/join before assertions in268cd53. That is
+verified fixture wake wiring, not a historical inspector/watchdog cause.
+da0e932 all-target Clippy failed on test Store guard await-lifetime;9c574a2
+uses a lexical scope and passed Clippy. At90c2e59 owner24 PASS/1 FAIL/1 ignored:
+a specialized stderr/timeout assertion was incorrectly applied to malformed
+frame InvalidData. c0ec0a2 asserts the actual frame-validation facts; production
+inspector/cleanup bodies are unchanged. No failed result is relabeled PASS.
+
+Full default workspace DEBUG at9c574a2 FAILED: lib294 PASS/5 FAIL/24 ignored,
+62.63s. Full default workspace RELEASE at the same source FAILED: lib294 PASS/
+5 FAIL/24 ignored,67.55s. These lib failures stopped the remaining targets.
+DEBUG failures include owning-ref start expected StateConflict without actual
+reason printed; unrelated start actual pre-native `Timeout: Git ownership
+preflight timed out`, receipt cleanup_ok=true/not_attempted, dispatched=false,
+output_verified=true, ownership_uncertain=false; before-spawn stop actual owned
+stop Timeout; checkpoint/resume child60s watchdogs with only `running 1 test`.
+RELEASE failures include absent-baseline transport false, owning-ref canary
+missing, live-ref resume and unrelated resume actual pre-native Git Timeout
+with the same no-native/clean receipt, plus checkpoint60s watchdog. The fixture
+watchdog helper's group cleanup/reap returning does not prove all nested jobs
+settled. Cause AND regression UNKNOWN; no rerun-to-pass, serialization, deadline
+increase, latch reset or cleanup/Unknown relaxation. These are open full-gate
+blockers, not twenty-two-component-control failures or native availability proof.
+
+Additional peer baselines remain separate: Issue19 same-source06ba908
+CI37247560442 Mac first saturated owner inspector309978us (spawn1357us, both
+streams0/statuspending), followed by five Context latch-derived failures; root67
+code87ec5ee CI37247900919 Mac first Context299506us (spawn1652us, validation
+not reached) plus derived failures, then same-source metadata1bea both OS green.
+Neither cause nor regression is identified by these outcomes. No old head is
+rerun or passing metadata used to erase red evidence. Whole60/F1/native16,
+shared native ProcessGroup/new/reap/Drop and historical availability remain OPEN.
+
+
+First causal matrix at c0ec0a2:12 distinct compiled operators,11 assertion-killed
+and one survivor. No kill credit for M60-R04 (omit actual worker.join): its
+positive fixture sampled only one caller yield, which did not establish progress
+of the independent std supervisor. The control now waits on the actual caller
+outcome while the native worker is held, releases its own fixture guard before
+assertion, and will rerun this same operator at the committed corrected control.
+This is a verified coverage defect, not a production join omission or a deadline
+relaxation. All private mutation sources were restored exactly after each run.
+No complete all-descendant settlement is inferred from mutation test termination.
+The finite [matrix](issue-60-reader-source1-mutations.json) retains every result,
+patch and log hash, including the survivor.
