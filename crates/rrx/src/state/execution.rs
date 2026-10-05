@@ -237,6 +237,26 @@ pub(super) fn fence_task_tx(tx: &Transaction<'_>, scope: &Scope) -> Result<()> {
     tx.execute("UPDATE task_execution SET generation=generation+1,active_unit=NULL WHERE task_id=?1 AND active_unit IS NOT NULL",[task])?;
     Ok(())
 }
+pub(super) fn managed_attempt_retired(
+    connection: &Connection,
+    scope: &Scope,
+    attempt: &crate::workflow::PhaseAttempt,
+) -> Result<bool> {
+    let Some(identity) = &attempt.unit else {
+        return Ok(false);
+    };
+    let unit = unit_tx(connection, identity.unit)?;
+    ensure!(
+        identity == &ManagedUnitRef::from(&unit)
+            && unit.scope == *scope
+            && unit.phase == attempt.phase.key()
+            && attempt
+                .session_id
+                .is_none_or(|s| unit.session_id == Some(s)),
+        "retired managed attempt identity mismatch"
+    );
+    Ok(!unit.native_effects_open && !unit.result_finalization_open)
+}
 fn validate_authority(
     tx: &Connection,
     authority: &ExecutionAuthority,
@@ -450,8 +470,24 @@ impl Store {
     }
     pub(crate) fn reserve_execution(
         &mut self,
+        unit: ExecutionUnit,
+        expected_task: u64,
+    ) -> Result<ExecutionUnit> {
+        self.reserve_execution_inner(unit, expected_task, None)
+    }
+    pub(crate) fn reserve_workflow_execution(
+        &mut self,
+        unit: ExecutionUnit,
+        expected_task: u64,
+        reservation: &WorkflowReservation,
+    ) -> Result<ExecutionUnit> {
+        self.reserve_execution_inner(unit, expected_task, Some(reservation))
+    }
+    fn reserve_execution_inner(
+        &mut self,
         mut unit: ExecutionUnit,
         expected_task: u64,
+        reservation: Option<&WorkflowReservation>,
     ) -> Result<ExecutionUnit> {
         ensure!(
             unit.kind != UnitKind::Legacy
@@ -484,6 +520,38 @@ impl Store {
             .context("unknown Project")?;
         let goal: Goal =
             read_tx(&tx, "goals", &task.goal_id.to_string())?.context("unknown Goal")?;
+        let workflow_binding = reservation.map(|r| {
+            ensure!(project.version == r.project_version && goal.version == r.goal_version,
+                "Workflow owner versions changed before unit reservation");
+            let record: Record = read_tx(&tx, "records", &r.record.to_string())?
+                .context("Workflow reservation missing")?;
+            ensure!(record.id == r.record && record.kind == RecordKind::Workflow && record.scope == unit.scope
+                && record.version == r.version && task.context_version == r.context,
+                "Workflow reservation CAS/context mismatch");
+            let workflows: u64 = tx.query_row("SELECT COUNT(*) FROM records WHERE task_id=?1 AND kind='workflow'", [task.id.to_string()], |row| row.get(0))?;
+            ensure!(workflows == 1, "Task must own exactly one Workflow reservation");
+            let before: crate::workflow::WorkflowSnapshot = serde_json::from_value(record.data.clone())?;
+            ensure!(before.active == Some(r.index) && before.generation == r.workflow_generation,
+                "Workflow reservation generation/index mismatch");
+            let attempt = before.history.get(r.index).context("Workflow attempt missing")?;
+            ensure!(attempt.phase.key() == unit.phase
+                && attempt.state == crate::workflow::AttemptState::Running
+                && attempt.session_id.is_none() && attempt.execution.is_none()
+                && attempt.unit.is_none() && !attempt.dispatch_started
+                && attempt.context_version == r.context
+                && match unit.kind {
+                    UnitKind::Executor => attempt.phase.actor() == crate::workflow::Actor::Executor,
+                    UnitKind::Reviewer => attempt.phase.actor() == crate::workflow::Actor::Reviewer,
+                    _ => false,
+                }, "Workflow attempt is not available for native preparation");
+            let context: String = tx.query_row(
+                "SELECT body FROM context_versions WHERE project_id=?1 AND owner=?2 AND version=?3",
+                params![task.project_id.to_string(),context_owner(&task.scope())?,r.context], |row| row.get(0))?;
+            let context: ContextVersion = decode(context)?;
+            crate::workflow::validate_context(&task, &record, &context)?;
+            ensure!(context.revision == unit.base_sha, "Workflow unit base differs from immutable input");
+            Ok::<_, anyhow::Error>((record, before))
+        }).transpose()?;
         ensure!(
             project.state == ProjectState::Registered
                 && !matches!(
@@ -516,6 +584,7 @@ impl Store {
         } else {
             prior.context("review/verifier requires admitted artifact generation")?
         };
+        let mut bound_task = task.clone();
         if unit.kind == UnitKind::Executor {
             let mut statement = tx.prepare("SELECT id FROM execution_units WHERE task_id=?1 AND (native_effects_open=1 OR result_finalization_open=1)")?;
             let predecessors = statement
@@ -595,6 +664,7 @@ impl Store {
             next.worktree = Some(unit.worktree.clone());
             next.branch = unit.branch.clone();
             let next = put_task_tx(&tx, &next)?;
+            bound_task = next.clone();
             append_event(
                 &tx,
                 &unit.scope,
@@ -607,6 +677,20 @@ impl Store {
                 &unit.scope,
                 "execution.snapshot_reserved",
                 json!({"unit":unit.id,"artifact":unit.artifact_id}),
+            )?;
+        }
+        if let Some((mut record, mut workflow)) = workflow_binding {
+            let before = record.clone();
+            workflow.history[reservation.expect("binding has reservation").index].unit =
+                Some((&unit).into());
+            record.data = serde_json::to_value(workflow)?;
+            crate::workflow::validate_transition(&bound_task, &record, Some(&before))?;
+            put_record_tx(&tx, &record)?;
+            append_event(
+                &tx,
+                &unit.scope,
+                "execution.workflow_reserved",
+                json!({"unit":unit.id,"workflow":record.id,"generation":unit.generation}),
             )?;
         }
         tx.commit()?;
@@ -770,6 +854,9 @@ impl Store {
         }
         write_unit(&tx, &mut unit)?;
         if unit.kind == UnitKind::Executor {
+            // Every generation-advance producer must fence the readonly units
+            // it invalidates, including normal stop and abandoned preparation.
+            retire_readonly_generation(&tx, &unit.scope, unit.owner_epoch, unit.generation)?;
             tx.execute("UPDATE task_execution SET generation=generation+1,active_unit=NULL WHERE task_id=?1 AND generation=?2",params![unit.scope.task_id.unwrap().to_string(),unit.generation])?;
             if cancel_task {
                 let mut task: Task =
@@ -871,6 +958,55 @@ impl Store {
         tx.commit()?;
         Ok(())
     }
+}
+
+fn retire_readonly_generation(
+    tx: &Transaction<'_>,
+    scope: &Scope,
+    epoch: u64,
+    generation: u64,
+) -> Result<()> {
+    let mut statement = tx.prepare("SELECT id FROM execution_units WHERE task_id=?1 AND kind IN ('reviewer','verifier') AND (native_effects_open=1 OR result_finalization_open=1)")?;
+    let units = statement
+        .query_map(
+            [scope.task_id.context("Task required")?.to_string()],
+            |row| row.get::<_, String>(0),
+        )?
+        .map(|id| {
+            id.map_err(anyhow::Error::from)
+                .and_then(|id| unit_tx(tx, id.parse()?))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    drop(statement);
+    for unit in &units {
+        ensure!(
+            unit.scope == *scope && unit.owner_epoch == epoch && unit.generation == generation,
+            "readonly retirement generation/scope mismatch"
+        );
+    }
+    for mut unit in units {
+        unit.native_effects_open = false;
+        unit.result_finalization_open = false;
+        unit.state = UnitState::Retired;
+        if unit.work.is_none() {
+            unit.work = Some(WorkOutcome::Unknown);
+            unit.disposition = Disposition::Cancelled;
+        }
+        write_unit(tx, &mut unit)?;
+        quotas::release_quota_tx(tx, unit.id)?;
+        tx.execute(
+            "DELETE FROM quota_waiters WHERE unit_id=?1",
+            [unit.id.to_string()],
+        )?;
+        tx.execute("INSERT INTO cleanup_jobs(unit_id,next_due,attempts,version) VALUES(?1,?2,0,1) ON CONFLICT(unit_id) DO NOTHING", params![unit.id.to_string(),now_ms()])?;
+        append_event(
+            tx,
+            scope,
+            "execution.readonly_generation_retired",
+            json!({"unit":unit.id,"work":unit.work,"generation":generation}),
+        )?;
+    }
+    Ok(())
 }
 
 fn self_artifact_tx(connection: &Connection, id: ArtifactId) -> Result<ResultArtifact> {

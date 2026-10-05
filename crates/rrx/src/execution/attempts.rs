@@ -24,6 +24,27 @@ impl AttemptManager {
         phase: &str,
         base: Option<&str>,
     ) -> Result<(ExecutionUnit, ResourceProfile)> {
+        self.prepare_inner(task, provider, phase, base, None).await
+    }
+    pub(crate) async fn prepare_workflow(
+        &self,
+        task: crate::domain::TaskId,
+        provider: &str,
+        phase: &str,
+        base: &str,
+        reservation: &WorkflowReservation,
+    ) -> Result<(ExecutionUnit, ResourceProfile)> {
+        self.prepare_inner(task, provider, phase, Some(base), Some(reservation))
+            .await
+    }
+    async fn prepare_inner(
+        &self,
+        task: crate::domain::TaskId,
+        provider: &str,
+        phase: &str,
+        base: Option<&str>,
+        reservation: Option<&WorkflowReservation>,
+    ) -> Result<(ExecutionUnit, ResourceProfile)> {
         ensure!(
             matches!(provider, "codex" | "claude") && !phase.is_empty() && phase.len() <= 64,
             "unsupported native provider/phase"
@@ -85,12 +106,17 @@ impl AttemptManager {
             created_at: at,
             updated_at: at,
         };
-        let unit = self
-            .owner
-            .store
-            .lock()
-            .map_err(|_| anyhow::anyhow!("state poisoned"))?
-            .reserve_execution(unit, task.version)?;
+        let unit = {
+            let mut store = self
+                .owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?;
+            match reservation {
+                Some(r) => store.reserve_workflow_execution(unit, task.version, r)?,
+                None => store.reserve_execution(unit, task.version)?,
+            }
+        };
         let mut preparation_guard = owner::PreparationGuard::new(self.owner.clone(), &unit);
         let prepared = async {
             self.resources.reserve(&unit, &profile)?;
@@ -188,6 +214,36 @@ impl AttemptManager {
         provider: &str,
         phase: &str,
     ) -> Result<(ExecutionUnit, ResourceProfile)> {
+        self.prepare_snapshot_inner(task, artifact, kind, provider, phase, None)
+            .await
+    }
+    pub(crate) async fn prepare_workflow_snapshot(
+        &self,
+        task: crate::domain::TaskId,
+        artifact: ArtifactId,
+        provider: &str,
+        phase: &str,
+        reservation: &WorkflowReservation,
+    ) -> Result<(ExecutionUnit, ResourceProfile)> {
+        self.prepare_snapshot_inner(
+            task,
+            artifact,
+            UnitKind::Reviewer,
+            provider,
+            phase,
+            Some(reservation),
+        )
+        .await
+    }
+    async fn prepare_snapshot_inner(
+        &self,
+        task: crate::domain::TaskId,
+        artifact: ArtifactId,
+        kind: UnitKind,
+        provider: &str,
+        phase: &str,
+        reservation: Option<&WorkflowReservation>,
+    ) -> Result<(ExecutionUnit, ResourceProfile)> {
         ensure!(
             matches!(kind, UnitKind::Reviewer | UnitKind::Verifier),
             "snapshot unit kind invalid"
@@ -243,12 +299,17 @@ impl AttemptManager {
             created_at: at,
             updated_at: at,
         };
-        let unit = self
-            .owner
-            .store
-            .lock()
-            .map_err(|_| anyhow::anyhow!("state poisoned"))?
-            .reserve_execution(unit, task.version)?;
+        let unit = {
+            let mut store = self
+                .owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?;
+            match reservation {
+                Some(r) => store.reserve_workflow_execution(unit, task.version, r)?,
+                None => store.reserve_execution(unit, task.version)?,
+            }
+        };
         let prepared = (|| {
             self.resources.reserve(&unit, &profile)?;
             self.resources.materialize(&profile)?;

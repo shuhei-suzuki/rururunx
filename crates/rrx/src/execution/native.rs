@@ -45,6 +45,7 @@ pub struct NativeStatus {
     pub work: Option<WorkOutcome>,
     pub disposition: Disposition,
     pub cleanup: CleanupOutcome,
+    pub wait_reason: Option<WaitReason>,
     pub pending: Vec<Value>,
     pub result: Option<Value>,
     pub metrics: Option<Value>,
@@ -387,6 +388,7 @@ impl NativeSessions {
             work: None,
             disposition: Disposition::Active,
             cleanup: CleanupOutcome::Unknown,
+            wait_reason: None,
             pending: vec![],
             result: None,
             metrics: None,
@@ -459,6 +461,7 @@ impl NativeSessions {
         status.work = unit.work;
         status.disposition = unit.disposition;
         status.cleanup = unit.cleanup;
+        status.wait_reason = unit.wait_reason;
         Ok(status)
     }
     pub fn release(&self, handle: &ManagedSessionRef) -> Result<()> {

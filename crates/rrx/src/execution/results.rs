@@ -18,6 +18,20 @@ pub struct ResultStore {
     owner: Arc<RuntimeOwner>,
     gate: Mutex<()>,
 }
+/// Nonserializable proof minted by retained graph/manifest verification, never
+/// by an evidence string or a Ready ledger label. SQL rechecks the full snapshot.
+pub(crate) struct WorkflowPublication {
+    authority: ExecutionAuthority,
+    artifact: ResultArtifact,
+}
+impl WorkflowPublication {
+    pub(crate) fn authority(&self) -> &ExecutionAuthority {
+        &self.authority
+    }
+    pub(crate) fn artifact(&self) -> &ResultArtifact {
+        &self.artifact
+    }
+}
 #[cfg(test)]
 pub(crate) mod tests;
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -293,6 +307,54 @@ impl ResultStore {
         Ok(artifact)
     }
     pub async fn verify(&self, artifact: &ResultArtifact) -> Result<()> {
+        self.verify_inner(artifact, None).await
+    }
+    pub(crate) async fn workflow_publication(
+        &self,
+        authority: &ExecutionAuthority,
+        artifact: ArtifactId,
+    ) -> Result<WorkflowPublication> {
+        let (unit, artifact) = {
+            let store = self
+                .owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?;
+            (
+                store.validate_execution(authority, false, true)?,
+                store.result_artifact(artifact)?,
+            )
+        };
+        ensure!(
+            unit.kind == UnitKind::Executor
+                && unit.work == Some(WorkOutcome::Success)
+                && !unit.native_effects_open
+                && artifact.unit_id == unit.id
+                && artifact.scope == unit.scope
+                && artifact.state == ArtifactState::Ready,
+            "publication verification requires exact successful executor artifact"
+        );
+        let io = UnitGit::new(self.owner.clone(), &unit, false)?;
+        self.verify_inner(&artifact, Some(&io)).await?;
+        {
+            let store = self
+                .owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?;
+            store.validate_execution(authority, false, true)?;
+            ensure!(
+                serde_json::to_value(store.result_artifact(artifact.id)?)?
+                    == serde_json::to_value(&artifact)?,
+                "artifact changed during publication verification"
+            );
+        }
+        Ok(WorkflowPublication {
+            authority: authority.clone(),
+            artifact,
+        })
+    }
+    async fn verify_inner(&self, artifact: &ResultArtifact, io: Option<&UnitGit>) -> Result<()> {
         ensure!(
             matches!(
                 artifact.state,
@@ -339,8 +401,9 @@ impl ResultStore {
         for (name, oid) in [("commit", &artifact.revision), ("base", &artifact.base_sha)] {
             ensure!(
                 text(
-                    &git(
+                    &retained_git(
                         &artifact.repository,
+                        io,
                         [
                             "rev-parse",
                             "--verify",
@@ -351,14 +414,16 @@ impl ResultStore {
                 )? == *oid,
                 "retained reference changed"
             );
-            git(
+            retained_git(
                 &artifact.repository,
+                io,
                 ["rev-list", "--objects", "--missing=error", oid],
             )
             .await?;
         }
-        git(
+        retained_git(
             &artifact.repository,
+            io,
             ["fsck", "--full", "--strict", "--no-dangling"],
         )
         .await?;
@@ -378,19 +443,15 @@ impl ResultStore {
             .publish_execution_result(authority, artifact.id, task_version)
     }
     pub async fn snapshot(&self, unit: &ExecutionUnit) -> Result<ResultSnapshot> {
-        let result = self.snapshot_inner(unit).await;
-        if result.is_err() {
-            let mut store = self
-                .owner
-                .store
-                .lock()
-                .map_err(|_| anyhow::anyhow!("state poisoned"))?;
-            let current = store.execution_unit(unit.id)?;
-            if current.native_effects_open || current.result_finalization_open {
-                store.retire_execution(&current.authority(), false)?;
-            }
-        }
-        result
+        self.owner
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("state poisoned"))?
+            .validate_execution(&unit.authority(), true, false)?;
+        let mut preparation = owner::PreparationGuard::new(self.owner.clone(), unit);
+        let result = self.snapshot_inner(unit).await?;
+        preparation.disarm();
+        Ok(result)
     }
     async fn snapshot_inner(&self, unit: &ExecutionUnit) -> Result<ResultSnapshot> {
         ensure!(
@@ -414,8 +475,8 @@ impl ResultStore {
                 && artifact.state == ArtifactState::Published,
             "snapshot artifact binding mismatch"
         );
-        self.verify(&artifact).await?;
         let io = UnitGit::new(self.owner.clone(), unit, true)?;
+        self.verify_inner(&artifact, Some(&io)).await?;
         ensure!(
             !unit.worktree.exists() && !unit.worktree.symlink_metadata().is_ok(),
             "snapshot paths are never reused"
@@ -514,6 +575,16 @@ pub(crate) fn git_command_for(root: &Path, program: &Path) -> Result<Command> {
         .env_remove("GIT_OBJECT_DIRECTORY")
         .env_remove("GIT_ALTERNATE_OBJECT_DIRECTORIES");
     Ok(c)
+}
+async fn retained_git<const N: usize>(
+    root: &Path,
+    io: Option<&UnitGit>,
+    args: [&str; N],
+) -> Result<Vec<u8>> {
+    match io {
+        Some(io) => io.run(root, args).await,
+        None => git(root, args).await,
+    }
 }
 pub(crate) async fn git<I, S>(root: &Path, args: I) -> Result<Vec<u8>>
 where

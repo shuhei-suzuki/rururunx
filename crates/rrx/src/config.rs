@@ -52,6 +52,8 @@ impl Default for ContextConfig {
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct AgentConfig {
+    /// Explicit official native protocol. A configured alias is never a provider identity.
+    pub provider: Option<String>,
     pub command: Vec<String>,
     pub model: Option<String>,
     pub effort: Option<String>,
@@ -256,6 +258,13 @@ impl Config {
             bail!("risk workflow mapping must be monotonic");
         }
         for (name, agent) in &self.agents {
+            if agent
+                .provider
+                .as_deref()
+                .is_some_and(|p| !matches!(p, "claude" | "codex"))
+            {
+                bail!("agent {name} provider must be claude or codex");
+            }
             if name.trim().is_empty() || agent.max_concurrent == Some(0) {
                 bail!("agent {name:?} name and concurrency must be nonempty/positive");
             }

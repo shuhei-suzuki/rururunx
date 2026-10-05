@@ -204,7 +204,7 @@ pub(in crate::state) fn publish_workflow_result_tx(
     context: &ContextVersion,
 ) -> Result<()> {
     use crate::workflow::{Actor, AttemptState, WorkflowSnapshot};
-    let mut unit = validate_authority(tx, &publication.authority, false, true)?;
+    let mut unit = validate_authority(tx, publication.authority(), false, true)?;
     ensure!(
         unit.kind == UnitKind::Executor
             && unit.work == Some(WorkOutcome::Success)
@@ -239,7 +239,11 @@ pub(in crate::state) fn publish_workflow_result_tx(
         .completed
         .get(&old.phase)
         .context("publication lacks passed phase evidence")?;
-    let mut artifact = self_artifact_tx(tx, publication.artifact)?;
+    let mut artifact = self_artifact_tx(tx, publication.artifact().id)?;
+    ensure!(
+        serde_json::to_value(&artifact)? == serde_json::to_value(publication.artifact())?,
+        "verified publication artifact snapshot changed"
+    );
     ensure!(
         artifact.unit_id == unit.id
             && artifact.scope == unit.scope
@@ -247,6 +251,8 @@ pub(in crate::state) fn publish_workflow_result_tx(
             && task.revision.as_ref() == Some(&artifact.revision)
             && context.revision == artifact.revision
             && after.sources.revision == artifact.revision
+            && after.sources.artifact == Some(artifact.id)
+            && context.source_hashes.get("workflow:artifact") == Some(&artifact.id.to_string())
             && evidence.revision == artifact.revision
             && evidence.session_id == unit.session_id
             && evidence

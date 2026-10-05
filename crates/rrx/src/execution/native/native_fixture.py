@@ -45,6 +45,13 @@ def complete(payload):
 
 for line in sys.stdin:
     value = json.loads(line)
+    # A fixed test-peer scenario selects a native outcome without changing the
+    # Runtime's immutable ContextVersion or outgoing input.
+    scenario = globals().get("WORKFLOW_SCENARIO")
+    if scenario and value.get("method") == "turn/start":
+        value["params"]["input"][0]["text"] = scenario
+    elif scenario and value.get("type") == "user":
+        value["message"]["content"] = scenario
     if PROVIDER == "codex":
         method = value.get("method")
         failure = globals().get("BOOTSTRAP_CASE")

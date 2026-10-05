@@ -218,6 +218,38 @@ fn new_generation_closes_old_reviewers_without_erasing_known_work_or_artifacts()
             .validate_execution(&fresh.authority(), true, false)
             .is_ok()
     );
+    assert_eq!(
+        store
+            .reserve_execution_quota(&review.authority(), "codex", "unknown", 6, 2, 3, now_ms())
+            .unwrap(),
+        QuotaAdmission::Admitted
+    );
+    let review = store.execution_unit(review.id).unwrap();
+    store.retire_execution(&fresh.authority(), false).unwrap();
+    let stopped_review = store.execution_unit(review.id).unwrap();
+    assert!(!stopped_review.native_effects_open && !stopped_review.result_finalization_open);
+    assert_eq!(stopped_review.work, Some(WorkOutcome::Unknown));
+    assert_eq!(
+        store
+            .connection
+            .query_row(
+                "SELECT COUNT(*) FROM quota_leases WHERE active=1",
+                [],
+                |r| r.get::<_, u64>(0)
+            )
+            .unwrap(),
+        0
+    );
+    let current_task = store.task(task.id).unwrap().unwrap();
+    let retry = store
+        .reserve_execution(draft(&current_task, epoch), current_task.version)
+        .unwrap();
+    assert!(retry.generation > fresh.generation);
+    assert_ne!(retry.worktree, fresh.worktree);
+    assert_eq!(
+        store.result_artifact(artifact.id).unwrap().state,
+        ArtifactState::Published
+    );
 }
 
 #[test]

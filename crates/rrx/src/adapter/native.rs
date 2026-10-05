@@ -167,6 +167,56 @@ impl AgentAdapter for NativeAdapter {
                         "managed launch Project/path/role mismatch",
                     ));
                 }
+                let workflows = store
+                    .records(&unit.scope, RecordKind::Workflow)
+                    .map_err(mapped)?;
+                if !workflows.is_empty() {
+                    if workflows.len() != 1 {
+                        return Err(error(
+                            ErrorKind::StateConflict,
+                            "managed Workflow identity unavailable",
+                        ));
+                    }
+                    let workflow: crate::workflow::WorkflowSnapshot =
+                        serde_json::from_value(workflows[0].data.clone()).map_err(|_| {
+                            error(ErrorKind::StateFailure, "managed Workflow invalid")
+                        })?;
+                    let attempt = workflow
+                        .active
+                        .and_then(|i| workflow.history.get(i))
+                        .ok_or_else(|| {
+                            error(
+                                ErrorKind::StateConflict,
+                                "managed Workflow reservation missing",
+                            )
+                        })?;
+                    let context = store
+                        .context(&unit.scope, Some(input.input.version))
+                        .map_err(mapped)?
+                        .ok_or_else(|| {
+                            error(
+                                ErrorKind::StateConflict,
+                                "managed immutable context missing",
+                            )
+                        })?;
+                    if attempt.unit.as_ref() != Some(&execution::ManagedUnitRef::from(&unit))
+                        || attempt.agent.as_deref() != Some(&self.name)
+                        || attempt.phase.key() != unit.phase
+                        || !attempt.dispatch_started
+                        || attempt.state != crate::workflow::AttemptState::Running
+                        || attempt.session_id.is_some()
+                        || attempt.context_version != context.version
+                        || context.revision != input.input.revision
+                        || context.source_hashes != input.input.source_versions
+                        || serde_json::to_string(&context.data).ok().as_ref()
+                            != Some(&input.input.payload)
+                    {
+                        return Err(error(
+                            ErrorKind::OwnershipMismatch,
+                            "managed input differs from reserved immutable ContextVersion",
+                        ));
+                    }
+                }
             }
             self.sessions
                 .start_inner(

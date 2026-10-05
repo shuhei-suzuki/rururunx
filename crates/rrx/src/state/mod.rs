@@ -591,6 +591,15 @@ impl Store {
         let typed_workflow: crate::workflow::WorkflowSnapshot =
             serde_json::from_value(workflow.data.clone())?;
         for attempt in &typed_workflow.history {
+            if let Some(identity) = &attempt.unit {
+                let unit = execution::unit_tx(&tx, identity.unit)?;
+                ensure!(
+                    identity == &crate::execution::ManagedUnitRef::from(&unit)
+                        && unit.scope == task.scope()
+                        && unit.phase == attempt.phase.key(),
+                    "Workflow preparation unit identity mismatch"
+                );
+            }
             if let Some(identity) = &attempt.execution {
                 let unit = execution::unit_tx(&tx, identity.unit)?;
                 ensure!(
@@ -602,6 +611,12 @@ impl Store {
                         && unit.session_id == Some(identity.session),
                     "Workflow managed identity mismatch"
                 );
+                if let Some(preparation) = &attempt.unit {
+                    ensure!(
+                        preparation == &crate::execution::ManagedUnitRef::from(&unit),
+                        "Workflow Session differs from preparation unit"
+                    );
+                }
             }
         }
         if let Some(previous) = &previous_workflow {
@@ -611,11 +626,23 @@ impl Store {
                 serde_json::from_value(workflow.data.clone())?;
             if before.active.is_some() && after.active != before.active {
                 let attempt = &before.history[before.active.unwrap()];
+                if attempt.unit.is_some()
+                    && after.history[before.active.unwrap()].state
+                        == crate::workflow::AttemptState::Interrupted
+                {
+                    ensure!(
+                        execution::managed_attempt_retired(&tx, &task.scope(), attempt)?,
+                        "managed reservation retirement requires closed exact authority"
+                    );
+                }
                 ensure!(
                     !(access != WorkflowAccess::TerminalRecovery
                         && attempt.phase.actor() != crate::workflow::Actor::EvidencePort
                         && attempt.dispatch_started
-                        && attempt.session_id.is_none()),
+                        && attempt.session_id.is_none()
+                        && !(after.history[before.active.unwrap()].state
+                            == crate::workflow::AttemptState::Interrupted
+                            && execution::managed_attempt_retired(&tx, &task.scope(), attempt)?)),
                     crate::workflow::UNBOUND_NATIVE_RECOVERY_REQUIRED
                 );
                 let mut statement = tx.prepare("SELECT body FROM records WHERE project_id=?1 AND goal_id=?2 AND task_id=?3 AND kind='session'")?;

@@ -279,6 +279,7 @@ pub trait AgentAdapter: Send + Sync {
 #[derive(Default)]
 pub struct AgentRegistry {
     adapters: BTreeMap<String, Arc<dyn AgentAdapter>>,
+    managed_owner: Option<Arc<crate::execution::RuntimeOwner>>,
 }
 impl AgentRegistry {
     pub fn register(&mut self, name: String, adapter: Arc<dyn AgentAdapter>) -> AdapterResult<()> {
@@ -297,6 +298,12 @@ impl AgentRegistry {
             .map_err(|e| error(ErrorKind::InvalidConfiguration, e.to_string()))?;
         let mut registry = Self::default();
         for (name, agent) in &config.agents {
+            if agent.provider.is_some() {
+                return Err(error(
+                    ErrorKind::InvalidConfiguration,
+                    "native providers require the managed Runtime registry",
+                ));
+            }
             if agent.model.is_some() || agent.effort.is_some() {
                 return Err(error(
                     ErrorKind::InvalidConfiguration,
@@ -313,6 +320,90 @@ impl AgentRegistry {
             )?;
         }
         Ok(registry)
+    }
+    /// Construct official native adapters under one Runtime owner/tool server.
+    /// Call inside a Tokio Runtime. Configuration and executable resolution have
+    /// no native/account effects; version qualification occurs after admission.
+    pub fn from_managed_config(
+        config: &Config,
+        owner: Arc<crate::execution::RuntimeOwner>,
+    ) -> AdapterResult<Self> {
+        config
+            .validate()
+            .map_err(|e| error(ErrorKind::InvalidConfiguration, e.to_string()))?;
+        if tokio::runtime::Handle::try_current().is_err() {
+            return Err(error(
+                ErrorKind::InvalidConfiguration,
+                "managed registry requires a Tokio Runtime",
+            ));
+        }
+        let mut selected = Vec::new();
+        for (name, agent) in &config.agents {
+            let provider = agent.provider.as_deref().ok_or_else(|| {
+                error(
+                    ErrorKind::InvalidConfiguration,
+                    "managed agents require an explicit provider",
+                )
+            })?;
+            if agent.command.len() != 1 {
+                return Err(error(
+                    ErrorKind::InvalidConfiguration,
+                    "managed native command must contain exactly one executable",
+                ));
+            }
+            let path = Path::new(&agent.command[0]);
+            let program = if path.is_absolute() {
+                path.canonicalize().map_err(|_| {
+                    error(
+                        ErrorKind::ExecutableMissing,
+                        "native executable unavailable",
+                    )
+                })?
+            } else if path.components().count() == 1 {
+                crate::execution::resources::resolve_program(&agent.command[0]).map_err(|_| {
+                    error(
+                        ErrorKind::ExecutableMissing,
+                        "native executable unavailable",
+                    )
+                })?
+            } else {
+                return Err(error(
+                    ErrorKind::InvalidConfiguration,
+                    "native executable must be absolute or a PATH name",
+                ));
+            };
+            if !program.is_file() {
+                return Err(error(
+                    ErrorKind::ExecutableMissing,
+                    "native executable unavailable",
+                ));
+            }
+            selected.push((name.clone(), provider.to_owned(), program));
+        }
+        let sessions = Arc::new(
+            crate::execution::native::NativeSessions::new(owner.clone())
+                .map_err(|_| error(ErrorKind::StateFailure, "managed tool server unavailable"))?,
+        );
+        let mut registry = Self {
+            managed_owner: Some(owner.clone()),
+            ..Self::default()
+        };
+        for (name, provider, program) in selected {
+            registry.register(
+                name.clone(),
+                Arc::new(native::NativeAdapter {
+                    owner: owner.clone(),
+                    name,
+                    provider,
+                    program,
+                    sessions: sessions.clone(),
+                }),
+            )?;
+        }
+        Ok(registry)
+    }
+    pub(crate) fn managed_owner(&self) -> Option<Arc<crate::execution::RuntimeOwner>> {
+        self.managed_owner.clone()
     }
     pub fn get(&self, name: &str) -> AdapterResult<Arc<dyn AgentAdapter>> {
         self.adapters.get(name).cloned().ok_or_else(|| {

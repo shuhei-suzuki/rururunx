@@ -38,6 +38,38 @@ identity!(ArtifactId);
 identity!(LeaseId);
 identity!(OperationId);
 
+/// Stable semantic identity before a native Session exists. Versions are fetched
+/// only for this exact unit, never by Task or diagnostic recovery metadata.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ManagedUnitRef {
+    pub scope: Scope,
+    pub unit: UnitId,
+    pub generation: u64,
+    pub epoch: u64,
+}
+impl From<&ExecutionUnit> for ManagedUnitRef {
+    fn from(unit: &ExecutionUnit) -> Self {
+        Self {
+            scope: unit.scope.clone(),
+            unit: unit.id,
+            generation: unit.generation,
+            epoch: unit.owner_epoch,
+        }
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct WorkflowReservation {
+    pub record: RecordId,
+    pub version: u64,
+    pub index: usize,
+    pub workflow_generation: u64,
+    pub context: u64,
+    pub project_version: u64,
+    pub goal_version: u64,
+}
+
 macro_rules! states {
     ($name:ident {$($variant:ident),+ $(,)?}) => {
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -193,11 +225,6 @@ pub struct ExecutionAuthority {
     pub record_version: u64,
 }
 
-/// Produced only by the owning Workflow after retained graph verification.
-pub(crate) struct WorkflowPublication {
-    pub authority: ExecutionAuthority,
-    pub artifact: ArtifactId,
-}
 impl ExecutionUnit {
     pub fn authority(&self) -> ExecutionAuthority {
         ExecutionAuthority {

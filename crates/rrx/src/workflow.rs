@@ -207,6 +207,9 @@ fn risk_max(a: RiskClass, b: RiskClass) -> RiskClass {
 pub struct SourceSnapshot {
     pub scope: Scope,
     pub revision: String,
+    /// Actual retained input identity, qualified by the source integration port.
+    #[serde(default)]
+    pub artifact: Option<crate::execution::ArtifactId>,
     pub source_versions: BTreeMap<String, String>,
     pub payload: String,
 }
@@ -300,6 +303,12 @@ pub struct PhaseAttempt {
     pub session_id: Option<SessionId>,
     #[serde(default)]
     pub execution: Option<crate::execution::native::ManagedSessionRef>,
+    #[serde(default)]
+    pub unit: Option<crate::execution::ManagedUnitRef>,
+    #[serde(default)]
+    pub native_wait: Option<crate::execution::WaitReason>,
+    #[serde(default)]
+    pub next_due: Option<i64>,
     pub dispatch_started: bool,
     pub observations: Vec<GateObservation>,
     /// Observation count at the exact current evaluation claim. A prior round's
@@ -411,6 +420,7 @@ struct Snapshot {
     task: Task,
     record: Record,
     workflow: WorkflowSnapshot,
+    publication: Option<crate::execution::WorkflowPublication>,
 }
 
 /// Invocation-local proof minted only from a successfully committed agent reservation.
@@ -448,6 +458,7 @@ struct AgentPreparation {
 #[cfg(test)]
 #[derive(Default)]
 struct EngineHooks {
+    before_publication: std::sync::Mutex<Option<Box<dyn FnOnce() + Send>>>,
     before_release: std::sync::Mutex<Option<Box<dyn FnOnce() + Send>>>,
     before_reserve: std::sync::Mutex<Option<Pin<Box<dyn Future<Output = ()> + Send>>>>,
     attempt_started_at: std::sync::Mutex<Option<i64>>,
@@ -467,6 +478,9 @@ pub struct WorkflowEngine {
     runtime: Config,
     sources: Arc<dyn WorkflowSources>,
     gates: Arc<dyn PhaseGates>,
+    managed_snapshots: std::sync::Mutex<
+        BTreeMap<crate::execution::UnitId, crate::execution::results::ResultSnapshot>,
+    >,
     #[cfg(test)]
     hooks: EngineHooks,
 }
@@ -479,12 +493,19 @@ impl WorkflowEngine {
         gates: Arc<dyn PhaseGates>,
     ) -> Result<Self> {
         runtime.validate()?;
+        if let Some(owner) = registry.managed_owner() {
+            ensure!(
+                Arc::ptr_eq(&owner.store(), &store),
+                "managed registry and Workflow must share one Runtime store"
+            );
+        }
         Ok(Self {
             store,
             registry,
             runtime,
             sources,
             gates,
+            managed_snapshots: std::sync::Mutex::new(BTreeMap::new()),
             #[cfg(test)]
             hooks: EngineHooks::default(),
         })
@@ -507,6 +528,7 @@ impl WorkflowEngine {
             "workflow/Task pointers disagree"
         );
         Ok(Snapshot {
+            publication: None,
             project,
             goal,
             task,
@@ -554,17 +576,22 @@ impl WorkflowEngine {
                         artifacts.len() == 1,
                         "managed executor requires one exact retained artifact"
                     );
-                    let publication = crate::execution::WorkflowPublication {
-                        authority: unit.authority(),
-                        artifact: artifacts[0].parse()?,
-                    };
+                    let publication = snapshot
+                        .publication
+                        .as_ref()
+                        .context("managed publication requires retained graph verification")?;
+                    ensure!(
+                        publication.authority() == &unit.authority()
+                            && publication.artifact().id == artifacts[0].parse()?,
+                        "verified publication identity mismatch"
+                    );
                     return store.put_workflow_result_transition(
                         &mut snapshot.task,
                         &mut snapshot.record,
                         context.context("managed publication requires fresh context")?,
                         snapshot.project.version,
                         snapshot.goal.version,
-                        &publication,
+                        publication,
                     );
                 }
             }
@@ -726,6 +753,7 @@ impl WorkflowEngine {
             serde_json::to_value(&workflow_state)?,
         );
         let mut snapshot = Snapshot {
+            publication: None,
             project,
             goal,
             task,
@@ -976,6 +1004,9 @@ impl WorkflowEngine {
             state: AttemptState::Running,
             session_id: None,
             execution: None,
+            unit: None,
+            native_wait: None,
+            next_due: None,
             dispatch_started: false,
             observations: vec![],
             claimed_observations: 0,
@@ -1201,6 +1232,12 @@ impl WorkflowEngine {
             source_versions: context.source_hashes.clone(),
             payload: serde_json::to_string(&context.data)?,
         };
+        if adapter.managed_provider().is_some() {
+            *eligible = false;
+            return self
+                .prepare_managed(snapshot, index, input, config, environment, adapter)
+                .await;
+        }
         let Some(worktree) = snapshot.task.worktree.clone() else {
             *eligible = false;
             return self.fail(
@@ -1275,6 +1312,226 @@ impl WorkflowEngine {
             Err(error) => self.fail(snapshot, index, error.to_string()),
         }
     }
+    async fn prepare_managed(
+        &self,
+        mut snapshot: Snapshot,
+        index: usize,
+        input: PreparedInput,
+        config: Config,
+        environment: BTreeMap<String, String>,
+        adapter: Arc<dyn crate::adapter::AgentAdapter>,
+    ) -> Result<StepResult> {
+        use crate::execution::{self, native::NativeStart};
+        ensure!(
+            environment.is_empty(),
+            "managed native overrides require a qualified resource profile"
+        );
+        let owner = self
+            .registry
+            .managed_owner()
+            .context("managed Runtime owner missing")?;
+        let provider = adapter
+            .managed_provider()
+            .context("native provider missing")?;
+        let phase = snapshot.workflow.history[index].phase;
+        let agent = snapshot.workflow.history[index]
+            .agent
+            .clone()
+            .context("native agent missing")?;
+        let attempts = execution::attempts::AttemptManager::new(owner.clone());
+        let unit = if let Some(identity) = &snapshot.workflow.history[index].unit {
+            let unit = self
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                .execution_unit(identity.unit)?;
+            ensure!(
+                identity == &execution::ManagedUnitRef::from(&unit)
+                    && unit.session_id.is_none()
+                    && unit.provider == provider
+                    && unit.phase == phase.key(),
+                "managed preparation identity changed"
+            );
+            unit
+        } else {
+            let reservation = execution::model::WorkflowReservation {
+                record: snapshot.record.id,
+                version: snapshot.record.version,
+                index,
+                workflow_generation: snapshot.workflow.generation,
+                context: input.version,
+                project_version: snapshot.project.version,
+                goal_version: snapshot.goal.version,
+            };
+            if phase.actor() == Actor::Executor {
+                attempts
+                    .prepare_workflow(
+                        snapshot.task.id,
+                        provider,
+                        phase.key(),
+                        &input.revision,
+                        &reservation,
+                    )
+                    .await?
+                    .0
+            } else {
+                let artifact = snapshot
+                    .workflow
+                    .sources
+                    .artifact
+                    .context("managed reviewer requires a retained artifact")?;
+                let (unit, _) = attempts
+                    .prepare_workflow_snapshot(
+                        snapshot.task.id,
+                        artifact,
+                        provider,
+                        phase.key(),
+                        &reservation,
+                    )
+                    .await?;
+                let input_snapshot = execution::results::ResultStore::new(owner.clone())
+                    .snapshot(&unit)
+                    .await?;
+                self.managed_snapshots
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("snapshot state poisoned"))?
+                    .insert(unit.id, input_snapshot);
+                self.store
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                    .execution_unit(unit.id)?
+            }
+        };
+        let mut preparation = execution::owner::PreparationGuard::new(owner.clone(), &unit);
+        // Unit identity and Task projection were committed with the exact phase
+        // reservation before any preparation helper. Reload that transaction;
+        // do not adopt a Unit discovered from a Task or recovery hint.
+        snapshot = self.read(snapshot.task.id)?;
+        ensure!(
+            snapshot.workflow.active == Some(index)
+                && snapshot.workflow.history[index].unit.as_ref()
+                    == Some(&execution::ManagedUnitRef::from(&unit)),
+            "managed reservation changed during preparation"
+        );
+        let (_, sources, _) = self
+            .inputs(
+                &snapshot.project,
+                &snapshot.task,
+                phase,
+                snapshot.workflow.workflow,
+            )
+            .await?;
+        ensure!(
+            same_sources(&sources, &snapshot.workflow.sources),
+            "managed sources changed during preparation"
+        );
+        self.refresh_owners(&mut snapshot)?;
+        if unit.kind != execution::UnitKind::Executor {
+            let input_snapshot = self
+                .managed_snapshots
+                .lock()
+                .map_err(|_| anyhow::anyhow!("snapshot state poisoned"))?
+                .get(&unit.id)
+                .cloned()
+                .context("readonly preparation provenance unavailable; fresh retry required")?;
+            input_snapshot.verify().await?;
+        }
+        let attempt = &mut snapshot.workflow.history[index];
+        attempt.dispatch_started = true;
+        attempt.native_wait = None;
+        attempt.next_due = None;
+        snapshot.task.state = phase.task_state();
+        self.persist(&mut snapshot, None)?;
+        let request = LaunchRequest {
+            project: snapshot.project.clone(),
+            scope: snapshot.task.scope(),
+            worktree: unit.worktree.clone(),
+            role: if phase.actor() == Actor::Reviewer {
+                SessionRole::Reviewer
+            } else {
+                SessionRole::Executor
+            },
+            mode: LaunchMode::NonInteractive,
+            input: input.clone(),
+            environment,
+            model: config.agents.get(&agent).and_then(|a| a.model.clone()),
+            effort: config.agents.get(&agent).and_then(|a| a.effort.clone()),
+        };
+        let result = adapter
+            .start_managed(
+                request,
+                execution::native::ManagedInput {
+                    agent,
+                    authority: unit.authority(),
+                    artifact: unit.artifact_id,
+                    input,
+                },
+            )
+            .await;
+        match result {
+            Ok(NativeStart::Launched(identity)) => {
+                ensure!(
+                    execution::ManagedUnitRef {
+                        scope: identity.scope.clone(),
+                        unit: identity.unit,
+                        generation: identity.generation,
+                        epoch: identity.epoch
+                    } == execution::ManagedUnitRef::from(&unit),
+                    "native launch returned foreign execution identity"
+                );
+                snapshot.workflow.history[index].session_id = Some(identity.session);
+                snapshot.workflow.history[index].execution = Some(identity.clone());
+                self.refresh_owners(&mut snapshot)?;
+                self.persist(&mut snapshot, None)?;
+                preparation.disarm();
+                Ok(StepResult::Started {
+                    phase,
+                    session: Some(identity.session),
+                })
+            }
+            Ok(NativeStart::Waiting {
+                unit: waiting,
+                reason,
+                next_due,
+            }) => {
+                ensure!(
+                    execution::ManagedUnitRef::from(&waiting)
+                        == execution::ManagedUnitRef::from(&unit)
+                        && waiting.session_id.is_none(),
+                    "foreign native wait identity"
+                );
+                let attempt = &mut snapshot.workflow.history[index];
+                attempt.native_wait = Some(reason);
+                attempt.next_due = Some(next_due);
+                attempt.detail = Some(format!("native admission waiting: {reason:?}"));
+                snapshot.task.state = native_wait_state(reason);
+                self.refresh_owners(&mut snapshot)?;
+                self.persist(&mut snapshot, None)?;
+                preparation.disarm();
+                Ok(StepResult::Waiting {
+                    phase,
+                    reason: format!("native admission waiting: {reason:?}"),
+                })
+            }
+            Err(error) => {
+                // The own preparation/native guards close abandoned authority.
+                // Do not turn unknown native launch work into Task failure.
+                drop(preparation);
+                snapshot.workflow.history[index].detail =
+                    Some(format!("native launch unavailable: {:?}", error.kind));
+                snapshot.task.state = TaskState::WaitingHuman;
+                self.refresh_owners(&mut snapshot)?;
+                self.persist(&mut snapshot, None)?;
+                Ok(StepResult::Waiting {
+                    phase,
+                    reason: format!(
+                        "native launch unavailable: {:?}; retry requires explicit action",
+                        error.kind
+                    ),
+                })
+            }
+        }
+    }
     async fn poll(&self, snapshot: Snapshot, index: usize) -> Result<StepResult> {
         let attempt = snapshot
             .workflow
@@ -1316,6 +1573,43 @@ impl WorkflowEngine {
         let Some(id) = attempt.session_id else {
             if phase.actor() == Actor::EvidencePort {
                 return self.evaluate(snapshot, index, None).await;
+            }
+            if attempt.unit.is_some() && attempt.native_wait.is_some() {
+                if attempt.next_due.is_some_and(|due| due > now_ms()) {
+                    return Ok(StepResult::Waiting {
+                        phase,
+                        reason: attempt.detail.clone().unwrap_or_default(),
+                    });
+                }
+                let agent = attempt
+                    .agent
+                    .as_ref()
+                    .context("managed waiting agent missing")?;
+                let adapter = self.registry.get(agent)?;
+                let context = self.context(&snapshot)?;
+                let input = PreparedInput {
+                    scope: context.scope.clone(),
+                    kind: if phase.actor() == Actor::Reviewer {
+                        InputKind::ReviewBundle
+                    } else {
+                        InputKind::ContextPack
+                    },
+                    revision: context.revision.clone(),
+                    version: context.version,
+                    source_versions: context.source_hashes.clone(),
+                    payload: serde_json::to_string(&context.data)?,
+                };
+                let (config, _, _) = self
+                    .inputs(
+                        &snapshot.project,
+                        &snapshot.task,
+                        phase,
+                        snapshot.workflow.workflow,
+                    )
+                    .await?;
+                return self
+                    .prepare_managed(snapshot, index, input, config, BTreeMap::new(), adapter)
+                    .await;
             }
             return Ok(StepResult::Waiting {
                 phase,
@@ -1365,6 +1659,72 @@ impl WorkflowEngine {
             }
             return Ok(StepResult::Waiting { phase, reason });
         }
+        if let Some(native) = &status.execution {
+            use crate::execution::{Disposition, WorkOutcome};
+            if !status.terminal() && native.wait_reason == Some(crate::execution::WaitReason::Quota)
+            {
+                let mut snapshot = snapshot;
+                snapshot.task.state = TaskState::WaitingQuota;
+                self.refresh_owners(&mut snapshot)?;
+                self.persist(&mut snapshot, None)?;
+                return Ok(StepResult::Waiting {
+                    phase,
+                    reason: "native turn is waiting; input has not been resent".into(),
+                });
+            }
+            if status.terminal()
+                && matches!(
+                    native.disposition,
+                    Disposition::QuotaInterrupted | Disposition::CapacityInterrupted
+                )
+            {
+                let mut snapshot = snapshot;
+                snapshot.workflow.history[index].state = AttemptState::Interrupted;
+                snapshot.workflow.history[index].completed_at = Some(now_ms());
+                snapshot.workflow.history[index].detail = Some(format!(
+                    "native turn interrupted: {:?}; next attempt uses fresh resources",
+                    native.disposition
+                ));
+                snapshot.workflow.retries.push(RetryEvent {
+                    prior_attempt: index,
+                    reason: "native capacity wait; work remains unknown".into(),
+                    at: now_ms(),
+                });
+                snapshot.workflow.active = None;
+                snapshot.task.state = if native.disposition == Disposition::QuotaInterrupted {
+                    TaskState::WaitingQuota
+                } else {
+                    TaskState::WaitingCapacity
+                };
+                self.refresh_owners(&mut snapshot)?;
+                self.persist(&mut snapshot, None)?;
+                return Ok(StepResult::Waiting {
+                    phase,
+                    reason: "native capacity wait; next admission uses fresh resources".into(),
+                });
+            }
+            if status.terminal() && native.work == Some(WorkOutcome::Unknown) {
+                let mut snapshot = snapshot;
+                snapshot.task.state = TaskState::WaitingHuman;
+                snapshot.workflow.history[index].detail =
+                    Some("native work unknown; explicit fresh retry required".into());
+                self.refresh_owners(&mut snapshot)?;
+                self.persist(&mut snapshot, None)?;
+                return Ok(StepResult::Waiting {
+                    phase,
+                    reason: "native work unknown; explicit fresh retry required".into(),
+                });
+            }
+            if status.terminal() && native.work == Some(WorkOutcome::Failure) {
+                self.store
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                    .close_result_as_draft(
+                        &native.authority,
+                        "known native failure has no publishable result",
+                    )?;
+            }
+        }
         if !status.terminal() {
             return Ok(StepResult::Running { phase, session: id });
         }
@@ -1377,6 +1737,18 @@ impl WorkflowEngine {
                     status.session.state, status.failure
                 ),
             );
+        }
+        if let Some(identity) = &attempt.unit
+            && phase.actor() == Actor::Reviewer
+        {
+            let input_snapshot = self
+                .managed_snapshots
+                .lock()
+                .map_err(|_| anyhow::anyhow!("snapshot state poisoned"))?
+                .get(&identity.unit)
+                .cloned()
+                .context("readonly result provenance unavailable; fresh retry required")?;
+            input_snapshot.verify().await?;
         }
         self.evaluate(snapshot, index, Some(status)).await
     }
@@ -1392,6 +1764,18 @@ impl WorkflowEngine {
             serde_json::to_value(saved)? == serde_json::to_value(&status.session)?,
             "native status differs from persisted owned Session"
         );
+        if let Some(native) = &status.execution {
+            let unit = store.execution_unit(native.handle.unit)?;
+            ensure!(
+                unit.scope == native.handle.scope
+                    && unit.generation == native.handle.generation
+                    && unit.owner_epoch == native.handle.epoch
+                    && unit.session_id == Some(status.session.id)
+                    && unit.worktree == status.session.worktree
+                    && unit.provider == status.session.provider,
+                "managed Session status differs from durable unit binding"
+            );
+        }
         Ok(())
     }
     fn observe_gate(
@@ -1588,6 +1972,27 @@ impl WorkflowEngine {
         self.invalidate_attempt_preparation(snapshot, index, source, reason, None)
             .await
     }
+    fn fence_managed_attempt(&self, snapshot: &Snapshot, index: usize) -> Result<()> {
+        let attempt = &snapshot.workflow.history[index];
+        if let Some(identity) = &attempt.unit {
+            let mut store = self
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?;
+            let unit = store.execution_unit(identity.unit)?;
+            ensure!(
+                identity == &crate::execution::ManagedUnitRef::from(&unit)
+                    && attempt
+                        .session_id
+                        .is_none_or(|s| unit.session_id == Some(s)),
+                "managed invalidation identity changed"
+            );
+            if unit.native_effects_open || unit.result_finalization_open {
+                store.retire_execution(&unit.authority(), false)?;
+            }
+        }
+        Ok(())
+    }
     async fn invalidate_attempt_preparation(
         &self,
         mut snapshot: Snapshot,
@@ -1641,6 +2046,7 @@ impl WorkflowEngine {
         snapshot.task.workflow = class;
         snapshot.workflow.configured_phases =
             retain_phases(&snapshot.workflow.configured_phases, phases(class, &config));
+        self.fence_managed_attempt(&snapshot, index)?;
         snapshot.workflow.history[index].state = AttemptState::Interrupted;
         snapshot.workflow.history[index].completed_at = Some(now_ms());
         snapshot.workflow.history[index].detail = Some(reason.into());
@@ -1817,6 +2223,7 @@ impl WorkflowEngine {
                     at: now_ms(),
                 });
             }
+            self.fence_managed_attempt(&snapshot, index)?;
             snapshot.workflow.history[index].state = AttemptState::Interrupted;
             snapshot.workflow.history[index].completed_at = Some(now_ms());
             snapshot.workflow.active = None;
@@ -2005,6 +2412,30 @@ impl WorkflowEngine {
             }
             GateOutcome::Failed(reason) => self.fail(snapshot, index, reason),
             GateOutcome::Passed(evidence) => {
+                if phase.actor() == Actor::Reviewer
+                    && let Some(identity) = &snapshot.workflow.history[index].unit
+                {
+                    let input_snapshot = self
+                        .managed_snapshots
+                        .lock()
+                        .map_err(|_| anyhow::anyhow!("snapshot state poisoned"))?
+                        .get(&identity.unit)
+                        .cloned()
+                        .context("readonly result provenance unavailable; fresh retry required")?;
+                    input_snapshot.verify().await?;
+                }
+                if let Some(identity) = &snapshot.workflow.history[index].unit {
+                    let store = self
+                        .store
+                        .lock()
+                        .map_err(|_| anyhow::anyhow!("state poisoned"))?;
+                    let unit = store.execution_unit(identity.unit)?;
+                    ensure!(
+                        identity == &crate::execution::ManagedUnitRef::from(&unit),
+                        "gate managed unit identity changed"
+                    );
+                    store.validate_execution(&unit.authority(), false, true)?;
+                }
                 if let Err(error) = validate_evidence(
                     &evidence,
                     &snapshot.task.scope(),
@@ -2074,6 +2505,50 @@ impl WorkflowEngine {
                 if phase == Phase::Cleanup {
                     snapshot.task.state = TaskState::Completed;
                 }
+                if phase.actor() == Actor::Executor
+                    && let Some(session) = snapshot.workflow.history[index].session_id
+                {
+                    let unit = self
+                        .store
+                        .lock()
+                        .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                        .session_execution_unit(session)?;
+                    if let Some(unit) = unit {
+                        let owner = self
+                            .registry
+                            .managed_owner()
+                            .context("managed publication Runtime missing")?;
+                        let evidence = snapshot
+                            .workflow
+                            .completed
+                            .get(&phase)
+                            .context("publication evidence missing")?;
+                        let markers = evidence
+                            .artifacts
+                            .iter()
+                            .filter_map(|s| s.strip_prefix("rrx-artifact:"))
+                            .collect::<Vec<_>>();
+                        ensure!(
+                            markers.len() == 1,
+                            "managed completion requires one retained artifact"
+                        );
+                        snapshot.publication = Some(
+                            crate::execution::results::ResultStore::new(owner)
+                                .workflow_publication(&unit.authority(), markers[0].parse()?)
+                                .await?,
+                        );
+                        #[cfg(test)]
+                        if let Some(hook) = self
+                            .hooks
+                            .before_publication
+                            .lock()
+                            .expect("publication hook")
+                            .take()
+                        {
+                            hook();
+                        }
+                    }
+                }
                 self.persist(&mut snapshot, Some(&context))?;
                 Ok(StepResult::Completed { phase })
             }
@@ -2089,6 +2564,61 @@ impl WorkflowEngine {
             .workflow
             .active
             .context("no active attempt to retry")?;
+        if let Some(identity) = &snapshot.workflow.history[index].unit {
+            ensure!(
+                !irreversible(snapshot.workflow.history[index].phase)
+                    && snapshot.workflow.history[index]
+                        .observations
+                        .iter()
+                        .all(|o| o.outcome.is_some()),
+                "unknown evidence/external outcome requires reconciliation, not native retry"
+            );
+            let mut unit = self
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                .execution_unit(identity.unit)?;
+            ensure!(
+                identity == &crate::execution::ManagedUnitRef::from(&unit)
+                    && !unit.native_effects_open,
+                "live managed authority requires cancellation before retry"
+            );
+            if unit.result_finalization_open && unit.work.is_some() {
+                let mut store = self
+                    .store
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("state poisoned"))?;
+                store.close_result_as_draft(
+                    &unit.authority(),
+                    "explicit retry retains the prior result as a draft",
+                )?;
+                unit = store.execution_unit(unit.id)?;
+            }
+            ensure!(
+                identity == &crate::execution::ManagedUnitRef::from(&unit)
+                    && !unit.native_effects_open
+                    && !unit.result_finalization_open
+                    && snapshot.workflow.history[index]
+                        .session_id
+                        .is_none_or(|s| unit.session_id == Some(s)),
+                "managed retry requires retired exact native authority"
+            );
+            if snapshot.workflow.history[index].state != AttemptState::Failed {
+                snapshot.workflow.history[index].state = AttemptState::Interrupted;
+            }
+            snapshot.workflow.history[index]
+                .completed_at
+                .get_or_insert_with(now_ms);
+            snapshot.workflow.history[index].detail = Some(reason.clone());
+            snapshot.workflow.retries.push(RetryEvent {
+                prior_attempt: index,
+                reason,
+                at: now_ms(),
+            });
+            snapshot.workflow.active = None;
+            snapshot.task.state = snapshot.workflow.history[index].phase.task_state();
+            return self.persist(&mut snapshot, None);
+        }
         ensure!(
             matches!(
                 snapshot.workflow.history[index].state,
@@ -2206,7 +2736,15 @@ fn validate_status(status: &SessionStatus, task: &Task, attempt: &PhaseAttempt) 
                     .agent
                     .as_ref()
                     .context("native attempt actor missing")?
-            && Some(&status.session.worktree) == task.worktree.as_ref()
+            && (if let Some(identity) = &attempt.execution {
+                status.execution.as_ref().is_some_and(|native| {
+                    &native.handle == identity
+                        && serde_json::to_value(&native.session).ok()
+                            == serde_json::to_value(&status.session).ok()
+                })
+            } else {
+                Some(&status.session.worktree) == task.worktree.as_ref()
+            })
             && status.session.role
                 == if attempt.phase.actor() == Actor::Reviewer {
                     SessionRole::Reviewer
@@ -2284,6 +2822,13 @@ pub(crate) fn validate_context(
         .collect::<BTreeMap<_, _>>();
     ensure!(
         authority == workflow.sources.source_versions
+            && context.source_hashes.get("workflow:artifact")
+                == workflow
+                    .sources
+                    .artifact
+                    .as_ref()
+                    .map(|a| a.to_string())
+                    .as_ref()
             && context.source_hashes.get("workflow:generation")
                 == Some(&workflow.generation.to_string()),
         "Workflow ContextVersion source/generation mismatch"
@@ -2407,6 +2952,10 @@ pub(crate) fn validate_transition(
                         && before.started_at == after.started_at
                         && before.agent == after.agent
                         && before
+                            .unit
+                            .as_ref()
+                            .is_none_or(|id| after.unit.as_ref() == Some(id))
+                        && before
                             .execution
                             .as_ref()
                             .is_none_or(|identity| after.execution.as_ref() == Some(identity))
@@ -2428,6 +2977,16 @@ pub(crate) fn validate_transition(
                             && after.state == AttemptState::Running
                             && after.phase.actor() != Actor::EvidencePort),
                     "Session may only bind during native launch"
+                );
+                ensure!(
+                    before.unit.is_some()
+                        || after.unit.is_none()
+                        || (before.state == AttemptState::Running
+                            && after.state == AttemptState::Running
+                            && before.session_id.is_none()
+                            && !before.dispatch_started
+                            && after.phase.actor() != Actor::EvidencePort),
+                    "managed unit may only bind before native dispatch"
                 );
                 ensure!(
                     before.execution.is_some()
@@ -2644,6 +3203,14 @@ pub(crate) fn validate_transition(
             ensure!(
                 *state == AttemptState::Succeeded
                     || (*state == AttemptState::Interrupted && next.terminal_decision.is_some())
+                    || (*state == AttemptState::Interrupted
+                        && old.history[index].unit.is_some()
+                        && next.retries.len() == old.retries.len() + 1
+                        && next
+                            .retries
+                            .last()
+                            .is_some_and(|event| event.prior_attempt == index
+                                && !event.reason.trim().is_empty()))
                     || (matches!(state, AttemptState::Waiting | AttemptState::Failed)
                         && next.retries.len() == old.retries.len() + 1
                         && next
@@ -2740,7 +3307,18 @@ fn rules_changed(a: &SourceSnapshot, b: &SourceSnapshot) -> bool {
     rules(a) != rules(b)
 }
 fn same_sources(a: &SourceSnapshot, b: &SourceSnapshot) -> bool {
-    a.scope == b.scope && a.revision == b.revision && a.source_versions == b.source_versions
+    a.scope == b.scope
+        && a.revision == b.revision
+        && a.artifact == b.artifact
+        && a.source_versions == b.source_versions
+}
+fn native_wait_state(reason: crate::execution::WaitReason) -> TaskState {
+    match reason {
+        crate::execution::WaitReason::Quota => TaskState::WaitingQuota,
+        crate::execution::WaitReason::Capacity => TaskState::WaitingCapacity,
+        crate::execution::WaitReason::Resource => TaskState::WaitingResource,
+        _ => TaskState::WaitingHuman,
+    }
 }
 fn next_phase(workflow: &WorkflowSnapshot) -> Option<Phase> {
     workflow
@@ -2787,6 +3365,9 @@ fn make_context(
     let mut source_hashes = source.source_versions.clone();
     source_hashes.insert("workflow:phase".into(), phase.key().into());
     source_hashes.insert("workflow:generation".into(), generation.to_string());
+    if let Some(artifact) = source.artifact {
+        source_hashes.insert("workflow:artifact".into(), artifact.to_string());
+    }
     ContextVersion {
         scope: task.scope(),
         version,
@@ -2828,6 +3409,9 @@ fn load_rules(
     Ok((config, rules, versions))
 }
 
+#[cfg(test)]
+#[path = "workflow/managed_tests.rs"]
+mod managed_tests;
 #[cfg(test)]
 #[path = "workflow/tests.rs"]
 mod tests;

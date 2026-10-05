@@ -1,0 +1,270 @@
+{
+  "review_kind": "STRICT preliminary component review; not final Phase2 acceptance",
+  "source_commit": "3732553750a7fb0d2ca020e8935628cf7909c10b",
+  "independence": "Both reports independently examined fixed source without peer reports, dirty source or native/account execution.",
+  "reports": [
+    {
+      "review": "Independent STRICT Phase2 preliminary component review round7",
+      "reviewer": "/root/issue26_registry",
+      "source_commit": "3732553750a7fb0d2ca020e8935628cf7909c10b",
+      "comparison_commit": "9a0c4768ff361aa142f26e9b8102b4871fb24e4c",
+      "approved_contract_commit": "9a11d03f1b1676c2c3c8a24b6b3fd328759f7db5",
+      "verdict": "request_changes",
+      "counts": {
+        "Critical": 0,
+        "High": 1,
+        "Medium": 1,
+        "Low": 0
+      },
+      "confidence": 0.93,
+      "scope": "Preliminary static review of existing changed component producers and consumers, not final Phase2 or whole-source/native/Runtime/Workflow/CLI readiness.",
+      "findings": [
+        {
+          "id": "G-H1",
+          "severity": "High",
+          "title": "Workflow result publication constructs its verification authority from metadata without verifying retained content",
+          "locations": [
+            "crates/rrx/src/workflow.rs:517-568",
+            "crates/rrx/src/execution/model.rs:196-201",
+            "crates/rrx/src/state/execution/artifacts.rs:198-280",
+            "crates/rrx/src/execution/results.rs:295-378"
+          ],
+          "evidence": "WorkflowEngine::persist reads the successful attempt's evidence artifact string, loads the Session's unit, and directly constructs WorkflowPublication { authority, artifact }. It never runs ResultStore::verify or consumes a private result of equivalent graph/manifest verification. publish_workflow_result_tx then checks only database Ready metadata and matching revision/dependency strings before making the artifact Published and closing finalization in the same Task/Workflow/Context transaction. This bypasses the existing standalone ResultStore::publish producer, which explicitly verifies the retained manifest, private refs and full graph before its Store publication. The new descriptor's comment says it is produced after retained graph verification, but its actual new producer does not establish that condition. A Ready artifact whose manifest/ref/object has disappeared or become corrupt after capture is still promoted by this new path if the metadata remains matching. The new atomic workflow test intentionally uses nonexistent /tmp fixture repository/manifest paths and succeeds, so it proves ledger atomicity only and does not supply the missing content proof.",
+          "contract": "Approved R2 requires retained exact content and correct immutable review/test inputs; approved design section 5 publication checks retained content identity and stops affected advancement on missing/corrupt retained content. The already-existing ResultStore::publish illustrates the explicit verification boundary. This is a defect in the newly added publication consumer, not a finding solely for future unconnected preparation/Registry integration.",
+          "impact": "Task revision, passed Workflow phase evidence and immutable ContextVersion can advance to a Published artifact with no usable retained graph. Transactional consistency among database rows does not establish actual retained-SHA correctness.",
+          "fix_direction": "Require a nonserializable verification result produced outside the Store mutex by the real retained-result verification path, binding exact artifact/unit/scope/version/manifest and authority, then CAS it with current artifact metadata in the coordinated transaction. Do not construct that result from evidence strings/Ready labels. Keep the existing raw-helper migration limitation explicit; refuse this publication path if its required verifier is not yet safely available. Keep file/Git verification outside held SQL/SharedStore locks.",
+          "minimal_causal_controls": [
+            "Capture a genuine Ready retained artifact with existing ResultStore, bind a managed successful phase, then remove/corrupt its manifest or retained ref/object before workflow completion. Completion must refuse with artifact still Ready/Invalid as appropriate and unchanged Task revision/context pointer/passed phase; an intact control must atomically publish all rows.",
+            "Alter a verification-bound artifact/version between out-of-lock verification and the publication transaction and require CAS refusal.",
+            "Compiled omission of actual content verification must admit the missing/corrupt retained artifact and fail the negative consumer assertion. Keep ledger-only fixtures explicitly separate from graph qualification."
+          ],
+          "controls_executed": false
+        },
+        {
+          "id": "G-M1",
+          "severity": "Medium",
+          "title": "Explicit executor retirement makes open readonly predecessors fail the next fresh-generation reservation",
+          "locations": [
+            "crates/rrx/src/state/execution.rs:519-542",
+            "crates/rrx/src/state/execution.rs:750-787",
+            "crates/rrx/src/execution/native.rs:490-505",
+            "crates/rrx/src/state/execution/tests.rs:81-224"
+          ],
+          "evidence": "reserve_execution now requires every open readonly predecessor's generation to equal the current task_execution prior generation before it can retire those predecessors. But retire_execution_as increments task_execution generation when retiring an Executor and closes/releases only that Executor. Open Reviewer/Verifier units of the preceding generation remain open. A legitimate state with a current Executor and readonly unit reviewing an older retained artifact is supported by the new control's final concurrent-admission case. Retiring that Executor with cancel_task=false changes task_execution from g to g+1; the readonly unit remains g. The next fresh Executor reservation then fails the new Some(previous.generation) == prior check. The readonly unit's ordinary retire operation also fails validate_authority because its generation is already fenced. Without a restart or separately implemented recovery it stays open and charged even though no live Executor prevents a fresh attempt. The added replacement test reserves a fresh Executor directly after publication and does not cover the existing explicit-retirement path.",
+          "contract": "R3 allows retry after fencing in a new namespace, retains exact generation identity, and keeps cleanup separate; R5 requires cancelled/retired capacity to retire fairly. The selected new predecessor-close behavior should compose with the existing NativeSessions::cancel / AttemptManager::retire path. No relaxation of younger/foreign unit authority is needed.",
+          "impact": "A normal retire/fresh-retry flow can be stranded by its own already-fenced readonly units, retaining their quota leases and preventing independent fresh local work.",
+          "fix_direction": "Either close/release the Task's applicable readonly units atomically when executor retirement advances their generation, or allow the new reservation to conservatively retire authentic older already-fenced readonly predecessors while rejecting foreign/younger/contradictory identities. Preserve their known work and artifacts, never reopen their native authority.",
+          "minimal_causal_controls": [
+            "Publish a real or explicitly ledger-only prior artifact, admit a current Executor and readonly Reviewer/Verifier for that Task/current generation, acquire the readonly quota lease, then call the existing Executor retire(cancel_task=false) operation and reserve a fresh Executor. Require successful fresh unique names and closure/release of old readonly flags/waiters/leases, with immutable artifact and known work preserved.",
+            "Include the current-generation direct replacement positive, an already retired predecessor, a live Executor negative, and foreign/younger predecessor negatives.",
+            "Compiled restoration of the exact-equality-only check or omission of readonly closure on the selected fix path must make this explicit-retire/fresh-retry consumer fail."
+          ],
+          "controls_executed": false
+        }
+      ],
+      "own_prior_findings_disposition": [
+        {
+          "id": "F-L1",
+          "severity": "Low",
+          "status": "selected source control corrected; actual sensitivity unverified",
+          "evidence": "The duplicate-start control now holds the first actual version helper before registration, spawns the second start while that barrier is held, checks it remains pending, releases the first and checks one native_version effect plus one live Session. It no longer calls the second only after the first returned. No tests/mutants were executed by this reviewer."
+        },
+        {
+          "id": "D-M1",
+          "status": "closed correction retained",
+          "evidence": "Owner-derived resource environment still reaches the actual shim-side process; this delta does not change that production path."
+        },
+        {
+          "id": "B-M2-remaining",
+          "status": "selected pre-unit source Git correction retained; remaining raw-helper integration not certified",
+          "evidence": "Unit-before-helper, pinned Git profile and Drop guard corrections remain. Retained raw helpers are explicitly still WIP; G-H1 identifies actual publication lacking content verification rather than treating missing raw-helper migration alone as a new finding."
+        }
+      ],
+      "additional_checked_source_facts": [
+        "State publication transaction includes ContextVersion, result_artifact Published update, Unit finalization/artifact pin, Task/Workflow changes and publication audit; failures in its later Task/Record CAS roll back earlier staged changes because all use the same Immediate transaction. This ledger atomicity is useful but separate from G-H1 retained-content proof.",
+        "Full managed identity is added to durable PhaseAttempt and SessionRef, with defaults for legacy records. Existing identities cannot be rewritten; Store checks exact unit scope/generation/epoch/Session agreement, and poll/evaluation pass the durable identity to adapters.",
+        "NativeAdapter requires explicit managed launch identity, matching owner Project/body, unit provider/path/role, configured agent alias and complete input DTO, then calls the shared NativeSessions producer. Generic start refuses. Its handle/status/stop/release paths validate exact managed reference and agent/provider identity.",
+        "NativeAdapter status carries typed NativeStatus work/cleanup/failure rather than fabricating exit code 0. Success requires owning saved successful work and matching actual Session; cleanup stays independently Unknown. Public JSON/native exit labels are not all-descendant cleanup proof.",
+        "NativeSessions::release removes only a terminal in-memory entry, not physical resources/leases. The source makes no complete workload death claim.",
+        "New generation-close code preserves already known readonly work and retained artifacts and releases their quota/waiters in the reservation transaction, but G-M1 identifies its mismatch with the separate prior retirement operation.",
+        "All changed native adapter controls, workflow atomic rollback controls and generation replacement controls were read statically, not executed; no reported external test outcome was treated as independent reviewer evidence."
+      ],
+      "coverage": {
+        "changed_production_read": [
+          "adapter.rs",
+          "adapter/native.rs",
+          "adapter/grok/mod.rs status additive fields",
+          "codex/session.rs status/reference additive fields",
+          "execution/model.rs",
+          "execution/native.rs",
+          "state/execution.rs",
+          "state/execution/artifacts.rs",
+          "state/mod.rs",
+          "workflow.rs"
+        ],
+        "changed_controls_read": [
+          "execution/native/tests.rs",
+          "state/execution/tests.rs",
+          "workflow/tests.rs",
+          "adapter/native.rs cfg(test)"
+        ],
+        "relevant_existing_consumers_read": [
+          "state/execution/sessions.rs register/update/close/retired mapping",
+          "execution/results.rs verify/publish/capture readiness",
+          "Workflow persist/poll/evaluate/publication construction",
+          "native owner/identity/cancel/release",
+          "previous fixed unit/helper guards retained baseline"
+        ],
+        "limits": "Unchanged components rely on previous own static reviews; this is not an exhaustive new whole-repository audit."
+      },
+      "independence": {
+        "peer_reports_read": false,
+        "merged_reviews_or_progress_read": false,
+        "dirty_or_later_source_read": false,
+        "worktree_edits": false,
+        "tests_builds_executed": false,
+        "native_account_model_calls": false,
+        "network": false,
+        "process_signals": false
+      },
+      "not_certified": [
+        "Final Phase2, whole-source/native profile or MVP",
+        "Registry/managed Workflow preparation/Runtime/CLI integration",
+        "Reclaimer and physical-resource backend completion",
+        "Initial/retained raw helper migration",
+        "Actual logged-in native auth/hooks/sandbox/MCP or quota behavior",
+        "Actual test/mutation/lint/build/CI pass",
+        "Four-Task both-OS acceptance",
+        "Universal same-user isolation or complete descendant/resource death"
+      ],
+      "command_closure": {
+        "all_read_commands_terminal": true,
+        "live_handles": [],
+        "report_only_write": "/private/tmp/rururunx-agent-execution-phase2-preliminary7-a.json"
+      }
+    },
+    {
+      "reviewer": "independent reviewer B",
+      "review_kind": "STRICT preliminary Phase2 component source review, round 7",
+      "source_commit": "3732553750a7fb0d2ca020e8935628cf7909c10b",
+      "comparison_base_commit": "9a0c4768ff361aa142f26e9b8102b4871fb24e4c",
+      "approved_contract_commit": "9a11d03f1b1676c2c3c8a24b6b3fd328759f7db5",
+      "verdict": "REQUEST_CHANGES",
+      "counts": {
+        "C": 0,
+        "H": 1,
+        "M": 0,
+        "L": 0
+      },
+      "findings": [
+        {
+          "id": "H1",
+          "severity": "H",
+          "title": "Executor stop still advances generation without retiring same-generation readonly units, stranding capacity and refusing the next attempt",
+          "locations": [
+            {
+              "file": "crates/rrx/src/adapter/native.rs",
+              "lines": "206-223"
+            },
+            {
+              "file": "crates/rrx/src/execution/native.rs",
+              "lines": "489-502"
+            },
+            {
+              "file": "crates/rrx/src/state/execution.rs",
+              "lines": "749-787"
+            },
+            {
+              "file": "crates/rrx/src/state/execution.rs",
+              "lines": "535-543"
+            },
+            {
+              "file": "crates/rrx/src/execution/native.rs",
+              "lines": "876-918"
+            }
+          ],
+          "evidence": "The new reservation path retires readonly predecessor flags and leases atomically before admitting a new executor. However the actual private NativeAdapter stop vtable calls NativeSessions::cancel, which calls retire_execution(..., false). retire_execution_as closes only the selected executor unit and advances task_execution.generation at execution.rs:773; it releases only that selected unit's quota at 782 and does not retire open reviewer/verifier siblings. validate_authority still applies the current Task-generation predicate to every kind. Their supervisor finish/fallback retirement consequently fail the stale-generation predicate; the still-open unit also prevents Session closure. On a later new executor reservation, the added predecessor guard requires previous.generation == prior (execution.rs:539), so this previously allowed readonly unit now causes reservation to fail before it can be closed.",
+          "causal_sequence": [
+            "Publish an executor artifact A, fully closing its executor permissions, then reserve/start a fresh executor E in generation g.",
+            "While E is active, admit reviewer R or verifier V from published A. This is allowed by prepare_snapshot/reserve_execution: the artifact is immutable and published, R/V inherit generation g, and the executor-only uniqueness index does not exclude them.",
+            "Call the actual NativeAdapter::stop for E. NativeSessions::cancel retires E with cancel_task=false, advancing the Task generation to g+1 while leaving R/V's native_effects_open/result_finalization_open flags and quota leases unchanged.",
+            "R/V's authority fence fails; Core terminal persistence and fallback retire_execution cannot close an old generation. The lease remains active and Session closure fails because native_effects_open is still true.",
+            "AttemptManager::prepare for the next executor encounters the new predecessor identity guard: the open readonly predecessor has generation g, whereas prior is g+1. Reservation rolls back instead of closing it. The Task retry is blocked, and stranded leases also consume sibling provider/global capacity."
+          ],
+          "impact": "The main round6 revised H2 is fixed only for generation advancement through fresh reservation. Another existing generation-advancement producer, the actual adapter stop path, still leaves readonly authority and quota unresolved. This can block a retry after cancellation and reduce capacity for other Tasks; it is not absence of the planned Workflow/Registry integration.",
+          "contract_evidence": [
+            {
+              "file": "doc/design/agent-execution-design.md",
+              "commit": "9a11d03f1b1676c2c3c8a24b6b3fd328759f7db5",
+              "lines": "424-426",
+              "requirement": "Cancellation/replacement retires both logical permissions before hygiene."
+            },
+            {
+              "file": "doc/design/agent-execution-design.md",
+              "commit": "9a11d03f1b1676c2c3c8a24b6b3fd328759f7db5",
+              "lines": "164-174",
+              "requirement": "Immutable snapshot work may coexist with a fresh executor; logical fencing and bounded lease release must permit new cooperative work."
+            }
+          ],
+          "proposed_control": "Use one scope/epoch/generation-specific retirement helper on every executor-generation advance, including retire_execution_as and preparation/native failure paths. Atomically close the precisely affected readonly units, preserve known work and artifacts, remove their waiters, release leases and queue cleanup before changing the Task projection. Alternatively preserve explicitly authorized snapshot continuation independently of the latest executor generation. Do not grant historical-generation input/publication authority or rely on a future caller to terminalize the whole Task.",
+          "causal_controls_to_add": [
+            "Account-free ledger control: published old artifact, fresh live executor E, then active reviewer/verifier from that artifact in E's generation. Retire E with cancel_task=false and assert all invalidated readonly flags and leases are closed and the next fresh attempt can reserve.",
+            "Account-free actual NativeAdapter vtable fixture: stop E while a readonly sibling is held; ensure the sibling obtains a durable conservative terminal, its lease cannot accumulate and another Task can obtain capacity.",
+            "Repeat for PreparationGuard abandonment of E and native launch/bootstrap failure paths that retire an executor with cancel_task=false.",
+            "Preserve successful prior work/retained artifacts, refuse duplicate live executors and verify foreign Task/Session/generation handles cannot stop any sibling."
+          ],
+          "verification": "Pinned SQL, transaction predicates and actual adapter call chain inspected only. No build/tests/native Agent/account/network/resource signal was executed.",
+          "prior_finding_relation": "Residual of revised round6 H2 under another concrete generation-advance path."
+        }
+      ],
+      "prior_own_round6_dispositions": [
+        {
+          "id": "H1",
+          "status": "WITHDRAWN_FALSE_POSITIVE_REMAINS_WITHDRAWN",
+          "evidence": "The live executor A to B sequence was blocked by execution.sql:22-23 before generation update. Round7 additionally makes this refusal explicit before modifying readonly predecessors; the negative-control fixture asserts rollback leaves generation, Task version and quota unchanged."
+        },
+        {
+          "id": "H2",
+          "status": "PARTIALLY_FIXED",
+          "evidence": "reserve_execution now enumerates open readonly predecessors, validates indexed/body identity and scope/epoch/generation, closes both permissions, preserves known work, releases quota/waiters and queues cleanup in the admission transaction (state/execution.rs:519-566). Newly admitted readonly units can still target a prior published artifact while sharing the fresh generation. The actual stop/retire generation advance remains unfixed, recorded as current H1."
+        }
+      ],
+      "positive_source_observations": [
+        "Coordinated publication runs artifact/unit, Task, Workflow and ContextVersion writes in the same Immediate transaction. Artifact/unit updates precede final Task/Workflow CAS, so a later CAS failure rolls those changes and context insertion back; in-memory Task/Record versions update only after commit (state/mod.rs:442-444,682-720).",
+        "publish_workflow_result_tx checks successful executor identity, exact active phase/Session, Ready artifact binding, all revision references, artifact marker and dependency versions, then version-CASes the artifact and closes finalization (state/execution/artifacts.rs:198-280).",
+        "Standalone ResultStore publication refuses a Workflow-owned Task, and WorkflowEngine::persist selects coordinated publication when the successful active executor Session has a managed unit; it requires exactly one retained artifact marker. No current caller bypass of that routing was found in the reviewed paths.",
+        "PhaseAttempt now persists ManagedSessionRef. Transition validation makes a bound identity immutable and limits its initial binding to native launch; the Store independently cross-checks unit scope/generation/epoch/Session binding for persisted history (workflow.rs:2406-2441; state/mod.rs:591-605).",
+        "NativeAdapter is private, and ordinary start refuses unmanaged launch. Its managed start validates provider/alias, exact input, role, project and owned worktree before NativeSessions admission. Status/stop/approvals/subscription/release require the exact in-memory managed handle and configured agent/provider identity.",
+        "NativeAdapter transport_succeeded uses saved managed work and Session identity rather than a generic exit code. Work and cleanup remain separate; no fixture establishes native cleanup guarantee."
+      ],
+      "causal_controls_inspected_not_executed": [
+        {
+          "file": "crates/rrx/src/state/execution/tests.rs",
+          "description": "Readonly generation replacement preserves known work/artifact and releases capacity; duplicate live executor reservation leaves predecessor authority and lease intact."
+        },
+        {
+          "file": "crates/rrx/src/workflow/tests.rs",
+          "description": "Coordinated ledger publication positive control and cancel/dependency-drift rollback controls; on-disk Git conformance is explicitly excluded from the synthetic fixture."
+        },
+        {
+          "file": "crates/rrx/src/adapter/native.rs",
+          "lines": "309-482",
+          "description": "Private adapter managed vtable alias/identity, success-versus-cleanup and exact-handle stop fixture assertions; source inspected only."
+        }
+      ],
+      "scope_and_limits": [
+        "Preliminary source component review only; not final Phase2 approval, release readiness or native four-Task acceptance.",
+        "Only fixed git-show/tree/diff source for 3732553750a7fb0d2ca020e8935628cf7909c10b, the requested fixed comparison base and approved contract were consulted. No peer report, merged review JSON, progress.md, dirty source or later source was read.",
+        "No build/test execution, actual Agent/account/auth/model use, credential read, network/Docker/resource operation, process signal or worktree source edit was performed.",
+        "Registry registration, managed Workflow preparation and CLI wiring remain unconnected; their absence is not counted as a finding.",
+        "Cleanup backends, initial/retained raw helper integration and native hook/dependency qualification remain incomplete. Existing source checks are not proof of actual CLI auth/settings/hooks/sandbox compatibility.",
+        "Static inspection found no new verified defect in the reviewed coordinated publication/CAS and persistent identity paths. It does not establish exhaustive concurrency or crash conformance.",
+        "No security sandbox or descendant-death guarantee is asserted. No license files or descriptions were touched."
+      ],
+      "owned_handles": {
+        "live": [],
+        "closed": "All exec_command calls completed without session_id; no Agent/server/subscription/background process handle was created."
+      }
+    }
+  ]
+}

@@ -19,6 +19,7 @@ impl WorkflowSources for Sources {
             let worktree = task.worktree.as_ref().unwrap();
             let revision = super::fixture_support::git(worktree, &["rev-parse", "HEAD"]);
             Ok(SourceSnapshot {
+                artifact: None,
                 scope: task.scope(),
                 source_versions: BTreeMap::from([("fixture-head".into(), revision.clone())]),
                 revision,

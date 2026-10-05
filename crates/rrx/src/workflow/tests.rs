@@ -214,6 +214,25 @@ impl AgentAdapter for FakeAgent {
                 } else {
                     store.put_session(&status.session, version).unwrap();
                 }
+                if let Some(unit) = store.session_execution_unit(reference.id).unwrap() {
+                    status.execution = Some(crate::execution::native::NativeStatus {
+                        handle: reference
+                            .execution
+                            .clone()
+                            .expect("ledger fixture managed reference"),
+                        authority: unit.authority(),
+                        session: status.session.clone(),
+                        work: unit.work,
+                        disposition: unit.disposition,
+                        cleanup: unit.cleanup,
+                        wait_reason: unit.wait_reason,
+                        pending: vec![],
+                        result: None,
+                        metrics: None,
+                        diagnostic: None,
+                        failure: None,
+                    });
+                }
                 statuses.insert(reference.id, status.clone());
                 if self.native_mode.load(Ordering::SeqCst)
                     && status.session.state == SessionState::Exited
@@ -285,6 +304,7 @@ impl Sources {
             snapshot: Mutex::new(SourceSnapshot {
                 scope,
                 revision: "head-1".into(),
+                artifact: None,
                 source_versions: BTreeMap::from([("requirements".into(), "sha256-1".into())]),
                 payload: "factual fixture context".into(),
             }),
@@ -548,7 +568,7 @@ impl Fixture {
 }
 
 #[tokio::test]
-async fn managed_result_publication_commits_workflow_and_context_or_rolls_back_together() {
+async fn workflow_result_cannot_publish_ledger_only_ready_metadata() {
     use crate::execution::*;
     for control in ["publish", "cancel", "dependency-drift"] {
         let fixture = Fixture::new(WorkflowClass::Quick);
@@ -671,31 +691,14 @@ async fn managed_result_publication_commits_workflow_and_context_or_rolls_back_t
         )
         .unwrap();
         let current = store.execution_unit(unit.id).unwrap();
-        if control == "publish" {
-            assert!(matches!(
-                outcome.unwrap(),
-                StepResult::Completed {
-                    phase: Phase::Implement
-                }
-            ));
-            assert_eq!(artifact.state, ArtifactState::Published);
-            assert_eq!(task.revision.as_deref(), Some(artifact.revision.as_str()));
-            assert_eq!(context.revision, artifact.revision);
-            assert_eq!(context.version, task.context_version);
-            assert_eq!(workflow.context_version, context.version);
-            assert!(workflow.completed.contains_key(&Phase::Implement));
-            assert!(!current.result_finalization_open);
-            assert_eq!(current.artifact_id, Some(artifact.id));
-        } else {
-            assert!(outcome.is_err(), "{control}");
-            assert_eq!(artifact.state, ArtifactState::Ready);
-            assert_eq!(task.revision, before_task.revision);
-            assert_eq!(task.context_version, before_task.context_version);
-            assert_eq!(context.version, before_task.context_version);
-            assert!(!workflow.completed.contains_key(&Phase::Implement));
-            assert_eq!(current.artifact_id, None);
-            assert_eq!(current.work, Some(WorkOutcome::Success));
-        }
+        assert!(outcome.is_err(), "{control}");
+        assert_eq!(artifact.state, ArtifactState::Ready);
+        assert_eq!(task.revision, before_task.revision);
+        assert_eq!(task.context_version, before_task.context_version);
+        assert_eq!(context.version, before_task.context_version);
+        assert!(!workflow.completed.contains_key(&Phase::Implement));
+        assert_eq!(current.artifact_id, None);
+        assert_eq!(current.work, Some(WorkOutcome::Success));
     }
 }
 
@@ -1236,6 +1239,9 @@ async fn second_engine_cannot_dispatch_duplicate_phase_and_interrupt_does_not_au
         wf.active = Some(0);
         wf.history.push(PhaseAttempt {
             execution: None,
+            unit: None,
+            native_wait: None,
+            next_due: None,
             phase: Phase::Worktree,
             generation: 1,
             context_version: 1,
@@ -2460,6 +2466,9 @@ async fn atomic_authority_rejects_invented_initial_history_completion_and_finish
             1 => snapshot.finished = true,
             2 => snapshot.history.push(PhaseAttempt {
                 execution: None,
+                unit: None,
+                native_wait: None,
+                next_due: None,
                 phase: Phase::Worktree,
                 generation: 1,
                 context_version: 1,

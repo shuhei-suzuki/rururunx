@@ -198,8 +198,48 @@ executor-replacement finding after confirming the partial UNIQUE index, and
 reported the live readonly-generation lease issue instead. The corrections above
 require a new immutable review; neither report constitutes final Phase2 approval.
 
-- Full current-source/retained-graph qualification and coordinated pipeline; public adapter and
-  Registry integration; Task/reservation/Runtime orchestration and operational CLI.
+The subsequent [round7 reports](agent-execution-phase2-preliminary7-reviews.json)
+requested retained-content verification at coordinated publication and identified
+the same readonly lease issue through the existing stop/retire path. Executor
+retirement now closes affected readonly authority and capacity before advancing
+generation. Workflow publication requires a nonserializable proof minted by
+scoped Git/manifest verification, binds the full artifact snapshot and unit
+authority, and rechecks both in its atomic SQL transaction. Evidence strings and
+Ready metadata cannot construct that proof.
+
+The managed Registry now selects explicit `claude`/`codex` provider configuration,
+independent of configured aliases, and shares one NativeSessions/tool server under
+the same Runtime owner as Workflow. Workflow reserves an exact pre-Session unit
+identity with its Task projection and phase claim in one transaction before
+preparation helpers. Native inputs must match that phase's immutable
+ContextVersion. Admission waits remain resumable without duplicate input; terminal
+quota/capacity interruption keeps work unknown, releases the phase for a fresh
+namespace and reports typed Task waiting. Explicit local retry still rejects
+unknown evidence/external outcomes. Native status uses the unit's owned worktree,
+including separate readonly review inputs, rather than the executor projection.
+Readonly provenance is currently retained in the owning WorkflowEngine instance;
+missing provenance refuses advancement and requires a fresh attempt.
+
+Account-free controls now exercise the real managed Registry/Workflow/adapter
+path with owned Git repositories and synthetic native peers. Intact retained
+graphs publish together with Task/Workflow/Context pointers. Missing/corrupt
+manifests, missing retained refs, cancellation and a metadata-version change after
+verification all refuse publication. Native quota/capacity terminals for both
+providers wait with fresh resources instead of Task failure. A readonly reviewer
+uses the published SHA despite changes to the old executor path; changing the
+review input rejects its result. The evidence/source ports in these controls are
+test integrations, not a shipped Runtime gate policy or native review verdict.
+
+The stable macOS workspace run passed 387 library tests, 112 primary integration
+tests and two doctests, zero failures and 27 primary ignored cases. The initial
+run failed one ledger fixture because it omitted the newly required typed managed
+status; that fixture now supplies its explicit ledger-only identity and confirms
+metadata-only publication is refused. Formatting and diff whitespace checks
+passed. CI/native conformance, operational CLI and final independent review are
+still required; no new release/OS/account claim follows from these controls.
+
+- Full current-source/retained-graph qualification and production source/evidence
+  ports; Runtime orchestration, readonly result closure and operational CLI.
 - Required native/Git settings and hooks, dependency qualification and remaining
   scoped preparation/retained-inspection helpers; full finite tool profiles and
   installed-binary tool mediation tests.
