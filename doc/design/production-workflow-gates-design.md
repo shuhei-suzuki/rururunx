@@ -1,9 +1,15 @@
 # Production Workflow gate design
 
-Risk: STRICT. Status: pre-implementation proposal. Implements
+Risk: STRICT. Status: initial library component implemented at Source2
+`b6e21db36310ebf233865b24e8aa7a24c6ef834f`; Runtime/native/full-phase acceptance
+remains pending. The pre-implementation proposal at `1c17f847` received two
+independent approvals. Implements
 [G1–G8](../requirements/production-workflow-gates-requirements.md) as an incremental
 Phase2 integration. No additional human boundary or native qualification is
 introduced. Source baseline `ed3c1078a0f5a9646a8c4991881179887b57b28e`.
+See the [component checkpoint](../verification/agent-execution-phase2-production-gates-checkpoint.json)
+for exact tested scope and unverified conditions. Requirements/DesignCommit gates
+are implemented but their real predecessor milestone policies are not qualified.
 
 ## 1. Components and data flow
 
@@ -91,6 +97,8 @@ Verification record schema `managed_workflow_gate_v1` uses bounded JSON:
 claim, phase/Scope, observed Source authority excluding payload, launched Context
 revision and SHA256 of full serialized Context data, checked unit identity,
 optional artifact ID/manifest SHA256, and local specification summary digest.
+The specification digests are the exact `instructions:task` / `instructions:goal`
+entries in the stored source frame; raw source/native payloads are not copied.
 Evidence uses `rrx-gate:<RecordId>` plus an artifact marker where applicable,
 Context version and Session from the current claim, and all source versions as
 dependencies. Values use existing source bounds and avoid native output secrets.

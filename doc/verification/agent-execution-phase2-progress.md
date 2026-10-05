@@ -805,11 +805,73 @@ provider tokens. Process collection remains best effort, and rururunx is not a
 security sandbox. There is no new human decision for dependency-ready Phase2
 integration; the whole Phase2-to-Phase3 approval gate remains in place.
 
+## Initial production Workflow gate checkpoint
+
+Source2 `b6e21db36310ebf233865b24e8aa7a24c6ef834f` implements a concrete
+ManagedWorkflowGates library port. Requirements/design were fixed at
+`1c17f8470465a9ffacb6cb4aaefdfc3058b8f2bf` and independently approved by A and C
+before source. A and B independently approved Source1 `85c13d27` and the final
+test-only Source2 delta, excluding their own earlier Index/tests. Peer findings
+were withheld until independent completion. These are component approvals only.
+The [checkpoint](agent-execution-phase2-production-gates-checkpoint.json) pins
+sources, checks, hashes, controls and limitations; the
+[review ledger](agent-execution-phase2-production-gates-reviews.json) preserves all
+six original static reports.
+
+Issue checks the registered local Task specification; it does not claim a remote
+Issue was created. Issue/Worktree retain the genuine initial capability, validate
+its actual profile, exact registered unit and leased Git ownership/base/clean
+namespace, and record observations without consuming adoption or inventing work.
+Implement requires the exact owned successful terminal and retained Ready artifact.
+The three commit gates inspect the corresponding Executor's Published artifact,
+never current branch HEAD or uncommitted bytes. Existing private atomic Workflow
+publication remains the only accepted-result transition. Receipts pin the actual
+Evaluating claim, Context data digest, launch/observed revisions, source frame and
+checked unit/artifact. They are diagnostic records, not native grant authority.
+
+| Account-free control | Observed result on macOS |
+| --- | --- |
+| Claude and Codex QUICK protocol peers, separately | Production Worktree → same initial Unit → Implement → retained publication → Commit passed; Tests explicitly waited. |
+| STANDARD initial Issue/Worktree | Registered local specification and actual preparation passed without native input. |
+| Dirty preparation / missing acceptance criteria | No successful initial receipt or native input. |
+| Forged native work outcome / corrupted retained manifest | Implement held, no phase success or Published artifact. |
+| Separate Store reopen / surviving executor writes | Three scoped receipts remained readable; retained accepted graph remained valid. |
+
+These are three test functions with seven fixture cases, not real native provider
+or four-Task qualification. Requirements/Design/ImpactAnalysis content policy,
+ReviewEngine, verifier commands and PR/merge/cleanup evidence still return named
+Waiting outcomes. RequirementsCommit/DesignCommit lack qualified real predecessor
+milestone policies. No operational Runtime/CLI wiring is supplied by this port.
+Every foreign/stale claim and graph-corruption variant is not individually tested
+here; lower-level controls remain in the full regression, and remaining acceptance
+must not be inferred from these seven cases.
+
+At final fixed clean Source2, macOS 26.6.2/25G83 arm64, Rust/Cargo1.91.1,
+Git2.49.0, `RUST_TEST_THREADS=4`: **557 primary passed, 0 failed, 30 ignored**.
+Workspace all-target Clippy `-D warnings`, build and fmt passed. Raw602 passes
+exclude44 observer-child tests and one duplicate Codex child. The first restricted
+sandbox control run failed before gate invocation because local Unix sockets were
+unavailable; unchanged Source1 passed all three controls with fixture permissions.
+Source1 full bounded regression also passed, but Clippy rejected the added test's
+explicit-drop guard lifetime. Source2 uses a lexical guard scope and adds the
+separate Store reopen control; final full checks passed. The initial failures are
+retained, not credited as successful checks.
+
+Two compiled mutations at Source1 remove dirty-namespace refusal and the native
+work-success check. Each fails its actual Workflow test assertion (exit101), not
+compilation. Restored three controls pass after both changes on the exact baseline
+tree. Source2 changes tests only; all four related production files are byte-identical
+to the mutated baseline. The mutation chain remains on the owned test branch;
+no mutated code enters Phase2. Cleanup is best effort and this is not a security
+sandbox. No Linux/current-install/native/default-unrestricted acceptance follows;
+the earlier unrestricted source32 failures remain unresolved.
+
 ## Remaining Phase2 and acceptance work
 
-- Production evidence/verifier/reviewer gate consumers and Runtime orchestration/
-  operational CLI construction of the new source port. Initial committed source
-  and same-unit adoption are covered above; existing-Workflow/changed-input
+- Qualified milestone content, verifier/reviewer/external gate consumers and
+  Runtime orchestration/operational CLI construction of the new source/gate ports.
+  Initial committed source, same-unit adoption and initial production observations
+  are covered above; existing-Workflow/changed-input
   recovery still needs fresh provenance rather than reconstructed ownership.
 - Required native/Git settings and hooks, dependency qualification and remaining
   scoped bootstrap/preparation helpers; full finite tool profiles and

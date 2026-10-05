@@ -1,9 +1,13 @@
 # Production Workflow gate requirements
 
-Risk: STRICT (shared Workflow and execution authority). Status: proposal for a
-Phase2 component, not native acceptance or completion of Phase2. Requirements
+Risk: STRICT (shared Workflow and execution authority). Status: independently
+approved at `1c17f847`, with an initial Phase2 library component at `b6e21db`;
+not native acceptance or completion of Phase2. Requirements
 and design precede production changes and receive independent review. This
 component does not create a new human approval boundary within Phase2.
+The [checkpoint](../verification/agent-execution-phase2-production-gates-checkpoint.json)
+records completed controls and outstanding qualification; not every negative
+variant or milestone predecessor policy is qualified by this component.
 
 ## 1. Purpose and sources
 

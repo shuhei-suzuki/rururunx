@@ -1,0 +1,328 @@
+{
+  "schema": "phase2_production_gates_checkpoint_v1",
+  "source": "b6e21db36310ebf233865b24e8aa7a24c6ef834f",
+  "design_source": "1c17f8470465a9ffacb6cb4aaefdfc3058b8f2bf",
+  "initial_code_source": "85c13d27cc3f8c77037b74fb1f80d6b9fe5230ab",
+  "main_unchanged": "6146b1639bf03f244d1c5b716304dc1d20146194",
+  "platform": {
+    "os": "ProductName:\t\tmacOS\nProductVersion:\t\t26.6.2\nBuildVersion:\t\t25G83",
+    "arch": "arm64",
+    "rust_cargo": "1.91.1",
+    "qualified_git": "2.49.0",
+    "state_schema": 5
+  },
+  "scope": "Concrete PhaseGates library for local Issue/Worktree/Implement/retained commit observations. No Runtime CLI or full workflow completion.",
+  "source_hashes": [
+    {
+      "file": "crates/rrx/src/execution/workflow_gates.rs",
+      "sha256": "1b7e4f03ba1f9b53f3df045b601b29e720e8633ac7eac5d0d4999d2db410a339"
+    },
+    {
+      "file": "crates/rrx/src/execution/attempts.rs",
+      "sha256": "54a5fbf4dc58925f5daea44ecf7a216faf69c59c5db6df703d5450ca4e122d34"
+    },
+    {
+      "file": "crates/rrx/src/execution/workflow_source.rs",
+      "sha256": "2d7aeefe54a6bde6949d13c7a212b9f55fda657434e1d0cbd90e958ed610f10d"
+    },
+    {
+      "file": "crates/rrx/src/execution/mod.rs",
+      "sha256": "1f926a9371cbdcc0fe517c848f7e2d5c6defdfb9be7b72af64d442ffb2cc587a"
+    },
+    {
+      "file": "crates/rrx/src/workflow/committed_source_tests.rs",
+      "sha256": "91df7af84d18195da4f1ef70d2e8364c01ca37127d972791fec1938f19a90c4f"
+    },
+    {
+      "file": "crates/rrx/src/workflow.rs",
+      "sha256": "f09aac1b19dee1766ce8807a10c80f7c0fb4b05e259a766197295cf07c75d56e"
+    },
+    {
+      "file": "crates/rrx/src/execution/results.rs",
+      "sha256": "bb9d13a8202ea596df8c9780952f3a8c24f814148cc934b1fc30237c3df6e08b"
+    },
+    {
+      "file": "crates/rrx/src/state/execution/artifacts.rs",
+      "sha256": "79a1b6ee822ccefb709aa22f54b66aa04ddf72843d3f351237c6966b271b72bf"
+    }
+  ],
+  "checks": {
+    "source": "b6e21db36310ebf233865b24e8aa7a24c6ef834f",
+    "threads": 4,
+    "checks": [
+      {
+        "name": "clippy",
+        "command": [
+          "cargo",
+          "clippy",
+          "--workspace",
+          "--all-targets",
+          "--offline",
+          "--target-dir",
+          "/private/tmp/rrx-phase2-target",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "exit_code": 0,
+        "elapsed_seconds": 6.238757133483887,
+        "log": "/private/tmp/rrx-phase2-production-gates-clippy2.log",
+        "sha256": "41ceee2f4fed0e457d3353fb419e6d5c06880145e447c053ecf0944618a6da15"
+      },
+      {
+        "name": "build",
+        "command": [
+          "cargo",
+          "build",
+          "--workspace",
+          "--offline",
+          "--target-dir",
+          "/private/tmp/rrx-phase2-target"
+        ],
+        "exit_code": 0,
+        "elapsed_seconds": 0.15519309043884277,
+        "log": "/private/tmp/rrx-phase2-production-gates-build2.log",
+        "sha256": "a41051563a4cb5fc1b1bcdd9aa0ba28ca80f7736d629d90cc138218756e8e3a9"
+      },
+      {
+        "name": "fmt",
+        "command": [
+          "cargo",
+          "fmt",
+          "--all",
+          "--",
+          "--check"
+        ],
+        "exit_code": 0,
+        "elapsed_seconds": 0.46018099784851074,
+        "log": "/private/tmp/rrx-phase2-production-gates-fmt2.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "name": "regression",
+        "command": [
+          "cargo",
+          "test",
+          "--workspace",
+          "--offline",
+          "--target-dir",
+          "/private/tmp/rrx-phase2-target"
+        ],
+        "exit_code": 0,
+        "elapsed_seconds": 171.67839908599854,
+        "log": "/private/tmp/rrx-phase2-production-gates-regression2.log",
+        "sha256": "dff47c27fc0ecddadada487c062cbbeff39fedf2c857e98d984c036c0e014703"
+      }
+    ]
+  },
+  "primary_regression": {
+    "passed": 557,
+    "failed": 0,
+    "ignored": 30,
+    "raw_passed_failed_ignored": [
+      602,
+      0,
+      31
+    ],
+    "excluded_duplicate_passes": 45,
+    "excluded_child_ignored": 1,
+    "breakdown": {
+      "rrx_lib": 437,
+      "integration": 113,
+      "tracker_lib": 4,
+      "tracker_discovery": 1,
+      "doctest": 2
+    }
+  },
+  "controls": {
+    "test_functions": 3,
+    "case_count": 7,
+    "qualification": "account-free local protocol peers, actual source/gate/Workflow/Store/Git consumers",
+    "positive": "Claude and Codex peers sequentially: Worktree -> Implement -> retained publication -> Commit -> Tests Waiting; source edits cannot change accepted graph; independent Store reopen retrieves3 receipts",
+    "negative": "dirty preparation and missing criteria do not launch; Standard Issue/Worktree use real preparation; forged native.work and corrupt manifest do not publish"
+  },
+  "mutations": {
+    "base": "85c13d27cc3f8c77037b74fb1f80d6b9fe5230ab",
+    "threads": 1,
+    "mutations": [
+      {
+        "name": "dirty-preparation",
+        "source": "7d4ae2ba9616e70b9726a9dc7884a9f48264e920",
+        "restore": "32bb5c2c446e6ce138e230cd4c120c37ac1b6e39",
+        "file": "crates/rrx/src/execution/attempts.rs",
+        "test": "workflow::committed_source_tests::production_initial_gates_refuse_dirty_preparation_and_wait_for_missing_specification",
+        "command": [
+          "cargo",
+          "test",
+          "-p",
+          "rrx",
+          "--lib",
+          "workflow::committed_source_tests::production_initial_gates_refuse_dirty_preparation_and_wait_for_missing_specification",
+          "--offline",
+          "--target-dir",
+          "/private/tmp/rrx-phase2-retained-mutation-target",
+          "--",
+          "--exact"
+        ],
+        "exit_code": 101,
+        "killed_by_assertion": true,
+        "elapsed_seconds": 29.1530659198761,
+        "log": "/private/tmp/rrx-phase2-production-gates-mutant-dirty-preparation.log",
+        "sha256": "2a8f8abae0a4ee8778b8e1843c08e3dc7e50a10854eb37eb2226006b29495f1a"
+      },
+      {
+        "name": "owned-terminal",
+        "source": "5e2461646998cad6f80f6be51b0c24b432901c7b",
+        "restore": "d20b5206f8bc1cb013dd85d6c81fb9c8d85f94b3",
+        "file": "crates/rrx/src/execution/workflow_gates.rs",
+        "test": "workflow::committed_source_tests::production_gate_rejects_forged_success_and_corrupted_retained_manifest",
+        "command": [
+          "cargo",
+          "test",
+          "-p",
+          "rrx",
+          "--lib",
+          "workflow::committed_source_tests::production_gate_rejects_forged_success_and_corrupted_retained_manifest",
+          "--offline",
+          "--target-dir",
+          "/private/tmp/rrx-phase2-retained-mutation-target",
+          "--",
+          "--exact"
+        ],
+        "exit_code": 101,
+        "killed_by_assertion": true,
+        "elapsed_seconds": 7.779875040054321,
+        "log": "/private/tmp/rrx-phase2-production-gates-mutant-owned-terminal.log",
+        "sha256": "1841f3bf31e40fe5fb7b8e88862b53dfa3c986399504177deecf14638d273e38"
+      }
+    ]
+  },
+  "restored_controls": {
+    "source": "d20b5206f8bc1cb013dd85d6c81fb9c8d85f94b3",
+    "tree": "6e7bb310cd443dce053032db29cfa963dd3660b8",
+    "baseline_tree": "6e7bb310cd443dce053032db29cfa963dd3660b8",
+    "command": [
+      "cargo",
+      "test",
+      "-p",
+      "rrx",
+      "--lib",
+      "workflow::committed_source_tests::production_",
+      "--offline",
+      "--target-dir",
+      "/private/tmp/rrx-phase2-retained-mutation-target"
+    ],
+    "exit_code": 0,
+    "log": "/private/tmp/rrx-phase2-production-gates-mutants-restored.log",
+    "sha256": "96be77ba5b1cca5279faf998018c62c5c4831864136b257773b3d03f7b15b0e2"
+  },
+  "mutation_scope": "Compiled at Source85 baseline tree; Source2 changes only test guard lifetime and adds Store reopen. Four mutated/related production files are byte-identical across those sources. Restored3 controls run after both mutations, not after each individual restore.",
+  "earlier_runs": [
+    {
+      "source": "85c13d27cc3f8c77037b74fb1f80d6b9fe5230ab",
+      "scope": "restricted sandbox controls first2 selected tests",
+      "result": "Unix-socket server unavailable before gate invocation; exit101. Qualified outside restricted sandbox unchanged source, all3 pass."
+    },
+    {
+      "source": "85c13d27cc3f8c77037b74fb1f80d6b9fe5230ab",
+      "checks": {
+        "source": "85c13d27cc3f8c77037b74fb1f80d6b9fe5230ab",
+        "threads": 4,
+        "checks": [
+          {
+            "name": "regression",
+            "command": [
+              "cargo",
+              "test",
+              "--workspace",
+              "--offline",
+              "--target-dir",
+              "/private/tmp/rrx-phase2-target"
+            ],
+            "exit_code": 0,
+            "elapsed_seconds": 202.97737288475037,
+            "log": "/private/tmp/rrx-phase2-production-gates-regression1.log",
+            "sha256": "b68e6bf70e63b65163965066eaf494a6db38f2141826bebf443b927f4961aa67"
+          },
+          {
+            "name": "clippy",
+            "command": [
+              "cargo",
+              "clippy",
+              "--workspace",
+              "--all-targets",
+              "--offline",
+              "--target-dir",
+              "/private/tmp/rrx-phase2-target",
+              "--",
+              "-D",
+              "warnings"
+            ],
+            "exit_code": 101,
+            "elapsed_seconds": 10.224937915802002,
+            "log": "/private/tmp/rrx-phase2-production-gates-clippy1.log",
+            "sha256": "fac3e003df77b6d59655ac60d383f8dfc91842dc1207bc3f216a168d6e5fd9d2"
+          }
+        ]
+      },
+      "result": "Full bounded regression passed; Clippy await_holding_lock in added test failed. Source2 lexical scope and reopen control corrected; final full checks pass."
+    }
+  ],
+  "logs": [
+    {
+      "file": "/private/tmp/rrx-phase2-production-gates-clippy2.log",
+      "sha256": "41ceee2f4fed0e457d3353fb419e6d5c06880145e447c053ecf0944618a6da15"
+    },
+    {
+      "file": "/private/tmp/rrx-phase2-production-gates-build2.log",
+      "sha256": "a41051563a4cb5fc1b1bcdd9aa0ba28ca80f7736d629d90cc138218756e8e3a9"
+    },
+    {
+      "file": "/private/tmp/rrx-phase2-production-gates-fmt2.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "/private/tmp/rrx-phase2-production-gates-regression2.log",
+      "sha256": "dff47c27fc0ecddadada487c062cbbeff39fedf2c857e98d984c036c0e014703"
+    },
+    {
+      "file": "/private/tmp/rrx-phase2-production-gates-regression1.log",
+      "sha256": "b68e6bf70e63b65163965066eaf494a6db38f2141826bebf443b927f4961aa67"
+    },
+    {
+      "file": "/private/tmp/rrx-phase2-production-gates-clippy1.log",
+      "sha256": "fac3e003df77b6d59655ac60d383f8dfc91842dc1207bc3f216a168d6e5fd9d2"
+    },
+    {
+      "file": "/private/tmp/rrx-phase2-production-gates-controls1.log",
+      "sha256": "713cd2a44adbf718bb6fe9d3a84cb386d15485162c422749e80c1dfeb2693bf3"
+    },
+    {
+      "file": "/private/tmp/rrx-phase2-production-gates-controls2.log",
+      "sha256": "7421958275056d363b2190af121c92893fd386f6700935bc380b962bc73b5206"
+    },
+    {
+      "file": "/private/tmp/rrx-phase2-production-gates-mutant-dirty-preparation.log",
+      "sha256": "2a8f8abae0a4ee8778b8e1843c08e3dc7e50a10854eb37eb2226006b29495f1a"
+    },
+    {
+      "file": "/private/tmp/rrx-phase2-production-gates-mutant-owned-terminal.log",
+      "sha256": "1841f3bf31e40fe5fb7b8e88862b53dfa3c986399504177deecf14638d273e38"
+    },
+    {
+      "file": "/private/tmp/rrx-phase2-production-gates-mutants-restored.log",
+      "sha256": "96be77ba5b1cca5279faf998018c62c5c4831864136b257773b3d03f7b15b0e2"
+    }
+  ],
+  "limits": [
+    "No actual logged-in official CLI/model/subscription/auth/hooks used or qualified.",
+    "No four simultaneous real native Tasks, Linux build/CI, current-source cargo install or Phase3 acceptance.",
+    "Requirements/Design/ImpactAnalysis content policy, ReviewEngine, verifier commands and PR/merge/cleanup evidence remain Waiting.",
+    "Runtime/CLI service and automatic source/changed-instruction recovery remain missing.",
+    "RequirementsCommit/DesignCommit behavior is implemented but their real predecessor milestone policies are not qualified here.",
+    "No new tests of every foreign/stale gate claim or every object-graph corruption variant; existing lower-level safeguards and controls are retained.",
+    "Current-source full tests use RUST_TEST_THREADS=4; prior unrestricted Source32 fixture failures remain unresolved; no unrestricted current-source success is claimed.",
+    "Cleanup is best effort; observations do not prove all descendants died; no security sandbox, release or whole-MVP claim.",
+    "Static reviewers did not run tests or inherit peers findings before independent completion."
+  ]
+}
