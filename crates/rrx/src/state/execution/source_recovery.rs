@@ -504,3 +504,118 @@ impl Store {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn old6(path: &Path) -> Connection {
+        let old = Connection::open(path).unwrap();
+        old.create_scalar_function(
+            "rrx_writer_contract_version",
+            0,
+            rusqlite::functions::FunctionFlags::SQLITE_UTF8
+                | rusqlite::functions::FunctionFlags::SQLITE_DETERMINISTIC
+                | rusqlite::functions::FunctionFlags::SQLITE_INNOCUOUS,
+            |_| Ok(6_i64),
+        )
+        .unwrap();
+        old.execute_batch(include_str!("../schema.sql")).unwrap();
+        old.execute_batch(include_str!("../execution.sql")).unwrap();
+        old.execute_batch(include_str!("native_results.sql"))
+            .unwrap();
+        old.execute(
+            "INSERT INTO runtime_epoch(singleton,instance_id,epoch) VALUES(1,?1,0)",
+            [Uuid::new_v4().to_string()],
+        )
+        .unwrap();
+        for table in MUTABLE_TABLES.iter().filter(|t| **t != "source_recoveries") {
+            for action in ["INSERT", "UPDATE", "DELETE"] {
+                old.execute_batch(&format!("CREATE TRIGGER writer_{table}_{action} BEFORE {action} ON {table} WHEN rrx_writer_contract_version()<>6 BEGIN SELECT RAISE(ABORT,'incompatible rrx writer contract'); END;")).unwrap();
+            }
+        }
+        old.pragma_update(None, "application_id", APPLICATION_ID)
+            .unwrap();
+        old.pragma_update(None, "user_version", 6).unwrap();
+        old
+    }
+    #[test]
+    fn schema7_orders_migration_and_fences_already_open6_writer() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("state.db");
+        let old = old6(&path);
+        let mut cached = old
+            .prepare("UPDATE runtime_epoch SET epoch=epoch+1 WHERE singleton=1")
+            .unwrap();
+        cached.execute([]).unwrap();
+        let current = Store::open(&path).unwrap();
+        assert_eq!(current.schema_version().unwrap(), 7);
+        assert!(
+            cached
+                .execute([])
+                .unwrap_err()
+                .to_string()
+                .contains("incompatible rrx writer contract")
+        );
+        for table in MUTABLE_TABLES {
+            for action in ["INSERT", "UPDATE", "DELETE"] {
+                let sql: String = current
+                    .connection
+                    .query_row(
+                        "SELECT sql FROM sqlite_schema WHERE type='trigger' AND name=?1",
+                        [format!("writer_{table}_{action}")],
+                        |r| r.get(0),
+                    )
+                    .unwrap();
+                assert!(sql.contains("<>7"));
+            }
+        }
+        assert_eq!(
+            current
+                .connection
+                .query_row("SELECT COUNT(*) FROM source_recoveries", [], |r| r
+                    .get::<_, u64>(0))
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            current
+                .connection
+                .query_row("SELECT epoch FROM runtime_epoch", [], |r| r
+                    .get::<_, u64>(0))
+                .unwrap(),
+            1
+        );
+        drop(cached);
+        drop(old);
+        drop(current);
+        assert_eq!(Store::open(&path).unwrap().schema_version().unwrap(), 7);
+    }
+    #[test]
+    fn schema7_namespace_collision_rolls_back_exact6_bytes_and_version() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("state.db");
+        let old = old6(&path);
+        old.execute("CREATE TABLE source_recoveries(unrelated TEXT)", [])
+            .unwrap();
+        let bytes = std::fs::read(&path).unwrap();
+        assert!(
+            Store::open(&path)
+                .err()
+                .unwrap()
+                .to_string()
+                .contains("legacy source recovery namespace")
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+        assert_eq!(
+            old.pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))
+                .unwrap(),
+            6
+        );
+        assert_eq!(
+            old.query_row("SELECT epoch FROM runtime_epoch", [], |r| r
+                .get::<_, u64>(0))
+                .unwrap(),
+            0
+        );
+    }
+}
