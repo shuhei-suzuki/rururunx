@@ -118,7 +118,7 @@ impl CleanupService {
                             discovery.coverage.identity_changed
                         ),
                     );
-                    if discovery.processes.len() > 960 {
+                    if discovery.processes.len() > 928 {
                         observation
                             .errors
                             .push("cookie_action_limit_exceeded".into());
@@ -126,12 +126,12 @@ impl CleanupService {
                     observation.coverage.insert(
                         "cookie_actions".into(),
                         format!(
-                            "matches={},max=960,poll_budget_ms=500",
+                            "matches={},max=928,poll_budget_ms=500",
                             discovery.processes.len()
                         ),
                     );
                     let started = Instant::now();
-                    for process in discovery.processes.into_iter().take(960) {
+                    for process in discovery.processes.into_iter().take(928) {
                         let identity = process.identity();
                         let target = format!(
                             "pid:{}@{}:{}",
@@ -178,6 +178,16 @@ impl CleanupService {
                         observation.outcome = CleanupOutcome::Leftovers;
                     }
                 }
+            }
+            let docker = super::docker::cleanup(self.owner.clone(), &claim).await;
+            observation
+                .coverage
+                .insert("docker".into(), docker.coverage);
+            observation.remaining.extend(docker.remaining);
+            observation.errors.extend(docker.errors);
+            observation.actions.extend(docker.actions);
+            if !observation.remaining.is_empty() {
+                observation.outcome = CleanupOutcome::Leftovers;
             }
             observation.at = crate::domain::now_ms();
             self.owner

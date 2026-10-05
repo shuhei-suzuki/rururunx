@@ -1085,7 +1085,7 @@ fn effect_tx(connection: &Connection, id: OperationId) -> Result<ManagedEffect> 
 // Other state operations share the same connection and transaction helpers.
 mod artifacts;
 pub(super) use artifacts::{complete_workflow_readonly_tx, publish_workflow_result_tx};
-mod cleanup;
+pub(crate) mod cleanup;
 mod effects;
 mod quotas;
 pub(crate) use quotas::QuotaAdmission;

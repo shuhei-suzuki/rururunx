@@ -63,8 +63,54 @@ impl UnitGit {
                 .get("git")
                 .context("qualified Git executable missing")?,
         )?;
+        command.args(args);
+        self.run_command(root, command, "git_helper").await
+    }
+    /// Read-only Docker qualification; exact scoped registration still precedes
+    /// every probe. This never grants creation or historical cleanup authority.
+    pub(crate) async fn probe_docker(&self, args: &[String]) -> Result<Vec<u8>> {
+        self.probe_docker_for(
+            args,
+            self.profile
+                .real_tools
+                .get("docker")
+                .context("Docker is absent from profile")?,
+        )
+        .await
+    }
+    pub(crate) async fn probe_docker_for(
+        &self,
+        args: &[String],
+        program: &Path,
+    ) -> Result<Vec<u8>> {
+        ensure!(self.native, "Docker probe requires open native authority");
+        ensure!(
+            program.is_absolute(),
+            "Docker probe program must be absolute"
+        );
+        let mut command = tokio::process::Command::new(program);
+        command.env("DOCKER_API_VERSION", "1.48");
+        command.args(args).current_dir(&self.unit.worktree);
+        let observed = self
+            .run_command(&self.unit.worktree, command, "docker_probe")
+            .await?;
+        ensure!(
+            observed.receipt.status.success(),
+            "Docker probe unavailable"
+        );
+        ensure!(
+            observed.stdout.len() <= 8192,
+            "Docker probe response exceeds bound"
+        );
+        Ok(observed.stdout)
+    }
+    async fn run_command(
+        &self,
+        root: &Path,
+        mut command: tokio::process::Command,
+        kind: &str,
+    ) -> Result<process::CommandCapture> {
         command
-            .args(args)
             .envs(
                 self.profile
                     .environment(&self.unit.cookie, self.owner.ipc_path())?,
@@ -99,7 +145,7 @@ impl UnitGit {
                 operation,
                 self.native,
                 root,
-                "git_helper",
+                kind,
             )?;
             match process::OwnedProcess::spawn(&mut command) {
                 Ok(child) => child,

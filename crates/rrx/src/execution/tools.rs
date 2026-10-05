@@ -287,6 +287,10 @@ pub(crate) fn plan(
                     for (k, v) in &profile.docker_labels {
                         result.args.extend(["--label".into(), format!("{k}={v}")]);
                     }
+                    result.args.extend([
+                        "--label".into(),
+                        format!("org.rururunx.operation={operation}"),
+                    ]);
                     result.args.extend(rest);
                     result.docker_name = Some(name);
                     result.kind = "docker_create";

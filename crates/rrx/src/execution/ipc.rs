@@ -171,6 +171,11 @@ async fn serve(owner: Arc<RuntimeOwner>, mut stream: UnixStream) -> Result<()> {
         ensure!(request.cwd.canonicalize()?==request.cwd && [profile.worktree.as_path(),profile.temp.as_path(),profile.output.as_path(),profile.cache.as_path()]
             .iter().any(|root|request.cwd.starts_with(root)),"tool cwd outside declared namespace");
         let operation=OperationId::new();let mut plan=tools::plan(&profile,&unit,&request.tool,&request.args,operation)?;
+        if request.tool=="docker" {
+            let target=super::docker::qualify_native(owner.clone(),&unit).await?;
+            let mut args=vec!["--context".into(),target.context];args.append(&mut plan.args);plan.args=args;
+            plan.environment.insert("DOCKER_API_VERSION".into(),"1.48".into());
+        }
         if request.tool=="git" {
             ensure!(request.cwd.starts_with(&unit.worktree),"managed Git must use this unit's source namespace");
             if unit.kind==UnitKind::Executor {

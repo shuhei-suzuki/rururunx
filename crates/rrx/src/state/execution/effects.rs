@@ -38,7 +38,7 @@ impl Store {
     ) -> Result<()> {
         ensure!(path.is_absolute(), "helper path must be absolute");
         ensure!(
-            matches!(kind, "git_helper" | "native_version"),
+            matches!(kind, "git_helper" | "native_version" | "docker_probe"),
             "unsupported unit helper kind"
         );
         let tx = self

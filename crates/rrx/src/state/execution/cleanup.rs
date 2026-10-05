@@ -7,6 +7,51 @@ pub(crate) struct CleanupClaim {
     pub version: u64,
 }
 impl Store {
+    pub(crate) fn reserve_cleanup_helper(
+        &mut self,
+        claim: &CleanupClaim,
+        id: OperationId,
+        target: &str,
+    ) -> Result<()> {
+        ensure!(
+            !target.is_empty()
+                && target.len() <= 256
+                && target
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || matches!(b, b':' | b'_' | b'-' | b'.')),
+            "invalid cleanup helper target"
+        );
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        validate_cleanup_claim(&tx, claim)?;
+        let effect = ManagedEffect {
+            id,
+            unit_id: claim.unit.id,
+            scope: claim.unit.scope.clone(),
+            kind: "docker_cleanup".into(),
+            idempotency_key: format!("cleanup-{id}"),
+            expected_target: target.into(),
+            state: EffectState::Pending,
+            receipt: BTreeMap::new(),
+            version: 1,
+        };
+        let (p, g, t) = scope_keys(&effect.scope)?;
+        tx.execute("INSERT INTO managed_effects(id,unit_id,project_id,goal_id,task_id,idempotency_key,state,version,body) VALUES(?1,?2,?3,?4,?5,?6,'pending',1,?7)",
+            params![id.to_string(),effect.unit_id.to_string(),p,g,t,effect.idempotency_key,serde_json::to_string(&effect)?])?;
+        append_event(
+            &tx,
+            &claim.unit.scope,
+            "execution.cleanup_helper_intent",
+            json!({"unit":claim.unit.id,"operation":id,"owner_epoch":claim.epoch}),
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+    pub(crate) fn validate_cleanup_claim(&self, claim: &CleanupClaim) -> Result<()> {
+        let tx = self.connection.unchecked_transaction()?;
+        validate_cleanup_claim(&tx, claim)
+    }
     pub fn execution_cleanup_observations(
         &self,
         id: UnitId,
