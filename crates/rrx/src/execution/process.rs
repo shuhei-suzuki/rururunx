@@ -12,7 +12,7 @@ pub(crate) struct OwnedProcess {
 impl OwnedProcess {
     pub(crate) fn spawn(command: &mut Command) -> Result<Self> {
         command.process_group(0).kill_on_drop(true);
-        let child=command.spawn()?;
+        let child=command.spawn().context("spawn owned command")?;
         let pid=Pid::from_raw(child.id().context("missing owned child identity")? as i32)
             .context("invalid owned child identity")?;
         Ok(Self {child,pid,unreaped:true})
@@ -22,7 +22,7 @@ impl OwnedProcess {
             match waitid(WaitId::Pid(self.pid),WaitIdOptions::EXITED|WaitIdOptions::NOWAIT|WaitIdOptions::NOHANG) {
                 Ok(Some(_)) => return Ok(()),
                 Ok(None)|Err(rustix::io::Errno::INTR) => tokio::time::sleep(Duration::from_millis(20)).await,
-                Err(e) => return Err(e.into()),
+                Err(e) => return Err(anyhow::Error::from(e).context("observe owned child without reaping")),
             }
         }
     }
@@ -30,7 +30,7 @@ impl OwnedProcess {
         ensure!(self.unreaped,"owned child has already been reaped");
         match kill_process_group(self.pid,Signal::KILL) {
             Ok(())|Err(rustix::io::Errno::SRCH)=>Ok(()),
-            Err(e)=>Err(e.into()),
+            Err(e)=>Err(anyhow::Error::from(e).context("signal owned unreaped process group")),
         }
     }
     pub(crate) async fn stop_and_reap(&mut self) -> Result<ExitStatus> {
