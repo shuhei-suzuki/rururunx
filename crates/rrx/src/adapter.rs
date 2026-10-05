@@ -1,5 +1,8 @@
 //! Thin native process contracts. Context selection and workflow decisions belong upstream.
 pub mod grok;
+mod git_owner;
+#[cfg(test)]
+pub(crate) use git_owner::TestGitContext;
 #[cfg(target_os = "macos")]
 mod inspection;
 #[cfg(all(test, target_os = "macos"))]
@@ -639,7 +642,7 @@ impl AgentAdapter for GenericCliAdapter {
             let mut child = match launch {
                 Ok(child) => ProcessGroup::new(child, reservation.process_uncertain.clone())?,
                 Err(e) => {
-                    session.state = if e.kind == ErrorKind::SessionLost {
+                    session.state = if e.kind == ErrorKind::SessionLost || reservation.process_uncertain.load(Ordering::SeqCst) {
                         SessionState::Lost
                     } else {
                         SessionState::Failed
@@ -1334,95 +1337,16 @@ async fn bounded_git_raw_inner(
     process_uncertain: Arc<AtomicBool>,
     #[cfg(all(test, target_os = "macos"))] plan: Option<ProcessInspectionPlan>,
 ) -> AdapterResult<Vec<u8>> {
-    if tokio::time::Instant::now() >= deadline {
-        return Err(error(
-            ErrorKind::Timeout,
-            "Git ownership preflight timed out",
-        ));
-    }
-    let mut command = Command::new(executable);
-    command
-        .args(args)
-        .current_dir(cwd)
-        .env_clear()
-        .envs(environment)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true)
-        .process_group(0);
-    let mut child = ProcessGroup::new(
-        command
-            .spawn()
-            .map_err(|e| error(ErrorKind::ProcessFailure, e.to_string()))?,
-        process_uncertain,
-    )?;
-    #[cfg(all(test, target_os = "macos"))]
-    {
-        child.inspection_plan = plan;
-    }
-    let stdout = child.child.stdout.take().expect("piped Git stdout");
-    let stderr = child.child.stderr.take().expect("piped Git stderr");
-    let mut stdout = tokio::spawn(read_git_output(stdout));
-    let mut stderr = tokio::spawn(read_git_output(stderr));
-    let observed = tokio::time::timeout_at(deadline, child.observe_exit()).await;
-    child = cleanup_group(child).await?;
-    let exit = tokio::time::timeout(Duration::from_millis(250), child.reap())
-        .await
-        .map_err(|_| {
-            error(
-                ErrorKind::SessionLost,
-                "Git child death not confirmed after cleanup",
-            )
-        })?
-        .map_err(|e| {
-            error(
-                ErrorKind::SessionLost,
-                format!("Git child reap failed: {e}"),
-            )
-        })?;
-    if observed.is_err() {
-        stdout.abort();
-        stderr.abort();
-        return Err(error(
-            ErrorKind::Timeout,
-            "Git ownership preflight timed out",
-        ));
-    }
-    observed.expect("checked deadline").map_err(|e| {
-        error(
-            ErrorKind::SessionLost,
-            format!("Git child observation failed: {e}"),
-        )
-    })?;
-    let output = tokio::time::timeout(Duration::from_millis(250), async {
-        let out = (&mut stdout)
-            .await
-            .map_err(|e| error(ErrorKind::ProcessFailure, e.to_string()))??;
-        let _ = (&mut stderr)
-            .await
-            .map_err(|e| error(ErrorKind::ProcessFailure, e.to_string()))??;
-        Ok::<_, AdapterError>(out)
-    })
-    .await;
-    let output = match output {
-        Ok(output) => output?,
-        Err(_) => {
-            stdout.abort();
-            stderr.abort();
-            return Err(error(
-                ErrorKind::ProcessFailure,
-                "Git output remained open after cleanup",
-            ));
-        }
-    };
-    if !exit.success() {
-        return Err(error(
-            ErrorKind::OwnershipMismatch,
-            "Git ownership preflight failed",
-        ));
-    }
-    Ok(output)
+    git_owner::run(
+        executable, cwd, args, environment, deadline, process_uncertain,
+        #[cfg(test)]
+        {
+            #[cfg(target_os = "macos")]
+            { plan.map(TestGitContext::with_plan) }
+            #[cfg(not(target_os = "macos"))]
+            { None }
+        },
+    ).await
 }
 async fn read_git_output(reader: impl AsyncRead + Unpin) -> AdapterResult<Vec<u8>> {
     let mut bytes = vec![];
