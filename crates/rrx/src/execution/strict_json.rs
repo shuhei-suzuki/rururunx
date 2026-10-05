@@ -202,7 +202,7 @@ impl<'de> Visitor<'de> for Seed<'_> {
                 full,
             })?;
             let Some(key) = next else { break };
-            if false {
+            if values.contains_key(&key) {
                 return Err(self.budget.refuse(Error::DuplicateKey));
             }
             let value = map.next_value_seed(Seed {
