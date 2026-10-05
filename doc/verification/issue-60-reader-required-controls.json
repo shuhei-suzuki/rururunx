@@ -1,0 +1,76 @@
+{
+  "head": "fd406b6e03f7314fae0a17f5828f7edbf6d2bdea",
+  "scope": "Candidate required consumer coverage for existing Requirements4 / Design2; not source acceptance or full gate pass",
+  "unchanged_default_internal_concurrency": true,
+  "unchanged_production_budgets_and_equations": true,
+  "platform": "macOS",
+  "runs": [
+    {
+      "name": "workspace-debug",
+      "head": "fd406b6e03f7314fae0a17f5828f7edbf6d2bdea",
+      "exit": 101,
+      "log_sha256": "11029d04854032388116fd1c03b5cd5bb4f72de8b34453dbdac1440d2509417e",
+      "results": [
+        "test result: ok. 45 passed; 0 failed; 1 ignored; 0 measured; 292 filtered out; finished in 6.96s",
+        "test result: FAILED. 312 passed; 2 failed; 24 ignored; 0 measured; 0 filtered out; finished in 73.25s"
+      ],
+      "later_workspace_test_targets": "unrun after lib failure"
+    },
+    {
+      "name": "workspace-release",
+      "head": "fd406b6e03f7314fae0a17f5828f7edbf6d2bdea",
+      "exit": 101,
+      "log_sha256": "9c2a7549b36fd67ee156e31a851b0f9e8b860f1f0c06b1dae3d3f99ff0bc5938",
+      "results": [
+        "test result: ok. 45 passed; 0 failed; 1 ignored; 0 measured; 292 filtered out; finished in 6.35s",
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 337 filtered out; finished in 9.48s",
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 337 filtered out; finished in 13.25s",
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 337 filtered out; finished in 12.16s",
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 337 filtered out; finished in 9.70s",
+        "test result: FAILED. 308 passed; 6 failed; 24 ignored; 0 measured; 0 filtered out; finished in 66.45s"
+      ],
+      "later_workspace_test_targets": "unrun after lib failure"
+    },
+    {
+      "name": "debug-build",
+      "head": "fd406b6e03f7314fae0a17f5828f7edbf6d2bdea",
+      "exit": 0,
+      "log_sha256": "2bc683fb4e4f4f21ee9ee39e2b8ecce2efe20d3b1be57bda5316aa519ab3d30a",
+      "results": [],
+      "later_workspace_test_targets": "not applicable"
+    },
+    {
+      "name": "release-build",
+      "head": "fd406b6e03f7314fae0a17f5828f7edbf6d2bdea",
+      "exit": 0,
+      "log_sha256": "09f2b93c4bce5bfb43dca18ca8d9c1dca2831c7d2ffb73b00b96f8f73a607f86",
+      "results": [],
+      "later_workspace_test_targets": "not applicable"
+    }
+  ],
+  "fmt": {
+    "head": "fd406b6e03f7314fae0a17f5828f7edbf6d2bdea",
+    "exit": 0
+  },
+  "clippy": {
+    "head": "fd406b6e03f7314fae0a17f5828f7edbf6d2bdea",
+    "exit": 0,
+    "command": "cargo clippy --workspace --all-targets -- -D warnings",
+    "terminal_job": "43772"
+  },
+  "production_pool_audit": {
+    "debug_nested": "45 passed; 1 ignored; 6.96s",
+    "release_nested": "45 passed; 1 ignored; 6.35s",
+    "parent_separate": true,
+    "scope": "fresh process-local retained count only; no native or descendant cleanup certificate"
+  },
+  "historical_35f0_full_test_failures_preserved": true,
+  "current_failure_cause": "UNKNOWN",
+  "current_regression": "UNKNOWN",
+  "linux_execution": "pending required Linux CI; no Linux local test or mutation credit",
+  "single_omission_redundant_guards": [
+    "supervisor extra cancel bit defended by publication state and worker guard",
+    "Retained.settled=false actual current Retained paths already false or publication frozen/lost"
+  ],
+  "whole60_F1_native16_producers": "OPEN"
+}

@@ -675,3 +675,63 @@ operators, restored positives, default/source/CI gates remain pending. Productio
 read/signal/authority/error/deadline equations are unchanged; test hooks do not mint
 native workload or cleanup proof. Both current full TEST failures remain FAILED,
 cause AND regression UNKNOWN; full60/F1/native16 and missing producers remain OPEN.
+
+### Required controls candidate at fd406b6
+
+The preceding pending statement describes the mapping checkpoint. The new
+[actual controls ledger](issue-60-reader-required-controls.json) records subsequent
+observations at fd406b6; Source4 and current required CI are still pending. Source3
+and Root's eight-document approval at110 do not approve these new test changes.
+Production read/signal/authority/error/deadline equations remain unchanged. Hooks,
+actual returned-Child counts and frame-action observation are private cfg(test)
+facts, not new native ownership or settlement authority.
+
+All five additional [compiled operators](issue-60-reader-required-mutations.json)
+were assertion-killed at their intended consumers and restored exactly after each
+run. R18 omits the worker cancel/lost guard after actual command dequeue and creates
+one actual Child instead of zero. R19 omits the poison/lost release guard; after
+healthy resources ended and the actual pool action completed, retained slots are
+zero instead of four. R20 transfers endpoints despite invalid binding and removes
+both pipes from the actual retained Child. R21 sends an explicit private carrier
+to the production pool; a fresh isolated audit process observes four production
+retained slots instead of zero, without a private held-count assertion masking it.
+R22 coerces signal errors to success and wrongly accepts the ACCESS case. These
+are macOS compiled observations; no Linux mutant execution is claimed. The Linux
+PERM Unknown branch must still execute in the current qualified Linux CI.
+
+The fresh audit child runs the destructive private matrix with ordinary libtest
+parallelism. It passed45 tests/1ignored in both modes (Debug6.96s, Release6.35s),
+separate from its parent test. Creation/drop audits measure only this process-local
+production retained count. They do not assert native/descendant cleanup. The actual
+owned-group KILL precedes each synthetic resolver outcome, and recorded actual /
+applied results prevent an unexercised injected branch from receiving credit.
+The temporary initial signal control failure was retained: it lacked the actual
+outcome witness and could bypass injection on macOS PERM. The corrected private
+hook records that existing result before modeling the production resolver; it does
+not claim actual OS permission denial or change the production resolver.
+
+The two remaining single-guard omissions are source-only/redundant, as mapped
+above. No fake reachable settled Retained result or combined overdetermined mutant
+is introduced. Cumulative coverage is25 compiled runs/22 distinct operators,
+23 intended kill runs plus the two historical masked R04 survivors with zero
+credit. This is not complete per-guard, native workload or F1 conformance.
+
+Full default Debug TEST at fd406b6 FAILED: library312PASS/2FAIL/24ignored in73.25s;
+later workspace targets were unrun. Both existing Grok unrelated-change child
+watchdogs expired: checkpoint last boundary1/case7/fixture, resume last
+boundary2/case5/resumed_terminal, actual parent-observed SIGKILL. Distinct full
+default Release TEST FAILED: library308PASS/6FAIL/24ignored in66.45s, later targets
+unrun. Failures were owning-start StateConflict-prefix, stop Failed versus Stopped,
+irrelevant-checkpoint case0/terminal with explicit Git5s Timeout, completed-resume
+Failed versus Exited, missing expected earlier-state assertion, and resume watchdog
+last boundary2/case6/fixture. Native dispatched=false/not_attempted receipts do not
+prove that no Git operation spawned. Cause AND regression remain UNKNOWN. No
+same-mode full retry, latch reset, budget/parallelism relaxation or passing-subset
+substitution was used. Earlier35f0 and historical full failures remain separate.
+
+Fmt, all-target Clippy-Dwarnings and both workspace BUILDs passed at fd406b6.
+Release BUILD is not Release TEST. The five mandatory operators and actual45-test
+matrix close their local scoped coverage gaps only. Current source approval,
+required both-OS CI and Root's merge disposition remain pending; PR64 is DRAFT/HOLD.
+Whole60, all failed full TEST gates, F1/native16, availability/recovery and missing
+shared producer contracts remain OPEN.
