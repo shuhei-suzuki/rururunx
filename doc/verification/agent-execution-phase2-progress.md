@@ -548,10 +548,83 @@ were normally removed after commands ended; their commit chain remains under a
 local verification ref. No push, actual account/Docker call, license or README
 Status change, current-source installation or Phase3 acceptance occurred.
 
+## Live quota waiting and recovery checkpoint
+
+The native producer now connects owned Claude plan-window exhaustion to the same
+unit's durable WaitingQuota and watch/status, retaining its native input and
+active lease. A telemetry-only rejection does not mint recovery-probe authority;
+Codex's owned willRetry=true subscription error remains a separate explicit
+retry producer. Foreign Sessions and unknown windows cannot create confirmed
+subscription waiting. Unrelated Available windows do not erase exhaustion.
+
+When every participating window is Available in the accepted pool ledger,
+transactional same-unit authority/lease validation restores Running/no wait.
+The watch carries the same authority and Workflow polling restores the active
+phase's Task state. The same native Session, generation, worktree and input remain
+in place. A reliable native success remains successful even after quota waiting.
+Cancellation closes its authority without replaying input or changing a sibling.
+This is a staged component, not an operational CLI or real quota qualification.
+
+The [round19 records](agent-execution-phase2-preliminary19-reviews.json) preserve
+two independent medium findings at fixed `f63048ab...`. A's accepted live recovery
+finding was reproduced at `5a89957d...`: the pool accepted a new Available window,
+but the preterminal watch remained Quota. B's telemetry/probe coupling was
+independently reproduced by the full f63048a regression: same-window Allowed
+incorrectly reopened exhaustion, changing the native terminal and Workflow result.
+The initial missing live-wait producer was separately reproduced at `904b037...`.
+
+Corrections at `a75629ee...` and `d30a9bec...` separate waiting/probing and connect
+accepted recovery through Store, native watch and Workflow. Both
+[round20 reviewers](agent-execution-phase2-preliminary20-reviews.json) approved
+the fixed component with no C/H/M/L findings. Clippy then required lexical scopes
+for two test MutexGuards rather than explicit drop calls; production/design bytes
+were unchanged. Both [round21 reviewers](agent-execution-phase2-preliminary21-reviews.json)
+approved this final test delta at `48ed158e824aeab749b5b121d78438e4fd506891`, again
+with no C/H/M/L findings. These are static independent component approvals only.
+
+The [checkpoint ledger](agent-execution-phase2-live-quota-checkpoint.json) binds
+source/blob identities, all original review records and 16 local log digests.
+Owned local protocol controls use an ordered permission notification after quota
+frames, before terminal, rather than assuming a sleep proves stream consumption.
+Cases cover live rejection, another allowed bucket, accepted new-window recovery,
+foreign Session, unknown window, successful terminal, held Workflow waiting and
+cancellation. Actual input-intent counts remain one and sibling unit snapshots
+remain unchanged. Fixture source/evidence ports do not qualify production gates.
+
+On macOS 26.6.2/aarch64 with Rust/Cargo 1.91.1 and explicit test PATH Git 2.49.0,
+the full fixed d30a9be workspace passed 537 primary tests, zero failures and 30
+primary ignored entries: 417 rrx library, 113 rrx integrations, four tracker unit,
+one tracker discovery and two rrx doctests. Nested child entries are not counted
+again. Final 48ed158 has identical production bytes; its 24 live-consumer controls,
+workspace/all-target Clippy with -D warnings, fmt and diff checks passed. No
+current-source full workspace or installation run at 48ed158 is fabricated.
+
+Four final committed/compiled mutations fail actual runtime assertions:
+
+| Mutation | Consumer failure |
+| --- | --- |
+| Omit Claude live-wait dispatch | Preterminal watch is None instead of Quota. |
+| Allow telemetry wait to mint a probe | Actual held unit has forbidden recovery-probe ownership. |
+| Omit accepted live-recovery dispatch | Accepted Available pool leaves the watch at Quota. |
+| Omit Workflow recovered Task projection | Workflow Task remains WaitingQuota instead of Implementing. |
+
+Each revert tree equals fixed d30a9be. The final restored 24 controls pass, and
+the mutation chain remains at the scoped local verification ref in the ledger.
+These are runtime failures after compilation, not compiler rejection; omission
+mutants can produce unused-method warnings without substituting them for the
+assertion oracle. Initial failing regression and Clippy logs remain preserved.
+
+No provider account, native auth/settings/hooks, actual subscription recovery,
+four authenticated Agents, Linux build/run, Docker engine or current installation
+was tested. Cleanup guarantees, Phase2 completion and MVP completion do not follow
+from this checkpoint. Operational source/evidence/Runtime integration remains
+dependency-ready work; no additional component approval is requested.
+
 ## Remaining Phase2 and acceptance work
 
-- Full current-source/retained-graph qualification and production source/evidence
-  ports; Runtime orchestration and operational CLI.
+- Production source/evidence ports and scoped initial-source bootstrap; Runtime
+  orchestration and operational CLI. Historical retained inspection is covered
+  above, independently of these still-missing production consumers.
 - Required native/Git settings and hooks, dependency qualification and remaining
   scoped bootstrap/preparation helpers; full finite tool profiles and
   installed-binary tool mediation tests.
