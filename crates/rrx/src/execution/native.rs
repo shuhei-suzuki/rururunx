@@ -19,7 +19,7 @@ use tokio::{
     sync::{mpsc, watch},
 };
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -32,6 +32,7 @@ pub struct ManagedSessionRef {
 }
 #[derive(Clone, Debug)]
 pub struct ManagedInput {
+    pub agent: String,
     pub authority: ExecutionAuthority,
     pub artifact: Option<ArtifactId>,
     pub input: PreparedInput,
@@ -97,7 +98,7 @@ impl NativeSessions {
     ) -> Result<NativeStart> {
         self.start_inner(input, model, effort, None).await
     }
-    async fn start_inner(
+    pub(crate) async fn start_inner(
         &self,
         input: ManagedInput,
         model: Option<String>,
@@ -135,6 +136,9 @@ impl NativeSessions {
                 && input.input.scope == unit.scope
                 && input.input.revision == unit.base_sha
                 && valid_oid(&unit.base_sha)
+                && !input.agent.trim().is_empty()
+                && input.agent.len() <= 128
+                && !input.agent.chars().any(char::is_control)
                 && input.input.version > 0
                 && !input.input.payload.is_empty()
                 && input.input.payload.len() <= 1024 * 1024,
@@ -278,7 +282,7 @@ impl NativeSessions {
         let mut session = Session {
             id: SessionId::new(),
             scope: unit.scope.clone(),
-            agent: unit.provider.clone(),
+            agent: input.agent.clone(),
             provider: unit.provider.clone(),
             role: match unit.kind {
                 UnitKind::Executor => SessionRole::Executor,
@@ -457,18 +461,44 @@ impl NativeSessions {
         status.cleanup = unit.cleanup;
         Ok(status)
     }
+    pub fn release(&self, handle: &ManagedSessionRef) -> Result<()> {
+        let mut entries = self
+            .entries
+            .lock()
+            .map_err(|_| anyhow::anyhow!("native registry poisoned"))?;
+        let entry = entries
+            .get(&handle.session)
+            .context("native Session missing")?;
+        ensure!(
+            entry.handle == *handle,
+            "foreign native Session/unit/generation"
+        );
+        ensure!(
+            matches!(
+                entry.status.borrow().session.state,
+                SessionState::Exited
+                    | SessionState::Stopped
+                    | SessionState::Lost
+                    | SessionState::Failed
+            ),
+            "live native Session cannot be released"
+        );
+        entries.remove(&handle.session);
+        Ok(())
+    }
     pub async fn cancel(&self, handle: &ManagedSessionRef) -> Result<()> {
         let (_, control) = self.entry(handle)?;
-        let mut store = self
-            .owner
-            .store
-            .lock()
-            .map_err(|_| anyhow::anyhow!("state poisoned"))?;
-        let unit = store.execution_unit(handle.unit)?;
-        if unit.native_effects_open || unit.result_finalization_open {
-            store.retire_execution(&unit.authority(), false)?;
+        {
+            let mut store = self
+                .owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?;
+            let unit = store.execution_unit(handle.unit)?;
+            if unit.native_effects_open || unit.result_finalization_open {
+                store.retire_execution(&unit.authority(), false)?;
+            }
         }
-        drop(store);
         let _ = control.send(Control::Cancel).await;
         Ok(())
     }

@@ -41,6 +41,7 @@ const INTERRUPT_DRAIN_TIMEOUT: std::time::Duration = std::time::Duration::from_s
 
 fn empty_status(session: Session) -> SessionStatus {
     SessionStatus {
+        execution: None,
         session,
         exit_code: None,
         stdout: vec![],
@@ -1152,6 +1153,7 @@ impl CodexAdapter {
             .require()
             .map_err(|error| registered.refused_before_work(error))?;
         let session = SessionRef {
+            execution: None,
             id: registered.transition.id,
             scope: registered.request.scope.clone(),
         };
@@ -2909,6 +2911,7 @@ mod tests {
         );
         adapter.availability.set_git_input(git);
         let unknown = SessionRef {
+            execution: None,
             id: SessionId::new(),
             scope: owned.request.scope.clone(),
         };
@@ -4688,6 +4691,7 @@ mod tests {
     }
     fn status() -> SessionStatus {
         SessionStatus {
+            execution: None,
             session: Session {
                 id: SessionId::new(),
                 scope: Scope::project(ProjectId::new()),

@@ -104,7 +104,7 @@ pub(super) fn install_schema(tx: &Transaction<'_>) -> Result<()> {
     Ok(())
 }
 
-fn unit_tx(tx: &Connection, id: UnitId) -> Result<ExecutionUnit> {
+pub(super) fn unit_tx(tx: &Connection, id: UnitId) -> Result<ExecutionUnit> {
     let (body,version,scope,kind,generation,epoch,native,finalize):(String,u64,(String,String,String),String,u64,u64,bool,bool)=tx.query_row(
         "SELECT body,version,project_id,goal_id,task_id,kind,generation,owner_epoch,native_effects_open,result_finalization_open FROM execution_units WHERE id=?1",
         [id.to_string()],|r| Ok((r.get(0)?,r.get(1)?,(r.get(2)?,r.get(3)?,r.get(4)?),r.get(5)?,r.get(6)?,r.get(7)?,r.get(8)?,r.get(9)?)))?;
@@ -517,6 +517,55 @@ impl Store {
             prior.context("review/verifier requires admitted artifact generation")?
         };
         if unit.kind == UnitKind::Executor {
+            let mut statement = tx.prepare("SELECT id FROM execution_units WHERE task_id=?1 AND (native_effects_open=1 OR result_finalization_open=1)")?;
+            let predecessors = statement
+                .query_map([task.id.to_string()], |r| r.get::<_, String>(0))?
+                .map(|id| {
+                    id.map_err(anyhow::Error::from)
+                        .and_then(|id| unit_tx(&tx, id.parse()?))
+                })
+                .collect::<Result<Vec<_>>>()?;
+            drop(statement);
+            // The SQL partial UNIQUE index already refuses a second live
+            // executor. Make that policy explicit before generation changes.
+            ensure!(
+                predecessors.iter().all(|u| u.kind != UnitKind::Executor),
+                "retire the current executor before reserving a fresh attempt"
+            );
+            for previous in &predecessors {
+                ensure!(
+                    previous.scope == unit.scope
+                        && previous.owner_epoch == epoch
+                        && Some(previous.generation) == prior
+                        && matches!(previous.kind, UnitKind::Reviewer | UnitKind::Verifier),
+                    "replacement predecessor identity mismatch"
+                );
+            }
+            // Readonly siblings of the old generation must not keep open flags
+            // or capacity after this Task's new generation fences their input.
+            // Retained artifacts and already-known work stay historical facts.
+            for mut previous in predecessors {
+                previous.native_effects_open = false;
+                previous.result_finalization_open = false;
+                if previous.work.is_none() {
+                    previous.work = Some(WorkOutcome::Unknown);
+                    previous.disposition = Disposition::Cancelled;
+                }
+                previous.state = UnitState::Retired;
+                write_unit(&tx, &mut previous)?;
+                quotas::release_quota_tx(&tx, previous.id)?;
+                tx.execute(
+                    "DELETE FROM quota_waiters WHERE unit_id=?1",
+                    [previous.id.to_string()],
+                )?;
+                tx.execute("INSERT INTO cleanup_jobs(unit_id,next_due,attempts,version) VALUES(?1,?2,0,1) ON CONFLICT(unit_id) DO NOTHING",params![previous.id.to_string(),now_ms()])?;
+                append_event(
+                    &tx,
+                    &previous.scope,
+                    "execution.generation_replaced",
+                    json!({"unit":previous.id,"work":previous.work,"replacement":unit.id}),
+                )?;
+            }
             ensure!(
                 unit.worktree.parent() == Some(project.worktree_root.as_path())
                     && unit
@@ -887,6 +936,7 @@ fn effect_tx(connection: &Connection, id: OperationId) -> Result<ManagedEffect> 
 
 // Other state operations share the same connection and transaction helpers.
 mod artifacts;
+pub(super) use artifacts::publish_workflow_result_tx;
 mod effects;
 mod quotas;
 pub(crate) use quotas::QuotaAdmission;

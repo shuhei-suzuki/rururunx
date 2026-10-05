@@ -94,6 +94,15 @@ impl Store {
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         let mut unit = validate_authority(&tx, authority, false, true)?;
+        let workflows: u64 = tx.query_row(
+            "SELECT COUNT(*) FROM records WHERE task_id=?1 AND kind='workflow'",
+            [unit.scope.task_id.unwrap().to_string()],
+            |r| r.get(0),
+        )?;
+        ensure!(
+            workflows == 0,
+            "Workflow-owned results require coordinated publication"
+        );
         ensure!(
             unit.work == Some(WorkOutcome::Success) && unit.kind == UnitKind::Executor,
             "result requires known successful executor work"
@@ -184,4 +193,89 @@ impl Store {
         tx.commit()?;
         Ok(())
     }
+}
+
+pub(in crate::state) fn publish_workflow_result_tx(
+    tx: &Transaction<'_>,
+    publication: &WorkflowPublication,
+    task: &Task,
+    next_record: &Record,
+    previous_record: &Record,
+    context: &ContextVersion,
+) -> Result<()> {
+    use crate::workflow::{Actor, AttemptState, WorkflowSnapshot};
+    let mut unit = validate_authority(tx, &publication.authority, false, true)?;
+    ensure!(
+        unit.kind == UnitKind::Executor
+            && unit.work == Some(WorkOutcome::Success)
+            && !unit.native_effects_open
+            && unit.scope == task.scope(),
+        "publication requires the owning successful executor terminal"
+    );
+    let before: WorkflowSnapshot = serde_json::from_value(previous_record.data.clone())?;
+    let after: WorkflowSnapshot = serde_json::from_value(next_record.data.clone())?;
+    let index = before
+        .active
+        .context("publication requires active phase reservation")?;
+    let old = before
+        .history
+        .get(index)
+        .context("publication reservation index invalid")?;
+    let next = after
+        .history
+        .get(index)
+        .context("publication phase history missing")?;
+    ensure!(
+        old.phase.actor() == Actor::Executor
+            && old.phase.key() == unit.phase
+            && old.session_id == unit.session_id
+            && unit.session_id.is_some()
+            && before.generation == after.generation
+            && next.state == AttemptState::Succeeded
+            && after.active.is_none(),
+        "publication Workflow/Session/generation binding mismatch"
+    );
+    let evidence = after
+        .completed
+        .get(&old.phase)
+        .context("publication lacks passed phase evidence")?;
+    let mut artifact = self_artifact_tx(tx, publication.artifact)?;
+    ensure!(
+        artifact.unit_id == unit.id
+            && artifact.scope == unit.scope
+            && artifact.state == ArtifactState::Ready
+            && task.revision.as_ref() == Some(&artifact.revision)
+            && context.revision == artifact.revision
+            && after.sources.revision == artifact.revision
+            && evidence.revision == artifact.revision
+            && evidence.session_id == unit.session_id
+            && evidence
+                .artifacts
+                .contains(&format!("rrx-artifact:{}", artifact.id)),
+        "publication exact artifact/evidence binding mismatch"
+    );
+    ensure!(
+        artifact
+            .dependencies
+            .iter()
+            .all(
+                |(key, value)| after.sources.source_versions.get(key) == Some(value)
+                    && context.source_hashes.get(key) == Some(value)
+            ),
+        "publication dependency versions changed"
+    );
+    artifact.state = ArtifactState::Published;
+    let expected = artifact.version;
+    bump(&mut artifact.version)?;
+    ensure!(tx.execute("UPDATE result_artifacts SET state='published',version=?1,body=?2 WHERE id=?3 AND version=?4 AND state='ready'",params![artifact.version,serde_json::to_string(&artifact)?,artifact.id.to_string(),expected])?==1,"artifact publication CAS mismatch");
+    unit.result_finalization_open = false;
+    unit.artifact_id = Some(artifact.id);
+    write_unit(tx, &mut unit)?;
+    append_event(
+        tx,
+        &unit.scope,
+        "execution.result_published",
+        json!({"unit":unit.id,"artifact":artifact.id,"sha":artifact.revision,"workflow":next_record.id,"context_version":context.version}),
+    )?;
+    Ok(())
 }

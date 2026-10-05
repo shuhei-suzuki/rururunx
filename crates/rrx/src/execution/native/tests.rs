@@ -2,7 +2,7 @@ use super::*;
 use crate::adapter::InputKind;
 use std::{os::unix::fs::PermissionsExt, path::Path};
 
-fn program(root: &Path, provider: &str) -> std::path::PathBuf {
+pub(crate) fn program(root: &Path, provider: &str) -> std::path::PathBuf {
     let path = root.join(format!("fixture-{provider}"));
     let script = format!("#!/usr/bin/python3\nPROVIDER = {provider:?}\n");
     std::fs::write(
@@ -13,8 +13,9 @@ fn program(root: &Path, provider: &str) -> std::path::PathBuf {
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
     path
 }
-fn input(unit: &ExecutionUnit, payload: &str) -> ManagedInput {
+pub(crate) fn input(unit: &ExecutionUnit, payload: &str) -> ManagedInput {
     ManagedInput {
+        agent: unit.provider.clone(),
         authority: unit.authority(),
         artifact: unit.artifact_id,
         input: PreparedInput {
@@ -279,6 +280,21 @@ async fn version_preparation_abort_and_retirement_do_not_leave_launch_authority(
         })
         .await
         .unwrap();
+        assert!(
+            attempts::AttemptManager::new(owner.clone())
+                .prepare(task.id, "claude", "Implement", None)
+                .await
+                .is_err()
+        );
+        assert!(
+            owner
+                .store
+                .lock()
+                .unwrap()
+                .execution_unit(unit.id)
+                .unwrap()
+                .native_effects_open
+        );
         if abort {
             start.abort();
             assert!(matches!(start.await, Err(e) if e.is_cancelled()));
@@ -329,23 +345,52 @@ async fn version_preparation_abort_and_retirement_do_not_leave_launch_authority(
 #[tokio::test]
 async fn competing_native_start_cannot_retire_the_live_winner() {
     let (dir, owner, task) = results::tests::fixture().await;
-    let sessions = NativeSessions::new(owner.clone()).unwrap();
+    let sessions = Arc::new(NativeSessions::new(owner.clone()).unwrap());
     let (unit, _) = attempts::AttemptManager::new(owner.clone())
         .prepare(task.id, "claude", "Implement", None)
         .await
         .unwrap();
     let path = program(dir.path(), "claude");
-    let NativeStart::Launched(handle) = sessions
-        .start_inner(input(&unit, "hold"), None, None, Some(path.clone()))
-        .await
-        .unwrap()
-    else {
+    let script=std::fs::read_to_string(&path).unwrap().replace("if sys.argv[1:] == [\"--version\"]:","if sys.argv[1:] == [\"--version\"]:\n    with open(os.path.join(os.environ[\"RRX_OUTPUT_DIR\"], \"fixture-version-ready\"), \"w\") as ready: ready.write(\"ready\")\n    while not os.path.exists(os.path.join(os.environ[\"RRX_OUTPUT_DIR\"], \"fixture-version-release\")): time.sleep(0.02)");
+    std::fs::write(&path, script).unwrap();
+    let first_sessions = sessions.clone();
+    let first_input = input(&unit, "hold");
+    let first_path = path.clone();
+    let first = tokio::spawn(async move {
+        first_sessions
+            .start_inner(first_input, None, None, Some(first_path))
+            .await
+    });
+    let output = owner
+        .root
+        .join("units")
+        .join(unit.id.to_string())
+        .join("output");
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while !output.join("fixture-version-ready").exists() {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .unwrap();
+    let second_sessions = sessions.clone();
+    let second_input = input(&unit, "duplicate");
+    let second = tokio::spawn(async move {
+        second_sessions
+            .start_inner(second_input, None, None, Some(path))
+            .await
+    });
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert!(!second.is_finished());
+    std::fs::write(output.join("fixture-version-release"), "release").unwrap();
+    let NativeStart::Launched(handle) = first.await.unwrap().unwrap() else {
         panic!("fixture queued")
     };
     assert!(
-        sessions
-            .start_inner(input(&unit, "duplicate"), None, None, Some(path))
+        tokio::time::timeout(Duration::from_secs(5), second)
             .await
+            .unwrap()
+            .unwrap()
             .is_err()
     );
     {
@@ -354,6 +399,15 @@ async fn competing_native_start_cannot_retire_the_live_winner() {
         assert!(current.native_effects_open);
         assert_eq!(current.session_id, Some(handle.session));
         assert_eq!(current.work, None);
+        assert_eq!(
+            store
+                .managed_effects(unit.id)
+                .unwrap()
+                .iter()
+                .filter(|e| e.kind == "native_version")
+                .count(),
+            1
+        );
     }
     sessions.cancel(&handle).await.unwrap();
     assert_eq!(

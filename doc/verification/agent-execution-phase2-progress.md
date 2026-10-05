@@ -38,6 +38,31 @@ for the reviewed paths. The subsequent component correction includes:
 
 These corrections still require independent re-review on a fixed commit.
 
+The [round6 reports](agent-execution-phase2-preliminary6-reviews.json) independently
+examined `9a0c4768ff361aa142f26e9b8102b4871fb24e4c`. A approved the component scope
+with one low test-sensitivity issue; B requested a high correction. Root identified
+the existing partial UNIQUE executor constraint in B's initial causal sequence;
+B withdrew that sequence and independently confirmed the distinct old
+reviewer/verifier case. The correction now explicitly refuses a live executor
+replacement and atomically closes prior readonly units before changing generation,
+releases their quota/waiters and queues cleanup. Known work and retained artifacts
+remain historical facts. A new readonly unit can consume the retained prior SHA
+in the new generation concurrently with the new executor. The duplicate-start
+control now overlaps two starts during a held version helper, rather than only
+calling the second start after the first returns.
+
+Workflow-owned artifact publication now uses the same immediate transaction as
+Task revision, passed phase evidence and fresh ContextVersion. It checks the exact
+unit/Session/phase/artifact/dependency bindings; standalone publication refuses
+when a Workflow owns the Task. A ledger-only causal control exercises publication,
+cancellation-first and dependency drift with rollback. On-disk retention controls
+remain separate: this ledger control does not attest file/object integrity.
+The new candidate native AgentAdapter requires explicit managed input and Session
+identity, propagates configured agent aliases and exposes work/cleanup independently
+without fabricated exit zero. It is exercised through account-free protocol peers;
+Registry/operational CLI routing is still unfinished and no release capability or
+native qualification follows from this intermediate component API.
+
 | Finding | Current correction; independent re-review remains pending |
 | --- | --- |
 | A C-H1: native input/ALLOW retirement race | Private scoped producer journals a digest-only effect intent transactionally before wire dispatch. Cancellation-first rejects admission; intent-first is issued/uncertain and never replayed. Bootstrap checks and cancellation use a persistent timer. |
@@ -146,7 +171,34 @@ controls remain enabled.
 
 ## Required work still outstanding
 
-- Workflow/Context publication and full current-source CAS; public adapter and
+The next immutable candidate adds a generation fence for live readonly units,
+atomic managed-artifact/Task/Workflow/Context publication, and a private native
+adapter carrying exact managed Session identities. A replacement executor closes
+old-generation reviewers/verifiers and releases their capacity in the same
+transaction, preserving known work and retained artifacts. An active executor
+still prevents replacement. The duplicate-start control now overlaps the two
+starts while the first admitted helper is held; only the winner launches.
+
+On this macOS host the stable subsequent workspace regression passed 384 library
+tests, 112 primary integration tests and two doctests, with zero failures and 27
+primary ignored cases. Synthetic adapter-vtable controls exercise admission,
+configured aliases, typed cancellation and independent work/cleanup reporting.
+Atomic publication controls exercise cancellation and dependency drift rollback.
+An earlier run observed a transient doctest visibility error during concurrent
+editing; the stable rerun passed after correcting visibility. A sandboxed scoped
+run could not spawn a legacy Grok observation helper; the authorized stable full
+run passed. These are fixture/component results, not account, installation or
+both-OS acceptance evidence. Registry, managed Workflow preparation and CLI
+construction are still unconnected at this candidate.
+
+Round6 independent reports are preserved in
+[the review record](agent-execution-phase2-preliminary6-reviews.json). A approved
+the reviewed components with one low observation. B withdrew the original
+executor-replacement finding after confirming the partial UNIQUE index, and
+reported the live readonly-generation lease issue instead. The corrections above
+require a new immutable review; neither report constitutes final Phase2 approval.
+
+- Full current-source/retained-graph qualification and coordinated pipeline; public adapter and
   Registry integration; Task/reservation/Runtime orchestration and operational CLI.
 - Required native/Git settings and hooks, dependency qualification and remaining
   scoped preparation/retained-inspection helpers; full finite tool profiles and

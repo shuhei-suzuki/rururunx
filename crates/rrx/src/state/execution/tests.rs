@@ -79,6 +79,214 @@ fn session(unit: &ExecutionUnit) -> Session {
 }
 
 #[test]
+fn new_generation_closes_old_reviewers_without_erasing_known_work_or_artifacts() {
+    let (mut store, task, epoch) = fixture();
+    let unit = store
+        .reserve_execution(draft(&task, epoch), task.version)
+        .unwrap();
+    let unit = store
+        .finish_execution(
+            &unit.authority(),
+            WorkOutcome::Success,
+            Disposition::Completed,
+        )
+        .unwrap();
+    // Ledger-only artifact control; this does not attest any on-disk graph.
+    let mut artifact = ResultArtifact {
+        id: ArtifactId::new(),
+        scope: unit.scope.clone(),
+        unit_id: unit.id,
+        state: ArtifactState::Staging,
+        revision: "c".repeat(40),
+        base_sha: unit.base_sha.clone(),
+        object_format: "sha1".into(),
+        repository: PathBuf::from("/tmp/fixture-retained.git"),
+        manifest: PathBuf::from("/tmp/fixture-manifest.json"),
+        manifest_sha256: String::new(),
+        dependencies: std::collections::BTreeMap::new(),
+        version: 1,
+        created_at: now_ms(),
+    };
+    store.stage_result(&unit.authority(), &artifact).unwrap();
+    artifact.state = ArtifactState::Ready;
+    artifact.version = 2;
+    artifact.manifest_sha256 = "d".repeat(64);
+    store.ready_result(&artifact, 1).unwrap();
+    let current_task = store.task(task.id).unwrap().unwrap();
+    let published = store
+        .publish_execution_result(&unit.authority(), artifact.id, current_task.version)
+        .unwrap();
+    let current_task = store.task(task.id).unwrap().unwrap();
+    let mut old = Vec::new();
+    for kind in [UnitKind::Reviewer, UnitKind::Verifier] {
+        let mut spec = draft(&current_task, epoch);
+        spec.kind = kind;
+        spec.artifact_id = Some(artifact.id);
+        spec.base_sha = artifact.revision.clone();
+        spec.branch = None;
+        let review = store.reserve_execution(spec, current_task.version).unwrap();
+        assert_eq!(
+            store
+                .reserve_execution_quota(&review.authority(), "codex", "unknown", 6, 2, 3, now_ms())
+                .unwrap(),
+            QuotaAdmission::Admitted
+        );
+        let mut review = store.execution_unit(review.id).unwrap();
+        if kind == UnitKind::Verifier {
+            review = store
+                .finish_execution(
+                    &review.authority(),
+                    WorkOutcome::Success,
+                    Disposition::Completed,
+                )
+                .unwrap();
+        }
+        old.push(review);
+    }
+    let fresh = store
+        .reserve_execution(draft(&current_task, epoch), current_task.version)
+        .unwrap();
+    assert!(fresh.generation > unit.generation);
+    for previous in &old {
+        let closed = store.execution_unit(previous.id).unwrap();
+        assert!(!closed.native_effects_open && !closed.result_finalization_open);
+        assert_eq!(
+            closed.work,
+            Some(if previous.kind == UnitKind::Verifier {
+                WorkOutcome::Success
+            } else {
+                WorkOutcome::Unknown
+            })
+        );
+        assert_eq!(
+            closed.disposition,
+            if previous.kind == UnitKind::Verifier {
+                Disposition::Completed
+            } else {
+                Disposition::Cancelled
+            }
+        );
+        assert!(
+            store
+                .validate_execution(&previous.authority(), true, false)
+                .is_err()
+        );
+        assert_eq!(
+            store
+                .connection
+                .query_row(
+                    "SELECT COUNT(*) FROM cleanup_jobs WHERE unit_id=?1",
+                    [previous.id.to_string()],
+                    |r| r.get::<_, u64>(0)
+                )
+                .unwrap(),
+            1
+        );
+    }
+    assert_eq!(
+        store
+            .connection
+            .query_row(
+                "SELECT COUNT(*) FROM quota_leases WHERE active=1",
+                [],
+                |r| r.get::<_, u64>(0)
+            )
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        serde_json::to_value(store.result_artifact(artifact.id).unwrap()).unwrap(),
+        serde_json::to_value(published).unwrap()
+    );
+    // A new readonly unit may still review that retained prior SHA concurrently
+    // with the fresh executor; it belongs to the freshly admitted generation.
+    let current_task = store.task(task.id).unwrap().unwrap();
+    let mut spec = draft(&current_task, epoch);
+    spec.kind = UnitKind::Reviewer;
+    spec.artifact_id = Some(artifact.id);
+    spec.base_sha = artifact.revision;
+    spec.branch = None;
+    let review = store.reserve_execution(spec, current_task.version).unwrap();
+    assert_eq!(review.generation, fresh.generation);
+    assert!(
+        store
+            .validate_execution(&review.authority(), true, false)
+            .is_ok()
+    );
+    assert!(
+        store
+            .validate_execution(&fresh.authority(), true, false)
+            .is_ok()
+    );
+}
+
+#[test]
+fn a_live_executor_cannot_be_replaced_or_leak_its_capacity_through_failed_reservation() {
+    let (mut store, task, epoch) = fixture();
+    let unit = store
+        .reserve_execution(draft(&task, epoch), task.version)
+        .unwrap();
+    assert_eq!(
+        store
+            .reserve_execution_quota(&unit.authority(), "codex", "unknown", 6, 2, 3, now_ms())
+            .unwrap(),
+        QuotaAdmission::Admitted
+    );
+    let current = store.execution_unit(unit.id).unwrap();
+    let current_task = store.task(task.id).unwrap().unwrap();
+    let next = draft(&current_task, epoch);
+    assert!(
+        store
+            .reserve_execution(next.clone(), current_task.version)
+            .is_err()
+    );
+    assert!(store.execution_unit(next.id).is_err());
+    assert_eq!(
+        store.execution_unit(current.id).unwrap().authority(),
+        current.authority()
+    );
+    assert_eq!(
+        store.task(task.id).unwrap().unwrap().version,
+        current_task.version
+    );
+    assert_eq!(
+        store
+            .connection
+            .query_row(
+                "SELECT generation FROM task_execution WHERE task_id=?1",
+                [task.id.to_string()],
+                |r| r.get::<_, u64>(0)
+            )
+            .unwrap(),
+        current.generation
+    );
+    assert_eq!(
+        store
+            .connection
+            .query_row(
+                "SELECT COUNT(*) FROM quota_leases WHERE active=1",
+                [],
+                |r| r.get::<_, u64>(0)
+            )
+            .unwrap(),
+        1
+    );
+    store.retire_execution(&current.authority(), false).unwrap();
+    assert!(store.reserve_execution(next, current_task.version).is_ok());
+    assert_eq!(
+        store
+            .connection
+            .query_row(
+                "SELECT COUNT(*) FROM quota_leases WHERE active=1",
+                [],
+                |r| r.get::<_, u64>(0)
+            )
+            .unwrap(),
+        0
+    );
+}
+
+#[test]
 fn unclassified_capacity_waits_for_a_fresh_attempt_without_closing_a_sibling_pool() {
     let (mut store, task, epoch) = fixture();
     let unit = store

@@ -1,6 +1,7 @@
 //! Thin native process contracts. Context selection and workflow decisions belong upstream.
 mod git_owner;
 pub mod grok;
+pub(crate) mod native;
 #[cfg(test)]
 pub(crate) use git_owner::TestGitContext;
 #[cfg(target_os = "macos")]
@@ -163,12 +164,14 @@ pub struct LaunchRequest {
 pub struct SessionRef {
     pub id: SessionId,
     pub scope: Scope,
+    pub execution: Option<crate::execution::native::ManagedSessionRef>,
 }
 impl From<&Session> for SessionRef {
     fn from(session: &Session) -> Self {
         Self {
             id: session.id,
             scope: session.scope.clone(),
+            execution: None,
         }
     }
 }
@@ -189,6 +192,7 @@ pub struct SessionStatus {
     pub stdout_truncated: bool,
     pub stderr_truncated: bool,
     pub failure: Option<String>,
+    pub execution: Option<crate::execution::native::NativeStatus>,
 }
 impl SessionStatus {
     pub fn terminal(&self) -> bool {
@@ -207,6 +211,16 @@ pub trait AgentAdapter: Send + Sync {
     fn capabilities(&self) -> BTreeSet<Capability>;
     fn probe(&self) -> AdapterResult<AgentInfo>;
     fn start(&self, request: LaunchRequest) -> AdapterFuture<'_, Session>;
+    fn managed_provider(&self) -> Option<&str> {
+        None
+    }
+    fn start_managed(
+        &self,
+        _request: LaunchRequest,
+        _input: crate::execution::native::ManagedInput,
+    ) -> AdapterFuture<'_, crate::execution::native::NativeStart> {
+        Box::pin(async { Err(unsupported(Capability::Execute)) })
+    }
     /// Transport completion is distinct from evidence that a Task/gate passed.
     /// Providers with persistent native servers may override using their private
     /// owned completion journal after verified shutdown/terminal persistence.
@@ -734,6 +748,7 @@ impl AgentAdapter for GenericCliAdapter {
             };
             reservation.session = Some((session.clone(), version));
             let initial = SessionStatus {
+                execution: None,
                 session: session.clone(),
                 exit_code: None,
                 stdout: vec![],

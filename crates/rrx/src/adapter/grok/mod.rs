@@ -278,6 +278,7 @@ impl GrokAdapter {
             started_at: now_ms(),
         };
         let initial = SessionStatus {
+            execution: None,
             session: session.clone(),
             exit_code: None,
             stdout: vec![],
@@ -1709,6 +1710,7 @@ mod registry_tests {
         };
         let version = store.lock().unwrap().put_session(&session, 0).unwrap();
         let (events, status) = watch::channel(SessionStatus {
+            execution: None,
             session: session.clone(),
             exit_code: None,
             stdout: vec![],
@@ -1844,6 +1846,7 @@ mod registry_tests {
         };
         store.lock().unwrap().put_session(&session, 0).unwrap();
         let (events, status) = watch::channel(SessionStatus {
+            execution: None,
             session: session.clone(),
             exit_code: None,
             stdout: vec![],

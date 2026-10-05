@@ -431,6 +431,7 @@ async fn project_goal_task_context_cwd_branch_and_lock_boundaries_fail_closed() 
     let session = adapter.start(fixture.request.clone()).await.unwrap();
     finished(&adapter, &session).await;
     let reference = SessionRef {
+        execution: None,
         id: session.id,
         scope: other.request.scope,
     };

@@ -192,6 +192,12 @@ pub struct ExecutionAuthority {
     pub session_id: Option<SessionId>,
     pub record_version: u64,
 }
+
+/// Produced only by the owning Workflow after retained graph verification.
+pub(crate) struct WorkflowPublication {
+    pub authority: ExecutionAuthority,
+    pub artifact: ArtifactId,
+}
 impl ExecutionUnit {
     pub fn authority(&self) -> ExecutionAuthority {
         ExecutionAuthority {

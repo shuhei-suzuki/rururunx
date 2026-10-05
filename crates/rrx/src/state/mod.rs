@@ -396,6 +396,45 @@ impl Store {
         goal_version: u64,
         access: WorkflowAccess,
     ) -> Result<()> {
+        self.put_workflow_transition_inner(
+            task,
+            workflow,
+            context,
+            project_version,
+            goal_version,
+            access,
+            None,
+        )
+    }
+    pub(crate) fn put_workflow_result_transition(
+        &mut self,
+        task: &mut Task,
+        workflow: &mut Record,
+        context: &ContextVersion,
+        project_version: u64,
+        goal_version: u64,
+        publication: &crate::execution::WorkflowPublication,
+    ) -> Result<()> {
+        self.put_workflow_transition_inner(
+            task,
+            workflow,
+            Some(context),
+            project_version,
+            goal_version,
+            WorkflowAccess::StateOnly,
+            Some(publication),
+        )
+    }
+    fn put_workflow_transition_inner(
+        &mut self,
+        task: &mut Task,
+        workflow: &mut Record,
+        context: Option<&ContextVersion>,
+        project_version: u64,
+        goal_version: u64,
+        access: WorkflowAccess,
+        publication: Option<&crate::execution::WorkflowPublication>,
+    ) -> Result<()> {
         ensure!(
             workflow.kind == RecordKind::Workflow && workflow.scope == task.scope(),
             "workflow requires exact owning Task scope"
@@ -549,6 +588,22 @@ impl Store {
             );
         }
         crate::workflow::validate_transition(task, workflow, previous_workflow.as_ref())?;
+        let typed_workflow: crate::workflow::WorkflowSnapshot =
+            serde_json::from_value(workflow.data.clone())?;
+        for attempt in &typed_workflow.history {
+            if let Some(identity) = &attempt.execution {
+                let unit = execution::unit_tx(&tx, identity.unit)?;
+                ensure!(
+                    unit.scope == task.scope()
+                        && identity.scope == unit.scope
+                        && identity.generation == unit.generation
+                        && identity.epoch == unit.owner_epoch
+                        && attempt.session_id == Some(identity.session)
+                        && unit.session_id == Some(identity.session),
+                    "Workflow managed identity mismatch"
+                );
+            }
+        }
         if let Some(previous) = &previous_workflow {
             let before: crate::workflow::WorkflowSnapshot =
                 serde_json::from_value(previous.data.clone())?;
@@ -645,6 +700,18 @@ impl Store {
                 |row| row.get(0),
             )?;
             crate::workflow::validate_context(task, workflow, &decode(body)?)?;
+        }
+        if let Some(publication) = publication {
+            execution::publish_workflow_result_tx(
+                &tx,
+                publication,
+                task,
+                workflow,
+                previous_workflow
+                    .as_ref()
+                    .context("result publication requires a reserved Workflow")?,
+                context.context("result publication requires a new ContextVersion")?,
+            )?;
         }
         let next_task = put_task_tx(&tx, task)?;
         let next_workflow = put_record_tx(&tx, workflow)?;

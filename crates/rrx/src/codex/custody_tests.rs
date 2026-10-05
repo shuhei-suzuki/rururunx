@@ -146,6 +146,7 @@ mod custody_mechanics {
         assert!(endpoint.try_note("foreign").is_err());
         let stop = adapter
             .stop(SessionRef {
+                execution: None,
                 id,
                 scope: owned.request.scope.clone(),
             })

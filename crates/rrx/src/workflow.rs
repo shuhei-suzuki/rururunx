@@ -298,6 +298,8 @@ pub struct PhaseAttempt {
     pub budget: ContextBudget,
     pub state: AttemptState,
     pub session_id: Option<SessionId>,
+    #[serde(default)]
+    pub execution: Option<crate::execution::native::ManagedSessionRef>,
     pub dispatch_started: bool,
     pub observations: Vec<GateObservation>,
     /// Observation count at the exact current evaluation claim. A prior round's
@@ -514,17 +516,67 @@ impl WorkflowEngine {
     }
     fn persist(&self, snapshot: &mut Snapshot, context: Option<&ContextVersion>) -> Result<()> {
         snapshot.record.data = serde_json::to_value(&snapshot.workflow)?;
-        self.store
+        let mut store = self
+            .store
             .lock()
-            .map_err(|_| anyhow::anyhow!("state store poisoned"))?
-            .put_workflow_transition(
-                &mut snapshot.task,
-                &mut snapshot.record,
-                context,
-                snapshot.project.version,
-                snapshot.goal.version,
-                WorkflowAccess::StateOnly,
-            )
+            .map_err(|_| anyhow::anyhow!("state store poisoned"))?;
+        if snapshot.workflow.active.is_none()
+            && let Some(previous) = store.record(snapshot.record.id)?
+        {
+            let before: WorkflowSnapshot = serde_json::from_value(previous.data)?;
+            if let Some(index) = before.active {
+                let attempt = before
+                    .history
+                    .get(index)
+                    .context("invalid persisted phase reservation index")?;
+                if attempt.phase.actor() == Actor::Executor
+                    && snapshot
+                        .workflow
+                        .history
+                        .get(index)
+                        .context("phase reservation history missing")?
+                        .state
+                        == AttemptState::Succeeded
+                    && let Some(session) = attempt.session_id
+                    && let Some(unit) = store.session_execution_unit(session)?
+                {
+                    let evidence = snapshot
+                        .workflow
+                        .completed
+                        .get(&attempt.phase)
+                        .context("managed executor lacks passed evidence")?;
+                    let artifacts = evidence
+                        .artifacts
+                        .iter()
+                        .filter_map(|s| s.strip_prefix("rrx-artifact:"))
+                        .collect::<Vec<_>>();
+                    ensure!(
+                        artifacts.len() == 1,
+                        "managed executor requires one exact retained artifact"
+                    );
+                    let publication = crate::execution::WorkflowPublication {
+                        authority: unit.authority(),
+                        artifact: artifacts[0].parse()?,
+                    };
+                    return store.put_workflow_result_transition(
+                        &mut snapshot.task,
+                        &mut snapshot.record,
+                        context.context("managed publication requires fresh context")?,
+                        snapshot.project.version,
+                        snapshot.goal.version,
+                        &publication,
+                    );
+                }
+            }
+        }
+        store.put_workflow_transition(
+            &mut snapshot.task,
+            &mut snapshot.record,
+            context,
+            snapshot.project.version,
+            snapshot.goal.version,
+            WorkflowAccess::StateOnly,
+        )
     }
     fn reserve(
         &self,
@@ -923,6 +975,7 @@ impl WorkflowEngine {
             budget: selected_budget,
             state: AttemptState::Running,
             session_id: None,
+            execution: None,
             dispatch_started: false,
             observations: vec![],
             claimed_observations: 0,
@@ -1192,6 +1245,25 @@ impl WorkflowEngine {
                     "adapter returned foreign session"
                 );
                 snapshot.workflow.history[index].session_id = Some(session.id);
+                if let Some(unit) = self
+                    .store
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                    .session_execution_unit(session.id)?
+                {
+                    ensure!(
+                        unit.scope == snapshot.task.scope(),
+                        "foreign managed Session binding"
+                    );
+                    snapshot.workflow.history[index].execution =
+                        Some(crate::execution::native::ManagedSessionRef {
+                            scope: unit.scope,
+                            unit: unit.id,
+                            generation: unit.generation,
+                            epoch: unit.owner_epoch,
+                            session: session.id,
+                        });
+                }
                 // Adapter may persist Session, never rewrite Task/history. CAS loss
                 // preserves the reservation; #14 reconciles the durable Session.
                 self.persist(&mut snapshot, None)?;
@@ -1261,6 +1333,7 @@ impl WorkflowEngine {
         let adapter = self.registry.get(agent)?;
         let status = match adapter
             .status(SessionRef {
+                execution: attempt.execution.clone(),
                 id,
                 scope: snapshot.task.scope(),
             })
@@ -1613,6 +1686,7 @@ impl WorkflowEngine {
                 .get(attempt.agent.as_deref().context("native actor missing")?)?;
             let status = agent
                 .status(SessionRef {
+                    execution: attempt.execution.clone(),
                     id,
                     scope: snapshot.task.scope(),
                 })
@@ -2333,6 +2407,10 @@ pub(crate) fn validate_transition(
                         && before.started_at == after.started_at
                         && before.agent == after.agent
                         && before
+                            .execution
+                            .as_ref()
+                            .is_none_or(|identity| after.execution.as_ref() == Some(identity))
+                        && before
                             .session_id
                             .is_none_or(|id| after.session_id == Some(id)),
                     "active attempt identity is immutable"
@@ -2350,6 +2428,15 @@ pub(crate) fn validate_transition(
                             && after.state == AttemptState::Running
                             && after.phase.actor() != Actor::EvidencePort),
                     "Session may only bind during native launch"
+                );
+                ensure!(
+                    before.execution.is_some()
+                        || after.execution.is_none()
+                        || (before.session_id.is_none()
+                            && before.state == AttemptState::Running
+                            && after.state == AttemptState::Running
+                            && after.dispatch_started),
+                    "managed identity may only bind with native launch"
                 );
                 ensure!(
                     !before.dispatch_started || after.dispatch_started,

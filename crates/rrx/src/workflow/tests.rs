@@ -33,6 +33,7 @@ struct FakeAgent {
     start_pause: Mutex<Option<Arc<Pause>>>,
     start_error: AtomicBool,
     start_error_session: AtomicBool,
+    managed_unit: Mutex<Option<crate::execution::UnitId>>,
 }
 impl FakeAgent {
     fn new(name: &str, store: SharedStore, review: bool) -> Self {
@@ -48,6 +49,7 @@ impl FakeAgent {
             start_pause: Mutex::new(None),
             start_error: AtomicBool::new(false),
             start_error_session: AtomicBool::new(false),
+            managed_unit: Mutex::new(None),
         }
     }
 }
@@ -104,11 +106,25 @@ impl AgentAdapter for FakeAgent {
                 recovery: Value::Null,
                 started_at: now_ms(),
             };
-            self.store
-                .lock()
-                .unwrap()
-                .put_session(&session, 0)
-                .map_err(|e| adapter_error(&e.to_string()))?;
+            let mut session = session;
+            if let Some(id) = *self.managed_unit.lock().unwrap() {
+                let mut store = self.store.lock().unwrap();
+                let unit = store.execution_unit(id).unwrap();
+                session.state = SessionState::Starting;
+                let unit = store
+                    .register_execution_session(&unit.authority(), &session)
+                    .unwrap();
+                session.state = SessionState::Running;
+                store
+                    .update_execution_session(&unit.authority(), &session, 1)
+                    .unwrap();
+            } else {
+                self.store
+                    .lock()
+                    .unwrap()
+                    .put_session(&session, 0)
+                    .map_err(|e| adapter_error(&e.to_string()))?;
+            }
             if start_error {
                 // Generic-shaped terminal persistence without Workflow binding.
                 // This synthetic row supplies no native settlement authority.
@@ -117,6 +133,7 @@ impl AgentAdapter for FakeAgent {
             self.statuses.lock().unwrap().insert(
                 session.id,
                 SessionStatus {
+                    execution: None,
                     session: session.clone(),
                     exit_code: None,
                     stdout: vec![],
@@ -175,7 +192,28 @@ impl AgentAdapter for FakeAgent {
                 };
                 let mut store = self.store.lock().unwrap();
                 let version = store.session(reference.id).unwrap().unwrap().1;
-                store.put_session(&status.session, version).unwrap();
+                if let Some(unit) = store.session_execution_unit(reference.id).unwrap() {
+                    store
+                        .finish_execution(
+                            &unit.authority(),
+                            if status.session.state == SessionState::Exited {
+                                crate::execution::WorkOutcome::Success
+                            } else {
+                                crate::execution::WorkOutcome::Unknown
+                            },
+                            if status.session.state == SessionState::Exited {
+                                crate::execution::Disposition::Completed
+                            } else {
+                                crate::execution::Disposition::Lost
+                            },
+                        )
+                        .unwrap();
+                    store
+                        .close_execution_session(unit.id, &status.session, version)
+                        .unwrap();
+                } else {
+                    store.put_session(&status.session, version).unwrap();
+                }
                 statuses.insert(reference.id, status.clone());
                 if self.native_mode.load(Ordering::SeqCst)
                     && status.session.state == SessionState::Exited
@@ -310,6 +348,7 @@ struct Gates {
     corrupt: AtomicU8,
     on_complete: Mutex<Option<CompleteHook>>,
     unknown: AtomicBool,
+    retained_artifact: Mutex<Option<crate::execution::ArtifactId>>,
 }
 impl Gates {
     fn new() -> Self {
@@ -322,6 +361,7 @@ impl Gates {
             corrupt: AtomicU8::new(0),
             on_complete: Mutex::new(None),
             unknown: AtomicBool::new(false),
+            retained_artifact: Mutex::new(None),
         }
     }
 }
@@ -371,6 +411,9 @@ impl PhaseGates for Gates {
                 session_id: status.map(|s| s.session.id),
                 context_version: invocation.context.version,
             };
+            if let Some(id) = *self.retained_artifact.lock().unwrap() {
+                evidence.artifacts = vec![format!("rrx-artifact:{id}")];
+            }
             match self.corrupt.load(Ordering::SeqCst) {
                 1 => evidence.scope.project_id = ProjectId::new(),
                 2 => evidence.revision = "stale-target".into(),
@@ -501,6 +544,158 @@ impl Fixture {
             }
         }
         panic!("phase not reached");
+    }
+}
+
+#[tokio::test]
+async fn managed_result_publication_commits_workflow_and_context_or_rolls_back_together() {
+    use crate::execution::*;
+    for control in ["publish", "cancel", "dependency-drift"] {
+        let fixture = Fixture::new(WorkflowClass::Quick);
+        fixture.sources.snapshot.lock().unwrap().revision = "a".repeat(40);
+        fixture
+            .engine
+            .initialize(fixture.task.id, None)
+            .await
+            .unwrap();
+        fixture.through(Phase::Worktree).await;
+        let id = UnitId::new();
+        let unit = {
+            let mut store = fixture.store.lock().unwrap();
+            let (_, epoch) = store.begin_execution_epoch().unwrap();
+            let task = store.task(fixture.task.id).unwrap().unwrap();
+            let at = now_ms();
+            let spec = ExecutionUnit {
+                id,
+                scope: task.scope(),
+                kind: UnitKind::Executor,
+                generation: 0,
+                owner_epoch: epoch,
+                version: 0,
+                phase: Phase::Implement.key().into(),
+                provider: "fake".into(),
+                state: UnitState::Reserved,
+                native_effects_open: true,
+                result_finalization_open: true,
+                work: None,
+                cleanup: CleanupOutcome::Unknown,
+                disposition: Disposition::Active,
+                worktree: fixture.project.worktree_root.join(id.to_string()),
+                branch: Some(format!("rrx/{}/{id}", task.id)),
+                base_sha: "a".repeat(40),
+                profile_digest: "b".repeat(64),
+                cookie: uuid::Uuid::new_v4().to_string(),
+                session_id: None,
+                artifact_id: None,
+                wait_reason: None,
+                capacity_retry_at: None,
+                created_at: at,
+                updated_at: at,
+            };
+            let reserved = store.reserve_execution(spec, task.version).unwrap();
+            store
+                .transition_execution(&reserved.authority(), UnitState::Preparing)
+                .unwrap()
+        };
+        *fixture.executor.managed_unit.lock().unwrap() = Some(id);
+        assert!(matches!(
+            fixture
+                .engine
+                .step(fixture.task.id, BTreeMap::new())
+                .await
+                .unwrap(),
+            StepResult::Started {
+                phase: Phase::Implement,
+                ..
+            }
+        ));
+        let artifact_id = ArtifactId::new();
+        let sources = fixture.sources.clone();
+        let gates = fixture.gates.clone();
+        let state = fixture.store.clone();
+        *fixture.gates.on_complete.lock().unwrap() = Some(Box::new(move |_| {
+            let mut store = state.lock().unwrap();
+            let current = store.execution_unit(id).unwrap();
+            assert_eq!(current.work, Some(WorkOutcome::Success));
+            let mut artifact = ResultArtifact {
+                id: artifact_id,
+                scope: current.scope.clone(),
+                unit_id: id,
+                state: ArtifactState::Staging,
+                revision: "c".repeat(40),
+                base_sha: current.base_sha.clone(),
+                object_format: "sha1".into(),
+                repository: std::path::PathBuf::from("/tmp/fixture-retained.git"),
+                manifest: std::path::PathBuf::from("/tmp/fixture-manifest.json"),
+                manifest_sha256: String::new(),
+                dependencies: sources.snapshot.lock().unwrap().source_versions.clone(),
+                version: 1,
+                created_at: now_ms(),
+            };
+            // This control tests the real atomic ledger producer, not file fsck.
+            store.stage_result(&current.authority(), &artifact).unwrap();
+            artifact.state = ArtifactState::Ready;
+            artifact.version = 2;
+            artifact.manifest_sha256 = "d".repeat(64);
+            store.ready_result(&artifact, 1).unwrap();
+            if control == "cancel" {
+                store.retire_execution(&current.authority(), false).unwrap();
+            }
+            drop(store);
+            *gates.retained_artifact.lock().unwrap() = Some(artifact_id);
+            let mut source = sources.snapshot.lock().unwrap();
+            source.revision = artifact.revision;
+            if control == "dependency-drift" {
+                source
+                    .source_versions
+                    .insert("requirements".into(), "changed-after-capture".into());
+            }
+            Some(source.clone())
+        }));
+        let before_task = fixture
+            .store
+            .lock()
+            .unwrap()
+            .task(fixture.task.id)
+            .unwrap()
+            .unwrap();
+        let outcome = fixture.engine.step(fixture.task.id, BTreeMap::new()).await;
+        let store = fixture.store.lock().unwrap();
+        let artifact = store.result_artifact(artifact_id).unwrap();
+        let task = store.task(fixture.task.id).unwrap().unwrap();
+        let context = store.context(&task.scope(), None).unwrap().unwrap();
+        let workflow: WorkflowSnapshot = serde_json::from_value(
+            store.records(&task.scope(), RecordKind::Workflow).unwrap()[0]
+                .data
+                .clone(),
+        )
+        .unwrap();
+        let current = store.execution_unit(unit.id).unwrap();
+        if control == "publish" {
+            assert!(matches!(
+                outcome.unwrap(),
+                StepResult::Completed {
+                    phase: Phase::Implement
+                }
+            ));
+            assert_eq!(artifact.state, ArtifactState::Published);
+            assert_eq!(task.revision.as_deref(), Some(artifact.revision.as_str()));
+            assert_eq!(context.revision, artifact.revision);
+            assert_eq!(context.version, task.context_version);
+            assert_eq!(workflow.context_version, context.version);
+            assert!(workflow.completed.contains_key(&Phase::Implement));
+            assert!(!current.result_finalization_open);
+            assert_eq!(current.artifact_id, Some(artifact.id));
+        } else {
+            assert!(outcome.is_err(), "{control}");
+            assert_eq!(artifact.state, ArtifactState::Ready);
+            assert_eq!(task.revision, before_task.revision);
+            assert_eq!(task.context_version, before_task.context_version);
+            assert_eq!(context.version, before_task.context_version);
+            assert!(!workflow.completed.contains_key(&Phase::Implement));
+            assert_eq!(current.artifact_id, None);
+            assert_eq!(current.work, Some(WorkOutcome::Success));
+        }
     }
 }
 
@@ -1040,6 +1235,7 @@ async fn second_engine_cannot_dispatch_duplicate_phase_and_interrupt_does_not_au
         let mut wf: WorkflowSnapshot = serde_json::from_value(record.data.clone()).unwrap();
         wf.active = Some(0);
         wf.history.push(PhaseAttempt {
+            execution: None,
             phase: Phase::Worktree,
             generation: 1,
             context_version: 1,
@@ -2263,6 +2459,7 @@ async fn atomic_authority_rejects_invented_initial_history_completion_and_finish
             0 => snapshot.generation = 2,
             1 => snapshot.finished = true,
             2 => snapshot.history.push(PhaseAttempt {
+                execution: None,
                 phase: Phase::Worktree,
                 generation: 1,
                 context_version: 1,
@@ -3426,6 +3623,7 @@ async fn native_gate_requires_persisted_owned_status_and_sessionless_completion_
     fixture
         .executor
         .status(SessionRef {
+            execution: None,
             id,
             scope: fixture.task.scope(),
         })
@@ -3876,6 +4074,7 @@ async fn persisted_status_mismatch_is_durable_waiting_without_gate_or_rebinding(
     fixture
         .executor
         .status(SessionRef {
+            execution: None,
             id,
             scope: fixture.task.scope(),
         })
