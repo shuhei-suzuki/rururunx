@@ -110,7 +110,7 @@ fn reserve_history(f: &Fixture) -> usize {
             },
             native_ref: None,
             pid: None,
-            worktree: s.task.worktree.clone(),
+            worktree: s.task.worktree.clone().expect("bound historical fixture"),
             state: SessionState::Exited,
             model: None,
             effort: None,
