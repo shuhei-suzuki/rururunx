@@ -401,10 +401,9 @@ fn run(inventory: &Arc<Inventory>, mut receiver: mpsc::Receiver<Request>) -> Cre
                         if permitted
                             && generation == inventory.generation
                             && bytes.len() <= METADATA
+                            && let Some(owner) = owner
                         {
-                            if let Some(owner) = owner {
-                                owner.record_mechanical_note();
-                            }
+                            owner.record_mechanical_note();
                         }
                     }
                     #[cfg(test)]
