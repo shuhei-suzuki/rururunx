@@ -40,7 +40,7 @@ impl ManagedWorkflowGates {
         let project = store.project(task.project_id)?.context("Project missing")?;
         let goal = store.goal(task.goal_id)?.context("Goal missing")?;
         ensure!(
-            true /* mutation: omit exact Task invocation frame */
+            serde_json::to_value(&task)? == serde_json::to_value(&invocation.task)?
                 && serde_json::to_value(&project)? == serde_json::to_value(&invocation.project)?
                 && goal.project_id == task.project_id
                 && invocation.sources.scope == task.scope()
