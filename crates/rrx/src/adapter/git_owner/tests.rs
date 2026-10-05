@@ -74,6 +74,64 @@ async fn expired_refusal_precedes_capacity_and_has_no_job_or_flag() {
     released(&context).await;
 }
 #[tokio::test]
+async fn actual_release_wake_after_expiry_keeps_waited_diagnostic_without_new_effects() {
+    let mut context = TestGitContext::isolated();
+    let pause = Arc::new(TestPause::default());
+    let release = TestRelease(pause.clone());
+    context.context.hooks.after_spawn = Some(pause.clone());
+    let mut calls = Vec::new();
+    for _ in 0..CAPACITY / JOBS {
+        calls.push(tokio::spawn(shell(
+            context.clone(),
+            "exit 0",
+            Arc::new(AtomicBool::new(false)),
+        )));
+    }
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while pause.entries.load(Ordering::SeqCst) != CAPACITY / JOBS {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(context.held_jobs(), CAPACITY);
+    let flag = Arc::new(AtomicBool::new(false));
+    let deadline = tokio::time::Instant::now() + Duration::from_millis(30);
+    // Manually hold this ACTUAL admission future after registering its waiter.
+    // No new task, test production hook or altered clock/deadline is introduced.
+    let mut waiting = std::pin::pin!(run(
+        Path::new("/rrx-refused-request-must-not-spawn"),
+        Path::new("/tmp"),
+        &[],
+        vec![],
+        deadline,
+        flag.clone(),
+        Some(context.clone()),
+    ));
+    let mut polling = std::task::Context::from_waker(std::task::Waker::noop());
+    assert!(std::future::Future::poll(waiting.as_mut(), &mut polling).is_pending());
+    tokio::time::sleep_until(deadline).await;
+    // Original actual children/readers/worker joins release and wake the already
+    // registered waiter before we next poll it, with its deadline now expired.
+    drop(release);
+    for call in calls {
+        call.await.unwrap().unwrap();
+    }
+    released(&context).await;
+    let result = match std::future::Future::poll(waiting.as_mut(), &mut polling) {
+        std::task::Poll::Ready(result) => result.unwrap_err(),
+        std::task::Poll::Pending => panic!("released waiter did not re-enter expired admission"),
+    };
+    assert_eq!(result.kind, ErrorKind::Timeout);
+    assert_eq!(
+        result.message,
+        "Git ownership preflight timed out; capacity_unavailable{active_jobs=0,retained_unresolved_jobs=0}"
+    );
+    assert!(!flag.load(Ordering::SeqCst));
+    assert_eq!(context.held_jobs(), 0);
+}
+
+#[tokio::test]
 async fn actual_std_spawn_then_initialization_failure_is_settled() {
     let mut context = TestGitContext::isolated();
     context.context.hooks.initialized_error = true;
