@@ -18,6 +18,7 @@ pub mod resources;
 pub mod results;
 pub(crate) mod retained_io;
 pub(crate) use results::{ReadonlyCompletion, WorkflowPublication};
+pub mod strict_json;
 pub mod tools;
 pub mod workflow_gates;
 pub mod workflow_source;
