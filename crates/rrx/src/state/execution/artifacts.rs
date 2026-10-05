@@ -127,9 +127,7 @@ impl Store {
             epoch,
             artifact,
             id,
-            exit,
-            group_error,
-            program_digest,
+            (exit, group_error, program_digest),
             None,
         )
     }
@@ -138,11 +136,10 @@ impl Store {
         epoch: u64,
         artifact: &ResultArtifact,
         id: OperationId,
-        exit: Option<i32>,
-        group_error: bool,
-        program_digest: &str,
+        receipt: (Option<i32>, bool, &str),
         recovery: Option<&source_recovery::SourceReadBinding>,
     ) -> Result<()> {
+        let (exit, group_error, program_digest) = receipt;
         ensure!(
             program_digest.len() == 64 && program_digest.bytes().all(|b| b.is_ascii_hexdigit()),
             "invalid retained reader program reference digest"

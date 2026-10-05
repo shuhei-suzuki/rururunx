@@ -173,9 +173,11 @@ impl RetainedGit {
                     self.owner.epoch,
                     &self.artifact,
                     operation,
-                    observed.receipt.status.code(),
-                    observed.receipt.group_error.is_some(),
-                    &program,
+                    (
+                        observed.receipt.status.code(),
+                        observed.receipt.group_error.is_some(),
+                        &program,
+                    ),
                     self.recovery.as_ref(),
                 )?;
             } else {
