@@ -138,6 +138,10 @@ impl GitPool {
                 }
                 let completed =
                     catch_unwind(AssertUnwindSafe(|| supervise(&thread_record, request)));
+                #[cfg(test)]
+                if let Some(pause) = &thread_record._context.hooks.before_terminal_publication {
+                    pause.block();
+                }
                 match completed {
                     Ok(Completion::Settled(outcome)) => {
                         // Inner future is gone, native worker joined and vaults emptied
@@ -154,6 +158,10 @@ impl GitPool {
                     }
                     Err(_) => thread_record.ticket.owner_loss(),
                 }
+                #[cfg(test)]
+                thread_record
+                    .frame_actions_completed
+                    .store(true, Ordering::SeqCst);
             });
         match handle {
             Ok(handle) => {
@@ -228,8 +236,39 @@ pub(crate) struct TestGitContext {
     context: Context,
 }
 #[cfg(test)]
+fn assert_private_pool_isolation() {
+    if std::env::var_os("RRX_PRIVATE_GIT_POOL_AUDIT").is_none() {
+        return;
+    }
+    let retained = production_pool()
+        .state
+        .lock()
+        .expect("production pool poisoned during private-pool audit")
+        .records
+        .iter()
+        .filter(|record| record.ticket.retained.load(Ordering::SeqCst))
+        .count()
+        * JOBS;
+    assert_eq!(
+        retained, 0,
+        "private controls changed production retained occupancy"
+    );
+}
+#[cfg(test)]
+impl Drop for TestGitContext {
+    fn drop(&mut self) {
+        // The dedicated subprocess selects only private destructive controls.
+        // Unrelated default-parallel tests cannot change its fresh baseline.
+        // A failing control already failed; avoid double-panic during unwind.
+        if !thread::panicking() {
+            assert_private_pool_isolation();
+        }
+    }
+}
+#[cfg(test)]
 impl TestGitContext {
     pub(crate) fn isolated() -> Self {
+        assert_private_pool_isolation();
         let pool = GitPool::new();
         let mut inventory = TEST_POOLS
             .get_or_init(|| Mutex::new(Vec::with_capacity(256)))
@@ -327,6 +366,8 @@ struct TestHooks {
     worker_panic: bool,
     supervisor_panic: bool,
     before_authorize: Option<Arc<TestPause>>,
+    before_worker_authorize: Option<Arc<TestPause>>,
+    before_terminal_publication: Option<Arc<TestPause>>,
     after_spawn: Option<Arc<TestPause>>,
     after_reap_send: Option<Arc<TestPause>>,
     before_cleanup_ack: Option<Arc<TestPause>>,
@@ -341,6 +382,7 @@ struct TestHooks {
     missing_executable: bool,
     missing_matching: Option<(Vec<String>, usize)>,
     matching_calls: Arc<std::sync::atomic::AtomicUsize>,
+    signal_result: Option<rustix::io::Errno>,
 }
 #[cfg(test)]
 #[derive(Default)]
@@ -419,8 +461,9 @@ pub(super) async fn run(
     let (pool, context) = match test {
         Some(test) => (
             test.pool
+                .clone()
                 .expect("private Git context requires an isolated pool"),
-            test.context,
+            test.context.clone(),
         ),
         None => (production_pool(), Context::default()),
     };
@@ -598,6 +641,8 @@ struct OpRecord {
     native_settled: AtomicBool,
     #[cfg(test)]
     reader_lanes: std::sync::atomic::AtomicUsize,
+    #[cfg(test)]
+    frame_actions_completed: AtomicBool,
 }
 impl OpRecord {
     fn new(flag: Arc<AtomicBool>, context: Context) -> Self {
@@ -627,6 +672,8 @@ impl OpRecord {
             native_settled: AtomicBool::new(false),
             #[cfg(test)]
             reader_lanes: std::sync::atomic::AtomicUsize::new(0),
+            #[cfg(test)]
+            frame_actions_completed: AtomicBool::new(false),
         }
     }
 }
@@ -1225,6 +1272,10 @@ fn native_worker(
             }; // Not a relied-on loss mechanism.
             match command {
                 NativeCommand::AuthorizeSpawn => {
+                    #[cfg(test)]
+                    if let Some(pause) = &record._context.hooks.before_worker_authorize {
+                        pause.block();
+                    }
                     if record.ticket.cancel.load(Ordering::SeqCst)
                         || record.ticket.lost.load(Ordering::SeqCst)
                     {
@@ -1396,6 +1447,15 @@ fn first_cleanup(_record: &OpRecord, native: &mut NativeAssets) {
             };
             #[cfg(not(all(test, target_os = "macos")))]
             let signal = kill_process_group(pid, Signal::KILL);
+            #[cfg(test)]
+            let signal = match _record._context.hooks.signal_result {
+                // The actual first owned-group KILL still occurs. This models
+                // its result at the production resolver, not real OS denial.
+                Some(injected) if signal.is_ok() || signal == Err(rustix::io::Errno::SRCH) => {
+                    Err(injected)
+                }
+                _ => signal,
+            };
             #[cfg(test)]
             if _record._context.hooks.worker_panic {
                 panic!("synthetic Git native worker panic after signal");

@@ -53,6 +53,98 @@ async fn binary_output_and_settled_error_clear_live_uncertainty() {
     assert!(!flag.load(Ordering::SeqCst));
     released(&context).await;
 }
+
+#[test]
+fn destructive_private_controls_leave_fresh_production_pool_unchanged() {
+    if std::env::var_os("RRX_PRIVATE_GIT_POOL_AUDIT").is_some() {
+        // The child uses normal libtest filtering/concurrency and must not recurse.
+        assert_private_pool_isolation();
+        return;
+    }
+    let executable = std::env::current_exe().unwrap();
+    let mut command = StdCommand::new(executable);
+    command
+        .args([
+            "adapter::git_owner::tests::",
+            "adapter::grok::reader_tests::",
+            "context::tests::actual_late_reap_keeps_context_latch_after_real_worker_settlement",
+            "context::tests::actual_dropped_git_future_sets_context_latch_before_late_settlement",
+            "context::tests::actual_output_open_error_keeps_context_latch_after_reader_late_settlement",
+            "context::tests::opaque_attempted_git_error_keeps_original_cause_and_context_latch",
+            "adapter::tests::real_git_unknown_observations_keep_cleanup_reservation",
+            "context::tests::real_git_unknown_cleanup_preserves_cause_and_latches_later_context_launches",
+        ])
+        .env_clear()
+        .env("RRX_PRIVATE_GIT_POOL_AUDIT", "1")
+        .env("PATH", std::env::var_os("PATH").unwrap_or_default())
+        .stdin(Stdio::null())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .process_group(0);
+    // Actual std Child is held before inspecting its group. This fixture is a
+    // test-process boundary; it grants no production/workload settlement proof.
+    let mut child = command.spawn().unwrap();
+    let deadline = Instant::now() + Duration::from_secs(60);
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                assert!(
+                    status.success(),
+                    "private-pool audit child failed: {status}"
+                );
+                return;
+            }
+            Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(5)),
+            outcome => {
+                // The only signal identity comes from this still-owned Child.
+                if let Some(pid) = i32::try_from(child.id())
+                    .ok()
+                    .filter(|pid| *pid > 1)
+                    .and_then(Pid::from_raw)
+                {
+                    let _ = kill_process_group(pid, Signal::KILL);
+                } else {
+                    let _ = child.kill();
+                }
+                let reaped = child.wait();
+                panic!("private-pool audit incomplete: observation={outcome:?}; reap={reaped:?}");
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn selected_owned_signal_result_parity_preserves_os_specific_unknown() {
+    for injected in [
+        rustix::io::Errno::SRCH,
+        rustix::io::Errno::ACCESS,
+        rustix::io::Errno::PERM,
+    ] {
+        let mut context = TestGitContext::isolated();
+        context.context.hooks.signal_result = Some(injected);
+        let flag = Arc::new(AtomicBool::new(false));
+        let outcome = shell(context.clone(), "exit 0", flag.clone()).await;
+        // A real first owned-group KILL precedes the synthetic resolver value.
+        // This does not claim actual OS permission denial or Linux inspection.
+        let retained = injected == rustix::io::Errno::ACCESS
+            || (cfg!(not(target_os = "macos")) && injected == rustix::io::Errno::PERM);
+        if retained {
+            assert_eq!(outcome.unwrap_err().kind, ErrorKind::SessionLost);
+            assert!(flag.load(Ordering::SeqCst));
+            assert_eq!(context.held_jobs(), 4);
+            let record = context.pool.as_ref().unwrap().state.lock().unwrap().records[0].clone();
+            let native = record.native.lock().unwrap();
+            assert!(native.child.is_some() && native.group.is_some());
+            assert!(native.signal_issued && !native.reaped);
+            assert_eq!(native.signals, 1);
+            assert!(native.cleanup.as_ref().unwrap().is_err());
+        } else {
+            assert!(outcome.unwrap().is_empty());
+            released(&context).await;
+            assert!(!flag.load(Ordering::SeqCst));
+        }
+    }
+}
 #[tokio::test]
 async fn expired_refusal_precedes_capacity_and_has_no_job_or_flag() {
     let context = TestGitContext::isolated();
@@ -197,6 +289,31 @@ async fn cancelled_admitted_call_never_spawns_or_sets_flag() {
     drop(release);
     released(&context).await;
     assert!(!flag.load(Ordering::SeqCst));
+}
+#[tokio::test]
+async fn cancelled_authorized_command_never_creates_a_child() {
+    let mut context = TestGitContext::isolated();
+    let pause = Arc::new(TestPause::default());
+    let release = TestRelease(pause.clone());
+    context.context.hooks.before_worker_authorize = Some(pause.clone());
+    let flag = Arc::new(AtomicBool::new(false));
+    let task = tokio::spawn(shell(context.clone(), "exit 0", flag.clone()));
+    pause.reached().await;
+    let record = context.pool.as_ref().unwrap().state.lock().unwrap().records[0].clone();
+    assert!(record.ticket.publication.lock().unwrap().state == State::Spawning);
+    assert!(record.native.lock().unwrap().child.is_none());
+    // AuthorizeSpawn is already dequeued, but std::Command::spawn has not run.
+    record.ticket.cancel();
+    drop(release);
+    let failure = task.await.unwrap().unwrap_err();
+    released(&context).await;
+    assert_eq!(failure.kind, ErrorKind::LaunchFailure);
+    assert_eq!(failure.message, "Git launch cancelled before spawn");
+    assert!(record.native.lock().unwrap().child.is_none());
+    assert!(
+        flag.load(Ordering::SeqCst),
+        "Spawning cancellation stays frozen"
+    );
 }
 #[tokio::test]
 async fn cancelled_live_call_does_not_drop_runtime_or_clear_its_flag() {
@@ -511,6 +628,43 @@ async fn active_ticket_poison_returns_unknown_without_releasing_its_record() {
             * JOBS,
         4
     );
+}
+#[tokio::test]
+async fn publication_poison_after_actual_settlement_still_retains_permits() {
+    let mut context = TestGitContext::isolated();
+    let pause = Arc::new(TestPause::default());
+    let release = TestRelease(pause.clone());
+    context.context.hooks.before_terminal_publication = Some(pause.clone());
+    let flag = Arc::new(AtomicBool::new(false));
+    let task = tokio::spawn(shell(context.clone(), "printf terminal", flag.clone()));
+    pause.reached().await;
+    let record = context.pool.as_ref().unwrap().state.lock().unwrap().records[0].clone();
+    assert!(record.native_settled.load(Ordering::SeqCst));
+    assert!(record.worker.lock().unwrap().is_none());
+    assert!(record.runtime.lock().unwrap().is_none());
+    assert!(record.native.lock().unwrap().child.is_none());
+    assert!(
+        catch_unwind(AssertUnwindSafe(|| {
+            let _guard = record.ticket.publication.lock().unwrap();
+            panic!("synthetic terminal publication poison");
+        }))
+        .is_err()
+    );
+    drop(release);
+    assert_eq!(
+        task.await.unwrap().unwrap_err().kind,
+        ErrorKind::SessionLost
+    );
+    // Observe the actual pool action, not just an earlier caller publication.
+    tokio::time::timeout(Duration::from_secs(3), async {
+        while !record.frame_actions_completed.load(Ordering::SeqCst) {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    assert!(flag.load(Ordering::SeqCst));
+    assert_eq!(context.held_jobs(), 4);
 }
 
 #[tokio::test]

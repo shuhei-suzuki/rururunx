@@ -1547,7 +1547,7 @@ mod tests {
             &["--version"],
             deadline(),
             latch.clone(),
-            None,
+            Some(crate::adapter::TestGitContext::isolated()),
         )
         .await
         .unwrap();

@@ -632,3 +632,46 @@ are already merged under their recorded limited disposition; that does not prove
 reader/EOF/inspector availability. These are finite factual corrections only,
 with no normative/source/Cargo/CI behavior change. Final current docs-head gate
 and Root's explicit limited disposition remain pending; PR64 stays draft/unmerged.
+
+### Source3 mandatory-gap mapping before the next source gate
+
+Root directly approved the eight outcome-only documents at1104412; final
+CI37261291105 every step passed bothOS, actual6b1d7468 parents768/110 and complete
+tested tree equals110. CI DEBUG TEST plus RELEASE BUILD does not close the local35f0
+full Debug/Release TEST failures. Root explicitly holds PR64 until required gaps
+are addressed. Normal incoming26f3a48 changes only two Issue67 evidence documents;
+selected source/Cargo/CI identity is unchanged.
+
+Approved Design2 §8 lines378–406 and Requirements acceptance2/4 require signal
+outcome parity and actual private-pool isolation. The selected Linux PERM branch
+and production retained-count invariant are genuinely missing mandatory proof.
+The new candidate uses actual owned KILL followed by a cfg(test)-only resolver
+result, never claims real OS permission denial; Linux PERM retains Unknown while
+macOS PERM requires its existing actual selected-group observation. Both OS gates
+must execute their own branch. Actual independent test subprocesses select the
+private destructive controls under default libtest parallelism; test-context
+creation/drop checks fresh production retained occupancy zero. This measures only
+that process-local count, not native cleanup or OS/descendant settlement. No suite
+serialization, deadline/production-pool override or current-source acceptance.
+
+The worker AuthorizeSpawn cancel/lost gate maps to required pre-spawn cancellation:
+a private pause after dequeue/before the gate permits cancellation with no Child,
+followed by actual worker/reader settlement. The publication poison/lost release
+skip maps to required retained authority: pause after actual healthy resources
+ended but before terminal publication, poison it, then observe the actual final
+pool action before asserting four retained slots. The existing invalid-binding
+consumer already asserts both pipes remain in the actual Child; its exact
+endpoint-transfer guard still needs a compiled intended mutant.
+
+The supervisor's extra cancel bit is defense in depth beside the publication-state
+transition and worker dispatch guard; a single omission may be masked and receives
+no causal credit unless an actual reachable control kills it. Retained.settled=false
+is likewise defensive: actual current Retained paths already yield false or frozen/
+lost publication. No fabricated reachable success fixture or combined masked-guard
+mutation will invent credit. Source-only/redundant attribution stays explicit.
+
+This is implementation of existing approved WHAT only. All new controls, intended
+operators, restored positives, default/source/CI gates remain pending. Production
+read/signal/authority/error/deadline equations are unchanged; test hooks do not mint
+native workload or cleanup proof. Both current full TEST failures remain FAILED,
+cause AND regression UNKNOWN; full60/F1/native16 and missing producers remain OPEN.

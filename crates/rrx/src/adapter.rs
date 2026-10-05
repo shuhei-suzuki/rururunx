@@ -1609,13 +1609,14 @@ mod tests {
         let args = vec!["--version".to_owned()];
         let control = Arc::new(AtomicBool::new(false));
         assert!(
-            bounded_git_raw(
+            bounded_git_raw_selected(
                 &executable,
                 temp.path(),
                 &args,
                 vec![],
                 deadline(),
-                control.clone()
+                control.clone(),
+                Some(TestGitContext::isolated())
             )
             .await
             .is_ok()
