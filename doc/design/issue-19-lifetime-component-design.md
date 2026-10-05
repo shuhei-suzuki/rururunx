@@ -1,10 +1,11 @@
 # Issue19 retained preparation lifetime component
 
-Status: selected MECHANICAL design gate, not whole Issue19 authority/native readiness.
+Status: selected MECHANICAL Design2 gate, not whole Issue19 authority/native readiness.
 Parent Design37 at75cdae974da1ce9afa0a6de4e2cafc5065e60748 was rejected by both native
 reviews. Its broad open findings are retained in the adjacent ledger. Absence of a
 lifetime High/Medium in those rejected reviews is NOT this component's approval.
-This document receives TWO explicit independent selected-component gates before code.
+Selected Design1 was also rejected. Design2 below corrects its verified custody/
+join/accounting/re-registration mechanics; TWO explicit selected approvals precede code.
 It implements existing retained-custody/cancellation requirements; no new WHAT,
 public native capability, migration, managed trait or receipt facade is introduced.
 
@@ -56,7 +57,7 @@ borrowed from the caller runtime is qualified by this file-only component.
 Reserve the complete declared finite job set BEFORE creation. Count the Control
 execution and every component custodian/worker/reader frame once; no uncounted
 per-waiter/bootstrap/reaper/monitor task. The selected component's maximum64 active
-or held jobs is a work limit, not a count of arbitrary OS/helpers/native tools. A
+or held jobs PER shared runtime pool is a work limit, not a count of arbitrary OS/helpers/native tools. A
 closed file fixture declares exactly three component frames: existing Control
 Tokio actor, one retained custodian and one resource worker. The custodian creates
 its own current-thread runtime only if needed to observe the actor JoinHandle,
@@ -68,14 +69,21 @@ created. Ordinary unavailable native resources remain unavailable; no CLOSED nat
 profile constructor exists. A missing complete declaration refuses before creation. The real native profile/6F1/60 job sets are unavailable,
 not inferred from the fixture. Reserve atomically; insufficient capacity starts
 zero jobs/effects. Release only genuinely joined jobs; uncertainty retains their
-reservation. Queue memory/resource reservation has its own finite bound below.
+reservation. Explicit pool counters are NOT Drop-released RAII permits. Each
+fixture injects an isolated private pool through the SAME constructor/reservation/
+consumer code; production has one process-wide pool. Unknown fixtures cannot
+consume another test's capacity or require serial Cargo execution. Queue memory/resource reservation has its own finite bound below.
 
 Actual creation goes INTO the supervisor's outer anchor before the adapter can
-await, fail or panic at an attach step. A created worker waits for a Begin handshake
-until its JoinHandle and resource holder are installed. Effect-capable factory
+await, fail or panic at an attach step. BOTH created custodian and resource worker wait for separate Begin handshakes
+until their actual handles/heap inventory are installed. Begin disconnection exits
+without resource effect and remains joinable, never means proceed. Effect-capable factory
 creation runs on that registered custodian; resource handles never live solely in
-an adapter local waiting for later transfer. The custodian's resource holder is
-outside a catch-unwind boundary around polling the adapter's inner future. A pure
+an adapter local waiting for later transfer. The resource holder, worker handle and actual custodian handle live in retained
+Control/pool heap inventory, NOT the custodian or adapter stack. Custodian callback
+handlers and adapter-future polling have separate catch-unwind boundaries. A
+callback panic records uncertainty while preserving the actual outer holder;
+whole custodian loss retains handles/counters in the pool for attention. A pure
 error, post-creation panic, caller Drop or runtime shutdown cannot erase it. Unclear
 spawn/observer results retain ownership; Err is not no-effect authority. A proven
 closed fixture resource can be cleaned/joined on its real custodian, with actual
@@ -91,8 +99,8 @@ Mechanical callback success is not model admission, ALLOW, HostCallbackCurrent,
 Session publication or settlement. Those semantic requests require their future
 actual original-frame/native producer and remain unavailable here.
 
-Use a bounded64-request inbox. Each COMPLETE encoded metadata request is at most4096
-bytes before enqueue, so queued metadata≤256KiB; referenced immutable payload/resource
+Use a bounded64-request inbox. Each canonical JSON metadata encoding is at most4096
+actual UTF8 bytes, checked by a bounded streaming JSON writer before enqueue, so queued metadata≤256KiB; referenced immutable payload/resource
 bytes retain their existing separately charged bounds, never an unbounded hidden
 message. No serialized closure/operation credential or copied prepared frame enters
 the inbox. Job registration/actual resource ownership precedes the first request.
@@ -101,13 +109,71 @@ refuses before the requested effect. Cancellation revokes new effects; already-o
 jobs still report cleanup/outcome facts with their exact identity.
 
 Control keeps draining the inbox while awaiting jobs and deriving observed completion;
-it NEVER awaits a join while abandoning a sender blocked on that inbox. A request
-uses bounded try-enqueue or cancellation-aware send; no blocking Drop and no hidden
-per-send task. Held resources do not cause healthy actors to retain unrelated partial
-job reservations. Channel loss is uncertainty ONLY while registered jobs/callbacks
-remain outstanding. A normally closed endpoint after actual job completion/join is
-ordinary completion. Runtime/custodian loss with outstanding resources retains
+it NEVER awaits a join while abandoning a sender blocked on that inbox. A std-worker request uses bounded try-enqueue ONLY; full means typed refusal, not
+a blocked sender. Async actor sends are cancellation-aware and remain bounded by
+the same queue; no blocking Drop or hidden per-send task. Held resources do not cause healthy actors to retain unrelated partial
+job reservations. Endpoint EOF is ONLY an endpoint-closed fact, never an immediate Unknown. The
+endpoint may close before its frame returns or its JoinHandle is observed. Ordinary
+completion requires every bound job genuinely joined with completed outcome, the
+inbox drained and no in-flight callback. Outstanding means unjoined jobs PLUS
+accepted-unhandled requests PLUS in-flight callbacks. Panic/cancelled/unobservable
+join or genuine runtime/custodian loss while outstanding yields Unknown. A worker
+that closes its endpoint then sleeps and exits normally MUST remain ordinary
+completion, not absorbing Unknown. Runtime/custodian loss with outstanding resources retains
 Unknown attention and permits; no row/terminal label can recreate it.
+
+
+## Total installation, join and registry protocol
+
+The custodian is the SOLE inbox Receiver owner and keeps it outside adapter unwind.
+It drains requests while waiting on a bounded observation tick (no spawn_blocking).
+It calls std join ONLY after is_finished/completion is observed, outside pool/Store
+locks; no universal OS latency bound is claimed. Accepted-but-unhandled messages
+remain charged/outstanding after actor exit. Fixed typed handlers, not arbitrary
+serialized callbacks, run under unwind capture; unrelated native Store/ALLOW/host
+requests still have NO producer here.
+
+For a custodied Control: reserve declared three frames; create/install custodian
+handle under Begin; mark TaskOwner::Installing; spawn the actor WRAPPED to wait for
+its own Begin; store the actor JoinHandle into that same heap inventory and its
+AbortHandle/identity in a new Observed state; then send Begin. The actor cannot
+create resources before installation. TaskGuard/release_task marks its logical
+Released state but NEVER drops the custodian-owned actor JoinHandle. Closed/missing
+runtime and no-custody legacy paths preserve their existing Running/Released tests.
+The observed branch is total over Installing/Observed/Released, including completion
+before installation and panic. No second attempt steals a handle.
+
+The pool retains the custodian JoinHandle after its body returns. Admission or
+explicit existing-frame status/drain housekeeping first collects is_finished handles,
+then joins them OUTSIDE pool/Store locks, and only then decrements those slots.
+No extra reaper task/thread or self-release. Healthy sequential fixtures beyond64/3
+prove replenishment; detached/no-reap mutant exhausts capacity. The fixture owns its
+pool until safe cleanup/reap completes. Lost/unjoinable handles stay held, not refunded
+by pool/caller/RAII Drop. This proves local joined resources only; it never clears
+native Lost or managed ownership. Unexpected custodian loss before Begin retains
+counters, workers receive disconnected Begin and perform zero resource effects.
+
+A DISTINCT monotonic Control job-revocation latch prevents every NEW endpoint effect,
+independently of Preparation's first-cause/Consumed/CheckpointCommitted/Failing states.
+Explicit stop/custody cancellation revokes synchronously before publishing the stop
+request. CallerGuard preserves existing consumed-turn no-interrupt behavior; it can
+revoke NEW mechanical setup access without injecting native interruption or changing
+Preparation::Consumed. Already-owned jobs still deliver cleanup facts. The handler
+checks the latch/generation immediately before effect; no recreated endpoint or queue
+message can clear it. No native semantic grant implements this mechanical latch.
+
+Actual reused session consumers MUST check outstanding effect/resources/accepted
+requests: refused_before_work, prepare_launch/checkpoint context-error outcomes,
+RegisteredTransition::drop restore/remove, register_existing and terminal eviction.
+No RestoredBeforeAdmission/FreshUnpublished/CheckpointCommitted no-work classification
+or old-control restoration/removal is allowed while such custody remains. Retain the
+exact same registry Control/exclusion and explicit held outcome; registration refuses.
+Control execution/custodian bookkeeping alone is not a native effect or death proof.
+No source restoration permission is inferred from a slot counter/terminal label.
+A genuine later local join may release THAT component job slot only; it cannot clear
+published Lost or authorize native resume. Existing already-no-effect paths with zero
+created resources/requests retain their previous behavior. These guards introduce no
+managed receipt, current-frame refresh or native recovery exception.
 
 ## Causal checks and source gate
 
@@ -122,8 +188,18 @@ Selected unit/actual controlled fixtures must prove all of these at the real con
   the same endpoint; cancelled/foreign/reconstructed endpoints cannot effect/publish.
 - Fill the bounded inbox, request cancellation and join: handler drains or refuses,
   no join/send deadlock; omitted drain and absent size/capacity controls fail here.
+- Endpoint closes BEFORE join, then normal worker completes: no spurious Lost.
+  Enqueue-then-exit is processed before ordinary completion.
 - Normal actor closure after all jobs joined does not become Lost. Outstanding job
   channel/custodian loss stays owned/Unknown; omit-outstanding predicate fails.
+- Custodian panic after worker creation BEFORE Begin leaves file untouched and
+  permits held; callback panic retains actual heap-owned file/worker until cleanup.
+- Explicit revoke after Consumed AND Failing prevents new endpoint effects without
+  injecting consumed native interruption or resetting first-cause.
+- Same-Session postcreation Err with previous snapshot refuses re-registration;
+  omitted registry restore/remove guard cannot hide the outstanding resource.
+- More than64/3 sequential completed fixtures replenish through actual custodian
+  reaping; no-reap/self-release and Drop-permit mutants fail real accounting.
 - Capacity exhaustion starts zero jobs. Unknown jobs retain slots; genuinely joined
   jobs release only their own reservation. Counters include all actual component jobs.
 - Existing production EMPTY public routes still refuse before Store/process/Git/bytes;
