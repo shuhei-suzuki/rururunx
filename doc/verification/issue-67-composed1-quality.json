@@ -1,0 +1,229 @@
+{
+  "head": "7634d7547a16dad543fde0a62e0055a60843091b",
+  "default_parallelism": true,
+  "no_deadline_change": true,
+  "production_source_unchanged_except_test_only_module": true,
+  "commands": [
+    {
+      "name": "debug",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--workspace"
+      ],
+      "exit_code": 0,
+      "seconds": 120.35139766696375,
+      "log_sha256": "81666b204f770313d1e1f8a293af94b5b6a55a79efdf773df1f6c461b1ca6f6a",
+      "test_result_rows": [
+        {
+          "result": "ok",
+          "passed": 271,
+          "failed": 0,
+          "ignored": 23
+        },
+        {
+          "result": "ok",
+          "passed": 0,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "result": "ok",
+          "passed": 19,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "result": "ok",
+          "passed": 5,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "result": "ok",
+          "passed": 1,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "result": "ok",
+          "passed": 1,
+          "failed": 0,
+          "ignored": 1
+        },
+        {
+          "result": "ok",
+          "passed": 16,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "result": "ok",
+          "passed": 18,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "result": "ok",
+          "passed": 4,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "result": "ok",
+          "passed": 15,
+          "failed": 0,
+          "ignored": 2
+        },
+        {
+          "result": "ok",
+          "passed": 16,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "result": "ok",
+          "passed": 17,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "result": "ok",
+          "passed": 1,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "result": "ok",
+          "passed": 1,
+          "failed": 0,
+          "ignored": 0
+        }
+      ]
+    },
+    {
+      "name": "release-environment",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--release",
+        "--lib",
+        "adapter::grok::environment_tests::"
+      ],
+      "exit_code": 0,
+      "seconds": 55.34007208398543,
+      "log_sha256": "e1b69b21c91c6d086d3527ec9d7794080024e5ef435bd8da948fc95ce9865b5a",
+      "test_result_rows": [
+        {
+          "result": "ok",
+          "passed": 15,
+          "failed": 0,
+          "ignored": 14
+        }
+      ]
+    },
+    {
+      "name": "release-graph-state",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--release",
+        "--test",
+        "goal_graph",
+        "--test",
+        "state"
+      ],
+      "exit_code": 0,
+      "seconds": 17.335010207956657,
+      "log_sha256": "580d0bc46c82dba0d5c834ac70d690681c171365c3774bc9e2ef05bcead761f8",
+      "test_result_rows": [
+        {
+          "result": "ok",
+          "passed": 4,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "result": "ok",
+          "passed": 17,
+          "failed": 0,
+          "ignored": 0
+        }
+      ]
+    },
+    {
+      "name": "fmt",
+      "command": [
+        "cargo",
+        "fmt",
+        "--all",
+        "--",
+        "--check"
+      ],
+      "exit_code": 0,
+      "seconds": 0.4327139590168372,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_result_rows": []
+    },
+    {
+      "name": "clippy",
+      "command": [
+        "cargo",
+        "clippy",
+        "--locked",
+        "--workspace",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exit_code": 0,
+      "seconds": 3.7485533750150353,
+      "log_sha256": "3a6dba61b25ed82e625cb41adb2268430e64c7be1378050f69cd2fba56270ff8",
+      "test_result_rows": []
+    },
+    {
+      "name": "debug-build",
+      "command": [
+        "cargo",
+        "build",
+        "--locked",
+        "--workspace",
+        "--all-targets"
+      ],
+      "exit_code": 0,
+      "seconds": 0.23536470800172538,
+      "log_sha256": "d7dae192715495fa89ccbe279af3efb9792c1dae1768228e369035e68a1df673",
+      "test_result_rows": []
+    },
+    {
+      "name": "release-build",
+      "command": [
+        "cargo",
+        "build",
+        "--locked",
+        "--release",
+        "--workspace",
+        "--all-targets"
+      ],
+      "exit_code": 0,
+      "seconds": 26.029944957932457,
+      "log_sha256": "6239e649f1c4d9d7463ac80e15c5d31a28cd154f426d61edba299df9a832956f",
+      "test_result_rows": []
+    }
+  ],
+  "counts": {
+    "debug_top_level_rust": 382,
+    "debug_doctests": 2,
+    "debug_ignored": 26,
+    "nested_ordinary_witness_child_separate": 1,
+    "release_environment_top_level": 15,
+    "release_environment_ignored_direct_child_entries": 14,
+    "release_graph": 4,
+    "release_state": 17
+  },
+  "limits": "No full workspace Release test qualification; green progress/completion exercise, non-exit_observed failure branches compile checked only. No cause/fix inference or native/all-nested cleanup qualification."
+}

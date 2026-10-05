@@ -32,14 +32,21 @@ async fn isolated_with(name: &str, extras: &[(String, String)], omit_ssl: bool) 
         ProcessGroup::new(command.spawn().unwrap(), Arc::new(AtomicBool::new(false))).unwrap();
     let stdout = tokio::spawn(read_git_output(child.child.stdout.take().unwrap()));
     let stderr = tokio::spawn(read_git_output(child.child.stderr.take().unwrap()));
+    let observation_started = std::time::Instant::now();
     let observed = tokio::time::timeout(Duration::from_secs(60), child.observe_exit()).await;
+    let observation_elapsed_ms = observation_started.elapsed().as_millis();
+    let observation = match &observed {
+        Ok(Ok(())) => "exit_observed",
+        Ok(Err(_)) => "observation_io_error",
+        Err(_) => "watchdog_expired",
+    };
     child = cleanup_group(child).await.unwrap();
     let exit = child.reap().await.unwrap();
     let stdout = String::from_utf8(stdout.await.unwrap().unwrap()).unwrap();
     let stderr = String::from_utf8(stderr.await.unwrap().unwrap()).unwrap();
     assert!(
         observed.is_ok() && exit.success(),
-        "synthetic environment child failed; {stdout}; {stderr}"
+        "synthetic environment child failed; observation={observation}; observation_elapsed_ms={observation_elapsed_ms}; reaped_exit={exit}; {stdout}; {stderr}"
     );
     assert_child_completed(&stdout, &stderr, name);
 }
@@ -1034,9 +1041,11 @@ fn mutation_hook(
 }
 async fn irrelevant(boundary: usize, name: &str) {
     assert_eq!(std::env::var("RRX_INSPECTION_FIXTURE_CHILD").unwrap(), "1");
+    assert!(boundary < 3);
     let mut control = None;
     let mut checkpoint_control = None;
     for kind in 0..9 {
+        eprintln!("grok_environment_progress boundary={boundary} case={kind} stage=fixture");
         let mut fixture = Fixture::new();
         let initial_refs: &[&str] = if kind == 7 {
             &["FOREIGN_ABSENT_NATIVE_NAME"]
@@ -1057,7 +1066,9 @@ async fn irrelevant(boundary: usize, name: &str) {
         } else {
             adapter.before_environment_admission = Some(hook);
         }
+        eprintln!("grok_environment_progress boundary={boundary} case={kind} stage=start");
         let first = fixture.start(&adapter).await.unwrap();
+        eprintln!("grok_environment_progress boundary={boundary} case={kind} stage=terminal");
         let mut status = terminal(&adapter, &fixture, &first).await;
         assert!(
             adapter.transport_succeeded(&status),
@@ -1071,6 +1082,7 @@ async fn irrelevant(boundary: usize, name: &str) {
             input.payload = "explicit fresh continuation".into();
             active.store(boundary == 1, Ordering::SeqCst);
             let lower = receipt_support::watermark(&fixture.store, &fixture.request.scope).unwrap();
+            eprintln!("grok_environment_progress boundary={boundary} case={kind} stage=checkpoint");
             adapter
                 .checkpoint((&first).into(), input.clone())
                 .await
@@ -1097,7 +1109,11 @@ async fn irrelevant(boundary: usize, name: &str) {
             }
             active.store(boundary == 2, Ordering::SeqCst);
             fixture.request.input = input;
+            eprintln!("grok_environment_progress boundary={boundary} case={kind} stage=resume");
             let second = fixture.resume(&adapter, (&first).into(), 2).await.unwrap();
+            eprintln!(
+                "grok_environment_progress boundary={boundary} case={kind} stage=resumed_terminal"
+            );
             status = terminal(&adapter, &fixture, &second).await;
             assert!(
                 adapter.transport_succeeded(&status),
@@ -1119,7 +1135,9 @@ async fn irrelevant(boundary: usize, name: &str) {
         } else {
             control = Some(kinds);
         }
+        eprintln!("grok_environment_progress boundary={boundary} case={kind} stage=release");
         adapter.release((&first).into()).unwrap();
+        eprintln!("grok_environment_progress boundary={boundary} case={kind} stage=finished");
     }
     child_completed(name);
 }
