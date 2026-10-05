@@ -107,7 +107,7 @@ fn unit_tx(tx: &Connection, id: UnitId) -> Result<ExecutionUnit> {
     let (body,version,scope,kind,generation,epoch,native,finalize):(String,u64,(String,String,String),String,u64,u64,bool,bool)=tx.query_row(
         "SELECT body,version,project_id,goal_id,task_id,kind,generation,owner_epoch,native_effects_open,result_finalization_open FROM execution_units WHERE id=?1",
         [id.to_string()],|r| Ok((r.get(0)?,r.get(1)?,(r.get(2)?,r.get(3)?,r.get(4)?),r.get(5)?,r.get(6)?,r.get(7)?,r.get(8)?,r.get(9)?)))?;
-    let unit: ExecutionUnit = decode(body)?;
+    let mut unit: ExecutionUnit = decode(body)?;
     ensure!(
         unit.id == id
             && unit.version == version
@@ -128,6 +128,23 @@ fn unit_tx(tx: &Connection, id: UnitId) -> Result<ExecutionUnit> {
             ("branch", json!(unit.branch)),
         ],
     )?;
+    // Cleanup is an independent factual projection. Appending a janitor receipt
+    // cannot supersede native/finalization authority or invalidate a capture CAS.
+    if let Some((at, body)) = tx
+        .query_row(
+            "SELECT at,body FROM cleanup_observations WHERE unit_id=?1 ORDER BY rowid DESC LIMIT 1",
+            [id.to_string()],
+            |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)),
+        )
+        .optional()?
+    {
+        let observation: CleanupObservation = decode(body)?;
+        ensure!(
+            observation.unit_id == id && observation.at == at,
+            "cleanup observation indexed/body mismatch"
+        );
+        unit.cleanup = observation.outcome;
+    }
     Ok(unit)
 }
 fn check_indexed(connection: &Connection, table: &str, columns: &[(&str, Value)]) -> Result<()> {
@@ -707,7 +724,6 @@ impl Store {
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         let mut unit = unit_tx(&tx, observation.unit_id)?;
         unit.cleanup = observation.outcome;
-        write_unit(&tx, &mut unit)?;
         tx.execute(
             "INSERT INTO cleanup_observations(unit_id,at,body) VALUES(?1,?2,?3)",
             params![

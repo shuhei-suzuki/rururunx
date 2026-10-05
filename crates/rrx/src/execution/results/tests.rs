@@ -321,3 +321,87 @@ async fn preparation_failure_closes_authority_and_keeps_fresh_retry_admissible()
         );
     }
 }
+
+#[tokio::test]
+async fn cleanup_receipt_during_capture_does_not_revoke_successful_finalization() {
+    let (_dir, owner, task) = fixture().await;
+    let (unit, _) = super::super::attempts::AttemptManager::new(owner.clone())
+        .prepare(task.id, "codex", "Implement", None)
+        .await
+        .unwrap();
+    std::fs::write(unit.worktree.join("answer.txt"), "accepted").unwrap();
+    let sha = commit(&unit.worktree).await;
+    let done = owner
+        .store
+        .lock()
+        .unwrap()
+        .finish_execution(
+            &unit.authority(),
+            WorkOutcome::Success,
+            Disposition::Completed,
+        )
+        .unwrap();
+    let results = Arc::new(ResultStore::new(owner.clone()));
+    let gate = results.gate.lock().await;
+    let worker_results = results.clone();
+    let authority = done.authority();
+    let capture = tokio::spawn(async move {
+        worker_results
+            .capture(&authority, &sha, BTreeMap::new())
+            .await
+    });
+    // Capture must have passed its initial validation and reached asynchronous
+    // Git helpers while the actual staging boundary is held by the gate.
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        loop {
+            let count = owner
+                .store
+                .lock()
+                .unwrap()
+                .managed_effects(unit.id)
+                .unwrap()
+                .iter()
+                .filter(|e| e.kind == "git_helper" && e.state == EffectState::Confirmed)
+                .count();
+            if count >= 16 {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    owner
+        .store
+        .lock()
+        .unwrap()
+        .record_execution_cleanup(&CleanupObservation {
+            unit_id: unit.id,
+            at: crate::domain::now_ms(),
+            outcome: CleanupOutcome::Leftovers,
+            coverage: BTreeMap::from([("fixture".into(), "tracked resource remained".into())]),
+            remaining: vec!["fixture-resource".into()],
+            errors: vec![],
+        })
+        .unwrap();
+    assert_eq!(
+        owner
+            .store
+            .lock()
+            .unwrap()
+            .execution_unit(unit.id)
+            .unwrap()
+            .authority(),
+        done.authority()
+    );
+    drop(gate);
+    let artifact = capture.await.unwrap().unwrap();
+    let task = owner.store.lock().unwrap().task(task.id).unwrap().unwrap();
+    results
+        .publish(&done.authority(), &artifact, task.version)
+        .await
+        .unwrap();
+    let current = owner.store.lock().unwrap().execution_unit(unit.id).unwrap();
+    assert_eq!(current.work, Some(WorkOutcome::Success));
+    assert_eq!(current.cleanup, CleanupOutcome::Leftovers);
+}

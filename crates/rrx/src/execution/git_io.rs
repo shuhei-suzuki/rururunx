@@ -13,6 +13,7 @@ pub(crate) struct UnitGit {
     unit: ExecutionUnit,
     profile: resources::ResourceProfile,
     native: bool,
+    git_lease: Option<Arc<owner::GitLease>>,
 }
 impl UnitGit {
     pub(crate) fn new(
@@ -26,9 +27,31 @@ impl UnitGit {
             unit: unit.clone(),
             profile,
             native,
+            git_lease: None,
         })
     }
+    pub(crate) fn with_git_lease(mut self, lease: Arc<owner::GitLease>) -> Self {
+        self.git_lease = Some(lease);
+        self
+    }
     pub(crate) async fn run<I, S>(&self, root: &Path, args: I) -> Result<Vec<u8>>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<std::ffi::OsStr>,
+    {
+        let observed = self.run_observed(root, args).await?;
+        ensure!(
+            observed.receipt.status.success(),
+            "unit Git failed (exit {:?})",
+            observed.receipt.status.code()
+        );
+        Ok(observed.stdout)
+    }
+    pub(crate) async fn run_observed<I, S>(
+        &self,
+        root: &Path,
+        args: I,
+    ) -> Result<process::CommandCapture>
     where
         I: IntoIterator<Item = S>,
         S: AsRef<std::ffi::OsStr>,
@@ -44,6 +67,11 @@ impl UnitGit {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         let operation = OperationId::new();
+        if let Some(lease) = &self.git_lease {
+            command.env("RRX_GIT_GATE_TOKEN", lease.id.to_string());
+        } else {
+            command.env_remove("RRX_GIT_GATE_TOKEN");
+        }
         let child = {
             let mut store = self
                 .owner
@@ -60,7 +88,13 @@ impl UnitGit {
             );
             store.validate_execution(&current.authority(), self.native, !self.native)?;
             // Capture/inspection has Runtime-only finalization authority; never grant native tools.
-            store.reserve_execution_helper(&current.authority(), operation, self.native, root)?;
+            store.reserve_execution_helper(
+                &current.authority(),
+                operation,
+                self.native,
+                root,
+                "git_helper",
+            )?;
             match process::OwnedProcess::spawn(&mut command) {
                 Ok(child) => child,
                 Err(e) => {
@@ -108,13 +142,7 @@ impl UnitGit {
                 },
                 receipt,
             )?;
-        let observed = observed?;
-        ensure!(
-            observed.receipt.status.success(),
-            "unit Git failed (exit {:?})",
-            observed.receipt.status.code()
-        );
-        Ok(observed.stdout)
+        observed
     }
     pub(crate) async fn text(
         &self,

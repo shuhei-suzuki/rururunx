@@ -158,3 +158,325 @@ async fn four_protocol_fixture_sessions_keep_sibling_work_when_one_is_cancelled(
     }
     assert!(!units[0].worktree.join("fixture-result.txt").exists());
 }
+
+#[tokio::test]
+async fn structured_quota_terminals_wait_without_converting_ordinary_failures() {
+    for (provider, payload, work, disposition, exhausted) in [
+        (
+            "codex",
+            "quota-terminal",
+            WorkOutcome::Unknown,
+            Disposition::QuotaInterrupted,
+            true,
+        ),
+        (
+            "codex",
+            "quota-retry-terminal",
+            WorkOutcome::Unknown,
+            Disposition::QuotaInterrupted,
+            true,
+        ),
+        (
+            "codex",
+            "ordinary-failure",
+            WorkOutcome::Failure,
+            Disposition::Completed,
+            false,
+        ),
+        (
+            "claude",
+            "quota-other-bucket",
+            WorkOutcome::Unknown,
+            Disposition::QuotaInterrupted,
+            true,
+        ),
+        (
+            "claude",
+            "quota-stale-available",
+            WorkOutcome::Unknown,
+            Disposition::QuotaInterrupted,
+            true,
+        ),
+        (
+            "claude",
+            "quota-budget-failure",
+            WorkOutcome::Failure,
+            Disposition::Completed,
+            true,
+        ),
+        (
+            "claude",
+            "quota-foreign",
+            WorkOutcome::Failure,
+            Disposition::Completed,
+            false,
+        ),
+    ] {
+        let (dir, owner, task) = results::tests::fixture().await;
+        let sessions = NativeSessions::new(owner.clone()).unwrap();
+        let (unit, _) = attempts::AttemptManager::new(owner.clone())
+            .prepare(task.id, provider, "Implement", None)
+            .await
+            .unwrap();
+        let NativeStart::Launched(handle) = sessions
+            .start_inner(
+                input(&unit, payload),
+                None,
+                None,
+                Some(program(dir.path(), provider)),
+            )
+            .await
+            .unwrap()
+        else {
+            panic!("fixture queued")
+        };
+        let result = terminal(&sessions, &handle).await;
+        assert_eq!(result.work, Some(work), "{provider}/{payload}");
+        assert_eq!(result.disposition, disposition, "{provider}/{payload}");
+        assert_eq!(
+            owner
+                .store
+                .lock()
+                .unwrap()
+                .quota_observations(provider, "unknown")
+                .unwrap()
+                .iter()
+                .any(|o| o.status == QuotaStatus::Exhausted),
+            exhausted,
+            "{provider}/{payload}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn codex_two_window_recovery_refresh_keeps_correlated_probe_through_turn_dispatch() {
+    let (dir, owner, task) = results::tests::fixture().await;
+    let (unit, _) = attempts::AttemptManager::new(owner.clone())
+        .prepare(task.id, "codex", "Implement", None)
+        .await
+        .unwrap();
+    let at = now_ms();
+    for bucket in ["fixture/primary", "fixture/secondary"] {
+        owner
+            .store
+            .lock()
+            .unwrap()
+            .observe_quota(&QuotaObservation {
+                provider: "codex".into(),
+                account_key: "unknown".into(),
+                bucket: bucket.into(),
+                window_id: "old".into(),
+                status: QuotaStatus::Exhausted,
+                used_percent: Some(100.0),
+                resets_at: Some(at - 1),
+                observed_at: at - 60001,
+                source_version: "fixture".into(),
+                confirmed_subscription: true,
+            })
+            .unwrap();
+    }
+    let path = program(dir.path(), "codex");
+    let script = std::fs::read_to_string(&path).unwrap().replace(
+        r#""secondary": None"#,
+        r#""secondary": {"usedPercent": 30}"#,
+    );
+    std::fs::write(&path, script).unwrap();
+    std::fs::write(
+        owner
+            .root
+            .join("units")
+            .join(unit.id.to_string())
+            .join("output/fixture-release"),
+        "release",
+    )
+    .unwrap();
+    let sessions = NativeSessions::new(owner.clone()).unwrap();
+    let NativeStart::Launched(handle) = sessions
+        .start_inner(input(&unit, "complete"), None, None, Some(path))
+        .await
+        .unwrap()
+    else {
+        panic!("probe was not admitted")
+    };
+    let result = terminal(&sessions, &handle).await;
+    assert_eq!(result.work, Some(WorkOutcome::Success));
+    assert_eq!(result.disposition, Disposition::Completed);
+    let store = owner.store.lock().unwrap();
+    let windows = store.quota_observations("codex", "unknown").unwrap();
+    assert_eq!(windows.len(), 2);
+    assert!(windows.iter().all(|w| w.status == QuotaStatus::Available));
+    assert!(
+        !store
+            .execution_is_quota_probe(unit.id, "codex", "unknown")
+            .unwrap()
+    );
+    let effects = store.managed_effects(unit.id).unwrap();
+    assert_eq!(
+        effects
+            .iter()
+            .filter(|e| e.kind == "native_input" && e.state == EffectState::Confirmed)
+            .count(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn readonly_review_profile_is_selected_in_the_actual_fixture_launch() {
+    for provider in ["claude", "codex"] {
+        let (dir, owner, task) = results::tests::fixture().await;
+        let attempts = attempts::AttemptManager::new(owner.clone());
+        let (executor, _) = attempts
+            .prepare(task.id, provider, "Implement", None)
+            .await
+            .unwrap();
+        let done = owner
+            .store
+            .lock()
+            .unwrap()
+            .finish_execution(
+                &executor.authority(),
+                WorkOutcome::Success,
+                Disposition::Completed,
+            )
+            .unwrap();
+        let retained = results::ResultStore::new(owner.clone());
+        let artifact = retained
+            .capture(&done.authority(), &done.base_sha, BTreeMap::new())
+            .await
+            .unwrap();
+        let version = owner
+            .store
+            .lock()
+            .unwrap()
+            .task(task.id)
+            .unwrap()
+            .unwrap()
+            .version;
+        let artifact = retained
+            .publish(&done.authority(), &artifact, version)
+            .await
+            .unwrap();
+        let (reviewer, _) = attempts
+            .prepare_snapshot(task.id, artifact.id, UnitKind::Reviewer, provider, "Review")
+            .await
+            .unwrap();
+        retained.snapshot(&reviewer).await.unwrap();
+        let reviewer = owner
+            .store
+            .lock()
+            .unwrap()
+            .execution_unit(reviewer.id)
+            .unwrap();
+        let sessions = NativeSessions::new(owner.clone()).unwrap();
+        let NativeStart::Launched(handle) = sessions
+            .start_inner(
+                input(&reviewer, "readonly-review"),
+                None,
+                None,
+                Some(program(dir.path(), provider)),
+            )
+            .await
+            .unwrap()
+        else {
+            panic!("review fixture queued")
+        };
+        let status = terminal(&sessions, &handle).await;
+        assert_eq!(status.work, Some(WorkOutcome::Success), "{provider}");
+        assert!(!reviewer.worktree.join("fixture-review-write").exists());
+        results::verify_readonly_source(&reviewer.worktree).unwrap();
+    }
+}
+
+#[tokio::test]
+async fn native_dispatch_admission_has_a_durable_winner_against_retirement() {
+    for provider in ["claude", "codex"] {
+        let (dir, owner, task) = results::tests::fixture().await;
+        let sessions = NativeSessions::new(owner.clone()).unwrap();
+        let (unit, _) = attempts::AttemptManager::new(owner.clone())
+            .prepare(task.id, provider, "Implement", None)
+            .await
+            .unwrap();
+        let NativeStart::Launched(handle) = sessions
+            .start_inner(
+                input(&unit, "cancel-me"),
+                None,
+                None,
+                Some(program(dir.path(), provider)),
+            )
+            .await
+            .unwrap()
+        else {
+            panic!("fixture queued")
+        };
+        tokio::time::timeout(Duration::from_secs(10), async {
+            while !owner
+                .root
+                .join("units")
+                .join(unit.id.to_string())
+                .join("output/fixture-ready")
+                .is_file()
+            {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+        let pinned = owner.store.lock().unwrap().execution_unit(unit.id).unwrap();
+        // Exercise the same private producer used for actual input/ALLOW frames.
+        // The fixture does not claim native permission conformance or revoke issued bytes.
+        let frame = json!({"owned_permission":"fixture-sensitive-argument"});
+        let issued = admit_native_frame(
+            &owner,
+            &pinned,
+            handle.session,
+            Some(&pinned.authority()),
+            "native_permission",
+            &frame,
+        )
+        .unwrap();
+        let effect = owner.store.lock().unwrap().managed_effect(issued).unwrap();
+        assert_eq!(effect.state, EffectState::Pending);
+        assert!(
+            !serde_json::to_string(&effect)
+                .unwrap()
+                .contains("fixture-sensitive-argument")
+        );
+        sessions.cancel(&handle).await.unwrap();
+        assert!(
+            admit_native_frame(
+                &owner,
+                &pinned,
+                handle.session,
+                Some(&pinned.authority()),
+                "native_permission",
+                &frame
+            )
+            .is_err()
+        );
+        assert!(
+            admit_native_frame(
+                &owner,
+                &pinned,
+                handle.session,
+                None,
+                "native_input",
+                &json!({"late_input":true})
+            )
+            .is_err()
+        );
+        assert_eq!(
+            owner
+                .store
+                .lock()
+                .unwrap()
+                .managed_effect(issued)
+                .unwrap()
+                .state,
+            EffectState::Pending
+        );
+        assert_eq!(
+            terminal(&sessions, &handle).await.disposition,
+            Disposition::Cancelled
+        );
+    }
+}

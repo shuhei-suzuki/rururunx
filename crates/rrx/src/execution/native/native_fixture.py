@@ -13,6 +13,19 @@ def send(value):
     print(json.dumps(value), flush=True)
 
 def complete(payload):
+    if payload == "readonly-review":
+        if PROVIDER == "claude":
+            assert sys.argv[sys.argv.index("--permission-mode") + 1] == "plan"
+        else:
+            assert NATIVE_SANDBOX == "read-only"
+        subprocess.run(["/usr/bin/git", "rev-parse", "HEAD"], check=True, stdout=subprocess.DEVNULL)
+        try:
+            with open("fixture-review-write", "w") as out: out.write("must be refused")
+        except PermissionError:
+            pass
+        else:
+            raise RuntimeError("readonly source accepted a normal write")
+        return
     with open(os.path.join(os.environ["RRX_OUTPUT_DIR"], "fixture-ready"), "w") as ready:
         ready.write("ready\n")
     release = os.path.join(os.environ["RRX_OUTPUT_DIR"], "fixture-release")
@@ -39,11 +52,19 @@ for line in sys.stdin:
         elif method == "account/rateLimits/read":
             result = {"rateLimits": {"limitId": "fixture", "primary": {"usedPercent": 20}, "secondary": None}}
         elif method == "thread/start":
+            NATIVE_SANDBOX = value["params"].get("sandbox")
             result = {"thread": {"id": os.environ["RRX_UNIT_ID"]}, "cwd": os.getcwd(), "modelProvider": "openai"}
         elif method == "turn/start":
             send({"id": value["id"], "result": {"turn": {"id": "fixture-turn"}}})
-            complete(value["params"]["input"][0]["text"])
-            send({"method": "turn/completed", "params": {"threadId": os.environ["RRX_UNIT_ID"], "turn": {"id": "fixture-turn", "status": "completed"}}})
+            payload = value["params"]["input"][0]["text"]
+            if payload in ("quota-terminal", "quota-retry-terminal", "ordinary-failure"):
+                if payload == "quota-retry-terminal":
+                    send({"method": "error", "params": {"threadId": os.environ["RRX_UNIT_ID"], "turnId": "fixture-turn", "willRetry": True, "error": {"codexErrorInfo": "usageLimitExceeded"}}})
+                error = {"codexErrorInfo": "usageLimitExceeded" if payload != "ordinary-failure" else "other"}
+                send({"method": "turn/completed", "params": {"threadId": os.environ["RRX_UNIT_ID"], "turn": {"id": "fixture-turn", "status": "failed", "error": error}}})
+            else:
+                complete(payload)
+                send({"method": "turn/completed", "params": {"threadId": os.environ["RRX_UNIT_ID"], "turn": {"id": "fixture-turn", "status": "completed"}}})
             continue
         else:
             send({"id": value["id"], "error": {"code": -32601}})
@@ -55,5 +76,14 @@ for line in sys.stdin:
             send({"type": "control_response", "response": {"subtype": "success", "request_id": value["request_id"], "response": {}}})
         elif value["type"] == "user":
             send({"type": "system", "subtype": "init", "session_id": native, "cwd": os.getcwd(), "tools": ["Bash"], "mcp_servers": []})
-            complete(value["message"]["content"])
-            send({"type": "result", "session_id": native, "subtype": "success", "is_error": False, "result": "fixture complete"})
+            payload = value["message"]["content"]
+            if payload.startswith("quota-"):
+                def quota(bucket, status, session=native):
+                    send({"type": "rate_limit_event", "session_id": session, "rate_limit_info": {"rateLimitType": bucket, "status": status, "resetsAt": int(time.time()) + 3600}})
+                quota("five_hour", "rejected", "foreign" if payload == "quota-foreign" else native)
+                quota("five_hour" if payload == "quota-stale-available" else "seven_day", "allowed")
+                subtype = "error_max_turns" if payload == "quota-budget-failure" else "error_during_execution"
+                send({"type": "result", "session_id": native, "subtype": subtype, "is_error": True})
+            else:
+                complete(payload)
+                send({"type": "result", "session_id": native, "subtype": "success", "is_error": False, "result": "fixture complete"})

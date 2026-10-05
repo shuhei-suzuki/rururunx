@@ -145,16 +145,8 @@ pub(crate) fn plan(
                     "update-ref requires one exact owned ref"
                 );
             }
-            if sub == "branch" || sub == "switch" || sub == "checkout" {
-                // The managed branch is the only mutable ref this entry may select.
-                ensure!(
-                    !args.iter().skip(1).any(|a| !a.starts_with('-')
-                        && unit.branch.as_ref() != Some(a)
-                        && !valid_oid(a)
-                        && a != "HEAD"
-                        && a != "--"),
-                    "foreign branch selection is unsupported"
-                );
+            if matches!(sub.as_str(), "branch" | "switch" | "checkout") {
+                owned_branch_form(unit, sub, &args[1..])?;
             }
             result.args.extend([
                 "-c".into(),
@@ -326,6 +318,43 @@ pub(crate) fn plan(
     }
     result.args.extend_from_slice(args);
     Ok(result)
+}
+fn owned_branch_form(unit: &ExecutionUnit, command: &str, args: &[String]) -> Result<()> {
+    let branch = unit.branch.as_deref().context("managed branch missing")?;
+    let own = |name: &String| name == branch;
+    let start = |value: &String| valid_oid(value) || value == "HEAD";
+    let allowed = match (command, args) {
+        ("branch", []) => true,
+        ("branch", [flag]) if matches!(flag.as_str(), "--show-current" | "--list") => true,
+        ("branch", [name]) => own(name),
+        ("branch", [flag, name]) if matches!(flag.as_str(), "-d" | "-D" | "--delete") => own(name),
+        ("branch", [name, oid]) => own(name) && start(oid),
+        ("branch", [flag, name, oid]) if matches!(flag.as_str(), "-f" | "--force") => {
+            own(name) && start(oid)
+        }
+        ("switch" | "checkout", [name]) => own(name),
+        ("switch" | "checkout", [flag, oid]) if flag == "--detach" => start(oid),
+        ("switch", [flag, name]) if matches!(flag.as_str(), "-c" | "-C") => own(name),
+        ("switch", [flag, name, oid]) if matches!(flag.as_str(), "-c" | "-C") => {
+            own(name) && start(oid)
+        }
+        ("checkout", [flag, name]) if matches!(flag.as_str(), "-b" | "-B") => own(name),
+        ("checkout", [flag, name, oid]) if matches!(flag.as_str(), "-b" | "-B") => {
+            own(name) && start(oid)
+        }
+        ("checkout", [separator, paths @ ..]) if separator == "--" => {
+            !paths.is_empty()
+                && paths.iter().all(|p| {
+                    !Path::new(p).is_absolute()
+                        && !Path::new(p)
+                            .components()
+                            .any(|c| matches!(c, std::path::Component::ParentDir))
+                })
+        }
+        _ => false,
+    };
+    ensure!(allowed, "unsupported or foreign mutable Git ref form");
+    Ok(())
 }
 fn docker_create_args(profile: &ResourceProfile, args: &[String]) -> Result<Vec<String>> {
     let mut out = Vec::new();

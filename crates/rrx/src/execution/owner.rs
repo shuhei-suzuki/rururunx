@@ -1,10 +1,12 @@
+use super::{OperationId, UnitId};
 use crate::{adapter::SharedStore, state::Store};
 use anyhow::{Context, Result, ensure};
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::{
+    collections::BTreeMap,
     fs::{File, OpenOptions},
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, Weak},
 };
 
 /// The kernel lock fences schedulers, never claims their descendants are dead.
@@ -15,9 +17,18 @@ pub struct RuntimeOwner {
     pub(crate) root: PathBuf,
     pub(crate) instance: String,
     pub(crate) epoch: u64,
-    pub(crate) git_gate: tokio::sync::Mutex<()>,
+    pub(crate) git_gate: Arc<tokio::sync::Mutex<()>>,
+    git_leases: Mutex<BTreeMap<OperationId, Weak<GitLease>>>,
     _ipc: tempfile::TempDir,
     pub(crate) socket: PathBuf,
+}
+
+/// Reentry belongs to one live command chain and one unit. Children retain the
+/// root lock even if the original command returns before their receipts arrive.
+pub(crate) struct GitLease {
+    pub(crate) id: OperationId,
+    unit: UnitId,
+    _guard: tokio::sync::OwnedMutexGuard<()>,
 }
 
 #[cfg(test)]
@@ -118,7 +129,8 @@ impl RuntimeOwner {
             root,
             instance,
             epoch,
-            git_gate: tokio::sync::Mutex::new(()),
+            git_gate: Arc::new(tokio::sync::Mutex::new(())),
+            git_leases: Mutex::new(BTreeMap::new()),
             _ipc: ipc,
             socket,
         }))
@@ -137,5 +149,36 @@ impl RuntimeOwner {
     }
     pub fn ipc_path(&self) -> &Path {
         &self.socket
+    }
+    pub(crate) async fn git_lease(
+        &self,
+        unit: UnitId,
+        parent: Option<OperationId>,
+    ) -> Result<Arc<GitLease>> {
+        if let Some(parent) = parent {
+            let leases = self
+                .git_leases
+                .lock()
+                .map_err(|_| anyhow::anyhow!("Git lease state poisoned"))?;
+            let lease = leases
+                .get(&parent)
+                .and_then(Weak::upgrade)
+                .context("Git reentry root retired")?;
+            ensure!(lease.unit == unit, "Git reentry belongs to another unit");
+            return Ok(lease);
+        }
+        let guard = self.git_gate.clone().lock_owned().await;
+        let lease = Arc::new(GitLease {
+            id: OperationId::new(),
+            unit,
+            _guard: guard,
+        });
+        let mut leases = self
+            .git_leases
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Git lease state poisoned"))?;
+        leases.retain(|_, lease| lease.strong_count() > 0);
+        leases.insert(lease.id, Arc::downgrade(&lease));
+        Ok(lease)
     }
 }

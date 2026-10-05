@@ -104,7 +104,18 @@ impl Store {
                 .unwrap_or_else(|| observation.observed_at.saturating_add(60_000));
             tx.execute("UPDATE quota_pools SET next_probe_at=MAX(next_probe_at,?1) WHERE provider=?2 AND account_key=?3",params![next,observation.provider,observation.account_key])?;
         } else if observation.status == QuotaStatus::Available {
-            tx.execute("UPDATE quota_pools SET backoff=60000,probe_unit=NULL WHERE provider=?1 AND account_key=?2",params![observation.provider,observation.account_key])?;
+            // Bucket recovery never retires a live pool probe. A refresh may contain
+            // several windows, all requiring the same correlated lease. Only release
+            // or terminal retirement relinquishes that lease.
+            if !windows(&tx, &observation.provider, &observation.account_key)?
+                .iter()
+                .any(|o| o.status == QuotaStatus::Exhausted)
+            {
+                tx.execute(
+                    "UPDATE quota_pools SET backoff=60000 WHERE provider=?1 AND account_key=?2",
+                    params![observation.provider, observation.account_key],
+                )?;
+            }
         }
         tx.commit()?;
         Ok(())

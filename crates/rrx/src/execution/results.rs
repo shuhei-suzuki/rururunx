@@ -31,7 +31,7 @@ pub struct ResultManifest {
     pub sources: BTreeMap<String, String>,
 }
 /// This provenance cannot be manufactured by passing an arbitrary Git directory.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ResultSnapshot {
     pub artifact: ArtifactId,
     pub unit: UnitId,
@@ -39,6 +39,19 @@ pub struct ResultSnapshot {
     source: PathBuf,
     output: PathBuf,
     manifest_sha256: String,
+    owner: Arc<RuntimeOwner>,
+    scope: crate::domain::Scope,
+    generation: u64,
+    epoch: u64,
+}
+impl std::fmt::Debug for ResultSnapshot {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ResultSnapshot")
+            .field("artifact", &self.artifact)
+            .field("unit", &self.unit)
+            .field("revision", &self.revision)
+            .finish_non_exhaustive()
+    }
 }
 impl ResultSnapshot {
     pub fn source(&self) -> &Path {
@@ -51,16 +64,38 @@ impl ResultSnapshot {
         &self.manifest_sha256
     }
     pub async fn verify(&self) -> Result<()> {
+        let unit = {
+            let store = self
+                .owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?;
+            let unit = store.execution_unit(self.unit)?;
+            ensure!(
+                unit.scope == self.scope
+                    && unit.generation == self.generation
+                    && unit.owner_epoch == self.epoch
+                    && unit.artifact_id == Some(self.artifact)
+                    && unit.base_sha == self.revision
+                    && unit.worktree == self.source,
+                "snapshot execution identity changed"
+            );
+            store.validate_execution(&unit.authority(), false, true)?
+        };
+        // Trusted Runtime verification uses its still-open finalization authority,
+        // including after a reliable reviewer terminal closes native effects.
+        let io = UnitGit::new(self.owner.clone(), &unit, false)?;
+        readonly_tree(&self.source, false)?;
         ensure!(
-            text(&git(&self.source, ["rev-parse", "HEAD"]).await?)? == self.revision,
+            io.text(&self.source, ["rev-parse", "HEAD"]).await? == self.revision,
             "snapshot HEAD changed"
         );
         ensure!(
-            tracked_digest(&self.source).await? == self.manifest_sha256,
+            tracked_digest_scoped(&self.source, Some(&io)).await? == self.manifest_sha256,
             "snapshot source changed"
         );
         ensure!(
-            git(
+            io.run(
                 &self.source,
                 ["status", "--porcelain", "--untracked-files=all"]
             )
@@ -149,7 +184,7 @@ impl ResultStore {
                 == revision,
             "result is not exact commit"
         );
-        qualified_content(&unit.worktree, revision).await?;
+        qualified_content_scoped(&unit.worktree, revision, &io).await?;
         let _guard = self.gate.lock().await;
         let repository = self
             .owner
@@ -432,8 +467,8 @@ impl ResultStore {
         )
         .await
         .context("checkout retained snapshot SHA")?;
-        qualified_content(&unit.worktree, &artifact.revision).await?;
-        let digest = tracked_digest(&unit.worktree).await?;
+        qualified_content_scoped(&unit.worktree, &artifact.revision, &io).await?;
+        let digest = tracked_digest_scoped(&unit.worktree, Some(&io)).await?;
         readonly_tree(&unit.worktree, true)?;
         let snapshot = ResultSnapshot {
             artifact: artifact.id,
@@ -442,6 +477,10 @@ impl ResultStore {
             source: unit.worktree.clone(),
             output,
             manifest_sha256: digest,
+            owner: self.owner.clone(),
+            scope: unit.scope.clone(),
+            generation: unit.generation,
+            epoch: unit.owner_epoch,
         };
         snapshot.verify().await?;
         let mut store = self
@@ -542,7 +581,23 @@ pub(crate) fn verify_readonly_source(path: &Path) -> Result<()> {
     readonly_tree(path, false)
 }
 pub(crate) async fn qualified_content(root: &Path, revision: &str) -> Result<()> {
-    let tree = git(root, ["ls-tree", "-r", "-z", revision]).await?;
+    qualified_content_inner(root, revision, None).await
+}
+async fn qualified_content_scoped(root: &Path, revision: &str, io: &UnitGit) -> Result<()> {
+    qualified_content_inner(root, revision, Some(io)).await
+}
+async fn read_git<I, S>(root: &Path, args: I, io: Option<&UnitGit>) -> Result<Vec<u8>>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<std::ffi::OsStr>,
+{
+    match io {
+        Some(io) => io.run(root, args).await,
+        None => git(root, args).await,
+    }
+}
+async fn qualified_content_inner(root: &Path, revision: &str, io: Option<&UnitGit>) -> Result<()> {
+    let tree = read_git(root, ["ls-tree", "-r", "-z", revision], io).await?;
     for line in tree.split(|b| *b == 0).filter(|s| !s.is_empty()) {
         ensure!(
             !line.starts_with(b"160000 "),
@@ -554,8 +609,7 @@ pub(crate) async fn qualified_content(root: &Path, revision: &str) -> Result<()>
         );
     }
     // LFS pointers are ordinary Git blobs, not their required external content.
-    let mut command = git_command(root)?;
-    command.args([
+    let args = [
         "grep",
         "-l",
         "-I",
@@ -563,19 +617,22 @@ pub(crate) async fn qualified_content(root: &Path, revision: &str) -> Result<()>
         "version https://git-lfs.github.com/spec/v1",
         revision,
         "--",
-    ]);
-    let observed = process::capture_observed(&mut command).await?;
+    ];
+    let observed = match io {
+        Some(io) => io.run_observed(root, args).await?,
+        None => process::capture_observed(git_command(root)?.args(args)).await?,
+    };
     ensure!(
         observed.receipt.status.code() == Some(1)
             || (observed.receipt.status.success() && observed.stdout.is_empty()),
         "LFS pointer scan found unsupported content or failed"
     );
-    let attrs = git(root, ["ls-tree", "-r", "--name-only", revision]).await?;
+    let attrs = read_git(root, ["ls-tree", "-r", "--name-only", revision], io).await?;
     for name in std::str::from_utf8(&attrs)?
         .lines()
         .filter(|n| n.ends_with(".gitattributes"))
     {
-        let bytes = git(root, ["show", &format!("{revision}:{name}")]).await?;
+        let bytes = read_git(root, ["show", &format!("{revision}:{name}")], io).await?;
         ensure!(
             !bytes
                 .windows(b"filter=lfs".len())
@@ -585,8 +642,8 @@ pub(crate) async fn qualified_content(root: &Path, revision: &str) -> Result<()>
     }
     Ok(())
 }
-async fn tracked_digest(root: &Path) -> Result<String> {
-    let list = git(root, ["ls-files", "-z"]).await?;
+async fn tracked_digest_scoped(root: &Path, io: Option<&UnitGit>) -> Result<String> {
+    let list = read_git(root, ["ls-files", "-z"], io).await?;
     let mut hash = Sha256::new();
     for name in list.split(|b| *b == 0).filter(|s| !s.is_empty()) {
         let name = std::str::from_utf8(name)?;

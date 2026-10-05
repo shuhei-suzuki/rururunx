@@ -156,7 +156,72 @@ impl NativeSessions {
             .arg("--version")
             .current_dir(&unit.worktree)
             .envs(profile.environment(&unit.cookie, self.owner.ipc_path())?);
-        let version = results::text(&process::capture(&mut version).await?)?;
+        version
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let operation = OperationId::new();
+        let child = {
+            let mut store = self
+                .owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?;
+            let current = store.validate_execution(&unit.authority(), true, false)?;
+            store.reserve_execution_helper(
+                &current.authority(),
+                operation,
+                true,
+                &unit.worktree,
+                "native_version",
+            )?;
+            match process::OwnedProcess::spawn(&mut version) {
+                Ok(child) => child,
+                Err(error) => {
+                    store.reconcile_managed_effect(
+                        operation,
+                        1,
+                        EffectState::Unknown,
+                        BTreeMap::new(),
+                    )?;
+                    return Err(error);
+                }
+            }
+        };
+        let observed = process::capture_child(child).await;
+        let receipt = observed
+            .as_ref()
+            .ok()
+            .map(|o| {
+                BTreeMap::from([(
+                    "exit".into(),
+                    o.receipt
+                        .status
+                        .code()
+                        .map_or_else(|| "signal".into(), |n| n.to_string()),
+                )])
+            })
+            .unwrap_or_default();
+        self.owner
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("state poisoned"))?
+            .reconcile_managed_effect(
+                operation,
+                1,
+                if observed.is_ok() {
+                    EffectState::Confirmed
+                } else {
+                    EffectState::Unknown
+                },
+                receipt,
+            )?;
+        let observed = observed?;
+        ensure!(
+            observed.receipt.status.success(),
+            "native version helper failed"
+        );
+        let version = results::text(&observed.stdout)?;
         if unit.provider == "codex" {
             crate::codex::managed::version(&version)?;
         } else {
@@ -230,7 +295,12 @@ impl NativeSessions {
             if let Some(effort) = &effort {
                 command.arg("--effort").arg(effort);
             }
-            // Review source is already read-only; native tools retain normal configuration.
+            if unit.kind != UnitKind::Executor {
+                // Native plan mode routes writes to the permission callback even
+                // when settings allow them; this Runtime never grants reviewer writes.
+                // This is a cooperative native role policy, not host containment.
+                command.args(["--permission-mode", "plan"]);
+            }
         }
         command
             .current_dir(&unit.worktree)
@@ -473,6 +543,9 @@ impl Lines {
         self.next = self.next.checked_add(1).context("RPC identity exhausted")?;
         self.send(&json!({"id":id,"method":method,"params":params}))
             .await?;
+        self.response(id).await
+    }
+    async fn response(&mut self, id: u64) -> Result<Value> {
         tokio::time::timeout(Duration::from_secs(30),async {loop {
             let value=self.line().await?;crate::codex::managed::frame(&value)?;
             if value.get("method").is_none() && value["id"]==id {
@@ -483,6 +556,81 @@ impl Lines {
             }else{self.queue(value)?;}
         }}).await?
     }
+}
+/// A private scoped dispatch boundary. The ledger stores a digest, never the
+/// Agent input, permission arguments, native credentials or a replayable frame.
+fn admit_native_frame(
+    owner: &RuntimeOwner,
+    pinned: &ExecutionUnit,
+    session: SessionId,
+    expected: Option<&ExecutionAuthority>,
+    kind: &str,
+    frame: &Value,
+) -> Result<OperationId> {
+    use sha2::{Digest, Sha256};
+    ensure!(
+        matches!(kind, "native_input" | "native_permission" | "native_setup"),
+        "invalid native dispatch kind"
+    );
+    let bytes = serde_json::to_vec(frame)?;
+    ensure!(
+        bytes.len() <= 1024 * 1024,
+        "native outgoing frame too large"
+    );
+    let digest = format!("{:x}", Sha256::digest(bytes));
+    let mut store = owner
+        .store
+        .lock()
+        .map_err(|_| anyhow::anyhow!("state poisoned"))?;
+    let current = store.execution_unit(pinned.id)?;
+    ensure!(
+        current.scope == pinned.scope
+            && current.generation == pinned.generation
+            && current.owner_epoch == pinned.owner_epoch
+            && current.session_id == Some(session),
+        "native dispatch semantic identity changed"
+    );
+    let authority = expected.cloned().unwrap_or_else(|| current.authority());
+    ensure!(
+        authority == current.authority(),
+        "native permission authority changed"
+    );
+    let operation = OperationId::new();
+    store.reserve_managed_effect(
+        &authority,
+        &ManagedEffect {
+            id: operation,
+            unit_id: current.id,
+            scope: current.scope,
+            kind: kind.into(),
+            idempotency_key: format!("native-{operation}"),
+            expected_target: format!("session/{session}/sha256/{digest}"),
+            state: EffectState::Pending,
+            receipt: BTreeMap::new(),
+            version: 1,
+        },
+    )?;
+    Ok(operation)
+}
+fn native_authority(
+    owner: &RuntimeOwner,
+    pinned: &ExecutionUnit,
+    session: SessionId,
+) -> Result<ExecutionAuthority> {
+    let store = owner
+        .store
+        .lock()
+        .map_err(|_| anyhow::anyhow!("state poisoned"))?;
+    let unit = store.execution_unit(pinned.id)?;
+    ensure!(
+        unit.scope == pinned.scope
+            && unit.generation == pinned.generation
+            && unit.owner_epoch == pinned.owner_epoch
+            && unit.session_id == Some(session),
+        "native semantic identity changed"
+    );
+    store.validate_execution(&unit.authority(), true, false)?;
+    Ok(unit.authority())
 }
 struct Core {
     owner: Arc<RuntimeOwner>,
@@ -498,20 +646,106 @@ struct Core {
 }
 impl Core {
     fn authority(&self) -> Result<ExecutionAuthority> {
-        let store = self
-            .owner
+        native_authority(&self.owner, &self.unit, self.session.id)
+    }
+    async fn send_effect(
+        &mut self,
+        value: &Value,
+        authority: Option<&ExecutionAuthority>,
+        kind: &str,
+    ) -> Result<()> {
+        let operation = admit_native_frame(
+            &self.owner,
+            &self.unit,
+            self.session.id,
+            authority,
+            kind,
+            value,
+        )?;
+        // The durable intent is the dispatch winner. Later retirement cannot revoke
+        // already issued bytes, and lost acknowledgements are never blindly replayed.
+        let sent = self.wire.send(value).await;
+        let receipt = BTreeMap::from([(
+            "transport".into(),
+            if sent.is_ok() { "written" } else { "unknown" }.into(),
+        )]);
+        self.owner
             .store
             .lock()
-            .map_err(|_| anyhow::anyhow!("state poisoned"))?;
-        let unit = store.execution_unit(self.unit.id)?;
-        ensure!(
-            unit.generation == self.unit.generation
-                && unit.owner_epoch == self.unit.owner_epoch
-                && unit.session_id == Some(self.session.id),
-            "native semantic identity changed"
-        );
-        store.validate_execution(&unit.authority(), true, false)?;
-        Ok(unit.authority())
+            .map_err(|_| anyhow::anyhow!("state poisoned"))?
+            .reconcile_managed_effect(
+                operation,
+                1,
+                if sent.is_ok() {
+                    EffectState::Confirmed
+                } else {
+                    EffectState::Unknown
+                },
+                receipt,
+            )?;
+        sent
+    }
+    async fn boot_call(
+        &mut self,
+        method: &str,
+        params: Value,
+        kind: Option<&str>,
+    ) -> Result<Value> {
+        let operation = kind
+            .map(|kind| {
+                admit_native_frame(
+                    &self.owner,
+                    &self.unit,
+                    self.session.id,
+                    None,
+                    kind,
+                    &json!({"id":self.wire.next,"method":method,"params":params}),
+                )
+            })
+            .transpose()?;
+        let owner = self.owner.clone();
+        let pinned = self.unit.clone();
+        let session = self.session.id;
+        let mut fence = tokio::time::interval(Duration::from_millis(100));
+        let result = {
+            let call = self.wire.call(method, params);
+            tokio::pin!(call);
+            loop {
+                tokio::select! {
+                    result=&mut call=>break result,
+                    control=self.controls.recv()=>match control {
+                        Some(Control::Approval {response,..})=>{let _=response.send(Err(anyhow::anyhow!("native turn not established")));},
+                        _=>break Err(anyhow::anyhow!("native bootstrap cancelled"))
+                    },
+                    _=fence.tick()=>{if let Err(error)=native_authority(&owner,&pinned,session){break Err(error);}}
+                }
+            }
+        };
+        if let Some(operation) = operation {
+            self.owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                .reconcile_managed_effect(
+                    operation,
+                    1,
+                    if result.is_ok() {
+                        EffectState::Confirmed
+                    } else {
+                        EffectState::Unknown
+                    },
+                    BTreeMap::from([(
+                        "native_ack".into(),
+                        if result.is_ok() {
+                            "received"
+                        } else {
+                            "unknown"
+                        }
+                        .into(),
+                    )]),
+                )?;
+        }
+        result
     }
     fn ack(&mut self, native: String) -> Result<()> {
         self.session.native_ref = Some(native);
@@ -639,28 +873,28 @@ impl Core {
         profile: &resources::ResourceProfile,
     ) -> Result<(WorkOutcome, Disposition, Option<Value>)> {
         self.authority()?;
-        let init=self.wire.call("initialize",json!({"clientInfo":{"name":"rururunx","version":env!("CARGO_PKG_VERSION")},"capabilities":{"experimentalApi":true}})).await?;
+        let init=self.boot_call("initialize",json!({"clientInfo":{"name":"rururunx","version":env!("CARGO_PKG_VERSION")},"capabilities":{"experimentalApi":true}}),None).await?;
         crate::codex::managed::initialization(&init)?;
         self.wire
             .send(&json!({"method":"initialized","params":{}}))
             .await?;
         let account = self
-            .wire
-            .call("account/read", json!({"refreshToken":false}))
+            .boot_call("account/read", json!({"refreshToken":false}), None)
             .await?;
         ensure!(
             account["account"]["type"] == "chatgpt",
             "native subscription authentication unavailable; no paid API fallback"
         );
         let environment = self
-            .wire
-            .call("environment/status", json!({"environmentId":"local"}))
+            .boot_call("environment/status", json!({"environmentId":"local"}), None)
             .await?;
         ensure!(
             environment["status"] == "ready",
             "native local environment is not ready"
         );
-        let quota = self.wire.call("account/rateLimits/read", json!({})).await?;
+        let quota = self
+            .boot_call("account/rateLimits/read", json!({}), None)
+            .await?;
         let probe = self
             .owner
             .store
@@ -690,7 +924,9 @@ impl Core {
             params["sandbox"] = json!("read-only");
         }
         self.authority()?;
-        let thread = self.wire.call("thread/start", params).await?;
+        let thread = self
+            .boot_call("thread/start", params, Some("native_setup"))
+            .await?;
         ensure!(
             thread["cwd"].as_str() == self.unit.worktree.to_str()
                 && thread["modelProvider"] == "openai",
@@ -703,11 +939,14 @@ impl Core {
             turn["effort"] = json!(effort);
         }
         self.authority()?;
-        let started = self.wire.call("turn/start", turn).await?;
+        let started = self
+            .boot_call("turn/start", turn, Some("native_input"))
+            .await?;
         let turn_id = claude_wire::bounded_id(&started["turn"]["id"])?;
         let mut approvals =
             crate::codex::managed::Approvals::new(&thread_id, &turn_id, &self.unit.worktree);
         let mut quota_ended = false;
+        let mut fence = tokio::time::interval(Duration::from_millis(100));
         loop {
             tokio::select! {
                 frame=self.wire.receive()=>{
@@ -735,6 +974,13 @@ impl Core {
                         },
                         Some("turn/completed") if p["threadId"]==thread_id && p["turn"]["id"]==turn_id=>{
                             let status=p["turn"]["status"].as_str().context("native turn status missing")?;
+                            // The terminal may be the only subscription error notification,
+                            // or follow a willRetry=true notification for the same turn.
+                            if status=="failed" && quota::codex_subscription_error(&p["turn"]["error"]) {
+                                quota_ended=true;
+                                quota::QuotaScheduler::new(self.owner.clone()).observe(&QuotaObservation {provider:"codex".into(),account_key:"unknown".into(),bucket:"native.subscription".into(),window_id:"unknown-native".into(),
+                                    status:QuotaStatus::Exhausted,used_percent:None,resets_at:None,observed_at:now_ms(),source_version:"codex-cli 0.160.0/terminal usageLimitExceeded".into(),confirmed_subscription:true})?;
+                            }
                             let current_probe=self.owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?.execution_is_quota_probe(self.unit.id,"codex","unknown")?;
                             if status=="completed" && current_probe {
                                 let windows=self.owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?.quota_observations("codex","unknown")?;
@@ -753,11 +999,11 @@ impl Core {
                     match control {Some(Control::Approval {authority,id,hash,allow,response})=>{
                         let reply=(||{self.owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?.validate_execution(&authority,true,false)?;
                             ensure!(self.unit.kind==UnitKind::Executor || !allow,"read-only native reviewer cannot grant a tool effect");approvals.reply(&id,&hash,allow)})();
-                        let result=match reply{Ok(value)=>self.wire.send(&value).await,Err(e)=>Err(e)};
+                        let result=match reply{Ok(value)=>self.send_effect(&value,Some(&authority),"native_permission").await,Err(e)=>Err(e)};
                         if result.is_ok(){self.update.send_modify(|s|s.pending.retain(|p|p["id"]!=id));}let _=response.send(result);
                     },_=>return Ok((WorkOutcome::Unknown,Disposition::Cancelled,None))}
                 },
-                _=tokio::time::sleep(Duration::from_millis(100))=>{self.authority()?;}
+                _=fence.tick()=>{self.authority()?;}
             }
         }
     }
@@ -782,16 +1028,19 @@ impl Core {
         })
         .await??;
         self.authority()?;
-        self.wire.send(&json!({"type":"user","session_id":self.native,"parent_tool_use_id":null,"message":{"role":"user","content":input.payload}})).await?;
+        self.send_effect(&json!({"type":"user","session_id":self.native,"parent_tool_use_id":null,"message":{"role":"user","content":input.payload}}),None,"native_input").await?;
         let mut state = claude_wire::RunState::default();
         let mut pending = BTreeMap::<String, claude_wire::Pending>::new();
-        let mut quota_exhausted = false;
+        let mut quota_buckets = std::collections::BTreeSet::new();
+        let mut fence = tokio::time::interval(Duration::from_millis(100));
         loop {
             tokio::select! {
                 frame=self.wire.receive()=>{
                     let frame=frame?;
+                    // Only this native Session's event may change its subscription pool.
+                    if frame["type"]=="rate_limit_event" && frame["session_id"]!=self.native {continue;}
                     if let Some(observation)=quota::claude_window(&frame,now_ms())? {
-                        quota_exhausted=observation.status==QuotaStatus::Exhausted;
+                        quota_buckets.insert(observation.bucket.clone());
                         let scheduler=quota::QuotaScheduler::new(self.owner.clone());
                         let probe=self.owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?.execution_is_quota_probe(self.unit.id,"claude","unknown")?;
                         if probe && observation.status==QuotaStatus::Available{scheduler.observe_probe(&self.authority()?,&observation)?;}else{scheduler.observe(&observation)?;}
@@ -804,6 +1053,10 @@ impl Core {
                     let seen=state.observe(&frame,&self.native,&self.unit.worktree,false);
                     if seen.is_err() && frame["type"]=="result" && frame["session_id"]==self.native && frame["is_error"]==true && state.initialized
                         && matches!(frame["subtype"].as_str(),Some("error_during_execution"|"error_max_turns"|"error_max_budget_usd"|"error_max_structured_output_retries")) {
+                        // Consult accepted bucket state, not the last telemetry frame.
+                        // Budget/turn/output caps remain work failures even during quota exhaustion.
+                        let quota_exhausted=frame["subtype"]=="error_during_execution" && self.owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?
+                            .quota_observations("claude","unknown")?.iter().any(|o|o.status==QuotaStatus::Exhausted && quota_buckets.contains(&o.bucket));
                         return Ok(if quota_exhausted{(WorkOutcome::Unknown,Disposition::QuotaInterrupted,None)}else{(WorkOutcome::Failure,Disposition::Completed,Some(frame))});
                     }
                     seen?;
@@ -824,11 +1077,11 @@ impl Core {
                             let key=id.as_str().context("native permission id must be text")?;let p=pending.get(key).context("native permission absent/already answered")?;
                             ensure!(p.hash==hash,"native permission input changed");Ok::<_,anyhow::Error>((key.to_owned(),p.reply(allow)))
                         })();
-                        let result=match permission{Ok((key,value))=>{let sent=self.wire.send(&value).await;if sent.is_ok(){pending.remove(&key);self.update.send_modify(|s|s.pending.retain(|p|p["request_id"]!=id));}sent},Err(e)=>Err(e)};
+                        let result=match permission{Ok((key,value))=>{let sent=self.send_effect(&value,Some(&authority),"native_permission").await;if sent.is_ok(){pending.remove(&key);self.update.send_modify(|s|s.pending.retain(|p|p["request_id"]!=id));}sent},Err(e)=>Err(e)};
                         let _=response.send(result);
                     },_=>return Ok((WorkOutcome::Unknown,Disposition::Cancelled,None))
                 }},
-                _=tokio::time::sleep(Duration::from_millis(100))=>{self.authority()?;}
+                _=fence.tick()=>{self.authority()?;}
             }
         }
     }

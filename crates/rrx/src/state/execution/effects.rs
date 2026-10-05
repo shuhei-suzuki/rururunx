@@ -7,8 +7,13 @@ impl Store {
         id: OperationId,
         native: bool,
         path: &std::path::Path,
+        kind: &str,
     ) -> Result<()> {
         ensure!(path.is_absolute(), "helper path must be absolute");
+        ensure!(
+            matches!(kind, "git_helper" | "native_version"),
+            "unsupported unit helper kind"
+        );
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -17,8 +22,8 @@ impl Store {
             id,
             unit_id: authority.unit_id,
             scope: authority.scope.clone(),
-            kind: "git_helper".into(),
-            idempotency_key: format!("git-helper-{id}"),
+            kind: kind.into(),
+            idempotency_key: format!("helper-{id}"),
             expected_target: path.to_string_lossy().into(),
             state: EffectState::Pending,
             receipt: BTreeMap::new(),

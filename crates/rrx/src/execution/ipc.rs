@@ -18,7 +18,6 @@ use tokio::{
 };
 
 const FRAME: usize = 128 * 1024;
-const CHUNK: usize = 16 * 1024;
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ToolRequest {
@@ -27,16 +26,31 @@ struct ToolRequest {
     tool: String,
     args: Vec<String>,
     cwd: PathBuf,
+    git_parent: Option<OperationId>,
 }
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", content = "value", rename_all = "snake_case")]
 enum Frame {
-    Input(Vec<u8>),
-    InputClosed,
-    Stdout(Vec<u8>),
-    Stderr(Vec<u8>),
-    Exit(Option<i32>),
+    Granted(Grant),
+    Started {
+        operation: OperationId,
+    },
+    Completed {
+        operation: OperationId,
+        code: Option<i32>,
+        group_cleanup_unknown: bool,
+    },
+    Acknowledged,
+    Cancel,
     Refused(String),
+}
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Grant {
+    operation: OperationId,
+    program: PathBuf,
+    args: Vec<String>,
+    environment: BTreeMap<String, String>,
 }
 async fn write_frame<T: Serialize>(
     stream: &mut (impl AsyncWrite + Unpin),
@@ -44,19 +58,52 @@ async fn write_frame<T: Serialize>(
 ) -> Result<()> {
     let bytes = serde_json::to_vec(value)?;
     ensure!(bytes.len() <= FRAME, "IPC frame too large");
-    stream.write_u32(bytes.len() as u32).await?;
-    stream.write_all(&bytes).await?;
-    stream.flush().await?;
+    tokio::time::timeout(Duration::from_secs(10), async {
+        stream.write_u32(bytes.len() as u32).await?;
+        stream.write_all(&bytes).await?;
+        stream.flush().await
+    })
+    .await??;
     Ok(())
 }
 async fn read_frame<T: serde::de::DeserializeOwned>(
     stream: &mut (impl AsyncRead + Unpin),
 ) -> Result<T> {
     let count = stream.read_u32().await? as usize;
-    ensure!(count <= FRAME, "IPC frame too large");
+    ensure!(count > 0 && count <= FRAME, "IPC frame too large");
     let mut bytes = vec![0; count];
     stream.read_exact(&mut bytes).await?;
     Ok(serde_json::from_slice(&bytes)?)
+}
+// Offsets survive select cancellation; a partial frame is never read as a new header.
+#[derive(Default)]
+struct Decoder {
+    header: [u8; 4],
+    header_used: usize,
+    bytes: Vec<u8>,
+    body_used: usize,
+}
+impl Decoder {
+    async fn receive(&mut self, stream: &mut (impl AsyncRead + Unpin)) -> Result<Frame> {
+        while self.header_used < 4 {
+            let count = stream.read(&mut self.header[self.header_used..]).await?;
+            ensure!(count > 0, "IPC peer closed");
+            self.header_used += count;
+        }
+        if self.bytes.is_empty() {
+            let count = u32::from_be_bytes(self.header) as usize;
+            ensure!(count > 0 && count <= FRAME, "IPC frame too large");
+            self.bytes.resize(count, 0);
+        }
+        while self.body_used < self.bytes.len() {
+            let count = stream.read(&mut self.bytes[self.body_used..]).await?;
+            ensure!(count > 0, "IPC peer closed");
+            self.body_used += count;
+        }
+        let result = serde_json::from_slice(&self.bytes)?;
+        *self = Self::default();
+        Ok(result)
+    }
 }
 pub struct ToolServer {
     accept: JoinHandle<()>,
@@ -120,7 +167,7 @@ async fn serve(owner: Arc<RuntimeOwner>, mut stream: UnixStream) -> Result<()> {
         let (unit,profile)=current(&owner,&request)?;
         ensure!(request.cwd.canonicalize()?==request.cwd && [profile.worktree.as_path(),profile.temp.as_path(),profile.output.as_path(),profile.cache.as_path()]
             .iter().any(|root|request.cwd.starts_with(root)),"tool cwd outside declared namespace");
-        let operation=OperationId::new();let plan=tools::plan(&profile,&unit,&request.tool,&request.args,operation)?;
+        let operation=OperationId::new();let mut plan=tools::plan(&profile,&unit,&request.tool,&request.args,operation)?;
         if request.tool=="git" {
             ensure!(request.cwd.starts_with(&unit.worktree),"managed Git must use this unit's source namespace");
             if unit.kind==UnitKind::Executor {
@@ -132,62 +179,51 @@ async fn serve(owner: Arc<RuntimeOwner>, mut stream: UnixStream) -> Result<()> {
                 ensure!(Path::new(&top).canonicalize()?==unit.worktree,"nested/foreign review Git namespace");
             }
         }
-        let _git=if plan.serialized_git {Some(owner.git_gate.lock().await)}else{None};
-        let mut command=Command::new(&plan.program);
-        command.args(&plan.args).current_dir(&request.cwd).envs(profile.environment(&unit.cookie,owner.ipc_path())?)
-            .envs(&plan.environment).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
-        // Keep native settings/auth inherited; remove only Git routing overrides.
-        for key in ["GIT_DIR","GIT_WORK_TREE","GIT_COMMON_DIR","GIT_INDEX_FILE","GIT_OBJECT_DIRECTORY","GIT_ALTERNATE_OBJECT_DIRECTORIES","GIT_NAMESPACE"] {command.env_remove(key);}
-        let mut child={
+        let _git=if plan.serialized_git {Some(owner.git_lease(unit.id,request.git_parent).await?)}else{None};
+        if let Some(lease)=&_git {plan.environment.insert("RRX_GIT_GATE_TOKEN".into(),lease.id.to_string());}
+        // Runtime admits and journals; the shim executes in its inherited native sandbox.
+        // No credentials, stdin, stdout or stderr are transported through Runtime.
+        {
             let mut store=owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?;
             let now=store.execution_unit(unit.id)?;
             ensure!(now.generation==unit.generation && now.session_id==unit.session_id && now.owner_epoch==unit.owner_epoch,"tool admission retired while queued");
             store.reserve_managed_effect(&now.authority(),&ManagedEffect {id:operation,unit_id:unit.id,scope:unit.scope.clone(),kind:plan.kind.into(),
                 idempotency_key:format!("tool-{operation}"),expected_target:plan.docker_name.clone().unwrap_or_else(||request.cwd.to_string_lossy().into()),
                 state:EffectState::Pending,receipt:BTreeMap::new(),version:1})?;
-            match process::OwnedProcess::spawn(&mut command) {
-                Ok(child)=>child,
-                Err(e)=>{store.reconcile_managed_effect(operation,1,EffectState::Unknown,BTreeMap::new())?;return Err(e);}
-            }
-        };
-        let mut stdin=child.child.stdin.take().context("tool stdin missing")?;
-        let mut stdout=child.child.stdout.take().context("tool stdout missing")?;
-        let mut stderr=child.child.stderr.take().context("tool stderr missing")?;
-        let (mut input,mut output)=stream.split();
-        let exchanged={let pumping=async {
-            let mut out=vec![0;CHUNK];let mut err=vec![0;CHUNK];
-            let mut in_open=true;let mut out_open=true;let mut err_open=true;
-            while out_open || err_open {tokio::select! {
-                frame=read_frame::<Frame>(&mut input),if in_open=>{
-                    match frame? {Frame::Input(bytes)=>{ensure!(bytes.len()<=CHUNK,"tool input chunk too large");stdin.write_all(&bytes).await?;},
-                        Frame::InputClosed=>{stdin.shutdown().await?;in_open=false;},_=>anyhow::bail!("invalid tool input frame")}
-                },
-                n=stdout.read(&mut out),if out_open=>{let n=n?;if n==0{out_open=false}else{write_frame(&mut output,&Frame::Stdout(out[..n].to_vec())).await?;}},
-                n=stderr.read(&mut err),if err_open=>{let n=n?;if n==0{err_open=false}else{write_frame(&mut output,&Frame::Stderr(err[..n].to_vec())).await?;}}
-            }}Ok::<_,anyhow::Error>(())
-        };
-        tokio::pin!(pumping);
-        let fenced=async {loop {
-            tokio::time::sleep(Duration::from_millis(100)).await;
-            if current(&owner,&request).is_err(){break;}
-        }};
-        tokio::time::timeout(Duration::from_secs(1800),async {tokio::select! {
-            r=&mut pumping=>{r?;child.exited().await?;Ok::<_,anyhow::Error>(())},
-            r=child.exited()=>{r?;let _=child.signal_group();tokio::time::timeout(Duration::from_secs(2),&mut pumping).await.context("tool output drain incomplete")?},
-            _=fenced=>Err(anyhow::anyhow!("tool authority closed"))
-        }}).await};
-        let stopped=child.stop_and_reap().await;
-        let observed=exchanged.ok().and_then(Result::ok);
-        let mut receipt=BTreeMap::new();
-        if let Ok(stopped)=&stopped {
-            receipt.insert("exit".into(),stopped.status.code().map_or_else(||"signal".into(),|n|n.to_string()));
-            receipt.insert("group_cleanup".into(),if stopped.group_error.is_some(){"unknown"}else{"requested"}.into());
         }
-        // Docker needs label verification/reconciliation; an exit code alone is not a remote receipt.
-        let state=if plan.docker_name.is_none() && observed.is_some() && stopped.is_ok(){EffectState::Confirmed}else{EffectState::Unknown};
-        owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?.reconcile_managed_effect(operation,1,state,receipt)?;
-        let stopped=stopped?;
-        write_frame(&mut output,&Frame::Exit(if observed.is_some(){stopped.status.code()}else{None})).await?;
+        let exchanged=async {
+            write_frame(&mut stream,&Frame::Granted(Grant {operation,program:plan.program,args:plan.args,environment:plan.environment})).await?;
+            let (mut reader,mut writer)=stream.split();
+            let mut decoder=Decoder::default();let mut started=false;let mut cancelled=false;
+            let mut deadline=tokio::time::Instant::now()+Duration::from_secs(1800);
+            loop {
+                tokio::select! {
+                    frame=decoder.receive(&mut reader)=>match frame? {
+                        Frame::Started {operation:id} if id==operation && !started=>started=true,
+                        Frame::Completed {operation:id,code,group_cleanup_unknown} if id==operation && started=>{
+                            let mut receipt=BTreeMap::new();
+                            receipt.insert("exit".into(),code.map_or_else(||"signal".into(),|n|n.to_string()));
+                            receipt.insert("group_cleanup".into(),if group_cleanup_unknown {"unknown"}else{"requested"}.into());
+                            receipt.insert("after_retirement".into(),cancelled.to_string());
+                            let state=if plan.docker_name.is_none(){EffectState::Confirmed}else{EffectState::Unknown};
+                            owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?.reconcile_managed_effect(operation,1,state,receipt)?;
+                            write_frame(&mut writer,&Frame::Acknowledged).await?;return Ok::<_,anyhow::Error>(());
+                        },_=>anyhow::bail!("invalid tool lifecycle frame")
+                    },
+                    _=tokio::time::sleep_until(deadline)=>anyhow::bail!("tool receipt deadline exceeded"),
+                    _=tokio::time::sleep(Duration::from_millis(100)),if !cancelled=>{
+                        if current(&owner,&request).is_err(){
+                            cancelled=true;deadline=tokio::time::Instant::now()+Duration::from_secs(15);
+                            write_frame(&mut writer,&Frame::Cancel).await?;
+                        }
+                    }
+                }
+            }
+        }.await;
+        if exchanged.is_err(){
+            let _=owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?.reconcile_managed_effect(operation,1,EffectState::Unknown,BTreeMap::new());
+        }
+        exchanged?;
         Ok::<_,anyhow::Error>(())
     }.await;
     if admitted.is_err() {
@@ -226,6 +262,10 @@ pub fn tool_entry() -> Result<Option<i32>> {
             })
             .collect::<Result<_>>()?,
         cwd: std::env::current_dir()?.canonicalize()?,
+        git_parent: std::env::var("RRX_GIT_GATE_TOKEN")
+            .ok()
+            .map(|s| s.parse())
+            .transpose()?,
     };
     let socket =
         std::env::var_os("RRX_RUNTIME_SOCKET").context("Runtime IPC missing; refusing tool")?;
@@ -239,37 +279,100 @@ pub fn tool_entry() -> Result<Option<i32>> {
             "IPC server user differs"
         );
         write_frame(&mut stream, &request).await?;
-        let (mut input, mut output) = stream.into_split();
-        let sender = tokio::spawn(async move {
-            let mut stdin = tokio::io::stdin();
-            let mut bytes = vec![0; CHUNK];
-            loop {
-                let n = stdin.read(&mut bytes).await?;
-                if n == 0 {
-                    write_frame(&mut output, &Frame::InputClosed).await?;
-                    break;
-                }
-                write_frame(&mut output, &Frame::Input(bytes[..n].to_vec())).await?;
-            }
-            Ok::<_, anyhow::Error>(())
-        });
-        let result = async {
-            loop {
-                match read_frame::<Frame>(&mut input).await? {
-                    Frame::Stdout(bytes) => tokio::io::stdout().write_all(&bytes).await?,
-                    Frame::Stderr(bytes) => tokio::io::stderr().write_all(&bytes).await?,
-                    Frame::Exit(code) => break Ok::<_, anyhow::Error>(Some(code.unwrap_or(125))),
-                    Frame::Refused(reason) => anyhow::bail!(reason),
-                    _ => anyhow::bail!("invalid Runtime output frame"),
-                }
-            }
-        }
-        .await;
-        sender.abort();
-        result
+        let grant = match read_frame::<Frame>(&mut stream).await? {
+            Frame::Granted(grant) => grant,
+            Frame::Refused(reason) => anyhow::bail!(reason),
+            _ => anyhow::bail!("invalid tool grant"),
+        };
+        let code = execute_grant(&mut stream, grant, &request.cwd).await?;
+        Ok(Some(code.unwrap_or(125)))
     });
     runtime.shutdown_background();
     result
+}
+
+/// The real command stays in the Agent's inherited execution context and stdio.
+async fn execute_grant(stream: &mut UnixStream, grant: Grant, cwd: &Path) -> Result<Option<i32>> {
+    execute(stream, grant, cwd, Stdio::inherit())
+        .await
+        .map(|(code, _)| code)
+}
+async fn execute(
+    stream: &mut UnixStream,
+    grant: Grant,
+    cwd: &Path,
+    stdout: Stdio,
+) -> Result<(Option<i32>, Vec<u8>)> {
+    ensure!(
+        grant.program.is_absolute(),
+        "managed program must be absolute"
+    );
+    // Tokio sockets are CLOEXEC; the real tool must not inherit this authority channel.
+    ensure!(
+        rustix::io::fcntl_getfd(&*stream)?.contains(rustix::io::FdFlags::CLOEXEC),
+        "tool IPC fd is inheritable"
+    );
+    let mut command = Command::new(&grant.program);
+    command
+        .args(&grant.args)
+        .current_dir(cwd)
+        .envs(&grant.environment)
+        .stdin(Stdio::inherit())
+        .stdout(stdout)
+        .stderr(Stdio::inherit());
+    for key in [
+        "GIT_DIR",
+        "GIT_WORK_TREE",
+        "GIT_COMMON_DIR",
+        "GIT_INDEX_FILE",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+        "GIT_NAMESPACE",
+    ] {
+        command.env_remove(key);
+    }
+    let mut child = process::OwnedProcess::spawn(&mut command)?;
+    let stdout = child.child.stdout.take();
+    let drain = tokio::spawn(async move {
+        match stdout {
+            Some(stdout) => process::bounded_read(stdout, 4096).await,
+            None => Ok(Vec::new()),
+        }
+    });
+    write_frame(
+        stream,
+        &Frame::Started {
+            operation: grant.operation,
+        },
+    )
+    .await?;
+    let mut decoder = Decoder::default();
+    let observed = tokio::select! {
+        result=child.exited()=>result,
+        frame=decoder.receive(stream)=>match frame {Ok(Frame::Cancel)=>Ok(()),Ok(_)=>Err(anyhow::anyhow!("invalid tool control")),Err(e)=>Err(e)}
+    };
+    let receipt = child.stop_and_reap().await;
+    let bytes = tokio::time::timeout(Duration::from_secs(2), drain).await???;
+    let receipt = receipt?;
+    let completed = Frame::Completed {
+        operation: grant.operation,
+        code: receipt.status.code(),
+        group_cleanup_unknown: receipt.group_error.is_some(),
+    };
+    write_frame(stream, &completed).await?;
+    let ack = tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            match decoder.receive(stream).await? {
+                Frame::Acknowledged => break Ok::<_, anyhow::Error>(()),
+                Frame::Cancel => {}
+                _ => anyhow::bail!("invalid tool receipt acknowledgement"),
+            }
+        }
+    })
+    .await??;
+    let _ = ack;
+    observed?;
+    Ok((receipt.status.code(), bytes))
 }
 
 #[cfg(test)]
@@ -290,22 +393,16 @@ mod tests {
                 tool: "git".into(),
                 args: args.iter().map(|a| (*a).into()).collect(),
                 cwd: unit.worktree.clone(),
+                git_parent: None,
             },
         )
         .await?;
-        write_frame(&mut stream, &Frame::InputClosed).await?;
-        let mut output = Vec::new();
-        loop {
-            match read_frame::<Frame>(&mut stream).await? {
-                Frame::Stdout(bytes) => {
-                    ensure!(output.len() + bytes.len() <= 4096, "fixture stdout bound");
-                    output.extend(bytes);
-                }
-                Frame::Stderr(_) => {}
-                Frame::Exit(code) => return Ok((code, output)),
-                Frame::Refused(reason) => anyhow::bail!(reason),
-                _ => anyhow::bail!("invalid fixture output"),
+        match read_frame::<Frame>(&mut stream).await? {
+            Frame::Granted(grant) => {
+                execute(&mut stream, grant, &unit.worktree, Stdio::piped()).await
             }
+            Frame::Refused(reason) => anyhow::bail!(reason),
+            _ => anyhow::bail!("invalid fixture grant"),
         }
     }
     #[tokio::test]
@@ -369,5 +466,207 @@ mod tests {
                 .len(),
             count
         );
+    }
+    #[tokio::test]
+    async fn oid_shaped_branch_names_cannot_authorize_foreign_ref_mutation() {
+        let (_dir, owner, task) = results::tests::fixture().await;
+        let (unit, _) = attempts::AttemptManager::new(owner.clone())
+            .prepare(task.id, "codex", "Implement", None)
+            .await
+            .unwrap();
+        let foreign = "a".repeat(40);
+        results::git(&unit.worktree, ["branch", &foreign, &unit.base_sha])
+            .await
+            .unwrap();
+        let reference = format!("refs/heads/{foreign}");
+        let before = results::git(&unit.worktree, ["show-ref", "--verify", &reference])
+            .await
+            .unwrap();
+        let count = owner
+            .store
+            .lock()
+            .unwrap()
+            .managed_effects(unit.id)
+            .unwrap()
+            .len();
+        let _server = ToolServer::start(owner.clone()).unwrap();
+        for args in [
+            vec!["branch", "-D", &foreign],
+            vec!["branch", "-M", unit.branch.as_deref().unwrap(), &foreign],
+            vec!["branch", &foreign, &unit.base_sha],
+            vec!["switch", "-C", &foreign, &unit.base_sha],
+            vec!["checkout", "-B", &foreign, &unit.base_sha],
+        ] {
+            assert!(
+                invoke(&owner, &unit, &unit.cookie, &args).await.is_err(),
+                "{args:?}"
+            );
+        }
+        assert_eq!(
+            results::git(&unit.worktree, ["show-ref", "--verify", &reference])
+                .await
+                .unwrap(),
+            before
+        );
+        assert_eq!(
+            owner
+                .store
+                .lock()
+                .unwrap()
+                .managed_effects(unit.id)
+                .unwrap()
+                .len(),
+            count
+        );
+    }
+
+    #[tokio::test]
+    async fn managed_post_commit_hook_can_reenter_without_blocking_sibling_git() {
+        let (_dir, owner, task) = results::tests::fixture().await;
+        let attempts = attempts::AttemptManager::new(owner.clone());
+        let (unit, _) = attempts
+            .prepare(task.id, "codex", "Implement", None)
+            .await
+            .unwrap();
+        let project = owner
+            .store
+            .lock()
+            .unwrap()
+            .project(task.project_id)
+            .unwrap()
+            .unwrap();
+        results::git(&project.root, ["config", "user.name", "Fixture"])
+            .await
+            .unwrap();
+        results::git(
+            &project.root,
+            ["config", "user.email", "fixture@example.invalid"],
+        )
+        .await
+        .unwrap();
+        results::git(&project.root, ["config", "commit.gpgsign", "false"])
+            .await
+            .unwrap();
+        let hook = project.root.join(".git/hooks/post-commit");
+        let request = serde_json::to_string(&ToolRequest {
+            unit: unit.id,
+            cookie: unit.cookie.clone(),
+            tool: "git".into(),
+            args: vec![
+                "update-ref".into(),
+                format!("refs/heads/{}", unit.branch.as_ref().unwrap()),
+                unit.base_sha.clone(),
+                unit.base_sha.clone(),
+            ],
+            cwd: unit.worktree.clone(),
+            git_parent: None,
+        })
+        .unwrap();
+        let socket = serde_json::to_string(&owner.ipc_path()).unwrap();
+        let script = format!(
+            r#"#!/usr/bin/python3
+# Account-free IPC peer fixture, not an installed-shim/native acceptance claim.
+import json, os, socket, struct, subprocess
+peer=socket.socket(socket.AF_UNIX);peer.connect({socket})
+def send(value):
+    data=json.dumps(value).encode();peer.sendall(struct.pack('!I',len(data))+data)
+def exact(count):
+    data=b''
+    while len(data)<count:
+        chunk=peer.recv(count-len(data))
+        if not chunk: raise RuntimeError('EOF')
+        data+=chunk
+    return data
+def receive():
+    return json.loads(exact(struct.unpack('!I',exact(4))[0]))
+request=json.loads({request:?});request['git_parent']=os.environ['RRX_GIT_GATE_TOKEN']
+head=subprocess.check_output(['/usr/bin/git','rev-parse','HEAD'],cwd=request['cwd']).decode().strip()
+request['args'][2]=head;request['args'][3]=head
+send(request);frame=receive();assert frame['type']=='granted',frame
+grant=frame['value'];operation=grant['operation'];send({{'type':'started','value':{{'operation':operation}}}})
+env=dict(os.environ);env.update(grant['environment'])
+code=subprocess.run([grant['program']]+grant['args'],env=env,cwd=request['cwd']).returncode
+send({{'type':'completed','value':{{'operation':operation,'code':code,'group_cleanup_unknown':False}}}})
+assert receive()['type']=='acknowledged'
+assert code==0
+with open(os.path.join(request['cwd'],'hook-completed'),'w') as marker: marker.write('nested Git completed')
+"#
+        );
+        std::fs::write(&hook, script).unwrap();
+        std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let _server = ToolServer::start(owner.clone()).unwrap();
+        let (code, _) = tokio::time::timeout(
+            Duration::from_secs(10),
+            invoke(
+                &owner,
+                &unit,
+                &unit.cookie,
+                &["commit", "--allow-empty", "-m", "hook reentry"],
+            ),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert_eq!(code, Some(0));
+        assert!(unit.worktree.join("hook-completed").is_file());
+        assert_eq!(
+            owner
+                .store
+                .lock()
+                .unwrap()
+                .managed_effects(unit.id)
+                .unwrap()
+                .iter()
+                .filter(|e| e.kind == "common_git"
+                    && e.state == EffectState::Confirmed
+                    && e.receipt.get("exit").is_some_and(|code| code == "0"))
+                .count(),
+            2
+        );
+        let mut sibling = crate::domain::Task::new(
+            task.project_id,
+            task.goal_id,
+            "sibling".into(),
+            "codex".into(),
+        );
+        owner.store.lock().unwrap().put_task(&mut sibling).unwrap();
+        let (sibling, _) = attempts
+            .prepare(sibling.id, "codex", "Implement", None)
+            .await
+            .unwrap();
+        let (code, _) = tokio::time::timeout(
+            Duration::from_secs(10),
+            invoke(&owner, &sibling, &sibling.cookie, &["add", "answer.txt"]),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert_eq!(code, Some(0));
+    }
+
+    #[tokio::test]
+    async fn decoder_retains_partial_header_and_body_across_cancellation() {
+        let (mut writer, mut reader) = tokio::io::duplex(1024);
+        let mut decoder = Decoder::default();
+        let bytes = serde_json::to_vec(&Frame::Cancel).unwrap();
+        let header = (bytes.len() as u32).to_be_bytes();
+        writer.write_all(&header[..2]).await.unwrap();
+        assert!(
+            tokio::time::timeout(Duration::from_millis(5), decoder.receive(&mut reader))
+                .await
+                .is_err()
+        );
+        writer.write_all(&header[2..]).await.unwrap();
+        writer.write_all(&bytes[..2]).await.unwrap();
+        assert!(
+            tokio::time::timeout(Duration::from_millis(5), decoder.receive(&mut reader))
+                .await
+                .is_err()
+        );
+        writer.write_all(&bytes[2..]).await.unwrap();
+        assert!(matches!(
+            decoder.receive(&mut reader).await.unwrap(),
+            Frame::Cancel
+        ));
     }
 }

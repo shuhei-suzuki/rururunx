@@ -118,8 +118,8 @@ impl AttemptManager {
                 project.worktree_root.canonicalize()? == project.worktree_root,
                 "worktree namespace must be canonical"
             );
-            let _common = self.owner.git_gate.lock().await;
-            let io = UnitGit::new(self.owner.clone(), &preparing, true)?;
+            let common = self.owner.git_lease(preparing.id, None).await?;
+            let io = UnitGit::new(self.owner.clone(), &preparing, true)?.with_git_lease(common);
             io.run(
                 &project.root,
                 [

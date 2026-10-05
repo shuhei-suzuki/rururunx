@@ -596,3 +596,115 @@ fn unknown_remote_effect_gates_its_target_phase_without_blocking_local_retry() {
         .reserve_managed_effect(&retry.authority(), &local)
         .unwrap();
 }
+
+#[test]
+fn multi_window_recovery_preserves_one_probe_until_its_actual_release() {
+    let (mut store, task, epoch) = fixture();
+    let unit = store
+        .reserve_execution(draft(&task, epoch), task.version)
+        .unwrap();
+    let at = now_ms();
+    let primary = QuotaObservation {
+        provider: "codex".into(),
+        account_key: "unknown".into(),
+        bucket: "primary".into(),
+        window_id: "unknown".into(),
+        status: QuotaStatus::Exhausted,
+        used_percent: Some(100.0),
+        resets_at: None,
+        observed_at: at,
+        source_version: "fixture".into(),
+        confirmed_subscription: true,
+    };
+    let secondary = QuotaObservation {
+        bucket: "secondary".into(),
+        ..primary.clone()
+    };
+    store.observe_quota(&primary).unwrap();
+    store.observe_quota(&secondary).unwrap();
+    assert_eq!(
+        store
+            .reserve_execution_quota(&unit.authority(), "codex", "unknown", 6, 2, 3, at + 60001)
+            .unwrap(),
+        quotas::QuotaAdmission::Admitted
+    );
+    let probe = store.execution_unit(unit.id).unwrap();
+    let recovered_primary = QuotaObservation {
+        status: QuotaStatus::Available,
+        used_percent: Some(20.0),
+        observed_at: at + 60001,
+        ..primary
+    };
+    store
+        .observe_quota_from_probe(&recovered_primary, &probe.authority())
+        .unwrap();
+    assert!(
+        store
+            .execution_is_quota_probe(probe.id, "codex", "unknown")
+            .unwrap()
+    );
+    let mut sibling = Task::new(
+        task.project_id,
+        task.goal_id,
+        "sibling".into(),
+        "codex".into(),
+    );
+    store.put_task(&mut sibling).unwrap();
+    let sibling = store
+        .reserve_execution(draft(&sibling, epoch), sibling.version)
+        .unwrap();
+    assert!(matches!(
+        store
+            .reserve_execution_quota(
+                &sibling.authority(),
+                "codex",
+                "unknown",
+                6,
+                2,
+                3,
+                at + 600001
+            )
+            .unwrap(),
+        quotas::QuotaAdmission::Waiting {
+            reason: WaitReason::Quota,
+            ..
+        }
+    ));
+    assert!(
+        store
+            .execution_is_quota_probe(probe.id, "codex", "unknown")
+            .unwrap()
+    );
+    let recovered_secondary = QuotaObservation {
+        status: QuotaStatus::Available,
+        used_percent: Some(10.0),
+        observed_at: at + 60001,
+        ..secondary
+    };
+    store
+        .observe_quota_from_probe(&recovered_secondary, &probe.authority())
+        .unwrap();
+    assert!(
+        store
+            .quota_observations("codex", "unknown")
+            .unwrap()
+            .iter()
+            .all(|o| o.status == QuotaStatus::Available)
+    );
+    assert!(
+        store
+            .execution_is_quota_probe(probe.id, "codex", "unknown")
+            .unwrap()
+    );
+    store.release_execution_quota(probe.id).unwrap();
+    assert!(
+        !store
+            .execution_is_quota_probe(probe.id, "codex", "unknown")
+            .unwrap()
+    );
+    assert!(
+        store
+            .observe_quota_from_probe(&recovered_secondary, &probe.authority())
+            .is_err()
+    );
+}
