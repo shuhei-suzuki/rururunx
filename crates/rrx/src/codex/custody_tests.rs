@@ -331,6 +331,50 @@ mod custody_mechanics {
     }
 
     #[tokio::test]
+    async fn abandoned_actor_revokes_queued_creation_before_caller_error_return() {
+        let (owned, adapter, factory) = adapter();
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("late-worker-after-abandonment");
+        let (file, mut release) = spec(path.clone(), false, false, false);
+        factory.enqueue(file);
+        let before = adapter.gates.install(TestPoint::BeforeCustodyFactory);
+        let registered = adapter.register_fresh(owned.request.clone(), None).unwrap();
+        let id = registered.transition.id;
+        let control = registered.transition.control.clone();
+        let mut calling = Box::pin(adapter.spawn_launch(registered));
+        tokio::select! { _ = before.reached() => {}, value = &mut calling => panic!("early return: {value:?}") }
+        let custody = control.custody().unwrap();
+        let pause = RetirePause(custody.clone());
+        custody.pause(true);
+        before.release();
+        wait(|| custody.accepted() == 1).await;
+        assert!(custody.outstanding_effects());
+        assert!(!custody.created());
+        control.abort_owned_task();
+        let error = calling.await.unwrap_err();
+        assert_eq!(error.kind, ErrorKind::SessionLost);
+        assert!(matches!(control.wait_finished().await.unwrap(), Outcome::Lost { .. }));
+        // Let every actual created job finish before asserting the refusal.
+        // The cancelled actor remains Unknown; its slot is never refunded.
+        release.release();
+        drop(pause);
+        wait(|| {
+            factory.pool.drain();
+            factory.pool.used() == 1
+        }).await;
+        assert!(!path.exists(), "abandoned actor admitted a new queued file effect");
+        assert!(!custody.created(), "abandoned queued worker must be NotCreated");
+        assert!(control.jobs_revoked());
+        assert!(custody.unknown());
+        assert!(!custody.joined());
+        assert!(!custody.outstanding());
+        assert!(adapter.registry().unwrap().contains_key(&id));
+        assert!(control.original_disposition().is_none());
+        assert_eq!(adapter.availability.sites(), [0; 10]);
+        assert_eq!(control.stop.capacity(), 1, "abandonment sends no native stop");
+    }
+
+    #[tokio::test]
     async fn checkpoint_err_worker_restores_only_genuine_previous_control_after_join() {
         let mut history = ApprovalFixture::new(false).await;
         let (mut adapter, reference) = history.terminal_adapter();
