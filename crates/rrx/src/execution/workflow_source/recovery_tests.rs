@@ -555,3 +555,104 @@ async fn recovery_rejects_bad_manifest_and_complete_caller_dto_drift() {
     );
     assert!(capture(&sources, project, task).await.is_ok());
 }
+
+#[tokio::test]
+async fn source_bound_inflight_helper_rejects_drift_epoch_and_future_drop() {
+    use std::os::unix::fs::PermissionsExt;
+    for mode in 0..3 {
+        let f = published().await;
+        let claim = f
+            .owner
+            .store
+            .lock()
+            .unwrap()
+            .begin_retained_source_recovery(f.task, f.owner.epoch)
+            .unwrap();
+        let binding = claim.binding();
+        let ready = f.dir.path().join("source-helper-ready");
+        let release = f.dir.path().join("source-helper-release");
+        let program = f.dir.path().join("held-reader.py");
+        // Closed isolated fixture: no subprocesses/accounts/network; self-expiry
+        // bounds the helper even if this control panics. This is not native death proof.
+        std::fs::write(&program, format!(
+            "#!/usr/bin/env python3\nimport pathlib,time\nr=pathlib.Path({:?})\nx=pathlib.Path({:?})\nr.write_text('ready')\nend=time.monotonic()+4\nwhile time.monotonic()<end and not x.exists(): time.sleep(0.01)\n",
+            ready.to_str().unwrap(), release.to_str().unwrap()
+        )).unwrap();
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let io = RetainedGit::for_recovery(f.owner.clone(), &f.artifact, binding.clone())
+            .unwrap()
+            .with_program(program);
+        let original = f
+            .owner
+            .store
+            .lock()
+            .unwrap()
+            .managed_effects(f.artifact.unit_id)
+            .unwrap();
+        let helper = tokio::spawn(async move {
+            io.run(["fsck", "--full", "--strict", "--no-dangling"])
+                .await
+        });
+        wait_file(&ready).await;
+        if mode == 0 {
+            let (_, mut task) = owners(&f.owner, f.task);
+            task.title = "during registered helper".into();
+            f.owner.store.lock().unwrap().put_task(&mut task).unwrap();
+        } else if mode == 1 {
+            f.owner
+                .store
+                .lock()
+                .unwrap()
+                .begin_execution_epoch()
+                .unwrap();
+        } else {
+            helper.abort();
+        }
+        std::fs::write(&release, "done").unwrap();
+        if mode == 2 {
+            assert!(helper.await.unwrap_err().is_cancelled());
+        } else {
+            assert!(
+                tokio::time::timeout(Duration::from_secs(15), helper)
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .is_err()
+            );
+        }
+        let after = f
+            .owner
+            .store
+            .lock()
+            .unwrap()
+            .managed_effects(f.artifact.unit_id)
+            .unwrap();
+        let added = after
+            .iter()
+            .filter(|e| !original.iter().any(|old| old.id == e.id))
+            .collect::<Vec<_>>();
+        assert_eq!(added.len(), 1, "helper owns one actual registered intent");
+        assert_eq!(added[0].kind, "retained_git");
+        assert_eq!(
+            added[0].state,
+            EffectState::Unknown,
+            "stale/dropped helper must not persist a successful source receipt"
+        );
+        f.owner
+            .store
+            .lock()
+            .unwrap()
+            .abandon_retained_source_recovery(&binding)
+            .unwrap();
+        assert_eq!(
+            f.owner
+                .store
+                .lock()
+                .unwrap()
+                .result_artifact(f.artifact.id)
+                .unwrap()
+                .state,
+            ArtifactState::Published
+        );
+    }
+}
