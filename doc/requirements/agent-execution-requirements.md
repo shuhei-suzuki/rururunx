@@ -25,7 +25,8 @@ The guarantees are cooperative and bounded: surviving ordinary detached helpers
 using their assigned paths/resources must not change accepted commit/review
 content or a new attempt's inputs. Native Agents and hooks have the user's host
 authority. rururunx is **not a security sandbox**. Arbitrary sibling-path writes,
-raw Docker API calls, global daemon administration, repository destruction,+shared external database changes, and disk/RAM exhaustion are not contained.
+raw Docker API calls, global daemon administration, repository destruction,
+shared external database changes, and disk/RAM exhaustion are not contained.
 Unsupported shared operations must be identified as such; declared dependencies
 that prevent the protections below cause refusal before their effects. Environment
 variables alone do not enforce compliance. An unknown undeclared dependency
