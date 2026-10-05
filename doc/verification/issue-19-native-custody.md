@@ -1,10 +1,11 @@
 # Issue #19 curated preparation custody integration
 
-Status: queued-abandonment defect reproduced and fixed; the current d938 inventory
-passed full local macOS Debug/Release and every Linux/macOS CI step. Earlier RED
-observations and unknown causes are retained. Independent finite-source reviews
-completed; limited merge disposition is being reviewed. Whole Issue #19 and
-native readiness remain open.
+Status: the limited mechanical component was merged through PR69 at
+`9d2daeddeaa40330bacc0a21cb0922119eb588c3`. Two independent limited merge
+reviews approved without findings; final-head CI passed every Linux/macOS step
+with complete tree equality. The d938 inventory passed full local macOS
+Debug/Release. Earlier RED observations and unknown causes are retained.
+Whole Issue #19 and native readiness remain open.
 
 ## Immutable inputs and scope
 
@@ -389,5 +390,16 @@ retention/recovery, private producers and settlement remain unqualified before
 factory activation. Whole Issues19/6/43, workflow/context integration, native
 cleanup acceptance and the MVP remain open. The prior unqualified native review
 wrapper result stays unqualified; current gate success does not adopt its cleanup
-or elevate source-only approvals to merge approval. Final docs-only head CI and
-independent limited disposition review remain required before merge.
+or elevate source-only approvals to merge approval. Those conditions were
+subsequently met for final docs-only d7bfca346dea56b615497b7cd88535e4a7bb8fd0: two
+independent limited disposition reviews approved0C/H/M/L before peer results
+were shared. Both conditioned approval on final CI success and exact tree proof.
+
+CI37269371978 passed every Linux/macOS step. Both actual git log checkout
+identities werecf98c7bd73380392ffb805d74d1b24e37e1a17df, parents26f3a48/d7bfca3,
+complete tree0149e85bed9a1391de76386f0932da919f8419ba (all286 mode/type/blob/path
+entries) equal to the reviewed head. Code/Cargo/CI were unchanged from the d938
+full-mode inventory. The normal merge9d2daedd has the same complete tree; no
+force/admin bypass was used. Related Issue19 was not closed. Root-owned finished
+worktree and merged branch were removed normally after all its commands and
+reviews had closed. Older held worktrees and unqualified cleanup remain separate.
