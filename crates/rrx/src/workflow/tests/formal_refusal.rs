@@ -70,6 +70,10 @@ fn context(f: &Fixture, s: &mut Snapshot, phase: Phase) -> ContextVersion {
 /// Replays the audited OLD grammar only; an Exited row is factual fixture history,
 /// not a cleanup certificate. No raw SQL writes or readiness overrides.
 fn reserve_history(f: &Fixture) -> usize {
+    reserve_history_state(f, SessionState::Exited)
+}
+
+fn reserve_history_state(f: &Fixture, session_state: SessionState) -> usize {
     let mut s = f.engine.read(f.task.id).unwrap();
     let phase = next_phase(&s.workflow).unwrap();
     let pack = context(f, &mut s, phase);
@@ -111,7 +115,7 @@ fn reserve_history(f: &Fixture) -> usize {
             native_ref: None,
             pid: None,
             worktree: s.task.worktree.clone().expect("bound historical fixture"),
-            state: SessionState::Exited,
+            state: session_state,
             model: None,
             effort: None,
             recovery: Value::Null,
@@ -409,7 +413,7 @@ async fn quick_finished_history_is_readable_but_finalization_cannot_grant() {
 
 #[tokio::test]
 async fn central_pack_refuses_risk_only_escalation_and_direct_successor_capture() {
-    let f = history_before(WorkflowClass::Quick, Phase::ImplementationReview).await;
+    let f = history_before(WorkflowClass::Standard, Phase::RequirementsReview).await;
     let before = database(&f);
     let calls = counts(&f);
     refused(
@@ -433,7 +437,7 @@ async fn central_pack_refuses_risk_only_escalation_and_direct_successor_capture(
                 &s.project,
                 &s.task,
                 &s.workflow.sources,
-                Phase::ImplementationReview,
+                Phase::RequirementsReview,
                 s.workflow.workflow,
                 s.workflow.generation,
             )
@@ -518,22 +522,8 @@ async fn intermediate_strict_evidence_remains_callable_but_pr_successor_is_held(
     let f = history_before(WorkflowClass::Strict, Phase::ExpandedRegression).await;
     assert!(matches!(
         f.engine.step(f.task.id, BTreeMap::new()).await.unwrap(),
-        StepResult::Started {
-            phase: Phase::ExpandedRegression,
-            session: None
-        }
-    ));
-    assert!(matches!(
-        f.engine.step(f.task.id, BTreeMap::new()).await.unwrap(),
         StepResult::Completed {
             phase: Phase::ExpandedRegression
-        }
-    ));
-    assert!(matches!(
-        f.engine.step(f.task.id, BTreeMap::new()).await.unwrap(),
-        StepResult::Started {
-            phase: Phase::Mutation,
-            session: None
         }
     ));
     refused(f.engine.step(f.task.id, BTreeMap::new()).await);
@@ -564,6 +554,85 @@ async fn intermediate_strict_evidence_remains_callable_but_pr_successor_is_held(
     let before = database(&f);
     let calls = counts(&f);
     refused(f.engine.step(f.task.id, BTreeMap::new()).await);
+    assert_eq!(database(&f), before);
+    assert_eq!(counts(&f), calls);
+}
+
+#[tokio::test]
+async fn retained_running_lost_and_unbound_review_owners_stay_observable() {
+    for state in [
+        SessionState::Running,
+        SessionState::WaitingApproval,
+        SessionState::Lost,
+    ] {
+        let f = history_before(WorkflowClass::Quick, Phase::ImplementationReview).await;
+        reserve_history_state(&f, state);
+        f.reviewer.retain_status.store(true, Ordering::SeqCst);
+        let before = database(&f);
+        let calls = counts(&f);
+        let result = f.engine.step(f.task.id, BTreeMap::new()).await.unwrap();
+        if state == SessionState::Lost {
+            assert!(matches!(result, StepResult::Failed { .. }));
+            let id = f
+                .engine
+                .snapshot(f.task.id)
+                .unwrap()
+                .history
+                .last()
+                .unwrap()
+                .session_id
+                .unwrap();
+            assert_eq!(
+                f.store
+                    .lock()
+                    .unwrap()
+                    .session(id)
+                    .unwrap()
+                    .unwrap()
+                    .0
+                    .state,
+                SessionState::Lost
+            );
+            let w = f.engine.snapshot(f.task.id).unwrap();
+            assert!(w.active.is_some());
+            assert!(!w.completed.contains_key(&Phase::ImplementationReview));
+        } else {
+            assert!(matches!(result, StepResult::Running { .. }));
+            assert_eq!(database(&f), before);
+        }
+        assert_eq!(f.reviewer.status_calls.load(Ordering::SeqCst), calls.4 + 1);
+        assert_eq!(f.sources.captures.load(Ordering::SeqCst), calls.0);
+        assert_eq!(f.gates.calls.lock().unwrap().len(), calls.1);
+    }
+    let f = history_before(WorkflowClass::Quick, Phase::ImplementationReview).await;
+    let mut s = f.engine.read(f.task.id).unwrap();
+    let pack = context(&f, &mut s, Phase::ImplementationReview);
+    let i = s.workflow.history.len();
+    s.workflow.history.push(PhaseAttempt {
+        phase: Phase::ImplementationReview,
+        generation: s.workflow.generation,
+        context_version: pack.version,
+        budget: budget(s.workflow.workflow, Phase::ImplementationReview, &f.config),
+        state: AttemptState::Running,
+        session_id: None,
+        dispatch_started: false,
+        observations: vec![],
+        claimed_observations: 0,
+        agent: Some("reviewer".into()),
+        started_at: now_ms(),
+        completed_at: None,
+        detail: None,
+    });
+    s.workflow.active = Some(i);
+    f.engine
+        .reserve(&mut s, &pack, Phase::ImplementationReview)
+        .unwrap();
+    let before = database(&f);
+    let calls = counts(&f);
+    assert!(matches!(
+        f.engine.step(f.task.id, BTreeMap::new()).await.unwrap(),
+        StepResult::Waiting { .. }
+    ));
     assert_eq!(database(&f), before);
     assert_eq!(counts(&f), calls);
 }
