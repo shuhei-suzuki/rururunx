@@ -70,6 +70,28 @@ Absent supported Grok/member profile makes Triple unavailable, not a two-slot pr
 Counts above three stay supported policy shapes, with actual capability readiness
 reported separately; refusal is not 4+/repeated-family acceptance evidence.
 
+Freeze the actual registered native-channel qualification and its finite admission
+envelope: source/key scope, load/write timing, queue delay, start skew and allowed
+parallel/permit schedules (Issue9 I9-AC-8.k). Serialization is permitted only by
+genuine SERIALIZED_CAPABLE profile evidence for the exact roster/view and original
+qualified envelope. Best-effort concurrency or equivalent prompt bytes alone do
+not qualify it. Before every queued member's actual input, revalidate elapsed
+schedule, current permits and original qualification. An expired/out-of-envelope
+schedule forbids further input and makes the whole round noncertifying; retain
+already admitted owners' evidence and close their logical grants normally.
+Any retry uses genuine full-roster retry authority, not a refreshed qualification
+timestamp or within-round replacement.
+
+A CONCURRENT_ONLY profile needs its complete qualified cohort's global/Project/
+provider permits atomically before any member input. Queued cohorts hold zero
+partial member permits; a wholly unadmitted queued Set owns no round worktree lock.
+Use an actual private all-or-nothing cohort producer, not sequential per-member
+leases or a capability label. If that producer/qualification is absent, refuse
+before member preparation/native effects. A startup failure or admission-envelope
+violation makes the whole round noncertifying, never silently serializable.
+Capacity reservation does not guarantee physical native startup success. Queue
+policy must be finite and compatible with the qualified native channel envelope.
+
 ## R2. Inputs, governing rules and independence
 
 Every member receives byte-identical factual core and exact retained target/base,
@@ -123,7 +145,13 @@ the generic native turn object or manufacture provenance from caller JSON.
 
 ## R4. Opinions, blockers and verify/fix/re-review
 
-Only well-formed, current, logically closed APPROVE opinions count. A potential
+Countable opinion requires the exact owned native WorkOutcome::Success terminal,
+verified readonly snapshot completion, validated current receipt/envelope and
+logical worker closure, AND verdict APPROVE. Independent floor counting additionally
+requires eligible non-author identity. Failure/Unknown, cancellation, timeout or
+lost invocation contributes zero mode/floor approvals even if its retained answer
+is a well-formed APPROVE. Preserve such content/findings for inspection and blocker
+resolution; content validity and counting are separate predicates. A potential
 blocking finding vetoes certification until independently resolved; a verified
 blocker vetoes all/quorum/any. REQUEST_CHANGES never becomes APPROVE because its
 findings were dismissed. ESCALATE/disputed verification creates Human attention.
@@ -228,6 +256,8 @@ qualify authentication, hooks, settings, read-only enforcement or profile indepe
 | Native result | Claude owned final text and Codex owned agentMessage plus exact turn terminal; exit-zero missing answer, forged identity, duplicate keys, malformed/partial/overflow, auth/transport failure never approve. |
 | Independence | Byte-identical core, additive focus, peer/output/transcript exclusion, prior exposure; governing rule edits remain proposals; actual conflicting auto-discovery refuses. |
 | Authority | Concurrent start/CAS, public adapter/Session/input bypass attempts, stale epoch/round/artifact/Context/Task, sibling result and wait isolation, failure rollback, reopen old writers. |
+| Qualified admission | Finite-window serialized-capable profile delays second input beyond its envelope: zero second input/certificate; concurrent-only absent capacity: zero input/partial permits; two 2-member cohorts competing for capacity3: one gets2, the other0, then progresses on returned permits. Unqualified serialized/cohort producer refuses before effects. |
+| Opinion counting | Owned native Failure/Unknown with syntactically valid APPROVE contributes zero mode/floor votes; failure with a potential Medium finding preserves inspection/veto rather than tolerated no-finding failure. Successful current readonly receipt is the separate positive. |
 | Resolution | Potential Medium veto in quorum/any, required dispositions, self/alias author refusal, disputed clearance, trusted Human route, fresh fix/re-review, bounded same-tree retries and inherited budgets. |
 | Snapshot/result | Four concurrent readonly members, cancel one, mutate executor after capture, distinct snapshot/output resources, retained graph loss refuses, approved artifact/commit/evidence unchanged. |
 | Quota/recovery | Live wait/recovery same invocation, terminal wait fresh full round, all-wait vs mixed Task projection, durable result-before-crash, ambiguous dispatch no replay, cleanup backlog independent. |
