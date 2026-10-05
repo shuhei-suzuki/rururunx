@@ -1,7 +1,7 @@
 # Issue19 selected lifetime source evidence
 
-Status: selected mechanical source candidate; Source1 returned a verified Medium;
-its actual corrections await independent Source2 gates. Whole Issue19 remains OPEN.
+Status: BOTH independent Source2 reviewers approve the selected mechanical SOURCE
+with no Critical/High/Medium findings. Exact857 CI is RED; whole Issue19 remains OPEN.
 Two native selected Design5 reviewers approved public
 `3a12ef787e6bcf1cdb5f6732fdc18b2c482b783a` with no Critical/High/Medium findings
 (sessions `3eefede9-bb34-43f9-8041-df0b616c72ec` and
@@ -203,3 +203,48 @@ passed. CPP44 and all18 current mechanics passed; code tree is
 not explain the historical7Grok failures or older native inspection/watchdog RED
 results. Source2 must review this exact selected correction/consumer scope; even
 approval cannot qualify broad CPP/schema5/schema6/native producer or make PR39 ready.
+
+## Immutable Source2 result and current CI failure
+
+Both native Source2 operations finished normally before either result was read.
+The SAME public-only466300-byte packet, SHA256
+`092f45ba05056870be158e61f9aaa1a8c56b9c3249bf8931d8c4a5e2250bbe5c`, binds
+public immutable `857950094ae9732d31d6c11d773e7fe96adbae02`. Sessions
+`3ab09055-cb7b-464c-8d02-66ec37527fe3` and
+`76b5974b-62a5-405b-bd31-ec74e194c09d` both APPROVE selected SOURCE with
+no Critical/High/Medium. A records2Low, B1Low. They explicitly exclude native
+subprocess/cohort/settlement/CPP/schema5/schema6/PR39/MVP readiness.
+
+The shared Low is a future pre-created handler panic: the reply Sender could drop
+inside unwind before request retirement. Current fixed handlers have no panic
+site before created=true; the injected panic-before-Begin occurs AFTER installation
+and deliberately retains Created/Unknown. No current consumer reproduces this
+hypothetical early panic. A also notes the actual worker std-spawn Err branch can
+set !created+Unknown; if a Note remains pending, finish_no_work and holds_resources
+can disagree and retain a registry entry with no delayed intent. The source path
+is real, but Create is cfg(test)-only and has no controlled spawn-Err injection;
+this combination is not reproduced. It is retained as a pending hardening limit,
+not asserted unreachable at the OS or silently fixed. Existing strict original
+reconciliation remains unchanged. The worker cannot open its fixture file before
+the privately installed Begin; unproved job frames remain charged. Future handler/
+producer activation must resolve these cases, not infer native cleanup authority.
+
+Exact857 CI37256266809 failed on macOS: fmt/clippy passed; library308 passed,
+7 failed,23 ignored; all18 selected mechanics passed. Two CPP reader setup errors
+reported native inspection deadline_loop_entry observation_us337426/319871 and the
+Codex saturation start reported340869. Their saved facts contain last status1Pending
+and last stdout/stderr1WouldBlock,0bytes. These are PRIOR reads/polls: the loop's
+deadline guard runs before the next observations, so they prove neither unfinished
+PS nor zero output AT the deadline. Mandatory cleanup requested kill and observed
+reaping. Four other CPP readers then refused on the conservative global context
+uncertainty latch. Whole cause, PS execution vs observer scheduling and contribution
+of the selected component remain UNKNOWN. Mac builds were skipped. Linux full
+regression/debug passed; release was cancelled by matrix fail-fast. No same-head
+retry, timeout increase, serial setting or latch removal was performed.
+
+Actualmain768 Codex attempt/session/mod blobs exactly match the selected approved
+Design5 baseline3a12. Thus the main-to857 five CODE paths are the selected source
+only; broad context_pack/context/Store/prototype documentation changes remain
+outside these approvals. A curated assembly still needs its own actual compilation,
+regression/CI and scoped integration checks. This inventory alone is no merge
+proof. PR39 stays DRAFT and whole19/managed/native/schema acceptance OPEN.
