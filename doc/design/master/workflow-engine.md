@@ -410,7 +410,9 @@ in [Issue9 requirements](../../requirements/issue-9-requirements.md).
 The staged [formal-refusal integration design](../issue-9-formal-refusal-integration.md)
 maps the approved unavailable-gating requirement to current Workflow entrypoints,
 successor context creation and legacy Passed consumers. It preserves existing
-owned status/cleanup observations without treating them as formal completion.
+owned native status/stop/cleanup and recorded factual outcomes without treating
+them as formal completion. A public Waiting/nonempty journal does not authorize
+a fresh irreversible gate invocation; actual13/14 reconciliation remains pending.
 It does not duplicate #43 adapter preflight, implement its missing private producer,
 upgrade the database or qualify a positive ReviewSet/native profile. This selected
 design and source gates are separate; the proposed refusal is not yet implemented.

@@ -1,6 +1,6 @@
 # Issue 9: staged formal-review refusal integration
 
-Status: Design1 candidate, NOT implemented or source-qualified. This is a finite
+Status: Design2 candidate, NOT implemented or source-qualified. This is a finite
 integration of the already approved Req38/Design4 refusal contract. It creates no
 ReviewSet, allocation, certificate, profile, Human authority, native preparation,
 settlement producer or database upgrade. Whole Issue9 acceptance remains open.
@@ -52,6 +52,9 @@ slice. There is no public bool, policy/role/JSON override, native capability tha
 sets it ready, cfg(test) success constructor or conformance ingress. No automatic
 retry classification: callers receive a configuration/readiness hold, not a
 failed native opinion or spent review round.
+The hold is ONLY the returned typed error in this slice: existing snapshot state,
+held_reason, blockers and audit remain unchanged. It is not durable product attention
+or an implemented CLI/TUI status projection; those consumers remain pending15/24.
 
 This error comes from I9-AC-21.j, independently of #43's
 `NativePreflightRefusal`. Do not duplicate its adapter selection, probe or
@@ -77,13 +80,13 @@ not consume legacy approval as new formal authority while readiness is absent.
 | Actual callsite | Selected refusal placement / retained behavior |
 | --- | --- |
 | `step` at 796; `next_phase`, source capture 820+, clear_hold/context/reserve 901+ | With no active attempt, classify the selected next phase and reject formal review or NEW Pr/MergeGate/Cleanup before `inputs`, context preparation, hold clearing, history/claim/marker or external gate. Recheck a newly selected formal phase before any invalidation/escalation-created context; do not infer eligibility from stale history/config. Finished workflow/status reads are factual, not permission. |
-| `prepare_pack` and its initialize/escalate/invalidate/apply_outcome callers | Central formal-phase guard at entry, before context capture/publication. This closes successor-context paths: a successful Tests/Commit can currently prepare the next review pack before the next `step`. Do not publish that pack via another entry. Initialize or nonreview work remains outside this new review refusal; no blanket rejection of all Task creation. |
-| `prepare_agent` at 1107+ | Retain #43 role/admission/identity checks and original claim policy; no parallel second adapter selector. Defense before a new formal native dispatch if an already admitted legacy preparation reaches this internal route. Failure does not reset a marked claim, fabricate terminal status or authorize replacement. |
+| `prepare_pack` and its initialize/escalate/invalidate/apply_outcome callers | Central protected-phase guard (Reviewer OR Pr/MergeGate/Cleanup) at entry, before context capture/publication. This closes successor-context paths, including Tests→ImplementationReview and Staging→Pr. Do not publish that pack via another entry. Initialize or nonreview work remains outside this new review refusal; no blanket rejection of all Task creation. |
+| `prepare_agent` at 1042 | NO additional #9 guard: its sole caller `step` already passes the protected pack guard before reserve. Retain #43 role/admission/identity checks and original claim policy. Adding a redundant error here with eligible=true would invoke `release_preparation` (986), persist Failed/RetryEvent and contradict this refusal's no-spend boundary; no unreachable public omission control is claimed. |
 | `poll` at 1206 | Keep status lookup, exact persisted-Session comparison, nonterminal Running/Waiting observations, unbound-owner holds and transport-failure handling. Do not add an unconditional top-level formal guard that prevents observing an existing native owner. A successful terminal reviewer reaches the guarded evaluation/publication path below, rather than certifying from transport success. |
-| `evaluate` at 1674 | Before new formal review evaluation or NEW Pr/MergeGate effects, reject before owner refresh/source recapture, Evaluating claim, external `PhaseGates::complete` or journal publication. No bool approval from a third-party gate bypasses this. Existing already-claimed unknown evaluations remain held/read-only through poll/recovery. |
-| `apply_outcome` at 1865+ | Reject `Passed` for a formal review or Pr/MergeGate/Cleanup completion before fresh sources, completed-map/Task/context/active mutation. This includes a genuinely previously journaled legacy Passed outcome replayed by `poll`; retain the journal verbatim. Waiting/Failed factual outcomes do not become approvals. A previously admitted irreversible operation's observation must remain factual, not be erased or repeated to get acceptance. |
+| `evaluate` at 1674 | Reject EVERY new invocation for Reviewer OR Pr/MergeGate/Cleanup before owner refresh/source recapture, Evaluating claim or `PhaseGates::complete`, including `poll`'s session-less EvidencePort branch for an already ACTIVE Running attempt. Active/observations-nonempty is not actual effect/owner proof. Existing known journals remain factual; unknown evaluations remain held/read-only for13/14. |
+| `apply_outcome` at 1865+ | Reject `Passed` for a protected phase OR a protected successor context before owner refresh/fresh sources or completed-map/Task/context/active mutation. Derive the successor from the existing configured order and completed keys with just this success considered, without publishing/altering the snapshot. This includes legacy Passed replay and Tests→Review/Staging→Pr; retain the journal verbatim and avoid repeated source capture. Waiting/Failed factual outcomes do not become approvals. |
 | `retry` at 2010 | Preserve existing structural, marked-unbound #14 and live/Lost Session guards/error precedence. After those read-only checks but before RetryEvent/active/Task/Record/audit mutation, refuse restarting a formal review or a protected downstream attempt. Never release an existing owner because readiness is missing. |
-| `resume_gate` at 1600 | For formal reviews or Pr/MergeGate, refuse after actual attempt/state validation but before adapter status/gate recapture/evaluation. Ordinary `step` status observation remains available. Existing Cleanup reconciliation is separate as described below. |
+| `resume_gate` at 1600 | For every protected phase, including Cleanup, refuse after actual attempt/state validation but before adapter status/gate recapture/evaluation. Ordinary `step` status observation and known factual outcome replay remain available. No new irreversible reconciliation effect is authorized by an existing public journal. |
 | `request_finalization` at 1427 | Preserve reason/lifecycle/finished-QUICK shape checks, then typed refusal before MergeGate source capture, configured_phases/finalizations/finished/context/Task mutation. A legacy Quick Pr/Passed record supplies no current formal basis. |
 
 QUICK already includes ImplementationReview before Pr (`phases`, line124); STANDARD
@@ -107,25 +110,43 @@ Missing formal readiness never implies death, resource refund, terminal input,
 replacement/native retry, receipt or cleanup success. Universal Lost/managed epoch
 contracts are NOT newly implemented by this error.
 
-For an already ACTIVE Cleanup attempt, permit the existing frozen-authority
-evaluation/reconciliation and genuine factual gate journaling; do not create a new
-Cleanup claim from legacy Pr/MergeGate. Existing unknown external claims remain held
-for their exact #13/#14 reconciliation. A known factual cleanup outcome remains in
-the observation journal, but its Passed application cannot newly mark the Task
-Completed or formally finalize a legacy workflow without the missing authority.
-Thus physical reconciliation is preserved while new formal completion is held.
-No new cleanup producer or permission is created; existing scoped gate predicates,
-prior-observation identity and source/lifecycle restrictions still apply. If this
-boundary needs broader producer changes, stop that source portion and report it;
-do not invent an inactive-owner exception.
+An already ACTIVE Pr/MergeGate/Cleanup can still be a reservation before its FIRST
+gate effect: capture may have failed before Evaluating was persisted. Even a prior
+Waiting observation may mean no effect began; nonempty public JSON does not prove
+actual cleanup ownership. Therefore reject every new protected `evaluate`/resume
+invocation, regardless of active state or prior observation count. Existing known
+Waiting/Failed observations remain replayable as factual outcomes under existing
+guards; known Passed is retained but not applied as new Task completion. Unknown
+external claims and new factual re-observation requiring an effect remain held for
+actual13/14 reconciliation. This is an explicit availability limit, applied equally
+to Pr/MergeGate/Cleanup; no invented old-owner exception.
+
+Existing native adapter status/stop/owned cleanup, controller cancellation and
+already-running owned work are not cancelled or rewritten by this stage. Its new
+guard prevents starting another gate call, not observing owned native status or
+fabricating a terminal label. If physical cleanup needs a fresh irreversible gate
+effect, this component cannot authorize it; report the concrete13/14/19 producer
+dependency rather than calling the journal a lease. An actual already-invoked gate
+future may journal its returned factual result through the unchanged observer, but
+Passed application still refuses. No claimed death/release follows from that fact.
 
 Nonreview actual gate facts may be journaled before successor formal context refusal.
 For example Tests Passed remains an immutable actual observation, while the current
-`apply_outcome` cannot finish its context/Task transition if it prepares a blocked
-ImplementationReview pack. The unchanged claim/journal is held; do not rewrite a
+`apply_outcome` refuses BEFORE fresh source capture when its success would prepare
+a blocked ImplementationReview/Pr pack. The unchanged claim/journal is held; do not rewrite a
 test result, manufacture a formal context, clear reservations or infer resource death.
 This is an explicit availability consequence of the staged refusal, not a readiness
-positive or rollback of already observed effects.
+positive or rollback of already observed effects. Repeated calls return the same
+typed error without repeated source recapture. The earlier actual gate observation
+is the factual boundary, not a claim that the original gate never ran.
+
+An explicit same-class risk-only `escalate` can currently prepare its formal next
+pack; the central guard refuses that transaction and no new risk/policy is persisted.
+Likewise an early formal `step` refusal can withhold the old drift/invalidation
+publication. This stage neither commits a requested strengthening nor reports it
+applied: callers get the typed unavailable error, all stored authority is unchanged
+and no formal input is granted. Document these availability limits and cover both
+with exact DB/capture controls; do not add a broad risk/source-revocation exemption.
 
 ## Consumer controls, compatibility and source gate
 
@@ -140,16 +161,18 @@ are retained, not falsely claimed to have never occurred.
 Cover all four Review phases/classes, Quick implementation review and Pr,
 retry/resume_gate/request_finalization, legacy Passed→Pr/MergeGate,
 already-journaled Passed replay, formal successor-context creation, active native
-Running/status-error/unbound/Lost observation, and active Cleanup reconciliation
-versus refused new Cleanup/completion. Cancel and existing #14 terminal-release
+Running/status-error/unbound/Lost observation, and zero/prior-observation ACTIVE
+Pr/MergeGate/Cleanup refusal through `step`→`poll` with zero gate calls. Separate
+known Waiting/Failed/Passed replay and unchanged native stop/cleanup observations;
+include risk-only escalate/drift-refusal controls. Cancel and existing #14 terminal-release
 negative/positive component controls remain meaningful and never mint managed death.
 Historical fixtures are explicitly schema3 factual state, not new typed allocation;
 no Session JSON/private SQL seeding/ready flag certifies a positive native owner.
 
 Compiled omission controls must reach each public branch, context preparation,
 downstream approval application and Quick/finalization bypass. A separate original
-control proves actual running-owner observation and cleanup factual journaling
-remain reachable; an overbroad refusal mutant must fail that consumer. Never claim
+control proves actual running-owner status/stop and known cleanup factual journal
+replay remain reachable; an overbroad refusal mutant must fail that consumer. Never claim
 a mutant kill merely because an earlier unrelated producer guard already refused.
 
 Retain existing tests and their actual semantics/evidence. Main's successful
@@ -172,3 +195,19 @@ against the pinned actual consumers, verify findings and fix/re-review before so
 After approval, use one coherent implementation commit and actual controls/mutations,
 then independently review that immutable source. No broad #9 or PR39 acceptance can
 be inferred from this selected refusal component.
+
+## Design1 verified dispositions (informative, no new WHAT)
+
+Both independent commands closed before reading either result: A
+`0b053dd2-a51c-469e-a9e5-aa75d6490fcc` and B
+`3fe8da48-8437-46be-8324-a7382e95e0a9`, each REQUEST_CHANGES with one Medium.
+Source verification confirms A's redundant prepare_agent guard/release path; remove
+that guard, keeping the original owner-release policy. B's zero-observation active
+EvidencePort path is reachable. Its proposed nonempty-observation exception is
+insufficient: `GateOutcome::Waiting` does not attest that an effect started. Choose
+the existing conservative unavailable boundary for all new irreversible gate calls,
+retaining factual journals/status/stop and13/14's actual reconciliation obligation.
+The shared Low availability/status observation is now explicit; successor pack and
+Passed guard cover downstream phases, and risk/drift requests cannot silently be
+reported applied. No source fix, producer proof, positive readiness or regression
+qualification is claimed by these design corrections.
