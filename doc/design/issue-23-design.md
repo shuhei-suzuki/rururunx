@@ -61,11 +61,17 @@ Authorized Cancel/Fail remains available for recovery; known terminal rows remai
 terminal/unverified. Tests use the real trusted test ingress and explicit Running
 transition, replacing old generic setup and mutation helpers. No production
 cfg-test capability leaks into normal builds.
-The future typed legacy Cancel/Fail port preserves the original invalid DAG history
-without editing/ratifying it or granting dispatch. Initial structural generic saves
-can reject a previously accepted legacy cycle/self/duplicate pair; that verified
-Low limitation is recorded in the source ledger. An actual legacy fixture must
-verify conservative typed closure when that port is implemented.
+The future typed legacy hold and Cancel/Fail ports must preserve original invalid
+DAG history without editing/ratifying it or granting dispatch. Initial structural
+validation refuses EVERY unchanged invalid-graph save: Paused/Blocked/WaitingHuman
+holds, blockers/metadata and terminal decisions, including previously accepted
+cycles/self/parallel hard-soft pairs and over-cap graphs. A Blocked Project admits
+conservative unchanged-metadata holds before this validator, but cannot repair
+metadata, so that hold path is unavailable for an invalid graph. Generic repair
+then terminate is not endorsed: the Goal snapshot overwrites original graph bytes
+and its saved audit stores only version/state. The characterization controls pin
+refusal and exact frozen history, not successful reconciliation. Future typed
+ports need real legacy fixtures for holds AND closure, still OPEN.
 
 ## Durable observations and currency
 

@@ -209,8 +209,8 @@ reader custody or all-native cleanup.
 
 Current [impact inventory](issue-23-graph-composed1-impact-rg.txt) covers every
 put_goal/validator/TaskDag consumer and actual Goal lifecycle/graph readers. The
-ONLY production put_goal definition is Store261, invoked by existing trusted
-library compositions; native/Workflow raw Goal scope/version checks remain. All
+put_goal public library API is defined at Store261 with NO in-crate production
+caller; all current call sites are tests, with external composition possible; native/Workflow raw Goal scope/version checks remain. All
 production changes stay inside structural validation. Previously accepted invalid
 legacy graph Cancel/Fail saves still reject: prior verified Low G23-SRC-L1 remains
 a disclosed limitation of this component, with the typed frozen-history closure
@@ -222,3 +222,50 @@ required before any limited merge. Complete23,19 settlement,43 binding,14/27
 scheduling,24CLI and16dogfood remain OPEN. Existing Issue6 historical private
 harness ownership hold is unchanged; selected normal verification closures do not
 certify all native jobs.
+
+
+## Composition1 source review: one verified Medium
+
+Both actual independent source reviewers at0cbb29b completed with selected native
+cleanup verified. A APPROVE with2Lows; B REQUEST_CHANGES solely for one Medium
+endpoint-control/mutant omission plus2Lows. [Actual results/dispositions](issue-23-graph-composition1-reviews.json).
+No source approval is inferred from A alone or from prior initial approvals.
+
+M1 is verified: the old Store endpoint predicate was replaced, but hard missing
+dependent was the only existing rejection case; soft missing endpoints and
+missing prerequisite could survive two plausible mutations. Three corresponding
+Store refusal cases were added to the actual save loop. The source predicate is
+unchanged. Independent delta qualification requires both compiled existence
+mutants to commit wrongly and fail the actual unwrap_err, followed by full restore
+and passing controls. Initial uncommitted control smoke is not final-head evidence.
+
+The legacy Low is broader than the initial G23-SRC-L1 wording: ALL unchanged
+invalid-graph saves refuse, including holds/blockers/metadata and Cancel/Fail; old
+over-cap and parallel hard-soft pairs are covered. Blocked-Project conservative
+holds pass activity validation but fail graph validation, while metadata repair
+cannot pass the activity fence. Generic repair overwrites the only current graph
+bytes and is not endorsed. New raw-SQL legacy cycle/self/parallel-pair fixtures
+characterize all three hold states and Cancel/Fail under both Registered and
+Blocked Projects; the attempted object, exact raw Goal body/version, complete
+fixture audit and all Task snapshots must remain unchanged. No invalid graph is
+ratified, no validation bypass or typed reconciliation is introduced. The full
+managed design carries frozen-history hold/closure producer and fixture work.
+
+Evidence precision: hard_order is now included in the rg pattern. put_goal is a
+public library API with no in-crate production caller; observed call sites are
+tests. Affected release scope was graph3+Store17 only; other caller binaries passed
+debug, not release in that aborted full run. Pure graph code has no cfg/debug_assert
+profile branch; indegree decrement corresponds to counted hard edges. These are
+static facts, not a broader release or observer qualification.
+
+Failure owners: Grok release checkpoint/resume watchdogs remain with open
+[Issue51](https://github.com/shuhei-suzuki/rururunx/issues/51), with bounded diagnostic
+[follow-up67](https://github.com/shuhei-suzuki/rururunx/issues/67); inspector deadlines
+with open [Issue60](https://github.com/shuhei-suzuki/rururunx/issues/60) and
+[Issue6](https://github.com/shuhei-suzuki/rururunx/issues/6). The same two Grok tests
+passed default debug at364139d. Actual environment fixture uses
+tests/support/grok_fixture.rs70–87 Goal::new then put_goal; Goal::new initializes
+TaskDag::default, and neither the fixture nor these environment cases constructs
+DAG edges. Both validators accept that empty graph. No profile-dependent graph
+logic, no native/process I/O in hard_order, and no fixture DAG edits are static
+non-interaction facts; cause and regression of the failures remain UNKNOWN.

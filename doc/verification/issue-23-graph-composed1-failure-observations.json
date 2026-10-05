@@ -26,7 +26,11 @@
       "cause_and_regression": "UNKNOWN",
       "rerun": false,
       "deadline_change": false,
-      "latch_cascade": "478 first context PS273075us then10other failures (including concurrent latch); not11 independent inspector causes"
+      "latch_cascade": "478 first context PS273075us then10other failures (including concurrent latch); not11 independent inspector causes",
+      "owning_issues": [
+        "https://github.com/shuhei-suzuki/rururunx/issues/60",
+        "https://github.com/shuhei-suzuki/rururunx/issues/6"
+      ]
     },
     {
       "head": "cf8a1e7c4ab74367ad175bedcfb60e28cb6bfc8b",
@@ -54,7 +58,11 @@
       "cause_and_regression": "UNKNOWN",
       "rerun": false,
       "deadline_change": false,
-      "latch_cascade": "cf8 Codex ownership864 PS332580us, stdout/stderr pending/status pending; one lib failure"
+      "latch_cascade": "cf8 Codex ownership864 PS332580us, stdout/stderr pending/status pending; one lib failure",
+      "owning_issues": [
+        "https://github.com/shuhei-suzuki/rururunx/issues/60",
+        "https://github.com/shuhei-suzuki/rururunx/issues/6"
+      ]
     }
   ],
   "local_release": {
@@ -67,7 +75,17 @@
     ],
     "cause_and_regression": "UNKNOWN",
     "parent_cleanup": "cleanup_group and reap returned, not proof of all nested or escaped jobs",
-    "rerun": false
+    "rerun": false,
+    "owning_issues": [
+      "https://github.com/shuhei-suzuki/rururunx/issues/51",
+      "https://github.com/shuhei-suzuki/rururunx/issues/67"
+    ],
+    "same_head_debug_passed": true,
+    "static_facts": [
+      "actual grok_fixture.rs70\u201387 calls Goal::new -> TaskDag::default; no DAG edit in environment cases",
+      "hard_order has no profile branch/native I/O; counted-hard-edge decrements only",
+      "both old/new structural validators accept empty fixture graph; not cause or regression proof"
+    ]
   },
   "limits": "Later green PR/CI does not erase failures or establish cause. No native/F1/managed lifetime or whole23/MVP qualification."
 }
