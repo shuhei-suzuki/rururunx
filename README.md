@@ -423,3 +423,10 @@ diagnostic slice; final metadata-head CI remains pending under the recorded part
 gate disposition. Local full release555 FAILED, cause and regression status unknown.
 No backend availability fix or owned-reader/workload settlement is claimed; full #60
 and native acceptance remain open.
+
+The staged Issue #9 formal-refusal component returns typed `ReviewGatingUnavailable`
+before new formal reviews, PR/merge/cleanup gates or legacy Passed completion can
+grant input or publish a successor. Existing native status and factual journals
+remain observable. It supplies no ReviewSet certificate or qualified native profile;
+source qualification and whole Issue #9 acceptance remain open. See the
+[scoped integration design](doc/design/issue-9-formal-refusal-integration.md).

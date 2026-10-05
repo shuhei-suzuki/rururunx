@@ -1,6 +1,6 @@
 # Issue 9: staged formal-review refusal integration
 
-Status: Design3 candidate, NOT implemented or source-qualified. This is a finite
+Status: Design3 selected component approved; source implementation staged, NOT source-qualified. This is a finite
 integration of the already approved Req38/Design4 refusal contract. It creates no
 ReviewSet, allocation, certificate, profile, Human authority, native preparation,
 settlement producer or database upgrade. Whole Issue9 acceptance remains open.

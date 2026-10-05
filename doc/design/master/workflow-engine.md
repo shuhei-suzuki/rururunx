@@ -479,5 +479,5 @@ completion. External adapter stop/cleanup remains unchanged, not a Workflow
 consumer. A public Waiting/nonempty journal does not authorize
 a fresh irreversible gate invocation; actual13/14 reconciliation remains pending.
 It does not duplicate #43 adapter preflight, implement its missing private producer,
-upgrade the database or qualify a positive ReviewSet/native profile. This selected
-design and source gates are separate; the proposed refusal is not yet implemented.
+upgrade the database or qualify a positive ReviewSet/native profile. The selected design is approved. The staged source implements a typed refusal only;
+its independent source/testing gate remains open, with no positive ReviewSet authority.
