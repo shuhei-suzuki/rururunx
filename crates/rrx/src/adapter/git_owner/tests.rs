@@ -140,6 +140,21 @@ async fn selected_owned_signal_result_parity_preserves_os_specific_unknown() {
         context.context.hooks.signal_result = Some(injected);
         let flag = Arc::new(AtomicBool::new(false));
         let outcome = shell(context.clone(), "exit 0", flag.clone()).await;
+        let (actual, applied) = context
+            .context
+            .hooks
+            .signal_attempt
+            .lock()
+            .unwrap()
+            .unwrap();
+        assert!(
+            matches!(
+                actual,
+                Ok(()) | Err(rustix::io::Errno::SRCH | rustix::io::Errno::PERM)
+            ),
+            "actual owned KILL outcome: {actual:?}"
+        );
+        assert_eq!(applied, Some(injected), "resolver control was not applied");
         // A real first owned-group KILL precedes the synthetic resolver value.
         // This does not claim actual OS permission denial or Linux inspection.
         let retained = injected == rustix::io::Errno::ACCESS

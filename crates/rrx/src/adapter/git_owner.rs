@@ -383,6 +383,7 @@ struct TestHooks {
     missing_matching: Option<(Vec<String>, usize)>,
     matching_calls: Arc<std::sync::atomic::AtomicUsize>,
     signal_result: Option<rustix::io::Errno>,
+    signal_attempt: Arc<Mutex<Option<(Result<(), rustix::io::Errno>, Option<rustix::io::Errno>)>>>,
 }
 #[cfg(test)]
 #[derive(Default)]
@@ -1454,13 +1455,23 @@ fn first_cleanup(_record: &OpRecord, native: &mut NativeAssets) {
             #[cfg(not(all(test, target_os = "macos")))]
             let signal = kill_process_group(pid, Signal::KILL);
             #[cfg(test)]
-            let signal = match _record._context.hooks.signal_result {
-                // The actual first owned-group KILL still occurs. This models
-                // its result at the production resolver, not real OS denial.
-                Some(injected) if signal.is_ok() || signal == Err(rustix::io::Errno::SRCH) => {
-                    Err(injected)
-                }
-                _ => signal,
+            let signal = {
+                let actual = signal;
+                let injected = match _record._context.hooks.signal_result {
+                    // The actual first owned-group KILL still occurs. This models
+                    // its result at the production resolver, not real OS denial.
+                    Some(injected)
+                        if matches!(
+                            actual,
+                            Ok(()) | Err(rustix::io::Errno::SRCH | rustix::io::Errno::PERM)
+                        ) =>
+                    {
+                        Some(injected)
+                    }
+                    _ => None,
+                };
+                *_record._context.hooks.signal_attempt.lock().unwrap() = Some((actual, injected));
+                injected.map_or(actual, Err)
             };
             #[cfg(test)]
             if _record._context.hooks.worker_panic {
