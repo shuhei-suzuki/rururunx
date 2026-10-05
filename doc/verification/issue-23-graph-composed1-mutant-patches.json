@@ -1,0 +1,32 @@
+[
+  {
+    "operator": "G01-cycle",
+    "exact_patch": "diff --git a/crates/rrx/src/goal.rs b/crates/rrx/src/goal.rs\nindex 3cc75b6..1a36b32 100644\n--- a/crates/rrx/src/goal.rs\n+++ b/crates/rrx/src/goal.rs\n@@ -58,7 +58,7 @@ impl TaskDag {\n                 }\n             }\n         }\n-        ensure!(order.len() == nodes.len(), \"goal DAG hard dependency cycle\");\n+        // mutant: omit cycle check\n         Ok(order)\n     }\n }\n",
+    "sha256": "cb05847dbcbce365d33a12b0bd2362238e56543bf0a15d92d8d685a49ac05045"
+  },
+  {
+    "operator": "G02-edge-pair",
+    "exact_patch": "diff --git a/crates/rrx/src/goal.rs b/crates/rrx/src/goal.rs\nindex 3cc75b6..a3f24c7 100644\n--- a/crates/rrx/src/goal.rs\n+++ b/crates/rrx/src/goal.rs\n@@ -30,7 +30,7 @@ impl TaskDag {\n         for edge in &self.edges {\n             ensure!(edge.prerequisite != edge.dependent, \"goal DAG self edge\");\n             ensure!(\n-                pairs.insert((edge.prerequisite, edge.dependent)),\n+                pairs.insert((edge.prerequisite, edge.dependent)) || true,\n                 \"duplicate goal DAG edge pair\"\n             );\n             let (Some(&prerequisite), Some(&dependent)) =\n",
+    "sha256": "41024e4b5c16eafa8ced808fe915acc8f579ff8c1a2d17fd1e866847de1bbbe3"
+  },
+  {
+    "operator": "G03-soft-self",
+    "exact_patch": "diff --git a/crates/rrx/src/goal.rs b/crates/rrx/src/goal.rs\nindex 3cc75b6..47e85bc 100644\n--- a/crates/rrx/src/goal.rs\n+++ b/crates/rrx/src/goal.rs\n@@ -28,7 +28,7 @@ impl TaskDag {\n         let mut indegree = vec![0usize; nodes.len()];\n         let mut outgoing = vec![Vec::new(); nodes.len()];\n         for edge in &self.edges {\n-            ensure!(edge.prerequisite != edge.dependent, \"goal DAG self edge\");\n+            ensure!(edge.prerequisite != edge.dependent || !edge.hard, \"goal DAG self edge\");\n             ensure!(\n                 pairs.insert((edge.prerequisite, edge.dependent)),\n                 \"duplicate goal DAG edge pair\"\n",
+    "sha256": "98c729f125bd8549f972c224bfc57e9c0b17c04eb9c5a9f1416a81c32ec0ad3c"
+  },
+  {
+    "operator": "G04-store-wire",
+    "exact_patch": "diff --git a/crates/rrx/src/state/mod.rs b/crates/rrx/src/state/mod.rs\nindex 7af6f76..23b37ff 100644\n--- a/crates/rrx/src/state/mod.rs\n+++ b/crates/rrx/src/state/mod.rs\n@@ -1447,7 +1447,7 @@ fn str_id<T: std::fmt::Display>(id: Option<T>) -> Option<String> {\n }\n fn validate_goal_references(tx: &Transaction<'_>, goal: &Goal) -> Result<()> {\n     use std::collections::BTreeSet;\n-    let mut references: BTreeSet<_> = goal.dag.hard_order()?.into_iter().collect();\n+    let mut references: BTreeSet<_> = goal.dag.nodes.iter().copied().collect();\n     for proposal in &goal.followups {\n         references.extend(proposal.dependencies.iter().copied());\n     }\n",
+    "sha256": "c5cff6c6ae6a577e00c30771b1bbe8bf6631f6db2c4292ddd1e5a0faa908b4b2"
+  },
+  {
+    "operator": "G05-node-cap",
+    "exact_patch": "diff --git a/crates/rrx/src/goal.rs b/crates/rrx/src/goal.rs\nindex 3cc75b6..2be04da 100644\n--- a/crates/rrx/src/goal.rs\n+++ b/crates/rrx/src/goal.rs\n@@ -16,7 +16,7 @@ impl TaskDag {\n     /// Project/Goal ownership, Task success, lifecycle or native resources and\n     /// therefore cannot be used as a ready list or an admission permit.\n     pub fn hard_order(&self) -> Result<Vec<TaskId>> {\n-        ensure!(self.nodes.len() <= Self::MAX_NODES, \"goal DAG node limit\");\n+        ensure!(self.nodes.len() <= usize::MAX, \"goal DAG node limit\");\n         ensure!(self.edges.len() <= Self::MAX_EDGES, \"goal DAG edge limit\");\n \n         let nodes: BTreeSet<_> = self.nodes.iter().copied().collect();\n",
+    "sha256": "92a1c6d8b78f0710c84d340e7a101458b4fa3ca6011f1c2d5456febccc343268"
+  },
+  {
+    "operator": "G06-edge-cap",
+    "exact_patch": "diff --git a/crates/rrx/src/goal.rs b/crates/rrx/src/goal.rs\nindex 3cc75b6..dc3ab97 100644\n--- a/crates/rrx/src/goal.rs\n+++ b/crates/rrx/src/goal.rs\n@@ -17,7 +17,7 @@ impl TaskDag {\n     /// therefore cannot be used as a ready list or an admission permit.\n     pub fn hard_order(&self) -> Result<Vec<TaskId>> {\n         ensure!(self.nodes.len() <= Self::MAX_NODES, \"goal DAG node limit\");\n-        ensure!(self.edges.len() <= Self::MAX_EDGES, \"goal DAG edge limit\");\n+        ensure!(self.edges.len() <= usize::MAX, \"goal DAG edge limit\");\n \n         let nodes: BTreeSet<_> = self.nodes.iter().copied().collect();\n         ensure!(nodes.len() == self.nodes.len(), \"duplicate goal DAG nodes\");\n",
+    "sha256": "feea92411feb73d2576b0713371acf9ac81a214a1d60a044dd8b7b4d00abc60b"
+  }
+]

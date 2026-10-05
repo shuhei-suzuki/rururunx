@@ -1,0 +1,193 @@
+{
+  "head": "364139d5dedf35e154597417efb0c5e9ac7927fd",
+  "default_parallelism": true,
+  "commands": [
+    {
+      "name": "debug",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--workspace"
+      ],
+      "exit_code": 0,
+      "log_sha256": "477f9c28cd47b3efc98275163acc8c44269997d19dda281fe296e3a5a14f9d30",
+      "seconds": 225.14000149990898,
+      "test_result_rows": [
+        {
+          "result": "ok",
+          "passed": 271,
+          "failed": 0,
+          "ignored": 23
+        },
+        {
+          "result": "ok",
+          "passed": 0,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "result": "ok",
+          "passed": 19,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "result": "ok",
+          "passed": 5,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "result": "ok",
+          "passed": 1,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "result": "ok",
+          "passed": 1,
+          "failed": 0,
+          "ignored": 1
+        },
+        {
+          "result": "ok",
+          "passed": 16,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "result": "ok",
+          "passed": 18,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "result": "ok",
+          "passed": 3,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "result": "ok",
+          "passed": 15,
+          "failed": 0,
+          "ignored": 2
+        },
+        {
+          "result": "ok",
+          "passed": 16,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "result": "ok",
+          "passed": 17,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "result": "ok",
+          "passed": 1,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "result": "ok",
+          "passed": 1,
+          "failed": 0,
+          "ignored": 0
+        }
+      ]
+    },
+    {
+      "name": "fmt",
+      "command": [
+        "cargo",
+        "fmt",
+        "--all",
+        "--",
+        "--check"
+      ],
+      "exit_code": 0,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "seconds": 0.34430987504310906
+    },
+    {
+      "name": "clippy",
+      "command": [
+        "cargo",
+        "clippy",
+        "--locked",
+        "--workspace",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exit_code": 0,
+      "log_sha256": "1477a8a2493df716bdf9be72e70265b1bbc4c1edd618d0263b8323da877c8f58",
+      "seconds": 8.787164625013247
+    },
+    {
+      "name": "debug-build",
+      "command": [
+        "cargo",
+        "build",
+        "--locked",
+        "--workspace",
+        "--all-targets"
+      ],
+      "exit_code": 0,
+      "log_sha256": "2b34696728dc82b03cbf6311d7e3a6a41658bbde097834c3010a78bc82842c1a",
+      "seconds": 0.20727545802947134
+    },
+    {
+      "name": "release-build",
+      "command": [
+        "cargo",
+        "build",
+        "--locked",
+        "--release",
+        "--workspace",
+        "--all-targets"
+      ],
+      "exit_code": 0,
+      "log_sha256": "3c67ca50a877d9c3371f397a2ac5196c7ea1d070c14e4019b3df801d434b2a39",
+      "seconds": 67.96621550002601
+    },
+    {
+      "name": "release",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--release",
+        "--workspace"
+      ],
+      "exit_code": 101,
+      "log_sha256": "be7b1ad51b986d74562a6dad457b51a2f4e94109569686fe37f056b568e0efa9",
+      "seconds": 60.67058575002011,
+      "test_result_rows": [
+        {
+          "result": "FAILED",
+          "passed": 269,
+          "failed": 2,
+          "ignored": 23
+        }
+      ]
+    }
+  ],
+  "debug_top_level_Rust_passed": 381,
+  "doctests_passed": 2,
+  "nested_ordinary_witness_child_passed": 1,
+  "debug_ignored": 26,
+  "affected_release": {
+    "graph_passed": 3,
+    "Store_passed": 17,
+    "failed": 0,
+    "log_sha256": "f99eebadf9da27c32928e38063f00ed6736607cfbe3f7321203457e960bd8b53"
+  },
+  "full_release": "FAILED: lib269PASS2FAIL23ignored, Grok checkpoint/resume isolated-child60s watchdog. Cause/regression UNKNOWN; not rerun or waived.",
+  "native_or_managed_acceptance": false
+}

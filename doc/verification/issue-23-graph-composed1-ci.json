@@ -1,0 +1,110 @@
+{
+  "head": "364139d5dedf35e154597417efb0c5e9ac7927fd",
+  "run": 37244971523,
+  "conclusion": "success",
+  "actual_checkout": "536cbbe0f50ad797671ee2fe2d92c4a452138394",
+  "parents": [
+    "cf8a1e7c4ab74367ad175bedcfb60e28cb6bfc8b",
+    "364139d5dedf35e154597417efb0c5e9ac7927fd"
+  ],
+  "tree": "bdff25fefa9c009a39523d340e83cb5d11f8f2ac",
+  "complete_tree_equal": true,
+  "all_tracked_blobs_equal": true,
+  "compared_tracked_blobs": 246,
+  "jobs": [
+    {
+      "name": "check (macos-latest)",
+      "actual_checkout": "536cbbe0f50ad797671ee2fe2d92c4a452138394",
+      "every_step_success": true,
+      "steps": [
+        {
+          "name": "Set up job",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run dtolnay/rust-toolchain@1.91.1",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run cargo fmt --all -- --check",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run cargo clippy --locked --workspace --all-targets -- -D warnings",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run cargo test --locked --workspace",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run cargo build --locked --workspace",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run cargo build --locked --release --workspace",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "conclusion": "success"
+        },
+        {
+          "name": "Complete job",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "name": "check (ubuntu-latest)",
+      "actual_checkout": "536cbbe0f50ad797671ee2fe2d92c4a452138394",
+      "every_step_success": true,
+      "steps": [
+        {
+          "name": "Set up job",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run dtolnay/rust-toolchain@1.91.1",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run cargo fmt --all -- --check",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run cargo clippy --locked --workspace --all-targets -- -D warnings",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run cargo test --locked --workspace",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run cargo build --locked --workspace",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run cargo build --locked --release --workspace",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "conclusion": "success"
+        },
+        {
+          "name": "Complete job",
+          "conclusion": "success"
+        }
+      ]
+    }
+  ]
+}
