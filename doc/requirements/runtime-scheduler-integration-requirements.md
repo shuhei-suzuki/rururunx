@@ -138,6 +138,29 @@ PR/merge/deploy outcomes require idempotent reconciliation, never blind replay.
 Unknown cleanup stays historical on the original unit. Safe disjoint work continues
 unless an applicable external/common-Git/resource constraint forbids it.
 
+Restart must reconstruct a **new committed source frame**, not just verify a
+retained result. A new `ManagedWorkflowSources` has an empty Task map and its
+ordinary `prepare` rejects an existing Workflow. For a Published artifact, a
+private current-epoch retained-frame recovery producer reads exact registered
+retained Git objects, validates complete artifact/dependency/governing digests and
+installs the frame under exact Scope/Task/Workflow/generation/Context/Project/Goal
+and driver-claim CAS. This grants source reading only, never old native effects,
+result-finalization permission, first-unit adoption or an old Session handle.
+
+An initialized Workflow with no Published artifact needs a separate fresh bootstrap
+recovery producer. It atomically fences and records the old preparation/current
+phase, preserves history and accepted policy, and reserves a newly named preparation
+Unit before Git. Rebuild its exact approved committed frame under current recovery
+authority; install only after current source/frame and Task/Workflow/Context CAS.
+First native adoption requires this genuinely new single-use prepared capability,
+never a revived row. Prior consumed or ambiguous native/external effects require
+their explicit fresh retry/reconciliation policy, not this pre-input bootstrap exit.
+Ready-but-unpublished artifacts remain draft/unknown; only an actual qualified
+private finalization-reconciliation producer may accept them, otherwise retain
+their history and use an explicitly authorized fresh attempt. Missing recovery
+producer, retained graph, exact initial revision or governing approval gives a
+named hold, not `initialize` replay or a fallback to live source bytes.
+
 Confirmed quota exhaustion is WaitingQuota. Capacity, resource pressure, auth,
 unknown metadata and Human attention are distinct reasons. Official structured
 observations and bounded shared-pool probes follow R5; text/HTTP429 alone is not
@@ -186,6 +209,8 @@ authorization / concurrency review, causal mutations and Linux/macOS CI.
 | RS-AC5 | Last predecessor publication makes next Task advance without prompt; duplicate/lost events, due-wait races and full/closed channel converge exactly once; no idle busy loop. |
 | RS-AC6 | Pause/cancel while queued, preparing, quota-waiting and running; siblings progress; late old input/result/grant refused; known work and cleanup independently retained. |
 | RS-AC7 | Crash before/after claim, prepare, Session bind, native input, result publication and external intent; fresh epoch refuses old grants and does not reconstruct provenance or replay uncertain external effects. |
+| RS-AC7.a | Restart after genuine Published Implement: new Sources supplies exact retained config/rules/corpus to a supported next phase while the executor workspace is changed or absent; frame-install/current-authority drift refuses. |
+| RS-AC7.b | Restart after initialize before native input: new preparation Unit/namespace and actual initial gates, preserved old history, no old adoption/Session; competing recovery, cancel and source-install CAS have one winner. Ready-unpublished stays draft/unknown without qualified reconciliation. |
 | RS-AC8 | RequiredTasksVerified automatic criterion with genuine published Workflow/artifact evidence; all Tasks complete but missing criterion remains incomplete; stale evidence/Human/native JSON cannot complete Goal. |
 | RS-AC9 | Real CLI control service, Goal file/inline and status/stop/resume/logs; no epoch rollover from read command; scoped selectors and no credential/hook changes. |
 
