@@ -18,3 +18,4 @@ pub mod results;
 pub(crate) mod retained_io;
 pub(crate) use results::{ReadonlyCompletion, WorkflowPublication};
 pub mod tools;
+pub mod workflow_source;

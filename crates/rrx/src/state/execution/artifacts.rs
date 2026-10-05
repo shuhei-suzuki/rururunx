@@ -57,7 +57,13 @@ impl Store {
         ensure!(
             matches!(
                 action,
-                "commit_ref" | "base_ref" | "commit_graph" | "base_graph" | "fsck"
+                "commit_ref"
+                    | "base_ref"
+                    | "commit_graph"
+                    | "base_graph"
+                    | "fsck"
+                    | "source_tree"
+                    | "source_blob"
             ),
             "unsupported retained reader action"
         );

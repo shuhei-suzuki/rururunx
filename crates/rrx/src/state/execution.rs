@@ -111,6 +111,79 @@ pub(super) fn install_writer_guards(tx: &Transaction<'_>) -> Result<()> {
     Ok(())
 }
 
+fn checked_workflow_binding(
+    tx: &Connection,
+    task: &Task,
+    project: &Project,
+    goal: &Goal,
+    unit: &ExecutionUnit,
+    r: &WorkflowReservation,
+) -> Result<(Record, crate::workflow::WorkflowSnapshot)> {
+    ensure!(
+        project.version == r.project_version && goal.version == r.goal_version,
+        "Workflow owner versions changed before unit reservation"
+    );
+    let record: Record =
+        read_tx(&tx, "records", &r.record.to_string())?.context("Workflow reservation missing")?;
+    ensure!(
+        record.id == r.record
+            && record.kind == RecordKind::Workflow
+            && record.scope == unit.scope
+            && record.version == r.version
+            && task.context_version == r.context,
+        "Workflow reservation CAS/context mismatch"
+    );
+    let workflows: u64 = tx.query_row(
+        "SELECT COUNT(*) FROM records WHERE task_id=?1 AND kind='workflow'",
+        [task.id.to_string()],
+        |row| row.get(0),
+    )?;
+    ensure!(
+        workflows == 1,
+        "Task must own exactly one Workflow reservation"
+    );
+    let before: crate::workflow::WorkflowSnapshot = serde_json::from_value(record.data.clone())?;
+    ensure!(
+        before.active == Some(r.index) && before.generation == r.workflow_generation,
+        "Workflow reservation generation/index mismatch"
+    );
+    let attempt = before
+        .history
+        .get(r.index)
+        .context("Workflow attempt missing")?;
+    ensure!(
+        attempt.phase.key() == unit.phase
+            && attempt.state == crate::workflow::AttemptState::Running
+            && attempt.session_id.is_none()
+            && attempt.execution.is_none()
+            && attempt.unit.is_none()
+            && !attempt.dispatch_started
+            && attempt.context_version == r.context
+            && match unit.kind {
+                UnitKind::Executor => attempt.phase.actor() == crate::workflow::Actor::Executor,
+                UnitKind::Reviewer => attempt.phase.actor() == crate::workflow::Actor::Reviewer,
+                _ => false,
+            },
+        "Workflow attempt is not available for native preparation"
+    );
+    let context: String = tx.query_row(
+        "SELECT body FROM context_versions WHERE project_id=?1 AND owner=?2 AND version=?3",
+        params![
+            task.project_id.to_string(),
+            context_owner(&task.scope())?,
+            r.context
+        ],
+        |row| row.get(0),
+    )?;
+    let context: ContextVersion = decode(context)?;
+    crate::workflow::validate_context(&task, &record, &context)?;
+    ensure!(
+        context.revision == unit.base_sha,
+        "Workflow unit base differs from immutable input"
+    );
+    Ok::<_, anyhow::Error>((record, before))
+}
+
 pub(super) fn unit_tx(tx: &Connection, id: UnitId) -> Result<ExecutionUnit> {
     type IndexedUnit = (
         String,
@@ -500,6 +573,117 @@ impl Store {
     ) -> Result<ExecutionUnit> {
         self.reserve_execution_inner(unit, expected_task, Some(reservation))
     }
+    pub(crate) fn adopt_prepared_workflow_execution(
+        &mut self,
+        proof: &crate::execution::attempts::PreparedAdoption,
+        expected_task: u64,
+        reservation: &WorkflowReservation,
+        phase: &str,
+        provider: &str,
+    ) -> Result<ExecutionUnit> {
+        let original = proof.unit();
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let mut unit = validate_authority(&tx, &original.authority(), true, true)?;
+        ensure!(
+            unit.kind == UnitKind::Executor
+                && unit.phase == WORKFLOW_SOURCE_BOOTSTRAP
+                && unit.state == UnitState::Preparing
+                && unit.disposition == Disposition::Active
+                && unit.work.is_none()
+                && unit.session_id.is_none()
+                && unit.artifact_id.is_none()
+                && unit.wait_reason.is_none()
+                && unit.capacity_retry_at.is_none()
+                && unit.provider == provider
+                && unit.provider == original.provider
+                && unit.worktree == original.worktree
+                && unit.branch == original.branch
+                && unit.base_sha == original.base_sha
+                && unit.profile_digest == original.profile_digest
+                && unit.cookie == original.cookie
+                && valid_oid(&unit.base_sha),
+            "prepared execution identity/lifecycle changed"
+        );
+        let task: Task = read_tx(
+            &tx,
+            "tasks",
+            &unit.scope.task_id.context("Task required")?.to_string(),
+        )?
+        .context("Task missing")?;
+        ensure!(
+            task.scope() == unit.scope
+                && task.version == expected_task
+                && !task_terminal(task.state),
+            "prepared Task CAS changed"
+        );
+        let project: Project =
+            read_tx(&tx, "projects", &task.project_id.to_string())?.context("Project missing")?;
+        let goal: Goal =
+            read_tx(&tx, "goals", &task.goal_id.to_string())?.context("Goal missing")?;
+        let unsettled: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM managed_effects WHERE unit_id=?1 AND (state NOT IN ('confirmed','resolved') OR json_extract(body,'$.kind')<>'git_helper' OR json_extract(body,'$.receipt.exit') IS NOT '0'))",[unit.id.to_string()], |r| r.get(0))?;
+        let admitted: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM quota_leases WHERE unit_id=?1) OR EXISTS(SELECT 1 FROM quota_waiters WHERE unit_id=?1)",[unit.id.to_string()],|r|r.get(0))?;
+        ensure!(
+            !unsettled && !admitted,
+            "prepared execution has unresolved or native effects"
+        );
+        unit.phase = phase.into();
+        let (mut record, mut workflow) =
+            checked_workflow_binding(&tx, &task, &project, &goal, &unit, reservation)?;
+        ensure!(
+            workflow
+                .configured_phases
+                .iter()
+                .find(|p| p.actor() == crate::workflow::Actor::Executor)
+                .map(|p| p.key())
+                == Some(phase)
+                && workflow.history[..reservation.index]
+                    .iter()
+                    .all(|a| a.phase.actor() != crate::workflow::Actor::Executor),
+            "prepared execution is only for the first native Executor phase"
+        );
+        let context: String = tx.query_row(
+            "SELECT body FROM context_versions WHERE project_id=?1 AND owner=?2 AND version=?3",
+            params![
+                task.project_id.to_string(),
+                context_owner(&task.scope())?,
+                reservation.context
+            ],
+            |r| r.get(0),
+        )?;
+        let context: ContextVersion = decode(context)?;
+        let actual = context
+            .source_hashes
+            .iter()
+            .filter(|(key, _)| !key.starts_with("workflow:"))
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect::<BTreeMap<_, _>>();
+        ensure!(
+            !proof.sources().is_empty()
+                && proof.sources() == &actual
+                && context.data["payload"]
+                    .as_str()
+                    .map(|payload| crate::execution::workflow_source::digest(payload.as_bytes()))
+                    .as_deref()
+                    == Some(proof.payload_digest()),
+            "prepared source/rule frame differs from Context"
+        );
+        write_unit(&tx, &mut unit)?;
+        let before = record.clone();
+        workflow.history[reservation.index].unit = Some((&unit).into());
+        record.data = serde_json::to_value(workflow)?;
+        crate::workflow::validate_transition(&task, &record, Some(&before))?;
+        put_record_tx(&tx, &record)?;
+        append_event(
+            &tx,
+            &unit.scope,
+            "execution.workflow_prepared_adopted",
+            json!({"unit":unit.id,"workflow":record.id,"generation":unit.generation,"phase":phase}),
+        )?;
+        tx.commit()?;
+        Ok(unit)
+    }
     fn reserve_execution_inner(
         &mut self,
         mut unit: ExecutionUnit,
@@ -537,38 +721,9 @@ impl Store {
             .context("unknown Project")?;
         let goal: Goal =
             read_tx(&tx, "goals", &task.goal_id.to_string())?.context("unknown Goal")?;
-        let workflow_binding = reservation.map(|r| {
-            ensure!(project.version == r.project_version && goal.version == r.goal_version,
-                "Workflow owner versions changed before unit reservation");
-            let record: Record = read_tx(&tx, "records", &r.record.to_string())?
-                .context("Workflow reservation missing")?;
-            ensure!(record.id == r.record && record.kind == RecordKind::Workflow && record.scope == unit.scope
-                && record.version == r.version && task.context_version == r.context,
-                "Workflow reservation CAS/context mismatch");
-            let workflows: u64 = tx.query_row("SELECT COUNT(*) FROM records WHERE task_id=?1 AND kind='workflow'", [task.id.to_string()], |row| row.get(0))?;
-            ensure!(workflows == 1, "Task must own exactly one Workflow reservation");
-            let before: crate::workflow::WorkflowSnapshot = serde_json::from_value(record.data.clone())?;
-            ensure!(before.active == Some(r.index) && before.generation == r.workflow_generation,
-                "Workflow reservation generation/index mismatch");
-            let attempt = before.history.get(r.index).context("Workflow attempt missing")?;
-            ensure!(attempt.phase.key() == unit.phase
-                && attempt.state == crate::workflow::AttemptState::Running
-                && attempt.session_id.is_none() && attempt.execution.is_none()
-                && attempt.unit.is_none() && !attempt.dispatch_started
-                && attempt.context_version == r.context
-                && match unit.kind {
-                    UnitKind::Executor => attempt.phase.actor() == crate::workflow::Actor::Executor,
-                    UnitKind::Reviewer => attempt.phase.actor() == crate::workflow::Actor::Reviewer,
-                    _ => false,
-                }, "Workflow attempt is not available for native preparation");
-            let context: String = tx.query_row(
-                "SELECT body FROM context_versions WHERE project_id=?1 AND owner=?2 AND version=?3",
-                params![task.project_id.to_string(),context_owner(&task.scope())?,r.context], |row| row.get(0))?;
-            let context: ContextVersion = decode(context)?;
-            crate::workflow::validate_context(&task, &record, &context)?;
-            ensure!(context.revision == unit.base_sha, "Workflow unit base differs from immutable input");
-            Ok::<_, anyhow::Error>((record, before))
-        }).transpose()?;
+        let workflow_binding = reservation
+            .map(|r| checked_workflow_binding(&tx, &task, &project, &goal, &unit, r))
+            .transpose()?;
         ensure!(
             project.state == ProjectState::Registered
                 && !matches!(

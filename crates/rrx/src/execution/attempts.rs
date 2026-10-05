@@ -4,7 +4,7 @@ use super::{
     *,
 };
 use anyhow::{Context, Result, ensure};
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc};
 
 pub struct AttemptManager {
     owner: Arc<RuntimeOwner>,
@@ -16,11 +16,87 @@ pub struct AttemptManager {
 pub struct PreparedExecutor {
     owner: Arc<RuntimeOwner>,
     unit: ExecutionUnit,
-    _guard: owner::PreparationGuard,
+    guard: owner::PreparationGuard,
+}
+/// Constructed only after the owning preparation validates its physical namespace.
+pub(crate) struct PreparedAdoption {
+    unit: ExecutionUnit,
+    sources: BTreeMap<String, String>,
+    payload_digest: String,
+}
+impl PreparedAdoption {
+    pub(crate) fn unit(&self) -> &ExecutionUnit {
+        &self.unit
+    }
+    pub(crate) fn sources(&self) -> &BTreeMap<String, String> {
+        &self.sources
+    }
+    pub(crate) fn payload_digest(&self) -> &str {
+        &self.payload_digest
+    }
 }
 impl PreparedExecutor {
     pub fn unit(&self) -> &ExecutionUnit {
         &self.unit
+    }
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) async fn adopt(
+        mut self,
+        expected_task: u64,
+        reservation: &WorkflowReservation,
+        phase: &str,
+        provider: &str,
+        sources: &BTreeMap<String, String>,
+        payload: &str,
+    ) -> Result<ExecutionUnit> {
+        let (task, project) = {
+            let store = self
+                .owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?;
+            store.validate_execution(&self.unit.authority(), true, true)?;
+            let task = store
+                .task(self.unit.scope.task_id.context("Task required")?)?
+                .context("Task missing")?;
+            let project = store.project(task.project_id)?.context("Project missing")?;
+            (task, project)
+        };
+        let lease = self.owner.git_lease(self.unit.id, None).await?;
+        let io = UnitGit::new(self.owner.clone(), &self.unit, true)?.with_git_lease(lease);
+        io.ownership(&project, &task).await?;
+        ensure!(
+            io.text(&self.unit.worktree, ["rev-parse", "HEAD"]).await? == self.unit.base_sha,
+            "prepared worktree HEAD changed"
+        );
+        ensure!(
+            io.run(
+                &self.unit.worktree,
+                ["status", "--porcelain", "--untracked-files=all"]
+            )
+            .await?
+            .is_empty(),
+            "prepared worktree changed before adoption"
+        );
+        let proof = PreparedAdoption {
+            unit: self.unit.clone(),
+            sources: sources.clone(),
+            payload_digest: super::workflow_source::digest(payload.as_bytes()),
+        };
+        let adopted = self
+            .owner
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("state poisoned"))?
+            .adopt_prepared_workflow_execution(
+                &proof,
+                expected_task,
+                reservation,
+                phase,
+                provider,
+            )?;
+        self.guard.disarm();
+        Ok(adopted)
     }
 
     /// Read an ordinary tracked file from the exact prepared commit, never HEAD
@@ -114,7 +190,7 @@ impl AttemptManager {
         Ok(PreparedExecutor {
             owner: self.owner.clone(),
             unit,
-            _guard: guard,
+            guard,
         })
     }
     pub(crate) async fn prepare_workflow(

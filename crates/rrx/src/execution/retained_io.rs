@@ -1,12 +1,20 @@
 //! Current-Runtime inspection of historical artifacts, without reopening Tasks.
 use super::*;
-use anyhow::{Result, ensure};
-use std::{os::unix::ffi::OsStrExt, path::PathBuf, process::Stdio, sync::Arc, time::Duration};
+use anyhow::{Context, Result, ensure};
+use std::{
+    collections::BTreeSet,
+    os::unix::ffi::OsStrExt,
+    path::PathBuf,
+    process::Stdio,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
 pub(crate) struct RetainedGit {
     owner: Arc<RuntimeOwner>,
     artifact: ResultArtifact,
     program: PathBuf,
+    source_blobs: Mutex<BTreeSet<String>>,
 }
 impl RetainedGit {
     pub(crate) fn new(owner: Arc<RuntimeOwner>, artifact: &ResultArtifact) -> Result<Self> {
@@ -21,6 +29,7 @@ impl RetainedGit {
             program: resources::resolve_program("git")?,
             owner,
             artifact: artifact.clone(),
+            source_blobs: Mutex::new(BTreeSet::new()),
         })
     }
     #[cfg(test)]
@@ -50,6 +59,18 @@ impl RetainedGit {
                 "base_graph"
             }
             ["fsck", "--full", "--strict", "--no-dangling"] => "fsck",
+            ["ls-tree", "-r", "-z", "-l", "--full-tree", oid] if *oid == self.artifact.revision => {
+                "source_tree"
+            }
+            ["cat-file", "blob", oid]
+                if self
+                    .source_blobs
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("source index poisoned"))?
+                    .contains(*oid) =>
+            {
+                "source_blob"
+            }
             _ => anyhow::bail!("unsupported retained Git command"),
         };
         let operation = OperationId::new();
@@ -123,6 +144,35 @@ impl RetainedGit {
             "retained Git failed (exit {:?})",
             observed.receipt.status.code()
         );
+        if action == "source_tree" {
+            let mut blobs = BTreeSet::new();
+            let mut count = 0;
+            for entry in observed.stdout.split(|b| *b == 0).filter(|e| !e.is_empty()) {
+                count += 1;
+                ensure!(count <= 4096, "retained source inventory exceeds bound");
+                let header = entry
+                    .split(|b| *b == b'\t')
+                    .next()
+                    .context("source tree header missing")?;
+                let fields = std::str::from_utf8(header)?
+                    .split_whitespace()
+                    .collect::<Vec<_>>();
+                ensure!(
+                    fields.len() == 4 && valid_oid(fields[2]),
+                    "invalid retained source tree entry"
+                );
+                if matches!(fields[0], "100644" | "100755") && fields[1] == "blob" {
+                    let size: usize = fields[3].parse()?;
+                    if size <= 256 * 1024 {
+                        blobs.insert(fields[2].to_owned());
+                    }
+                }
+            }
+            *self
+                .source_blobs
+                .lock()
+                .map_err(|_| anyhow::anyhow!("source index poisoned"))? = blobs;
+        }
         Ok(observed.stdout)
     }
 }

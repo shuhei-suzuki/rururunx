@@ -167,7 +167,7 @@ fn retain_phases(previous: &[Phase], requested: Vec<Phase>) -> Vec<Phase> {
         .into_iter()
         .collect()
 }
-fn budget(class: WorkflowClass, phase: Phase, config: &Config) -> ContextBudget {
+pub(crate) fn budget(class: WorkflowClass, phase: Phase, config: &Config) -> ContextBudget {
     ContextBudget {
         class: match class {
             WorkflowClass::Quick => BudgetClass::Small,
@@ -213,7 +213,36 @@ pub struct SourceSnapshot {
     pub source_versions: BTreeMap<String, String>,
     pub payload: String,
 }
+/// Private fields preserve the committed producer's complete policy/input frame.
+pub struct CommittedWorkflowInput {
+    pub(crate) config: Config,
+    pub(crate) source: SourceSnapshot,
+    pub(crate) budget: ContextBudget,
+}
 pub trait WorkflowSources: Send + Sync {
+    fn committed_input(
+        &self,
+        _project: Project,
+        _task: Task,
+        _phase: Phase,
+        _class: WorkflowClass,
+    ) -> WorkflowFuture<'_, Option<CommittedWorkflowInput>> {
+        Box::pin(async { Ok(None) })
+    }
+    fn take_initial_executor(
+        &self,
+        _project: &Project,
+        _task: &Task,
+        _phase: Phase,
+        _budget: &ContextBudget,
+    ) -> WorkflowFuture<'_, Option<crate::execution::workflow_source::InitialWorkflowExecutor>>
+    {
+        Box::pin(async { Ok(None) })
+    }
+    fn retire_initial(&self, _scope: &Scope) -> Result<()> {
+        Ok(())
+    }
+
     fn capture(
         &self,
         project: Project,
@@ -659,6 +688,24 @@ impl WorkflowEngine {
         phase: Phase,
         class: WorkflowClass,
     ) -> Result<(Config, SourceSnapshot, ContextBudget)> {
+        if let Some(frame) = self
+            .sources
+            .committed_input(project.clone(), task.clone(), phase, class)
+            .await?
+        {
+            ensure!(
+                frame.source.scope == task.scope()
+                    && crate::execution::valid_oid(&frame.source.revision)
+                    && frame
+                        .source
+                        .source_versions
+                        .keys()
+                        .all(|key| !key.starts_with("workflow:")),
+                "committed Workflow frame scope/revision mismatch"
+            );
+            frame.config.validate()?;
+            return Ok((frame.config, frame.source, frame.budget));
+        }
         let project_for_rules = project.clone();
         let runtime = self.runtime.clone();
         let (config, rules, versions) =
@@ -1390,16 +1437,37 @@ impl WorkflowEngine {
                 goal_version: snapshot.goal.version,
             };
             if phase.actor() == Actor::Executor {
-                attempts
-                    .prepare_workflow(
-                        snapshot.task.id,
-                        provider,
-                        phase.key(),
-                        &input.revision,
-                        &reservation,
+                if let Some(prepared) = self
+                    .sources
+                    .take_initial_executor(
+                        &snapshot.project,
+                        &snapshot.task,
+                        phase,
+                        &snapshot.workflow.history[index].budget,
                     )
                     .await?
-                    .0
+                {
+                    prepared
+                        .adopt(
+                            snapshot.task.version,
+                            &reservation,
+                            phase.key(),
+                            provider,
+                            &input,
+                        )
+                        .await?
+                } else {
+                    attempts
+                        .prepare_workflow(
+                            snapshot.task.id,
+                            provider,
+                            phase.key(),
+                            &input.revision,
+                            &reservation,
+                        )
+                        .await?
+                        .0
+                }
             } else {
                 let artifact = snapshot
                     .workflow
@@ -1908,7 +1976,8 @@ impl WorkflowEngine {
             at: now_ms(),
         });
         snapshot.task.state = state;
-        self.persist_decision(&mut snapshot, WorkflowAccess::TerminalDecision)
+        self.persist_decision(&mut snapshot, WorkflowAccess::TerminalDecision)?;
+        self.sources.retire_initial(&snapshot.task.scope())
     }
     fn persist_decision(&self, snapshot: &mut Snapshot, access: WorkflowAccess) -> Result<()> {
         snapshot.record.data = serde_json::to_value(&snapshot.workflow)?;

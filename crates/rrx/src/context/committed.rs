@@ -111,7 +111,6 @@ fn version_bytes(versions: &BTreeMap<String, String>) -> Result<()> {
 impl CommittedIndex {
     // The caller is the registered object producer, not public serialized input.
     // Parent Sources integration supplies the production consumer separately.
-    #[allow(dead_code)]
     pub(crate) fn build(
         scope: Scope,
         revision: String,
