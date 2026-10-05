@@ -55,6 +55,12 @@ capacity uses bounded explicit concurrency/backoff, not invented balances or
 ownership-style blanket refusal. Mandatory reviewer policy is preserved; known
 capacity, fairness and review headroom influence admission.
 
+An owned Claude plan-window exhaustion updates both its live unit's durable wait
+reason and watch status after the pool accepts it. Native input/lease are retained;
+no prompt is resent and sibling unit state is unchanged. Foreign/unknown events
+do not qualify that wait; reliable native success remains success. This staged
+producer policy is covered by local protocol controls, not actual account recovery.
+
 ## 4. Cleanup and outcome reporting
 
 Work success/failure/unknown and cleanup reclaimed/leftovers/unknown are independent

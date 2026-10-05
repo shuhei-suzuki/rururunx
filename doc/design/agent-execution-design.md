@@ -431,6 +431,17 @@ resume/reuse its worktree. Copy a draft only by capturing its explicit commit an
 selecting that retained SHA as a new base; native resume/checkpoint support must
 also pass authority/CWD compatibility, otherwise launch a new native session.
 
+For the staged Claude producer, a recognized rejected plan-window event must
+match the owned native Session and remain exhausted in the accepted pool state
+before moving that exact live unit to WaitingQuota. Publish the same authority
+and wait reason to its watch as its durable status. Retain the current native
+input and quota lease; this notification neither sends another prompt nor changes
+a sibling's execution state. An allowed event for another bucket cannot erase
+the wait. Unknown windows and foreign Session notifications do not mint confirmed
+subscription waiting. A reliable successful result still closes the live wait
+with successful work, even if pool telemetry remains exhausted. Native retry
+behavior and real quota recovery remain Phase3 qualification, not fixture proof.
+
 With Unknown/Stale balance, default per-provider concurrency ceiling is three
 including reviewers, executor sub-ceiling two. Global policy reserves reviewer
 slots and uses fair queues; two Claude plus two Codex executors can overlap if

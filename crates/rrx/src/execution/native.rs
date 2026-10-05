@@ -1231,6 +1231,16 @@ impl Core {
                         let scheduler=quota::QuotaScheduler::new(self.owner.clone());
                         let probe=self.owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?.execution_is_quota_probe(self.unit.id,"claude","unknown")?;
                         if probe && observation.status==QuotaStatus::Available{scheduler.observe_probe(&self.authority()?,&observation)?;}else{scheduler.observe(&observation)?;}
+                        if observation.status==QuotaStatus::Exhausted {
+                            let authority=self.authority()?;
+                            let mut store=self.owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?;
+                            // A rejected stale window may have been ignored by the pool.
+                            // Only accepted exhaustion for this Session's bucket waits.
+                            if store.quota_observations("claude","unknown")?.iter().any(|o|o.bucket==observation.bucket && o.status==QuotaStatus::Exhausted) {
+                                self.unit=store.mark_execution_quota_retry(&authority)?;
+                                self.update.send_modify(|s|{s.authority=self.unit.authority();s.wait_reason=self.unit.wait_reason;s.diagnostic=Some("subscription quota exhausted; native retry state retained");});
+                            }
+                        }
                     }
                     if frame["type"]=="control_request"{
                         self.authority()?;let permission=claude_wire::Pending::parse(&frame,&self.native)?;
