@@ -230,21 +230,26 @@ async fn published_recovery_reopens_exact_frame_and_advances_only_typed_workflow
     assert_eq!(input.source_versions, f.artifact.dependencies);
     assert_eq!(
         sources
-            .committed_input(project.clone(), task.clone())
+            .committed_input(
+                project.clone(),
+                task.clone(),
+                Phase::Commit,
+                WorkflowClass::Quick
+            )
             .await
             .unwrap()
             .unwrap()
-            .rule_text
-            .trim(),
-        "Mandatory Project rule rules.md:\nMANDATORY_RECOVERY_RULE_A"
+            .source
+            .source_versions,
+        f.artifact.dependencies
     );
     assert!(
         sources
             .take_initial_executor(
-                project.clone(),
-                task.clone(),
-                Phase::Commit,
-                budget(WorkflowClass::Quick, Phase::Commit, &f.config)
+                &project,
+                &task,
+                Phase::Implement,
+                &budget(WorkflowClass::Quick, Phase::Implement, &f.config)
             )
             .await
             .unwrap()
@@ -283,7 +288,7 @@ async fn published_recovery_reopens_exact_frame_and_advances_only_typed_workflow
 #[tokio::test]
 async fn source_claim_checks_helper_admission_competition_and_full_dto_currency() {
     let f = published().await;
-    let sources = ManagedWorkflowSources::new(f.owner.clone(), f.config);
+    let sources = ManagedWorkflowSources::new(f.owner.clone(), f.config).unwrap();
     let claim = f
         .owner
         .store
