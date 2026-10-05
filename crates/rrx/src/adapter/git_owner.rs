@@ -1271,6 +1271,10 @@ fn native_worker(
                     }
                     #[cfg(test)]
                     if let Some(pause) = &record._context.hooks.after_reap_send {
+                        // Reap and native facts are already complete. Hold this
+                        // ACTUAL worker without using the native vault lock as a
+                        // second fence that could mask the required worker.join.
+                        drop(native);
                         pause.block();
                     }
                     return;

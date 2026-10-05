@@ -333,3 +333,22 @@ relaxation. All private mutation sources were restored exactly after each run.
 No complete all-descendant settlement is inferred from mutation test termination.
 The finite [matrix](issue-60-reader-source1-mutations.json) retains every result,
 patch and log hash, including the survivor.
+
+
+The first strengthened M60-R04 control still SURVIVED after3s (no credit).
+Source verification identifies an additional masking fence: the private native
+worker pause retained its NativeAssets MutexGuard; after the omitted join the
+supervisor blocked acquiring that same vault for its native inspection. The
+second run therefore proves no lone worker.join guarantee. The cfg(test) pause
+now explicitly drops that guard after successful actual reap and recorded native
+facts, before holding the actual worker. Production paths are unchanged; the
+same omission operator requires a fresh actual consumer kill. Both survivors
+are preserved, not retrospectively attributed to a production defect or old
+CI/watchdog cause.
+
+Unmerged test-only Issue67 dependency5ca71f2 is normally composed atcd1004a,
+with its required Mac CI red and unmerged status retained. Incoming20 cfg(test)
+lines add bounded static stage/boundary/case and parent observation/exit/elapsed
+facts. They preserve60s watchdog, internal parallelism, readers, signals, cleanup
+order and existing assertions. Neither they nor this composition identify a
+historic process-inspection cause or grant complete nested settlement.
