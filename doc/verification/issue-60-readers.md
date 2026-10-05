@@ -587,3 +587,36 @@ Fmt/all-target Clippy PASS. [Finite controls/operator/restoration](issue-60-read
 include the restored actual-consumer terminal evidence; its uncaptured raw-log hash
 is null rather than invented. Independent Source3 limited delta gate remains
 pending. No current final full Release TEST or merge/native/full60 readiness.
+
+
+### Source3 finite outcome and precision disposition
+
+Both native limited Source3 reviews at675471c completed APPROVE/no C/H/M, two Low
+each, actual owned cleanup TRUE. They independently trace the actual waited-loop
+re-entry and verify every earlier Low correction. Their raw outcomes remain
+unchanged in [Source3 findings](issue-60-reader-source3-findings.json), including
+launch-time pending notes and failed full-gate blockers; approvals address only
+this test/docs delta, never merge/full source/native/MVP readiness.
+
+Three distinct Low precision items are verified. The controls artifact now carries
+git-derived tested/private-base/restored/current blob bindings for git_owner.rs
+and tests.rs, plus the exhaustive a5aef47→675471c four-path docs-only inventory;
+all tested/current code is identical. The uncaptured restored raw hash stays null,
+with reduced terminal-only evidence rather than an invented hash. Positive suffix
+alone cannot distinguish re-entry from timeout_at map_err; branch credit depends
+on the bound actual M17 intended kill and locked Tokio1.53.1 Timeout's inner-first
+poll at official source line217. No future-version/missed-notify coverage is claimed.
+
+The original30ms first-Pending assumption may falsely fail under host scheduling
+delay. No such failure is demonstrated here, and it cannot grant false-positive
+credit. This nonblocking risk remains explicit; no deadline/clock/parallel change,
+arbitrary Ready allowance or new production hook is introduced. A future failed
+required context will remain failed rather than waived by this known risk.
+
+Source3 CI37259754019 EVERYstep succeeded bothOS; the actual checkout/parents and
+complete-tree equality to675471c are recorded in [CI provenance](issue-60-reader-source3-ci.json).
+It covers full default DEBUG TEST plus RELEASE BUILD only. Local35f0 full Debug
+and Release TEST remain FAILED/cause AND regression UNKNOWN. No current final
+full Release TEST/source/merge/native acceptance is claimed; whole60/F1/native16,
+bootstrap/shared-scope producers, fairness/recovery/availability remain OPEN.
+Final outcome-only documentation gate and its new actual-checkout CI remain pending.

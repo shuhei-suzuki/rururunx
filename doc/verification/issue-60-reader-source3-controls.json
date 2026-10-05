@@ -124,5 +124,37 @@
   "fmt_check_exit": 0,
   "clippy_workspace_alltargets_Dwarnings_exit": 0,
   "production_diff_vs81e7": "EMPTY; only tests/docs change",
-  "full_debug_release_current_source35f0": "FAILED, cause AND regressionUNKNOWN; successful targets/builds/CI do not rewrite failures"
+  "full_debug_release_current_source35f0": "FAILED, cause AND regressionUNKNOWN; successful targets/builds/CI do not rewrite failures",
+  "source_binding": {
+    "tested": "a5aef47f0c6e8a5a252c8918741cd9717f5efa3c",
+    "reviewed": "675471c94f1525d1b236d23058582506eec532e6",
+    "tested_to_reviewed_changed_paths": [
+      "doc/requirements/issue-60-reader-requirements.md",
+      "doc/verification/issue-60-reader-source2-ci.json",
+      "doc/verification/issue-60-reader-source3-controls.json",
+      "doc/verification/issue-60-readers.md"
+    ],
+    "blobs": {
+      "crates/rrx/src/adapter/git_owner.rs": {
+        "a5aef47f0c6e8a5a252c8918741cd9717f5efa3c": "39822ffbffefa9a32d8d01316403cdc4dbec81b9",
+        "42c8d4c09d8f07680f5c29a4f42fd3a3bdfd6b86": "39822ffbffefa9a32d8d01316403cdc4dbec81b9",
+        "b7c9e4614e320bec00bae5271087cc5c37c6273c": "39822ffbffefa9a32d8d01316403cdc4dbec81b9",
+        "675471c94f1525d1b236d23058582506eec532e6": "39822ffbffefa9a32d8d01316403cdc4dbec81b9"
+      },
+      "crates/rrx/src/adapter/git_owner/tests.rs": {
+        "a5aef47f0c6e8a5a252c8918741cd9717f5efa3c": "6c540e707fa29d9838e4650c9218b69616c518b0",
+        "42c8d4c09d8f07680f5c29a4f42fd3a3bdfd6b86": "6c540e707fa29d9838e4650c9218b69616c518b0",
+        "b7c9e4614e320bec00bae5271087cc5c37c6273c": "6c540e707fa29d9838e4650c9218b69616c518b0",
+        "675471c94f1525d1b236d23058582506eec532e6": "6c540e707fa29d9838e4650c9218b69616c518b0"
+      }
+    }
+  },
+  "branch_credit_dependencies": {
+    "bound_M17_consumer1_intended_kill": true,
+    "locked_tokio_version": "1.53.1",
+    "official_source": "https://github.com/tokio-rs/tokio/blob/tokio-1.53.1/tokio/src/time/timeout.rs#L217",
+    "local_locked_source_sha256": "5b1b20cb77de63fb5071b696ac644706a9749e0aeb6dbea57220834cba6dc953",
+    "note": "Timeout polls inner Notified before delay. Positive message alone cannot distinguish re-entry vs map_err; branch credit tied to this source and actual M17 kill."
+  },
+  "test_scheduling_risk": "Original30ms before firstPending can produce false-negative if hostpreempted; no occurrence demonstrated here, no deadline/clock/parallel weakening; future failedcontext remains failed. This risk grants no false-positive branch credit."
 }

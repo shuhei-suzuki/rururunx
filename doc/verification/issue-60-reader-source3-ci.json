@@ -1,0 +1,51 @@
+{
+  "run": 37259754019,
+  "trigger_head": "675471c94f1525d1b236d23058582506eec532e6",
+  "actual_checkouts": {
+    "check (ubuntu-latest)": "9d15cadbb7419620ab328d8bf7fee38b5c7da577",
+    "check (macos-latest)": "9d15cadbb7419620ab328d8bf7fee38b5c7da577"
+  },
+  "parents": [
+    "768f84319cd2a73e14cd39336eb12d99e9be81a7",
+    "675471c94f1525d1b236d23058582506eec532e6"
+  ],
+  "tested_tree": "14380fdd24acebe17db3dda5abbd2db109b9b5de",
+  "trigger_tree": "14380fdd24acebe17db3dda5abbd2db109b9b5de",
+  "tested_tree_equals_trigger": true,
+  "jobs": {
+    "check (ubuntu-latest)": {
+      "conclusion": "success",
+      "steps": {
+        "Set up job": "success",
+        "Run actions/checkout@v4": "success",
+        "Run dtolnay/rust-toolchain@1.91.1": "success",
+        "Run cargo fmt --all -- --check": "success",
+        "Run cargo clippy --locked --workspace --all-targets -- -D warnings": "success",
+        "Run cargo test --locked --workspace": "success",
+        "Run cargo build --locked --workspace": "success",
+        "Run cargo build --locked --release --workspace": "success",
+        "Post Run actions/checkout@v4": "success",
+        "Complete job": "success"
+      }
+    },
+    "check (macos-latest)": {
+      "conclusion": "success",
+      "steps": {
+        "Set up job": "success",
+        "Run actions/checkout@v4": "success",
+        "Run dtolnay/rust-toolchain@1.91.1": "success",
+        "Run cargo fmt --all -- --check": "success",
+        "Run cargo clippy --locked --workspace --all-targets -- -D warnings": "success",
+        "Run cargo test --locked --workspace": "success",
+        "Run cargo build --locked --workspace": "success",
+        "Run cargo build --locked --release --workspace": "success",
+        "Post Run actions/checkout@v4": "success",
+        "Complete job": "success"
+      }
+    }
+  },
+  "log_sha256": "a1c8dbf536e167e33acd26ff637d7933bc6bb6428a75fbe1c426369b01ad1b4e",
+  "scope": "LimitedSource3test/docs; productioneqSource2; debugTEST/releaseBUILDonly; local35bothfullTESTFAILED retained",
+  "release_test": "NOT_RUN; requiredCI debugTEST/releaseBUILDonly",
+  "old_local_full35f0_tests": "BOTHFAILED, cause/regressionUNKNOWN; no oldrerun or result replacement"
+}

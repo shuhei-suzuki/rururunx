@@ -1,10 +1,11 @@
-# Issue60 selected Git reader lifetime — Requirements4/Design2 approved; Source3 partial gate pending
+# Issue60 selected Git reader lifetime — Requirements4/Design2 approved; limited reviews complete, full gates unqualified
 
 Risk: STRICT. Status: Requirements4 at a8e8a8b received two independent native
 approvals, no Critical/High/Medium findings, two Low findings each. Design2
 at46f819b has two independent approvals/no C/H/M; Source1 at a92c4d0 returned
 request_changes. Source2 at81e7c29 has two component-delta approvals/no C/H/M;
-full source acceptance remains unqualified and the limited Source3 delta is pending.
+limited Source3 at675471c likewise has two approvals/no C/H/M. Full source
+acceptance remains unqualified; both local full TEST gates failed.
 The four requirements
 Low findings are verified precision items
 carried into Design1 and the outcome ledger; this is not reader implementation
