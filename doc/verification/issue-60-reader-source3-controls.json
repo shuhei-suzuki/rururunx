@@ -1,0 +1,160 @@
+{
+  "head": "a5aef47f0c6e8a5a252c8918741cd9717f5efa3c",
+  "earlier_unqualified_exact_selector_invocation_zero_tests_no_coverage": true,
+  "runs": [
+    {
+      "head": "a5aef47f0c6e8a5a252c8918741cd9717f5efa3c",
+      "mode": "debug",
+      "test": "adapter::git_owner::tests::expired_refusal_precedes_capacity_and_has_no_job_or_flag",
+      "exit": 0,
+      "seconds": 0.338,
+      "log_sha256": "d2a5ac4aa92ef91d51c14dcd103fa6fc465626696287416837ea8beaa65f8752",
+      "results": [
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 333 filtered out; finished in 0.00s"
+      ]
+    },
+    {
+      "head": "a5aef47f0c6e8a5a252c8918741cd9717f5efa3c",
+      "mode": "debug",
+      "test": "adapter::git_owner::tests::actual_release_wake_after_expiry_keeps_waited_diagnostic_without_new_effects",
+      "exit": 0,
+      "seconds": 0.35,
+      "log_sha256": "7339eb53afdcc385f68c1ae65d7b222f80b0d9c8b274b59bac9bc0a0a111d6d1",
+      "results": [
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 333 filtered out; finished in 0.07s"
+      ]
+    },
+    {
+      "head": "a5aef47f0c6e8a5a252c8918741cd9717f5efa3c",
+      "mode": "release",
+      "test": "adapter::git_owner::tests::expired_refusal_precedes_capacity_and_has_no_job_or_flag",
+      "exit": 0,
+      "seconds": 57.849,
+      "log_sha256": "bdbacf212895efe4ab59552f2995986babae0d715c019bc0fae7f5d4fdcf015a",
+      "results": [
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 333 filtered out; finished in 0.00s"
+      ]
+    },
+    {
+      "head": "a5aef47f0c6e8a5a252c8918741cd9717f5efa3c",
+      "mode": "release",
+      "test": "adapter::git_owner::tests::actual_release_wake_after_expiry_keeps_waited_diagnostic_without_new_effects",
+      "exit": 0,
+      "seconds": 0.305,
+      "log_sha256": "178d22885b552c6e250f52bf478c978fdbe9d6750bf960bb6d0b897f058e7d74",
+      "results": [
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 333 filtered out; finished in 0.06s"
+      ]
+    }
+  ],
+  "mutation": {
+    "base_head": "42c8d4c09d8f07680f5c29a4f42fd3a3bdfd6b86",
+    "mutant_head": "25df0a90805faa1f578921e7323c266972a9f85d",
+    "operator": "diff --git a/crates/rrx/src/adapter/git_owner.rs b/crates/rrx/src/adapter/git_owner.rs\nindex 39822ff..3f4c433 100644\n--- a/crates/rrx/src/adapter/git_owner.rs\n+++ b/crates/rrx/src/adapter/git_owner.rs\n@@ -55,7 +55,7 @@ impl GitPool {\n         let record = loop {\n             // Expiry precedes capacity and setup; no new uncertainty on refusal.\n             if tokio::time::Instant::now() >= request.deadline {\n-                if waited_for_capacity {\n+                if !waited_for_capacity {\n                     return Err(self.admission_timeout());\n                 }\n                 return Err(error(\n",
+    "distinct_operators": 1,
+    "compiled_consumer_runs": 2,
+    "runs": [
+      {
+        "id": "M60-R17",
+        "consumer_index": 0,
+        "test": "adapter::git_owner::tests::expired_refusal_precedes_capacity_and_has_no_job_or_flag",
+        "compiled": true,
+        "exit": 101,
+        "assertion_killed": true,
+        "log_sha256": "207798dbccec23d9be46e1a0cfb476835eac0b2fd5f27af7046e349d1e5ae841",
+        "excerpts": [
+          "thread 'adapter::git_owner::tests::expired_refusal_precedes_capacity_and_has_no_job_or_flag' (239436836) panicked at crates/rrx/src/adapter/git_owner/tests.rs:72:5:",
+          "  left: \"Git ownership preflight timed out; capacity_unavailable{active_jobs=0,retained_unresolved_jobs=0}\"",
+          " right: \"Git ownership preflight timed out\"",
+          "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 333 filtered out; finished in 0.00s"
+        ],
+        "scope": "exact diagnostic text only; consumer0 pre-expired API guard, consumer1 actual16-child release-wake re-entry/no refused effect"
+      },
+      {
+        "id": "M60-R17",
+        "consumer_index": 1,
+        "test": "adapter::git_owner::tests::actual_release_wake_after_expiry_keeps_waited_diagnostic_without_new_effects",
+        "compiled": true,
+        "exit": 101,
+        "assertion_killed": true,
+        "log_sha256": "7b431d3dbeb61dd1f3b576865c4a93131bc0cea25c9d04f2e9d6590ff004c5c6",
+        "excerpts": [
+          "thread 'adapter::git_owner::tests::actual_release_wake_after_expiry_keeps_waited_diagnostic_without_new_effects' (239437058) panicked at crates/rrx/src/adapter/git_owner/tests.rs:126:5:",
+          "  left: \"Git ownership preflight timed out\"",
+          " right: \"Git ownership preflight timed out; capacity_unavailable{active_jobs=0,retained_unresolved_jobs=0}\"",
+          "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 333 filtered out; finished in 0.06s"
+        ],
+        "scope": "exact diagnostic text only; consumer0 pre-expired API guard, consumer1 actual16-child release-wake re-entry/no refused effect"
+      }
+    ],
+    "source_equal": "a5aef47f0c6e8a5a252c8918741cd9717f5efa3c",
+    "diagnostic_only_no_native_authority_credit": true
+  },
+  "cumulative_compiled_consumer_runs": 20,
+  "cumulative_distinct_operators": 17,
+  "cumulative_kill_runs": 18,
+  "old_masked_survivors_zero_credit": 2,
+  "M17_credit": "Diagnostic message discriminator only: initial API guard and actual16-child released admission waiter; not native group/effect/settlement authority.",
+  "restored_private_head": "b7c9e4614e320bec00bae5271087cc5c37c6273c",
+  "exact_private_source_restored": true,
+  "restored_controls": [
+    {
+      "test": "actual_release_wake_after_expiry_keeps_waited_diagnostic_without_new_effects",
+      "tool_terminal": 68177,
+      "exit": 0,
+      "results": "1 PASS/333 filtered;0.06s",
+      "raw_log_hash": null,
+      "raw_log_note": "terminal tool result, no local full-output file captured"
+    },
+    {
+      "test": "expired_refusal_precedes_capacity_and_has_no_job_or_flag",
+      "exit": 0,
+      "stdout_sha256": "53683d4c6d0821fccf29dea0b952c6312342c4bec873185315bd12087874fa65",
+      "stdout_results": [
+        "",
+        "running 1 test",
+        "test adapter::git_owner::tests::expired_refusal_precedes_capacity_and_has_no_job_or_flag ... ok",
+        "",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 333 filtered out; finished in 0.00s",
+        ""
+      ],
+      "log_scope": "stdout only; compiler progress stderr was separate tool output"
+    }
+  ],
+  "fmt_check_exit": 0,
+  "clippy_workspace_alltargets_Dwarnings_exit": 0,
+  "production_diff_vs81e7": "EMPTY; only tests/docs change",
+  "full_debug_release_current_source35f0": "FAILED, cause AND regressionUNKNOWN; successful targets/builds/CI do not rewrite failures",
+  "source_binding": {
+    "tested": "a5aef47f0c6e8a5a252c8918741cd9717f5efa3c",
+    "reviewed": "675471c94f1525d1b236d23058582506eec532e6",
+    "tested_to_reviewed_changed_paths": [
+      "doc/requirements/issue-60-reader-requirements.md",
+      "doc/verification/issue-60-reader-source2-ci.json",
+      "doc/verification/issue-60-reader-source3-controls.json",
+      "doc/verification/issue-60-readers.md"
+    ],
+    "blobs": {
+      "crates/rrx/src/adapter/git_owner.rs": {
+        "a5aef47f0c6e8a5a252c8918741cd9717f5efa3c": "39822ffbffefa9a32d8d01316403cdc4dbec81b9",
+        "42c8d4c09d8f07680f5c29a4f42fd3a3bdfd6b86": "39822ffbffefa9a32d8d01316403cdc4dbec81b9",
+        "b7c9e4614e320bec00bae5271087cc5c37c6273c": "39822ffbffefa9a32d8d01316403cdc4dbec81b9",
+        "675471c94f1525d1b236d23058582506eec532e6": "39822ffbffefa9a32d8d01316403cdc4dbec81b9"
+      },
+      "crates/rrx/src/adapter/git_owner/tests.rs": {
+        "a5aef47f0c6e8a5a252c8918741cd9717f5efa3c": "6c540e707fa29d9838e4650c9218b69616c518b0",
+        "42c8d4c09d8f07680f5c29a4f42fd3a3bdfd6b86": "6c540e707fa29d9838e4650c9218b69616c518b0",
+        "b7c9e4614e320bec00bae5271087cc5c37c6273c": "6c540e707fa29d9838e4650c9218b69616c518b0",
+        "675471c94f1525d1b236d23058582506eec532e6": "6c540e707fa29d9838e4650c9218b69616c518b0"
+      }
+    }
+  },
+  "branch_credit_dependencies": {
+    "bound_M17_consumer1_intended_kill": true,
+    "locked_tokio_version": "1.53.1",
+    "official_source": "https://github.com/tokio-rs/tokio/blob/tokio-1.53.1/tokio/src/time/timeout.rs#L217",
+    "local_locked_source_sha256": "5b1b20cb77de63fb5071b696ac644706a9749e0aeb6dbea57220834cba6dc953",
+    "note": "Timeout polls inner Notified before delay. Positive message alone cannot distinguish re-entry vs map_err; branch credit tied to this source and actual M17 kill."
+  },
+  "test_scheduling_risk": "Original30ms before firstPending can produce false-negative if hostpreempted; no occurrence demonstrated here, no deadline/clock/parallel weakening; future failedcontext remains failed. This risk grants no false-positive branch credit."
+}

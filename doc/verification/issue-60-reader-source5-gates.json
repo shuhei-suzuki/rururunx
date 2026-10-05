@@ -1,0 +1,177 @@
+{
+  "head": "f0727999d765aee1f1680ad8d58315b797008c19",
+  "unchanged_default_internal_concurrency": true,
+  "runs": [
+    {
+      "name": "workspace-debug",
+      "command": [
+        "cargo",
+        "test",
+        "--workspace"
+      ],
+      "head": "f0727999d765aee1f1680ad8d58315b797008c19",
+      "exit": 0,
+      "seconds": 178.611,
+      "log_sha256": "b07255bb57f4663b63b0308e88e647270aea0e2cfc0c8c76ecbf05b12c323a2c",
+      "results": [
+        "test result: ok. 44 passed; 0 failed; 1 ignored; 0 measured; 293 filtered out; finished in 6.33s",
+        "test result: ok. 314 passed; 0 failed; 24 ignored; 0 measured; 0 filtered out; finished in 61.43s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 14.89s",
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.39s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.01s",
+        "test result: ok. 1 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.28s",
+        "test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 28.62s",
+        "test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 11.01s",
+        "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s",
+        "test result: ok. 15 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 38.63s",
+        "test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 12.59s",
+        "test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s"
+      ],
+      "tail": [
+        "running 1 test",
+        "test crates/rrx/src/workflow.rs - workflow::WorkflowEngine (line 459) - compile ... ok",
+        "",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "",
+        "",
+        "running 1 test",
+        "test crates/rrx/src/workflow.rs - workflow::WorkflowEngine (line 455) - compile fail ... ok",
+        "",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s",
+        "",
+        "all doctests ran in 0.93s; merged doctests compilation took 0.50s"
+      ]
+    },
+    {
+      "name": "workspace-release",
+      "command": [
+        "cargo",
+        "test",
+        "--workspace",
+        "--release"
+      ],
+      "head": "f0727999d765aee1f1680ad8d58315b797008c19",
+      "exit": 101,
+      "seconds": 182.957,
+      "log_sha256": "8474f9e7745c88aac40ec1408b18c87521257c788aca1c1d0829d1cc053ad5c0",
+      "results": [
+        "test result: ok. 44 passed; 0 failed; 1 ignored; 0 measured; 293 filtered out; finished in 7.56s",
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 337 filtered out; finished in 10.59s",
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 337 filtered out; finished in 12.15s",
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 337 filtered out; finished in 13.02s",
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 337 filtered out; finished in 13.28s",
+        "test result: FAILED. 308 passed; 6 failed; 24 ignored; 0 measured; 0 filtered out; finished in 72.22s"
+      ],
+      "tail": [
+        "",
+        "failures:",
+        "    adapter::grok::environment_tests::absent_native_baseline_cannot_be_introduced_by_declared_caller",
+        "    adapter::grok::environment_tests::actual_stop_after_admission_never_spawns_and_keeps_snapshots_coherent",
+        "    adapter::grok::environment_tests::live_reference_change_rejects_actual_resume_before_spawn",
+        "    adapter::grok::environment_tests::native_references_and_ordinary_callers_keep_exact_scoped_alternatives",
+        "    adapter::grok::environment_tests::unrelated_foreign_changes_do_not_revoke_checkpoint",
+        "    adapter::grok::environment_tests::unrelated_foreign_changes_do_not_revoke_resume",
+        "",
+        "test result: FAILED. 308 passed; 6 failed; 24 ignored; 0 measured; 0 filtered out; finished in 72.22s",
+        "",
+        "error: test failed, to rerun pass `--lib`"
+      ]
+    },
+    {
+      "name": "fmt",
+      "command": [
+        "cargo",
+        "fmt",
+        "--all",
+        "--check"
+      ],
+      "head": "f0727999d765aee1f1680ad8d58315b797008c19",
+      "exit": 0,
+      "seconds": 0.744,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "results": [],
+      "tail": []
+    },
+    {
+      "name": "clippy",
+      "command": [
+        "cargo",
+        "clippy",
+        "--workspace",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "head": "f0727999d765aee1f1680ad8d58315b797008c19",
+      "exit": 0,
+      "seconds": 6.944,
+      "log_sha256": "030fb65e92c5ecbe2f30abcfaf7e125ce600efa1d9c0c9a1b242fcddd13381f6",
+      "results": [],
+      "tail": [
+        "    Checking rrx v0.1.0 (<issue-60-worktree>/crates/rrx)",
+        "    Finished `dev` profile [unoptimized + debuginfo] target(s) in 6.81s"
+      ]
+    },
+    {
+      "name": "debug-build",
+      "command": [
+        "cargo",
+        "build",
+        "--workspace"
+      ],
+      "head": "f0727999d765aee1f1680ad8d58315b797008c19",
+      "exit": 0,
+      "seconds": 0.348,
+      "log_sha256": "0b53209db424367e80c52cd8cde8b75e37af110438a0efde777104a1463956de",
+      "results": [],
+      "tail": [
+        "    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.29s"
+      ]
+    },
+    {
+      "name": "release-build",
+      "command": [
+        "cargo",
+        "build",
+        "--workspace",
+        "--release"
+      ],
+      "head": "f0727999d765aee1f1680ad8d58315b797008c19",
+      "exit": 0,
+      "seconds": 0.236,
+      "log_sha256": "a50f4a953f17e887d3844be51c0df233623b83d4462c96d5392c2671458d7fef",
+      "results": [],
+      "tail": [
+        "    Finished `release` profile [optimized] target(s) in 0.17s"
+      ]
+    }
+  ],
+  "old_full_failures_preserved": "35f0 / fd406 and all prior failed heads; cause AND regression UNKNOWN",
+  "platform": "local macOS (aarch64-apple-darwin); single local observation, not both-OS coverage",
+  "toolchain": "Rust 1.91.1; existing verification toolchain, no profile qualification",
+  "explicit_release_timeouts": [
+    {
+      "consumer": "native_references_and_ordinary_callers_keep_exact_scoped_alternatives",
+      "child": "reference_child",
+      "message": "Timeout: Git ownership preflight timed out",
+      "capacity_unavailable_suffix_present": false,
+      "active_jobs": null,
+      "retained_unresolved_jobs": null,
+      "original_log_line": 437
+    },
+    {
+      "consumer": "live_reference_change_rejects_actual_resume_before_spawn",
+      "child": "resume_admission_child",
+      "message": "Timeout: Git ownership preflight timed out",
+      "capacity_unavailable_suffix_present": false,
+      "active_jobs": null,
+      "retained_unresolved_jobs": null,
+      "original_log_line": 479
+    }
+  ],
+  "timeout_discriminator_limit": "No capacity-wait suffix in these two observed errors. Bare text is also used for already-expired admission, observation expiry and cancellation; it does not identify which bare path, child creation, cause, contribution or regression."
+}

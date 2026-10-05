@@ -1,0 +1,90 @@
+{
+  "run": 37268381965,
+  "trigger_head": "e30ce2fcd548291a67528bd385938e83f2fd15bf",
+  "actual_checkouts": {
+    "check (macos-latest)": "c26ff80f94a56d91a47fa443c3415543adf611df",
+    "check (ubuntu-latest)": "c26ff80f94a56d91a47fa443c3415543adf611df"
+  },
+  "parents": [
+    "26f3a48fedce976b353a6a9fa899bc6fb13ca72a",
+    "e30ce2fcd548291a67528bd385938e83f2fd15bf"
+  ],
+  "tested_tree": "72e5c5ebf387441468a9c428dcf940f174ca65bb",
+  "trigger_tree": "72e5c5ebf387441468a9c428dcf940f174ca65bb",
+  "tested_tree_equals_trigger": true,
+  "jobs": {
+    "check (macos-latest)": {
+      "conclusion": "failure",
+      "steps": {
+        "Set up job": "success",
+        "Run actions/checkout@v4": "success",
+        "Run dtolnay/rust-toolchain@1.91.1": "success",
+        "Run cargo fmt --all -- --check": "success",
+        "Run cargo clippy --locked --workspace --all-targets -- -D warnings": "success",
+        "Run cargo test --locked --workspace": "failure",
+        "Run cargo build --locked --workspace": "skipped",
+        "Run cargo build --locked --release --workspace": "skipped",
+        "Post Run actions/checkout@v4": "success",
+        "Complete job": "success"
+      }
+    },
+    "check (ubuntu-latest)": {
+      "conclusion": "success",
+      "steps": {
+        "Set up job": "success",
+        "Run actions/checkout@v4": "success",
+        "Run dtolnay/rust-toolchain@1.91.1": "success",
+        "Run cargo fmt --all -- --check": "success",
+        "Run cargo clippy --locked --workspace --all-targets -- -D warnings": "success",
+        "Run cargo test --locked --workspace": "success",
+        "Run cargo build --locked --workspace": "success",
+        "Run cargo build --locked --release --workspace": "success",
+        "Post Run actions/checkout@v4": "success",
+        "Complete job": "success"
+      }
+    }
+  },
+  "log_sha256": "d5d955959fe2b5c366ff7c52b6162fad874f9ceed2b91100a42e3d03c21604c6",
+  "scope": "Source5 current changed test-only composition; DEBUG TEST plus RELEASE BUILD, never RELEASE TEST. No full-source/native/whole60 acceptance.",
+  "observed_failure": {
+    "platform": "macOS",
+    "consumer": "codex::session::tests::abnormal_supervisor_drop_clears_the_installed_live_approval_journal",
+    "source_site": "crates/rrx/src/codex/session.rs:6005",
+    "library": {
+      "passed": 313,
+      "failed": 1,
+      "ignored": 24,
+      "seconds": 109.52
+    },
+    "error_kind": "SessionLost",
+    "inspection_facts": {
+      "site": "deadline_loop_entry",
+      "stream": "none",
+      "refusal": "deadline",
+      "returned_io_kind": "timed_out",
+      "stdout_reads": 1,
+      "stdout_bytes": 0,
+      "stdout_would_block": 1,
+      "stdout_eof": "pending",
+      "stderr_reads": 1,
+      "stderr_bytes": 0,
+      "stderr_would_block": 1,
+      "stderr_eof": "pending",
+      "status_polls": 1,
+      "status_pending": 1,
+      "exit": "unavailable",
+      "validation": "not_reached",
+      "cleanup": "kill_requested_then_wait_reaped",
+      "kill": "returned_ok",
+      "observation_us": 310711,
+      "spawn_us": 2245,
+      "cleanup_us": 25
+    },
+    "limits": "Inspector direct-child cleanup facts do not prove owned target-group cleanup. Cause, contribution and regression UNKNOWN. Later macOS workspace targets and both builds unrun/skipped; no deadline/latch/parallel waiver or rerun."
+  },
+  "private_audit_observations": {
+    "macOS": "44 PASS / 1 ignored, 6.55s",
+    "Linux": "41 PASS / 1 ignored, 3.09s"
+  },
+  "linux": "All required job steps successful. Current Linux inventory and signal parity branch executed; no Linux local mutation credit. Mac required context failed, so overall CI failed."
+}

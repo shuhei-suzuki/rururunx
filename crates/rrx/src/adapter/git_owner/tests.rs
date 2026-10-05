@@ -1,0 +1,1398 @@
+use super::*;
+use std::time::Instant;
+
+async fn shell(
+    context: TestGitContext,
+    script: &str,
+    flag: Arc<AtomicBool>,
+) -> AdapterResult<Vec<u8>> {
+    run(
+        Path::new("/bin/sh"),
+        Path::new("/tmp"),
+        &["-c".into(), script.into()],
+        vec![],
+        tokio::time::Instant::now() + Duration::from_secs(5),
+        flag,
+        Some(context),
+    )
+    .await
+}
+async fn released(context: &TestGitContext) {
+    let pool = context.pool.as_ref().unwrap();
+    tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            let waiter = pool.available.notified();
+            tokio::pin!(waiter);
+            waiter.as_mut().enable();
+            if pool.state.lock().unwrap().records.is_empty() {
+                return;
+            }
+            waiter.await;
+        }
+    })
+    .await
+    .unwrap();
+}
+#[tokio::test]
+async fn binary_output_and_settled_error_clear_live_uncertainty() {
+    let context = TestGitContext::isolated();
+    let flag = Arc::new(AtomicBool::new(false));
+    assert_eq!(
+        shell(context.clone(), "printf 'a\\000 b\\n'", flag.clone())
+            .await
+            .unwrap(),
+        b"a\0 b\n"
+    );
+    assert!(!flag.load(Ordering::SeqCst));
+    assert_eq!(
+        shell(context.clone(), "exit 7", flag.clone())
+            .await
+            .unwrap_err()
+            .kind,
+        ErrorKind::OwnershipMismatch
+    );
+    assert!(!flag.load(Ordering::SeqCst));
+    released(&context).await;
+}
+
+#[test]
+fn destructive_private_controls_leave_fresh_production_pool_unchanged() {
+    if std::env::var_os("RRX_PRIVATE_GIT_POOL_AUDIT").is_some() {
+        // The child uses normal libtest filtering/concurrency and must not recurse.
+        assert_private_pool_isolation();
+        let context = TestGitContext::missing_executable();
+        let flag = Arc::new(AtomicBool::new(false));
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let failure = runtime
+            .block_on(shell(context.clone(), "exit 0", flag.clone()))
+            .unwrap_err();
+        assert_eq!(failure.kind, ErrorKind::ProcessFailure);
+        assert!(flag.load(Ordering::SeqCst));
+        // No private held-count assertion masks this production-count witness.
+        // The actual unknown operation remains in the finite private inventory.
+        drop(context);
+        assert_private_pool_isolation();
+        return;
+    }
+    let executable = std::env::current_exe().unwrap();
+    let mut filters = vec![
+        "adapter::git_owner::tests::",
+        "adapter::grok::reader_tests::",
+        "context::tests::actual_late_reap_keeps_context_latch_after_real_worker_settlement",
+        "context::tests::actual_dropped_git_future_sets_context_latch_before_late_settlement",
+        "context::tests::actual_output_open_error_keeps_context_latch_after_reader_late_settlement",
+        "context::tests::opaque_attempted_git_error_keeps_original_cause_and_context_latch",
+    ];
+    if cfg!(target_os = "macos") {
+        filters.extend([
+            "adapter::tests::real_git_unknown_observations_keep_cleanup_reservation",
+            "context::tests::real_git_unknown_cleanup_preserves_cause_and_latches_later_context_launches",
+        ]);
+    }
+    let scalar = "adapter::git_owner::tests::unchanged_scalar_contract_trims_metadata";
+    let command = || {
+        let mut command = StdCommand::new(&executable);
+        command
+            .args(&filters)
+            .args(["--skip", scalar])
+            .env_clear()
+            .env("RRX_PRIVATE_GIT_POOL_AUDIT", "1")
+            .env("PATH", std::env::var_os("PATH").unwrap_or_default())
+            .stdin(Stdio::null())
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .process_group(0);
+        command
+    };
+    // A trusted --list child executes no test body. Its regular output file adds
+    // no pipe reader job. Both children share the original test-only 60s window.
+    let deadline = Instant::now() + Duration::from_secs(60);
+    let mut listing = tempfile::tempfile().unwrap();
+    let mut inventory = command();
+    inventory.arg("--list").stdout(listing.try_clone().unwrap());
+    let mut child = inventory.spawn().unwrap(); // Actual Child before observation.
+    assert!(wait_audit_child(&mut child, deadline).success());
+    std::io::Seek::rewind(&mut listing).unwrap();
+    let mut bounded = std::io::Read::take(&mut listing, 65537);
+    let mut text = String::new();
+    std::io::Read::read_to_string(&mut bounded, &mut text).unwrap();
+    assert!(text.len() <= 65536, "audit inventory exceeded byte limit");
+    let names = text
+        .lines()
+        .filter_map(|line| line.strip_suffix(": test"))
+        .collect::<std::collections::BTreeSet<_>>();
+    for filter in &filters {
+        assert!(
+            names.iter().any(|name| name.contains(filter)),
+            "audit selector matched no tests: {filter}"
+        );
+    }
+    assert!(!names.contains(scalar));
+    assert_eq!(
+        names.len(),
+        if cfg!(target_os = "macos") { 45 } else { 42 },
+        "audit inventory changed; verify all private carriers before updating it"
+    );
+    let mut command = command();
+    // Actual std Child is held before inspecting its group. This fixture is a
+    // test-process boundary; it grants no production/workload settlement proof.
+    let mut child = command.spawn().unwrap();
+    assert!(wait_audit_child(&mut child, deadline).success());
+}
+
+fn wait_audit_child(child: &mut StdChild, deadline: Instant) -> ExitStatus {
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                assert!(
+                    status.success(),
+                    "private-pool audit child failed: {status}"
+                );
+                return status;
+            }
+            Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(5)),
+            outcome => {
+                // The only signal identity comes from this still-owned Child.
+                if let Some(pid) = i32::try_from(child.id())
+                    .ok()
+                    .filter(|pid| *pid > 1)
+                    .and_then(Pid::from_raw)
+                {
+                    let _ = kill_process_group(pid, Signal::KILL);
+                } else {
+                    let _ = child.kill();
+                }
+                let reaped = child.wait();
+                panic!("private-pool audit incomplete: observation={outcome:?}; reap={reaped:?}");
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn selected_owned_signal_result_parity_preserves_os_specific_unknown() {
+    for injected in [
+        rustix::io::Errno::SRCH,
+        rustix::io::Errno::ACCESS,
+        rustix::io::Errno::PERM,
+    ] {
+        let mut context = TestGitContext::isolated();
+        context.context.hooks.signal_result = Some(injected);
+        let flag = Arc::new(AtomicBool::new(false));
+        let outcome = shell(context.clone(), "exit 0", flag.clone()).await;
+        let attempt = context
+            .context
+            .hooks
+            .signal_attempt
+            .lock()
+            .unwrap()
+            .unwrap();
+        let actual = attempt.actual;
+        let applied = attempt.injected;
+        assert!(
+            matches!(
+                actual,
+                Ok(()) | Err(rustix::io::Errno::SRCH | rustix::io::Errno::PERM)
+            ),
+            "actual owned KILL outcome: {actual:?}"
+        );
+        assert_eq!(applied, Some(injected), "resolver control was not applied");
+        // A real first owned-group KILL precedes the synthetic resolver value.
+        // This does not claim actual OS permission denial or Linux inspection.
+        let retained = injected == rustix::io::Errno::ACCESS
+            || (cfg!(not(target_os = "macos")) && injected == rustix::io::Errno::PERM);
+        if retained {
+            assert_eq!(outcome.unwrap_err().kind, ErrorKind::SessionLost);
+            assert!(flag.load(Ordering::SeqCst));
+            assert_eq!(context.held_jobs(), 4);
+            let record = context.pool.as_ref().unwrap().state.lock().unwrap().records[0].clone();
+            let native = record.native.lock().unwrap();
+            assert!(native.child.is_some() && native.group.is_some());
+            assert!(native.signal_issued && !native.reaped);
+            assert_eq!(native.signals, 1);
+            assert!(native.cleanup.as_ref().unwrap().is_err());
+        } else {
+            assert!(outcome.unwrap().is_empty());
+            released(&context).await;
+            assert!(!flag.load(Ordering::SeqCst));
+        }
+    }
+}
+#[tokio::test]
+async fn expired_refusal_precedes_capacity_and_has_no_job_or_flag() {
+    let context = TestGitContext::isolated();
+    let flag = Arc::new(AtomicBool::new(false));
+    let result = run(
+        Path::new("/nonexistent"),
+        Path::new("/tmp"),
+        &[],
+        vec![],
+        tokio::time::Instant::now(),
+        flag.clone(),
+        Some(context.clone()),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(result.kind, ErrorKind::Timeout);
+    assert_eq!(result.message, "Git ownership preflight timed out");
+    assert!(!flag.load(Ordering::SeqCst));
+    released(&context).await;
+}
+#[tokio::test]
+async fn actual_release_wake_after_expiry_keeps_waited_diagnostic_without_new_effects() {
+    let mut context = TestGitContext::isolated();
+    let pause = Arc::new(TestPause::default());
+    let release = TestRelease(pause.clone());
+    context.context.hooks.after_spawn = Some(pause.clone());
+    let mut calls = Vec::new();
+    for _ in 0..CAPACITY / JOBS {
+        calls.push(tokio::spawn(shell(
+            context.clone(),
+            "exit 0",
+            Arc::new(AtomicBool::new(false)),
+        )));
+    }
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while pause.entries.load(Ordering::SeqCst) != CAPACITY / JOBS {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(context.held_jobs(), CAPACITY);
+    let flag = Arc::new(AtomicBool::new(false));
+    let deadline = tokio::time::Instant::now() + Duration::from_millis(30);
+    // Manually hold this ACTUAL admission future after registering its waiter.
+    // No new task, test production hook or altered clock/deadline is introduced.
+    let mut waiting = std::pin::pin!(run(
+        Path::new("/rrx-refused-request-must-not-spawn"),
+        Path::new("/tmp"),
+        &[],
+        vec![],
+        deadline,
+        flag.clone(),
+        Some(context.clone()),
+    ));
+    let mut polling = std::task::Context::from_waker(std::task::Waker::noop());
+    assert!(std::future::Future::poll(waiting.as_mut(), &mut polling).is_pending());
+    tokio::time::sleep_until(deadline).await;
+    // Original actual children/readers/worker joins release and wake the already
+    // registered waiter before we next poll it, with its deadline now expired.
+    drop(release);
+    for call in calls {
+        call.await.unwrap().unwrap();
+    }
+    released(&context).await;
+    let result = match std::future::Future::poll(waiting.as_mut(), &mut polling) {
+        std::task::Poll::Ready(result) => result.unwrap_err(),
+        std::task::Poll::Pending => panic!("released waiter did not re-enter expired admission"),
+    };
+    assert_eq!(result.kind, ErrorKind::Timeout);
+    assert_eq!(
+        result.message,
+        "Git ownership preflight timed out; capacity_unavailable{active_jobs=0,retained_unresolved_jobs=0}"
+    );
+    assert!(!flag.load(Ordering::SeqCst));
+    assert_eq!(context.held_jobs(), 0);
+}
+
+#[tokio::test]
+async fn actual_std_spawn_then_initialization_failure_is_settled() {
+    let mut context = TestGitContext::isolated();
+    context.context.hooks.initialized_error = true;
+    let flag = Arc::new(AtomicBool::new(false));
+    let failure = shell(context.clone(), "exec /bin/sleep 30", flag.clone())
+        .await
+        .unwrap_err();
+    assert_eq!(failure.kind, ErrorKind::LaunchFailure);
+    assert!(!flag.load(Ordering::SeqCst));
+    released(&context).await;
+}
+#[tokio::test]
+async fn opaque_attempted_spawn_error_retains_exact_four_slots() {
+    let context = TestGitContext::isolated();
+    let flag = Arc::new(AtomicBool::new(false));
+    let failure = run(
+        Path::new("/rrx-no-such-executable"),
+        Path::new("/tmp"),
+        &[],
+        vec![],
+        tokio::time::Instant::now() + Duration::from_secs(5),
+        flag.clone(),
+        Some(context.clone()),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(failure.kind, ErrorKind::ProcessFailure);
+    assert!(flag.load(Ordering::SeqCst));
+    let records = context.pool.as_ref().unwrap().state.lock().unwrap();
+    assert_eq!(records.records.len() * JOBS, 4);
+    assert!(records.records[0].native.lock().unwrap().child.is_none());
+}
+
+#[tokio::test]
+async fn unchanged_scalar_contract_trims_metadata() {
+    let flag = Arc::new(AtomicBool::new(false));
+    let output = super::super::bounded_git(
+        Path::new("/bin/sh"),
+        Path::new("/tmp"),
+        &["-c".into(), "printf ' a \n'".into()],
+        vec![],
+        tokio::time::Instant::now() + Duration::from_secs(5),
+        flag.clone(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(output, "a");
+    assert!(!flag.load(Ordering::SeqCst));
+}
+
+#[tokio::test]
+async fn cancelled_admitted_call_never_spawns_or_sets_flag() {
+    let mut context = TestGitContext::isolated();
+    let pause = Arc::new(TestPause::default());
+    let release = TestRelease(pause.clone());
+    context.context.hooks.before_authorize = Some(pause.clone());
+    let flag = Arc::new(AtomicBool::new(false));
+    let task = tokio::spawn(shell(context.clone(), "exit 0", flag.clone()));
+    pause.reached().await;
+    task.abort();
+    let _ = task.await;
+    assert!(!flag.load(Ordering::SeqCst));
+    drop(release);
+    released(&context).await;
+    assert!(!flag.load(Ordering::SeqCst));
+}
+#[tokio::test]
+async fn cancelled_authorized_command_never_creates_a_child() {
+    let mut context = TestGitContext::isolated();
+    let pause = Arc::new(TestPause::default());
+    let release = TestRelease(pause.clone());
+    context.context.hooks.before_worker_authorize = Some(pause.clone());
+    let flag = Arc::new(AtomicBool::new(false));
+    let task = tokio::spawn(shell(context.clone(), "exit 0", flag.clone()));
+    pause.reached().await;
+    let record = context.pool.as_ref().unwrap().state.lock().unwrap().records[0].clone();
+    assert!(record.ticket.publication.lock().unwrap().state == State::Spawning);
+    assert!(record.native.lock().unwrap().child.is_none());
+    // AuthorizeSpawn is already dequeued, but std::Command::spawn has not run.
+    // Actual caller Drop delivers cancellation while the worker is paused after
+    // dequeuing AuthorizeSpawn; no test-only live-caller cancellation response.
+    task.abort();
+    assert!(task.await.unwrap_err().is_cancelled());
+    drop(release);
+    released(&context).await;
+    assert_eq!(
+        record.returned_children.load(Ordering::SeqCst),
+        0,
+        "cancelled authorization created an actual Child"
+    );
+    assert!(record.native.lock().unwrap().child.is_none());
+    assert!(
+        flag.load(Ordering::SeqCst),
+        "Spawning cancellation stays frozen"
+    );
+}
+#[tokio::test]
+async fn cancelled_live_call_does_not_drop_runtime_or_clear_its_flag() {
+    let mut context = TestGitContext::isolated();
+    let pause = Arc::new(TestPause::default());
+    let release = TestRelease(pause.clone());
+    context.context.hooks.after_spawn = Some(pause.clone());
+    let flag = Arc::new(AtomicBool::new(false));
+    let task = tokio::spawn(shell(context.clone(), "exec /bin/sleep 30", flag.clone()));
+    pause.reached().await;
+    task.abort();
+    let _ = task.await;
+    assert!(flag.load(Ordering::SeqCst));
+    let record = context.pool.as_ref().unwrap().state.lock().unwrap().records[0].clone();
+    // Supervisor remains paused, so only the already-counted native worker can
+    // issue first cleanup from the caller's bounded Cancel message.
+    tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            if record
+                .native
+                .try_lock()
+                .is_ok_and(|native| native.signal_issued)
+            {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(record.native.lock().unwrap().signals, 1);
+    drop(release);
+    released(&context).await;
+    assert!(flag.load(Ordering::SeqCst));
+}
+#[tokio::test]
+async fn actual_worker_join_precedes_success_and_capacity_release() {
+    let mut context = TestGitContext::isolated();
+    let pause = Arc::new(TestPause::default());
+    let release = TestRelease(pause.clone());
+    context.context.hooks.after_reap_send = Some(pause.clone());
+    let flag = Arc::new(AtomicBool::new(false));
+    let mut task = tokio::spawn(shell(context.clone(), "printf joined", flag.clone()));
+    pause.reached().await;
+    // One yield cannot prove the independent supervisor has reached join. Wait
+    // on the actual caller outcome while the already-counted worker is held.
+    let premature = tokio::time::timeout(Duration::from_secs(3), &mut task).await;
+    let held = context
+        .pool
+        .as_ref()
+        .unwrap()
+        .state
+        .lock()
+        .unwrap()
+        .records
+        .len()
+        * JOBS;
+    let uncertain = flag.load(Ordering::SeqCst);
+    drop(release);
+    assert!(
+        premature.is_err(),
+        "caller returned before its actual native worker joined"
+    );
+    assert_eq!(task.await.unwrap().unwrap(), b"joined");
+    released(&context).await;
+    assert_eq!(held, 4);
+    assert!(uncertain);
+    assert!(!flag.load(Ordering::SeqCst));
+}
+#[tokio::test]
+async fn inner_frame_loss_wakes_caller_and_retains_outer_runtime_and_readers() {
+    let mut context = TestGitContext::isolated();
+    context.context.hooks.supervisor_panic = true;
+    let flag = Arc::new(AtomicBool::new(false));
+    let error = tokio::time::timeout(
+        Duration::from_secs(3),
+        shell(context.clone(), "exit 0", flag.clone()),
+    )
+    .await
+    .unwrap()
+    .unwrap_err();
+    assert_eq!(error.kind, ErrorKind::SessionLost);
+    assert!(flag.load(Ordering::SeqCst));
+    let record = context.pool.as_ref().unwrap().state.lock().unwrap().records[0].clone();
+    assert!(record.runtime.lock().unwrap_err().into_inner().is_some());
+    let readers = record
+        .readers
+        .lock()
+        .err()
+        .expect("reader vault must survive unwind")
+        .into_inner();
+    assert!(readers.stdout.is_some() && readers.stderr.is_some());
+}
+#[tokio::test]
+async fn established_primary_survives_later_inner_frame_loss() {
+    let mut context = TestGitContext::isolated();
+    context.context.hooks.after_primary_panic = true;
+    let flag = Arc::new(AtomicBool::new(false));
+    let error = shell(context.clone(), "exit 7", flag.clone())
+        .await
+        .unwrap_err();
+    assert_eq!(error.kind, ErrorKind::OwnershipMismatch);
+    assert!(flag.load(Ordering::SeqCst));
+    assert_eq!(
+        context
+            .pool
+            .as_ref()
+            .unwrap()
+            .state
+            .lock()
+            .unwrap()
+            .records
+            .len()
+            * JOBS,
+        4
+    );
+}
+#[tokio::test]
+async fn sixteen_actual_owner_records_bound_all_four_job_lanes() {
+    let mut context = TestGitContext::isolated();
+    let pause = Arc::new(TestPause::default());
+    let release = TestRelease(pause.clone());
+    context.context.hooks.after_spawn = Some(pause.clone());
+    let mut tasks = Vec::new();
+    for _ in 0..CAPACITY / JOBS {
+        tasks.push(tokio::spawn(shell(
+            context.clone(),
+            "exit 0",
+            Arc::new(AtomicBool::new(false)),
+        )));
+    }
+    // Actual pause entries follow the std Child anchor and reader initialization.
+    // A held Readers mutex alone precedes those effects and is not readiness proof.
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            let records = context
+                .pool
+                .as_ref()
+                .unwrap()
+                .state
+                .lock()
+                .unwrap()
+                .records
+                .clone();
+            if records.len() == 16 && pause.entries.load(Ordering::SeqCst) == 16 {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    let rejected_flag = Arc::new(AtomicBool::new(false));
+    let refused = run(
+        Path::new("/rrx-must-not-spawn"),
+        Path::new("/tmp"),
+        &[],
+        vec![],
+        tokio::time::Instant::now() + Duration::from_millis(30),
+        rejected_flag.clone(),
+        Some(context.clone()),
+    )
+    .await;
+    let actual = context
+        .pool
+        .as_ref()
+        .unwrap()
+        .state
+        .lock()
+        .unwrap()
+        .records
+        .clone();
+    let all_workers = actual.iter().all(|r| r.worker.lock().unwrap().is_some());
+    let created_readers: usize = actual
+        .iter()
+        .map(|record| record.reader_lanes.load(Ordering::SeqCst))
+        .sum();
+    let all_children = actual.iter().all(|record| {
+        let native = record.native.lock().unwrap();
+        native.child.is_some() && native.group.is_some() && !native.reaped
+    });
+    drop(release);
+    for task in tasks {
+        task.await.unwrap().unwrap();
+    }
+    assert_eq!(actual.len() * JOBS, 64);
+    released(&context).await;
+    assert!(all_workers);
+    assert!(all_children);
+    assert_eq!(created_readers, 32);
+    let refused = refused.unwrap_err();
+    assert_eq!(refused.kind, ErrorKind::Timeout);
+    assert_eq!(
+        refused.message,
+        "Git ownership preflight timed out; capacity_unavailable{active_jobs=64,retained_unresolved_jobs=0}"
+    );
+    assert!(!rejected_flag.load(Ordering::SeqCst));
+}
+
+#[tokio::test]
+async fn actual_stdout_cap_failure_aborts_and_observes_pending_peer() {
+    let mut context = TestGitContext::isolated();
+    context.context.hooks.pending_stderr = true;
+    let flag = Arc::new(AtomicBool::new(false));
+    let error = shell(context.clone(), "printf '%65537s' ''", flag.clone())
+        .await
+        .unwrap_err();
+    assert_eq!(error.kind, ErrorKind::InvalidInput);
+    assert_eq!(error.message, "Git metadata exceeds output budget");
+    assert!(!flag.load(Ordering::SeqCst));
+    released(&context).await;
+    let facts = context.context.hooks.facts.lock().unwrap().unwrap();
+    assert_eq!(facts.stdout.join, JoinState::Returned);
+    assert_eq!(facts.stdout.read_error, Some(ErrorKind::InvalidInput));
+    assert!(!facts.stdout.abort_requested);
+    assert_eq!(facts.stderr.join, JoinState::Cancelled);
+    assert!(facts.stderr.abort_requested);
+    assert!(!facts.stderr.read_ok);
+    assert!(facts.stderr.read_error.is_none());
+}
+
+#[tokio::test]
+async fn post_signal_worker_panic_retains_child_without_a_second_signal() {
+    let mut context = TestGitContext::isolated();
+    context.context.hooks.worker_panic = true;
+    let flag = Arc::new(AtomicBool::new(false));
+    let error = tokio::time::timeout(
+        Duration::from_secs(3),
+        shell(context.clone(), "exit 0", flag.clone()),
+    )
+    .await
+    .unwrap()
+    .unwrap_err();
+    assert_eq!(error.kind, ErrorKind::SessionLost);
+    assert!(flag.load(Ordering::SeqCst));
+    let record = context.pool.as_ref().unwrap().state.lock().unwrap().records[0].clone();
+    let native = record.native.lock().unwrap_or_else(|p| p.into_inner());
+    assert!(native.child.is_some());
+    assert!(native.signal_issued);
+    assert_eq!(native.signals, 1);
+    assert!(native.cleanup.is_none());
+}
+#[tokio::test]
+async fn bookkeeping_poison_after_settlement_holds_slots_without_false_native_unknown() {
+    let mut context = TestGitContext::isolated();
+    let pause = Arc::new(TestPause::default());
+    let release = TestRelease(pause.clone());
+    context.context.hooks.after_reap_send = Some(pause.clone());
+    let flag = Arc::new(AtomicBool::new(false));
+    let task = tokio::spawn(shell(context.clone(), "printf settled", flag.clone()));
+    pause.reached().await;
+    let pool = context.pool.as_ref().unwrap();
+    assert!(
+        catch_unwind(AssertUnwindSafe(|| {
+            let _guard = pool.state.lock().unwrap();
+            panic!("synthetic bookkeeping poison");
+        }))
+        .is_err()
+    );
+    drop(release);
+    assert_eq!(task.await.unwrap().unwrap(), b"settled");
+    assert!(!flag.load(Ordering::SeqCst));
+    assert_eq!(
+        pool.state.lock().err().unwrap().into_inner().records.len() * JOBS,
+        4
+    );
+    let refused_flag = Arc::new(AtomicBool::new(false));
+    assert_eq!(
+        shell(context, "exit 0", refused_flag.clone())
+            .await
+            .unwrap_err()
+            .kind,
+        ErrorKind::LaunchFailure
+    );
+    assert!(!refused_flag.load(Ordering::SeqCst));
+}
+#[tokio::test]
+async fn active_ticket_poison_returns_unknown_without_releasing_its_record() {
+    let mut context = TestGitContext::isolated();
+    let pause = Arc::new(TestPause::default());
+    let release = TestRelease(pause.clone());
+    context.context.hooks.after_spawn = Some(pause.clone());
+    let flag = Arc::new(AtomicBool::new(false));
+    let task = tokio::spawn(shell(context.clone(), "exit 0", flag.clone()));
+    pause.reached().await;
+    let record = context.pool.as_ref().unwrap().state.lock().unwrap().records[0].clone();
+    assert!(
+        catch_unwind(AssertUnwindSafe(|| {
+            let _guard = record.ticket.publication.lock().unwrap();
+            panic!("synthetic active ticket poison");
+        }))
+        .is_err()
+    );
+    drop(release);
+    let error = tokio::time::timeout(Duration::from_secs(3), task)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap_err();
+    assert_eq!(error.kind, ErrorKind::SessionLost);
+    assert!(flag.load(Ordering::SeqCst));
+    assert_eq!(
+        context
+            .pool
+            .as_ref()
+            .unwrap()
+            .state
+            .lock()
+            .unwrap()
+            .records
+            .len()
+            * JOBS,
+        4
+    );
+}
+#[tokio::test]
+async fn publication_poison_after_actual_settlement_still_retains_permits() {
+    let mut context = TestGitContext::isolated();
+    let pause = Arc::new(TestPause::default());
+    let release = TestRelease(pause.clone());
+    context.context.hooks.before_terminal_publication = Some(pause.clone());
+    let flag = Arc::new(AtomicBool::new(false));
+    let task = tokio::spawn(shell(context.clone(), "printf terminal", flag.clone()));
+    pause.reached().await;
+    let record = context.pool.as_ref().unwrap().state.lock().unwrap().records[0].clone();
+    assert!(record.native_settled.load(Ordering::SeqCst));
+    assert!(record.worker.lock().unwrap().is_none());
+    assert!(record.runtime.lock().unwrap().is_none());
+    assert!(record.native.lock().unwrap().child.is_none());
+    assert!(
+        catch_unwind(AssertUnwindSafe(|| {
+            let _guard = record.ticket.publication.lock().unwrap();
+            panic!("synthetic terminal publication poison");
+        }))
+        .is_err()
+    );
+    drop(release);
+    assert_eq!(
+        task.await.unwrap().unwrap_err().kind,
+        ErrorKind::SessionLost
+    );
+    // Observe the actual pool action, not just an earlier caller publication.
+    tokio::time::timeout(Duration::from_secs(3), async {
+        while !record.frame_actions_completed.load(Ordering::SeqCst) {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    assert!(flag.load(Ordering::SeqCst));
+    assert_eq!(context.held_jobs(), 4);
+}
+
+#[tokio::test]
+async fn caller_runtime_shutdown_keeps_independent_owner_and_frozen_flag() {
+    let mut context = TestGitContext::isolated();
+    let pause = Arc::new(TestPause::default());
+    let release = TestRelease(pause.clone());
+    context.context.hooks.after_spawn = Some(pause.clone());
+    let flag = Arc::new(AtomicBool::new(false));
+    let own_context = context.clone();
+    let own_flag = flag.clone();
+    let own_pause = pause.clone();
+    let (finished, observed) = oneshot::channel();
+    let (stop, stop_requested) = oneshot::channel();
+    // One explicitly bounded fixture caller thread; this is not a component job.
+    let caller = thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        runtime.spawn(shell(own_context, "exec /bin/sleep 30", own_flag));
+        runtime.block_on(async {
+            tokio::select! { _ = own_pause.reached() => {}, _ = stop_requested => {} }
+        });
+        drop(runtime); // This drops the CALLER future, never the owner's runtime.
+        let _ = finished.send(());
+    });
+    pause.reached().await;
+    let stopped = tokio::time::timeout(Duration::from_secs(3), observed).await;
+    // Own caller control only: settle the fixture runtime even when its positive
+    // wake assertion fails. No PID rescue, extra job or production budget exists.
+    let _ = stop.send(());
+    caller.join().unwrap();
+    let record = context.pool.as_ref().unwrap().state.lock().unwrap().records[0].clone();
+    assert!(flag.load(Ordering::SeqCst));
+    drop(release);
+    released(&context).await;
+    assert!(flag.load(Ordering::SeqCst));
+    assert!(record.runtime.lock().unwrap().is_none());
+    assert!(record.worker.lock().unwrap().is_none());
+    assert!(record.native.lock().unwrap().child.is_none());
+    stopped.unwrap().unwrap();
+}
+#[tokio::test]
+async fn generic_live_launch_error_uses_actual_git_flag_without_retyping_error() {
+    for (unknown, invalid_binding) in [(false, false), (true, false), (true, true)] {
+        let (_directory, store, project, task, worktree) = super::super::tests::preflight_fixture();
+        let context = if invalid_binding {
+            TestGitContext::invalid_binding()
+        } else if unknown {
+            TestGitContext::missing_executable()
+        } else {
+            TestGitContext::initializer_failure()
+        };
+        let mut adapter =
+            GenericCliAdapter::new("fake".into(), vec!["/bin/cat".into()], store.clone()).unwrap();
+        adapter.git_context = Some(context.clone());
+        let result = adapter
+            .start(super::super::tests::fixture_request(
+                project, &task, worktree,
+            ))
+            .await
+            .unwrap_err();
+        assert_eq!(
+            result.kind,
+            if unknown && !invalid_binding {
+                ErrorKind::ProcessFailure
+            } else {
+                ErrorKind::LaunchFailure
+            }
+        );
+        {
+            let state = store.lock().unwrap();
+            let records = state.records(&task.scope(), RecordKind::Session).unwrap();
+            assert_eq!(records.len(), 1);
+            let session: Session = serde_json::from_value(records[0].data.clone()).unwrap();
+            assert_eq!(
+                session.state,
+                if unknown {
+                    SessionState::Lost
+                } else {
+                    SessionState::Failed
+                }
+            );
+            assert!(session.pid.is_none());
+            assert!(session.native_ref.is_none());
+            assert_eq!(crate::git::executor_reserved(&session), unknown);
+        }
+        if unknown {
+            assert_eq!(context.held_jobs(), 4);
+        } else {
+            released(&context).await;
+        }
+    }
+}
+
+#[tokio::test]
+async fn slow_cleanup_ack_does_not_consume_the_distinct_reap_window() {
+    let mut context = TestGitContext::isolated();
+    let pause = Arc::new(TestPause::default());
+    let release = TestRelease(pause.clone());
+    context.context.hooks.before_cleanup_ack = Some(pause.clone());
+    let flag = Arc::new(AtomicBool::new(false));
+    let task = tokio::spawn(shell(context.clone(), "printf cleanup", flag.clone()));
+    pause.reached().await;
+    // Hold the already-counted native worker beyond the reap window. Its cleanup
+    // result is established, but no stage acknowledgement has been delivered.
+    tokio::time::sleep(WINDOW + Duration::from_millis(30)).await;
+    let premature = task.is_finished();
+    drop(release);
+    let result = task.await.unwrap();
+    released(&context).await;
+    assert!(!premature);
+    assert_eq!(result.unwrap(), b"cleanup");
+    assert!(!flag.load(Ordering::SeqCst));
+}
+
+#[test]
+#[ignore = "explicit child entry for the owned process-group fixture"]
+fn owned_alternate_group_fixture_child() {
+    let mode = std::env::var("RRX_GIT_OWNER_FIXTURE_MODE").unwrap();
+    let root = PathBuf::from(std::env::var_os("RRX_GIT_OWNER_FIXTURE_ROOT").unwrap());
+    if mode == "moved" {
+        let raw: i32 = std::env::var("RRX_GIT_OWNER_FIXTURE_GROUP")
+            .unwrap()
+            .parse()
+            .unwrap();
+        let group = Pid::from_raw(raw).unwrap();
+        rustix::process::setpgid(None, Some(group)).unwrap();
+    } else {
+        assert_eq!(mode, "anchor");
+    }
+    std::fs::write(root.join(format!("{mode}.ready")), b"ready").unwrap();
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    while !root.join(format!("{mode}.release")).exists() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "owned fixture release missing"
+        );
+        thread::sleep(Duration::from_millis(5));
+    }
+    std::process::exit(0);
+}
+
+struct AlternateFixture {
+    child: StdChild,
+    root: PathBuf,
+}
+impl Drop for AlternateFixture {
+    fn drop(&mut self) {
+        // These are solely our fixture's release files and actual direct Child.
+        // This guard runs on the synchronous test thread, never an async poller.
+        let _ = std::fs::write(self.root.join("moved.release"), b"release");
+        let _ = std::fs::write(self.root.join("anchor.release"), b"release");
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+async fn fixture_ready(path: &Path) {
+    tokio::time::timeout(Duration::from_secs(3), async {
+        while !path.exists() {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+}
+
+#[test]
+fn blocked_owning_child_wait_freezes_then_same_jobs_settle_late() {
+    let directory = tempfile::tempdir().unwrap();
+    let executable = std::env::current_exe().unwrap();
+    let args = vec![
+        "--ignored".to_owned(),
+        "--exact".to_owned(),
+        "adapter::git_owner::tests::owned_alternate_group_fixture_child".to_owned(),
+        "--nocapture".to_owned(),
+    ];
+    let child = StdCommand::new(&executable)
+        .args(&args)
+        .env_clear()
+        .env("RRX_GIT_OWNER_FIXTURE_MODE", "anchor")
+        .env("RRX_GIT_OWNER_FIXTURE_ROOT", directory.path())
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .process_group(0)
+        .spawn()
+        .unwrap();
+    let anchor = AlternateFixture {
+        child,
+        root: directory.path().to_owned(),
+    };
+    let context = TestGitContext::isolated();
+    let flag = Arc::new(AtomicBool::new(false));
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let (failure, record, frozen, retained, facts, late_facts) = runtime.block_on(async {
+        fixture_ready(&directory.path().join("anchor.ready")).await;
+        let environment = vec![
+            ("RRX_GIT_OWNER_FIXTURE_MODE".into(), "moved".into()),
+            (
+                "RRX_GIT_OWNER_FIXTURE_ROOT".into(),
+                directory.path().as_os_str().to_owned(),
+            ),
+            (
+                "RRX_GIT_OWNER_FIXTURE_GROUP".into(),
+                anchor.child.id().to_string().into(),
+            ),
+        ];
+        // Deadline applies to observation, followed by the unchanged 250ms owning
+        // reap window. The original group becomes empty but this direct child lives.
+        let call_executable = executable.clone();
+        let call_root = directory.path().to_owned();
+        let call_args = args.clone();
+        let call_flag = flag.clone();
+        let call_context = context.clone();
+        let call = tokio::spawn(async move {
+            run(
+                &call_executable,
+                &call_root,
+                &call_args,
+                environment,
+                tokio::time::Instant::now() + Duration::from_secs(1),
+                call_flag,
+                Some(call_context),
+            )
+            .await
+        });
+        fixture_ready(&directory.path().join("moved.ready")).await;
+        let record = context.pool.as_ref().unwrap().state.lock().unwrap().records[0].clone();
+        let failure = tokio::time::timeout(Duration::from_secs(3), call)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap_err();
+        let frozen = flag.load(Ordering::SeqCst);
+        let retained = context.held_jobs();
+        let facts = context.context.hooks.facts.lock().unwrap().unwrap();
+        // The native vault is intentionally held by the actual blocking wait.
+        assert!(record.native.try_lock().is_err());
+        // Cancellation remains a short signal while that wait is blocked.
+        record.ticket.cancel();
+        std::fs::write(directory.path().join("moved.release"), b"release").unwrap();
+        released(&context).await;
+        let late_facts = context.context.hooks.facts.lock().unwrap().unwrap();
+        (failure, record, frozen, retained, facts, late_facts)
+    });
+    drop(runtime);
+    drop(anchor);
+    assert_eq!(failure.kind, ErrorKind::SessionLost);
+    assert_eq!(
+        failure.message,
+        "Git child death not confirmed after cleanup"
+    );
+    assert!(frozen && flag.load(Ordering::SeqCst));
+    assert_eq!(retained, JOBS);
+    assert_eq!(facts, late_facts);
+    assert!(facts.stdout.join.settled() && facts.stderr.join.settled());
+    assert!(record.runtime.lock().unwrap().is_none());
+    assert!(record.worker.lock().unwrap().is_none());
+    assert!(record.native.lock().unwrap().child.is_none());
+}
+
+#[tokio::test]
+async fn actual_generic_launch_drop_distinguishes_admitted_from_live_git() {
+    for live in [false, true] {
+        let (_directory, store, project, task, worktree) = super::super::tests::preflight_fixture();
+        let mut context = TestGitContext::isolated();
+        let pause = Arc::new(TestPause::default());
+        let release = TestRelease(pause.clone());
+        if live {
+            context.context.hooks.after_spawn = Some(pause.clone());
+        } else {
+            context.context.hooks.before_authorize = Some(pause.clone());
+        }
+        let mut adapter =
+            GenericCliAdapter::new("fake".into(), vec!["/bin/cat".into()], store.clone()).unwrap();
+        adapter.git_context = Some(context.clone());
+        let request = super::super::tests::fixture_request(project, &task, worktree);
+        let retry_request = request.clone();
+        let launch = tokio::spawn(async move { adapter.start(request).await });
+        pause.reached().await;
+        launch.abort();
+        assert!(launch.await.unwrap_err().is_cancelled());
+        let records = store
+            .lock()
+            .unwrap()
+            .records(&task.scope(), RecordKind::Session)
+            .unwrap();
+        let saved: Session = serde_json::from_value(records[0].data.clone()).unwrap();
+        let expected = if live {
+            SessionState::Lost
+        } else {
+            SessionState::Failed
+        };
+        assert_eq!(saved.state, expected);
+        assert_eq!(crate::git::executor_reserved(&saved), live);
+        assert!(saved.pid.is_none() && saved.native_ref.is_none());
+        if live {
+            let retry =
+                GenericCliAdapter::new("fake".into(), vec!["/bin/cat".into()], store.clone())
+                    .unwrap();
+            assert_eq!(
+                retry.start(retry_request).await.unwrap_err().kind,
+                ErrorKind::StateConflict,
+                "the actual public start must reject the live Git loss reservation"
+            );
+        }
+        drop(release);
+        released(&context).await;
+        let after = store.lock().unwrap().session(saved.id).unwrap().unwrap().0;
+        assert_eq!(
+            after.state, expected,
+            "late Git settlement must not rewrite launch reservation"
+        );
+        assert_eq!(crate::git::executor_reserved(&after), live);
+    }
+}
+
+#[tokio::test]
+async fn actual_reap_after_cutoff_never_clears_the_frozen_flag() {
+    let context = TestGitContext::reap_after_cutoff();
+    let flag = Arc::new(AtomicBool::new(false));
+    let failure = shell(context.clone(), "exit 0", flag.clone())
+        .await
+        .unwrap_err();
+    assert_eq!(failure.kind, ErrorKind::SessionLost);
+    assert_eq!(
+        failure.message,
+        "Git child death not confirmed after cleanup"
+    );
+    assert!(
+        flag.load(Ordering::SeqCst),
+        "late reap was renamed in-budget"
+    );
+    released(&context).await;
+    assert!(flag.load(Ordering::SeqCst));
+    assert_eq!(
+        context.held_jobs(),
+        0,
+        "actual same-job late joins can release slots"
+    );
+}
+
+#[tokio::test]
+async fn actual_reader_registration_progresses_while_native_cleanup_holds_its_vault() {
+    let mut context = TestGitContext::isolated();
+    let before_readers = Arc::new(TestPause::default());
+    let native_held = Arc::new(TestPause::default());
+    let initialized = Arc::new(TestPause::default());
+    let release_readers = TestRelease(before_readers.clone());
+    let release_native = TestRelease(native_held.clone());
+    let release_initialized = TestRelease(initialized.clone());
+    context.context.hooks.before_reader_initialization = Some(before_readers.clone());
+    context.context.hooks.after_cancel_cleanup = Some(native_held.clone());
+    context.context.hooks.after_spawn = Some(initialized.clone());
+    let flag = Arc::new(AtomicBool::new(false));
+    let call = tokio::spawn(shell(context.clone(), "exec sleep 60", flag.clone()));
+    before_readers.reached().await;
+    let record = context.pool.as_ref().unwrap().state.lock().unwrap().records[0].clone();
+    record.ticket.cancel();
+    native_held.reached().await;
+    assert!(
+        record.native.try_lock().is_err(),
+        "actual cleanup still holds native vault"
+    );
+    drop(release_readers);
+    initialized.reached().await;
+    assert_eq!(record.reader_lanes.load(Ordering::SeqCst), 2);
+    assert!(
+        record.native.try_lock().is_err(),
+        "reader progress must precede native unlock"
+    );
+    call.abort();
+    assert!(call.await.unwrap_err().is_cancelled());
+    drop(release_initialized);
+    drop(release_native);
+    released(&context).await;
+    assert!(
+        flag.load(Ordering::SeqCst),
+        "cancelled live outcome remains frozen"
+    );
+}
+
+#[tokio::test]
+async fn observed_reader_panic_is_distinct_from_abort_and_native_loss() {
+    let mut context = TestGitContext::isolated();
+    context.context.hooks.stdout_reader_panic = true;
+    context.context.hooks.pending_stderr = true;
+    let flag = Arc::new(AtomicBool::new(false));
+    let failure = shell(context.clone(), "exit 0", flag.clone())
+        .await
+        .unwrap_err();
+    assert_eq!(failure.kind, ErrorKind::ProcessFailure);
+    released(&context).await;
+    assert!(!flag.load(Ordering::SeqCst));
+    let facts = context.context.hooks.facts.lock().unwrap().unwrap();
+    assert_eq!(facts.stdout.join, JoinState::Panicked);
+    assert!(!facts.stdout.abort_requested);
+    assert!(!facts.stdout.read_ok && facts.stdout.read_error.is_none());
+    assert_eq!(facts.stderr.join, JoinState::Cancelled);
+    assert!(facts.stderr.abort_requested);
+}
+
+#[tokio::test]
+async fn invalid_binding_retains_actual_child_before_any_pipe_or_pid_adoption() {
+    let context = TestGitContext::invalid_binding();
+    let flag = Arc::new(AtomicBool::new(false));
+    let error = shell(context.clone(), "exit 0", flag.clone())
+        .await
+        .unwrap_err();
+    assert_eq!(error.kind, ErrorKind::LaunchFailure);
+    assert!(flag.load(Ordering::SeqCst));
+    assert_eq!(context.held_jobs(), 4);
+    let record = context.pool.as_ref().unwrap().state.lock().unwrap().records[0].clone();
+    let native = record.native.lock().unwrap();
+    let child = native.child.as_ref().unwrap();
+    assert!(child.id() > 1);
+    assert!(child.stdout.is_some() && child.stderr.is_some());
+    assert!(native.group.is_none() && !native.signal_issued && !native.reaped);
+    assert_eq!(native.signals, 0);
+    assert!(record.runtime.lock().unwrap().is_some());
+    assert!(record.worker.lock().unwrap().is_some());
+    // The injected invalid-binding branch proves retained actual ownership;
+    // it is not a claim that the OS returned such a PID or that this child reaped.
+}
+
+#[tokio::test]
+async fn unobserved_output_cutoff_releases_late_without_rewriting_frozen_facts() {
+    let context = TestGitContext::pending_output();
+    let flag = Arc::new(AtomicBool::new(false));
+    let failure = shell(context.clone(), "exit 0", flag.clone())
+        .await
+        .unwrap_err();
+    assert_eq!(failure.kind, ErrorKind::ProcessFailure);
+    assert_eq!(failure.message, "Git output remained open after cleanup");
+    assert!(flag.load(Ordering::SeqCst));
+    let frozen = context.context.hooks.facts.lock().unwrap().unwrap();
+    assert_eq!(frozen.stdout.join, JoinState::NotObserved);
+    assert!(frozen.stdout.abort_requested);
+    assert!(!frozen.stdout.read_ok && frozen.stdout.read_error.is_none());
+    assert_eq!(frozen.stderr.join, JoinState::NotObserved);
+    context.wait_until_released().await;
+    assert!(flag.load(Ordering::SeqCst));
+    assert_eq!(context.context.hooks.facts.lock().unwrap().unwrap(), frozen);
+    // The real endpoint is owned by an injected pending reader future. This
+    // exercises the production cutoff/late join, not an escaped writer cause.
+}
+
+#[tokio::test]
+async fn actual_generic_output_open_original_kind_remains_lost_after_late_release() {
+    let (_directory, store, project, task, worktree) = super::super::tests::preflight_fixture();
+    let context = TestGitContext::pending_output();
+    let mut adapter =
+        GenericCliAdapter::new("fake".into(), vec!["/bin/cat".into()], store.clone()).unwrap();
+    adapter.git_context = Some(context.clone());
+    let failure = adapter
+        .start(super::super::tests::fixture_request(
+            project, &task, worktree,
+        ))
+        .await
+        .unwrap_err();
+    assert_eq!(failure.kind, ErrorKind::ProcessFailure);
+    assert_eq!(failure.message, "Git output remained open after cleanup");
+    context.wait_until_released().await;
+    let records = store
+        .lock()
+        .unwrap()
+        .records(&task.scope(), RecordKind::Session)
+        .unwrap();
+    let saved: Session = serde_json::from_value(records[0].data.clone()).unwrap();
+    assert_eq!(saved.state, SessionState::Lost);
+    assert!(crate::git::executor_reserved(&saved));
+    assert!(saved.pid.is_none() && saved.native_ref.is_none());
+    assert_eq!(context.held_jobs(), 0);
+}
+
+#[cfg(target_os = "macos")]
+#[tokio::test]
+async fn spawned_initializer_failure_and_unknown_cleanup_keep_actual_anchor_and_jobs() {
+    let plan = ProcessInspectionPlan::unknown(inspection::UnknownObservation::Malformed);
+    let mut context = TestGitContext::with_plan(plan.clone());
+    context.context.hooks.initialized_error = true;
+    let flag = Arc::new(AtomicBool::new(false));
+    let failure = shell(context.clone(), "exec /bin/sleep 30", flag.clone())
+        .await
+        .unwrap_err();
+    assert_eq!(failure.kind, ErrorKind::SessionLost);
+    assert_eq!(plan.original_error_kind(), Some(io::ErrorKind::InvalidData));
+    assert!(failure.message.contains("inspection_facts{"));
+    assert!(failure.message.contains("site=frame_validation"));
+    assert!(failure.message.contains("validation=invalid_identifier"));
+    assert!(flag.load(Ordering::SeqCst));
+    assert_eq!(context.held_jobs(), 4);
+    let record = context.pool.as_ref().unwrap().state.lock().unwrap().records[0].clone();
+    let native = record.native.lock().unwrap();
+    assert!(native.child.is_some() && native.signal_issued && !native.reaped);
+    assert!(native.cleanup.as_ref().unwrap().is_err());
+    assert_eq!(native.signals, 1);
+    // Real first KILL precedes a forced real-inspector malformed observation;
+    // cleanup Unknown cannot authorize a Child::wait or resource release.
+}
+
+#[tokio::test]
+async fn four_actual_git_operations_have_independent_native_and_reader_lanes() {
+    let (_directory, _store, _project, _task, worktree) = super::super::tests::preflight_fixture();
+    let executable = resolve_executable("git").unwrap();
+    let mut context = TestGitContext::isolated();
+    let pause = Arc::new(TestPause::default());
+    let release = TestRelease(pause.clone());
+    context.context.hooks.after_spawn = Some(pause.clone());
+    let mut calls = Vec::new();
+    for _ in 0..4 {
+        let executable = executable.clone();
+        let worktree = worktree.clone();
+        let context = context.clone();
+        calls.push(tokio::spawn(async move {
+            run(
+                &executable,
+                &worktree,
+                &["rev-parse".into(), "HEAD".into()],
+                vec![],
+                tokio::time::Instant::now() + Duration::from_secs(5),
+                Arc::new(AtomicBool::new(false)),
+                Some(context),
+            )
+            .await
+        }));
+    }
+    let records = tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            let records = context
+                .pool
+                .as_ref()
+                .unwrap()
+                .state
+                .lock()
+                .unwrap()
+                .records
+                .clone();
+            if records.len() == 4 && pause.entries.load(Ordering::SeqCst) == 4 {
+                break records;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    let real_native = records.iter().all(|record| {
+        let native = record.native.lock().unwrap();
+        native.child.as_ref().is_some_and(|child| child.id() > 1)
+            && native.group.is_some()
+            && !native.reaped
+            && !native.signal_issued
+            && record.worker.lock().unwrap().is_some()
+    });
+    let reader_lanes: usize = records
+        .iter()
+        .map(|record| record.reader_lanes.load(Ordering::SeqCst))
+        .sum();
+    drop(release);
+    let mut outputs = Vec::new();
+    for call in calls {
+        outputs.push(call.await.unwrap().unwrap());
+    }
+    released(&context).await;
+    assert_eq!(records.len() * JOBS, 16);
+    assert!(real_native);
+    assert_eq!(
+        reader_lanes, 8,
+        "actual created handles, not successful reads"
+    );
+    assert_eq!(outputs.len(), 4);
+    assert!(outputs.iter().all(|output| output == &outputs[0]));
+    assert_eq!(outputs[0].len(), 41);
+    // Four actual native Git operations are simultaneously owned. Their leaders
+    // may already be zombies; this does not assert concurrent CPU execution.
+}
+
+#[tokio::test]
+async fn actual_mixed_capacity_pressure_reports_bounded_jobs_without_new_effects() {
+    let context = TestGitContext::isolated();
+    let mut retained = context.clone();
+    retained.context.hooks.missing_executable = true;
+    for _ in 0..2 {
+        assert_eq!(
+            shell(retained.clone(), "exit 0", Arc::new(AtomicBool::new(false)))
+                .await
+                .unwrap_err()
+                .kind,
+            ErrorKind::ProcessFailure
+        );
+    }
+    let pause = Arc::new(TestPause::default());
+    let release = TestRelease(pause.clone());
+    let mut active = context.clone();
+    active.context.hooks.after_spawn = Some(pause.clone());
+    let mut calls = Vec::new();
+    for _ in 0..14 {
+        calls.push(tokio::spawn(shell(
+            active.clone(),
+            "exit 0",
+            Arc::new(AtomicBool::new(false)),
+        )));
+    }
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while pause.entries.load(Ordering::SeqCst) != 14 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    let flag = Arc::new(AtomicBool::new(false));
+    let refused = run(
+        Path::new("/rrx-must-not-spawn"),
+        Path::new("/tmp"),
+        &[],
+        vec![],
+        tokio::time::Instant::now() + Duration::from_millis(30),
+        flag.clone(),
+        Some(context.clone()),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(refused.kind, ErrorKind::Timeout);
+    assert_eq!(
+        refused.message,
+        "Git ownership preflight timed out; capacity_unavailable{active_jobs=56,retained_unresolved_jobs=8}"
+    );
+    assert!(!flag.load(Ordering::SeqCst));
+    assert_eq!(
+        context.held_jobs(),
+        64,
+        "refusal allocates no new record/job"
+    );
+    drop(release);
+    for call in calls {
+        call.await.unwrap().unwrap();
+    }
+    tokio::time::timeout(Duration::from_secs(3), async {
+        while context.held_jobs() != 8 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+}

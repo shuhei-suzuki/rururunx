@@ -423,8 +423,9 @@ source/default/CI gates and real native integration remain tracked in verificati
 Inspector timeout diagnostics follow the approved STRICT [Issue60 component design](doc/design/issue-60-inspection-design.md).
 The diagnostic-only implementation adds finite failure facts while preserving existing
 cleanup/Unknown authority. Two independent Source2/Source3 approvals cover this
-diagnostic slice; final metadata-head CI remains pending under the recorded partial
-gate disposition. Local full release555 FAILED, cause and regression status unknown.
+diagnostic slice, merged under the recorded partial gate disposition with qualified
+bothOS metadata-head CI. Local full Release TEST555 FAILED, cause and regression
+status unknown.
 No backend availability fix or owned-reader/workload settlement is claimed; full #60
 and native acceptance remain open.
 
@@ -436,3 +437,25 @@ values and provider-reference validation remain private. This repository's curre
 0.1.0 source is installed by path and has no observed crates.io release; a future
 published breaking release needs the 0.2 compatibility/version gate. No publishing
 action or complete native-default/custom-provider compatibility is claimed here.
+
+Selected Git reader lifetime has two independent Requirements4 approvals. The
+[Design2](doc/design/issue-60-reader-design.md), approved by two independent reviewers, now has a committed selected Git
+Child/readers implementation independent of caller runtime. Two independent
+Source2–5 reviews approve their limited component deltas without C/H/M; Source5's
+three evidence-precision Lows are dispositioned in the ledger. Full-source/native
+acceptance remains unqualified. Earlier local macOS f072 full default Debug passed425 top-level Rust tests+2docs;
+distinct full Release TEST FAILED308/6 (library PASS/FAIL; later targets unrun).
+Older35f0/fd406 and historical failures remain failed/cause AND regression UNKNOWN.
+The default suite now includes a concurrent private audit child; no causal role is
+inferred. e295 public bothOS CI passed DEBUG TEST and RELEASE BUILD, not RELEASE
+TEST. Source5 e30 CI failed in one macOS Codex cleanup consumer; Linux all steps
+passed. The required final context remains unqualified, with cause/contribution/
+regression UNKNOWN. Normal main custody composition777 now passed initial local
+macOS full default Debug and distinct Release TEST, each445 top-level Rust tests+
+2docs/27ignored, plus fmt/Clippy/both BUILDs. Two independent static reviews approve
+this finite composition without findings; CI37270293297 passed every step on both
+OS with complete tested-tree equality. Final docs-only checks precede any limited
+component merge. Whole60/native/backend/F1/MVP remain OPEN; these new observations
+resolve no historical failure cause. The [finite ledger](doc/verification/issue-60-readers.md) is27 compiled runs/
+23 operators/25 intended kills/TWO masked survivors with zero credit; M14/M17 are
+diagnostics-only, R23 selector-non-vacuity only. Shared native lifetime and full #60/F1 remain open.

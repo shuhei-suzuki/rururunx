@@ -1,0 +1,64 @@
+{
+  "run": 37258392978,
+  "trigger_head": "81e7c29ce2cc51746308874a57f8bc9aed888dc1",
+  "actual_checkouts": {
+    "check (macos-latest)": "8da165ce768130bb90884df0887ffa4cf1aaf223",
+    "check (ubuntu-latest)": "8da165ce768130bb90884df0887ffa4cf1aaf223"
+  },
+  "parents": [
+    "768f84319cd2a73e14cd39336eb12d99e9be81a7",
+    "81e7c29ce2cc51746308874a57f8bc9aed888dc1"
+  ],
+  "tested_tree": "9962acd259f7e765180b97edfd1325f49ae25ab1",
+  "trigger_tree": "9962acd259f7e765180b97edfd1325f49ae25ab1",
+  "tested_tree_equals_trigger": true,
+  "jobs": {
+    "check (macos-latest)": {
+      "conclusion": "success",
+      "steps": {
+        "Set up job": "success",
+        "Run actions/checkout@v4": "success",
+        "Run dtolnay/rust-toolchain@1.91.1": "success",
+        "Run cargo fmt --all -- --check": "success",
+        "Run cargo clippy --locked --workspace --all-targets -- -D warnings": "success",
+        "Run cargo test --locked --workspace": "success",
+        "Run cargo build --locked --workspace": "success",
+        "Run cargo build --locked --release --workspace": "success",
+        "Post Run actions/checkout@v4": "success",
+        "Complete job": "success"
+      }
+    },
+    "check (ubuntu-latest)": {
+      "conclusion": "success",
+      "steps": {
+        "Set up job": "success",
+        "Run actions/checkout@v4": "success",
+        "Run dtolnay/rust-toolchain@1.91.1": "success",
+        "Run cargo fmt --all -- --check": "success",
+        "Run cargo clippy --locked --workspace --all-targets -- -D warnings": "success",
+        "Run cargo test --locked --workspace": "success",
+        "Run cargo build --locked --workspace": "success",
+        "Run cargo build --locked --release --workspace": "success",
+        "Post Run actions/checkout@v4": "success",
+        "Complete job": "success"
+      }
+    }
+  },
+  "log_sha256": "ea0c5f229dda9321b3ad72017aef5ad64df1650cbea877aaa2b9b0bc6e37d0df",
+  "scope": "Source2component only; localbothfullTESTFAILED retained; CI debugTEST/releaseBUILD not releaseTEST",
+  "top_level_results": {
+    "macOS": {
+      "rust_passed": 420,
+      "doctests_passed": 2,
+      "ignored": 27
+    },
+    "Linux": {
+      "rust_passed": 384,
+      "doctests_passed": 2,
+      "ignored": 20
+    },
+    "nested_ordinary_Codex_child": "1 PASS each OS, separate"
+  },
+  "ci_release_test": "NOT_RUN; debug TEST and release BUILD only",
+  "local35f0_full_debug_and_release_test": "FAILED; no historical cause/regression resolution"
+}

@@ -1,0 +1,149 @@
+{
+  "base_head": "44249c9e3a67c91c73569650461d9707cab2ade0",
+  "source_matches": "35f0cda",
+  "runs": [
+    {
+      "id": "M60-R13",
+      "base_head": "44249c9e3a67c91c73569650461d9707cab2ade0",
+      "mutant_head": "a58b4ff27840daf48b9d680573700b89b7413640",
+      "operator": "diff --git a/crates/rrx/src/adapter/git_owner.rs b/crates/rrx/src/adapter/git_owner.rs\nindex 39822ff..9b89745 100644\n--- a/crates/rrx/src/adapter/git_owner.rs\n+++ b/crates/rrx/src/adapter/git_owner.rs\n@@ -1162,7 +1162,7 @@ async fn supervisor_work(\n     }\n     // A deadline return is frozen before awaiting the same outstanding wait late.\n     let settled =\n-        !reap_pending && record.native_settled.load(Ordering::SeqCst) && readers.settled();\n+        record.native_settled.load(Ordering::SeqCst) && readers.settled();\n     if !settled {\n         #[cfg(test)]\n         freeze_reader_facts(record, readers);\n",
+      "patch_sha256": "7407b7bc52083e31a57a7653ac29549eaa898847d744c393212704b4bc3c17c5",
+      "test": "context::tests::actual_late_reap_keeps_context_latch_after_real_worker_settlement",
+      "compiled": true,
+      "exit": 101,
+      "assertion_killed": true,
+      "seconds": 11.945,
+      "scope": "actual Context consumer",
+      "log_sha256": "9beac453d13e7f7feb7aaafb4099c05c43087b5ef16d26503c2097699b74fbd8",
+      "excerpts": [
+        "thread 'context::tests::actual_late_reap_keeps_context_latch_after_real_worker_settlement' (237592287) panicked at crates/rrx/src/context.rs:1413:9:",
+        "late reap bypassed Context latch",
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 332 filtered out; finished in 0.28s"
+      ]
+    },
+    {
+      "id": "M60-R14",
+      "base_head": "44249c9e3a67c91c73569650461d9707cab2ade0",
+      "mutant_head": "145f1f826dc0620ae0185e227633074b6fe20728",
+      "operator": "diff --git a/crates/rrx/src/adapter/git_owner.rs b/crates/rrx/src/adapter/git_owner.rs\nindex 39822ff..72302ae 100644\n--- a/crates/rrx/src/adapter/git_owner.rs\n+++ b/crates/rrx/src/adapter/git_owner.rs\n@@ -192,7 +192,7 @@ impl GitPool {\n                 let mut active = 0usize;\n                 let mut retained = 0usize;\n                 for record in &pool.records {\n-                    let count = if record.ticket.retained.load(Ordering::SeqCst) {\n+                    let count = if false {\n                         &mut retained\n                     } else {\n                         &mut active\n",
+      "patch_sha256": "928824da84b419b0f430c55ced6ed0148f949c4eab015d94f5a801e2f80ca1c7",
+      "test": "adapter::git_owner::tests::actual_mixed_capacity_pressure_reports_bounded_jobs_without_new_effects",
+      "compiled": true,
+      "exit": 101,
+      "assertion_killed": true,
+      "seconds": 5.508,
+      "scope": "actual mixed pressure count-source consumer; diagnostics only",
+      "log_sha256": "f0757dc99ea4e6ad6fd19e05f10b7730c388cba2a3ee4fa9aea15900b3ddceee",
+      "excerpts": [
+        "thread 'adapter::git_owner::tests::actual_mixed_capacity_pressure_reports_bounded_jobs_without_new_effects' (237595472) panicked at crates/rrx/src/adapter/git_owner/tests.rs:1083:5:",
+        "  left: \"Git ownership preflight timed out; capacity_unavailable{active_jobs=64,retained_unresolved_jobs=0}\"",
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 332 filtered out; finished in 0.04s"
+      ]
+    },
+    {
+      "id": "M60-R15",
+      "base_head": "44249c9e3a67c91c73569650461d9707cab2ade0",
+      "mutant_head": "4c74e2d515d6ecf0b62c41f6255d0e922c317d34",
+      "operator": "diff --git a/crates/rrx/src/adapter/git_owner.rs b/crates/rrx/src/adapter/git_owner.rs\nindex 39822ff..d23f6fd 100644\n--- a/crates/rrx/src/adapter/git_owner.rs\n+++ b/crates/rrx/src/adapter/git_owner.rs\n@@ -962,6 +962,7 @@ async fn supervisor_work(\n     let initialized = {\n         let _entered = tokio::runtime::Handle::current().enter();\n         // Never held across native spawn, KILL, inspection or Child::wait.\n+        let _native_guard = record.native.lock().unwrap();\n         let mut endpoints = record.endpoints.lock().unwrap();\n         let stdout = endpoints.stdout.take();\n         let stderr = endpoints.stderr.take();\n",
+      "patch_sha256": "1ee48744c7eb6720ac2d4b13b900ff375145a7031ce581b839099c4d8856589d",
+      "test": "adapter::git_owner::tests::actual_reader_registration_progresses_while_native_cleanup_holds_its_vault",
+      "compiled": true,
+      "exit": 101,
+      "assertion_killed": true,
+      "seconds": 10.487,
+      "scope": "actual reader registration cannot reach private post-initialization pause while native mutex held",
+      "log_sha256": "082b029f5215e6b70cd72dd7f5909177439e937bdfe5c59eba5be98a848b8d88",
+      "excerpts": [
+        "thread 'adapter::git_owner::tests::actual_reader_registration_progresses_while_native_cleanup_holds_its_vault' (237597922) panicked at crates/rrx/src/adapter/git_owner.rs:378:10:",
+        "called `Result::unwrap()` on an `Err` value: Elapsed(())",
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 332 filtered out; finished in 5.01s"
+      ]
+    },
+    {
+      "id": "M60-R16",
+      "base_head": "2e1793cb6ed2cc254a883b28143ce1dd9bae5595",
+      "patch": "diff --git a/crates/rrx/src/adapter/git_owner.rs b/crates/rrx/src/adapter/git_owner.rs\nindex 39822ff..e1df03f 100644\n--- a/crates/rrx/src/adapter/git_owner.rs\n+++ b/crates/rrx/src/adapter/git_owner.rs\n@@ -852,7 +852,7 @@ fn supervise(record: &Arc<OpRecord>, request: Request) -> Completion {\n         let mut publication = record.ticket.publication.lock().unwrap();\n         if publication.state == State::Admitted && !record.ticket.cancel.load(Ordering::SeqCst) {\n             publication.state = State::Spawning;\n-            record.ticket.flag.store(true, Ordering::SeqCst);\n+            // M60-R16 omit admitted spawn uncertainty store\n             record.ticket.command(NativeCommand::AuthorizeSpawn);\n         } else {\n             record.ticket.command(NativeCommand::Cancel);\n",
+      "compiled": true,
+      "exit": 101,
+      "assertion_killed": true,
+      "scope": "actual saved Generic live-child loss reservation",
+      "log_sha256": "173d551a9c84d74969492725dff1ec04afd3df126deb9eeae2f6747ee218df53",
+      "excerpts": [
+        "thread 'adapter::git_owner::tests::actual_generic_launch_drop_distinguishes_admitted_from_live_git' (238096010) panicked at crates/rrx/src/adapter/git_owner/tests.rs:753:9:",
+        "  left: Failed",
+        " right: Lost",
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 332 filtered out; finished in 2.09s"
+      ]
+    }
+  ],
+  "exact_restore_after_every_run": true,
+  "historical_14_runs_12_operators_2_survivors_preserved": true,
+  "restored_controls": {
+    "source_equal": "35f0cda980667da5f99e1ec4ff947814252b5bd8",
+    "private_head": "f83950865a937ce63d0583f7adab596f1c176e89",
+    "clean": true,
+    "runs": [
+      {
+        "test": "context::tests::actual_late_reap_keeps_context_latch_after_real_worker_settlement",
+        "exit": 0,
+        "log_sha256": "198db07b237854f4214bd2f2ae41011a67d472bcaeb3a80ab5ad7b8d3217c2cb",
+        "results": [
+          "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 332 filtered out; finished in 0.34s"
+        ]
+      },
+      {
+        "test": "adapter::git_owner::tests::actual_mixed_capacity_pressure_reports_bounded_jobs_without_new_effects",
+        "exit": 0,
+        "log_sha256": "f71eb480e4893e6c1bcd8afde8e2a8cd4eb9f29b6f264a106cdac18a90f882aa",
+        "results": [
+          "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 332 filtered out; finished in 0.09s"
+        ]
+      },
+      {
+        "test": "adapter::git_owner::tests::actual_reader_registration_progresses_while_native_cleanup_holds_its_vault",
+        "exit": 0,
+        "log_sha256": "7aab5fa676784fef5428f9fe5ef81623fdc09b0ff2abe3c593a131646fdbc72c",
+        "results": [
+          "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 332 filtered out; finished in 0.00s"
+        ]
+      },
+      {
+        "test": "adapter::git_owner::tests::actual_generic_launch_drop_distinguishes_admitted_from_live_git",
+        "exit": 0,
+        "log_sha256": "91a347ec181ba8c051704a50df4963226df2887e10a8df78e361df6dc201671a",
+        "results": [
+          "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 332 filtered out; finished in 2.29s"
+        ]
+      }
+    ]
+  },
+  "cumulative_compiled_runs": 18,
+  "cumulative_distinct_operators": 16,
+  "cumulative_assertion_kill_runs": 16,
+  "historical_masked_survivors_zero_credit": 2,
+  "coverage": "Finite operator coverage; R14 diagnostic-count consumer only. No all-guard/whole-workload/native F1 proof.",
+  "baseline_verified_defect_controls": [
+    {
+      "head": "cba8728",
+      "test": "actual_reap_after_cutoff_never_clears_the_frozen_flag",
+      "compiled": true,
+      "exit": 101,
+      "log_sha256": "38f5ba6d782cfb5d18b8f7072524b2078ba16ec593736b6990294bf0be3cb881",
+      "excerpts": [
+        "late reap was renamed in-budget",
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 329 filtered out; finished in 0.27s"
+      ]
+    },
+    {
+      "head": "cba8728",
+      "test": "actual_late_reap_keeps_context_latch_after_real_worker_settlement",
+      "compiled": true,
+      "exit": 101,
+      "log_sha256": "34d2429e7d4afec7b80d45ea4e6c1f97a986a87d475b0feca56b07a5236456d4",
+      "excerpts": [
+        "late reap bypassed Context latch",
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 329 filtered out; finished in 0.28s"
+      ]
+    }
+  ]
+}

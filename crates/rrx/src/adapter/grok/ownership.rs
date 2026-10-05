@@ -13,8 +13,7 @@ use tokio::sync::Semaphore;
 use super::failure;
 use crate::{
     adapter::{
-        AdapterResult, ErrorKind, InputKind, LaunchRequest, SharedStore, bounded_git,
-        resolve_executable,
+        AdapterResult, ErrorKind, InputKind, LaunchRequest, SharedStore, resolve_executable,
     },
     domain::{
         Goal, GoalState, Project, ProjectState, Record, RecordKind, Session, SessionRole, Task,
@@ -412,8 +411,19 @@ impl ScopeSnapshot {
         ownership: &mut ProcessOwnership,
         expected: &Value,
         stage: OwnershipStage,
+        #[cfg(test)] git_context: Option<super::super::TestGitContext>,
     ) -> AdapterResult<()> {
-        if self.verify_git(request, ownership, stage).await? != *expected {
+        if self
+            .verify_git(
+                request,
+                ownership,
+                stage,
+                #[cfg(test)]
+                git_context,
+            )
+            .await?
+            != *expected
+        {
             return Err(failure(
                 ErrorKind::OwnershipMismatch,
                 "native workspace replaced during session initialization",
@@ -427,6 +437,7 @@ impl ScopeSnapshot {
         request: &LaunchRequest,
         ownership: &mut ProcessOwnership,
         stage: OwnershipStage,
+        #[cfg(test)] git_context: Option<super::super::TestGitContext>,
     ) -> AdapterResult<Value> {
         let project = self.project.clone();
         let workspace = request.worktree.clone();
@@ -436,14 +447,18 @@ impl ScopeSnapshot {
         let mut observe = |cwd: PathBuf, args: Vec<String>| {
             let flag = ownership.group(stage);
             let executable = executable.clone();
+            #[cfg(test)]
+            let git_context = git_context.clone();
             async move {
-                bounded_git(
+                super::super::bounded_git_selected(
                     &executable,
                     &cwd,
                     &args,
                     crate::git::native_environment(),
                     deadline,
                     flag,
+                    #[cfg(test)]
+                    git_context,
                 )
                 .await
             }

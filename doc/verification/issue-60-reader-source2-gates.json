@@ -1,0 +1,486 @@
+{
+  "head": "35f0cda980667da5f99e1ec4ff947814252b5bd8",
+  "unchanged_default_internal_concurrency": true,
+  "runs": [
+    {
+      "name": "workspace-debug",
+      "command": [
+        "cargo",
+        "test",
+        "--workspace"
+      ],
+      "head": "35f0cda980667da5f99e1ec4ff947814252b5bd8",
+      "exit": 101,
+      "seconds": 85.098,
+      "log_sha256": "558b3251978d5346ae90e11dfb51281b09782a0a23a080f2c147a33a0ebc6ac2",
+      "results": [
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 332 filtered out; finished in 11.03s",
+        "test result: FAILED. 306 passed; 3 failed; 24 ignored; 0 measured; 0 filtered out; finished in 68.42s"
+      ],
+      "tail": [
+        "grok_environment_progress boundary=2 case=7 stage=resumed_terminal",
+        "",
+        "",
+        "",
+        "failures:",
+        "    adapter::grok::environment_tests::owning_reference_change_after_snapshot_rejects_start",
+        "    adapter::grok::environment_tests::unrelated_foreign_changes_do_not_revoke_checkpoint",
+        "    adapter::grok::environment_tests::unrelated_foreign_changes_do_not_revoke_resume",
+        "",
+        "test result: FAILED. 306 passed; 3 failed; 24 ignored; 0 measured; 0 filtered out; finished in 68.42s",
+        "",
+        "error: test failed, to rerun pass `--lib`"
+      ]
+    },
+    {
+      "name": "workspace-release",
+      "command": [
+        "cargo",
+        "test",
+        "--workspace",
+        "--release"
+      ],
+      "head": "35f0cda980667da5f99e1ec4ff947814252b5bd8",
+      "exit": 101,
+      "seconds": 157.132,
+      "log_sha256": "8f9010f8296c11b6b34b3d947b6a20020887b5de6aae5fe74a9457b7e00b5c55",
+      "results": [
+        "test result: FAILED. 307 passed; 2 failed; 24 ignored; 0 measured; 0 filtered out; finished in 62.85s"
+      ],
+      "tail": [
+        "grok_environment_progress boundary=2 case=8 stage=terminal",
+        "grok_environment_progress boundary=2 case=8 stage=checkpoint",
+        "",
+        "",
+        "",
+        "failures:",
+        "    adapter::grok::environment_tests::unrelated_foreign_changes_do_not_revoke_checkpoint",
+        "    adapter::grok::environment_tests::unrelated_foreign_changes_do_not_revoke_resume",
+        "",
+        "test result: FAILED. 307 passed; 2 failed; 24 ignored; 0 measured; 0 filtered out; finished in 62.85s",
+        "",
+        "error: test failed, to rerun pass `--lib`"
+      ]
+    },
+    {
+      "name": "fmt",
+      "command": [
+        "cargo",
+        "fmt",
+        "--all",
+        "--check"
+      ],
+      "head": "35f0cda980667da5f99e1ec4ff947814252b5bd8",
+      "exit": 0,
+      "seconds": 0.349,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "results": [],
+      "tail": []
+    },
+    {
+      "name": "clippy",
+      "command": [
+        "cargo",
+        "clippy",
+        "--workspace",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "head": "35f0cda980667da5f99e1ec4ff947814252b5bd8",
+      "exit": 0,
+      "seconds": 7.766,
+      "log_sha256": "9bb1e1816b019d91b51c93e749dde0d7d68fcfbbd7f6a1ca531dab07f720feed",
+      "results": [],
+      "tail": [
+        "    Checking rrx v0.1.0 (/Users/shuheisuzuki/Documents/dev/rururunx/worktree/issue-60/crates/rrx)",
+        "    Finished `dev` profile [unoptimized + debuginfo] target(s) in 7.67s"
+      ]
+    },
+    {
+      "name": "debug-build",
+      "command": [
+        "cargo",
+        "build",
+        "--workspace"
+      ],
+      "head": "35f0cda980667da5f99e1ec4ff947814252b5bd8",
+      "exit": 0,
+      "seconds": 0.259,
+      "log_sha256": "732186322402325172940531d8d6d7cfac85dc902585b2bef6715ad6839dacfd",
+      "results": [],
+      "tail": [
+        "    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.20s"
+      ]
+    },
+    {
+      "name": "release-build",
+      "command": [
+        "cargo",
+        "build",
+        "--workspace",
+        "--release"
+      ],
+      "head": "35f0cda980667da5f99e1ec4ff947814252b5bd8",
+      "exit": 0,
+      "seconds": 0.211,
+      "log_sha256": "a70da5408e7a6da7efe97b23011504833b16a7875bda14543f2504b5b8c7d97a",
+      "results": [],
+      "tail": [
+        "    Finished `release` profile [optimized] target(s) in 0.16s"
+      ]
+    }
+  ],
+  "cause": "UNKNOWN",
+  "regression_status": "UNKNOWN",
+  "later_workspace_targets_not_executed_after_failed_library": true,
+  "no_current_full_debug_or_release_test_acceptance": true,
+  "focused_controls": [
+    {
+      "scope": "owner",
+      "exit": 0,
+      "log_sha256": "72a53adda5c0796e96ae78cea9627b29344de64dd0d87daa5c40e26a1eacc534",
+      "results": [
+        "test result: ok. 29 passed; 0 failed; 1 ignored; 0 measured; 303 filtered out; finished in 8.85s"
+      ]
+    },
+    {
+      "scope": "Context",
+      "exit": 0,
+      "log_sha256": "f500fe99ed2f39971844bf3d321698e8e6860320d7530982520642f69851c5ba",
+      "results": [
+        "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 325 filtered out; finished in 0.31s"
+      ]
+    },
+    {
+      "scope": "Grok reader",
+      "exit": 0,
+      "log_sha256": "ef0b07a80522dee107ae3c7b2901594179a503d540242eea22bf903d461e55af",
+      "results": [
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 328 filtered out; finished in 7.21s"
+      ]
+    }
+  ],
+  "source_blobs": [
+    {
+      "path": ".github/workflows/ci.yml",
+      "blob": "fae2d45999b972ed8a97c38a74b819bbcce088bc"
+    },
+    {
+      "path": "Cargo.lock",
+      "blob": "ef796d3a72aa0d6e67430580aa693b5807c07ead"
+    },
+    {
+      "path": "Cargo.toml",
+      "blob": "1709e725120ed00aff17d9cb7d046f536d3eaa0a"
+    },
+    {
+      "path": "crates/rrx/Cargo.toml",
+      "blob": "553d39807d6ca050569dc8c7128377c40618509b"
+    },
+    {
+      "path": "crates/rrx/examples/native_codex_protocol.rs",
+      "blob": "a019d5907be1f547ad96a9ad1f15ee10b5d4ba11"
+    },
+    {
+      "path": "crates/rrx/examples/native_codex_session.rs",
+      "blob": "a019d5907be1f547ad96a9ad1f15ee10b5d4ba11"
+    },
+    {
+      "path": "crates/rrx/examples/repository-context.rs",
+      "blob": "98a7ace4160efcf01a70509acbe88b97516a8007"
+    },
+    {
+      "path": "crates/rrx/src/adapter.rs",
+      "blob": "31f72364fbe7651963bbe9fe304e8084f54ccab1"
+    },
+    {
+      "path": "crates/rrx/src/adapter/git_owner.rs",
+      "blob": "39822ffbffefa9a32d8d01316403cdc4dbec81b9"
+    },
+    {
+      "path": "crates/rrx/src/adapter/git_owner/tests.rs",
+      "blob": "5078115503c5ebd3d087fa2edd2efd8718e36bfa"
+    },
+    {
+      "path": "crates/rrx/src/adapter/grok/cleanup.rs",
+      "blob": "15a55b0bb065299188d5fecddd5b3e2342695091"
+    },
+    {
+      "path": "crates/rrx/src/adapter/grok/environment.rs",
+      "blob": "1382f391407cb739a805f62b1f816845d0ae1c1d"
+    },
+    {
+      "path": "crates/rrx/src/adapter/grok/environment_tests.rs",
+      "blob": "4a7d1de052712c67f0a545255cc9b901b9e6d14b"
+    },
+    {
+      "path": "crates/rrx/src/adapter/grok/environment_workflow_tests.rs",
+      "blob": "5922ccdbb894e889990941d7e42f2aae23dc26be"
+    },
+    {
+      "path": "crates/rrx/src/adapter/grok/files.rs",
+      "blob": "252b5b46abdbbb5f19308e1d6e76cc4459ff7b20"
+    },
+    {
+      "path": "crates/rrx/src/adapter/grok/mod.rs",
+      "blob": "840f049b1b5c1d57d0ed4f359a26fa3e2c92795e"
+    },
+    {
+      "path": "crates/rrx/src/adapter/grok/ownership.rs",
+      "blob": "e673e0f3804bf7323206ce95eb248aebb070c9c1"
+    },
+    {
+      "path": "crates/rrx/src/adapter/grok/protocol.rs",
+      "blob": "be115305356fdebe0d659c41db26304ebb43e29a"
+    },
+    {
+      "path": "crates/rrx/src/adapter/grok/reader_tests.rs",
+      "blob": "355db619b8ff35a8799026e0194a4ef521a8f812"
+    },
+    {
+      "path": "crates/rrx/src/adapter/grok/receipt_tests.rs",
+      "blob": "d0dd5baa208c5a9beb9a41bd5b36ee49be042953"
+    },
+    {
+      "path": "crates/rrx/src/adapter/grok/schema.rs",
+      "blob": "a0016eb7e3ca3001fb8eafded9466d855ad434af"
+    },
+    {
+      "path": "crates/rrx/src/adapter/inspection.rs",
+      "blob": "376b6556758129eaa7c585a452ebe1dd387c40e3"
+    },
+    {
+      "path": "crates/rrx/src/adapter/inspection/diagnostic_tests.rs",
+      "blob": "cb923bd7784726bd1ae6e60e83981cac64119c77"
+    },
+    {
+      "path": "crates/rrx/src/adapter/inspection/diagnostics.rs",
+      "blob": "9b6078660ecf31aaec5f40d2652f0ed6ee9140cf"
+    },
+    {
+      "path": "crates/rrx/src/codex/attempt.rs",
+      "blob": "8c929c2bebcff3e1dbad92b23221c0a93b9f558a"
+    },
+    {
+      "path": "crates/rrx/src/codex/availability.rs",
+      "blob": "ca8abbfa125d01b5c7457a92b44416c73327b9ff"
+    },
+    {
+      "path": "crates/rrx/src/codex/mod.rs",
+      "blob": "09142b47c2a9f73fa28739fbb1ad4977c6ec6bce"
+    },
+    {
+      "path": "crates/rrx/src/codex/ownership.rs",
+      "blob": "38fafd413c71f75235ce3c6ca9d458813623252d"
+    },
+    {
+      "path": "crates/rrx/src/codex/policy.rs",
+      "blob": "551920f8fddf4f67199dbff378ed9b644c1a35a7"
+    },
+    {
+      "path": "crates/rrx/src/codex/preparation.rs",
+      "blob": "67e4795fb09e8435bfbdec48f656dd5474a615f0"
+    },
+    {
+      "path": "crates/rrx/src/codex/protocol.rs",
+      "blob": "6ba832caf4a4aadc5ad6a631ff075db3d7d90b36"
+    },
+    {
+      "path": "crates/rrx/src/codex/session.rs",
+      "blob": "73ec2483d8f923cbdcfbd8ce05b1ce325d0e3dfb"
+    },
+    {
+      "path": "crates/rrx/src/codex/transport.rs",
+      "blob": "787870bd8960935758246d38a01c00776e84a34a"
+    },
+    {
+      "path": "crates/rrx/src/config.rs",
+      "blob": "fd167b8723654f3b096e27c5c99f903ec59bcd1d"
+    },
+    {
+      "path": "crates/rrx/src/context.rs",
+      "blob": "e33f13a73ed9f55c900fb9576267a6169a2a8cf1"
+    },
+    {
+      "path": "crates/rrx/src/domain.rs",
+      "blob": "f3f70b8667c1894afdf7c7425472f29eb5aeb3e5"
+    },
+    {
+      "path": "crates/rrx/src/git.rs",
+      "blob": "ec5ca45bd0c4ed5b2edaada8bfe51f07a6ff3e2b"
+    },
+    {
+      "path": "crates/rrx/src/goal.rs",
+      "blob": "3cc75b6b87d226cff5ec7254fab61ea1ece5268f"
+    },
+    {
+      "path": "crates/rrx/src/lib.rs",
+      "blob": "3efb39c15e3ffdd845dce8cf209fc910ae84dbb6"
+    },
+    {
+      "path": "crates/rrx/src/main.rs",
+      "blob": "52ecc16c349dfec3a46cddef4ae22835ad4cc52e"
+    },
+    {
+      "path": "crates/rrx/src/project.rs",
+      "blob": "07a829bad7eb0394e616323e7e5887d56af8b873"
+    },
+    {
+      "path": "crates/rrx/src/state/environment.rs",
+      "blob": "8f7f937b90751540a5f5bcbbaffa8befb5af257c"
+    },
+    {
+      "path": "crates/rrx/src/state/mod.rs",
+      "blob": "7af6f7603629f22a0c690a9b49bc498ee34467df"
+    },
+    {
+      "path": "crates/rrx/src/state/native_dispatch_tests.rs",
+      "blob": "235ce98943278f7a31f8c9baa42f1ddc426c1b03"
+    },
+    {
+      "path": "crates/rrx/src/state/schema.sql",
+      "blob": "bfa8119e6d66900f6bcf26638321730077cb3d0c"
+    },
+    {
+      "path": "crates/rrx/src/workflow.rs",
+      "blob": "99139650e4a4f36b4213fe5020445a5e5589e620"
+    },
+    {
+      "path": "crates/rrx/src/workflow/tests.rs",
+      "blob": "eba92d51455fc74165a491fb26f9b3e573a614a5"
+    },
+    {
+      "path": "crates/rrx/src/workflow/tests/unbound_retry.rs",
+      "blob": "dc5daf15a6c62c2569f56cc3f4a6580af310f33e"
+    },
+    {
+      "path": "crates/rrx/tests/adapter.rs",
+      "blob": "b2c1d1d4cfb50c1dc108ebba1780027636aff996"
+    },
+    {
+      "path": "crates/rrx/tests/cli.rs",
+      "blob": "9b36d8f55c43059ab852c2c28ed78e8e97e2ba83"
+    },
+    {
+      "path": "crates/rrx/tests/codex_unavailable.rs",
+      "blob": "f4605649c00eb05cb88d0803fe004212101d8747"
+    },
+    {
+      "path": "crates/rrx/tests/context.rs",
+      "blob": "06a76f548b1cb0983852f8100efbc6f95239bd25"
+    },
+    {
+      "path": "crates/rrx/tests/git.rs",
+      "blob": "836f1eaf77f872f54869382800156a5ce00ac25d"
+    },
+    {
+      "path": "crates/rrx/tests/goal_graph.rs",
+      "blob": "42f8e14ca354e1ae1eb570b6702919390687f560"
+    },
+    {
+      "path": "crates/rrx/tests/grok.rs",
+      "blob": "67eefbe8be75955950d68c6902b8bed71c9447a5"
+    },
+    {
+      "path": "crates/rrx/tests/project.rs",
+      "blob": "b366ba343bc6223bce8e76575e287a20b2bc67b4"
+    },
+    {
+      "path": "crates/rrx/tests/state.rs",
+      "blob": "0c096ee3d3221b01e757277f8168a74755f0f17c"
+    },
+    {
+      "path": "crates/rrx/tests/support/grok_fake.py",
+      "blob": "dfae67dde3a2852da177d7372be1e343c47f451f"
+    },
+    {
+      "path": "crates/rrx/tests/support/grok_fixture.rs",
+      "blob": "a311f9275922f02a75d11f5f784ad0d67422ca98"
+    },
+    {
+      "path": "crates/rrx/tests/support/grok_receipt.rs",
+      "blob": "be44dba15627e18ba4ccd1dcbc0c2164e8fe4a14"
+    }
+  ],
+  "current_failure_facts": [
+    "Debug library306 PASS/3 FAIL/24 ignored; own-start synthetic child exit101 after11040ms at StateConflict-prefix assertion; actual failure value absent",
+    "Debug checkpoint watchdog60000ms/SIGKILL boundary1 case7 last=resumed_terminal; resume60001ms/SIGKILL boundary2 case7 last=resumed_terminal; cases0-6 release+finished",
+    "Release library307 PASS/2 FAIL/24 ignored; checkpoint watchdog boundary1 case7 last=resumed_terminal; resume boundary2 case8 last=checkpoint; both actualSIGKILL",
+    "Native not-dispatched/flagfalse or stage label cannot prove no prior/current Git spawn nor all nested-job settlement; both-mode failures preserved and unqualified"
+  ],
+  "historical_failed_heads": [
+    "9c574a2 Debug+Release",
+    "1b37c78 Debug+Release",
+    "5b09c6d Debug",
+    "a92c4d0 Source1 public CI Ubuntu FAILED/mac fail-fast CANCELLED"
+  ],
+  "overlap": "No own native reviewers or mutant suites during full gates. Peer curated19 Rust workload overlap reported; no causal attribution.",
+  "private_diagnostic_probes": [
+    {
+      "private_probe": 1,
+      "private_head": "b568c17bd250b44e2e221b1a4b48d4fd565e4897",
+      "private_base": "f83950865a937ce63d0583f7adab596f1c176e89",
+      "exit": 0,
+      "results": [
+        "test result: ok. 15 passed; 0 failed; 14 ignored; 0 measured; 304 filtered out; finished in 58.63s"
+      ],
+      "raw_report_sha256": "7b3160d501521019eab21cedc6d959cd27be888e59c18d149d3bc9346c6be791",
+      "raw_log_sha256": "ade665c5c2753d2749874ccdf9d90491160a32cd4b6571c918ecc536ddb3704a",
+      "default_internal_parallelism": true,
+      "original_5s_250ms_60s_unchanged": true,
+      "accessible_observe_samples": 0,
+      "timings": null,
+      "last_static_stages": {},
+      "acceptance_credit": false,
+      "cause_or_regression_credit": false,
+      "note": "Probe1 owning fixture discarded successful stderr; zero accessible samples. Probe2 private sink prints only bounded static/numeric prefixes even on success. No original failure reproduced; capped samples cannot enumerate all operations or all nested resources."
+    },
+    {
+      "private_probe": 2,
+      "private_head": "3e6d930182e4e9d8deadc860bd7934fb32c32df9",
+      "private_base": "f7da9f64a54b668a0731bb272a692ce0f12a6245",
+      "exit": 0,
+      "results": [
+        "test result: ok. 15 passed; 0 failed; 14 ignored; 0 measured; 304 filtered out; finished in 57.15s"
+      ],
+      "raw_report_sha256": "9e7ab1e3dcb4a1144dc52ceb04f69c073e3a4d3b0ab9e91c36dffbb8977b9530",
+      "raw_log_sha256": "3de5fb5a3373c806be0df056d391c8cf6b451e068687624fb98f300f9dd1f020",
+      "default_internal_parallelism": true,
+      "original_5s_250ms_60s_unchanged": true,
+      "accessible_observe_samples": 1721,
+      "timings": {
+        "min_us": 31602,
+        "median_us": 60209,
+        "max_us": 882285,
+        "sampled_not_terminal_count": 0
+      },
+      "last_static_stages": {
+        "adapter::grok::environment_tests::irrelevant_start_child": {
+          "boundary": 0,
+          "case": 8,
+          "stage": "finished",
+          "elapsed_ms": 32437
+        },
+        "adapter::grok::environment_tests::irrelevant_checkpoint_child": {
+          "boundary": 1,
+          "case": 8,
+          "stage": "finished",
+          "elapsed_ms": 56853
+        },
+        "adapter::grok::environment_tests::irrelevant_resume_child": {
+          "boundary": 2,
+          "case": 8,
+          "stage": "finished",
+          "elapsed_ms": 57049
+        }
+      },
+      "acceptance_credit": false,
+      "cause_or_regression_credit": false,
+      "note": "Probe1 owning fixture discarded successful stderr; zero accessible samples. Probe2 private sink prints only bounded static/numeric prefixes even on success. No original failure reproduced; capped samples cannot enumerate all operations or all nested resources."
+    }
+  ],
+  "private_diagnostic_source_restored_equal": "35f0cda980667da5f99e1ec4ff947814252b5bd8",
+  "private_restoration_head": "78dad421275e02913ee0b7f08b65275770cb534b"
+}

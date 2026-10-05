@@ -1,5 +1,8 @@
 //! Thin native process contracts. Context selection and workflow decisions belong upstream.
+mod git_owner;
 pub mod grok;
+#[cfg(test)]
+pub(crate) use git_owner::TestGitContext;
 #[cfg(target_os = "macos")]
 mod inspection;
 #[cfg(all(test, target_os = "macos"))]
@@ -483,6 +486,8 @@ pub struct GenericCliAdapter {
     store: SharedStore,
     git_executable: Option<PathBuf>,
     #[cfg(test)]
+    git_context: Option<TestGitContext>,
+    #[cfg(test)]
     before_running_write: Option<(
         Arc<tokio::sync::Notify>,
         Arc<tokio::sync::Notify>,
@@ -512,6 +517,8 @@ impl GenericCliAdapter {
             command,
             store,
             git_executable: None,
+            #[cfg(test)]
+            git_context: None,
             #[cfg(test)]
             before_running_write: None,
             #[cfg(test)]
@@ -616,6 +623,8 @@ impl AgentAdapter for GenericCliAdapter {
                     self.git_executable.as_deref(),
                     reservation.process_uncertain.clone(),
                     expected,
+                    #[cfg(test)]
+                    self.git_context.clone(),
                 )
                 .await?;
                 let mut command = Command::new(executable);
@@ -639,7 +648,9 @@ impl AgentAdapter for GenericCliAdapter {
             let mut child = match launch {
                 Ok(child) => ProcessGroup::new(child, reservation.process_uncertain.clone())?,
                 Err(e) => {
-                    session.state = if e.kind == ErrorKind::SessionLost {
+                    session.state = if e.kind == ErrorKind::SessionLost
+                        || reservation.process_uncertain.load(Ordering::SeqCst)
+                    {
                         SessionState::Lost
                     } else {
                         SessionState::Failed
@@ -1124,6 +1135,7 @@ async fn validate_git(
     executable: Option<&Path>,
     process_uncertain: Arc<AtomicBool>,
     expected: (u64, u64, u64),
+    #[cfg(test)] git_context: Option<TestGitContext>,
 ) -> AdapterResult<()> {
     let (project, task, goal) = {
         let store = store
@@ -1160,14 +1172,18 @@ async fn validate_git(
         let executable = executable.clone();
         let environment = crate::git::native_environment();
         let process_uncertain = process_uncertain.clone();
+        #[cfg(test)]
+        let git_context = git_context.clone();
         async move {
-            bounded_git(
+            bounded_git_selected(
                 &executable,
                 &cwd,
                 &args,
                 environment,
                 deadline,
                 process_uncertain,
+                #[cfg(test)]
+                git_context,
             )
             .await
         }
@@ -1283,6 +1299,65 @@ pub(crate) async fn bounded_git(
         .map_err(|_| error(ErrorKind::ParseFailure, "invalid Git metadata encoding"))
 }
 
+async fn bounded_git_selected(
+    executable: &Path,
+    cwd: &Path,
+    args: &[String],
+    environment: Vec<(std::ffi::OsString, std::ffi::OsString)>,
+    deadline: tokio::time::Instant,
+    process_uncertain: Arc<AtomicBool>,
+    #[cfg(test)] context: Option<TestGitContext>,
+) -> AdapterResult<String> {
+    #[cfg(not(test))]
+    return bounded_git(
+        executable,
+        cwd,
+        args,
+        environment,
+        deadline,
+        process_uncertain,
+    )
+    .await;
+    #[cfg(test)]
+    {
+        let output = bounded_git_raw_selected(
+            executable,
+            cwd,
+            args,
+            environment,
+            deadline,
+            process_uncertain,
+            #[cfg(test)]
+            context,
+        )
+        .await?;
+        String::from_utf8(output)
+            .map(|value| value.trim().to_string())
+            .map_err(|_| error(ErrorKind::ParseFailure, "invalid Git metadata encoding"))
+    }
+}
+pub(crate) async fn bounded_git_raw_selected(
+    executable: &Path,
+    cwd: &Path,
+    args: &[String],
+    environment: Vec<(std::ffi::OsString, std::ffi::OsString)>,
+    deadline: tokio::time::Instant,
+    process_uncertain: Arc<AtomicBool>,
+    #[cfg(test)] context: Option<TestGitContext>,
+) -> AdapterResult<Vec<u8>> {
+    git_owner::run(
+        executable,
+        cwd,
+        args,
+        environment,
+        deadline,
+        process_uncertain,
+        #[cfg(test)]
+        context,
+    )
+    .await
+}
+
 /// Preserve NUL-delimited inventory bytes; scalar callers retain trimming above.
 pub(crate) async fn bounded_git_raw(
     executable: &Path,
@@ -1334,95 +1409,26 @@ async fn bounded_git_raw_inner(
     process_uncertain: Arc<AtomicBool>,
     #[cfg(all(test, target_os = "macos"))] plan: Option<ProcessInspectionPlan>,
 ) -> AdapterResult<Vec<u8>> {
-    if tokio::time::Instant::now() >= deadline {
-        return Err(error(
-            ErrorKind::Timeout,
-            "Git ownership preflight timed out",
-        ));
-    }
-    let mut command = Command::new(executable);
-    command
-        .args(args)
-        .current_dir(cwd)
-        .env_clear()
-        .envs(environment)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true)
-        .process_group(0);
-    let mut child = ProcessGroup::new(
-        command
-            .spawn()
-            .map_err(|e| error(ErrorKind::ProcessFailure, e.to_string()))?,
+    git_owner::run(
+        executable,
+        cwd,
+        args,
+        environment,
+        deadline,
         process_uncertain,
-    )?;
-    #[cfg(all(test, target_os = "macos"))]
-    {
-        child.inspection_plan = plan;
-    }
-    let stdout = child.child.stdout.take().expect("piped Git stdout");
-    let stderr = child.child.stderr.take().expect("piped Git stderr");
-    let mut stdout = tokio::spawn(read_git_output(stdout));
-    let mut stderr = tokio::spawn(read_git_output(stderr));
-    let observed = tokio::time::timeout_at(deadline, child.observe_exit()).await;
-    child = cleanup_group(child).await?;
-    let exit = tokio::time::timeout(Duration::from_millis(250), child.reap())
-        .await
-        .map_err(|_| {
-            error(
-                ErrorKind::SessionLost,
-                "Git child death not confirmed after cleanup",
-            )
-        })?
-        .map_err(|e| {
-            error(
-                ErrorKind::SessionLost,
-                format!("Git child reap failed: {e}"),
-            )
-        })?;
-    if observed.is_err() {
-        stdout.abort();
-        stderr.abort();
-        return Err(error(
-            ErrorKind::Timeout,
-            "Git ownership preflight timed out",
-        ));
-    }
-    observed.expect("checked deadline").map_err(|e| {
-        error(
-            ErrorKind::SessionLost,
-            format!("Git child observation failed: {e}"),
-        )
-    })?;
-    let output = tokio::time::timeout(Duration::from_millis(250), async {
-        let out = (&mut stdout)
-            .await
-            .map_err(|e| error(ErrorKind::ProcessFailure, e.to_string()))??;
-        let _ = (&mut stderr)
-            .await
-            .map_err(|e| error(ErrorKind::ProcessFailure, e.to_string()))??;
-        Ok::<_, AdapterError>(out)
-    })
-    .await;
-    let output = match output {
-        Ok(output) => output?,
-        Err(_) => {
-            stdout.abort();
-            stderr.abort();
-            return Err(error(
-                ErrorKind::ProcessFailure,
-                "Git output remained open after cleanup",
-            ));
-        }
-    };
-    if !exit.success() {
-        return Err(error(
-            ErrorKind::OwnershipMismatch,
-            "Git ownership preflight failed",
-        ));
-    }
-    Ok(output)
+        #[cfg(test)]
+        {
+            #[cfg(target_os = "macos")]
+            {
+                plan.map(TestGitContext::with_plan)
+            }
+            #[cfg(not(target_os = "macos"))]
+            {
+                None
+            }
+        },
+    )
+    .await
 }
 async fn read_git_output(reader: impl AsyncRead + Unpin) -> AdapterResult<Vec<u8>> {
     let mut bytes = vec![];
@@ -1603,13 +1609,14 @@ mod tests {
         let args = vec!["--version".to_owned()];
         let control = Arc::new(AtomicBool::new(false));
         assert!(
-            bounded_git_raw(
+            bounded_git_raw_selected(
                 &executable,
                 temp.path(),
                 &args,
                 vec![],
                 deadline(),
-                control.clone()
+                control.clone(),
+                Some(TestGitContext::isolated())
             )
             .await
             .is_ok()
@@ -2044,7 +2051,8 @@ mod tests {
                 &request.worktree,
                 None,
                 Arc::new(AtomicBool::new(false)),
-                versions
+                versions,
+                None,
             )
             .await
             .unwrap_err()

@@ -1,0 +1,306 @@
+{
+  "base": "c0ec0a2bef4c396d89d9329767a36f7a3ed68f34",
+  "runs": [
+    {
+      "id": "M60-R01",
+      "path": "crates/rrx/src/adapter.rs",
+      "target": "adapter::git_owner::tests::generic_live_launch_error_uses_actual_git_flag_without_retyping_error",
+      "claimed_guard_scope": "actual Generic saved state/ownership equation",
+      "mutant_head": "d8ead51b41b43603950f3b829c5502cf6aec2b2c",
+      "patch": "diff --git a/crates/rrx/src/adapter.rs b/crates/rrx/src/adapter.rs\nindex 31f7236..58a41a7 100644\n--- a/crates/rrx/src/adapter.rs\n+++ b/crates/rrx/src/adapter.rs\n@@ -649,7 +649,6 @@ impl AgentAdapter for GenericCliAdapter {\n                 Ok(child) => ProcessGroup::new(child, reservation.process_uncertain.clone())?,\n                 Err(e) => {\n                     session.state = if e.kind == ErrorKind::SessionLost\n-                        || reservation.process_uncertain.load(Ordering::SeqCst)\n                     {\n                         SessionState::Lost\n                     } else {",
+      "patch_sha256": "ef1d50bb3a8116590c1e9fffa9300e90e653874744640e5d912f6381ce170882",
+      "outcome": {
+        "exit": 101,
+        "seconds": 40.651,
+        "compiled": true,
+        "assertion_failed": true,
+        "log": "/private/tmp/rururunx-issue60-M60-R01.log",
+        "log_sha256": "c24614d2dacb7ebfac0b053ba7608f2f60c2ca0d74e781dda7b7e8a3d4d7b7db",
+        "excerpts": [
+          "    Finished `test` profile [unoptimized + debuginfo] target(s) in 37.68s",
+          "thread 'adapter::git_owner::tests::generic_live_launch_error_uses_actual_git_flag_without_retyping_error' (235763902) panicked at crates/rrx/src/adapter/git_owner/tests.rs:512:13:",
+          "assertion `left == right` failed",
+          "  left: Failed",
+          " right: Lost",
+          "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 326 filtered out; finished in 2.08s"
+        ]
+      },
+      "disposition": "assertion_killed_scoped_consumer"
+    },
+    {
+      "id": "M60-R02",
+      "path": "crates/rrx/src/adapter/git_owner.rs",
+      "target": "adapter::git_owner::tests::sixteen_actual_owner_records_bound_all_four_job_lanes",
+      "claimed_guard_scope": "actual seventeenth admission/64-lane bound",
+      "mutant_head": "41314d13391b7785360da72a12cef438bd0b4fac",
+      "patch": "diff --git a/crates/rrx/src/adapter/git_owner.rs b/crates/rrx/src/adapter/git_owner.rs\nindex 2f46519..58ac64f 100644\n--- a/crates/rrx/src/adapter/git_owner.rs\n+++ b/crates/rrx/src/adapter/git_owner.rs\n@@ -66,7 +66,7 @@ impl GitPool {\n                 let mut pool = self.state.lock().map_err(|_| {\n                     error(ErrorKind::LaunchFailure, \"Git owner admission unavailable\")\n                 })?;\n-                if pool.records.len() < CAPACITY / JOBS {\n+                if pool.records.len() <= CAPACITY / JOBS {\n                     let record = Arc::new(OpRecord::new(flag.clone(), context.clone()));\n                     pool.records.push(record.clone());\n                     Some(record)",
+      "patch_sha256": "6fe6bfff7dc8ea1908b530873bff6dee7b22b821631d60ffe8817001be127343",
+      "outcome": {
+        "exit": 101,
+        "seconds": 11.039,
+        "compiled": true,
+        "assertion_failed": true,
+        "log": "/private/tmp/rururunx-issue60-M60-R02.log",
+        "log_sha256": "0a1af4df7138703ebfdda774bd61220babef6a074839dc3d3eda0af4ffff6a1e",
+        "excerpts": [
+          "    Finished `test` profile [unoptimized + debuginfo] target(s) in 10.25s",
+          "thread 'adapter::git_owner::tests::sixteen_actual_owner_records_bound_all_four_job_lanes' (235777218) panicked at crates/rrx/src/adapter/git_owner/tests.rs:314:5:",
+          "assertion `left == right` failed",
+          "  left: 68",
+          " right: 64",
+          "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 326 filtered out; finished in 0.04s"
+        ]
+      },
+      "disposition": "assertion_killed_scoped_consumer"
+    },
+    {
+      "id": "M60-R03",
+      "path": "crates/rrx/src/adapter/git_owner.rs",
+      "target": "adapter::git_owner::tests::actual_stdout_cap_failure_aborts_and_observes_pending_peer",
+      "claimed_guard_scope": "actual cap failure observes peer abort before returning settled",
+      "mutant_head": "60b1af9c31370d1b2bf27dce23b5d8a801026cbe",
+      "patch": "diff --git a/crates/rrx/src/adapter/git_owner.rs b/crates/rrx/src/adapter/git_owner.rs\nindex 2f46519..879a570 100644\n--- a/crates/rrx/src/adapter/git_owner.rs\n+++ b/crates/rrx/src/adapter/git_owner.rs\n@@ -1039,7 +1039,6 @@ async fn supervisor_work(\n         let stdout = readers.join_stdout().await;\n         if let Err(e) = &stdout {\n             record.ticket.establish(e);\n-            readers.abort();\n         }\n         let stderr = readers.join_stderr().await;\n         if stdout.is_ok()",
+      "patch_sha256": "36d98107a44e44e41a127f9d653ddafc23dd7396f108efef4ec1d3b41b0fe8cd",
+      "outcome": {
+        "exit": 101,
+        "seconds": 9.196,
+        "compiled": true,
+        "assertion_failed": true,
+        "log": "/private/tmp/rururunx-issue60-M60-R03.log",
+        "log_sha256": "c98c72d9528b81b645a69aaa4c823e158bd825ebfcb49bf1a57ef779800e6964",
+        "excerpts": [
+          "    Finished `test` profile [unoptimized + debuginfo] target(s) in 8.14s",
+          "thread 'adapter::git_owner::tests::actual_stdout_cap_failure_aborts_and_observes_pending_peer' (235785315) panicked at crates/rrx/src/adapter/git_owner/tests.rs:331:5:",
+          "assertion failed: !flag.load(Ordering::SeqCst)",
+          "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 326 filtered out; finished in 0.28s"
+        ]
+      },
+      "disposition": "assertion_killed_scoped_consumer"
+    },
+    {
+      "id": "M60-R04",
+      "path": "crates/rrx/src/adapter/git_owner.rs",
+      "target": "adapter::git_owner::tests::actual_worker_join_precedes_success_and_capacity_release",
+      "claimed_guard_scope": "actual native worker join precedes returned success/release",
+      "mutant_head": "58a2cc66822e7a5aecc6593763a2e96ec43691a0",
+      "patch": "diff --git a/crates/rrx/src/adapter/git_owner.rs b/crates/rrx/src/adapter/git_owner.rs\nindex 2f46519..9e961c3 100644\n--- a/crates/rrx/src/adapter/git_owner.rs\n+++ b/crates/rrx/src/adapter/git_owner.rs\n@@ -834,7 +834,8 @@ fn supervise(record: &Arc<OpRecord>, request: Request) -> Completion {\n     }\n     // Joining the actual worker, not receiving its result, precedes success.\n     let worker = record.worker.lock().unwrap().take().unwrap();\n-    if worker.join().is_err() {\n+    drop(worker);\n+    if false {\n         record.ticket.owner_loss();\n         return Completion::Retained(Outcome {\n             primary: Err(supervisor_lost()),",
+      "patch_sha256": "b52035c0519154ee20d11ad2c2b5ca78f6dee26769c0ab4fa2d9d4bda57aac8a",
+      "outcome": {
+        "exit": 0,
+        "seconds": 10.157,
+        "compiled": true,
+        "assertion_failed": false,
+        "log": "/private/tmp/rururunx-issue60-M60-R04.log",
+        "log_sha256": "1f51fc0f27a1179103d712b8b5a172b67af22df95fec9b6e0c594ce9bdc05a42",
+        "excerpts": [
+          "    Finished `test` profile [unoptimized + debuginfo] target(s) in 9.33s",
+          "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 326 filtered out; finished in 0.03s"
+        ]
+      },
+      "disposition": "survived_no_credit; verified insufficient positive caller-progress sampling"
+    },
+    {
+      "id": "M60-R05",
+      "path": "crates/rrx/src/adapter/git_owner.rs",
+      "target": "adapter::git_owner::tests::cancelled_live_call_does_not_drop_runtime_or_clear_its_flag",
+      "claimed_guard_scope": "actual caller Cancel reaches native worker while supervisor paused",
+      "mutant_head": "65a5c57f2875228f760a1d090f8d361e1235a214",
+      "patch": "diff --git a/crates/rrx/src/adapter/git_owner.rs b/crates/rrx/src/adapter/git_owner.rs\nindex 2f46519..c48bb11 100644\n--- a/crates/rrx/src/adapter/git_owner.rs\n+++ b/crates/rrx/src/adapter/git_owner.rs\n@@ -446,7 +446,6 @@ impl Ticket {\n                 State::Spawning | State::Live => publication.state = State::FrozenUnknown,\n                 _ => {}\n             }\n-            self.command(NativeCommand::Cancel);\n             self.cancel_wake.notify_one();\n         }\n     }",
+      "patch_sha256": "1d16ea29532b675e9f0efc978ad60a5e8861671a777ce4f732d6fc1eb61329f6",
+      "outcome": {
+        "exit": 101,
+        "seconds": 11.884,
+        "compiled": true,
+        "assertion_failed": true,
+        "log": "/private/tmp/rururunx-issue60-M60-R05.log",
+        "log_sha256": "0d468c62c917521a7e259547fb9529d4785042d75d49e5de1678a7fc4ffd0fcb",
+        "excerpts": [
+          "    Finished `test` profile [unoptimized + debuginfo] target(s) in 8.19s",
+          "thread 'adapter::git_owner::tests::cancelled_live_call_does_not_drop_runtime_or_clear_its_flag' (235802251) panicked at crates/rrx/src/adapter/git_owner/tests.rs:170:6:",
+          "called `Result::unwrap()` on an `Err` value: Elapsed(())",
+          "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 326 filtered out; finished in 3.01s"
+        ]
+      },
+      "disposition": "assertion_killed_scoped_consumer"
+    },
+    {
+      "id": "M60-R06",
+      "path": "crates/rrx/src/adapter/git_owner.rs",
+      "target": "adapter::git_owner::tests::blocked_owning_child_wait_freezes_then_same_jobs_settle_late",
+      "claimed_guard_scope": "actual owning-wait timeout cannot clear frozen caller flag",
+      "mutant_head": "cd061614e5f1df02c816febaec4334da68a79c31",
+      "patch": "diff --git a/crates/rrx/src/adapter/git_owner.rs b/crates/rrx/src/adapter/git_owner.rs\nindex 2f46519..42e94be 100644\n--- a/crates/rrx/src/adapter/git_owner.rs\n+++ b/crates/rrx/src/adapter/git_owner.rs\n@@ -98,7 +98,7 @@ impl GitPool {\n                 if let Some(outcome) = publication.result.take() {\n                     // The live return is the ONLY settled flag clear. Terminal loss,\n                     // cancellation or late settlement cannot clear a frozen result.\n-                    if outcome.settled && publication.state != State::FrozenUnknown {\n+                    if true {\n                         record.ticket.flag.store(false, Ordering::SeqCst);\n                         publication.state = State::ReturnedSettled;\n                     } else if publication.state != State::CancelledBeforeSpawn {",
+      "patch_sha256": "e93e7f37681a4b0a6805bb4d6db4595e68424f057ab97626e8bbba2f0f30fc82",
+      "outcome": {
+        "exit": 101,
+        "seconds": 8.908,
+        "compiled": true,
+        "assertion_failed": true,
+        "log": "/private/tmp/rururunx-issue60-M60-R06.log",
+        "log_sha256": "52fb7e06294761e6a8d66f864e336e7d7ca3f3641bf5bf9f849fded794d4c9fa",
+        "excerpts": [
+          "    Finished `test` profile [unoptimized + debuginfo] target(s) in 6.82s",
+          "thread 'adapter::git_owner::tests::blocked_owning_child_wait_freezes_then_same_jobs_settle_late' (235813015) panicked at crates/rrx/src/adapter/git_owner/tests.rs:693:5:",
+          "assertion failed: frozen && flag.load(Ordering::SeqCst)",
+          "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 326 filtered out; finished in 1.27s"
+        ]
+      },
+      "disposition": "assertion_killed_scoped_consumer"
+    },
+    {
+      "id": "M60-R07",
+      "path": "crates/rrx/src/adapter/git_owner.rs",
+      "target": "adapter::git_owner::tests::actual_stdout_cap_failure_aborts_and_observes_pending_peer",
+      "claimed_guard_scope": "actual stdout error retained over observed peer cancellation error",
+      "mutant_head": "903f9a223332399897cca26870a47e8cd2d1843f",
+      "patch": "diff --git a/crates/rrx/src/adapter/git_owner.rs b/crates/rrx/src/adapter/git_owner.rs\nindex 2f46519..227ce60 100644\n--- a/crates/rrx/src/adapter/git_owner.rs\n+++ b/crates/rrx/src/adapter/git_owner.rs\n@@ -1047,7 +1047,7 @@ async fn supervisor_work(\n         {\n             record.ticket.establish(e);\n         }\n-        stdout.and_then(|out| stderr.map(|_| out))\n+        stderr.and_then(|_| stdout)\n     })\n     .await;\n     if output.is_err() {",
+      "patch_sha256": "f323e5fce00b8096f0e4d3db1be21a8433ee1d19d071e2da6036cc2368278053",
+      "outcome": {
+        "exit": 101,
+        "seconds": 8.307,
+        "compiled": true,
+        "assertion_failed": true,
+        "log": "/private/tmp/rururunx-issue60-M60-R07.log",
+        "log_sha256": "fe6ad944633d61bb966c99133f3f90ad945e938ef800eb3a91907888c633a283",
+        "excerpts": [
+          "    Finished `test` profile [unoptimized + debuginfo] target(s) in 7.55s",
+          "thread 'adapter::git_owner::tests::actual_stdout_cap_failure_aborts_and_observes_pending_peer' (235822988) panicked at crates/rrx/src/adapter/git_owner/tests.rs:329:5:",
+          "assertion `left == right` failed",
+          "  left: ProcessFailure",
+          " right: InvalidInput",
+          "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 326 filtered out; finished in 0.02s"
+        ]
+      },
+      "disposition": "assertion_killed_scoped_consumer"
+    },
+    {
+      "id": "M60-R08",
+      "path": "crates/rrx/src/context.rs",
+      "target": "context::tests::actual_dropped_git_future_sets_context_latch_before_late_settlement",
+      "claimed_guard_scope": "actual Context observation/drop sticky latch",
+      "mutant_head": "d05be5ba4514213f1bb87f49ab91191820e913e3",
+      "patch": "diff --git a/crates/rrx/src/context.rs b/crates/rrx/src/context.rs\nindex 59ac19a..e76ac7e 100644\n--- a/crates/rrx/src/context.rs\n+++ b/crates/rrx/src/context.rs\n@@ -634,7 +634,7 @@ struct GitObservation {\n }\n impl Drop for GitObservation {\n     fn drop(&mut self) {\n-        if self.pending.load(Ordering::SeqCst) {\n+        if false {\n             self.latch.store(true, Ordering::SeqCst);\n         }\n     }",
+      "patch_sha256": "194754403e620b339a447e210526fdba80310f98870570cd33376062af679920",
+      "outcome": {
+        "exit": 101,
+        "seconds": 7.402,
+        "compiled": true,
+        "assertion_failed": true,
+        "log": "/private/tmp/rururunx-issue60-M60-R08.log",
+        "log_sha256": "74dd5e24f4eb446c94467ef6436532bea2eba1c2b7b7b96fd829a627eb44b8a3",
+        "excerpts": [
+          "    Finished `test` profile [unoptimized + debuginfo] target(s) in 6.56s",
+          "thread 'context::tests::actual_dropped_git_future_sets_context_latch_before_late_settlement' (235828418) panicked at crates/rrx/src/context.rs:1419:9:",
+          "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 326 filtered out; finished in 0.01s"
+        ]
+      },
+      "disposition": "assertion_killed_scoped_consumer"
+    },
+    {
+      "id": "M60-R09",
+      "path": "crates/rrx/src/adapter/grok/ownership.rs",
+      "target": "adapter::grok::reader_tests::actual_binding_refresh_git_unknown_prevents_prompt_and_preserves_reservation",
+      "claimed_guard_scope": "actual in-session Git flag must remain in Grok sampled ownership",
+      "mutant_head": "57332ba5740a6909715ea5cfb3b718b5043ad387",
+      "patch": "diff --git a/crates/rrx/src/adapter/grok/ownership.rs b/crates/rrx/src/adapter/grok/ownership.rs\nindex e673e0f..7c0aef4 100644\n--- a/crates/rrx/src/adapter/grok/ownership.rs\n+++ b/crates/rrx/src/adapter/grok/ownership.rs\n@@ -445,7 +445,7 @@ impl ScopeSnapshot {\n         let executable = filesystem(|| resolve_executable(\"git\")).await?;\n         let deadline = tokio::time::Instant::now() + Duration::from_secs(5);\n         let mut observe = |cwd: PathBuf, args: Vec<String>| {\n-            let flag = ownership.group(stage);\n+            let flag = Arc::new(AtomicBool::new(false));\n             let executable = executable.clone();\n             #[cfg(test)]\n             let git_context = git_context.clone();",
+      "patch_sha256": "84ba52157410b45f00e5bccf3ad1064d66f1fd210166b0731b1330c6f24c669a",
+      "outcome": {
+        "exit": 101,
+        "seconds": 9.033,
+        "compiled": true,
+        "assertion_failed": true,
+        "log": "/private/tmp/rururunx-issue60-M60-R09.log",
+        "log_sha256": "f0013ac8153a2c93b27c3f0ef1af94897e32b535fd86006fd6aa790788194966",
+        "excerpts": [
+          "    Finished `test` profile [unoptimized + debuginfo] target(s) in 7.18s",
+          "thread 'adapter::grok::reader_tests::actual_binding_refresh_git_unknown_prevents_prompt_and_preserves_reservation' (235836471) panicked at crates/rrx/src/adapter/grok/reader_tests.rs:94:5:",
+          "assertion `left == right` failed: Some(\"ProcessFailure: No such file or directory (os error 2)\")",
+          "  left: Failed",
+          " right: Lost",
+          "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 326 filtered out; finished in 1.10s"
+        ]
+      },
+      "disposition": "assertion_killed_scoped_consumer"
+    },
+    {
+      "id": "M60-R10",
+      "path": "crates/rrx/src/adapter/git_owner.rs",
+      "target": "adapter::git_owner::tests::inner_frame_loss_wakes_caller_and_retains_outer_runtime_and_readers",
+      "claimed_guard_scope": "actual inner-frame loss wakes live caller; bounded fixture watchdog",
+      "mutant_head": "a53c6f97771dff65d6b800b16debb371238550e3",
+      "patch": "diff --git a/crates/rrx/src/adapter/git_owner.rs b/crates/rrx/src/adapter/git_owner.rs\nindex 2f46519..f89ac9e 100644\n--- a/crates/rrx/src/adapter/git_owner.rs\n+++ b/crates/rrx/src/adapter/git_owner.rs\n@@ -487,7 +487,6 @@ impl Ticket {\n             self.command(NativeCommand::Lost);\n             self.cancel_wake.notify_one();\n         }\n-        self.result_wake.notify_one();\n     }\n     fn establish(&self, primary: &AdapterError) {\n         let mut publication = self.publication.lock().unwrap_or_else(|p| p.into_inner());",
+      "patch_sha256": "3ffe7659558225d0189d8b064249ce55ab353805e81f09e951b9e71c53cb95da",
+      "outcome": {
+        "exit": 101,
+        "seconds": 11.276,
+        "compiled": true,
+        "assertion_failed": true,
+        "log": "/private/tmp/rururunx-issue60-M60-R10.log",
+        "log_sha256": "30b641bcbd3dc8f11dffe8d4272baf9d70ab34fcca5c0f21eff4c72c86e43284",
+        "excerpts": [
+          "    Finished `test` profile [unoptimized + debuginfo] target(s) in 7.51s",
+          "thread 'rrx-git-owner' (235845040) panicked at crates/rrx/src/adapter/git_owner.rs:978:9:",
+          "thread 'adapter::git_owner::tests::inner_frame_loss_wakes_caller_and_retains_outer_runtime_and_readers' (235845039) panicked at crates/rrx/src/adapter/git_owner/tests.rs:216:6:",
+          "called `Result::unwrap()` on an `Err` value: Elapsed(())",
+          "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 326 filtered out; finished in 3.00s"
+        ]
+      },
+      "disposition": "assertion_killed_scoped_consumer"
+    },
+    {
+      "id": "M60-R11",
+      "path": "crates/rrx/src/adapter/git_owner.rs",
+      "target": "adapter::git_owner::tests::post_signal_worker_panic_retains_child_without_a_second_signal",
+      "claimed_guard_scope": "actual post-signal panic must not authorize second signal",
+      "mutant_head": "ed2a95225b3a3551bc7f55d2b5a2735094edc175",
+      "patch": "diff --git a/crates/rrx/src/adapter/git_owner.rs b/crates/rrx/src/adapter/git_owner.rs\nindex 2f46519..d6f181e 100644\n--- a/crates/rrx/src/adapter/git_owner.rs\n+++ b/crates/rrx/src/adapter/git_owner.rs\n@@ -1292,7 +1292,7 @@ fn first_cleanup(_record: &OpRecord, native: &mut NativeAssets) {\n     if native.signal_issued {\n         return;\n     }\n-    native.signal_issued = true;\n+    // MUTANT missing first-signal bit\n \n     #[cfg(test)]\n     {",
+      "patch_sha256": "1c476fe4e85470367891e45493587db1998c15727c26f690743f36d326b3008b",
+      "outcome": {
+        "exit": 101,
+        "seconds": 8.184,
+        "compiled": true,
+        "assertion_failed": true,
+        "log": "/private/tmp/rururunx-issue60-M60-R11.log",
+        "log_sha256": "4474923d8a83eaad4c973c18de9b2429d68091ecb9262c9a7f5efcc16189a287",
+        "excerpts": [
+          "    Finished `test` profile [unoptimized + debuginfo] target(s) in 7.30s",
+          "thread 'rrx-git-native' (235855830) panicked at crates/rrx/src/adapter/git_owner.rs:1313:17:",
+          "thread 'rrx-git-native' (235855830) panicked at crates/rrx/src/adapter/git_owner.rs:1313:17:",
+          "thread 'adapter::git_owner::tests::post_signal_worker_panic_retains_child_without_a_second_signal' (235855828) panicked at crates/rrx/src/adapter/git_owner/tests.rs:360:5:",
+          "assertion failed: native.signal_issued",
+          "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 326 filtered out; finished in 0.01s"
+        ]
+      },
+      "disposition": "assertion_killed_scoped_consumer"
+    },
+    {
+      "id": "M60-R12",
+      "path": "crates/rrx/src/adapter/git_owner.rs",
+      "target": "adapter::git_owner::tests::actual_stdout_cap_failure_aborts_and_observes_pending_peer",
+      "claimed_guard_scope": "actual reader unobserved join must not count as settled; private fact assertions",
+      "mutant_head": "aaaf449beeda60d361cbf542cb391bc9a11ccb62",
+      "patch": "diff --git a/crates/rrx/src/adapter/git_owner.rs b/crates/rrx/src/adapter/git_owner.rs\nindex 2f46519..1cae14e 100644\n--- a/crates/rrx/src/adapter/git_owner.rs\n+++ b/crates/rrx/src/adapter/git_owner.rs\n@@ -596,7 +596,7 @@ enum JoinState {\n }\n impl JoinState {\n     fn settled(self) -> bool {\n-        !matches!(self, Self::NotObserved)\n+        true\n     }\n }\n #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]",
+      "patch_sha256": "23fdaf5a4774656c9c18cd331c14a78d5a292d2474ecc88ffdcd9cbc49c97e3a",
+      "outcome": {
+        "exit": 101,
+        "seconds": 3.86,
+        "compiled": true,
+        "assertion_failed": true,
+        "log": "/private/tmp/rururunx-issue60-M60-R12.log",
+        "log_sha256": "d6517014769801e4178d9c565d88f5ba5a28a60c94b159d4b1751ab16e48a8be",
+        "excerpts": [
+          "    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.91s",
+          "thread 'adapter::git_owner::tests::actual_stdout_cap_failure_aborts_and_observes_pending_peer' (235859934) panicked at crates/rrx/src/adapter/git_owner/tests.rs:337:5:",
+          "assertion `left == right` failed",
+          "  left: NotObserved",
+          " right: Cancelled",
+          "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 326 filtered out; finished in 0.27s"
+        ]
+      },
+      "disposition": "assertion_killed_scoped_consumer"
+    }
+  ],
+  "scope": "isolated committed private mutants; default per-target concurrency; no native inference; no all-descendant settlement/availability certificate",
+  "restored_exact_source": true,
+  "restored_head": "c8f9f455201c01e3fabf56d9f9b7bfc30f62b131"
+}

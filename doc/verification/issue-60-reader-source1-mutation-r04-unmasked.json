@@ -1,0 +1,20 @@
+{
+  "id": "M60-R04-unmasked",
+  "base_head": "b3101ce31eadde352500886a78297151a901b403",
+  "mutant_head": "d2a31a29613e443f8f0bbf854616a0b2842f96bd",
+  "operator_same_as_prior_survivor": true,
+  "patch": "diff --git a/crates/rrx/src/adapter/git_owner.rs b/crates/rrx/src/adapter/git_owner.rs\nindex 4edb928..6ccbd47 100644\n--- a/crates/rrx/src/adapter/git_owner.rs\n+++ b/crates/rrx/src/adapter/git_owner.rs\n@@ -834,7 +834,8 @@ fn supervise(record: &Arc<OpRecord>, request: Request) -> Completion {\n     }\n     // Joining the actual worker, not receiving its result, precedes success.\n     let worker = record.worker.lock().unwrap().take().unwrap();\n-    if worker.join().is_err() {\n+    drop(worker);\n+    if false {\n         record.ticket.owner_loss();\n         return Completion::Retained(Outcome {\n             primary: Err(supervisor_lost()),\n",
+  "patch_sha256": "9db85ce3f73787a282213dcc3f030dd6740bf7ae032cd7a7d28289b00e9354ce",
+  "compiled": true,
+  "exit": 101,
+  "assertion_killed": true,
+  "seconds": 3.174,
+  "log": "/private/tmp/rururunx-issue60-M60-R04-unmasked.log",
+  "log_sha256": "386c79b5d4394587f9f2e911ea43f5369fa12e895567a226c857911e8509714e",
+  "excerpts": [
+    "thread 'adapter::git_owner::tests::actual_worker_join_precedes_success_and_capacity_release' (236326110) panicked at crates/rrx/src/adapter/git_owner/tests.rs:200:5:",
+    "caller returned before its actual native worker joined",
+    "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 326 filtered out; finished in 0.02s"
+  ],
+  "disposition": "actual worker-join consumer assertion killed after cfg-only redundant native guard removed; two preceding survivors remain no credit"
+}

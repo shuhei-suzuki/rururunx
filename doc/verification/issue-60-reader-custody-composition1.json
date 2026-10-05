@@ -1,0 +1,313 @@
+{
+  "head": "7774b9372e5aee360b1ffa05dab741821eab3ca8",
+  "scope": "Finite normal-main custody composition outcome; qualified selected Git component only",
+  "inputs": {
+    "head": "7774b9372e5aee360b1ffa05dab741821eab3ca8",
+    "parents": [
+      "996d48605c20ae596b9d9da2bcfbad5e0712b2d0",
+      "9d2daeddeaa40330bacc0a21cb0922119eb588c3"
+    ],
+    "clean_at_gate_start": true,
+    "changed_paths_from_own_reviewed_ancestor": [
+      "README.md",
+      "crates/rrx/src/codex/attempt.rs",
+      "crates/rrx/src/codex/custody.rs",
+      "crates/rrx/src/codex/custody_tests.rs",
+      "crates/rrx/src/codex/mod.rs",
+      "crates/rrx/src/codex/session.rs",
+      "doc/design/issue-19-lifetime-component-design.md",
+      "doc/design/issue-19-lifetime-component-evidence.md",
+      "doc/design/issue-19-open-design-findings.md",
+      "doc/design/master/agent-adapter.md",
+      "doc/verification/issue-19-custody-current-gates.json",
+      "doc/verification/issue-19-custody-direct-response.json",
+      "doc/verification/issue-19-custody-source1-reviews.json",
+      "doc/verification/issue-19-custody-source2-mutations.json",
+      "doc/verification/issue-19-custody-source3-controls.json",
+      "doc/verification/issue-19-native-custody.md"
+    ],
+    "incoming_code_bindings": {
+      "crates/rrx/src/codex/attempt.rs": {
+        "main": "e76e301f1ee2838720416b4ecda2bd60b51a8849",
+        "composed": "e76e301f1ee2838720416b4ecda2bd60b51a8849"
+      },
+      "crates/rrx/src/codex/custody.rs": {
+        "main": "b92306b03d3d17175fc2193b163c54afaf9a56f8",
+        "composed": "b92306b03d3d17175fc2193b163c54afaf9a56f8"
+      },
+      "crates/rrx/src/codex/custody_tests.rs": {
+        "main": "67e5d395f868bd91220065dd9c5ff58fee211dce",
+        "composed": "67e5d395f868bd91220065dd9c5ff58fee211dce"
+      },
+      "crates/rrx/src/codex/mod.rs": {
+        "main": "abc725dedbe1b5184dd074d4b5930dbdf9f54e47",
+        "composed": "abc725dedbe1b5184dd074d4b5930dbdf9f54e47"
+      },
+      "crates/rrx/src/codex/session.rs": {
+        "main": "b13eef05cc951f66e72da72bb01a33cc865dcecf",
+        "composed": "b13eef05cc951f66e72da72bb01a33cc865dcecf"
+      }
+    },
+    "selected_git_adapter_context_grok_cargo_ci_identical_to_996": true,
+    "full_codex_identical_to_reviewed_main9d": true,
+    "impact": "Incoming attempt/control/custody/session mechanics plus20 actual custody controls change full default suite inventory. No selectedGit charge/cancel/retention/latch/CallGuard equations or budgets change. Ordinary producer custody None; file Factory cfg(test) only; ordinary Codex EMPTY remains before effects. Selected Git pool and custody pool separate current mechanical owners, no typed capability/managed/native grant or shared schema.",
+    "review_scope": "Independent static composition review completed by Root and existing peer after both closed; current finite approvals only, no independent reviewer test rerun or native inference."
+  },
+  "first_actual_composition_gates": {
+    "head": "7774b9372e5aee360b1ffa05dab741821eab3ca8",
+    "unchanged_default_internal_concurrency": true,
+    "runs": [
+      {
+        "name": "workspace-debug",
+        "command": [
+          "cargo",
+          "test",
+          "--workspace"
+        ],
+        "head": "7774b9372e5aee360b1ffa05dab741821eab3ca8",
+        "exit": 0,
+        "seconds": 136.103,
+        "log_sha256": "4299f54cbe2fe157ac8bc7c765987053ff999d03b70f69e85f7445b2af58d2fd",
+        "results": [
+          "test result: ok. 44 passed; 0 failed; 1 ignored; 0 measured; 313 filtered out; finished in 4.25s",
+          "test result: ok. 334 passed; 0 failed; 24 ignored; 0 measured; 0 filtered out; finished in 44.73s",
+          "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+          "test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 11.45s",
+          "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.43s",
+          "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.01s",
+          "test result: ok. 1 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.24s",
+          "test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 21.11s",
+          "test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.45s",
+          "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s",
+          "test result: ok. 15 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 26.58s",
+          "test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.09s",
+          "test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s",
+          "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+          "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s"
+        ],
+        "tail": [
+          "running 1 test",
+          "test crates/rrx/src/workflow.rs - workflow::WorkflowEngine (line 459) - compile ... ok",
+          "",
+          "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+          "",
+          "",
+          "running 1 test",
+          "test crates/rrx/src/workflow.rs - workflow::WorkflowEngine (line 455) - compile fail ... ok",
+          "",
+          "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s",
+          "",
+          "all doctests ran in 0.68s; merged doctests compilation took 0.27s"
+        ]
+      },
+      {
+        "name": "workspace-release",
+        "command": [
+          "cargo",
+          "test",
+          "--workspace",
+          "--release"
+        ],
+        "head": "7774b9372e5aee360b1ffa05dab741821eab3ca8",
+        "exit": 0,
+        "seconds": 159.734,
+        "log_sha256": "b368c99fa61d70a5a3cd0829e4f439505195c61424427f4177c49beeb37eac6e",
+        "results": [
+          "test result: ok. 44 passed; 0 failed; 1 ignored; 0 measured; 313 filtered out; finished in 4.51s",
+          "test result: ok. 334 passed; 0 failed; 24 ignored; 0 measured; 0 filtered out; finished in 46.35s",
+          "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+          "test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 11.17s",
+          "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.34s",
+          "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s",
+          "test result: ok. 1 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.27s",
+          "test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 21.24s",
+          "test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.06s",
+          "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s",
+          "test result: ok. 15 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 26.82s",
+          "test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.91s",
+          "test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s",
+          "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+          "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s"
+        ],
+        "tail": [
+          "running 1 test",
+          "test crates/rrx/src/workflow.rs - workflow::WorkflowEngine (line 459) - compile ... ok",
+          "",
+          "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+          "",
+          "",
+          "running 1 test",
+          "test crates/rrx/src/workflow.rs - workflow::WorkflowEngine (line 455) - compile fail ... ok",
+          "",
+          "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s",
+          "",
+          "all doctests ran in 1.42s; merged doctests compilation took 0.71s"
+        ]
+      },
+      {
+        "name": "fmt",
+        "command": [
+          "cargo",
+          "fmt",
+          "--all",
+          "--check"
+        ],
+        "head": "7774b9372e5aee360b1ffa05dab741821eab3ca8",
+        "exit": 0,
+        "seconds": 0.304,
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "results": [],
+        "tail": []
+      },
+      {
+        "name": "clippy",
+        "command": [
+          "cargo",
+          "clippy",
+          "--workspace",
+          "--all-targets",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "head": "7774b9372e5aee360b1ffa05dab741821eab3ca8",
+        "exit": 0,
+        "seconds": 5.176,
+        "log_sha256": "ec7eb93b3dbac0061d088f6df3d76283e1ad1452a241e966f98627828b53f9a1",
+        "results": [],
+        "tail": [
+          "    Checking rrx v0.1.0 (<issue-60-worktree>/crates/rrx)",
+          "    Finished `dev` profile [unoptimized + debuginfo] target(s) in 5.10s"
+        ]
+      },
+      {
+        "name": "debug-build",
+        "command": [
+          "cargo",
+          "build",
+          "--workspace"
+        ],
+        "head": "7774b9372e5aee360b1ffa05dab741821eab3ca8",
+        "exit": 0,
+        "seconds": 0.17,
+        "log_sha256": "a41051563a4cb5fc1b1bcdd9aa0ba28ca80f7736d629d90cc138218756e8e3a9",
+        "results": [],
+        "tail": [
+          "    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.13s"
+        ]
+      },
+      {
+        "name": "release-build",
+        "command": [
+          "cargo",
+          "build",
+          "--workspace",
+          "--release"
+        ],
+        "head": "7774b9372e5aee360b1ffa05dab741821eab3ca8",
+        "exit": 0,
+        "seconds": 0.118,
+        "log_sha256": "3997fc6790b8063b86c119e91f87ac7395ac6cf26135da637dcb229006bc32dc",
+        "results": [],
+        "tail": [
+          "    Finished `release` profile [optimized] target(s) in 0.08s"
+        ]
+      }
+    ],
+    "platform": "local macOS aarch64-apple-darwin Rust1.91.1",
+    "composition": "Normal main9d plus own996; first actual combined source full gates, no oldhead retry",
+    "old_full_failures_preserved": "f072 Release TEST and e30CI plus35/fd/prior remain FAILED; cause/contribution/regression UNKNOWN"
+  },
+  "ci": {
+    "run": 37270293297,
+    "trigger_head": "7774b9372e5aee360b1ffa05dab741821eab3ca8",
+    "actual_checkouts": {
+      "check (ubuntu-latest)": "f7981fd67f362ed2cbabce95b9410bb67f6b7eae",
+      "check (macos-latest)": "f7981fd67f362ed2cbabce95b9410bb67f6b7eae"
+    },
+    "parents": [
+      "9d2daeddeaa40330bacc0a21cb0922119eb588c3",
+      "7774b9372e5aee360b1ffa05dab741821eab3ca8"
+    ],
+    "tested_tree": "4ec1af554b3107b7078d90b7e1d61eadf5cc374f",
+    "trigger_tree": "4ec1af554b3107b7078d90b7e1d61eadf5cc374f",
+    "tested_tree_equals_trigger": true,
+    "jobs": {
+      "check (ubuntu-latest)": {
+        "conclusion": "success",
+        "steps": {
+          "Set up job": "success",
+          "Run actions/checkout@v4": "success",
+          "Run dtolnay/rust-toolchain@1.91.1": "success",
+          "Run cargo fmt --all -- --check": "success",
+          "Run cargo clippy --locked --workspace --all-targets -- -D warnings": "success",
+          "Run cargo test --locked --workspace": "success",
+          "Run cargo build --locked --workspace": "success",
+          "Run cargo build --locked --release --workspace": "success",
+          "Post Run actions/checkout@v4": "success",
+          "Complete job": "success"
+        }
+      },
+      "check (macos-latest)": {
+        "conclusion": "success",
+        "steps": {
+          "Set up job": "success",
+          "Run actions/checkout@v4": "success",
+          "Run dtolnay/rust-toolchain@1.91.1": "success",
+          "Run cargo fmt --all -- --check": "success",
+          "Run cargo clippy --locked --workspace --all-targets -- -D warnings": "success",
+          "Run cargo test --locked --workspace": "success",
+          "Run cargo build --locked --workspace": "success",
+          "Run cargo build --locked --release --workspace": "success",
+          "Post Run actions/checkout@v4": "success",
+          "Complete job": "success"
+        }
+      }
+    },
+    "log_sha256": "7673b55b217a174e427fecb4264cfe4f052101fc0e1f0faebe20b360e1c2f8e3",
+    "scope": "First actual normalmain9d custody plus selectedGit777 combined DEBUG TEST and RELEASE BUILD bothOS; separate local bothmodeTEST successes; oldfailure causes/regression remain UNKNOWN",
+    "normal_fetched_complete_mode_type_blob_path_tree_equal": true,
+    "tree_entries": 320,
+    "complete_ls_tree_sha256": "2e6c873e0e38b64c7cbe83fd7f66d2017dc43ee89e98d95206d2fa4684c38d0a",
+    "source_identity": "Own selectedGit/adapter/Grok/Context/Cargo/CI bytes=reviewed996; Codex allbytes=reviewed mergedmain9d. Both actual checkout complete trees=trigger777.",
+    "failed_historical_gates": "f072 Release/e30CI and35/fd/prior FAILED unchanged; cause/contribution/regression UNKNOWN. No causal fix, native/F1/full60 or producer certificate."
+  },
+  "independent_composition_reviews": [
+    {
+      "reviewer": "Root",
+      "mechanism": "independent static read-only source/composition verification",
+      "verdict": "approve",
+      "findings": {
+        "critical": 0,
+        "high": 0,
+        "medium": 0,
+        "low": 0
+      },
+      "confidence": "high for finite additive main composition",
+      "scope": "Exact777 source bindings,20incoming controls/privatePool and ordinary producer None/EMPTY; raw gate hashes/counts and actualCI checkout/tree independently checked, not independently rerun. No native inference or whole60/F1/backend/MVP approval."
+    },
+    {
+      "reviewer": "existing peer9",
+      "mechanism": "independent static read-only source/composition review; reported by Root after both reviewers closed",
+      "verdict": "approve",
+      "findings": {
+        "critical": 0,
+        "high": 0,
+        "medium": 0,
+        "low": 0
+      },
+      "risk": "STRICT",
+      "confidence": 0.94,
+      "raw_structured_artifact_available": false,
+      "scope": "Limited current777 composition only. Parent reports currentfullD/R445+2/27,quality andactual f798 CI conditions confirmed. No raw peer artifact, no independent rerun/native inference or whole60 approval claimed."
+    }
+  ],
+  "finite_disposition": {
+    "reported_by": "Root after both independent reviewers closed",
+    "conditions": "Final docs-only delta direct QUICK check, newhead bothOS every required step PASS and actualcheckout complete tree equality; normal limited component merge then cleanup permitted. No unconditional native extra round or samefailedhead rerun.",
+    "still_open": "Whole60/native3/backend/F1/MVP, durable recovery/availability, shared ProcessGroup/new/Drop and original effect/managed producers; no shared/native authority from these process-local holders.",
+    "historical_failed_gates": "f072 localRelease308/6 ande30CI MacCodex313/1 plus35/fd/prior remainFAILED; cause/contribution/regressionUNKNOWN. New445+2 successes certify changed combined source once, not causal resolution or historical exoneration.",
+    "audit_scope": "Selected audit45mac/42Linux unchanged;20newCodex custody controls outside selectors gain no selected production-pool isolation/native settlement credit.",
+    "mutations": "27compiled runs/23operators/25intendedkills plus2historicalmasked survivors0credit; no operators rerun at this composition, R23nonvacuityonly/R18cancelonly/diagnostic-only limits preserved."
+  }
+}

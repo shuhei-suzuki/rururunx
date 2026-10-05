@@ -1,0 +1,224 @@
+{
+  "scope": "Reader Design1 request_changes twice; Design2 verified candidate corrections UNAPPROVED",
+  "reviews": [
+    {
+      "reviewer": "ownership",
+      "head": "8f95adbb8198c1c7d2a35f11fb172bca541b5a49",
+      "native_session": "00677738-28ea-413e-aa5b-1919c43421ac",
+      "verdict": "request_changes",
+      "raw_sha256": "6f2193153aec33a928edf30d39f451ca6d0d3c01c40d625c1742d10a5cc2fc38",
+      "cleanup_verified": true,
+      "findings": [
+        {
+          "id": "D60-M1-supervisor-loss-caller-publication",
+          "severity": "Medium",
+          "file": "doc/design/issue-60-reader-design.md",
+          "line": 102,
+          "claim": "After Begin, the caller can only return by consuming a supervisor-published Outcome, and that wait has no deadline. The design defines no publication for loss of the supervisor frame itself: an inner-future panic before publishing, an outer-frame unwind, or a poisoned ticket. The liveness guard only informs the worker, so 'total owner loss remains Unknown' can become an indefinite caller hang.",
+          "evidence": "- Design 102-103: the liveness guard 'marks lost' for the native worker only.\n- Design 111-115: ResultReady consumed under the publication lock is the sole caller return path.\n- Design 117-120: the budgets 'do not make one total operation deadline'. The caller therefore cannot time out its wait at the Git deadline, because cleanup and reap legitimately run after it.\n- Design 184-185 and 242-243: assets are retained as Unknown, but nothing is published to the ticket.\n- Current source always returns: cleanup_group maps a spawn_blocking JoinError to SessionLost (adapter.rs:1450-1455).\n- Affected consumers would hang: Generic start leaves its reservation in Starting (adapter.rs:599-627); the Grok actor never reaches terminal publication (grok/mod.rs:1134-1137, 1375-1392); Context build stalls (context.rs:554-622).\n- Requirements draft 130-134 require retained Unknown under driver loss, not non-return.",
+          "fix": "Install a frame-owned publication guard before Begin. Both its catch_unwind Err arm and its Drop publish a terminal Outcome under the ticket lock, with no native work, and then wake the caller:\n- If Spawning was never published, publish LaunchFailure and leave the flag untouched.\n- Otherwise publish a supervisor-lost SessionLost. The flag stays true and is never cleared.\n\nAll four permits stay retained unless the healthy terminal frame ran. Apply the same rule when the supervisor observes worker loss. Add actual controls for an inner panic and for an outer-frame unwind, asserting the caller returns with the expected kind, flag and retained permits.",
+          "verification": "Verified against exact8f Design1/current full consumer source; narrow design omission/precision, not historical cause.",
+          "candidate_disposition": "Frame guard owner_lost/result wake; pre-Spawning LaunchFailure/cancelled no attempt, after-Spawning/poison SessionLost/frozen true; caller actual controls and precedence.",
+          "implementation_accepted": false
+        },
+        {
+          "id": "D60-M2-test-pool-carrier-grok-actor",
+          "severity": "Medium",
+          "file": "doc/design/issue-60-reader-design.md",
+          "line": 252,
+          "claim": "Acceptance 4 and design 270-271 require private-pool and plan routing through every actual consumer, including the Grok initial, refresh, index and checkpoint Unknown controls. The design defines no carrier for this. Its own constraints rule out the obvious ones: production signatures are preserved, the Grok actor runs in a separately spawned task, and global overrides and test serialization are forbidden. The Grok controls are therefore either infeasible or will leak into the shared static pool.",
+          "evidence": "- Design 13-21 preserves the bounded_git_raw and bounded_git signatures; design 28-29 and 252-258 require isolated injection.\n- Grok Git reaches bounded_git with no plan or pool parameter: verify_git's observe closure at ownership.rs:436-449, and index_digest at grok/mod.rs:1467-1480.\n- These run inside an actor started by tokio::spawn(supervise(...)) at grok/mod.rs:319 and 687, so a test-scoped task_local does not reach them.\n- The existing Grok process_inspection carrier (mod.rs:89, 292, 1156) targets the ACP child only.\n- Only bounded_git_raw_with_plan (adapter.rs:1297-1316), used at adapter.rs:1617 and context.rs:590, carries a plan today.\n- Each missed route would permanently retain 4 of the 64 test-process permits, so later tests would time out at admission.",
+          "fix": "Specify a cfg(test)-only per-operation carrier holding the private pool and the optional macOS plan, threaded through existing consumer state:\n- GenericCliAdapter: a field passed by validate_git.\n- Grok: GrokAdapter \u2192 OwnedEntry \u2192 Actor, and into checkpoint, then to verify_git and index_digest.\n- Context: git_value_owned's existing cfg(test) parameter.\n\nReach bounded_git and bounded_git_raw through either a cfg(test)-only trailing parameter (following the bounded_git_raw_inner precedent at adapter.rs:1324) or a task_local scoped inside Grok supervise and checkpoint. Release builds keep the signatures unchanged. State that no process-global override exists, and enumerate each route with its control.",
+          "verification": "Verified against exact8f Design1/current full consumer source; narrow design omission/precision, not historical cause.",
+          "candidate_disposition": "Explicit cfgtest GitTestContext carried Generic validateGit, Grok OwnedEntry/Actor+checkpoint/verify/index, Context parameter and same inner wrapper; no global/tasklocal override.",
+          "implementation_accepted": false
+        },
+        {
+          "id": "D60-L1-worker-panic-first-cleanup-retry",
+          "severity": "Low",
+          "file": "doc/design/issue-60-reader-design.md",
+          "line": 187,
+          "claim": "The worker's catch_unwind rule keeps first cleanup as the reserved lane's job 'if not run'. It does not say whether 'run' means a KILL was attempted. A panic after the signal, during inspection or result mapping, could make the outer worker frame signal the group a second time.",
+          "evidence": "- Design 187-189.\n- Requirements draft 129-130: 'No command or signal retry'.\n- kill_group issues the signal (or TestPlan.signal) before the macOS inspection at adapter.rs:380-396.",
+          "fix": "Record signal_issued in the outer NativeAssets immediately before the KILL syscall or TestPlan.signal. After an inner panic, the outer frame performs first cleanup only when signal_issued is false; otherwise it retains terminal Unknown. Add a mutant that panics after the signal.",
+          "verification": "Verified against exact8f Design1/current full consumer source; narrow design omission/precision, not historical cause.",
+          "candidate_disposition": "Outer signal_issued set BEFORE KILL/TestPlan; panic after attempted signal never retries. Permit Drop/unwind never releases.",
+          "implementation_accepted": false
+        },
+        {
+          "id": "D60-L2-bidirectional-notify",
+          "severity": "Low",
+          "file": "doc/design/issue-60-reader-design.md",
+          "line": 81,
+          "claim": "OpTicket has a single wake Notify, used both for the caller's result wakeup and for supervisor cancellation. While both sides hold registered Notified futures, notify_one can wake the wrong waiter. A caller that has already checked the state can then sleep forever.",
+          "evidence": "- Design 81, 108-112.\n- A Tokio Notify waiter stays registered until it is dropped or notified, and notify_one picks a single waiter.",
+          "fix": "Use separate result and cancel Notify instances, or use notify_waiters with a mandatory state recheck after enable(). Add a control where both sides wait concurrently.",
+          "verification": "Verified against exact8f Design1/current full consumer source; narrow design omission/precision, not historical cause.",
+          "candidate_disposition": "Distinct result/cancel Notify with enable/state recheck; frame loss nonblocking result publication and actual concurrent waiter control.",
+          "implementation_accepted": false
+        },
+        {
+          "id": "D60-L3-publication-states-guard-order",
+          "severity": "Low",
+          "file": "doc/design/issue-60-reader-design.md",
+          "line": 82,
+          "claim": "Publication has no pre-spawn cancelled state: 'Admitted\u2192FrozenUnknown/cancelled' gives a flag-false no-attempt the same name as frozen-true Unknown. Line 110 says Drop 'signals cancel' while line 111 says it 'never signals'. The Context and Generic correctness also silently depends on CallGuard dropping before the consumer guards read the flag.",
+          "evidence": "- GitObservation reads the per-call flag at drop (context.rs:580-583, 660-664); Reservation does the same (adapter.rs:594-627).\n- If a consumer guard read false while the state was still Admitted, and the supervisor then won Spawning, a spawned Git would leave no Context latch and no Lost Generic state.\n- This is safe only because CallGuard lives inside the awaited bounded_git_raw future, which drops first.",
+          "fix": "Add a distinct CancelledBeforeSpawn state and reword the Drop clause as 'never sends OS signals'. State that CallGuard is owned inside the bounded_git_raw future and resolves Admitted versus Spawning before any consumer guard reads the flag. Add a cancellation-race control asserting the Context latch is set exactly when Spawning was published.",
+          "verification": "Verified against exact8f Design1/current full consumer source; narrow design omission/precision, not historical cause.",
+          "candidate_disposition": "Frame guard owner_lost/result wake; pre-Spawning LaunchFailure/cancelled no attempt, after-Spawning/poison SessionLost/frozen true; caller actual controls and precedence.",
+          "implementation_accepted": false
+        },
+        {
+          "id": "D60-L4-worker-polling-cadence",
+          "severity": "Low",
+          "file": "doc/design/issue-60-reader-design.md",
+          "line": 175,
+          "claim": "The worker's 5ms parked polling, plus an unspecified cadence for late try_wait, adds periodic wakeups on up to 16 workers. This contradicts the unchanged master statement that process groups are supervised 'without busy polling'.",
+          "evidence": "- Design 174-176 and 166-168.\n- agent-adapter.md:285-286.",
+          "fix": "Have the worker block on a capacity-bounded command channel. CallGuard::drop and the frame liveness guard push Cancel or Lost into it with nonblocking try_send, with capacity at least the finite message count. Alternatively, specify a bounded idle period for late try_wait and update the master text.",
+          "verification": "Verified against exact8f Design1/current full consumer source; narrow design omission/precision, not historical cause.",
+          "candidate_disposition": "Capacity4 finite native command channel parking; counted actual Child.wait, existing supervisor250ms cutoff/late same wait, no component5ms polling.",
+          "implementation_accepted": false
+        },
+        {
+          "id": "D60-L5-setup-order",
+          "severity": "Low",
+          "file": "doc/design/issue-60-reader-design.md",
+          "line": 142,
+          "claim": "The pre-effect setup order is not frozen in two places:\n- SIGCHLD listener registration placed after spawn, as it is today, makes a registration failure a post-effect SessionLost instead of a pre-effect LaunchFailure.\n- Readers are not required to start before exit observation. The current source starts them first to avoid Git blocking on a full pipe.",
+          "evidence": "- Registration happens inside observe_exit, after spawn (adapter.rs:349).\n- Readers are spawned before observation (adapter.rs:1355-1357).\n- Design 142-147 and 161-163 leave this ordering implicit.",
+          "fix": "Freeze this order: build the runtime, register the SIGCHLD listener, create the worker, publish Admitted\u2192Spawning, spawn, bind, run from_std and start both readers, then begin non-reaping observation. A failure before Spawning is a no-attempt LaunchFailure.",
+          "verification": "Verified against exact8f Design1/current full consumer source; narrow design omission/precision, not historical cause.",
+          "candidate_disposition": "Private runtime SIGCHLD setup before effects, then worker/start/spawn/bind/from_std/BOTH readers before observe.",
+          "implementation_accepted": false
+        },
+        {
+          "id": "D60-L6-impact-and-diagnostic-parity",
+          "severity": "Low",
+          "file": "doc/design/issue-60-reader-design.md",
+          "line": 149,
+          "claim": "The design omits the repository's mandatory impact-analysis section. It also never states that the cleanup, reap and observation error text and the inspector-fact transport stay identical, even though existing consumers assert on them.",
+          "evidence": "- The Context fixture asserts SessionLost plus inspection_facts (context.rs:1452-1459), which originate from the cleanup_group format at adapter.rs:1441-1445.\n- Grok registry_tests directly reuse ProcessGroup::new, read_git_output and cleanup_group (grok/mod.rs:1508-1514).\n- bounded_git_raw_with_plan is called at adapter.rs:1617 and context.rs:590.\n- agent-adapter.md:285-288 is affected.\n- None of these are enumerated with file:line, impact type and disposition.",
+          "fix": "Add the impact-analysis section, covering:\n- changed symbols, constants (64/16/4, 5ms, 250ms reuse) and fixtures, each with file:line consumers, impact type, disposition and no-impact rationale;\n- a statement that error messages and fact transport are byte-identical to the current helper, enforced by differential assertions.",
+          "verification": "Verified against exact8f Design1/current full consumer source; narrow design omission/precision, not historical cause.",
+          "candidate_disposition": "Design impact table enumerates actual symbols/sites/no-impact inventory, branch-specific exact text/fact differential assertions and new loss branch distinction.",
+          "implementation_accepted": false
+        }
+      ],
+      "unresolved_blockers_at_review": [
+        "D60-M1-supervisor-loss-caller-publication: no caller publication on supervisor-frame loss, so the unbounded ResultReady wait can hang",
+        "D60-M2-test-pool-carrier-grok-actor: undefined cfg(test) private-pool/plan carrier; it conflicts with preserved signatures and the tokio::spawn'ed Grok actor"
+      ]
+    },
+    {
+      "reviewer": "capacity",
+      "head": "8f95adbb8198c1c7d2a35f11fb172bca541b5a49",
+      "native_session": "5a3cf784-2c81-4218-a9ec-5488292ff43e",
+      "verdict": "request_changes",
+      "raw_sha256": "2c6d504b0c225ae105ae3ddf53a1c449582e7226339e245a3226a9579628c0c4",
+      "cleanup_verified": true,
+      "findings": [
+        {
+          "id": "D1-M1-owner-loss-caller-publication",
+          "severity": "Medium",
+          "file": "doc/design/issue-60-reader-design.md",
+          "line": 102,
+          "claim": "The design does not say how the live caller is woken, or what it returns, when the supervisor frame or driver is lost before ResultReady is published. The caller's await has no deadline of its own, and the ticket is kept alive by the pool. A supervisor panic or poisoned bookkeeping can therefore hang the consumer forever instead of producing the retained Unknown that the contract requires.",
+          "evidence": "- Design 81: OpTicket is only Mutex<Publication>, an AtomicBool and a Notify. Nothing about it signals a disconnect.\n- Design 99-100: the pool keeps its own strong record, so the ticket is never dropped and no sender-drop wake exists.\n- Design 102-103: the liveness guard only marks lost so that the native worker can see it.\n- Design 111-115: the caller consumes an Outcome only after ResultReady.\n- Design 185 ('Total owner loss/panic/poison remains Unknown') and 242-244 (move assets to retained storage) never publish anything to the caller.\n- Contract 156-185 (startup order and precedence table) has no row for driver loss after spawning.\n- Today's analogue maps a JoinError from the cleanup worker to SessionLost (adapter.rs 1450-1455), and the caller cannot hang because the work runs in its own future.\n- Affected consumers that await with no timeout of their own: Context git_value_owned (context.rs 588-622), Generic validate_git inside launch (adapter.rs 599-627), and Grok supervise (mod.rs 1136-1137) and checkpoint (596-599).\n- A hang means: no GitObservation latch; the Generic Reservation never drops, so neither Lost nor Failed is persisted; Grok's busy flag is never cleared.",
+          "fix": "Add a nonblocking loss-publication path.\n- The ticket carries an atomic owner_lost fact.\n- The liveness guard sets it during unwind. The outer supervisor frame sets it after catch_unwind returns Err, and also when it detects a worker result disconnect or panic. In each case it then calls wake.notify_one(), which stores a permit even with no waiter.\n- The caller's wait loop wakes on ResultReady OR owner_lost.\n- Loss after Spawning: return SessionLost with the flag frozen true. This makes the Context latch, Generic Lost and Grok unclean fire through the existing equations.\n- Loss while still Admitted: CAS Admitted to cancelled so a later Spawning is impossible, return pre-effect LaunchFailure, leave the flag untouched, and keep the permits retained fail-closed.\n- A poisoned publication mutex (inspected via PoisonError::into_inner) is always treated as frozen Unknown and never cleared.\n- Add this row to the startup order and precedence.\n- Add controls for: inner panic after spawn, an outer-frame panic outside catch_unwind, and a poisoned ticket. Each must assert that the live caller returns, with the correct kind, flag and retention.",
+          "verification": "Verified against exact8f Design1/current full consumer source; narrow design omission/precision, not historical cause.",
+          "candidate_disposition": "Frame guard owner_lost/result wake; pre-Spawning LaunchFailure/cancelled no attempt, after-Spawning/poison SessionLost/frozen true; caller actual controls and precedence.",
+          "implementation_accepted": false
+        },
+        {
+          "id": "D1-L1-private-pool-runtime-drop",
+          "severity": "Low",
+          "file": "doc/design/issue-60-reader-design.md",
+          "line": 255,
+          "claim": "Teardown of a cfg(test) private pool can drop a retained current-thread Runtime inside an async test body. Tokio refuses to do this, so the stated choice between 'deliberately retains' and 'settles' has no feasible mechanism for retained runtimes.",
+          "evidence": "- Design 242-247: retained records hold the runtime.\n- The current 7+1 Unknown controls are #[tokio::test] async bodies (adapter.rs 1586-1631; context.rs 1422-1480).\n- Locked Tokio's Runtime drop always reaches BlockingPool::shutdown, then shutdown::Receiver::wait. Outside a blocking region that panics with 'Cannot drop a runtime in a context where blocking is not allowed', even when no blocking threads exist.\n- The production static pool is never dropped, so only private pools hit this.",
+          "fix": "Specify how private-pool teardown handles runtimes.\n- Settled records still drop their runtime on their own supervisor thread before release, as in production.\n- Deliberately retained records are moved into a process-lifetime cfg(test) holder or leaked. They are never dropped on an async poller.\n- Assert that teardown performs no Runtime drop.",
+          "verification": "Verified against exact8f Design1/current full consumer source; narrow design omission/precision, not historical cause.",
+          "candidate_disposition": "Settled Runtime drops supervisor frame before release; deliberately retained actual pool/runtime moves process-lifetime cfgtest holder, no async Runtime drop.",
+          "implementation_accepted": false
+        },
+        {
+          "id": "D1-L2-test-pool-injection-route",
+          "severity": "Low",
+          "file": "doc/design/issue-60-reader-design.md",
+          "line": 252,
+          "claim": "The design keeps the bounded_git and bounded_git_raw signatures but does not say how a cfg(test) private pool reaches each real consumer route.",
+          "evidence": "- The existing cfg(test) seam carries only the inspection plan (adapter.rs 1297-1316; context.rs 571).\n- Generic validate_git builds bounded_git calls in a closure (adapter.rs 1148-1163).\n- Grok verify_git and index_digest (ownership.rs 425-450; mod.rs 1467-1483) run inside supervise, which is launched with tokio::spawn (mod.rs 319, 687). A task-local carrier would not propagate there.\n- Gate 4 forbids replacing real routing with a copied helper.",
+          "fix": "Name a cfg(test) carrier for each route:\n- GenericCliAdapter field passed into validate_git;\n- GrokAdapter to OwnedEntry to Actor, passed into verify_git, index_digest and checkpoint;\n- a git_value_owned parameter;\n- a cfg(test) parameter on the inner bounded call.\nState that the production build can only resolve the static global pool.",
+          "verification": "Verified against exact8f Design1/current full consumer source; narrow design omission/precision, not historical cause.",
+          "candidate_disposition": "Explicit cfgtest GitTestContext carried Generic validateGit, Grok OwnedEntry/Actor+checkpoint/verify/index, Context parameter and same inner wrapper; no global/tasklocal override.",
+          "implementation_accepted": false
+        },
+        {
+          "id": "D1-L3-success-vs-worker-join",
+          "severity": "Low",
+          "file": "doc/design/issue-60-reader-design.md",
+          "line": 191,
+          "claim": "The design joins the native worker only before slot release, so a success or clear result can be published while the worker is still unjoined. Requirements 88-89 say 'No success or permit release before all ... cleanup jobs are observed settled'. Contract clause 13 (217-218) lists only group cleanup, reap and reader settlement as conditions for clearing.",
+          "evidence": "- Design 191-192: 'A result channel alone is NOT worker completion', yet design 111-115 clears on in-budget resource settlement.\n- Requirements 88-89 bundle success together with cleanup-job settlement.",
+          "fix": "Choose one wording and state it. Either: clear and success require observed group cleanup, reap and both reader joins, while the worker join gates only slot release (then align the requirements bullet). Or: join the worker, which has already reported its final outcome, before publishing a settled Outcome.",
+          "verification": "Verified against exact8f Design1/current full consumer source; narrow design omission/precision, not historical cause.",
+          "candidate_disposition": "Actual native worker join BEFORE any settled/success Outcome publication and slot release.",
+          "implementation_accepted": false
+        },
+        {
+          "id": "D1-L4-first-cleanup-attempt-bit-and-unwind",
+          "severity": "Low",
+          "file": "doc/design/issue-60-reader-design.md",
+          "line": 187,
+          "claim": "After a worker panic, the rule 'first cleanup remains the reserved lane's responsibility if not run' needs an attempted marker recorded before the signal syscall. The design also does not say that the permit bundle must not release when the outer frame unwinds.",
+          "evidence": "- Design 156: no second signal. Design 177-178: first cleanup is cached.\n- A panic after kill_process_group returns but before the result is cached (inspection or resolve, including the TestPlan route at inspection.rs 1207-1255) would lead the outer frame to signal again.\n- Design 230-238 describes release only on healthy completion. It does not say what a permit-bundle Drop does during an outer-frame panic.",
+          "fix": "Set an attempted bit before the signal syscall. The outer worker frame runs first cleanup only if attempted is false. If attempted is true but no result was cached, the outcome is terminal Unknown with no further signal. State that the permit bundle never releases on Drop or unwind, and that only the explicit terminal action releases.",
+          "verification": "Verified against exact8f Design1/current full consumer source; narrow design omission/precision, not historical cause.",
+          "candidate_disposition": "Outer signal_issued set BEFORE KILL/TestPlan; panic after attempted signal never retries. Permit Drop/unwind never releases.",
+          "implementation_accepted": false
+        },
+        {
+          "id": "D1-L5-polling-cadence",
+          "severity": "Low",
+          "file": "doc/design/issue-60-reader-design.md",
+          "line": 174,
+          "claim": "The worker checks its state every 5ms while parked, and the cadence of the pending try_wait reap loop is unspecified. Late-pending reaps can poll indefinitely. The master design still states 'without busy polling'.",
+          "evidence": "- Design 165-169 and 174-178.\n- agent-adapter.md 285-287: 'Tokio supervises private process groups without busy polling'.\n- Contract 121-123 also allows an owning Child wait on counted reserved capacity.",
+          "fix": "Either:\n- park on a bounded command channel, where CallGuard::drop sends Cancel with try_send and supervisor loss drops the Sender (Disconnected); or\n- state the bounded cadence and its overhead, specify the try_wait cadence, and update the master statement in the implementation PR.",
+          "verification": "Verified against exact8f Design1/current full consumer source; narrow design omission/precision, not historical cause.",
+          "candidate_disposition": "Capacity4 finite native command channel parking; counted actual Child.wait, existing supervisor250ms cutoff/late same wait, no component5ms polling.",
+          "implementation_accepted": false
+        },
+        {
+          "id": "D1-L6-sigchld-setup-before-effects",
+          "severity": "Low",
+          "file": "doc/design/issue-60-reader-design.md",
+          "line": 161,
+          "claim": "SIGCHLD is registered on the private runtime only after spawn. A registration failure therefore becomes a post-effect observation SessionLost instead of a setup failure that is checked before effects.",
+          "evidence": "- Design 161-162.\n- The current observe_exit registers after spawn (adapter.rs 348-349).\n- Contract 53-55: the owner driver must be available before effects, and a startup failure is a pre-effect LaunchFailure.",
+          "fix": "Create the SIGCHLD stream during supervisor setup, before authorizing the spawn. A failure there is a pre-effect LaunchFailure. Keep the waitid-first loop after spawn.",
+          "verification": "Verified against exact8f Design1/current full consumer source; narrow design omission/precision, not historical cause.",
+          "candidate_disposition": "Private runtime SIGCHLD setup before effects, then worker/start/spawn/bind/from_std/BOTH readers before observe.",
+          "implementation_accepted": false
+        },
+        {
+          "id": "D1-L7-verification-status-header",
+          "severity": "Low",
+          "file": "doc/verification/issue-60-readers.md",
+          "line": 3,
+          "claim": "The verification header still says 'requirements candidate UNAPPROVED', which contradicts the recorded Requirements4 approvals and the Design1 candidate status.",
+          "evidence": "- Lines 158-168 record Requirements4 APPROVE twice and Design1 as UNAPPROVED.\n- Requirements line 3 also records the approvals.",
+          "fix": "Change the header to: Requirements4 approved at a8e8a8b; Design1 UNAPPROVED; no implementation or acceptance.",
+          "verification": "Verified against exact8f Design1/current full consumer source; narrow design omission/precision, not historical cause.",
+          "candidate_disposition": "Verification header records Req4 approved/Design2 unapproved/no reader implementation.",
+          "implementation_accepted": false
+        }
+      ],
+      "unresolved_blockers_at_review": [
+        "D1-M1-owner-loss-caller-publication: on supervisor or driver loss, panic or poisoned ticket before ResultReady, the caller has no specified wake or primary error, so a consumer can hang forever instead of receiving the retained Unknown"
+      ]
+    }
+  ]
+}

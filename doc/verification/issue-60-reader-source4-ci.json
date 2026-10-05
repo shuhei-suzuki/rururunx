@@ -1,0 +1,49 @@
+{
+  "run": 37264766985,
+  "trigger_head": "e29567aaa1731734802b009a627794054a35bd15",
+  "actual_checkouts": {
+    "check (macos-latest)": "0f182fce412870fae0ad30c06faa3161624deb8f",
+    "check (ubuntu-latest)": "0f182fce412870fae0ad30c06faa3161624deb8f"
+  },
+  "parents": [
+    "26f3a48fedce976b353a6a9fa899bc6fb13ca72a",
+    "e29567aaa1731734802b009a627794054a35bd15"
+  ],
+  "tested_tree": "5930b7f7a5ebb2f8d4ee2bb27be505e363ba393a",
+  "trigger_tree": "5930b7f7a5ebb2f8d4ee2bb27be505e363ba393a",
+  "tested_tree_equals_trigger": true,
+  "jobs": {
+    "check (macos-latest)": {
+      "conclusion": "success",
+      "steps": {
+        "Set up job": "success",
+        "Run actions/checkout@v4": "success",
+        "Run dtolnay/rust-toolchain@1.91.1": "success",
+        "Run cargo fmt --all -- --check": "success",
+        "Run cargo clippy --locked --workspace --all-targets -- -D warnings": "success",
+        "Run cargo test --locked --workspace": "success",
+        "Run cargo build --locked --workspace": "success",
+        "Run cargo build --locked --release --workspace": "success",
+        "Post Run actions/checkout@v4": "success",
+        "Complete job": "success"
+      }
+    },
+    "check (ubuntu-latest)": {
+      "conclusion": "success",
+      "steps": {
+        "Set up job": "success",
+        "Run actions/checkout@v4": "success",
+        "Run dtolnay/rust-toolchain@1.91.1": "success",
+        "Run cargo fmt --all -- --check": "success",
+        "Run cargo clippy --locked --workspace --all-targets -- -D warnings": "success",
+        "Run cargo test --locked --workspace": "success",
+        "Run cargo build --locked --workspace": "success",
+        "Run cargo build --locked --release --workspace": "success",
+        "Post Run actions/checkout@v4": "success",
+        "Complete job": "success"
+      }
+    }
+  },
+  "log_sha256": "40277df6d5c93496ecf77b41c2a1dd9465b9ad4b790d6ab524d5b3633a84e450",
+  "scope": "Source4 mandatory control candidate only; both-OS DEBUG TEST and RELEASE BUILD; full local Debug/Release TEST FAILED retained; source review and merge disposition pending"
+}
