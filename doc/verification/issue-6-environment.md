@@ -1,7 +1,8 @@
 # Issue 6 environment admission component: verification
 
-Current state: Design7 proposed; Design1/2/3/4/5/6 not qualified as pairs. No Rust implementation or
-source/native acceptance.
+Current state: Design7 qualified by two independent native design reviews;
+Design1/2/3/4/5/6 remain not qualified as pairs. Source implementation and its
+independent acceptance are pending; no native acceptance.
 Ordinary Codex availability remains EMPTY. This consumes existing Issue51 policy
 only; no native workload/backend, managed ownership, settlement or configuration
 origin producer exists from these artifacts.
@@ -225,3 +226,37 @@ CI37253595929 checked `d3b4b1b9782b6873c345dccb22b59671267575f9`, parents[768,f0
 complete tree `3c5e78472ed71ced8005cc18e9c4b33a996e8383` equal to Design6. BothOS every
 step passed. Prior failures, causeUNKNOWN and physical old holds remain unchanged.
 Design7 still requires independent qualification; no Rust implementation exists.
+
+## Design7, public immutable `a645b94`
+
+Both fresh peer-free native manual zero-tool reviews returned approve, with no
+critical, high or medium findings. A7 reported five lows and B7 eight. Their actual
+retained selected owner-group cleanup/reap and stdin writer join were verified;
+original tool handles closed with exit 0. The common 481,218-byte packet used 54
+public sections byte-compared with immutable Git blobs. Native normal rules, hooks,
+authentication, model and effort were preserved.
+
+| Review | Native session | Observed cost | Native API duration |
+| --- | --- | --- | --- |
+| A7 | `4cd69c81-2458-4115-9eb4-3107ec74cc89` | $3.417276 | 884,016 ms |
+| B7 | `72ee787c-3d9a-40dc-9b28-fa6381c4ca8f` | $3.422620 | 897,380 ms |
+
+Verified low dispositions for implementation: selected spawn hooks/counters apply
+only to Some selection and exact attempt/site; plain Git remains uninstrumented.
+Initial environment refusal re-reads the own Project to preserve StateConflict for
+changed own snapshots. Caller count is the reachable DTO-bound control; per-name
+and aggregate bounds are structural/unit-only. Synchronous hooks use bounded std
+rendezvous or block_in_place, with the stop driver outside the hooked worker. The
+common constructor rejects malformed raw pairs, preserves raw values, and uses
+last duplicate wins; the real public capture gets a sanitized raw-OS re-exec
+control. Frozen/selected holders and value iterators remain non-formatting. Locale
+overrides are the six existing ordinary names; no new authority or compatibility
+policy is added. Initial admission is multiple autocommit reads, not an atomic
+roster snapshot. A neutral own edit is caught at the existing post-Git recheck.
+Pure own candidate metadata is added to the EMPTY no-effect controls.
+
+Run 37255293350 checked synthetic merge `d1e0c0e` with parents [768f843,a645b94],
+complete tree `623287d4ac965ecf3f1657304069c56607c8e5ed` equal to the trigger. Every
+step on both OS jobs passed. This docs-only gate is not implementation/native
+proof, a historical failure rerun, or a cleanup release for old held wrappers.
+Ordinary availability is EMPTY; whole #6 and Stage B gates remain OPEN.
