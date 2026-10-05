@@ -445,3 +445,47 @@ did fmt including the separately included test file and all-target Clippy-Dwarni
 Exact log hashes and limits are in the adjacent Source2 follow-up record. Earlier
 full-mode failures remain unqualified; current final-head CI is still pending.
 No full workspace, actual native workload, complete resource cleanup or MVP credit.
+
+
+## Custody component composition, source `6802da9`
+
+The normal merge of main9d2 preserves both module imports, constructor test fields
+and shared owned_handles fields. Environment production/controls remain6aff bytes;
+Control/custody/factory tests remain9d2 bytes. Source680 is independently approved
+by Root and a peer,0C/H/M/L, conditional on current full/quality/final-tree CI gates.
+The later normalmaina9 evidence composition at70da390 changes two docs only.
+
+The first private sensitivity archive mistakenly shared the source worktree target.
+Both omission variants compiled and assertion-failed at their intended consumers;
+the archive was byte-restored. The subsequent requested restored custody PASS and
+environment FAIL ran Cargo Fresh against an executable containing the archive root,
+so neither is qualified as current-head acceptance. Raw results, binary SHA and
+relative dep-info/fingerprint/timestamps are retained; no source failure is inferred.
+
+A previously unused dedicated current target then compiled clean680 with actual
+compiler manifest/source paths, fresh=false, source tree and executable SHA bound;
+its binary contains currentWT root and no archive root. Mutants never use that
+dedicated target. Corrected environment11pass/1ignored and custody20pass controls
+passed, including both sensitivity consumers. These are two variants of existing
+boundary families, not new native guarantees.
+
+The initial full DEFAULT Debug passed418 top-level Rust tests, one nested ordinary
+child, and two doctests;27 ignored. The raw aggregate419 Rust count includes that
+child and is not419 top-level tests. All workspace targets executed. Distinct
+initial full DEFAULT Release FAILED: library299pass/8Grokfail/24ignored in58.05s,
+command173.24s including fresh compile. All139Codex tests passed/2ignored inside
+that failed library; later integration/doctest targets did not execute. Git ownership
+preflight Timeout/nondispatched receipts and own-start/refresh assertions are actual
+observations; cause and component contribution remain UNKNOWN. No same-head rerun,
+deadline, parallelism, latch or native/default change is used.
+
+Standard workspace fmt, included environment fixture fmt, all-target Clippy-Dwarnings
+and Debug/Release production builds passed. An additional standalone unchanged
+main custody fixture rustfmt check failed on inherited formatting; that advisory
+result is preserved separately and no source is silently rewritten. Full Release
+qualification remains failed. Final current-head exact-tree CI is pending.
+
+[Composition gate ledger](issue-6-environment-composition-gates.json) binds logs,
+build roots and finite review conditions. Ordinary custody is None and availability
+is EMPTY. Actual backend/native/resource-settlement/whole6/MVP gates and the old
+held native review resources remain unchanged and OPEN. No merge approval.
