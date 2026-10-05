@@ -58,12 +58,21 @@ pub(crate) async fn capture(command:&mut Command) -> Result<Vec<u8>> {
     let mut child=OwnedProcess::spawn(command)?;
     let stdout=child.child.stdout.take().context("stdout missing")?;
     let stderr=child.child.stderr.take().context("stderr missing")?;
+    let readers=async {tokio::try_join!(bounded_read(stdout,4*1024*1024),bounded_read(stderr,256*1024))};
+    tokio::pin!(readers);
     let collected=tokio::time::timeout(Duration::from_secs(60),async {
-        tokio::try_join!(bounded_read(stdout,4*1024*1024),bounded_read(stderr,256*1024),child.exited())
+        tokio::select! {
+            read=&mut readers=>{let bytes=read?;child.exited().await?;Ok::<_,anyhow::Error>(bytes)},
+            exited=child.exited()=>{
+                exited?;child.signal_group()?;
+                // Detached descendants may hold pipes; bounded drain is not death proof.
+                tokio::time::timeout(Duration::from_secs(2),&mut readers).await.context("output drain incomplete")?
+            }
+        }
     }).await;
     // Keep the leader unreaped until group signaling, even after a normal exit.
     let status=child.stop_and_reap().await?;
-    let (out,_,())=collected.context("command timed out")??;
+    let (out,_)=collected.context("command timed out")??;
     // Do not copy arbitrary tool stderr into an audit receipt (it may be sensitive).
     ensure!(status.success(),"managed command failed (exit {:?})",status.code());
     Ok(out)

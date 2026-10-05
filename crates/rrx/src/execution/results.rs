@@ -7,6 +7,7 @@ use std::{collections::BTreeMap, fs::{File, OpenOptions}, io::Write, os::unix::f
 use tokio::{process::Command, sync::Mutex};
 
 pub struct ResultStore {owner:Arc<RuntimeOwner>,gate:Mutex<()>}
+#[cfg(test)]mod tests;
 #[derive(Debug,Clone,Serialize,Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ResultManifest {
