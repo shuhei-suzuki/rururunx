@@ -271,3 +271,12 @@ production bounds. This is a test-input correction, not a timing/native cause.
 Per-site selected-only spawn tracing, synchronous test hooks, actual synthetic
 launch controls and env-cleared raw public-constructor controls are being added;
 source acceptance, mutation/full checks and independent reviews remain pending.
+
+Clean `5327fc1` normal-host scoped consumers passed 5 (1 explicit child entry
+ignored) in 4.40s and pure environment controls passed 4 in 0.02s. At `71e6136`,
+expanded controls passed 6/failed 1 (1 ignored) in 5.78s: the resume-initial-refusal
+assertion incorrectly required the read-only ScopeAccess counter to stay unchanged.
+Its correction preserves unchanged Sessions/events and every Git/filesystem/native
+effect counter; a legitimate initial own-scope read is allowed. No production
+guard, deadline or concurrency changed. Both failures and test-only compile/lint
+wiring diagnostics remain private evidence; no native/backend qualification follows.

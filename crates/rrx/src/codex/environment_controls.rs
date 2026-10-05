@@ -111,6 +111,30 @@ async fn irrelevant_foreign_change_does_not_stale_own_start_or_restore_native_va
         .install(ExecSite::Initial, HookPoint::Initial, move |_| {
             foreign(&mut writer, "IRRELEVANT_SYNTHETIC")
         });
+    let observer = adapter.clone();
+    adapter
+        .environment_hooks
+        .install(ExecSite::Main, HookPoint::PostCas, move |_| {
+            let registry = observer.registry().unwrap();
+            let entry = registry.values().next().unwrap();
+            let watched = entry.status.borrow().session.clone();
+            let controlled = entry.control.published().unwrap().session;
+            let persisted = observer
+                .store
+                .lock()
+                .unwrap()
+                .session(watched.id)
+                .unwrap()
+                .unwrap()
+                .0;
+            assert!(persisted.pid.is_none() && watched.pid.is_none() && controlled.pid.is_none());
+            assert!(
+                serde_json::to_value(&persisted).unwrap()
+                    == serde_json::to_value(&watched).unwrap()
+                    && serde_json::to_value(&watched).unwrap()
+                        == serde_json::to_value(&controlled).unwrap()
+            );
+        });
     let session = bounded(adapter.start(owned.request.clone())).await.unwrap();
     let status = terminal_status(&adapter, &SessionRef::from(&session)).await;
     assert!(status.session.state == SessionState::Exited && status.session.pid.is_none());
@@ -177,8 +201,17 @@ async fn public_constructor_raw_child() {
     );
     project.environment_refs = vec!["OPENAI_API_KEY".into()];
     store.lock().unwrap().put_project(&mut project).unwrap();
-    let adapter =
-        CodexAdapter::new("codex".into(), "/definitely-not-native".into(), store).unwrap();
+    let constructed = CodexAdapter::new("codex".into(), "/definitely-not-native".into(), store);
+    if std::env::var_os("RRX_RAW_CTOR_BOUNDS").is_some() {
+        let error = match constructed {
+            Err(error) => error,
+            Ok(_) => panic!("real public constructor accepted oversized baseline"),
+        };
+        assert!(error.kind == ErrorKind::InvalidConfiguration);
+        std::fs::write(directory.join("complete"), "raw constructor checked").unwrap();
+        return;
+    }
+    let adapter = constructed.unwrap();
     assert!(adapter.baseline.value_matches(
         "OPENAI_API_KEY",
         std::ffi::OsStr::from_bytes(b"synthetic-\xff")
@@ -206,38 +239,46 @@ async fn real_public_constructor_captures_raw_os_once_in_scoped_child() {
     use crate::adapter::{ProcessGroup, cleanup_group};
     use std::process::Stdio;
     let directory = tempfile::tempdir().unwrap();
-    let mut command = tokio::process::Command::new(std::env::current_exe().unwrap());
-    command
-        .args([
-            "--exact",
-            "codex::session::tests::environment_controls::public_constructor_raw_child",
-            "--ignored",
-            "--nocapture",
-        ])
-        .env_clear()
-        .env("HOME", directory.path())
-        .env("PATH", "/usr/bin:/bin")
-        .env("RRX_RAW_CTOR_FIXTURE", directory.path())
-        .env(
-            "OPENAI_API_KEY",
-            std::ffi::OsStr::from_bytes(b"synthetic-\xff"),
-        )
-        .env(
-            std::ffi::OsStr::from_bytes(b"LC_\xff"),
-            "synthetic excluded name",
-        )
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .kill_on_drop(true)
-        .process_group(0);
-    let mut child =
-        ProcessGroup::new(command.spawn().unwrap(), Arc::new(AtomicBool::new(false))).unwrap();
-    let observed =
-        tokio::time::timeout(std::time::Duration::from_secs(30), child.observe_exit()).await;
-    child = cleanup_group(child).await.unwrap();
-    let status = child.reap().await.unwrap();
-    assert!(observed.is_ok() && status.success() && directory.path().join("complete").exists());
+    for bounds in [false, true] {
+        let _ = std::fs::remove_file(directory.path().join("complete"));
+        let mut command = tokio::process::Command::new(std::env::current_exe().unwrap());
+        command
+            .args([
+                "--exact",
+                "codex::session::tests::environment_controls::public_constructor_raw_child",
+                "--ignored",
+                "--nocapture",
+            ])
+            .env_clear()
+            .env("HOME", directory.path())
+            .env("PATH", "/usr/bin:/bin")
+            .env("RRX_RAW_CTOR_FIXTURE", directory.path())
+            .env(
+                "OPENAI_API_KEY",
+                std::ffi::OsStr::from_bytes(b"synthetic-\xff"),
+            )
+            .env(
+                std::ffi::OsStr::from_bytes(b"LC_\xff"),
+                "synthetic excluded name",
+            )
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .kill_on_drop(true)
+            .process_group(0);
+        if bounds {
+            command
+                .env("RRX_RAW_CTOR_BOUNDS", "1")
+                .env(format!("LC_{}", "x".repeat(254)), "synthetic");
+        }
+        let mut child =
+            ProcessGroup::new(command.spawn().unwrap(), Arc::new(AtomicBool::new(false))).unwrap();
+        let observed =
+            tokio::time::timeout(std::time::Duration::from_secs(30), child.observe_exit()).await;
+        child = cleanup_group(child).await.unwrap();
+        let status = child.reap().await.unwrap();
+        assert!(observed.is_ok() && status.success() && directory.path().join("complete").exists());
+    }
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -377,11 +418,20 @@ async fn checkpoint_roster_changes_are_own_only_and_resume_refuses_initially() {
             };
             assert!(error.kind == ErrorKind::InvalidConfiguration);
             let after = no_effect_snapshot(&adapter, &owned.request.scope);
-            assert!(
-                before["sessions"] == after["sessions"]
-                    && before["events"] == after["events"]
-                    && before["sites"] == after["sites"]
-            );
+            assert!(before["sessions"] == after["sessions"] && before["events"] == after["events"]);
+            for site in [
+                Site::GitResolve,
+                Site::GitExecution,
+                Site::Filesystem,
+                Site::ExecutableMetadata,
+                Site::Version,
+                Site::Transport,
+                Site::Connection,
+                Site::Frame,
+                Site::Grant,
+            ] {
+                assert!(before["sites"][site as usize] == after["sites"][site as usize]);
+            }
             assert!(journal_values(&directory) == journal_before);
             let control = adapter
                 .registry()
