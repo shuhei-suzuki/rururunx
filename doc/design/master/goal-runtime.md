@@ -47,6 +47,12 @@ Suggested fields:
 - completed_at
 - audit metadata
 
+Task nodes/edges, active Task IDs and per-Task progress/timestamps are derived
+from Task-scoped records. Updating these views or collecting each Task event
+must not routinely rewrite the shared Goal row. Goal Context Pack publication
+must likewise respect the Workflow CAS constraint in section 14; this design
+does not establish a separate semantic-version policy.
+
 ## 3. Goal states
 
 ```text
@@ -107,7 +113,7 @@ Schedule ready Tasks
    ↓
 Collect Task/review/approval events
    ↓
-Update Goal context/progress
+Update derived Task-scoped progress / publish Goal context with CAS coordination
    ↓
 Discover required follow-up work if any
    ↓
@@ -261,6 +267,13 @@ On restart:
 4. re-evaluate completion criteria
 5. resume or move to BLOCKED/WAITING_HUMAN as appropriate
 
+Workflow checks Project/Goal row versions in marker, definitive-publication and
+post-dispatch Session-binding CAS. Per-Task
+progress should use Task-scoped records rather than bumping the shared Goal row
+on every step; otherwise concurrent sibling preparation claims can remain
+reserved and require Issue #14 recovery. This is a current ownership constraint,
+not a new semantic Goal-version policy.
+
 ## 15. Performance
 
 Goal orchestration must be lightweight.
@@ -296,3 +309,13 @@ Goal may continue automatically only inside those boundaries.
 - TUI Goal view
 - optional native-goal adapter capability
 - provider-independent continuation
+
+## Current implementation foundation
+
+Goal snapshots and scoped Task references persist through the SQLite Store.
+TaskDag::hard_order validates finite node/edge bounds, declared unique nodes,
+non-self unique ordered edge pairs and hard dependency cycles. Store::put_goal
+uses it before publishing the Goal and its audit; soft advisory cycles are allowed.
+The deterministic order includes all declared nodes and grants no readiness or
+dispatch authority. Managed definitions, lifecycle, verified completion, controller
+loop and CLI remain pending in #23/#24 with #19/#43 producer integration.

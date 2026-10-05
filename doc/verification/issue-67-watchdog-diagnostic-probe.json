@@ -1,0 +1,56 @@
+{
+  "head": "5ca71f2d81a80ffe6d03f5eab51919677feb8493",
+  "probe": "4cb0042ad3f42f655b060010646c380f10ab7c51",
+  "scope": "Manual forced-watchdog diagnostic path, NOT an assurance mutant or native acceptance.",
+  "file": "crates/rrx/src/adapter/grok/environment_tests.rs",
+  "patch": "diff --git a/crates/rrx/src/adapter/grok/environment_tests.rs b/crates/rrx/src/adapter/grok/environment_tests.rs\nindex 4a7d1de..077db20 100644\n--- a/crates/rrx/src/adapter/grok/environment_tests.rs\n+++ b/crates/rrx/src/adapter/grok/environment_tests.rs\n@@ -1046,6 +1046,12 @@ async fn irrelevant(boundary: usize, name: &str) {\n     let mut checkpoint_control = None;\n     for kind in 0..9 {\n         eprintln!(\"grok_environment_progress boundary={boundary} case={kind} stage=fixture\");\n+        // Diagnostic probe: stop before Fixture construction and ALL nested effects.\n+        if boundary == 1 && kind == 0 {\n+            loop {\n+                std::thread::park();\n+            }\n+        }\n         let mut fixture = Fixture::new();\n         let initial_refs: &[&str] = if kind == 7 {\n             &[\"FOREIGN_ABSENT_NATIVE_NAME\"]\n",
+  "patch_sha256": "eab16de337b793e8748c94d94962529dc39a7f691d5a6aae1b3b0a81e3f8bdc6",
+  "command": [
+    "cargo",
+    "test",
+    "--locked",
+    "--lib",
+    "adapter::grok::environment_tests::unrelated_foreign_changes_do_not_revoke_checkpoint",
+    "--",
+    "--exact"
+  ],
+  "compiled": true,
+  "expected_failure_exit": 101,
+  "diagnostic_observed": true,
+  "observation_elapsed_ms": [
+    "60001"
+  ],
+  "wall_seconds": 134.11889129097108,
+  "log_sha256": "b18d27677d100200dd4ad15e0ca7fd5c4fd9939fca96b749893c4a5cdc80237d",
+  "progress": "boundary=1 case=0 stage=fixture BEFORE Fixture::new and any nested Git/native fixture effect",
+  "original_60s_deadline_unchanged": true,
+  "original_assertion_and_cleanup_unchanged": true,
+  "restored_head": "ec03a7eb9e8352e4d9f75fd564397132f674b881",
+  "complete_restored_tree_equal": true,
+  "restored_original_parent_exit": 0,
+  "restored_log_sha256": "16c2866c2d9be15cea6da3fbce16ff8c673b055524541babeabff09183d80434",
+  "limits": "Synthetic intentional parking; not reproduction/cause/fix of earlier watchdogs. observation_io_error rendering remains compile-checked only; no all-native cleanup or effect authority.",
+  "actual_observation": {
+    "classification": "watchdog_expired",
+    "elapsed_ms": 60001,
+    "reaped_exit": "signal: 9 (SIGKILL)",
+    "last_captured_stage": {
+      "boundary": 1,
+      "case": 0,
+      "stage": "fixture"
+    },
+    "parent_test_result": "FAILED; 0 passed; 1 failed; 60.01s"
+  },
+  "verified_restore": {
+    "head": "ec03a7eb9e8352e4d9f75fd564397132f674b881",
+    "complete_tree": "7b274cd5e659d1ae6cf310f3c95d469e43cbfb00",
+    "complete_tree_equal_to": "5ca71f2d81a80ffe6d03f5eab51919677feb8493",
+    "clean": true,
+    "original_parent_pass": true,
+    "original_parent_runtime_seconds": 33.81
+  },
+  "assurance_operator_credit": 0,
+  "dynamic_scope": "Intentional synthetic park before Fixture::new and all nested Git/native fixture effects; original parent reached the unchanged 60s watchdog, existing cleanup/reap and both reader joins returned before the original assertion emitted captured diagnostics.",
+  "observation_io_error": "Compile-checked only; not dynamically observed.",
+  "historical_failures": "Not reproduction, cause or fix of earlier watchdog or ProcessStatus failures; no native/F1/MVP qualification."
+}

@@ -1,0 +1,5 @@
+--- a/crates/rrx/src/state/mod.rs
++++ b/crates/rrx/src/state/mod.rs
+@@ -973 +973 @@
+-                decode(body).map_err(|_| anyhow::anyhow!("invalid persisted usage snapshot"))?;
++                decode(body).map_err(|cause| anyhow::anyhow!("invalid persisted usage snapshot: {cause:#}"))?;

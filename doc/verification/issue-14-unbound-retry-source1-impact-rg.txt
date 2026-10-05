@@ -1,0 +1,187 @@
+crates/rrx/src/workflow.rs:177:        discretionary_tokens: if phase.actor() == Actor::Reviewer {
+crates/rrx/src/workflow.rs:237:    pub session_id: Option<SessionId>,
+crates/rrx/src/workflow.rs:300:    pub session_id: Option<SessionId>,
+crates/rrx/src/workflow.rs:301:    pub dispatch_started: bool,
+crates/rrx/src/workflow.rs:457:/// let _ = Store::put_workflow_transition;
+crates/rrx/src/workflow.rs:499:        let records = store.records(&task.scope(), RecordKind::Workflow)?;
+crates/rrx/src/workflow.rs:520:            .put_workflow_transition(
+crates/rrx/src/workflow.rs:539:            .put_workflow_transition(
+crates/rrx/src/workflow.rs:545:                if phase.actor() == Actor::Reviewer {
+crates/rrx/src/workflow.rs:673:            RecordKind::Workflow,
+crates/rrx/src/workflow.rs:925:            session_id: None,
+crates/rrx/src/workflow.rs:926:            dispatch_started: false,
+crates/rrx/src/workflow.rs:929:            agent: match phase.actor() {
+crates/rrx/src/workflow.rs:952:        if phase.actor() == Actor::EvidencePort {
+crates/rrx/src/workflow.rs:1013:                && attempt.session_id.is_none()
+crates/rrx/src/workflow.rs:1014:                && !attempt.dispatch_started
+crates/rrx/src/workflow.rs:1107:        let selected_agent = if phase.actor() == Actor::Reviewer {
+crates/rrx/src/workflow.rs:1129:        let needed = if phase.actor() == Actor::Reviewer {
+crates/rrx/src/workflow.rs:1141:            kind: if phase.actor() == Actor::Reviewer {
+crates/rrx/src/workflow.rs:1159:        snapshot.workflow.history[index].dispatch_started = true;
+crates/rrx/src/workflow.rs:1169:            role: if phase.actor() == Actor::Reviewer {
+crates/rrx/src/workflow.rs:1187:                            == if phase.actor() == Actor::Reviewer {
+crates/rrx/src/workflow.rs:1194:                snapshot.workflow.history[index].session_id = Some(session.id);
+crates/rrx/src/workflow.rs:1244:        let Some(id) = attempt.session_id else {
+crates/rrx/src/workflow.rs:1245:            if phase.actor() == Actor::EvidencePort {
+crates/rrx/src/workflow.rs:1250:                reason: if attempt.dispatch_started {
+crates/rrx/src/workflow.rs:1333:            .observe_workflow_gate(
+crates/rrx/src/workflow.rs:1381:            .put_workflow_transition(
+crates/rrx/src/workflow.rs:1416:            attempt.session_id.is_some() || !attempt.dispatch_started,
+crates/rrx/src/workflow.rs:1610:        let status = if let Some(id) = attempt.session_id {
+crates/rrx/src/workflow.rs:1943:                    approved.phase.actor() == Actor::Reviewer
+crates/rrx/src/workflow.rs:2027:            !(attempt.phase.actor() != Actor::EvidencePort
+crates/rrx/src/workflow.rs:2028:                && attempt.dispatch_started
+crates/rrx/src/workflow.rs:2029:                && attempt.session_id.is_none()),
+crates/rrx/src/workflow.rs:2045:                    && (snapshot.workflow.history[index].session_id != Some(session.id)
+crates/rrx/src/workflow.rs:2128:        Some(status.session.id) == attempt.session_id
+crates/rrx/src/workflow.rs:2137:                == if attempt.phase.actor() == Actor::Reviewer {
+crates/rrx/src/workflow.rs:2162:        evidence.session_id == attempt.session_id
+crates/rrx/src/workflow.rs:2178:    if attempt.phase.actor() == Actor::Reviewer {
+crates/rrx/src/workflow.rs:2336:                            .session_id
+crates/rrx/src/workflow.rs:2337:                            .is_none_or(|id| after.session_id == Some(id)),
+crates/rrx/src/workflow.rs:2347:                    before.session_id.is_some()
+crates/rrx/src/workflow.rs:2348:                        || after.session_id.is_none()
+crates/rrx/src/workflow.rs:2351:                            && after.phase.actor() != Actor::EvidencePort),
+crates/rrx/src/workflow.rs:2355:                    !before.dispatch_started || after.dispatch_started,
+crates/rrx/src/workflow.rs:2359:                    before.dispatch_started == after.dispatch_started
+crates/rrx/src/workflow.rs:2362:                            && before.session_id.is_none()
+crates/rrx/src/workflow.rs:2363:                            && before.phase.actor() != Actor::EvidencePort),
+crates/rrx/src/workflow.rs:2448:                    && attempt.session_id.is_none()
+crates/rrx/src/workflow.rs:2449:                    && !attempt.dispatch_started
+crates/rrx/src/workflow.rs:2534:                        && (after.phase.actor() == Actor::EvidencePort
+crates/rrx/src/workflow.rs:2535:                            || after.session_id.is_some()),
+crates/rrx/tests/adapter.rs:239:                session_id: Some(session.id),
+crates/rrx/tests/adapter.rs:252:                    session_id: Some(session.id),
+crates/rrx/tests/state.rs:152:        session_id: session.id,
+crates/rrx/tests/state.rs:377:        session_id: session.id,
+crates/rrx/tests/state.rs:615:        session_id: s.id,
+crates/rrx/tests/state.rs:686:    let mut usage = raw.prepare("SELECT sequence,project_id,goal_id,task_id,session_id,body FROM usage ORDER BY sequence").unwrap();
+crates/rrx/tests/state.rs:739:        session_id: s.id,
+crates/rrx/tests/state.rs:798:            "session" => corrupt.session_id = SessionId::new(),
+crates/rrx/tests/state.rs:879:            session_id: s.id,
+crates/rrx/tests/state.rs:931:                "UPDATE usage SET body=?1 WHERE session_id=?2",
+crates/rrx/tests/state.rs:934:                    corrupt.session_id.to_string()
+crates/rrx/tests/state.rs:969:            "UPDATE usage SET body=?1 WHERE session_id=?2",
+crates/rrx/tests/state.rs:972:                valid[index].session_id.to_string()
+crates/rrx/tests/state.rs:997:        session_id: s.id,
+crates/rrx/src/domain.rs:425:    pub session_id: SessionId,
+crates/rrx/src/adapter.rs:176:    pub session_id: Option<SessionId>,
+crates/rrx/src/adapter.rs:849:                session_id: status.session.id,
+crates/rrx/src/adapter.rs:1001:            json!({"session_id":session.id,"pid":pid,"pgid":pid,"reason":reason}),
+crates/rrx/src/state/mod.rs:349:            record.kind != RecordKind::Workflow,
+crates/rrx/src/state/mod.rs:362:    pub(crate) fn put_workflow_transition(
+crates/rrx/src/state/mod.rs:372:            workflow.kind == RecordKind::Workflow && workflow.scope == task.scope(),
+crates/rrx/src/state/mod.rs:493:                    attempt.session_id.is_some() || !attempt.dispatch_started,
+crates/rrx/src/state/mod.rs:530:                        && attempt.phase.actor() != crate::workflow::Actor::EvidencePort
+crates/rrx/src/state/mod.rs:531:                        && attempt.dispatch_started
+crates/rrx/src/state/mod.rs:532:                        && attempt.session_id.is_none()),
+crates/rrx/src/state/mod.rs:538:                    .and_then(|index| before.history[index].session_id);
+crates/rrx/src/state/mod.rs:552:                        .and_then(|index| before.history[index].session_id)
+crates/rrx/src/state/mod.rs:616:    pub(crate) fn observe_workflow_gate(
+crates/rrx/src/state/mod.rs:634:            latest.kind == RecordKind::Workflow && latest.scope == record.scope,
+crates/rrx/src/state/mod.rs:652:                && attempt.session_id == expected.session_id
+crates/rrx/src/state/mod.rs:928:            .session(usage.session_id)?
+crates/rrx/src/state/mod.rs:938:            "INSERT INTO usage(project_id,goal_id,task_id,session_id,body) VALUES(?1,?2,?3,?4,?5)",
+crates/rrx/src/state/mod.rs:943:                usage.session_id.to_string(),
+crates/rrx/src/state/mod.rs:951:            json!({"session":usage.session_id,"phase":usage.phase,"review_round":usage.review_round}),
+crates/rrx/src/state/mod.rs:959:        let mut statement = self.connection.prepare("SELECT project_id,goal_id,task_id,session_id,body FROM usage WHERE project_id=?1 AND (?2 IS NULL OR goal_id=?2) AND (?3 IS NULL OR task_id=?3) ORDER BY sequence")?;
+crates/rrx/src/state/mod.rs:986:                    && usage.session_id.to_string() == session,
+crates/rrx/src/state/mod.rs:1334:            RecordKind::Workflow => json!({"generation":next.data["generation"],"context_version":next.data["context_version"],"active":next.data["active"],"finished":next.data["finished"],"attempt":next.data["history"].as_array().and_then(|a|a.last()),"escalation":next.data["escalations"].as_array().and_then(|a|a.last()),"retry":next.data["retries"].as_array().and_then(|a|a.last()),"invalidation":next.data["invalidations"].as_array().and_then(|a|a.last())}),
+crates/rrx/src/state/mod.rs:1427:                        RecordKind::Workflow => serde_json::from_value::<
+crates/rrx/src/adapter/grok/environment_workflow_tests.rs:58:                session_id: None,
+crates/rrx/src/adapter/grok/environment_workflow_tests.rs:131:    assert!(attempt.dispatch_started && attempt.session_id.is_none());
+crates/rrx/src/adapter/grok/environment_workflow_tests.rs:149:        let records = store.records(&task.scope(), RecordKind::Workflow).unwrap();
+crates/rrx/src/adapter/grok/environment_workflow_tests.rs:194:    assert_eq!(attempt.session_id, Some(id));
+crates/rrx/src/state/schema.sql:56:    session_id TEXT NOT NULL,
+crates/rrx/src/state/schema.sql:61:    FOREIGN KEY(session_id, project_id) REFERENCES records(id, project_id)
+crates/rrx/src/workflow/tests.rs:366:                review_approved: if invocation.phase.actor() == Actor::Reviewer {
+crates/rrx/src/workflow/tests.rs:371:                session_id: status.map(|s| s.session.id),
+crates/rrx/src/workflow/tests.rs:379:                5 => evidence.session_id = Some(SessionId::new()),
+crates/rrx/src/workflow/tests.rs:546:                .filter(|p| p.actor() != Actor::EvidencePort)
+crates/rrx/src/workflow/tests.rs:601:            .records(&fixture.task.scope(), RecordKind::Workflow)
+crates/rrx/src/workflow/tests.rs:643:                    && attempt.dispatch_started == (attempt.phase.actor() != Actor::EvidencePort))
+crates/rrx/src/workflow/tests.rs:753:        .retry(fixture.task.id, "evidence now available".into())
+crates/rrx/src/workflow/tests.rs:794:        .retry(fixture.task.id, "review remediation complete".into())
+crates/rrx/src/workflow/tests.rs:832:            .retry(fixture.task.id, "retry".into())
+crates/rrx/src/workflow/tests.rs:891:            .records(&fixture.task.scope(), RecordKind::Workflow)
+crates/rrx/src/workflow/tests.rs:1037:            .records(&task.scope(), RecordKind::Workflow)
+crates/rrx/src/workflow/tests.rs:1051:            session_id: None,
+crates/rrx/src/workflow/tests.rs:1052:            dispatch_started: false,
+crates/rrx/src/workflow/tests.rs:1062:            .put_workflow_transition(
+crates/rrx/src/workflow/tests.rs:1075:            .put_workflow_transition(
+crates/rrx/src/workflow/tests.rs:1097:            .retry(fixture.task.id, "retry".into())
+crates/rrx/src/workflow/tests.rs:1329:        .records(&task.scope(), RecordKind::Workflow)
+crates/rrx/src/workflow/tests.rs:1342:            .put_workflow_transition(
+crates/rrx/src/workflow/tests.rs:1372:        .records(&task.scope(), RecordKind::Workflow)
+crates/rrx/src/workflow/tests.rs:1381:            .put_workflow_transition(
+crates/rrx/src/workflow/tests.rs:1445:        .records(&fixture.task.scope(), RecordKind::Workflow)
+crates/rrx/src/workflow/tests.rs:1470:                .put_workflow_transition(
+crates/rrx/src/workflow/tests.rs:1534:    assert_eq!(review.session_id, Some(session));
+crates/rrx/src/workflow/tests.rs:1576:            .retry(fixture.task.id, "retry".into())
+crates/rrx/src/workflow/tests.rs:1611:            .retry(fixture.task.id, "corrected evidence".into())
+crates/rrx/src/workflow/tests.rs:1723:        .records(&task.scope(), RecordKind::Workflow)
+crates/rrx/src/workflow/tests.rs:1731:            .put_workflow_transition(
+crates/rrx/src/workflow/tests.rs:1751:                .put_workflow_transition(
+crates/rrx/src/workflow/tests.rs:1770:            .put_workflow_transition(
+crates/rrx/src/workflow/tests.rs:2078:            .retry(fixture.task.id, "unsafe retry".into())
+crates/rrx/src/workflow/tests.rs:2126:            .session(attempt.session_id.unwrap())
+crates/rrx/src/workflow/tests.rs:2136:            .retry(fixture.task.id, "unverified death".into())
+crates/rrx/src/workflow/tests.rs:2194:        .retry(fixture.task.id, "fix rejected review".into())
+crates/rrx/src/workflow/tests.rs:2240:                session_id: None,
+crates/rrx/src/workflow/tests.rs:2241:                dispatch_started: false,
+crates/rrx/src/workflow/tests.rs:2260:                        session_id: None,
+crates/rrx/src/workflow/tests.rs:2272:            RecordKind::Workflow,
+crates/rrx/src/workflow/tests.rs:2285:        let result = fixture.store.lock().unwrap().put_workflow_transition(
+crates/rrx/src/workflow/tests.rs:2300:                    .records(&task.scope(), RecordKind::Workflow)
+crates/rrx/src/workflow/tests.rs:2320:                    .records(&task.scope(), RecordKind::Workflow)
+crates/rrx/src/workflow/tests.rs:2342:            .records(&task.scope(), RecordKind::Workflow)
+crates/rrx/src/workflow/tests.rs:2358:        let result = store.put_workflow_transition(
+crates/rrx/src/workflow/tests.rs:2522:        .records(&task.scope(), RecordKind::Workflow)
+crates/rrx/src/workflow/tests.rs:2546:            .put_workflow_transition(
+crates/rrx/src/workflow/tests.rs:2782:        .records(&task.scope(), RecordKind::Workflow)
+crates/rrx/src/workflow/tests.rs:2810:            .put_workflow_transition(
+crates/rrx/src/workflow/tests.rs:3058:                .retry(fixture.task.id, "must not duplicate external effect".into())
+crates/rrx/src/workflow/tests.rs:3265:                    .records(&task.scope(), RecordKind::Workflow)
+crates/rrx/src/workflow/tests.rs:3441:        .records(&task.scope(), RecordKind::Workflow)
+crates/rrx/src/workflow/tests.rs:3446:    assert!(snapshot.history[index].session_id.is_none());
+crates/rrx/src/workflow/tests.rs:3451:        .put_workflow_transition(
+crates/rrx/src/workflow/tests.rs:3468:        session_id: None,
+crates/rrx/src/workflow/tests.rs:3472:        .observe_workflow_gate(
+crates/rrx/src/workflow/tests.rs:3492:            .put_workflow_transition(
+crates/rrx/src/workflow/tests.rs:3596:                .records(&task.scope(), RecordKind::Workflow)
+crates/rrx/src/workflow/tests.rs:3606:                    .put_workflow_transition(
+crates/rrx/src/workflow/tests.rs:3623:                .records(&fixture.task.scope(), RecordKind::Workflow)
+crates/rrx/src/workflow/tests.rs:3639:                    .put_workflow_transition(
+crates/rrx/src/workflow/tests.rs:3662:                    .observe_workflow_gate(&mut record, index, &wrong_claim, observation)
+crates/rrx/src/workflow/tests.rs:3737:                    .records(&fixture.task.scope(), RecordKind::Workflow)
+crates/rrx/src/workflow/tests.rs:3748:                        .observe_workflow_gate(
+crates/rrx/src/workflow/tests.rs:3871:        .records(&fixture.task.scope(), RecordKind::Workflow)
+crates/rrx/src/workflow/tests.rs:3884:            .records(&fixture.task.scope(), RecordKind::Workflow)
+crates/rrx/src/workflow/tests.rs:4034:            "workflow":store.records(&self.task.scope(),RecordKind::Workflow).unwrap(),
+crates/rrx/src/workflow/tests.rs:4079:        assert!(!after.history[index].dispatch_started);
+crates/rrx/src/workflow/tests.rs:4080:        assert!(after.history[index].session_id.is_none());
+crates/rrx/src/workflow/tests.rs:4122:            assert!(after.history[index].session_id.is_some());
+crates/rrx/src/workflow/tests.rs:4123:            assert!(after.history[index].dispatch_started);
+crates/rrx/src/workflow/tests.rs:4146:        attempt.dispatch_started,
+crates/rrx/src/workflow/tests.rs:4149:    assert!(attempt.session_id.is_none());
+crates/rrx/src/workflow/tests.rs:4187:            .put_workflow_transition(
+crates/rrx/src/workflow/tests.rs:4731:        json_extract(OLD.body,'$.data.history[' || json_extract(OLD.body,'$.data.active') || '].dispatch_started')=0 AND
+crates/rrx/src/workflow/tests.rs:4732:        json_extract(NEW.body,'$.data.history[' || json_extract(NEW.body,'$.data.active') || '].dispatch_started')=1
+crates/rrx/src/workflow/tests.rs:4786:    assert!(attempt.dispatch_started);
+crates/rrx/src/workflow/tests.rs:4787:    assert!(attempt.session_id.is_none());
+crates/rrx/src/workflow/tests.rs:4806:            .retry(fixture.task.id, "untrusted retry".into())
+crates/rrx/src/workflow/tests/unbound_retry.rs:68:        attempt.phase.actor(),
+crates/rrx/src/workflow/tests/unbound_retry.rs:76:    assert_eq!(attempt.dispatch_started, marked);
+crates/rrx/src/workflow/tests/unbound_retry.rs:77:    assert!(attempt.session_id.is_none());
+crates/rrx/src/workflow/tests/unbound_retry.rs:132:    fixture.store.lock().unwrap().put_workflow_transition(
+crates/rrx/src/workflow/tests/unbound_retry.rs:208:                .retry(fixture.task.id, "not outcome proof".into())
+crates/rrx/src/workflow/tests/unbound_retry.rs:267:            .retry(fixture.task.id, "terminal row is not a certificate".into())
+crates/rrx/src/workflow/tests/unbound_retry.rs:320:                assert!(saved.history[index].session_id.is_none());
+crates/rrx/src/workflow/tests/unbound_retry.rs:324:                assert!(saved.history[index].session_id.is_some());
+crates/rrx/src/workflow/tests/unbound_retry.rs:439:            .retry(fixture.task.id, "repair configuration".into())
+crates/rrx/src/workflow/tests/unbound_retry.rs:493:            assert!(attempt.session_id.is_some());
+crates/rrx/src/workflow/tests/unbound_retry.rs:498:                .session(attempt.session_id.unwrap())
+crates/rrx/src/workflow/tests/unbound_retry.rs:528:            assert_eq!(attempt.phase.actor(), Actor::EvidencePort);
+crates/rrx/src/workflow/tests/unbound_retry.rs:529:            assert!(!attempt.dispatch_started && attempt.session_id.is_none());
+crates/rrx/src/workflow/tests/unbound_retry.rs:563:            .retry(fixture.task.id, "resolved retry".into())
+crates/rrx/src/adapter/grok/mod.rs:731:                session_id: session.id,

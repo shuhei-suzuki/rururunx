@@ -313,7 +313,7 @@ revision, source versions and Session, with durable artifact references. Reviews
 require an explicit approved verdict. Missing integration (`PendingGates`) waits;
 no successful exit invents verification, approval, PR, merge or cleanup evidence.
 Ports must use their own Git/Session ownership and transactional guards at actual
-native side effects. #10 approval and #14 recovery remain pending; uncertain phase
+native side effects. #10 approval and #14 owner/restart recovery remain pending; uncertain phase
 reservations never trigger automatic retry. Explicit retry preserves prior attempt
 and reason history and rejects live/Lost executor reservations.
 
@@ -348,7 +348,31 @@ are recorded before postgate activity/freshness checks, including artifact refs 
 a Goal becomes paused or a Project Blocked; observation does not authorize completion.
 A same-generation source rebind requires target-producing completion, and unknown
 Evaluating reservations cannot be released by changing generation. An immutable native
-dispatch marker distinguishes undispatched reservations from possible launch interruption.
+dispatch marker records whether launch may have begun; it does not prove owner
+absence. Issue #41 implements passive Waiting observation for agent Running
+attempts without a Session, before or after that marker. Such observation changes
+no Task/Workflow/context/audit state. Only the invocation whose reserve committed
+may release its own proven pre-dispatch preparation error, using its exact
+committed Workflow Record identity/version and original attempt. Reservation CAS
+losers never release. Fresh-read CAS preserves concurrent Task metadata and all
+executor/Lost fences. Preparation pins the reserved actor and Task binding; an
+actor override requires release and a new reservation before any dispatch.
+For an eligible error with active owners and a winning release CAS, an originally
+unbound Task assigned during pre-refresh preparation releases the claim and
+returns the preparation error; the next ordinary step reserves with the fresh
+binding. Assigned bindings remain exact. An
+assignment after refresh can reject a definitive missing-worktree publication
+through Store binding immutability, leaving the claim for #14.
+
+Eligibility ends immediately before fail/invalidate/hold/marker publication,
+including within invalidation helpers. Only a typed pre-commit owning Task-row
+SnapshotChanged matching table `tasks` and the owning Task ID from the marker
+transaction can restore it. Project/Goal/Record
+version errors and all definitive-publication errors remain reserved.
+Inactive owners, definitive-decision publication
+conflicts, untyped/unknown marker errors, release CAS/termination fence failures
+and unknown/dispatched outcomes stay reserved for #14; no native replay occurs.
+EvidencePort claim evaluation remains separate and does not use agent release.
 Explicit cancel/fail decisions retain native/phase reservations until verified recovery.
 QUICK PR-created is nonterminal; request_finalization adds actual MergeGate/Cleanup ports
 before Completed. Native termination state is a trusted provider/recovery attestation,
@@ -362,8 +386,13 @@ PR/merge evidence prevent generation invalidation into duplicate operations; dri
 for explicit reconciliation (#13). Their ports receive prior attempt observations and
 resume idempotently; Cleanup freezes pre-disposal sources even after Waiting/Failed.
 Cancel/fail decisions are conservative under inactive Goals or Blocked Projects; a narrow
-terminal reservation release keeps Task/decision/context/evidence immutable and requires
-owned persisted termination plus all executor/Lost fences. Unknown outcomes or unbound
+terminal reservation release keeps Task/decision/context/evidence immutable. A
+bound Session requires owned persisted termination plus all executor/Lost fences.
+For an undispatched attempt without a Session, the committed terminal decision,
+transactional terminal-Task fence and absence of a dispatch marker exclude the
+suspended owner from launching; all executor/Lost fences still apply. No inferred
+owner absence is needed for this existing explicit TerminalRecovery path.
+Unknown outcomes or unbound
 dispatch stay reserved. General workflow progression cannot resurrect terminal Tasks.
 
 An evaluation claim binds the exact prior observation count. The private observer
@@ -377,6 +406,41 @@ Durable irreversible holds publish held_reason/WaitingHuman/blocker and await ac
 Observation/audit metadata retain authority digests without copied Context Pack text.
 Cleanup freezes the reserved class/phases, independent of later runtime policy capture.
 Project risk-mapping recommendations can strengthen but cannot weaken runtime mappings.
+
+Issue #14 must reconcile orphaned undispatched attempts, dropped futures/crashes,
+inactive-owner preparation errors, definitive-decision publication conflicts,
+marker Project/Goal-version conflicts (including Project/Goal metadata edits and
+lifecycle ABA), release-token Record-version mismatches, untyped/unknown marker
+errors, release CAS/executor-Lost fence failures, post-dispatch Session-binding
+conflicts and unknown reversible Evaluating claims.
+
+#41 adds no durable owner-absence proof. Project/Goal row versions participate in
+marker, definitive-publication and post-dispatch Session-binding CAS. Future per-Task progress writers must use Task-scoped records
+instead of bumping the shared Goal row on every step, or account for resulting
+#14 recovery frequency among concurrent sibling Tasks. Ordinary observation must allow evaluation still being
+in flight. A marker without a Session may precede any native launch and does not
+prove launch occurred. #13 remains responsible for irreversible
+Pr/MergeGate/Cleanup outcomes.
+See [Issue #41 design](../issue-41-design.md).
+
+The implemented limited #14 component fences active native marked-unbound attempts in
+both Engine retry and Store closure, including raw generation changes. An owner
+may still bind its actual Session, publish failure or record a terminal decision
+on the same active attempt. No Session, adapter error label or matching terminal
+row proves no dispatch. Even fixable post-marker configuration failures block
+Task/Goal progress and Project removal until genuine original-attempt recovery;
+retry and terminal release provide no escape. Definitive pre-marker failures,
+resolved bound native outcomes and nonirreversible EvidencePort retries stay valid.
+The earlier TerminalRecovery fence independently protects that access mode. The
+genuine original-attempt recovery producer and whole Issue #14 remain open; ordinary
+observation never replays.
+The native Session-binding integration gap remains explicit.
+The current successful native Session-binding publication writes an unchanged
+Task via the coordinated transition and increments its raw version. Providers
+admitted under that Task version can then reject their own completion/approval.
+A separate atomic Record-only binding contract (#43) must preserve exact owner/context/
+Session identity guards without incrementing unchanged Task fields; Issue #41
+does not introduce that shared integration API.
 
 
 ### Current reviewer ownership

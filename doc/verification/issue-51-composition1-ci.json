@@ -1,0 +1,49 @@
+{
+  "run": 37233836203,
+  "trigger_head": "8f560f293b6c10a82d8d496e7263aeb384ff5200",
+  "actual_checkouts": {
+    "check (ubuntu-latest)": "5ee8128abc504cc9b2f0260f3fd7e3ce8bee27be",
+    "check (macos-latest)": "5ee8128abc504cc9b2f0260f3fd7e3ce8bee27be"
+  },
+  "parents": [
+    "b8b1906b30f428bcc38d447f3d08d13eb6bb921a",
+    "8f560f293b6c10a82d8d496e7263aeb384ff5200"
+  ],
+  "tested_tree": "5c28e40b8cf4b24062eaae76afc7bd4e68d96d11",
+  "trigger_tree": "5c28e40b8cf4b24062eaae76afc7bd4e68d96d11",
+  "tested_tree_equals_trigger": true,
+  "jobs": {
+    "check (ubuntu-latest)": {
+      "conclusion": "success",
+      "steps": {
+        "Set up job": "success",
+        "Run actions/checkout@v4": "success",
+        "Run dtolnay/rust-toolchain@1.91.1": "success",
+        "Run cargo fmt --all -- --check": "success",
+        "Run cargo clippy --locked --workspace --all-targets -- -D warnings": "success",
+        "Run cargo test --locked --workspace": "success",
+        "Run cargo build --locked --workspace": "success",
+        "Run cargo build --locked --release --workspace": "success",
+        "Post Run actions/checkout@v4": "success",
+        "Complete job": "success"
+      }
+    },
+    "check (macos-latest)": {
+      "conclusion": "success",
+      "steps": {
+        "Set up job": "success",
+        "Run actions/checkout@v4": "success",
+        "Run dtolnay/rust-toolchain@1.91.1": "success",
+        "Run cargo fmt --all -- --check": "success",
+        "Run cargo clippy --locked --workspace --all-targets -- -D warnings": "success",
+        "Run cargo test --locked --workspace": "success",
+        "Run cargo build --locked --workspace": "success",
+        "Run cargo build --locked --release --workspace": "success",
+        "Post Run actions/checkout@v4": "success",
+        "Complete job": "success"
+      }
+    }
+  },
+  "log_sha256": "7945ca1103fee61b026eac995f1e65736fd4b159bd511ba70ede3644ef8b2120",
+  "scope": "Finite composition51 environment authority+61 observable diagnostics+62 readonly legacy usage; full default DEBUG TEST/release BUILD CI, not release TEST or native availability"
+}

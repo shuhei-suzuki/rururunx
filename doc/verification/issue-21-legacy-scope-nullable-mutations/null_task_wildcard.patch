@@ -1,0 +1,5 @@
+--- a/crates/rrx/src/state/mod.rs
++++ b/crates/rrx/src/state/mod.rs
+@@ -921 +921 @@
+-                    && str_id(usage.scope.task_id) == task
++                    && (task.is_none() || str_id(usage.scope.task_id) == task)

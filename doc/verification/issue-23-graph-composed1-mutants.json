@@ -1,0 +1,117 @@
+{
+  "head": "364139d5dedf35e154597417efb0c5e9ac7927fd",
+  "mutations": [
+    {
+      "operator": "G01-cycle",
+      "head": "364139d5dedf35e154597417efb0c5e9ac7927fd",
+      "mutant": "b44ce279990842bc91e6759e4ee7156a123c885f",
+      "file": "crates/rrx/src/goal.rs",
+      "source_sha256": "4dcabb2761540b353283bcc098ab6b768c7c7b1419fb590589eb8bbecce44869",
+      "test": "store_rejects_invalid_graph_changes_without_rows_versions_or_audit",
+      "scope": "actual_store",
+      "compiled": true,
+      "exit_code": 101,
+      "intended_assertion_killed": true,
+      "assertions": [
+        "panicked at crates/rrx/tests/goal_graph.rs:145:51:"
+      ],
+      "log_sha256": "103d219e92f64ecc24047d4876d8e9c2d7d817ec4d1e9cee9aa14a047287e952",
+      "patch_sha256": "cb05847dbcbce365d33a12b0bd2362238e56543bf0a15d92d8d685a49ac05045"
+    },
+    {
+      "operator": "G02-edge-pair",
+      "head": "364139d5dedf35e154597417efb0c5e9ac7927fd",
+      "mutant": "bca17f46f5c81f10fac6918cfdf4532c05d01270",
+      "file": "crates/rrx/src/goal.rs",
+      "source_sha256": "9584e80cb7e41ab330f9bca1b3cc8bec3e175e8bdd7e8a679bbaf6c2d684faa8",
+      "test": "store_rejects_invalid_graph_changes_without_rows_versions_or_audit",
+      "scope": "actual_store",
+      "compiled": true,
+      "exit_code": 101,
+      "intended_assertion_killed": true,
+      "assertions": [
+        "panicked at crates/rrx/tests/goal_graph.rs:145:51:"
+      ],
+      "log_sha256": "257adca824c9fdf1f5d23073099b19e3ddac7c8d2147a3e901e64b3826524f40",
+      "patch_sha256": "41024e4b5c16eafa8ced808fe915acc8f579ff8c1a2d17fd1e866847de1bbbe3"
+    },
+    {
+      "operator": "G03-soft-self",
+      "head": "364139d5dedf35e154597417efb0c5e9ac7927fd",
+      "mutant": "7677a615ff503cb9b88b4b03ee90e5f27cc413a6",
+      "file": "crates/rrx/src/goal.rs",
+      "source_sha256": "d53eb7362dfebfaa9c328d006075f1951c67d7b24dd40cc8e5c22e16f5a76d6d",
+      "test": "store_rejects_invalid_graph_changes_without_rows_versions_or_audit",
+      "scope": "actual_store",
+      "compiled": true,
+      "exit_code": 101,
+      "intended_assertion_killed": true,
+      "assertions": [
+        "panicked at crates/rrx/tests/goal_graph.rs:145:51:"
+      ],
+      "log_sha256": "69480af46210dcea2cfbd54e7ee2dcc5a039f7f1da39a286e32487f42f997caf",
+      "patch_sha256": "98c729f125bd8549f972c224bfc57e9c0b17c04eb9c5a9f1416a81c32ec0ad3c"
+    },
+    {
+      "operator": "G04-store-wire",
+      "head": "364139d5dedf35e154597417efb0c5e9ac7927fd",
+      "mutant": "7cb892d2d49fed0b8846cbae285a0bceee8f5dc5",
+      "file": "crates/rrx/src/state/mod.rs",
+      "source_sha256": "00f786ab4c6f64b54c75fbdf3038f21497281af8c994c23db4b6fe7dda446c00",
+      "test": "store_rejects_invalid_graph_changes_without_rows_versions_or_audit",
+      "scope": "actual_store",
+      "compiled": true,
+      "exit_code": 101,
+      "intended_assertion_killed": true,
+      "assertions": [
+        "panicked at crates/rrx/tests/goal_graph.rs:145:51:"
+      ],
+      "log_sha256": "b0720ec5116f647daa464e65a8df3cb5e400fc701d631683f689c724ee278109",
+      "patch_sha256": "c5cff6c6ae6a577e00c30771b1bbe8bf6631f6db2c4292ddd1e5a0faa908b4b2"
+    },
+    {
+      "operator": "G05-node-cap",
+      "head": "364139d5dedf35e154597417efb0c5e9ac7927fd",
+      "mutant": "6066f164df82d0da5516f4201d4a82df548afa3c",
+      "file": "crates/rrx/src/goal.rs",
+      "source_sha256": "04560887f040f278235d22fb00a3964777525008ea6649598ec1cd713fdb7cdd",
+      "test": "graph_bounds_have_valid_boundary_controls",
+      "scope": "structural_graph_api",
+      "compiled": true,
+      "exit_code": 101,
+      "intended_assertion_killed": true,
+      "assertions": [
+        "panicked at crates/rrx/tests/goal_graph.rs:61:14:"
+      ],
+      "log_sha256": "b8433f467ca179b05a8ea75fb773ac6b43b20731130f52f44e0963e414cb7178",
+      "patch_sha256": "92a1c6d8b78f0710c84d340e7a101458b4fa3ca6011f1c2d5456febccc343268"
+    },
+    {
+      "operator": "G06-edge-cap",
+      "head": "364139d5dedf35e154597417efb0c5e9ac7927fd",
+      "mutant": "145afb42f44a0f125c32d53933f5fb3064a7fdc2",
+      "file": "crates/rrx/src/goal.rs",
+      "source_sha256": "98a7246d1bd7f6e6ea535f8864713a9d6d5b960cc37dc5be3029f01c9174f497",
+      "test": "graph_bounds_have_valid_boundary_controls",
+      "scope": "structural_graph_api",
+      "compiled": true,
+      "exit_code": 101,
+      "intended_assertion_killed": true,
+      "assertions": [
+        "panicked at crates/rrx/tests/goal_graph.rs:84:14:"
+      ],
+      "log_sha256": "09829606ee0f9900a8a6f32f0a56046c49cf565edba03bbfbe24d03c124e5594",
+      "patch_sha256": "feea92411feb73d2576b0713371acf9ac81a214a1d60a044dd8b7b4d00abc60b"
+    }
+  ],
+  "restored_head": "4bd9c8b7ad1da9dc36af3d7ebbea3e44b2e9e83c",
+  "complete_restored_tree_equal": true,
+  "restored_control_exit": 0,
+  "restored_log_sha256": "16f11bf2c1ac993b2dea9386737895cb5b86e8b4f2c1302504e39921163d5a08",
+  "counts": {
+    "operators": 6,
+    "actual_store_assertion_kills": 4,
+    "structural_graph_api_assertion_kills": 2
+  },
+  "limits": "No readiness/completion/admission/settlement/epoch acceptance; same six operators rerun, not added as new distinct operators."
+}

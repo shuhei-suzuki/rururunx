@@ -551,6 +551,25 @@ async fn git_value(root: &Path, args: &[&str], deadline: tokio::time::Instant) -
     let latch = PROCESS_UNCERTAIN
         .get_or_init(|| Arc::new(AtomicBool::new(false)))
         .clone();
+    git_value_owned(
+        &executable,
+        root,
+        args,
+        deadline,
+        latch,
+        #[cfg(all(test, target_os = "macos"))]
+        None,
+    )
+    .await
+}
+async fn git_value_owned(
+    executable: &Path,
+    root: &Path,
+    args: &[&str],
+    deadline: tokio::time::Instant,
+    latch: Arc<AtomicBool>,
+    #[cfg(all(test, target_os = "macos"))] plan: Option<crate::adapter::ProcessInspectionPlan>,
+) -> Result<String> {
     ensure!(
         !latch.load(Ordering::SeqCst),
         "earlier context Git cleanup uncertain; further context Git launches blocked"
@@ -562,18 +581,46 @@ async fn git_value(root: &Path, args: &[&str], deadline: tokio::time::Instant) -
         pending: uncertain.clone(),
         latch: latch.clone(),
     };
+    let arguments = std::iter::once("--no-optional-locks".to_string())
+        .chain(args.iter().map(|s| s.to_string()))
+        .collect::<Vec<_>>();
+    #[cfg(all(test, target_os = "macos"))]
+    let observed = match plan {
+        Some(plan) => {
+            crate::adapter::bounded_git_raw_with_plan(
+                executable,
+                root,
+                &arguments,
+                git::native_environment(),
+                deadline,
+                uncertain.clone(),
+                plan,
+            )
+            .await
+        }
+        None => {
+            crate::adapter::bounded_git_raw(
+                executable,
+                root,
+                &arguments,
+                git::native_environment(),
+                deadline,
+                uncertain.clone(),
+            )
+            .await
+        }
+    };
+    #[cfg(not(all(test, target_os = "macos")))]
     let observed = crate::adapter::bounded_git_raw(
-        &executable,
+        executable,
         root,
-        &std::iter::once("--no-optional-locks".to_string())
-            .chain(args.iter().map(|s| s.to_string()))
-            .collect::<Vec<_>>(),
+        &arguments,
         git::native_environment(),
         deadline,
         uncertain.clone(),
     )
-    .await
-    .map_err(|e| anyhow::anyhow!("bounded context Git: {e:?}"));
+    .await;
+    let observed = observed.map_err(|e| anyhow::anyhow!("bounded context Git: {e:?}"));
     let observed = confirm_git_cleanup(
         observed,
         uncertain.load(Ordering::SeqCst),
@@ -1372,6 +1419,65 @@ fn expansion_paths(map: &RepositoryMap, expansion: &Expansion) -> Result<BTreeSe
 
 #[cfg(test)]
 mod tests {
+    #[cfg(target_os = "macos")]
+    #[tokio::test]
+    async fn real_git_unknown_cleanup_preserves_cause_and_latches_later_context_launches() {
+        let temp = tempfile::tempdir().unwrap();
+        let executable = crate::adapter::resolve_executable("git").unwrap();
+        let latch = Arc::new(AtomicBool::new(false));
+        let deadline = || tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+        let control = git_value_owned(
+            &executable,
+            temp.path(),
+            &["--version"],
+            deadline(),
+            latch.clone(),
+            None,
+        )
+        .await
+        .unwrap();
+        assert!(control.starts_with("git version"));
+        let plan = crate::adapter::ProcessInspectionPlan::unknown(
+            crate::adapter::UnknownObservation::Diagnostics,
+        );
+        let result = git_value_owned(
+            &executable,
+            temp.path(),
+            &["--version"],
+            deadline(),
+            latch.clone(),
+            Some(plan.clone()),
+        )
+        .await;
+        let cause = format!("{:#}", result.unwrap_err());
+        assert!(
+            cause.contains("SessionLost") && cause.contains("inspection_facts{"),
+            "{cause}"
+        );
+        // Shared test assertion independently captures the original IO kind before
+        // real inspector/resolver/Git transport; it never trusts site to select a branch.
+        plan.assert_diagnostics_transport(&cause);
+        assert!(latch.load(Ordering::SeqCst));
+        let later = git_value_owned(
+            &executable,
+            temp.path(),
+            &["--version"],
+            deadline(),
+            latch,
+            None,
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            later
+                .to_string()
+                .contains("further context Git launches blocked")
+        );
+        assert!(
+            !format!("{later:#}").contains("inspection_facts{"),
+            "derived refusal fabricated a fresh sample"
+        );
+    }
     use super::*;
     #[test]
     fn uncertain_git_cleanup_retains_native_failure_and_rejects_successful_output() {

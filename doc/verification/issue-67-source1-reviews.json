@@ -1,0 +1,96 @@
+{
+  "reviews": [
+    {
+      "head": "1bea366385c07f1186adc931d027ee391f7c8da5",
+      "section": "source1a",
+      "native_session": "b63da5a2-bfc6-421e-9e8f-1ddcf35d888b",
+      "review": {
+        "verdict": "approve",
+        "findings": [
+          {
+            "id": "I67-DOC-STALE-PENDING",
+            "severity": "Low",
+            "file": "doc/verification/issue-67.md",
+            "line": 9,
+            "claim": "The ledger contradicts itself. Line 9 still says clean committed source verification is pending, but the section added at 1bea366 records it as passed.",
+            "evidence": "Line 9 reads: \"Clean committed source verification and independent finite source review remain pending.\" Line 13, under '## Clean source verification', reads: \"Clean `87ec5eea\u2026` passes default-parallel full Debug tests \u2026 All 15 affected Release environment tests pass \u2026\" and ends with \"Independent finite source review and actual-checkout CI remain pending.\" The 1bea366 commit appended the section but did not update the earlier sentence.",
+            "fix": "Edit line 9 so it says only that the independent finite source review and actual-checkout CI remain pending, or have it refer to the section below. Leave the line-13 wording as it is."
+          },
+          {
+            "id": "I67-DOC-GREEN-RUN-SCOPE",
+            "severity": "Low",
+            "file": "doc/verification/issue-67.md",
+            "line": 13,
+            "claim": "The sentence 'This affected Release run evaluates the changed diagnostics' claims more than a green run can show. The failure-path diagnostic this change exists for was never rendered or observed.",
+            "evidence": "In environment_tests.rs:47-50, assert! formats its message lazily. In all 15 passing parents, observed was Ok(Ok(())), so the watchdog_expired and observation_io_error arms (lines 38-42) were never produced. The rendered message (observation, elapsed, the ExitStatus Display of reaped_exit) was only compile-checked. The premise that the progress lines reach the parent after the harness SIGKILLs the child group on watchdog expiry was also never exercised. The green run did exercise three things: the progress eprintln emission, the eager classification and elapsed computation, and assert_child_completed's stderr.lines().any(...) still succeeding with the extra lines present.",
+            "fix": "Option 1: reword to say the run exercises progress emission and completion-assertion tolerance, and that failure-message rendering and the non-exit_observed classifications are compile-checked only. Option 2: record one uncommitted mutation run. For example, temporarily lower the 60 s deadline in isolated_with below the irrelevant_checkpoint child's runtime and confirm the parent panic shows observation=watchdog_expired, an elapsed value, reaped_exit=signal: 9, and the last progress stage in stderr. Then revert and confirm `git status` is clean."
+          },
+          {
+            "id": "I67-PACKET-DIFF-SCOPE",
+            "severity": "Low",
+            "file": "doc/verification/issue-67-quality.json",
+            "line": 1,
+            "claim": "The 'EXACT DIFF vs MAIN' omits doc/verification/issue-67-quality.json. The ledger cites that file, and the packet lists it at head. So the stated finite scope ('one cfg(test) module plus ledger') cannot be established mechanically from the packet.",
+            "evidence": "The packet's file list includes issue-67-quality.json (blob 09ca2776\u2026), and issue-67.md:13 says 'Exact commands, result rows and logs' SHA-256 are recorded in `issue-67-quality.json`'. The exact diff, however, contains only environment_tests.rs (35a9697..4a7d1de) and issue-67.md (new, b948223). An issue-specific ledger file is unlikely to already exist on main cf8a1e7. That points to a pathspec-filtered or truncated diff, which means other omitted paths cannot be ruled out from the packet alone.",
+            "fix": "Coordinator: run `git diff --name-status cf8a1e7..1bea366` and confirm the changed paths are exactly environment_tests.rs, issue-67.md and issue-67-quality.json. Also confirm `git diff --stat 87ec5ee..1bea366` touches only doc/verification/."
+          }
+        ],
+        "assessment": "This is a packet-only review: no tools were run, per instruction. The code change is test-only and mechanically sound.\n\n**isolated_with**\n- Unchanged: the predicate `observed.is_ok() && exit.success()`, the 60 s timeout, the order observe \u2192 cleanup_group \u2192 reap \u2192 reader joins, and the assert_child_completed call.\n- The new match is exhaustive over Result<io::Result<()>, Elapsed>, borrows `observed`, and discards the io::Error payload. No raw I/O error text is emitted.\n- The elapsed value uses the monotonic std Instant and brackets only the timed observe_exit.\n- std::process::ExitStatus implements Display.\n- The message keeps its prefix 'synthetic environment child failed; '.\n- No environment, config or credential values are added. The canaries are unchanged.\n- The module is cfg(test) (mod.rs:4-5), so no production code is touched.\n\n**irrelevant()**\n- There are 8 static labels. Boundary 0 emits 5\u00d79=45 lines; boundaries 1 and 2 emit 8\u00d79=72. The longest line is about 67 bytes, so output is at most about 4.8 KiB, far below the OUTPUT_LIMIT of 64 KiB in read_git_output. Overflow would turn into an unwrap panic, and that remains far off.\n- eprintln goes to unbuffered stderr under std's stderr lock, and the child runs with --nocapture. Lines therefore reach the pipe before any SIGKILL and do not interleave with child_completed or panic output.\n- stdout is untouched, so the exact 'running 1 test', '1 passed; 0 failed' and 'test <name> ... ok' checks are unaffected. The completion check uses lines().any().\n- `assert!(boundary < 3)` accepts exactly the callers 0, 1 and 2.\n\n**Ledger counts**\n- 15 top-level and 14 ignored child tests in the module, matching the source.\n- Debug rows sum to 381 = 378 + 2 doctests + 1 nested witness; 26 ignored.\n- The fmt log SHA is the empty-input SHA-256.\n\n**Pre-existing behaviour, not introduced or worsened here (non-blocking)**\n- The predicate accepts Ok(Err(_)) when the reaped exit is successful. That can happen only if the child had already exited 0 before cleanup, and the final completion assertion is still required.\n- The reader joins have no deadline if a descendant outside the group held the pipe. The historical failure output shows the readers did return.\n- For watchdog_expired and observation_io_error, reaped_exit will usually show signal 9 from the harness's own cleanup. Read it together with the observation field.\n- Stage labels mark entry into a region. For example, the 'terminal' region also covers the transport assertion and the watermark read before 'checkpoint', which matches the ledger's 'entered, not success' wording.\n\n**Consumers**\nI could not grep for other consumers of the message text. The prefix is preserved, and per the ledger the full Debug suite passed, which would surface should_panic consumers.\n\n**Merge**\nThere is no assurance regression or privacy exposure. The three Low findings are documentation and packet-scope corrections, so I approve. Both-OS actual-checkout CI remains a separate merge gate, which the author has already acknowledged.",
+        "unresolved_blockers": []
+      },
+      "cleanup_verified": true,
+      "meter_scope": "raw_native_fresh_session_fields_unverified_operation_inventory"
+    },
+    {
+      "head": "1bea366385c07f1186adc931d027ee391f7c8da5",
+      "section": "source1b",
+      "native_session": "c6995f32-c609-44a8-8e13-75eb5900d490",
+      "review": {
+        "verdict": "approve",
+        "findings": [
+          {
+            "id": "I67-L1",
+            "severity": "Low",
+            "file": "doc/verification/issue-67.md",
+            "line": 9,
+            "claim": "The ledger contradicts itself about verification status. Line 9 still says 'Clean committed source verification and independent finite source review remain pending', but line 13 records that clean source verification at 87ec5ee is complete.",
+            "evidence": "Line 9: 'Clean committed source verification and independent finite source review remain pending.' Line 13: 'Clean `87ec5ee\u2026` passes default-parallel full Debug tests \u2026 Independent finite source review and actual-checkout CI remain pending.' Line 9 looks like a leftover from before commit 1bea366 added the section at lines 11-13.",
+            "fix": "Rewrite line 9 to match the tail of line 13: 'Independent finite source review and actual-checkout CI remain pending.' Alternatively, delete that sentence from line 9."
+          },
+          {
+            "id": "I67-L2",
+            "severity": "Low",
+            "file": "doc/verification/issue-67-quality.json",
+            "line": 1,
+            "claim": "The packet's 'EXACT DIFF vs MAIN' leaves out doc/verification/issue-67-quality.json, even though that file must differ from main. The full file was supplied separately and reviewed, so no content went unreviewed. Only the label 'exact' is inaccurate.",
+            "evidence": "The quality JSON has \"head\": \"87ec5ee\u2026\". The session git snapshot shows the order cf8a1e7 (main) -> 87ec5ee -> 1bea366. A file on cf8a1e7 cannot contain the hash of a commit made after it, so this path must show up in a diff against main. issue-67.md:13 also names this file, but the diff only covers environment_tests.rs and issue-67.md.",
+            "fix": "The coordinator should confirm with `git diff --stat cf8a1e7 1bea366`, which should list 3 files. Future packets should either be built without a pathspec or state which files were left out of the diff."
+          },
+          {
+            "id": "I67-L3",
+            "severity": "Low",
+            "file": "crates/rrx/src/adapter/grok/environment_tests.rs",
+            "line": 1140,
+            "claim": "Optional. The 'finished' line is printed before the loop body's locals are dropped. A hang during teardown would therefore end with 'case=N stage=finished', which reads like the case completed.",
+            "evidence": "In Rust, locals are dropped after the last statement of the loop body. The `eprintln!(\u2026 stage=finished)` at line 1140 is that last statement. The drops that follow include adapter, hook/active Arcs, `_foreign_dir` TempDir and `fixture` (its TempDir and Store). Teardown problems can still be located: the next case's 'fixture' line is missing, or after case 8 `child_completed` is missing. The doc's rule 'last stage = entry, not completion' technically covers this, but the label word 'finished' implies completion.",
+            "fix": "Non-blocking. Either add one sentence to the doc saying 'finished' covers the scope drops at the end of the iteration and that a missing next 'fixture' line or missing child_completed means teardown, or rename the label to 'teardown'. Either way the count stays at 8 labels and the size bound is unchanged."
+          }
+        ],
+        "assessment": "I found no assurance violation, regression, privacy exposure or unbounded output in this test-only change.\n\nWhat I checked in the code:\n(1) isolated_with: the `observation` match covers every case of Result<io::Result<()>, Elapsed>: Ok(Ok) is exit_observed, Ok(Err) is observation_io_error with the error text dropped, Err is watchdog_expired. It is computed before cleanup/reap. The success predicate `observed.is_ok() && exit.success()`, the cleanup_group/reap/reader order and the 60s timeout are unchanged. assert! only formats the message on failure. The message prefix 'synthetic environment child failed; ' is kept. `{exit}` uses std ExitStatus Display, for example 'signal: 9 (SIGKILL)'. Instant::elapsed is monotonic, and no timer or task was added.\n(2) irrelevant: `assert!(boundary < 3)` passes for all three visible callers (0/1/2). Without it, boundary >= 3 would silently never apply the hook, so the check is harmless. There are exactly 8 static labels: fixture/start/terminal/checkpoint/resume/resumed_terminal/release/finished. Boundary 0 prints 5 lines per case and boundaries 1/2 print 8, so at most 72 lines. The longest line is 67 bytes, so at most about 4.8 KiB, well under the 64 KiB read_git_output limit. Lines contain only integers and literals.\n(3) The child runs with --nocapture, so eprintln! writes unbuffered straight to the piped fd 2. Lines written before a watchdog SIGKILL are still readable afterwards, so a repeat of the 364139d failure would show the case and stage. No lines at all would point to a hang before case 0.\n(4) On success the parent captures and discards child output, so there is no extra CI log noise. assert_child_completed matches whole stderr lines, and stdout is untouched, so the extra stderr lines cannot break existing consumers.\n(5) The ledger counts are consistent. The module has 15 non-ignored parents and 14 ignored children, matching 15/14. The Debug passed rows sum to 381 = 378 + 2 doctests + 1 witness, and ignored sums to 23 + 1 + 2 = 26. The JSON 'limits' does not overclaim.\n\nPre-existing limitations, not introduced here and correctly not claimed as fixed:\n(a) observation_io_error combined with a successful reaped exit still passes the predicate.\n(b) Several unwraps run before the assertion: cleanup, reap, reader join, the over-budget reader error and UTF-8 decoding. Any of them panicking drops all of the new diagnostics. The progress lines reduce stderr headroom by at most about 4.8 KiB.\n(c) The reader joins have no timeout if a descendant in another process group inherited the pipe. The 364139d evidence shows the readers did complete in that failure.\n\nNot inspected: environment_workflow_tests.rs, which could call the pub(super) `isolated` but was not in the packet. Because the predicate and message prefix are unchanged, any such caller only gains diagnostic text.\n\nOutstanding gates: CI does not run Release tests, and final actual-checkout CI on both OSes remains a required merge gate as already stated.",
+        "unresolved_blockers": []
+      },
+      "cleanup_verified": true,
+      "meter_scope": "raw_native_fresh_session_fields_unverified_operation_inventory"
+    }
+  ],
+  "verified_dispositions": {
+    "I67-DOC-STALE-PENDING": "Verified; current clean-source and independent review outcome corrected.",
+    "I67-DOC-GREEN-RUN-SCOPE": "Verified overbroad wording; green runs exercise emission/exit_observed computation and completion-assertion tolerance only. Failure-message rendering and non-exit_observed classifications are compile-checked, not dynamically observed. No new failure-branch proof is claimed.",
+    "I67-PACKET-DIFF-SCOPE": "Verified diff label was pathspec-filtered. Full git diff --name-status confirms EXACT three changed paths supplied as complete current files; tested-to-review delta changes only two verification files. No hidden source. Future packet must state pathspec or include full diff.",
+    "I67-L1": "Same verified stale-status correction.",
+    "I67-L2": "Same verified filtered diff-label precision correction; full changed-path list confirmed.",
+    "I67-L3": "Verified optional stage ambiguity; document finished marks the iteration scope teardown entry, not completed Drops. Missing next fixture or final child_completed can indicate teardown. No source label change."
+  },
+  "selected_gate": "Two APPROVE, zero CHM, cleanup verified; final composition/metadata CI and root check required.",
+  "limits": "Test-only diagnostics; no failure cause/fix/full Release/native qualification."
+}

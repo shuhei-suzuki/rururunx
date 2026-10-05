@@ -1,0 +1,162 @@
+{
+  "baseline": "301a8853454f289b117232b628c6d51310501ffc",
+  "baseline_tree": "b680fc55b11657646b089487eb8f334b11451a56",
+  "source_sha256": "59ed49fd1a56b5b0e046f30ad190d627a8369e50911f418280ab72e66951ecc6",
+  "test_sha256": "5e6ca01c46c14a20da0b44623f3b01747578d5be4a61e240ebf1cc709ea9d21f",
+  "scope": "legacy read component; no native/qualified telemetry/private authority or full Issue21 acceptance",
+  "mutations": [
+    {
+      "mutation": "omit_project_identity",
+      "head": "e75b7981e3e0514571f134427e33dd26f2e62b13",
+      "tree": "c98c8acf91ef061a4f29176e62d2c713f338e96e",
+      "compiled": true,
+      "test_exit": 101,
+      "source_sha256": "ac462d585126b12da95c1b650c1c767bff6ac1113efc6136fc3442ce0d227886",
+      "patch_sha256": "dadc42e8d8504835ace74cc2b55e5bb54474e7ed99b8960ea91ce1e37e15bbbb",
+      "log_sha256": "b709ce8c38a69af3f62615eedeca1213873bef75948ff48f5b62f65c250ce31b",
+      "observed_assertions": [
+        "thread 'legacy_usage_query_checks_row_body_identity_and_invalid_scope_without_writes' (231233390) panicked at crates/rrx/tests/state.rs:813:44:",
+        "called `Result::unwrap_err()` on an `Ok` value: [Usage { scope: Scope { project_id: ProjectId(bc18ba98-e21d-4ee9-8a5f-8c475be8b438), goal_id: Some(GoalId(5644ca05-d941-4dc6-97f4-abcf7bd9b0c2)), task_id: Some(TaskId(f6f7b05c-657d-40d1-8229-cce056876d28)) }, session_id: SessionId(3d053c33-9a89-4bf3-adc0-29dde3db1795), agent: \"fake\", phase: \"legacy-unqualified\", review_round: None, input_tokens: Some(7), cached_input_tokens: None, output_tokens: Some(3), estimated_cost: None, context_pack_version: None, context_pack_size: None, repo_map_size: None, cache_metadata: Object {\"legacy\": Bool(true)}, missing_reason: Some(\"legacy history is unqualified\") }]",
+        "test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 14 filtered out; finished in 0.02s"
+      ]
+    },
+    {
+      "mutation": "omit_goal_identity",
+      "head": "275be4e0be55528fcbf4e8c0abf3aa1e80252cf9",
+      "tree": "47c36cd853577386d69959be2dc8a5361cc6f20d",
+      "compiled": true,
+      "test_exit": 101,
+      "source_sha256": "5285466c9ee6eb5993c753dc38637b77dba5e91b36555074422808fc16da46bd",
+      "patch_sha256": "59c0fe81f9b3dd553d572617e2684c07c7bbff36e6b6d68f5be224b13a1c75af",
+      "log_sha256": "5879056757d5f87844bbf674ed059b1146e8f565a76b70d3f1822aaa695bb53c",
+      "observed_assertions": [
+        "thread 'legacy_usage_query_preserves_null_scopes_and_refuses_null_column_wildcards' (231235851) panicked at crates/rrx/tests/state.rs:947:39:",
+        "called `Result::unwrap_err()` on an `Ok` value: [Usage { scope: Scope { project_id: ProjectId(4e954597-8494-47dd-b280-a8a29ec70488), goal_id: Some(GoalId(ec25ad6b-992a-487f-b863-30c88a17caa9)), task_id: None }, session_id: SessionId(fc5864a5-508e-41b2-a33b-24a9d051936d), agent: \"fake\", phase: \"legacy-unqualified\", review_round: None, input_tokens: Some(7), cached_input_tokens: None, output_tokens: Some(3), estimated_cost: None, context_pack_version: None, context_pack_size: None, repo_map_size: None, cache_metadata: Object {\"legacy\": Bool(true)}, missing_reason: Some(\"legacy history is unqualified\") }, Usage { scope: Scope { project_id: ProjectId(4e954597-8494-47dd-b280-a8a29ec70488), goal_id: Some(GoalId(ec25ad6b-992a-487f-b863-30c88a17caa9)), task_id: None }, session_id: SessionId(f4a6c2b4-9f24-4259-8977-6f7d729daa14), agent: \"fake\", phase: \"legacy-unqualified\", review_round: None, input_tokens: Some(7), cached_input_tokens: None, output_tokens: Some(3), estimated_cost: None, context_pack_version: None, context_pack_size: None, repo_map_size: None, cache_metadata: Object {\"legacy\": Bool(true)}, missing_reason: Some(\"legacy history is unqualified\") }, Usage { scope: Scope { project_id: ProjectId(4e954597-8494-47dd-b280-a8a29ec70488), goal_id: Some(GoalId(ec25ad6b-992a-487f-b863-30c88a17caa9)), task_id: Some(TaskId(5ddeacb7-d895-474b-b50b-657395f548ed)) }, session_id: SessionId(274f543d-788f-43ed-ae6a-46975d322efc), agent: \"fake\", phase: \"legacy-unqualified\", review_round: None, input_tokens: Some(7), cached_input_tokens: None, output_tokens: Some(3), estimated_cost: None, context_pack_version: None, context_pack_size: None, repo_map_size: None, cache_metadata: Object {\"legacy\": Bool(true)}, missing_reason: Some(\"legacy history is unqualified\") }]",
+        "thread 'legacy_usage_query_checks_row_body_identity_and_invalid_scope_without_writes' (231235850) panicked at crates/rrx/tests/state.rs:813:44:",
+        "called `Result::unwrap_err()` on an `Ok` value: [Usage { scope: Scope { project_id: ProjectId(3a714f34-3488-44da-a0b8-6209767bc102), goal_id: Some(GoalId(b6f73960-e2df-4135-a779-34eb429812ca)), task_id: Some(TaskId(37b30c43-147d-4a6a-9d49-6c7cf2a47d46)) }, session_id: SessionId(6b764c19-1fe6-48c6-bd86-2889217bc41e), agent: \"fake\", phase: \"legacy-unqualified\", review_round: None, input_tokens: Some(7), cached_input_tokens: None, output_tokens: Some(3), estimated_cost: None, context_pack_version: None, context_pack_size: None, repo_map_size: None, cache_metadata: Object {\"legacy\": Bool(true)}, missing_reason: Some(\"legacy history is unqualified\") }]",
+        "test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 14 filtered out; finished in 0.02s"
+      ]
+    },
+    {
+      "mutation": "omit_task_identity",
+      "head": "7c5e5be2a1e1654fd6a291419098d341788c9290",
+      "tree": "6fa8c0275c1f8968c2a8514b601ea6a127948ce1",
+      "compiled": true,
+      "test_exit": 101,
+      "source_sha256": "7cc3751c313e2af9ba0e7358e051613f05654b56cfa893f887ae84a75cca2eb4",
+      "patch_sha256": "c58f7bc0c9a57cd46e55ff810fc595c50ab8e107cafde728f60f658bf52fc6d3",
+      "log_sha256": "dc86d17da2e3d8bc32815ab5a6f30458a182878995e2899d67fe52169866d2c5",
+      "observed_assertions": [
+        "thread 'legacy_usage_query_preserves_null_scopes_and_refuses_null_column_wildcards' (231238537) panicked at crates/rrx/tests/state.rs:947:39:",
+        "called `Result::unwrap_err()` on an `Ok` value: [Usage { scope: Scope { project_id: ProjectId(aac75173-f5a9-4811-a51b-9cdb59660d2e), goal_id: None, task_id: None }, session_id: SessionId(b4ffb210-72b6-4e16-b342-40db104c44bf), agent: \"fake\", phase: \"legacy-unqualified\", review_round: None, input_tokens: Some(7), cached_input_tokens: None, output_tokens: Some(3), estimated_cost: None, context_pack_version: None, context_pack_size: None, repo_map_size: None, cache_metadata: Object {\"legacy\": Bool(true)}, missing_reason: Some(\"legacy history is unqualified\") }, Usage { scope: Scope { project_id: ProjectId(aac75173-f5a9-4811-a51b-9cdb59660d2e), goal_id: Some(GoalId(09419710-cf95-4abe-add9-f72bbf023802)), task_id: Some(TaskId(b52d189d-3d7a-4a91-b2ed-bed734b7d317)) }, session_id: SessionId(82c27597-d8ab-4d92-9fb9-cb997e28ca18), agent: \"fake\", phase: \"legacy-unqualified\", review_round: None, input_tokens: Some(7), cached_input_tokens: None, output_tokens: Some(3), estimated_cost: None, context_pack_version: None, context_pack_size: None, repo_map_size: None, cache_metadata: Object {\"legacy\": Bool(true)}, missing_reason: Some(\"legacy history is unqualified\") }, Usage { scope: Scope { project_id: ProjectId(aac75173-f5a9-4811-a51b-9cdb59660d2e), goal_id: Some(GoalId(09419710-cf95-4abe-add9-f72bbf023802)), task_id: Some(TaskId(b52d189d-3d7a-4a91-b2ed-bed734b7d317)) }, session_id: SessionId(83bbb01e-ba0e-4f62-ba61-d700c06f397a), agent: \"fake\", phase: \"legacy-unqualified\", review_round: None, input_tokens: Some(7), cached_input_tokens: None, output_tokens: Some(3), estimated_cost: None, context_pack_version: None, context_pack_size: None, repo_map_size: None, cache_metadata: Object {\"legacy\": Bool(true)}, missing_reason: Some(\"legacy history is unqualified\") }]",
+        "thread 'legacy_usage_query_checks_row_body_identity_and_invalid_scope_without_writes' (231238536) panicked at crates/rrx/tests/state.rs:813:44:",
+        "called `Result::unwrap_err()` on an `Ok` value: [Usage { scope: Scope { project_id: ProjectId(0b7a3a4c-40f8-4025-a527-cfb260cc87ae), goal_id: Some(GoalId(6b8a6b3c-f940-4731-b020-bdd4a2466346)), task_id: Some(TaskId(ee15eda8-c2d7-4db4-9ad0-4cf4a3eaa1cf)) }, session_id: SessionId(37d481f8-bd9c-46a8-a4f8-9f8fb4cb69c5), agent: \"fake\", phase: \"legacy-unqualified\", review_round: None, input_tokens: Some(7), cached_input_tokens: None, output_tokens: Some(3), estimated_cost: None, context_pack_version: None, context_pack_size: None, repo_map_size: None, cache_metadata: Object {\"legacy\": Bool(true)}, missing_reason: Some(\"legacy history is unqualified\") }]",
+        "test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 14 filtered out; finished in 0.02s"
+      ]
+    },
+    {
+      "mutation": "omit_session_identity",
+      "head": "35abf271ab5f7b7c32d33ef020033c8854e1321a",
+      "tree": "14fd93c65b8c846ac0102e001cafc61cdd01cd11",
+      "compiled": true,
+      "test_exit": 101,
+      "source_sha256": "9d428267b65e8c822afe04fe0435d10cd645d4178c021e45d7362c3f19db989c",
+      "patch_sha256": "b70dd1ca35d2e88031614610f6f383037d3c73dc946f0781f777b072252d727f",
+      "log_sha256": "0110ec269e35900bfedaf315246bec56d6eb38cfe08b3f3c08572e86a131f260",
+      "observed_assertions": [
+        "thread 'legacy_usage_query_checks_row_body_identity_and_invalid_scope_without_writes' (231242711) panicked at crates/rrx/tests/state.rs:813:44:",
+        "called `Result::unwrap_err()` on an `Ok` value: [Usage { scope: Scope { project_id: ProjectId(e54051ff-dfde-4945-a4da-94a3498ff258), goal_id: Some(GoalId(ed0b9882-185c-4673-9708-ae867f414d0a)), task_id: Some(TaskId(5b4b8212-9a68-4a98-baa4-e829249135ee)) }, session_id: SessionId(c2e3a2c7-cf57-4a05-bf8a-3e1c678961ed), agent: \"fake\", phase: \"legacy-unqualified\", review_round: None, input_tokens: Some(7), cached_input_tokens: None, output_tokens: Some(3), estimated_cost: None, context_pack_version: None, context_pack_size: None, repo_map_size: None, cache_metadata: Object {\"legacy\": Bool(true)}, missing_reason: Some(\"legacy history is unqualified\") }]",
+        "test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 14 filtered out; finished in 0.04s"
+      ]
+    },
+    {
+      "mutation": "omit_scope_shape",
+      "head": "31c90eb232e4352ce87a7fdb24726de8116da998",
+      "tree": "388cc81dc97a073bf5cd8fb9e1f220872a1ee6b8",
+      "compiled": true,
+      "test_exit": 101,
+      "source_sha256": "2d1c55f93d2c35b63faaee564f7216b56d7e690aa467a2ec9173b659e4494029",
+      "patch_sha256": "3f87c2bf4c72261e672c8c191449f7140ee740bdbe3b399322a36b35a773d552",
+      "log_sha256": "54cd48b28b86211a335066dfb28a235e46878e51be74f43597a736476df4044d",
+      "observed_assertions": [
+        "thread 'legacy_usage_query_checks_row_body_identity_and_invalid_scope_without_writes' (231245993) panicked at crates/rrx/tests/state.rs:838:31:",
+        "called `Result::unwrap_err()` on an `Ok` value: [Usage { scope: Scope { project_id: ProjectId(56a82608-3263-4482-9de5-5094ead7b5e4), goal_id: Some(GoalId(12a3c8c5-ef07-4cf6-96d2-388e7c501a28)), task_id: Some(TaskId(10d3f8b2-6a0a-47d0-8a7a-57f6bcc7ea1c)) }, session_id: SessionId(a233d594-bc6c-4964-8a46-cf364607f230), agent: \"fake\", phase: \"legacy-unqualified\", review_round: None, input_tokens: Some(7), cached_input_tokens: None, output_tokens: Some(3), estimated_cost: None, context_pack_version: None, context_pack_size: None, repo_map_size: None, cache_metadata: Object {\"legacy\": Bool(true)}, missing_reason: Some(\"legacy history is unqualified\") }]",
+        "test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 14 filtered out; finished in 0.03s"
+      ]
+    },
+    {
+      "mutation": "null_goal_wildcard",
+      "head": "4d2b8e7690039f560d4009b9407e34b22f4b6bed",
+      "tree": "33a8c80b3cc3b8f6bbe56809e55ba3ea169d6453",
+      "compiled": true,
+      "test_exit": 101,
+      "source_sha256": "e4a143aed673b6bf578982088ff7c9a79fc734d22f79b95c794cbfa116a6d4fb",
+      "patch_sha256": "5ed3b9f178b09e3708f6f3d9c7ad3488a70791b3c400569d5018e0a8dc98e054",
+      "log_sha256": "1cf5bd1f0c72ae3e86d39070d2cf27f55be81a05e840262f247b0cdcdb4f1594",
+      "observed_assertions": [
+        "thread 'legacy_usage_query_preserves_null_scopes_and_refuses_null_column_wildcards' (231248236) panicked at crates/rrx/tests/state.rs:947:39:",
+        "called `Result::unwrap_err()` on an `Ok` value: [Usage { scope: Scope { project_id: ProjectId(aac3dc23-2cdb-481d-9fd7-b9667b07ea29), goal_id: Some(GoalId(b2bd6996-312b-49a4-abc4-4398eb389f6d)), task_id: None }, session_id: SessionId(c6c80b1e-0955-49e5-8b0a-ca5b299532da), agent: \"fake\", phase: \"legacy-unqualified\", review_round: None, input_tokens: Some(7), cached_input_tokens: None, output_tokens: Some(3), estimated_cost: None, context_pack_version: None, context_pack_size: None, repo_map_size: None, cache_metadata: Object {\"legacy\": Bool(true)}, missing_reason: Some(\"legacy history is unqualified\") }, Usage { scope: Scope { project_id: ProjectId(aac3dc23-2cdb-481d-9fd7-b9667b07ea29), goal_id: Some(GoalId(b2bd6996-312b-49a4-abc4-4398eb389f6d)), task_id: None }, session_id: SessionId(b2891fc4-cb00-4a4c-bf52-a838ae1e8c75), agent: \"fake\", phase: \"legacy-unqualified\", review_round: None, input_tokens: Some(7), cached_input_tokens: None, output_tokens: Some(3), estimated_cost: None, context_pack_version: None, context_pack_size: None, repo_map_size: None, cache_metadata: Object {\"legacy\": Bool(true)}, missing_reason: Some(\"legacy history is unqualified\") }, Usage { scope: Scope { project_id: ProjectId(aac3dc23-2cdb-481d-9fd7-b9667b07ea29), goal_id: Some(GoalId(b2bd6996-312b-49a4-abc4-4398eb389f6d)), task_id: Some(TaskId(afbde61f-7100-4828-b1c1-218eed252fb8)) }, session_id: SessionId(62604a92-3944-44a6-9717-ecf89ff41fdd), agent: \"fake\", phase: \"legacy-unqualified\", review_round: None, input_tokens: Some(7), cached_input_tokens: None, output_tokens: Some(3), estimated_cost: None, context_pack_version: None, context_pack_size: None, repo_map_size: None, cache_metadata: Object {\"legacy\": Bool(true)}, missing_reason: Some(\"legacy history is unqualified\") }]",
+        "test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 14 filtered out; finished in 0.03s"
+      ]
+    },
+    {
+      "mutation": "nonoptional_goal_column",
+      "head": "6f357516bc43b5c9b5e2d48060f0fd5fccd5210f",
+      "tree": "48798241326c52fc5b236339e9e91bb750cf94ff",
+      "compiled": true,
+      "test_exit": 101,
+      "source_sha256": "a80c6189b957effbebcd9d43473225a2531e509e6a55ab7e5fe192af71fe40d2",
+      "patch_sha256": "b150ca1c59f6e4ec6d3f4cf5c0c10fc9e25192b655bd6b627901dcb62a4c11f4",
+      "log_sha256": "18a200c82dc225344c9f1950c77dce994acbe10ba915472bb183c138122323d6",
+      "observed_assertions": [
+        "thread 'legacy_usage_query_preserves_null_scopes_and_refuses_null_column_wildcards' (231250318) panicked at crates/rrx/tests/state.rs:910:58:",
+        "called `Result::unwrap()` on an `Err` value: Invalid column type Null at index: 1, name: goal_id",
+        "test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 14 filtered out; finished in 0.03s"
+      ]
+    },
+    {
+      "mutation": "null_task_wildcard",
+      "head": "8ef77d1b15dd49980b8b02b2bb10649df303fdd1",
+      "tree": "76601d765911da89651ecd83b43251a9d6190d8e",
+      "compiled": true,
+      "test_exit": 101,
+      "source_sha256": "75d2fb9135e674a8551e3783fffbceaa8c7820e2a775c0849fc01b6f47a12358",
+      "patch_sha256": "9875db9bb554981d58b95271595039d3f4d6da290392444611b437c610745f18",
+      "log_sha256": "d99390a1d45d500501131eddea4516f016e7c1a22c33afa7d74a02a5d4f13381",
+      "observed_assertions": [
+        "thread 'legacy_usage_query_preserves_null_scopes_and_refuses_null_column_wildcards' (231280789) panicked at crates/rrx/tests/state.rs:947:39:",
+        "called `Result::unwrap_err()` on an `Ok` value: [Usage { scope: Scope { project_id: ProjectId(5456f0a0-43e9-4c5b-9a7c-5964f0d106c3), goal_id: None, task_id: None }, session_id: SessionId(86758625-f46c-4769-817a-ffbb8590b579), agent: \"fake\", phase: \"legacy-unqualified\", review_round: None, input_tokens: Some(7), cached_input_tokens: None, output_tokens: Some(3), estimated_cost: None, context_pack_version: None, context_pack_size: None, repo_map_size: None, cache_metadata: Object {\"legacy\": Bool(true)}, missing_reason: Some(\"legacy history is unqualified\") }, Usage { scope: Scope { project_id: ProjectId(5456f0a0-43e9-4c5b-9a7c-5964f0d106c3), goal_id: Some(GoalId(3d03d646-ce1f-4d7d-9e2f-4ae0b478adc4)), task_id: Some(TaskId(c261204e-6ebf-4a73-9ddd-e467d6f87c62)) }, session_id: SessionId(e2c325db-d4dd-4c84-8d27-31de6fa58b61), agent: \"fake\", phase: \"legacy-unqualified\", review_round: None, input_tokens: Some(7), cached_input_tokens: None, output_tokens: Some(3), estimated_cost: None, context_pack_version: None, context_pack_size: None, repo_map_size: None, cache_metadata: Object {\"legacy\": Bool(true)}, missing_reason: Some(\"legacy history is unqualified\") }, Usage { scope: Scope { project_id: ProjectId(5456f0a0-43e9-4c5b-9a7c-5964f0d106c3), goal_id: Some(GoalId(3d03d646-ce1f-4d7d-9e2f-4ae0b478adc4)), task_id: Some(TaskId(c261204e-6ebf-4a73-9ddd-e467d6f87c62)) }, session_id: SessionId(02c4f54b-d01a-4ae5-a7b8-75d5102e621e), agent: \"fake\", phase: \"legacy-unqualified\", review_round: None, input_tokens: Some(7), cached_input_tokens: None, output_tokens: Some(3), estimated_cost: None, context_pack_version: None, context_pack_size: None, repo_map_size: None, cache_metadata: Object {\"legacy\": Bool(true)}, missing_reason: Some(\"legacy history is unqualified\") }]",
+        "test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 14 filtered out; finished in 0.02s"
+      ]
+    },
+    {
+      "mutation": "nonoptional_task_column",
+      "head": "23da0520653ffc70ddcad246d6a2886d087b2571",
+      "tree": "4f6763dd7f31faa57ab24d257155b49d6689ad0f",
+      "compiled": true,
+      "test_exit": 101,
+      "source_sha256": "0da8b2da0ae246ac5dbc7431567f662d9dacbd2f61129d44f50f42b458801444",
+      "patch_sha256": "fd03f8fa0948e40656bd5787fb99e76daa3b8c251c0a4557fcd3a04847cb3917",
+      "log_sha256": "12ea81ea1761fb6c30c6548859fdd1495f6756074649fd3353a291aad0ec543c",
+      "observed_assertions": [
+        "thread 'legacy_usage_query_preserves_null_scopes_and_refuses_null_column_wildcards' (231282782) panicked at crates/rrx/tests/state.rs:910:58:",
+        "called `Result::unwrap()` on an `Err` value: Invalid column type Null at index: 2, name: task_id",
+        "test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 14 filtered out; finished in 0.03s"
+      ]
+    }
+  ],
+  "collection_note": "The private collector expected internal variant text InvalidColumnType; actual Display was Invalid column type Null. It stopped AFTER a compiled real consumer failure for nonoptional_goal_column and restored exact source. Its existing log/commit were inspected and credited only for that actual consumer failure. No failed test was rerun-to-pass; the two remaining mutants ran afterward with corrected report parser.",
+  "control": {
+    "exit": 0,
+    "tests": 2,
+    "log_sha256": "4e8a1ee533b992a74176fbbe728242cdf6b186f435fe1aeed879c587b498b90b"
+  },
+  "restored": {
+    "head": "7d38a3a028bb3de4d25d930ec614b7ea4e020d32",
+    "tree": "b680fc55b11657646b089487eb8f334b11451a56",
+    "source_sha256": "59ed49fd1a56b5b0e046f30ad190d627a8369e50911f418280ab72e66951ecc6",
+    "tests": 2,
+    "exit": 0,
+    "log_sha256": "957d050303d116983b12c55bd4447c38c27f64c4eca64bc2f339223d1200a564"
+  }
+}

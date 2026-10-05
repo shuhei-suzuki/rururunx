@@ -1,0 +1,113 @@
+{
+  "head": "1f3b01ec59efc7be90ac337c57bcdfb37a7f4af2",
+  "reviews": [
+    {
+      "head": "1f3b01ec59efc7be90ac337c57bcdfb37a7f4af2",
+      "section": "requirements2a",
+      "native_session": "5cdbdc2a-31a2-4bdd-bc7d-cc961bf294f6",
+      "review": {
+        "verdict": "request_changes",
+        "findings": [
+          {
+            "id": "R14U2-1",
+            "severity": "Medium",
+            "file": "doc/requirements/issue-14-unbound-retry.md",
+            "line": 92,
+            "claim": "Requirement 2 extends the new Store fence to any closure of an active marked-unbound native reservation, including generation change. The required direct Store controls use only the Failed fixture, so two things go unverified. First, the Store fence's Running branch has no control. Second, the generation-change control on the Failed fixture is already refused by an existing rule and proves nothing about the new fence.",
+            "evidence": "In put_workflow_transition, validate_transition runs before the closing check. For a non-irreversible Failed attempt with no terminal decision, the state match falls through to `_ => before.state == after.state`. Failed\u2192Interrupted is therefore already rejected as 'attempt state regression forbidden', so a direct generation-change test on the Failed fixture passes even with no new fence. A StateOnly terminal Task is also refused by 'terminal Task cannot resume'. The Running marked-unbound state, with adapter.start held after the marker as in preparation_dispatched_observation_and_direct_store_terminal_fence, is different. Today validate_transition admits both Running\u2192Failed with a RetryEvent closure and Running\u2192Interrupted with generation+1 and an invalidation. The closing check sets own_found=own_id.is_none() and finds no Session rows. So a crate-private writer can release the most dangerous state today: start in flight with no Session. A Store fence written as `before.state == Failed && dispatch_started && session_id.is_none()` would pass every listed control. Those controls are the direct Failed closure, the Failed generation change refused by the existing rule, the held-start public consumers, the pre-marker positives and the port positives.",
+            "fix": "Require direct crate-private Store controls on the actual held-start Running marked-unbound attempt for both actors, before any Session exists. Cover a same-generation Running\u2192Failed+RetryEvent closure and a Running\u2192Interrupted generation change with a fresh context. Each must be refused with unchanged durable state, and the owner must then be released for its normal single launch. State that Failed\u2192Interrupted on a non-irreversible attempt is already refused by the existing state-regression rule, and give no new-fence credit for it. Add a compiled mutant that narrows the Store fence to Failed/Waiting only, to be killed by the Running controls. Also state explicitly that the fence must keep admitting three transitions: the owner's own Running\u2192Failed publication with active retained, the Session binding of the same original marked attempt, and TerminalDecision recording. Those are not 'replacement'."
+          },
+          {
+            "id": "R14U2-2",
+            "severity": "Low",
+            "file": "doc/requirements/issue-14-unbound-retry.md",
+            "line": 59,
+            "claim": "The accepted-consequence producer list includes Grok 'spawn' errors as start errors that yield a Failed marked-unbound attempt. Source does not support this.",
+            "evidence": "GrokAdapter::launch checks mode, role and Task scope, then runs ScopeSnapshot::capture, environment selection, the session-registry limit and save_current, which persists a Starting Session. It then tokio::spawns supervise and returns Ok(session). Git verification, profile, environment admission, Command spawn, ACP and turn errors all occur later in the actor. Workflow then binds that Session id, so those failures surface through poll on a bound attempt whose Session is Failed or Lost, not as an unbound Failed attempt. The Generic list is accurate: probe, validation and preflight run inside start, and spawn runs inside the start future.",
+            "fix": "Remove 'spawn' from the Grok list, or reword it as 'Grok pre-persist validation, capture, environment, registration and Session-save errors'. Note that post-start Grok actor failures stay on the existing bound-Session path. The required source inventory should record this split by function name."
+          },
+          {
+            "id": "R14U2-3",
+            "severity": "Low",
+            "file": "doc/requirements/issue-14-unbound-retry.md",
+            "line": 80,
+            "claim": "No control covers the realistic Generic shape, where start persists a terminal unbound Session of the same agent and role before returning the error. Requirement 2's rule that 'Session identity alone supplies no resolution' is therefore asserted but untested.",
+            "evidence": "GenericCliAdapter::start reserves a Starting Session (save_session) before preflight. On a launch or preflight error it saves that Session as Failed, or Lost for SessionLost, and returns Err. Workflow's fail() then publishes Failed with dispatch_started=true, session_id=None, alongside a terminal Executor Session of the same scope, agent and role. Today retry's Session loop admits a non-Lost terminal row because it is not the bound session_id. The mapped fixtures cover only 'no Session rows' (Executor) and an unrelated Executor Session (Reviewer).",
+            "fix": "Add a held-start Executor variant in which the fake persists a terminal Failed Session for the same scope, agent and role before returning the error, matching Generic's reservation/failure persistence. Assert that both the public retry and the direct Store closure refuse with unchanged durable state. Optionally record a mutant that accepts a terminal same-agent/role Session as resolution, killed by this control."
+          },
+          {
+            "id": "R14U2-4",
+            "severity": "Low",
+            "file": "doc/requirements/issue-14-unbound-retry.md",
+            "line": 110,
+            "claim": "The writer inventory names persist, reserve and persist_decision as the production Workflow writers but omits the other production Workflow Record writer.",
+            "evidence": "Engine::observe_gate calls Store::observe_workflow_gate, which rewrites the Workflow Record through put_record_tx without validate_transition or the closing check. It requires an Evaluating attempt at the same active index and changes only observations and detail. It cannot close a reservation, and a marked-unbound native attempt cannot reach Evaluating publicly. That rationale belongs in the inventory rather than being left implicit.",
+            "fix": "Add observe_workflow_gate to the Workflow Record writer inventory, with its non-impact rationale and function name. Also confirm the absence of any other direct Workflow writers; put_record already rejects RecordKind::Workflow."
+          },
+          {
+            "id": "R14U2-5",
+            "severity": "Low",
+            "file": "doc/verification/issue-14-unbound-retry.md",
+            "line": 1,
+            "claim": "The ledger's opening paragraph is stale and contradicts the requirements' base.",
+            "evidence": "The ledger still begins 'Requirements1 NOT APPROVED' and 'Current main2c6ae9d still allows\u2026'. The requirements state 'Base main efe9774' after composition of #63, and the ledger's later paragraph says a Requirements2 re-review is pending.",
+            "fix": "Mark the first paragraph as historical (Requirements1 at 535452c, base 2c6ae9d), or update it to the current base efe9774 and Requirements2-pending status, so that the latest status is unambiguous."
+          }
+        ],
+        "assessment": "I checked the Requirements1 corrections against public source, and most hold. R14U-1 is fixed. Requirement 3 now preserves definitive pre-marker Failed retries for both actors. prepare_agent's reviewer-unconfigured, registry, capability and missing-worktree branches call fail() before the marker with eligible=false. The required step controls are feasible: an unregistered executor set through put_task, where executor is not a workflow-owned field, and reviewers=[\"executor\"], which lacks Review, as in the existing capability test. The retry closure passes validate_transition and the Store closing check. Fixing the actor through put_task then reserves a new attempt with exactly one launch. Per-guard dispatch-conjunct mutants are killable, and Store-side removal also breaks release_preparation. R14U-2 is fixed. validate_transition requires new attempts to be unmarked and unbound, and allows marker or Session binding only for non-EvidencePort Running\u2192Running. Actor-conjunct removal is therefore correctly classified as equivalent, and all-sessionless refusal is killed by the port positives. R14U-3 is resolved by choosing dual Engine+Store enforcement, with a direct Store consumer, a combined mutant and Engine-only removal masked without credit, consistent with the Issue41 precedent. The availability consequence is now explicit and accurate in substance: the marker precedes every adapter.start; Generic pre-spawn and preflight errors return from start; retry, resume_gate (non-irreversible Failed) and TerminalRecovery (Engine and Store unbound fences) all refuse; ensure_project_idle blocks removal while the Workflow has an active attempt. The one inaccuracy is Grok 'spawn', which happens after start returns a persisted Session. The refusal text, durable snapshot scope, actor-to-fixture Session mapping, defense-in-depth-only Waiting coverage, kind-independent refusal and caller/closer inventory findings are addressed. The held-start Executor and Reviewer consumers remain feasible with FakeAgent start_pause and start_error, which records the launch, holds after the marker, and returns Err without a Session. The scope is still a coherent limited negative fence, with no producer, certificate, schema or policy change and no claim of Issue14 readiness. One blocker remains: requirement 2's Store fence covers Running marked-unbound and generation-change closures, which current Store admits. The listed direct controls only exercise the Failed fixture, where Failed\u2192Interrupted is already refused by the existing state-regression rule. The Running branch can therefore go untested, and the generation-change control can earn false credit. The remaining findings are Low precision and consistency fixes.",
+        "unresolved_blockers": [
+          "R14U2-1: require direct Store controls on the held-start Running marked-unbound attempt (same-generation closure and generation change), state that Failed\u2192Interrupted is already refused by the existing rule and earns no new-fence credit, add a Store Failed-only narrowing mutant, and state explicitly the preserved fail, binding and decision transitions"
+        ]
+      },
+      "cleanup_verified": true,
+      "meter_scope": "raw_native_resumed_session_attribution_unverified"
+    },
+    {
+      "head": "1f3b01ec59efc7be90ac337c57bcdfb37a7f4af2",
+      "section": "requirements2b",
+      "native_session": "c25c12b7-606f-48dd-96ea-b7c08b903667",
+      "review": {
+        "verdict": "approve",
+        "findings": [
+          {
+            "id": "R2-M1",
+            "severity": "Medium",
+            "file": "doc/requirements/issue-14-unbound-retry.md",
+            "line": 93,
+            "claim": "The required direct Store generation-change refusal control can pass vacuously. If it runs on the marked-unbound Failed fixture, an existing check rejects it, not the new fence. Only a Running marked-unbound attempt with no Session row exercises the new fence. The mutant list also has no killable form for a Store fence that covers only same-generation closures.",
+            "evidence": "validate_transition only allows an old active Failed attempt to become Interrupted on a generation change when a terminal decision exists or the phase is irreversible. Otherwise `_ => before.state == after.state` fails with \"attempt state regression forbidden\". A terminal decision makes the Task terminal, and put_workflow_transition then admits only TerminalRecovery, which forbids generation changes. So a Failed marked-unbound attempt is already unreachable by generation change, with or without the new fence. By contrast, Running\u2192Interrupted is a valid generation-change transition. For an unbound attempt, the closing check's own_found starts as own_id.is_none(), so the Store currently accepts it. The binding-CAS-conflict Running fixture is unsuitable: FakeAgent persists a Running executor Session, and the existing executor_reserved check masks the new fence. Line 102 also says 'Failed-only narrowing ... NO credit' without separating the Engine guard, where that holds because a marked-unbound Waiting is unreachable, from the Store guard, where the Running generation-change consumer can kill it.",
+            "fix": "Require the direct generation-change control to use the held-start Executor/Reviewer state: Running, dispatch_started=true, no Session row, start paused before FakeAgent persists anything. Publish the next-generation context so that only the new fence can reject it. Record that the same attempt on the Failed fixture is masked by the existing state-regression check and earns no credit. Add a killable Store mutant that restricts the fence to same-generation closures (or to Failed/Waiting only), killed by this Running consumer. Limit the 'Failed-only no credit' statement to the Engine guard."
+          },
+          {
+            "id": "R2-L1",
+            "severity": "Low",
+            "file": "doc/requirements/issue-14-unbound-retry.md",
+            "line": 59,
+            "claim": "The availability disclosure says Grok spawn errors produce a Failed marked-unbound attempt. In the supplied source, Grok spawn and pre-spawn Git/profile/index failures happen after start has already returned a Session, so they are bound outcomes. The disclosure also does not mention that Generic persists its own terminal Session row before returning Err.",
+            "evidence": "GrokAdapter::launch returns Err only for checks that run before save_current: mode/role/Task scope, ScopeSnapshot::capture, environment selection, the SESSIONS_LIMIT registration check, and the save itself. After save_current it spawns `supervise` and returns Ok(session). verify_git, index_digest, Profile, admit_environment and command.spawn all run inside supervise. The Workflow therefore binds session_id, and the failure surfaces later as a bound Failed or Lost Session under existing policy: Failed is retryable, Lost is refused. GenericCliAdapter::start, by contrast, saves a Starting Session before preflight and rewrites it to Failed or Lost on launch error before returning Err. Its own terminal Failed row then sits unbound in the Task scope.",
+            "fix": "Split the impact enumeration into two classes. First, errors returned from start: Grok's pre-save checks and registration; all Generic launch errors. These are marked-unbound and fenced. Second, failures after start returns: Grok supervise pre-spawn and spawn errors. These are bound-Session outcomes under existing policy. State that Generic's same-launch terminal Session row is not trusted as no-dispatch proof. An optional stronger control: a Fake that writes its own Failed Session row and then returns Err."
+          },
+          {
+            "id": "R2-L2",
+            "severity": "Low",
+            "file": "doc/verification/issue-14-unbound-retry.md",
+            "line": 1,
+            "claim": "The ledger header is stale relative to the Requirements2 candidate.",
+            "evidence": "The opening lines still say 'Requirements1 NOT APPROVED' and 'Current main2c6ae9d still allows'. The requirements now say 'Requirements2 candidate' with base main efe9774. A later paragraph says 'Requirements2 re-review pending'.",
+            "fix": "Update the header to the current Requirements2 status and base, and keep the Requirements1 outcome as dated history."
+          }
+        ],
+        "assessment": "I checked the Requirements2 corrections against the supplied public source; they hold. (1) Pre-marker preservation is correct and feasible. prepare_agent's 'reviewer not configured', registry, capability and missing-worktree branches persist Failed before the marker with eligible=false. Both proposed controls work through public step: an unregistered executor, and a reviewer list of ['executor'], which lacks Review. In each, retry passes the Session loop: no Session rows, or only the Exited executor Session from Implement. Restoring the actor through put_task is permitted because executor and reviewers are not workflow-owned fields. The next step then reserves a fresh attempt and launches once. Dropping the dispatch_started conjunct in either guard is killable by these controls; for the Store guard, release_preparation consumers also kill it. (2) The EvidencePort equivalence is accurate. validate_transition lets the marker and Session change only for non-EvidencePort Running attempts, so removing the actor conjunct changes nothing reachable. (3) The dual-fence decision is sound and conflicts with no legitimate path. The only closures of an active marked-unbound native attempt are retry, TerminalRecovery (already fenced in Engine and Store), and raw StateOnly or generation-change writes, which no production path issues. fail() and the TerminalDecision keep the reservation active. Pre-marker invalidations and release_preparation carry marker=false. Engine-only removal is correctly masked by the Store fence. (4) The held-start consumers are feasible for both actors. FakeAgent records the launch, pauses after the durable marker, and checks start_error after the pause. fail() then publishes Failed with marker=true and session_id=None. The Executor fixture has no Session rows; the Reviewer fixture has the unrelated Exited Implement Session. The expanded raw-snapshot scope can be implemented with independent SQLite reads. (5) The availability consequence is now stated explicitly and correctly: retry, resume_gate and TerminalRecovery all refuse, and ensure_project_idle blocks Project removal. Classification uses durable fields only, with no ErrorKind proof and no invented recovery producer. The consumer inventory now covers the Issue41 entrypoints, plus workspace-wide rg of retry callers, put_workflow_transition callers and attempt-field readers. Remaining issues are non-blocking and can be resolved in design. The generation-change control must name the Running/no-Session fixture to avoid vacuous credit, and the mutant accounting needs adjusting to match. The Grok spawn wording and the stale ledger header need correcting. No Critical or High issue remains, and nothing is claimed for whole Issue14, scheduling, restart, native, F1 or MVP.",
+        "unresolved_blockers": []
+      },
+      "cleanup_verified": true,
+      "meter_scope": "raw_native_resumed_session_attribution_unverified"
+    }
+  ],
+  "qualified_gate": "NOT APPROVED: A request_changes1Mediumblocker, B approve1nonblockingMedium; Requirements1 Highs verified corrected, no Critical/High atRequirements2. No design/source approval. Both actual selected wrappers closed; not F1 and counters unverified.",
+  "verified_dispositions": {
+    "Running generation/same-generation proof gap": "VERIFIED in validate_transition/put_workflow_transition: Running->Interrupted generation closure and Running->Failed+RetryEvent are admitted before new fence if no Session. Failed->Interrupted is already rejected; no newfencecredit. Require actual held Running controls, new valid context, Failed/Waiting-only Store mutant and original-owner successfulbinding/fail/TerminalDecision retained positives.",
+    "Grok start/supervise producer split": "VERIFIED launch save_current before spawning supervise/returnOk. Only returned startErr unbound; laterGrokspawn/actor failurebound. Generic terminal same-agent/role unbound row is not no-dispatchproof; explicit synthetic matching-rowcontrol added.",
+    "writer inventory and stale header": "VERIFIED observe_workflow_gate directRecordwriter keepsactive and onlyEvaluating observation/detail; put_record refusesWorkflow. Header updated tocurrent3candidate/EFE, pastgatesretained."
+  }
+}

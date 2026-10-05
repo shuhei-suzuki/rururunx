@@ -1,0 +1,187 @@
+{
+  "head": "cba0b1d3b52ca643eae7add73b73417138e3ff38",
+  "two_no_CHM_approvals": true,
+  "actual_terminal_and_selected_group_cleanup_verified": true,
+  "reviews": [
+    {
+      "head": "cba0b1d3b52ca643eae7add73b73417138e3ff38",
+      "section": "A3",
+      "native_session": "4ad8dc12-1663-4a48-be6c-be4e175e9338",
+      "verdict": "approve",
+      "findings": [
+        {
+          "severity": "low",
+          "file": "crates/rrx/tests/support/grok_fixture.rs",
+          "lines": "synthetic_sidecar_stays_complete_for_actual_concurrent_reader",
+          "problem": "The reader runs a fixed 2000 iterations regardless of how far the writer has progressed. It also never asserts that it saw a replacement, for example two or more distinct RRX_CONCURRENT versions. Whether the reads overlap the writer's 200 replacements depends on scheduling, so a run can pass without exercising any concurrent replacement.",
+          "causal_scenario": "Under host load or different filesystem timing, the reader can finish before the first persist, or can be starved while the writer completes. That run then passes vacuously. A regression to non-atomic std::fs::write, or the widened partial-window mutant, would go unexercised. The recorded partial-window kill is therefore probabilistic, not guaranteed. This does not affect production source; it only weakens the evidence for the fixture correction.",
+          "required_fix": "Bound the reader by writer progress instead of a fixed count: loop until a writer-done flag is set, with a minimum read count. Then assert that the reader observed at least two distinct RRX_CONCURRENT values. A pass then implies the reads actually overlapped the replacements."
+        }
+      ],
+      "limitations": [
+        "Manual static reading only. No build, test, clippy/fmt, mutation or CI execution was performed. The reported test counts (370+2 debug/release), the six compiled assertion kills, the plain-truncate survivor, the restored controls and the CI trigger/checkout/blob equality were not independently verified.",
+        "Production effect of the only non-test source change was checked by reading the code. The new availability.record(Site::ScopeAccess) in prepare_checkpoint compiles to an empty body outside cfg(test). It sits after the unconditional function-entry gate and before the Project Store mutex/read. It adds instrumentation only; routing and refusal are unchanged.",
+        "Approval-refusal controls were traced by reading. answer_approval refuses at native.require_dispatch() before any preview, audit, Session CAS, Grant or Frame. It completes the result with the fixed Unsupported reason and returns Ok(false), so the pending turn is preserved. Approve alone survives gate omission, via the lower filesystem require. Deny and Cancel would reach audit/CAS/Grant before the lower send gate, so the per-decision fresh fixtures are needed and suffice.",
+        "The consumed-fixture control (real admit_dispatch CAS) adds scenario realism only. answer_approval's refusal does not consult Admission state, so this control cannot kill any mutant beyond the unconsumed control. It is not managed-19 availability or a settlement certificate, consistent with its in-source comment.",
+        "The fresh-registration control was traced. refused_before_work publishes FreshUnpublished with the fixed Unsupported cause. RegisteredTransition::Drop then removes the unpublished entry, so the registry, Store, sites and native journal return to baseline. The restoration control's advanced input is required: without it, an omitted prepare_checkpoint gate yields the same RestoredBeforeAdmission(Unsupported) label, and only the new ScopeAccess count distinguishes it.",
+        "main63 Store::usage was reviewed only for its static decode projection and test. Other Store decode paths (read/list/records/session) still carry serde context chains; they were not reassessed under this scope.",
+        "Not supplied, so not reviewed: full State tests, Grok production adapter, environment tests, Workflow tests, ContextPack and other providers. I could not determine whether tests/support/grok_fixture.rs is included by more than one integration-test crate. If it is, the new sidecar self-test would be compiled and run in each one.",
+        "Earlier Source1/Source2 routes and the design's redundancy classifications (register_existing, spawn/prepare launch/checkpoint, verify_git_preparing, resolve_git, metadata/version helpers) were not re-derived. This approval covers only the Source3 delta and the composed usage projection.",
+        "This approval is limited to the Stage A EMPTY/no-effect component boundary. It is not readiness, whole-workload cleanup/settlement, Workflow/Issue43 integration, factory/config, Stage B backend, both-host native conformance or MVP acceptance; all of those remain open as stated in the packet."
+      ],
+      "usage": {
+        "input_tokens": 2,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 379602,
+        "output_tokens": 26133,
+        "output_tokens_details": {
+          "thinking_tokens": 24664
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 0,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 26133,
+            "cache_read_input_tokens": 379602,
+            "cache_creation_input_tokens": 0,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 0
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard"
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 2,
+          "outputTokens": 26133,
+          "cacheReadInputTokens": 379602,
+          "cacheCreationInputTokens": 0,
+          "webSearchRequests": 0,
+          "costUSD": 0.5985884,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 24664,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "cost_usd": 0.5985884,
+      "duration_api_ms": 249766,
+      "cleanup_verified": true,
+      "guardian_version": "v4-explicit-runtime-preflight",
+      "result_file": "/private/tmp/rururunx-issue6-stageA-source3-A3-result.json",
+      "result_sha256": "4850eea6e7a18ff28e0c9d3c900e774107bcb866eb760ee503a973f464f8c533"
+    },
+    {
+      "head": "cba0b1d3b52ca643eae7add73b73417138e3ff38",
+      "section": "B3",
+      "native_session": "669a97c3-363e-4872-8339-af85c6e56a79",
+      "verdict": "approve",
+      "findings": [
+        {
+          "severity": "low",
+          "file": "crates/rrx/tests/support/grok_fixture.rs",
+          "lines": "synthetic_sidecar_stays_complete_for_actual_concurrent_reader (reader loop / barrier)",
+          "problem": "The Barrier only aligns the start of the two threads. The reader runs a fixed 2000 iterations and never records whether any of its reads happened while the writer was still replacing the file. A pass can therefore occur with little or no actual reader/writer interleaving. The packet already withholds causal kill credit for the plain-truncate mutant, so the claim is not overstated. This finding is about the strength of the evidence only.",
+          "causal_scenario": "If scheduling is skewed (for example, the reader finishes 2000 fast reads before most of the 200 renames, or starts after them), the control passes without exercising concurrent observation. It then supplies no evidence that a narrow non-atomic replacement would be detected. Production behaviour is unaffected.",
+          "required_fix": "Make the overlap a fact of the run rather than an assumption. Options: the writer sets an AtomicBool when it finishes, and the reader keeps looping until that flag is set, with a minimum iteration count. Or record the distinct RRX_CONCURRENT versions the reader observed during the writer's activity and report or assert them. Otherwise, document the control as probabilistic in its comment and evidence ledger."
+        }
+      ],
+      "limitations": [
+        "Static manual reading only. No compilation, test execution, mutation run, rustc-JSON probe or CI inspection was performed. The reported debug/release counts (370+2, 26 ignored), the six assertion kills, the plain-truncate survivor, the mutation-driver correction and CI 37237155776 are unverified packet claims.",
+        "Approve/Deny/Cancel gate analysis:",
+        "- In answer_approval, require_dispatch precedes the result-closed check, the preview, the Store audit/CAS and record_grant for all three decisions.",
+        "- The Deny-only and Cancel-only bypass mutants would reach the Store audit, put_session and the Grant site. The per-decision Store, Session, ledger, Grant/Frame and peer-frame oracles would therefore observe them.",
+        "- An Approve-only omission would still be stopped by the lower filesystem gate with an identical outcome. It remains a redundant survivor and is not kill evidence.",
+        "Fresh-registration and checkpoint control analysis:",
+        "- A prepare_launch gate omission is not killed by the new FreshUnpublished control. ScopeSnapshot::capture's own gate yields the same FreshUnpublished/Unsupported outcome. No kill is claimed for it.",
+        "- The FreshUnpublished control does kill an omission of that outcome in refused_before_work, because RegisteredTransition::Drop would then publish Lost.",
+        "- The prepare_checkpoint gate omission is observable only through the new cfg(test) ScopeAccess site record, given the advanced input. spawn_checkpoint and spawn_launch gate omissions remain redundant behind the prepare_* gates.",
+        "The consumed-input approval control reaches admission through the real admit_dispatch Store CAS. answer_approval does not consult admission state, so this control adds a version-advanced Session state rather than a new branch. The packet does not overstate it.",
+        "Files not supplied:",
+        "- Other integration test crates that may #[path]-include tests/support/grok_fixture.rs. If any do, the new sidecar test would run more than once; this cannot be checked.",
+        "- schema.sql.",
+        "- tests/state.rs helpers before line 980, including legacy_usage_rows_snapshot.",
+        "- Full State tests, Grok production and environment tests, ContextPack and other providers.",
+        "main63 composition: Store::usage was reviewed only for compatibility of its static decode projection. I verified that anyhow::anyhow! yields a single-element chain whose Display and alternate output match the static string. Other Store read paths that keep serde context were not reassessed.",
+        "Requirements and design were supplied as excerpts (requirements from line 510, design lines 620\u2013965, master from line 407). Omitted earlier requirements are not waived, and no conformance judgement is made against them.",
+        "Open scope (approval does not cover):",
+        "- Workflow capture, reservation and WaitingHuman before adapter refusal (Issue43).",
+        "- Factory/config consumers.",
+        "- Stage B ready backend, settlement producers 19/58/60/14, both-host native conformance, Task attach and four-plus concurrency.",
+        "- These remain OPEN. This approval covers only the scoped Stage A Source3 delta and the composed usage projection. It is not readiness, settlement, cleanup, Issue 6 closure or an MVP claim.",
+        "CI and merge identity: exact PR checkout, parents, tree and blob equality versus cba0b1d and the pending CI result were not examined. A trigger head is not proof."
+      ],
+      "usage": {
+        "input_tokens": 2,
+        "cache_creation_input_tokens": 377442,
+        "cache_read_input_tokens": 2160,
+        "output_tokens": 22918,
+        "output_tokens_details": {
+          "thinking_tokens": 21188
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 377442,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 22918,
+            "cache_read_input_tokens": 2160,
+            "cache_creation_input_tokens": 377442,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 377442
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard"
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 2,
+          "outputTokens": 22918,
+          "cacheReadInputTokens": 2160,
+          "cacheCreationInputTokens": 377442,
+          "webSearchRequests": 0,
+          "costUSD": 3.478336,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 21188,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "cost_usd": 3.478336,
+      "duration_api_ms": 218818,
+      "cleanup_verified": true,
+      "guardian_version": "v4-explicit-runtime-preflight",
+      "result_file": "/private/tmp/rururunx-issue6-stageA-source3-B3-result.json",
+      "result_sha256": "fb4b4911a844e31c15344797108b5dc2a8d1a15310077ce8232a4b717ceba726"
+    }
+  ],
+  "scope": "ONLY Source3 EMPTY/noeffect component delta and composed read-only usage projection; not6closure/native ready/cohort/alljobs/managed settlement/Workflow/MVP",
+  "sidecar_control_qualification": "barrier-start fixed reader loop does not guarantee replacement overlap; probabilistic observation; S304 narrowtruncate survived, S305 widenedpartialwindow assertion killed separately"
+}

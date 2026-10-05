@@ -1,0 +1,49 @@
+{
+  "run": 37230809943,
+  "trigger_head": "d2cb1adcfee6c7095bc7dfd1f6c0473ec5be0a48",
+  "actual_checkouts": {
+    "check (ubuntu-latest)": "c0fc2dba4282faaf5bb21dc346a8b7590a994473",
+    "check (macos-latest)": "c0fc2dba4282faaf5bb21dc346a8b7590a994473"
+  },
+  "parents": [
+    "054aefd3a22a02951fa72b9fa397bed58d156bbf",
+    "d2cb1adcfee6c7095bc7dfd1f6c0473ec5be0a48"
+  ],
+  "tested_tree": "98f463d596d0d419629238077e81895924750c71",
+  "trigger_tree": "98f463d596d0d419629238077e81895924750c71",
+  "tested_tree_equals_trigger": true,
+  "jobs": {
+    "check (ubuntu-latest)": {
+      "conclusion": "success",
+      "steps": {
+        "Set up job": "success",
+        "Run actions/checkout@v4": "success",
+        "Run dtolnay/rust-toolchain@1.91.1": "success",
+        "Run cargo fmt --all -- --check": "success",
+        "Run cargo clippy --locked --workspace --all-targets -- -D warnings": "success",
+        "Run cargo test --locked --workspace": "success",
+        "Run cargo build --locked --workspace": "success",
+        "Run cargo build --locked --release --workspace": "success",
+        "Post Run actions/checkout@v4": "success",
+        "Complete job": "success"
+      }
+    },
+    "check (macos-latest)": {
+      "conclusion": "success",
+      "steps": {
+        "Set up job": "success",
+        "Run actions/checkout@v4": "success",
+        "Run dtolnay/rust-toolchain@1.91.1": "success",
+        "Run cargo fmt --all -- --check": "success",
+        "Run cargo clippy --locked --workspace --all-targets -- -D warnings": "success",
+        "Run cargo test --locked --workspace": "success",
+        "Run cargo build --locked --workspace": "success",
+        "Run cargo build --locked --release --workspace": "success",
+        "Post Run actions/checkout@v4": "success",
+        "Complete job": "success"
+      }
+    }
+  },
+  "log_sha256": "1d9521f141c00d90d615afeac3a05a01101a3edc5704693bf48192b2582f104c",
+  "scope": "Source3 docs-only diagnostic precision; local release failed, cause and regression unknown, partial-gate disposition only"
+}

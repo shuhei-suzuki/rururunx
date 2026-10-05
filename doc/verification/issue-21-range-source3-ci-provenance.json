@@ -1,0 +1,342 @@
+{
+  "run": 37212685260,
+  "trigger_head": "78676c92235e53edbda0f8fc04d83577c31a2310",
+  "actual_checkout": "ffa074e27f7e68db184f1747c05013f3142bcd36",
+  "parents": [
+    "d87faec18066dd1d134faa2e123a65874d8b7079",
+    "78676c92235e53edbda0f8fc04d83577c31a2310"
+  ],
+  "checkout_tree": "2603a537af524178f4b2231c1913f04694acd210",
+  "full_tree_equal": true,
+  "verified_source_inputs": [
+    {
+      "path": ".github/workflows/ci.yml",
+      "blob": "fae2d45999b972ed8a97c38a74b819bbcce088bc"
+    },
+    {
+      "path": "Cargo.lock",
+      "blob": "c9f399b4fbb93d02ee92ee7609a4f944f57e38f9"
+    },
+    {
+      "path": "Cargo.toml",
+      "blob": "be2be1a9dd99dac3e416a672ceb6830123e58554"
+    },
+    {
+      "path": "crates/rrx/Cargo.toml",
+      "blob": "ca39920a362a267b24032a21ab9bc11f0c54a6ac"
+    },
+    {
+      "path": "crates/rrx/examples/repository-context.rs",
+      "blob": "98a7ace4160efcf01a70509acbe88b97516a8007"
+    },
+    {
+      "path": "crates/rrx/src/adapter.rs",
+      "blob": "b95c6541c261f84982d9bafc9ed3162dc4f720a4"
+    },
+    {
+      "path": "crates/rrx/src/adapter/grok/cleanup.rs",
+      "blob": "15a55b0bb065299188d5fecddd5b3e2342695091"
+    },
+    {
+      "path": "crates/rrx/src/adapter/grok/files.rs",
+      "blob": "252b5b46abdbbb5f19308e1d6e76cc4459ff7b20"
+    },
+    {
+      "path": "crates/rrx/src/adapter/grok/mod.rs",
+      "blob": "6a3d92593a57a5eed48dec96c30ed76bd816878d"
+    },
+    {
+      "path": "crates/rrx/src/adapter/grok/ownership.rs",
+      "blob": "bfa527dca4b3b7a08f6cb5d6939e11775b28ddc5"
+    },
+    {
+      "path": "crates/rrx/src/adapter/grok/protocol.rs",
+      "blob": "be115305356fdebe0d659c41db26304ebb43e29a"
+    },
+    {
+      "path": "crates/rrx/src/adapter/grok/receipt_tests.rs",
+      "blob": "812ab97a67fe4fb815b9371b239337189ca96bb1"
+    },
+    {
+      "path": "crates/rrx/src/adapter/grok/schema.rs",
+      "blob": "a0016eb7e3ca3001fb8eafded9466d855ad434af"
+    },
+    {
+      "path": "crates/rrx/src/adapter/inspection.rs",
+      "blob": "cca26e8d9a86f9253ae5cca0f8c5f1f1f3a066ab"
+    },
+    {
+      "path": "crates/rrx/src/config.rs",
+      "blob": "fd167b8723654f3b096e27c5c99f903ec59bcd1d"
+    },
+    {
+      "path": "crates/rrx/src/context.rs",
+      "blob": "cebbc8ed7f8d7a5ea49c70a912d1790f33579be4"
+    },
+    {
+      "path": "crates/rrx/src/domain.rs",
+      "blob": "f3f70b8667c1894afdf7c7425472f29eb5aeb3e5"
+    },
+    {
+      "path": "crates/rrx/src/git.rs",
+      "blob": "ec5ca45bd0c4ed5b2edaada8bfe51f07a6ff3e2b"
+    },
+    {
+      "path": "crates/rrx/src/lib.rs",
+      "blob": "040eb901a2c7f4f8b826c798e15beac1c6230f02"
+    },
+    {
+      "path": "crates/rrx/src/main.rs",
+      "blob": "52ecc16c349dfec3a46cddef4ae22835ad4cc52e"
+    },
+    {
+      "path": "crates/rrx/src/project.rs",
+      "blob": "fb42e5fa2bc5cd7618aa63414e8892f2789486f5"
+    },
+    {
+      "path": "crates/rrx/src/state/mod.rs",
+      "blob": "0a023c0a7622765d47996b3aef925c377d8375cc"
+    },
+    {
+      "path": "crates/rrx/src/state/native_dispatch_tests.rs",
+      "blob": "c534a18a89ab85820c814b6483c32c402343db76"
+    },
+    {
+      "path": "crates/rrx/src/state/schema.sql",
+      "blob": "bfa8119e6d66900f6bcf26638321730077cb3d0c"
+    },
+    {
+      "path": "crates/rrx/src/workflow.rs",
+      "blob": "294c4629e55d3bc0b7b7be1e451835aff1418e6b"
+    },
+    {
+      "path": "crates/rrx/src/workflow/tests.rs",
+      "blob": "8ad306f922676369afc34dc4997ef445e0d2cac4"
+    },
+    {
+      "path": "crates/rrx/tests/adapter.rs",
+      "blob": "2382c7bfed5e67f9e7c5ae9b8ce1d0a0676a8f34"
+    },
+    {
+      "path": "crates/rrx/tests/cli.rs",
+      "blob": "9b36d8f55c43059ab852c2c28ed78e8e97e2ba83"
+    },
+    {
+      "path": "crates/rrx/tests/context.rs",
+      "blob": "06a76f548b1cb0983852f8100efbc6f95239bd25"
+    },
+    {
+      "path": "crates/rrx/tests/git.rs",
+      "blob": "836f1eaf77f872f54869382800156a5ce00ac25d"
+    },
+    {
+      "path": "crates/rrx/tests/grok.rs",
+      "blob": "351de16b6d2000952c112d19c3bd6038b95b8cd7"
+    },
+    {
+      "path": "crates/rrx/tests/project.rs",
+      "blob": "b366ba343bc6223bce8e76575e287a20b2bc67b4"
+    },
+    {
+      "path": "crates/rrx/tests/state.rs",
+      "blob": "fdada19fe16f5d895ebd439db45c57454f13525d"
+    },
+    {
+      "path": "crates/rrx/tests/support/grok_fake.py",
+      "blob": "9e53c9a7ce1ab784e3621290d53e9d33c85c69df"
+    },
+    {
+      "path": "crates/rrx/tests/support/grok_fixture.rs",
+      "blob": "b35a6f8b51fe996cd0e13d698d92340a72d172cc"
+    },
+    {
+      "path": "crates/rrx/tests/support/grok_receipt.rs",
+      "blob": "be44dba15627e18ba4ccd1dcbc0c2164e8fe4a14"
+    }
+  ],
+  "jobs": [
+    {
+      "completedAt": "2026-10-04T15:26:47Z",
+      "conclusion": "success",
+      "databaseId": 111466882416,
+      "name": "check (macos-latest)",
+      "startedAt": "2026-10-04T15:21:38Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-10-04T15:21:40Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-10-04T15:21:38Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T15:21:42Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-10-04T15:21:40Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T15:21:57Z",
+          "conclusion": "success",
+          "name": "Run dtolnay/rust-toolchain@1.91.1",
+          "number": 3,
+          "startedAt": "2026-10-04T15:21:42Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T15:21:58Z",
+          "conclusion": "success",
+          "name": "Run cargo fmt --all -- --check",
+          "number": 4,
+          "startedAt": "2026-10-04T15:21:57Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T15:22:30Z",
+          "conclusion": "success",
+          "name": "Run cargo clippy --locked --workspace --all-targets -- -D warnings",
+          "number": 5,
+          "startedAt": "2026-10-04T15:21:58Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T15:25:21Z",
+          "conclusion": "success",
+          "name": "Run cargo test --locked --workspace",
+          "number": 6,
+          "startedAt": "2026-10-04T15:22:30Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T15:25:22Z",
+          "conclusion": "success",
+          "name": "Run cargo build --locked --workspace",
+          "number": 7,
+          "startedAt": "2026-10-04T15:25:21Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T15:26:42Z",
+          "conclusion": "success",
+          "name": "Run cargo build --locked --release --workspace",
+          "number": 8,
+          "startedAt": "2026-10-04T15:25:22Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T15:26:43Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 16,
+          "startedAt": "2026-10-04T15:26:42Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T15:26:44Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 17,
+          "startedAt": "2026-10-04T15:26:43Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/shuhei-suzuki/rururunx/actions/runs/37212685260/job/111466882416"
+    },
+    {
+      "completedAt": "2026-10-04T15:23:55Z",
+      "conclusion": "success",
+      "databaseId": 111466882540,
+      "name": "check (ubuntu-latest)",
+      "startedAt": "2026-10-04T15:21:29Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-10-04T15:21:31Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-10-04T15:21:30Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T15:21:32Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-10-04T15:21:31Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T15:21:41Z",
+          "conclusion": "success",
+          "name": "Run dtolnay/rust-toolchain@1.91.1",
+          "number": 3,
+          "startedAt": "2026-10-04T15:21:32Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T15:21:42Z",
+          "conclusion": "success",
+          "name": "Run cargo fmt --all -- --check",
+          "number": 4,
+          "startedAt": "2026-10-04T15:21:41Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T15:22:08Z",
+          "conclusion": "success",
+          "name": "Run cargo clippy --locked --workspace --all-targets -- -D warnings",
+          "number": 5,
+          "startedAt": "2026-10-04T15:21:42Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T15:22:45Z",
+          "conclusion": "success",
+          "name": "Run cargo test --locked --workspace",
+          "number": 6,
+          "startedAt": "2026-10-04T15:22:08Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T15:22:45Z",
+          "conclusion": "success",
+          "name": "Run cargo build --locked --workspace",
+          "number": 7,
+          "startedAt": "2026-10-04T15:22:45Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T15:23:54Z",
+          "conclusion": "success",
+          "name": "Run cargo build --locked --release --workspace",
+          "number": 8,
+          "startedAt": "2026-10-04T15:22:45Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T15:23:54Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 16,
+          "startedAt": "2026-10-04T15:23:54Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-10-04T15:23:54Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 17,
+          "startedAt": "2026-10-04T15:23:54Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/shuhei-suzuki/rururunx/actions/runs/37212685260/job/111466882540"
+    }
+  ],
+  "whole_issue_acceptance": false
+}

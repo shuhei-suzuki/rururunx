@@ -1,0 +1,31 @@
+{
+  "withdrawn_source": "b29aee8c62fd1f6d0699cb07f62e5a7b1b34aba7",
+  "reason": "Additional agreeing malformed-scope fixture violates existing schema3 CHECK before read. Proposed extra check redundant with row/body identity validation plus existing SQL CHECK. Withdraw extra source/test scope, preserve initial tested narrow component.",
+  "logs": [
+    {
+      "name": "mutation-control",
+      "sha256": "84430e868e56b143be71fca0c0b415a64991eed218c3ea62dc26a555979ed31c",
+      "classification": "fixture CHECK constraint failure BEFORE intended read assertion; no guard/mutation credit"
+    },
+    {
+      "name": "workspace-test",
+      "sha256": "5ead121faba420092334d0c9ecdab311cea230a7c5b928779700c4b48a1132e5",
+      "classification": "fixture CHECK constraint failure BEFORE intended read assertion; no guard/mutation credit"
+    }
+  ],
+  "restored_source_and_tests": [
+    {
+      "path": "crates/rrx/src/state/mod.rs",
+      "baseline": "b1b643bc8ac3b43c4c0affefa6d9e9a29b9debd1",
+      "sha256": "59ed49fd1a56b5b0e046f30ad190d627a8369e50911f418280ab72e66951ecc6",
+      "blob": "9dae57d8540cf286382114f432c5ce36d579622d"
+    },
+    {
+      "path": "crates/rrx/tests/state.rs",
+      "baseline": "b1b643bc8ac3b43c4c0affefa6d9e9a29b9debd1",
+      "sha256": "8649fbed57bd487c0d3d435c4c324ccd07faf65f280ac817654d584f41faa9fd",
+      "blob": "f0df127280b368e6121cb245b6279e11796f3718"
+    }
+  ],
+  "scope": "no schema/trust changes; supported schema3 only; no corrupted-schema/OS integrity claim"
+}

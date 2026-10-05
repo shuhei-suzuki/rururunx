@@ -4,6 +4,12 @@
 
 It does not replace Claude Code, Codex, Grok, Gemini, or open-source coding agents. It keeps them running in parallel, coordinates reviews and approvals, isolates work with Git worktrees, and escalates to a human only when needed.
 
+The native Codex component currently advertises no executable capabilities. Its
+public launch, resume, checkpoint, attach and approval routes refuse before effects
+until genuine workload ownership and dispatch producers are implemented. Existing
+protocol fixtures are limited component evidence; required native provider and
+both-platform MVP acceptance remains open.
+
 CLI command:
 
 ```bash
@@ -255,6 +261,9 @@ The command examples above describe the MVP target. Currently implemented:
   work. This registry foundation does not yet run concurrent Goals/sessions.
 - `rrx --help`, `rrx --version`, and `rrx config-check`. Typed runtime entities and
   transactional SQLite state/audit persistence are available in the library.
+  Goal graph saves reject hard cycles, self edges, duplicate ordered pairs and
+  undeclared/foreign Task references within finite node/edge bounds. The library
+  hard ordering API provides no readiness or native dispatch authority.
 - An extensible asynchronous Agent Adapter registry and task-scoped generic native
   process supervision. Generic adapters support noninteractive execution with
   prepared context and explicit environment. Unsupported attach/resume/review,
@@ -262,6 +271,8 @@ The command examples above describe the MVP target. Currently implemented:
   usage remains null. Provider adapters and execution/workflow CLI commands are
   still being implemented. See [adapter design](doc/design/issue-4-design.md).
 
+- Grok [terminal cleanup receipts](doc/design/issue-55-design.md) record bounded facts;
+  no process/PID/Lost safety change or native acceptance is claimed.
 
 ## License
 
@@ -291,8 +302,33 @@ checks; unknown outcomes keep recovery reservations. QUICK PR-created stays nont
 until requested merge/cleanup gates supply evidence. Cancellation preserves native
 reservations until verified termination.
 The generic CLI cannot review. Workflow CLI/TUI, independent review sets (#9),
-approval routing (#10), native recovery (#14), GitHub outcome reconciliation (#13), and production Context Pack publication (#19)
+approval routing (#10), owner/restart recovery (#14), GitHub outcome reconciliation (#13), and production Context Pack publication (#19)
 remain pending. Issue #18 repository-context selection is available independently. See [Workflow Engine](doc/design/master/workflow-engine.md).
+
+Issue #41 implements passive observation of agent preparation reservations and
+release only by their committing owner after a verified eligible preparation error.
+Issue #14 must reconcile orphaned undispatched attempts, dropped futures/crashes,
+inactive-owner preparation errors, definitive-decision publication conflicts,
+marker Project/Goal-version conflicts (including Project/Goal metadata edits and
+lifecycle ABA), release-token Record-version mismatches, untyped/unknown marker
+errors, release CAS/executor-Lost fence failures, post-dispatch Session-binding
+conflicts and unknown reversible Evaluating claims.
+
+A marker without a Session does not prove launch began.
+Retaining a failed decision publication prevents turning an intended
+definitive failure/invalidation into automatic retry. Existing explicit terminal
+reservation recovery stays available under its terminal-Task/dispatch fences.
+External GitHub/irreversible gate outcomes are reconciled by #13.
+The limited #14 retry fence refuses native marked attempts with no bound Session
+through both `retry` and the Store closure transaction. Ordinary observation does
+not replay them. A start error, even a fixable configuration error or a matching
+terminal Session row, supplies no trusted outcome proof. These attempts block
+Task/Goal progress and Project removal until genuine original-attempt recovery
+exists; there is no operator retry or terminal-release escape. Pre-marker failures,
+resolved bound Sessions and nonirreversible EvidencePort retries remain supported.
+The genuine original-attempt recovery producer and whole #14 recovery remain open. Native provider integration also needs an atomic Session-binding
+publication (#43) that preserves the unchanged Task version; the current coordinated write
+increments it and can invalidate the provider's admitted snapshot.
 
 The repository pins Rust 1.91.1 (minimum supported Rust 1.91) with rustfmt/clippy.
 
@@ -363,3 +399,27 @@ support `--json`. Display-name ambiguity requires a UUID.
 Interrupted worktree creation or invalidated review locks can retain reservations;
 explicit audited lock reconciliation CLI is pending in restart/recovery work.
 Removal remains blocked until those reservations are reconciled.
+
+Shared macOS owned-process inspection is under STRICT follow-up
+[Issue 46](doc/requirements/issue-46-requirements.md). The implementation uses exact-group,
+bounded-diagnostic and unreaped-leader observation, preserving existing timeout and
+uncertainty guards. Verification and independent review results are recorded in
+[Issue46 evidence](doc/verification/issue-46.md). Non-atomic
+sampling and partial-success KILL with non-signalable survivors remain explicit
+limitations.
+
+Grok native environment reference isolation has an MVP-blocking follow-up
+[Issue51 requirements](doc/requirements/issue-51-requirements.md): synthetic foreign
+Project references reached an owned fake ACP child. Global native auth/settings/hooks
+remain intentional; requirements/design/source gates precede the environment fix.
+The [approved design](doc/design/issue-51-design.md) specifies actual pre-spawn admission
+and explicit availability limits. The source candidate adds scoped admission; independent
+source/default/CI gates and real native integration remain tracked in verification.
+
+Inspector timeout diagnostics follow the approved STRICT [Issue60 component design](doc/design/issue-60-inspection-design.md).
+The diagnostic-only implementation adds finite failure facts while preserving existing
+cleanup/Unknown authority. Two independent Source2/Source3 approvals cover this
+diagnostic slice; final metadata-head CI remains pending under the recorded partial
+gate disposition. Local full release555 FAILED, cause and regression status unknown.
+No backend availability fix or owned-reader/workload settlement is claimed; full #60
+and native acceptance remain open.

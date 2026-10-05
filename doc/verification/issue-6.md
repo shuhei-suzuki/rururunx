@@ -1,0 +1,719 @@
+# Issue 6: Native Codex verification in progress
+
+This evidence is partial; Issue 6 capability completion remains open. The finite
+Stage A EMPTY/no-effect foundation has the scoped Source3 approvals and exact-tree
+CI recorded below, and can be considered for a limited merge separately. Required
+ready native workloads, TUI/attach and Stage B ownership/settlement remain
+unavailable. Historical checks and pending statements apply to their named heads.
+
+## Grok structured trait integration (component evidence)
+
+The merged Issue 7 provider already accepts caller schemas through its inherent
+API. Issue 6's additive object-safe structured-start API now delegates Grok's
+registry dispatch to that same implementation. Causal fixtures retain the inherent
+and standard registry launch paths, add concurrent constrained registry launches,
+and exercise enum, required-property and additional-property rejection through
+both inherent and trait dispatch. Live decision tools remain rejected.
+
+At isolated immutable `43e2567a3b098b0ba6ad0fd15b1933a9a9e29c7a`, the concurrent
+registered/inherent/standard launch control passes (one test, 5.86s). Both APIs'
+enum/required/additional-property and live-tool rejection control passes (one
+test, 16.68s). The initial additional release assertion incorrectly expected a
+Lost Session to release; its failure is retained and the corrected assertion
+proves that uncertainty keeps its reservation. M634 (omit the trait override)
+and M635 (ignore the caller schema) both compiled and failed actual consumer
+assertions. Exact restored control passes; the isolated mutation worktree is clean.
+Formatting and all-target Clippy with warnings denied pass.
+
+The actual installed Grok registered-schema decision first failed after 9.15s
+with an uncorrelated string ACP response (not a matching decimal request ID or
+exact prompt/native terminal). A single identical-head repeat passes in 26.40s.
+Both observations are retained; no correlation check was relaxed and the failed
+run receives no acceptance credit. This fixture keeps its existing explicit
+`grok-4.7`/`low` request, native auth/config/hooks and isolated zero-tool Project.
+It establishes one real successful trait-dispatched constrained decision, not
+native reliability under all timing or Issue 9 Review Set/Broker acceptance.
+Production was cherry-picked byte-identically to `65aa940`. The complete Grok
+production receiver and shared trait authority were subsequently supplied in the
+approved F4 `9f2f3db` composition review; current combined checks are recorded below.
+This is forwarding/component compatibility evidence, not complete Grok native
+workload or Review Set/Broker acceptance.
+
+Evidence: /private/tmp/rururunx-issue6-grok-trait-control.log,
+/private/tmp/rururunx-issue6-grok-trait-rejections.log (initial release failure),
+/private/tmp/rururunx-issue6-grok-trait-rejections-fixed.log,
+/private/tmp/rururunx-issue6-trait-mutation-result.json,
+/private/tmp/rururunx-issue6-grok-trait-actual-native.log (uncorrelated response),
+/private/tmp/rururunx-issue6-grok-trait-actual-native-repeat.log,
+/private/tmp/rururunx-issue6-grok-trait-clippy.log.
+
+## Preparing cancellation design gate
+
+Public immutable `26945b00f7b763b77c6bd2434465a06d612d6b4f` received independent
+native zero-tool design approval in round 5. Findings from rounds 1–4 were
+verified and corrected before implementation: level-triggered exact-attempt
+completion, preserved cancellation/failure cause, atomic consumed-input/stop and
+checkpoint-commit boundaries, independent owned task cleanup on caller drop,
+fresh preparation registration/watch continuity, and claim release before native
+approval observation. Native auth/hooks/default model/effort were retained;
+public-byte-verified delta packets contained no private settings or executor chat.
+Resumed raw usage/API-duration gauges are unattributed, not incremental metrics.
+This is design approval only. Preparing cancellation implementation/consumer
+proof and native containment/Decision-CWD/config-provenance closure remain pending.
+
+## Installed native execution
+
+Installed Codex CLI 0.160.0 used existing authentication/configuration/hooks/trust
+and its unspecified native model/effort defaults (`gpt-6.1-sol`, `high`). No OAuth
+extraction, direct inference API, global config/auth/trust write, bypass flag,
+profile inheritance, native reviewer substitution or foreign user repository was
+used. Fixtures are two independent temporary committed Git repositories with
+Project/Goal/Task/WorktreeManager ownership and durable SQLite Sessions.
+
+At production commit `bba475b1c0177be22a11372bfc87e77a094b9033`, actual Executor
+native UUID `01a100b0-7956-70a1-aff3-e36c1e4f6f86` created and physically verified
+`result.txt` containing exactly `NATIVE_EXECUTED\n` in its owning Task worktree.
+Foreign Scope was rejected; the other Project had no result artifact. The Session
+persisted Exited with PID cleared only after confirmed owned group cleanup.
+Observed entire-turn native usage: input 22,603, cached input 10,880, output 269,
+total 22,872; monetary cost unavailable. This includes both model/tool cycles,
+instead of reporting only the final call. Context Pack payload was 216 bytes.
+
+Actual immutable review and checkpoint/resume used the same rrx Session/native
+UUID `01a100b0-763f-7082-83a0-b6239875aa5a`. Supplied synthetic `clamp(x)=x-1`
+returned the real witness `x=0 => -1`, then `x=-3 => -4` after resume. The second
+turn retained native identity/defaults, rejected foreign Scope and persisted
+verified Exited. Observed second-turn usage after subtracting the owned prior
+gauge: input 9,663, cached 0, output 37, total 9,700; cost null. Checkpoint version
+2 and updated 123-byte input were attributed correctly. These model runs verify
+native transport/structured review, not independent implementation-source review.
+
+## Committed Rust controls
+
+At `50c027d`, all 131 workspace tests passed, including 34 Codex tests. Formatting,
+all-targets Clippy with warnings denied and locked offline release build passed.
+Tests cover actual owning Git roots/worktrees, dirty immutable reviews, directory
+replacement with identical HEAD, lock ABA, lifecycle/version/scope conflicts,
+native PID/PG authentication and exact socket cleanup, bounded WebSocket frames,
+early events, cumulative usage, resume baselines and counter resets.
+
+Unix WebSocket callback regressions verify exact one-time replies and audit
+intent, Human-route grant rejection, previous-turn/replayed/cancelled replies,
+changed Session owner, paused Goal and injected audit failure before wire delivery.
+These are protocol fixtures, not a claim of real installed native approval routing
+or completed Cross-Agent Approval dogfood. Native default automatic review is
+retained; explicit broker opt-in requires its existing client route and is rejected
+before inference otherwise. Persistent or additional permissions are unsupported.
+
+The previous native TUI reconnaissance connected an exact stored UUID to an owned
+private server and retained its trust prompt. That establishes transport/native
+gating only. Final interactive lifecycle and operation evidence remains pending.
+
+
+## Workflow integration and latest installed native proof
+
+Workflow #8 merged at `1c44316ee5d4092c3d519782350c6463aa94269f` on latest
+product requirements v0.8. Root Codex production bytes were preserved during the
+rebase; shared additive structured-start and transport-completion APIs are both
+retained. At `cfcbfcc`, all 203 workspace tests and two doctests passed. At
+`bba7acc8f16d8a6b43c2d48b6a634c24b20658f5`, 57 Codex regressions and all-targets
+Clippy with warnings denied passed. Final full/build/CI gates remain pending.
+
+The installed experimental protocol is conformed against `codex-cli 0.160.0`.
+An owned, bounded `--version` subprocess rejects unknown versions before native
+thread/model use. Initialize metadata must include bounded absolute native home,
+userAgent and the local Unix platform; userAgent is not treated as a binary
+version or peer credential. IPC peer/process-group authentication remains separate.
+
+At `bba7acc`, Executor native UUID `01a1011f-4113-7e12-ad70-187c2d866534`, rrx
+Session `2534da9f-0574-4888-bb18-f57014983370`, physically created the exact owning
+`result.txt` artifact again. Foreign scope/artifact checks passed; verified Exited
+has no PID and no fabricated process exit code. Workflow `transport_succeeded`
+accepted the private completed native-turn journal after cleanup and persistence.
+Native entire-turn usage was input 59,533, cached input 43,648, output 438, total
+59,971, cache-write input 0 and reasoning output 32. Context payload 216 bytes,
+phase implementation, version 1; cost unavailable. These are observed native
+multi-cycle counters, not an efficiency benchmark.
+
+The concurrent independent review/resume fixture used native UUID
+`01a1011f-4116-7210-aed5-9de54c974358`, rrx Session
+`a83f21b1-0a1c-4e77-917c-b99856f4c6bd`. Real mathematical witnesses were
+`clamp(0)=-1` and `clamp(-3)=-4`. The second turn retained the same identities and
+native `gpt-6.1-sol`/`high` defaults, with an explicit fresh checkpoint version 2.
+Its input was 13,088, cached input 0, output 37, total 13,125, payload 123 bytes,
+phase review, round 2; cost unavailable. Workflow private completion accepted
+both turns and all owning groups were confirmed cleaned before persisted Exited.
+These transport fixtures do not substitute for independent source review.
+
+Fresh continuation input is mandatory before resume: version must advance beyond
+the last persisted attempt. Cached mutating prompts are never implicitly replayed.
+A failed pre-inference attempt with confirmed cleanup restores the old terminal
+record/watch and may retry the explicit continuation. Post-inference uncertainty
+remains Lost; a known failed attempt is not silently retried. Explicit checkpoint
+can refresh mutable own Project metadata, while root/repository/base/namespace
+identity cannot change. Observations hold the registry owner and compare persisted
+turn/journal under short locks so resume cannot mix old counters/new context.
+
+## Independent native source review, findings verified
+
+Public immutable baseline `c854c4acbd96b029d6fcd31c2aa9fc88ef7339ab` was reviewed
+by two independent real native Claude CLI zero-tool runs, using only public source
+bundles, requirements/design and verification facts. Neither reviewer received
+another reviewer's findings before completing. Native defaults/auth/settings were
+retained; no executor transcript, private credentials, target-operation tools,
+permission bypass, explicit model or effort override was supplied. Owned process
+cleanup was confirmed for every counted terminal run. This is current manual
+source verification, not completed Issue 16 multi-provider Review Engine dogfood.
+
+| Review | Native session | Result | Native API time / observed cost |
+| --- | --- | --- | --- |
+| Lifecycle | `e926d6ed-722f-4825-87e4-ffaae114af18` | request changes, 1 High / 4 Medium / 5 Low | 554,366 ms / USD 1.738104 |
+| IPC / grants | `1f3a6a55-2009-4c93-9ffe-b85ae9f599bb` | request changes, 1 High / 3 Medium / 4 Low | 579,872 ms / USD 1.573696 |
+
+An earlier oversized IPC bundle exceeded its 600-second deadline. That invocation
+was stopped with confirmed owned group cleanup and contributes no review verdict.
+Both counted reviewers completed independently before findings were shared.
+
+Verified lifecycle fixes: serialize resume/checkpoint/release/eviction transitions;
+restore terminal authority/watch on failed pre-inference resume; keep Lost/PID and
+scoped diagnostic when **any** owned Git/native group cleanup remains uncertain;
+keep transient rejected grants pending/deniable; unrelated Project registration
+must not revoke another Project's grant; unavailable stopped/resume gauge baseline
+and replay mismatch stay null; no native server exit-zero becomes model-turn
+success; checkpoint monotonicity and real Git validation precede replacement;
+repeated stop is idempotent; explicit checkpoint refreshes own mutable metadata.
+
+Verified IPC fixes: bind grants to reviewed command/CWD or bounded native planned
+file patch, method/arguments/content digest, Task workspace and current identities;
+reject path traversal, outside/symlink/hard-link targets and unknown patch facts;
+retire resolved/completed native requests without runtime grants; reject unknown
+native human-input/other requests explicitly with a bounded protocol error and
+scoped audit; preserve native retryable errors and validate embedded start IDs;
+remember high-water token counters across missing snapshots; verify initialize
+shape and native binary compatibility before inference. Native commandActions are
+best-effort display metadata, not proof of every shell target; the native scoped
+sandbox and denied escalation remain the command boundary.
+
+Residual limitations: production native Interactive/Attach and its exclusive
+Human-versus-broker grant route are pending, so no concurrent TUI/client grant
+capability is advertised. Native user-input replies are unavailable in the current
+noninteractive route. Commit `38d1cad` addresses the Low startup alias readiness
+and cleanup failure findings: a dangling alias retries only while its target is
+absent within the existing startup deadline; wrong UID/mode/namespace/peer remains
+fatal. An unverified cleanup retains the original sanitized failure as well as
+the cleanup failure. All 59 Codex regressions passed at this commit. A final delta source
+review must include full shared ProcessGroup inspect/cleanup/reap/Drop helpers;
+the original IPC excerpt supplied only part of that helper. Final Linux/macOS CI
+is still required; no merge approval is claimed here.
+
+## Semantic mutations at the current production baseline
+
+At immutable `38d1cad942485a74dcf14d950df5356c64f87250`, 13 independently
+compiled mutants were killed by assertion failures in the existing causal tests:
+
+| Mutation | Removed guarantee | Causal regression |
+| --- | --- | --- |
+| M601 | private native completion authority | caller recovery cannot fabricate completed turn |
+| M602 | observed turn identity | stale telemetry/pending approvals rejected |
+| M603 | fresh continuation version | cached prompt cannot be implicitly replayed |
+| M604 | original failure after uncertain cleanup | both sanitized causes retained |
+| M605 | operation-content digest | changed operation cannot claim reviewed approval |
+| M606 | hard-link ambiguity rejection | native planned patch cannot grant a linked foreign target |
+| M607 | uncertainty from any owning process group | Lost retained when a separate Git group is unverified |
+| M608 | exact native version conformance | unknown native version rejected before a turn |
+| M609 | exclusive transition claim | release and another resume cannot race a claimed attempt |
+| M610B | counter high-water memory | missing snapshot cannot conceal a later native reset |
+| M611 | native CWD binding | foreign native thread CWD rejected |
+| M612 | effective native permission profile binding | writable profile cannot replace decision restriction |
+| M613 | actual native tool inventory verification | surviving tools and discovery errors fail closed |
+
+The first M610 attempt matched no source anchor and receives **no mutation credit**;
+M610B is the separately compiled semantic replacement that actually failed its
+assertion. Every mutation ran in an owned detached temporary worktree, with
+byte-exact restoration in `finally`; all 59 original Codex tests passed after
+each batch's restoration. Compiler errors, runner failures and timeouts receive
+no kill credit. No production branch was mutated by these runs.
+
+## Native TUI gateway reconnaissance
+
+At `4d2aa5e343c1f1e158f819711ad8d8f50fa6d98c`, the complete workspace passed
+216 Rust tests and 2 doctests; fmt, all-targets clippy with warnings denied and
+release build passed. Nine newly compiled semantic mutants were killed by
+assertions: actual dispatch caller CAS (M616), unknown native outcome after
+loss/stop (M617), abandoned consumed resume (M618B), complete JSON wire bound
+(M619), each parent version (M620C), lock ABA (M621), Session CAS (M622), atomic
+intent audit (M623), and pre-wire consumed boundary (M624). Originals were restored
+byte for byte and all 65 Codex regressions passed after every batch. Initial
+ambiguous M618/M620/M620B attempts have no credit; only their separately compiled
+replacement variants count. This is regression evidence, not native TUI acceptance.
+
+CI run `37119853652` failed on macOS and cancelled Ubuntu through matrix
+fail-fast, so neither host receives a completed CI pass at that head. macOS failed the existing
+same-HEAD replacement test's successful fresh Git check. That assertion hid the
+returned cause; replace it with `unwrap` to preserve sanitized adapter diagnostics.
+The cause remains unverified, and no process-ownership guard, cleanup latch or
+deadline has been relaxed. Independent TUI design re-reviews still request changes
+to live human-turn state, native-home isolation, trust/policy and PTY cleanup;
+no implementation or merge verdict is implied by completed design reviews.
+
+At `7075fcd`, two further compiled semantic mutants (M614/M615) removing cleanup
+uncertainty handling from discovery success or setup failure were killed by
+assertions. The original 60 Codex regressions passed after byte-exact restoration.
+The subsequent atomic dispatch/source pinning/Lost changes require fresh checks,
+mutations and full independent source review before merge; these earlier results
+do not validate later edits.
+
+An actual installed native CLI connected through a temporary private Unix gateway
+to stored mathematical-fixture UUID `01a10137-f77b-76c3-aa2c-407dd1ba0050`.
+Observed native client methods were `initialize`, `initialized`, `account/read`,
+`thread/read` and `config/read`. The real terminal remained alive at the native
+trust gate; the owning native UUID was unchanged, and both owning process groups
+were confirmed dead before reaping their leaders. No trust choice, target
+operation, config/auth write or additional permission was supplied.
+
+This proves native metadata transport and retained native gating only. The
+temporary gateway is reconnaissance, not production authorization or a reviewed
+scope implementation. In particular, metadata allowlisting does not establish
+safe configuration projection, actual conversation, new-turn attribution or
+exclusive Human/broker authority. Production Interactive/Attach remain unavailable.
+
+## Exact-scope dispatch and second implementation-source review
+
+At `e67c38becb1059fa88a61225b280d6b682651b32`, 67 Codex regressions passed.
+Actual Unix WebSocket dispatch covers Project-only and Goal-only source Consult
+with both active and historical descendant Task review locks. Exact optional
+Scope filtering agrees with the Store's nullable-scope CAS; Task lock ABA remains
+fenced. M625 removing that filter and M626 omitting the actual checkpoint input
+pinning call compiled and failed assertions; byte-exact restoration passed all
+67 Codex regressions. fmt, all-targets clippy with warnings denied and release
+build passed. Full sequential workspace execution passed 218 Rust tests plus two
+doctests. The ordinary parallel workspace execution failed four existing Context
+tests with an observed `native process inspection timed out` cause. Preserve that
+failure; a serial pass does not prove default parallel acceptance.
+
+CI `37123017200` at this exact head failed Ubuntu's existing Workflow concurrent
+step test: expected one native launch, observed zero. macOS was **cancelled** by
+matrix fail-fast, not an independently observed macOS test failure. Source
+verification found `WorkflowEngine::poll` clearing a still-preparing undispatched
+reservation. [Issue 41](https://github.com/shuhei-suzuki/rururunx/issues/41)
+tracks the separate shared Workflow fix and deterministic interleaving proof.
+The earlier same-HEAD worktree CI failure remains unexplained; do not attribute
+that historical failure to this newly observed local inspection timeout.
+
+Two independent native Claude default-model/default-effort, zero-tool/strict-empty
+MCP source re-reviews received equivalent factual complete public files, verified
+against a clean immutable checkout at e67. Both included the full shared
+ProcessGroup inspection/cleanup/reap/Drop, Store CAS and domain authorities; no
+private config, credential, executor transcript or peer conclusions were passed.
+Both completed before their findings were shared and had verified owned cleanup.
+
+| Focus | Native Session | Verdict | Native API time / observed cost |
+| --- | --- | --- | --- |
+| Lifecycle | `769abc92-1c51-4788-9f30-465dceb1cc1e` | request changes | 559,802 ms / USD 2.775048 |
+| IPC/grants | `6082fbfb-4da4-4f38-a94c-58b1bf4dd643` | request changes | 551,034 ms / USD 2.803752 |
+
+Verified shared finding: a live main server's ownership flag made every rejected
+grant preflight fatal. At `c069828fc7948c3901db7fd755baf875c280a791`, preflight
+checks only newly created groups, retains all flags through cancellation, and
+keeps a cleanly rejected native request deniable. Actual wire regressions now
+include the live prior-server flag. All 68 Codex regressions passed sequentially;
+fmt and all-targets clippy with warnings denied passed. M627 restoring the live
+server fatal check and M628B ignoring new cleanup uncertainty compiled and failed
+assertions; all 68 original Codex tests passed after byte-exact restoration. The
+initial unmatched M628 source anchor received no execution or kill credit.
+Default parallel Codex execution failed 14 tests with inspection-timeout evidence;
+the targeted grant regressions passed in that run. No timeout, death guard or
+cleanup latch was relaxed.
+
+Other verified/open findings remain before merge: the stop/cancel bounded-drain
+fix below still needs independent source re-review; stop during resume setup can
+target the retired channel; ApprovalReviewer lacks the immutable decision-CWD
+boundary; provider environment references lack native config-layer provenance;
+and Blocked-owner conservative Lost publication needs the narrow shared Store
+guard being implemented by Issue 19. Issue 19 also supplies the missing verified
+restore/consumed-intent guard; current e67 alone does not enforce that checksum.
+Native descendant containment, startup hooks and complete zero-tool conformance
+need primary-source/runtime evidence before treating speculative effects as
+observed defects or accepting the boundary. The proposed session-isolation helper
+is design-only. Protected Project environment routing is already rejected by
+`project::validate_environment`, called by `native_environment`; the review's
+omitted-file concern is not evidence that the guard is absent. Include the full
+Project authority in the next source bundle. No source approval or merge is claimed.
+
+## Frontend sandbox conformance, still partial
+
+Installed native `codex sandbox -P ... --include-managed-config` was exercised
+against isolated non-secret fixtures with an own-source read-only profile, private
+frontend-home write access, disabled network and denied shared temporary roots.
+Own source read and frontend write succeeded; foreign source read/write, fake
+native-auth read and own-source write failed with no canary exposure or file
+creation. Explicit read access to the exact installed native executable allowed
+`codex-cli 0.160.0 --version`; granting only its Node launcher script was insufficient.
+Each owned group was verified dead before reaping. These checks do not prove
+network/Unix-socket confinement, actual native PTY conversation, trust projection,
+descendant cleanup or complete frontend bootstrap. Existing native authentication,
+trust and global configuration were not modified. Interactive/Attach remain pending.
+
+## Historical turn identity fix (1725914)
+
+Verified lifecycle review F7's stale identity concern: fresh Starting input still
+carried the previous native_turn. pin_starting_input now moves it to explicitly
+historical previous_native_turn; the acknowledged new turn supplies native_turn.
+The actual checkpoint/resume regression uses SQLite Starting triggers to require
+both absent current turn and exact historical turn alongside the already checked
+input SHA/metadata and rollback checksum. Original terminal Session/watch restore
+remains byte-equivalent after checkpoint or pre-inference failure.
+
+Exact source17259143fddee59b8c3e90b27fe84fa0561997fe: focused caller regression
+passed (1 test, 1.89s). Compiled mutant M629 removes the production identity move
+and is assertion-killed by that caller; byte-exact restoration passes the original.
+Evidence: /private/tmp/rururunx-issue6-172-turn-identity.log,
+/private/tmp/rururunx-issue6-172-M629.log and
+/private/tmp/rururunx-issue6-mutation172-extra-result.json. This does not resolve
+the remaining independent review blockers or establish new native/TUI acceptance.
+
+
+## Stop/cancel bounded drain (cb913fd)
+
+Interrupt sends only the correlated RPC through the sole supervisor-owned writer;
+the supervisor keeps reading until an exact current-thread/current-turn native
+terminal, transport failure, or the unchanged five-second bounded interrupt drain.
+The interrupt acknowledgement alone does not establish terminal state. Grants
+received during drain are audited and denied without granting the operation.
+Valid interrupted completion plus verified owned group death yields Stopped;
+ack-only, foreign completion and unknown termination remain conservative Lost.
+
+At source cb913fd3669ffc57c08c4a9de34a0941d7b8baeb, the actual supervisor regression
+passes (1 test, 10.55s), with synthetic native RPC and a real owned subprocess;
+this is not an installed-native bootstrap/containment acceptance claim. M630
+(stop premature break), M631 (cancel premature break), M632 (draining callback
+approval) and M633 (omitted exact completion identity) all compiled and failed
+consumer assertions. Byte-exact restored control passes. The initial 3762598
+compile failure lacked a test-only SinkExt import and receives no test credit.
+
+Exact cb913fd formatting and all-target clippy with warnings denied pass. Full
+workspace **serial** execution passes 220 Rust tests plus two doctests, including
+133 library, 19 adapter, 5 CLI, 16 context, 18 domain, 16 Git and 13 Store tests.
+This does not establish default-parallel conformance or explain earlier inspection
+timeouts. No native process inspection deadline or cleanup uncertainty guard was
+relaxed. Remaining high-severity source-review findings continue to block merge.
+
+Evidence: /private/tmp/rururunx-issue6-stop-drain-compilefix.log,
+/private/tmp/rururunx-issue6-mutation-stop-drain-extra-result.json,
+/private/tmp/rururunx-issue6-cb9-fmt.log,
+/private/tmp/rururunx-issue6-cb9-clippy.log,
+/private/tmp/rururunx-issue6-cb9-workspace-serial.log.
+## Preparing cancellation helper stage (historical 543505c)
+
+Private Git and native bootstrap waits retain their actual owned ProcessGroup
+outside the cancellation select, latch the first cause before cleanup, then kill,
+inspect and reap before returning cancellation. Shared adapter Git helpers and
+existing five-second Git/15-second listener/250ms inspection-reap budgets remain.
+Native bootstrap initialization borrows its already-owned process through the
+cancellable RPC wait. A selected cancellation never maps its killed exit into a
+fabricated ownership failure.
+
+At clean committed `543505c`, unchanged default-concurrency Codex unit regression
+passed **72 tests** in 16.68 seconds. All-target Clippy with `-D warnings` and fmt
+passed development checks; final combined exact-head build/CI remain pending.
+Actual owned Git/bootstrap cancellation fixtures verify returned cancellation,
+confirmed cleanup and reaped leader; first-cause/pre-spawn checks also pass.
+Compiled M636 (omit cancellation wake), M637 (map cancellation to OwnershipMismatch)
+and M638 (omit explicit group kill before reap) each fail the actual owned Git
+consumer assertion. M636 waits the unchanged five-second Git deadline and fails
+the two-second cancellation response assertion; M637 fails the typed cause; M638
+retains SessionLost uncertainty instead of a confirmed cancellation. Every mutant
+was committed before testing in its isolated worktree. Exact source bytes were
+restored after each; initial/restored controls pass. Result ledger:
+`/private/tmp/rururunx-issue6-preparing-mutations-result.json`.
+The helper cancellation trigger was test-only at this historical stage. Registry
+attempt installation, caller-drop owned task, consumed-input linearization,
+checkpoint commit and captured-attempt stop had not yet been implemented.
+Helpers are not whole-native descendant containment proof.
+
+## Registered preparation and cancellation implementation (source review pending)
+
+Private controls are installed before fresh-start/resume/checkpoint work. A retained
+owned task finishes cleanup and exact restoration/publication after caller drop.
+Consumption/checkpoint replacement and cancellation are ordered under one mutex;
+failed CAS retains its first actual cause. Stop uses only its captured control's
+level-triggered outcome and exact Session snapshot. The same stop receiver survives
+native acknowledgement and transfer; the transition claim is released with the
+Supervised installation so approval/usage observers can operate on the live turn.
+
+At clean `505ef92993a854c90db5f9318f01d1f28da8c31d`, default-concurrency debug and
+release workspace runs each passed **257 Rust tests plus two doctests** (three
+intentional ignored fixtures). Formatting, all-target Clippy with warnings denied,
+and debug/release builds pass. Exact-head Linux/macOS CI run
+[37185132873](https://github.com/shuhei-suzuki/rururunx/actions/runs/37185132873)
+passes. This CI runs release build, not the separate local release test suite.
+
+Actual consumers use isolated Git repositories, independent SQLite writers and
+owned same-test-binary Unix RPC peers: pre-Starting caller drop, real Git/bootstrap
+cancellation, exact resumed Session/output restoration, checkpoint/stop both linear
+orders, a captured stop A while B prepares, restore publication failure, held
+failed admission cleanup, queued stop before acknowledgement, missing/expired
+acknowledgement and resumed approval/reply observation. The expired RPC test uses
+the unchanged 30-second native deadline; uncertain consumed completion stays Lost
+after verified owned process cleanup. Synthetic peers do not establish installed
+native inference, authentication, detached-child containment or actual Broker use.
+
+At `0f8c5bc`, the actual SQLite mutex-order/failed-write consumer and the
+post-consumption caller-drop idle receiver control both pass. Ten compiled
+mutants are assertion-killed in isolated committed sources: M639 caller-drop
+cancellation, M640 failed-CAS latch, M641 checkpoint terminal admission, M642
+stop receiver transfer, M643 supervision claim release, M644 captured-attempt
+wait, M645 level-triggered completion, M646 mutex order across actual SQLite CAS,
+M647 owned task lifetime, and M648 completion before cleanup/publication.
+M640/M642 initially survived narrower consumers;
+those failures of the test strategy receive no kill credit. Direct CAS-return and
+unsolicited-interrupt assertions distinguish the protection, and the identical
+mutants fail the strengthened consumers. Every mutant's original source bytes
+were restored and committed before further verification. The original held-cleanup
+control passes at `d8d2ef1`; M648 is also killed. The exact-restored full Codex
+control passes 88 tests (one synthetic child entry ignored) in 36.02 seconds.
+
+Initial compile failures (`d97db98`, `2a67557`), sandbox process-access
+failures (`4c62671`), the incorrect synthetic version assertion and abrupt-close
+fixture classification failure (`27d7fe2`) are retained and receive no passing
+credit. Existing historical default inspection failures remain recorded; no
+inspection, Git, native RPC or cleanup deadline was relaxed and no serial test
+policy was substituted. Final immutable implementation review and exact final
+combined-head checks are pending. Native descendant, Decision-CWD, configuration
+provenance and interactive/attach boundaries remain separate open blockers.
+
+Evidence: `/private/tmp/rururunx-issue6-f4-505-workspace-debug-host.log`,
+`/private/tmp/rururunx-issue6-f4-505-workspace-release-host.log`,
+`/private/tmp/rururunx-issue6-f4-stage8-clippy.log`,
+`/private/tmp/rururunx-issue6-f4-505-build-debug.log`,
+`/private/tmp/rururunx-issue6-f4-505-build-release.log`,
+`/private/tmp/rururunx-issue6-f4-mutation-results.json`,
+`/private/tmp/rururunx-issue6-f4-mutation-results2.json`,
+`/private/tmp/rururunx-issue6-f4-mutation-results3.json`,
+`/private/tmp/rururunx-issue6-f4-mutation-results4.json`.
+
+At clean `069fa88c647a14af2c6ffb05f0539f652765b4dc`, default-concurrency full
+workspace debug and release tests each pass **259 Rust tests plus two doctests**;
+formatting, all-target Clippy with denied warnings and debug/release builds pass.
+A final audit then found a task-owner mutex held across Tokio submission. Pinned
+Tokio 1.53.1 synchronously shuts down newly submitted tasks when its scheduler is
+closed ([primary source](https://raw.githubusercontent.com/tokio-rs/tokio/tokio-1.53.1/tokio/src/runtime/task/list.rs)).
+Reentrant TaskGuard release could deadlock that mutex. The next source stage uses
+an Installing/Released owner level without holding the mutex across submission or
+JoinHandle destruction. Closed-runtime, missing-runtime and unpolled-runtime-drop
+consumers pass at clean `fe127ee` (four controller tests, no native/Git child).
+Compiled M649 restores the actual lock-across-submission race and fails the bounded
+closed-runtime consumer after two seconds. Exact source was restored and committed;
+no OS child was orphaned. This is the eleventh killed F4 mutation. Final combined
+checks and independent source reviews remain pending; the earlier passing suite
+does not establish approval of this later production fix. Native defaults and all
+process/transport deadlines remain unchanged. The earlier `069fa88` exact Linux/macOS
+CI [37186707768](https://github.com/shuhei-suzuki/rururunx/actions/runs/37186707768)
+passes and is attributed only to that source, not this new fix.
+
+Evidence: `/private/tmp/rururunx-issue6-f4-runtime-control.log`,
+`/private/tmp/rururunx-issue6-f4-mutation-results5.json`,
+`/private/tmp/rururunx-issue6-f4-M649-round5.log`,
+`/private/tmp/rururunx-issue6-f4-final-gates-result.json` (earlier `069fa88`).
+
+At clean `a7a219b9e5d274102154ecf1df436ff3f50d5a77`, full default-concurrency
+debug and release tests each pass **261 Rust tests plus two doctests**. Formatting,
+all-target Clippy with denied warnings and both builds pass. Exact Linux/macOS
+CI [37187319029](https://github.com/shuhei-suzuki/rururunx/actions/runs/37187319029)
+passes. Two peer-free native source reviews of its public-byte-verified complete
+production authorities both return request_changes, not approval. They identify
+the final-publication/next-attempt window, unnecessary pre-first-write restoration,
+lost cleanup diagnostics and the installed approval-journal pointer on abnormal
+drop. The following source stage addresses these defects with actual invocation
+fixtures; its compilation, controls, mutations and re-review are pending. Earlier
+checks apply only to their exact committed heads.
+
+Review evidence: `/private/tmp/rururunx-issue6-f4-review-A-result.json`,
+`/private/tmp/rururunx-issue6-f4-review-B-result.json`,
+`/private/tmp/rururunx-issue6-f4-public-manifest.json`,
+`/private/tmp/rururunx-issue6-f4-a7a219b-gates-result.json`.
+
+Clean `89de50a` compiles and its complete default-concurrency Codex suite passes
+**94 tests** (one synthetic child entry ignored) in 38.94 seconds. All four new
+consumers pass. Its first all-target Clippy run rejects the explicit-drop test
+MutexGuard scope; the next test-only change uses a lexical scope before awaiting.
+The failed lint log is retained, not credited as passing. No production admission,
+process deadline or internal parallelism changed for this correction.
+Evidence: `/private/tmp/rururunx-issue6-f4-89de50a-codex.log`,
+`/private/tmp/rururunx-issue6-f4-89de50a-clippy.log`.
+
+Seven further compiled causal mutants are assertion-killed against the clean
+`89de50a` production/test control: M650 predecessor Finished fence, M651 duplicate
+post-publication watch send, M652 historical-version-as-new-publication inference,
+M653 installed journal rebinding, M654 Lost caller error, M655 private cleanup
+detail retention, and M656 later cleanup kind retention after an earlier failed
+cause. Each isolated mutant was committed before verification, then its exact
+three-file control was restored and committed. Total F4 compiled mutation kills
+are **18**, with the earlier narrow-test survivors still recorded without credit.
+The cleanup-uncertainty test uses a synthetic ownership flag plus actual
+Reservation/Store/error publication; it is not an induced host inspection failure.
+The abnormal-drop fixture is an actual owned synthetic Unix RPC child and keeps
+its runtime alive until the child is reaped, while its operation remains Lost.
+Evidence: `/private/tmp/rururunx-issue6-f4-mutation-results6.json`,
+`/private/tmp/rururunx-issue6-f4-mutations6-run.log`.
+
+## F4 composed immutable source approval
+
+Normal merge `9f2f3db8f098c52ecca1f615577bbb33549eb523` includes reviewed
+main `80452f4` (#46 bounded inspection) while preserving the public `a7a219b` and
+`8526c75` ancestry. Its three Codex F4 files are byte-identical to `8526c75`.
+Additive conflicts preserve both design sections and the existing crate-private
+ProcessGroup API plus the reviewed test inspection plan. Exact-head formatting,
+all-target Clippy with warnings denied, debug/release builds and default-concurrency
+workspace debug/release tests pass: **277 Rust tests plus two doctests in each
+profile**. Exact Linux/macOS CI
+[37191925788](https://github.com/shuhei-suzuki/rururunx/actions/runs/37191925788)
+passes. CI has release build; the separate local release test suite also passes.
+The interim `8526c75` PR had no new CI because it conflicted with main, not a
+passing CI result; the normal merge resolves that conflict.
+
+Two independent native Claude manual source sessions each continue only their
+own earlier full-authority review. The same peer-free packet contains complete
+changed production authorities, changed caller tests, the literal delta and
+unchanged original-authority hashes; public archive bytes match Git objects.
+The packet is 637,723 bytes, SHA-256
+`d708ed426c815c166e18c289969686c3028a990c7c704b7a0ea1744fbaf6d410`.
+Both return **approve with zero findings** on exact `9f2f3db`. Normal native
+auth/hooks/rules/default model/effort remain intact; model tools and inherited
+MCP operations are disabled. Each V2 guardian confirms its owned group's death
+before leader reap; native CLI exit is zero. No live review owner remains.
+
+This approval covers F4 registration/cancellation/admission/cleanup/publication
+and its #46 integration. Terminal watch publication precedes Finished by a short
+fail-closed window: checkpoint/resume may temporarily return StateConflict; stop
+can join the captured attempt. The uncertainty fixture uses a synthetic ownership
+flag and real Reservation/Store/error paths, not an induced Codex host-inspection
+failure. Abnormal-drop cleanup keeps the actual synthetic child runtime alive
+until reaping while the operation remains Lost. Native detached-child containment,
+Decision-CWD, native configuration/reference provenance, interactive/attach,
+provider-neutral continuation handling and #19 private settlement integration
+remain separate open boundaries; this is not Issue #6/MVP acceptance.
+
+Evidence: `/private/tmp/rururunx-issue6-f4-9f2f3db-lint-result.json`,
+`/private/tmp/rururunx-issue6-f4-9f2f3db-gates-result.json`,
+`/private/tmp/rururunx-issue6-f4-9f2f3db-ci-result.json`,
+`/private/tmp/rururunx-issue6-f4-main-composition-identity.json`,
+`/private/tmp/rururunx-issue6-f4-delta-public-manifest.json`,
+`/private/tmp/rururunx-issue6-f4-review-A2-result.json`,
+`/private/tmp/rururunx-issue6-f4-review-B2-result.json`.
+Resumed-session cost/usage/duration fields in these native terminal results are
+reported as supplied by the CLI, without claiming incremental or billed cost.
+The V2 harness has real normal-death and persistent Unknown/partial-frame tests;
+its stronger framing is not retroactively attributed to the original A/B runner.
+Evidence: `/private/tmp/rururunx-review-guardian-v2-normal-result.json`,
+`/private/tmp/rururunx-owned-review-guardian-v2-result.jsonl`.
+
+
+## F1 Stage A EMPTY/no-effect component checkpoint
+
+This checkpoint changes production Codex availability to **EMPTY**. It has no
+ready-backend constructor or ordinary producer. Public and private new-effect
+routes refuse before registry, Store/read/lock, filesystem, Git, metadata, native,
+model or grant effects. Completion remains false, and release refuses before
+claiming ownership. A broker flag cannot produce readiness. Private `cfg(test)`
+backend-and-producer inputs exercise the component bodies; they are absent from
+ordinary builds. The 32-entry bound retains unsettled owners without eviction;
+it is not an execution quota, fairness proof or native capacity result.
+
+The requirements and Stage A Design10 approvals remain limited to their exact
+public contracts (`a79850c`, `6cf6adf`). Source1 at `09e658d` has one approve and
+one request_changes, followed by Source2 at `0dc26ad` with two request_changes.
+They are not retrospectively approved. Source2's direct Approve control missed
+Deny/Cancel audit, Session CAS and Grant effects before the lower send refusal.
+Its unchanged checkpoint input also failed before reaching the Store-read site.
+Source3 corrects these controls, observes the actual fresh-unpublished outcome,
+and atomically replaces the synthetic sidecar. Normal main composition preserves
+#55/#41/#51 and #63, including its static `Store::usage` decode-error projection.
+No shared ownership/cleanup authority was changed by the Stage A component.
+
+At clean public `cba0b1d3b52ca643eae7add73b73417138e3ff38`, default-concurrency
+workspace debug and release tests each pass **370 top-level Rust tests plus two
+doctests**, with 26 ignored. The nested ordinary witness child passes one extra
+test, counted separately. Formatting, all-target Clippy with warnings denied and
+both all-target builds pass. The ordinary non-`cfg(test)` child uses a canonical
+registered Project and finite synthetic sentinels; it requires its own final
+positive witness. It is not a real native workload or a managed #19 certificate.
+
+All three approval decisions use separate fresh synthetic fixtures and compare
+Store Sessions/audit, local Session/version/ledger, native peer frames and RPC
+Grant/Frame counters before error labels. A separate fixture consumes input
+through the actual private `Reservation::admit_dispatch` Store CAS; it does not
+send native wire bytes or supply #19 readiness/settlement. Existing no-consumption
+controls are retained. Checkpoint controls use a strictly higher input version
+with distinct payload and observe the pre-Store `ScopeAccess` site. Fresh
+registration checks the actual `FreshUnpublished` outcome rather than inferring
+it from registry removal alone. Every actual synthetic peer is joined before
+effect assertions.
+
+Six compiled Source3 mutants are assertion-killed: omitted approval gate, separate
+Cancel-only and Deny-only bypasses, omitted fresh-unpublished publication, omitted
+initial checkpoint guard, and a widened partial-sidecar window. All corrected
+baseline/restored controls pass and archived source bytes match the immutable
+head. A plain non-atomic truncate mutant **survives without kill credit**. The
+reader/writer barrier and fixed read loop do not prove overlap; this is a
+probabilistic observation. The partial-window mutant adds 10ms only inside the
+mutant and is a separate recorded kill, not detection of every narrow write race.
+The first mutation driver's incorrect expected match count stops before the
+checkpoint operator; its failed run is preserved separately from corrected runs.
+
+Two fresh peer-free native Claude manual source sessions independently approve
+Source3 with **zero Critical/High/Medium findings and one Low each**. Both Low
+findings concern the probabilistic sidecar control, now explicitly qualified in
+its comment and evidence. The supplied 30 public source files match unauthenticated
+GitHub bytes, and the 1,016,469-byte packet has SHA-256
+`07bbcd939eceab038cc62a6c0db3a893f64782bd0bbd9b86c382b9b48f3da5cc`.
+The packet includes all nine current Codex modules and complete composed authority
+files, with explicitly identified requirements/design/master excerpts and exact
+new State-test delta. Other providers' production and full State/Workflow tests
+are omitted; no independent acceptance of those producers is inferred.
+
+Review sessions are `4ad8dc12-1663-4a48-be6c-be4e175e9338` and
+`669a97c3-363e-4872-8339-af85c6e56a79`. Native reported costs are respectively
+USD 0.5985884 and 3.478336, with API durations 249,766ms and 218,818ms. Native usage
+and model-usage values are recorded as returned, without inventing missing fields
+or claiming billed/incremental attribution. Zero tools and strict empty MCP retain
+native auth/rules/hooks/default model/effort. Each explicit Python runtime passes
+the non-reaping `waitid` preflight before spawn; its guardian verifies the actual
+unreaped leader's selected group before reap. That is selected-group evidence,
+not all detached/delegated workload containment or a production settlement.
+
+CI [37239308460](https://github.com/shuhei-suzuki/rururunx/actions/runs/37239308460)
+passes every step on Linux and macOS. Trigger head is `cba0b1d`; both jobs actually
+checkout `84d225ddba33b07c278dda9c81fee18920cbadfd`, whose parents are
+`efe977486693a065122d8fc177b0e83d29620bdc` and the reviewed head. Its tree
+`7a6dbf9e3e90bd484957808acbcc7f4d46d3b0b2` equals the reviewed source tree;
+all 31 full-source or exact-delta blobs are compared and equal. Trigger identity
+alone is never attributed as exact-source CI acceptance.
+
+Historical failures remain failures: the first composed `0c25878` default debug
+run has ten Grok environment/receipt failures (several Git preflight timeouts),
+with precise cause **unknown**. Its release run fails the structured fixture's
+leftover caller environment marker, corrected into the sidecar at `0dc26ad`.
+The original lint errors and mutation-driver errors are retained; no deadlines,
+internal concurrency, serialization or guard policy were relaxed. The older
+review wrappers 54058/35522 lack the required interpreter observer and retain
+actual anchors under sticky Unknown; they supply no verdict, cleanup or release
+credit. New successful sessions do not erase those private harness failures.
+
+This is a partial Stage A source checkpoint, **not Issue #6 or MVP completion**.
+Required Stage B remains open: genuine pre-start whole native workload authority,
+all nested jobs/callbacks/custodians and detached/delegated resource cleanup,
+Decision-CWD/config provenance, actual #19/#58/#60/#14 ownership and settlement,
+#9/#10 decision-member ownership, continuously compatible already-live peer to
+Lost enforcement, ready Project/root capacity, native Task attachment and both-host
+required roles/resume/stop/broker/four-plus concurrency. Workflow's earlier
+capture/context/reservation/WaitingHuman effects remain #43 integration work.
+The Tokio post-spawn wrapper and shared ProcessGroup construction/Drop gaps remain
+pending #60/full-F1 contracts. No ready native profile, new privilege, default
+hook/auth/tool change or Unsupported-only permanent product waiver is claimed.
+
+Evidence: [gates](issue-6-stageA-source3-gates.json),
+[reviews](issue-6-stageA-source3-reviews.json),
+[public bytes](issue-6-stageA-source3-public-manifest.json),
+[mutations](issue-6-stageA-source3-mutations.json),
+[actual CI provenance](issue-6-stageA-source3-ci.json).
