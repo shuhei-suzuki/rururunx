@@ -93,6 +93,7 @@ pub(crate) async fn bounded_read(reader: impl AsyncRead + Unpin, limit: usize) -
     Ok(bytes)
 }
 
+#[cfg(test)]
 pub(crate) async fn capture(command: &mut Command) -> Result<Vec<u8>> {
     let observed = capture_observed(command).await?;
     ensure!(
@@ -102,6 +103,7 @@ pub(crate) async fn capture(command: &mut Command) -> Result<Vec<u8>> {
     );
     Ok(observed.stdout)
 }
+#[cfg(test)]
 pub(crate) async fn capture_observed(command: &mut Command) -> Result<CommandCapture> {
     command
         .stdin(Stdio::null())

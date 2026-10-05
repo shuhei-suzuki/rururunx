@@ -628,6 +628,7 @@ impl ResultStore {
     }
 }
 
+#[cfg(test)]
 pub(crate) fn git_command(root: &Path) -> Result<Command> {
     git_command_for(root, &super::resources::resolve_program("git")?)
 }
@@ -659,6 +660,7 @@ async fn retained_git<const N: usize>(
         RetainedReader::Historical(io) => io.run(args).await,
     }
 }
+#[cfg(test)]
 pub(crate) async fn git<I, S>(root: &Path, args: I) -> Result<Vec<u8>>
 where
     I: IntoIterator<Item = S>,

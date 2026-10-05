@@ -292,7 +292,7 @@ async fn retained_inspection_inflight_artifact_fence_and_abandonment_remain_unkn
 
 #[tokio::test]
 async fn retained_inspection_detects_reference_graph_and_manifest_corruption() {
-    let (_dir, owner, task) = fixture().await;
+    let (dir, owner, task) = fixture().await;
     let (_unit, artifact) = captured(&owner, &task).await;
     let results = ResultStore::new(owner.clone());
     results.verify(&artifact).await.unwrap();
@@ -307,24 +307,23 @@ async fn retained_inspection_detects_reference_graph_and_manifest_corruption() {
     )
     .await
     .unwrap();
-    let blob = text(
-        &git(
-            &artifact.repository,
-            ["rev-parse", &format!("{}:answer.txt", artifact.revision)],
+    // Missing graphs are independent of Git choosing loose objects or packs.
+    let objects = artifact.repository.join("objects");
+    let backup = dir.path().join("retained-objects-backup");
+    std::fs::rename(&objects, &backup).unwrap();
+    std::fs::create_dir(&objects).unwrap();
+    assert_eq!(
+        text(
+            &git(&artifact.repository, ["rev-parse", "--verify", &reference])
+                .await
+                .unwrap()
         )
-        .await
         .unwrap(),
-    )
-    .unwrap();
-    let object = artifact
-        .repository
-        .join("objects")
-        .join(&blob[..2])
-        .join(&blob[2..]);
-    let bytes = std::fs::read(&object).unwrap();
-    std::fs::remove_file(&object).unwrap();
+        artifact.revision
+    );
     assert!(results.verify(&artifact).await.is_err());
-    std::fs::write(&object, bytes).unwrap();
+    std::fs::remove_dir(&objects).unwrap();
+    std::fs::rename(backup, objects).unwrap();
     results.verify(&artifact).await.unwrap();
     std::fs::write(&artifact.manifest, vec![b'x'; 128 * 1024 + 1]).unwrap();
     let count = inspections(&owner, artifact.unit_id).len();
