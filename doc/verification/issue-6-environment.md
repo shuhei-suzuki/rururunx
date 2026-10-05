@@ -1,6 +1,6 @@
 # Issue 6 environment admission component: verification
 
-Current state: Design5 proposed; Design1/2/3/4 not qualified as pairs. No Rust implementation or
+Current state: Design6 proposed; Design1/2/3/4/5 not qualified as pairs. No Rust implementation or
 source/native acceptance.
 Ordinary Codex availability remains EMPTY. This consumes existing Issue51 policy
 only; no native workload/backend, managed ownership, settlement or configuration
@@ -163,3 +163,32 @@ no cause, deadline/concurrency or workload attribution is inferred. Adjacent rec
 retain exact findings, public-input identities, actual checkout provenance and reds.
 Design5 still needs its own independent pair qualification before Rust implementation.
 Ordinary EMPTY and all whole native/ownership/settlement/MVP gates remain OPEN.
+
+## Design5, public immutable `55369e9`
+
+Two peer-free native zero-tool manual sessions reviewed 54 public sections, 472,960
+common-packet bytes, each byte-compared at the immutable head. Both completed with
+actual retained selected-group cleanup/reap and joined stdin writer; normal native
+auth/rules/hooks/model/effort stayed unchanged.
+
+| Review | Native session | Findings | Observed cost | Native API duration |
+| --- | --- | --- | --- | --- |
+| A5 | `e4704e4e-8f6f-49a5-8c49-9ed940d760b0` | 0 CH, 2 medium, 3 low | $2.971240 | 698,728 ms |
+| B5 | `59578c0e-51f9-483a-9c11-2b21ef50c56c` | 0 CH, 2 medium, 4 low | $3.069624 | 739,552 ms |
+
+Neither qualifies the pair. Verified local specification gaps: policy-versus-reference
+consumer ordering, missing synchronous initial-separate-read seam, and unearned
+actual-consumer phase-guard mutation credit. Design6 fixes those exact seams and
+classifies unreachable/subsumed branches unit-only. Finite lows specify actual Grok
+caller ordering/bounds, EMPTY additional-control set and existing XDG/LC coupling,
+publication under one Store guard, persisted/watch PID observables rather than the
+PID-free audit, and explicit >=2 worker bounded stop rendezvous. No native authority,
+backend, host probe, shared helper or WHAT expansion is added.
+
+CI37252229117 checked `744597112a4b3fe86805f02e8e996c8348b73ac4`, parents [5b4,55369],
+complete tree `725a567384cb569129ef40f54468644761682c79` equal to Design5. Both OS jobs
+and every step passed. No rerun/cause claim or prior-failure reclassification.
+After both reviewers actually closed, normal main768 composition as `443e927` brought
+only its reviewed cfg(test) Grok diagnostic/source and factual evidence; Codex and
+Store environment API bytes stayed unchanged. Historical red/held resources remain.
+Design6 is still proposed; no Rust implementation or whole native acceptance exists.

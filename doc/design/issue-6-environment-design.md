@@ -1,9 +1,9 @@
-# Issue 6: existing name-only environment admission integration (Design5)
+# Issue 6: existing name-only environment admission integration (Design6)
 
 Status: proposed STRICT component integration; design/source qualification pending.
-Design1 `6264702`, Design2 `9884ec3`, Design3 `4a60fa2` and Design4 `e85d85b`
-were not qualified as pairs. No Rust implementation has begun.
-This proposal normally composes main `5b4a3147b2b2cd4ed88642741f6b25c4c5f3441b`.
+Design1 `6264702`, Design2 `9884ec3`, Design3 `4a60fa2`, Design4 `e85d85b`
+and Design5 `55369e9` were not qualified as pairs. No Rust implementation has begun.
+This proposal normally composes main `768f84319cd2a73e14cd39336eb12d99e9be81a7`.
 Production Codex availability stays
 EMPTY. No native workload backend, managed operation, setup/settlement receipt,
 custodian or native-origin provenance producer is introduced.
@@ -79,7 +79,16 @@ when its value was absent. Valid own metadata outside Codex membership is not a
 blanket rejection. Registry-valid credential-bearing or credential-locating names
 never become controls. HOME, CODEX_*, SSH_AUTH_SOCK, SSH_ASKPASS and *_PROXY are
 registry-forbidden global controls; OPENAI_API_KEY, XAI_API_KEY and ANTHROPIC_API_KEY
-remain non-control. Use that single classifier for constructor, caller and references.
+remain non-control. The reviewed finite additional-control set is exactly EMPTY;
+assert it structurally. Registry-valid LC_* and XDG_* names, including XDG_CONFIG_DIRS
+and XDG_DATA_DIRS, retain the previously stated non-control classification. They
+may select native config/data search paths, but this component never changes or
+restores their frozen values; caller non-ordinary keys must match exactly. Foreign
+references can refuse a NEW exec, not strip/change a running child's global routing.
+This explicit availability coupling is the existing51 conservative subset, not
+complete native-config isolation. No new prefix/control eligibility policy is added.
+Any future widening needs separate qualified impact; unknown native readiness stays
+OPEN. Use that single classifier for constructor, caller and references.
 
 Caller eligibility is the existing Issue51 OR rule: registry-valid, owning-declared,
 non-control, and either one of LANG/LC_ALL/LC_CTYPE/TERM/COLORTERM/TZ with its ordinary
@@ -115,20 +124,23 @@ Ordinary EMPTY gates all operational launch/approval/checkpoint routes, not this
 bounded synchronous names-only Store inspection; master section 16 must list the
 exception explicitly. It runs no Git/native child and reads no foreign inventory.
 
-As in Issue51, validate own references/control declarations before caller-map syntax,
-then traverse the caller BTreeMap in lexical key order, as the existing Grok loop
-does. For each key, malformed/GIT_/NUL syntax is checked before its eligibility;
-it uses InvalidInput (a change from Codex's current OwnershipMismatch). The first
-failing key wins; there is no whole-map syntax prepass. Thus A_UNDECLARED before
-GIT_DIR is InvalidConfiguration, while GIT_DIR before Z_UNDECLARED is InvalidInput.
-A combined invalid-own plus malformed-caller case therefore uses
-the opaque own-reference InvalidConfiguration. Invalid/control own refs,
-reserved RRX_, unsupported caller names, undeclared/foreign-only eligible caller
-names, different frozen credential values and baseline conflicts use the same
-fixed opaque InvalidConfiguration category, `native environment authority
-unavailable`, including the Store EnvironmentAuthority mapping. Never emit foreign
-IDs, names, versions, values or inventory. Existing own stale/lifecycle/Session/lock
-checks retain their kinds and precede selection when they observe the conflict.
+As in Issue51, validate the request's own references/control declarations before
+caller-map syntax. Traverse the caller BTreeMap in lexical key order; for each key,
+check malformed/GIT_/NUL syntax (InvalidInput), then supported non-control shape/value
+(opaque InvalidConfiguration). As in the actual Grok loop, DO NOT check declaration
+in that loop: after all keys pass, construct the bounded caller DTO, then the Store
+decision verifies current own declarations/conflicts. Thus undeclared ordinary
+COLORTERM followed by GIT_DIR yields InvalidInput; A_UNSUPPORTED followed by GIT_DIR
+yields InvalidConfiguration. Eligible maps exceeding the 128-name/256-byte/32KiB
+caller DTO bounds fail opaquely AFTER the per-key traversal; a malformed later key
+wins before that bound. Test these distinguishing combinations and both sort orders.
+A combined invalid-request-own plus malformed caller uses the opaque own-reference
+InvalidConfiguration first. Unsupported/RRX_/control/different credential values,
+undeclared/foreign-only eligible callers, current invalid refs and baseline conflicts
+use fixed opaque InvalidConfiguration, `native environment authority unavailable`,
+including Store EnvironmentAuthority mapping. Never emit foreign IDs, names,
+versions, values or inventory. Existing own stale/lifecycle/Session/lock checks
+retain their kinds and precede selection when they observe the conflict.
 The initial read-only scope check and environment check are separate SQLite reads,
 not a new transaction: an own edit between them can be observed as an opaque
 environment refusal. That refusal remains before effects/publication; do not claim
@@ -144,7 +156,7 @@ Intentional changes and test migrations:
 | Foreign-only retained non-control name silently stripped | Opaque refusal before the relevant new exec, including LANG/TERM/LC_*/XDG_* and API keys; no default/auth substitution |
 | Any valid owning-declared arbitrary caller value passed | Existing51 ordinary OR exact frozen native value rule; unsupported/different values refused |
 | Full foreign Project decode/equality | Own Project equality, Goal/Task/locks remain exact; foreign refs alone determine environment policy |
-| Effective config restores an arbitrary runtime key/header | No value restoration; explicit unproven-reference refusal described below |
+| Effective config restores an arbitrary runtime key/header | No value restoration; reference predicate before discovery/main policy checks; combined-invalid reference precedence and main non-object ParseFailure |
 | Own invalid refs return InvalidInput; undeclared caller returns OwnershipMismatch | Fixed opaque InvalidConfiguration |
 | Malformed/GIT_/NUL caller returns OwnershipMismatch | InvalidInput after own-reference validation; combined-invalid order is explicit |
 | USER/LOGNAME omitted | Remain omitted; no identity whitelist/control delta |
@@ -198,7 +210,13 @@ After ordinary EMPTY refusal and exact own scope/resume currency validation, sel
 values and run the initial Store decision in the synchronous preparation context,
 BEFORE `Reservation::persist` or any Starting/Git/native effect. Deterministic initial
 refusal therefore yields FreshUnpublished or exact RestoredBeforeAdmission, with
-no new Session/audit/consumption publication or process entry sentinel.
+no new Session/audit/consumption publication or process entry sentinel. Inside
+the synchronous context closure, a cfg(test)-only initial-selection hook runs AFTER
+Scope capture/resume currency validation and BEFORE selection/initial Store decision,
+outside the Store mutex, without await. It edits only via a second Store connection.
+Removed caller refs/current invalid own refs refuse opaquely before publication;
+neutral/enlarging edits can pass this read and get stale-own StateConflict after
+Starting/Git at the existing recheck. This seam is separate from BeforeInitialPersist.
 
 Retain the selected private environment and names DTO in that exact fresh/resume
 attempt. Immediately before EACH exec receiving those values, invoke the existing
@@ -211,7 +229,12 @@ pre-exec CAS; that publication must not advertise the reaped discovery PID. All 
 logical content remains unchanged. Unknown shutdown keeps the existing hold/uncertainty
 and cannot reach this clear or main exec; clearing is not a new death-proof authority.
 Update reservation version, Control's published exact snapshot and watch
-coherently; migrate fixed version/audit assertions to these explicit publications.
+WHILE the same Store guard used by the successful CAS is still held, mirroring
+persist_unchecked; current()/status cannot observe a Store/watch gap. Then release
+that guard before any test hook. Assert PID None from the second-connection persisted
+Session at that CAS version, watch and Control at the main post-CAS hook. The
+session.saved audit has no PID field and earns no PID-clear assertion credit.
+Migrate fixed version/audit assertions to these explicit publications.
 Irrelevant foreign changes add no different event kind/count. The initial check is
 not this final exec fence and performs no publication.
 
@@ -237,13 +260,26 @@ shared helper/new/Drop/custody implementation is changed or declared safe here.
 
 At EACH selected exec site, a cfg(test)-only synchronous PRE-CAS hook runs after
 command setup but before the transaction, outside both admission and Store mutexes.
-It performs relevant/own edits only through a second Store connection, so no earlier
-post-Git gate can mask that particular CAS omission. A distinct post-CAS hook precedes
-the
-unchanged final preparation.check()/spawn. A multi-thread runtime rendezvous drives
-the actual adapter.stop() concurrently and waits only until cancellation is visible,
+For replacement cases it performs relevant/own edits only through a second Store
+connection, so no earlier post-Git gate masks that CAS omission. A separate PRE-CAS
+real-stop case at EACH site waits until cancellation is visible, then releases the
+hook: assert no extra pre-exec session.saved/version increment, unchanged exact
+watch/Control publication before cleanup, Cancelled first cause and no entry sentinel.
+Bind the Cancelled-guard omission mutant to that extra-write assertion; the final
+preparation.check alone prevents spawn and cannot earn this kill. Consumed and
+CheckpointCommitted phase rejection is UNIT-ONLY because actual pre-exec consumers
+do not reach those phases; no actual-consumer mutant credit for them.
+A distinct cfg(test) post-primitive outcome observer runs outside both mutexes before
+any result propagation/cleanup, including a Cancelled refusal, to assert those exact
+unchanged snapshots/events. On success, it is also the post-CAS hook preceding the
+unchanged final preparation.check()/spawn. An explicit tokio test runtime
+(flavor="multi_thread", worker_threads=2 or more) drives the actual adapter.stop()
+concurrently and waits only until cancellation is visible,
 then releases the hook so stop can complete; waiting for stop's full outcome inside
-the hook would deadlock cleanup. Production has no hook or await in that window.
+the hook would deadlock cleanup. Every synchronous hook rendezvous has a finite
+deadline and a distinct fail-closed
+harness error; one-worker/default-CPU scheduling is not acceptable evidence.
+Production has no hook or await in that window.
 
 Keep a separate environment-aware CAS at `Reservation::admit_dispatch` immediately
 before the buffered `turn/start` wire. This is the consumed-input fence. Its failure
@@ -290,9 +326,17 @@ Never retain the complete ambient environment for later restoration. Effective
 grant to obtain any runtime value. Define a deterministic component rule: every
 reported selected-provider reference must be syntactically supported, non-control,
 and already present in that private selection. Apply the IDENTICAL pure predicate
-to discovery config/read before main re-exec AND the main server's effective
-config/read BEFORE account/read, environment/status, thread start/resume/history
-and consumed publication. Unpermitted main references refuse after actual main
+immediately after discovery config/read, BEFORE DecisionPolicy::from_native/
+for_executor, and immediately after main config/read BEFORE verify_configuration,
+account/read, environment/status, thread start/resume/history and consumption.
+The reference predicate wins when policy and references are both invalid; native
+policy checks remain unchanged and execute only after the predicate passes. This
+changes main non-object error precedence from policy UnsupportedCapability to
+fixed reference ParseFailure. Combined policy-invalid + reference-invalid cases at
+EACH consumer pin this precedence. Discovery non-object step1 can still be
+independently subsumed by the policy object check if omitted: UNIT-ONLY step1 kill
+credit there, never a claimed independently distinguishing actual-consumer kill.
+Unpermitted main references refuse after actual main
 cleanup with no current model frame/consumption. A different selected provider with
 only permitted references does not supply origin evidence; full provenance stays
 OPEN. Selected values pass unchanged; no values are added.
@@ -333,8 +377,8 @@ is zero; empty/oversize id plus absent table is Unsupported; invalid env_key nam
 plus malformed header map is ParseFailure; 129 occurrences plus a non-string header
 value is Unsupported; within-bound non-string value plus invalid env_key name is
 ParseFailure. Test selected-table/entry missing and null separately. Compile targeted
-check-order mutants and bind their kills to the exact consumer/error/no-main or
-no-account/thread/frame sentinel, with no masked/redundant credit.
+check-order mutants and bind independently distinguishable kills to the exact
+consumer/error/no-main or no-account/thread/frame sentinel, with no masked/redundant credit.
 
 This deliberately treats absent and ambient-only excluded references alike as an
 unproven configuration route. It makes no assertion that an absent value is required,
@@ -364,7 +408,9 @@ booleans, Store/watch/audit/frame facts before error labels. Include:
   exact/different native caller values, ordinary-value precedence, OS identity,
   invalid admitted global-control names and malformed owning refs; opaque errors.
   Assert all named routing/identity whitelist members, CODEX_* and *_PROXY stay
-  controls through the shared registry predicate; API keys stay non-control.
+  controls through the shared registry predicate; API keys and registry-valid
+  LC_*/XDG_* (including XDG_CONFIG_DIRS/DATA_DIRS) stay non-control. Exact additional
+  control set is EMPTY; no whole-native compatibility inferred.
   Assert USER/LOGNAME never join membership; their metadata alone does not refuse
   Codex, and non-ordinary/non-whitelisted caller values remain unsupported.
   Assert non-UTF-8/GIT_PROXY exclusion before suffix matching, raw OS values, bounds
@@ -389,7 +435,8 @@ booleans, Store/watch/audit/frame facts before error labels. Include:
   Matching controls prove each path reaches its exec unchanged, still Preparing
   after each pre-exec CAS, with the later consumed CAS independently succeeding.
   Assert coherent Session/dispatch intent (including verified-dead discovery PID None
-  in the main pre-exec event), and identical scoped event kind/count
+  at its main post-CAS persisted/watch/Control snapshots), and identical scoped
+  event kind/count
   under irrelevant roster changes; pre-exec success is a durable versioned write.
 - Final consumed CAS conflict yields no current turn/start frame/consumed publication,
   without pretending prior execs never happened. Already-owned approval/stop remains
@@ -401,7 +448,9 @@ booleans, Store/watch/audit/frame facts before error labels. Include:
   consumer. Unknown references never restore a runtime canary; discovery cleanup
   precedes refusal, with no main exec/model frame. A second effective config with an
   unpermitted ref denies before account/thread/model/consumption after real main
-  cleanup; identical config is positive. Cover EVERY extraction procedure branch, synthetic
+  cleanup; identical config is positive. Cover extraction branches with actual-consumer
+  controls where independently reachable/distinguishing, unit-only credit where
+  explicitly subsumed; include combined policy/reference-invalid cases and synthetic
   reported default entry, combined first-failure cases, raw duplicate/count and per-name
   bounds, and exact restored source. No redundant aggregate-bound kill credit.
   No native optionality/default-provider proof claimed.
@@ -409,8 +458,9 @@ booleans, Store/watch/audit/frame facts before error labels. Include:
 Compiled actual-consumer mutants cover real public-new iterator/eager-bounds wiring,
 constructor filtering/control/freeze/bounds,
 DTO baseline/caller population, exact-value comparison, initial check omission,
-EACH pre-exec CAS omission (version killed by its pre-exit sentinel), Preparing-only
-phase guard omission, post-CAS cancellation check omission, wrongly consuming
+EACH pre-exec CAS omission (version killed by its pre-exit sentinel), Cancelled pre-exec
+guard omission killed by extra-write evidence, with non-reachable phase branches
+unit-only; post-CAS cancellation check omission, wrongly consuming
 pre-exec publication, discovery reference-check omission killed on no-main-entry,
 main reference-check omission killed on no-account/thread/model/consumption,
 consumed CAS omission,
