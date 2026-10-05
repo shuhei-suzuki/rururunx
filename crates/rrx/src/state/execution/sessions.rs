@@ -63,7 +63,7 @@ fn checked_session_record(tx:&Transaction<'_>,unit:&ExecutionUnit,session:&Sessi
 }
 
 /// Unknown legacy dispatch remains a hold; logical managed retirement can proceed.
-pub(super) fn logically_retired_session(tx:&Connection,session:&Session)->Result<bool> {
+pub(in crate::state) fn logically_retired_session(tx:&Connection,session:&Session)->Result<bool> {
     let Some(unit)=session_unit_tx(tx,session.id)? else {return Ok(false)};
     ensure!(unit.scope==session.scope && unit.worktree==session.worktree,"managed Session binding mismatch");
     Ok(!unit.native_effects_open && !unit.result_finalization_open && unit.kind!=UnitKind::Legacy)
