@@ -489,3 +489,49 @@ qualification remains failed. Final current-head exact-tree CI is pending.
 build roots and finite review conditions. Ordinary custody is None and availability
 is EMPTY. Actual backend/native/resource-settlement/whole6/MVP gates and the old
 held native review resources remain unchanged and OPEN. No merge approval.
+
+
+## Selected Git reader composition, source `561f445`
+
+After f89 was normally published, no fresh CI run or PR checks were registered;
+its merge state was conflicting. That phase closes as missing CI, not successful
+CI. A separate actual dependency composition normally merges main6146. The eight
+imported Rust paths equal6146 and all thirteen Codex paths equalf89. README's only
+conflict retains both paragraphs. Common selected Git ownership now serves
+Generic/Grok/Context; Codex preparing Git still uses its existing private helper,
+with no new native ownership/settlement credit.
+
+Two independent finite static composition reviews approved0C/H/M/L, conditional
+on current full/quality/final-tree CI. A never-used dedicated561 target compiled
+all fifteen owned executable artifacts with fresh=false and exact manifest/source
+paths and binary hashes. Mutants/archive never share this target. The first two
+focused commands selected the wrong namespace and ran zero tests: both remain
+SETUP unqualified. Corrected actual environment11pass/1ignored and custody20pass
+controls passed. Git owner targets passed34 top-level tests plus44 nested private
+audit tests; their ignored counts are separate.
+
+Initial full DEFAULT Debug FAILED: library349pass/1Grokfail/25ignored; later
+workspace targets unrun. The owned unrelated-checkpoint child exceeded its
+unchanged60s whole-nine-case watchdog at60002ms and was killed/reaped by its
+original owner. Cases0–7 logged finished; case8 returned from checkpoint and resume
+and logged resumed_terminal, without release/finished. Existing raw/source alone
+cannot separate its terminal wait, receipt capture or subsequent checks. There is
+no verified checkpoint hang or source defect; cause/contribution/regression remain
+UNKNOWN. No failed-head full Debug rerun or deadline/parallelism change is used.
+
+Distinct initial full DEFAULT Release passed461 top-level Rust tests,44 nested
+private audit tests, one nested ordinary child and two doctests;28 top-level ignored
+and one nested audit ignored. Raw printed508pass is not508 top-level Rust tests.
+All workspace targets executed; library350pass/0fail/25ignored. Workspace fmt,
+explicitly included environment fixture fmt, all-target Clippy-Dwarnings and both
+production builds passed. These observations do not erase current Debug or prior
+680 Release failures. Separate Root docsPR73 CI failed one macOS Context inspection
+consumer with unchanged6146 code; it is not this source's test result or a cause
+explanation.
+
+The [current ledger](issue-6-environment-reader-composition-gates.json) preserves
+source/compiler/log identities, zero-selector Setup, both conditional reviews and
+the read-only diagnostic. Final published exact-tree bothOS CI is pending and
+cannot substitute for failed local Debug. Merge conditions are unmet: NO MERGE.
+Ordinary custody remainsNone and native availability EMPTY. Actual backend/native/
+resource-settlement/whole6/MVP and old held native harness resources remain OPEN.
