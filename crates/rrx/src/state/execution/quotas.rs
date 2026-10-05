@@ -6,7 +6,10 @@ pub enum QuotaAdmission { Admitted, Waiting { reason:WaitReason, next_due:i64 } 
 impl Store {
     pub fn quota_observations(&self,provider:&str,account:&str) -> Result<Vec<QuotaObservation>> {
         let mut s=self.connection.prepare("SELECT body FROM quota_windows WHERE provider=?1 AND account_key=?2 ORDER BY bucket")?;
-        s.query_map(params![provider,account],|r|r.get::<_,String>(0))?.map(|r|r.map_err(anyhow::Error::from).and_then(decode)).collect()
+        s.query_map(params![provider,account],|r|r.get::<_,String>(0))?.map(|r|{
+            let o:QuotaObservation=decode(r?)?;ensure!(o.provider==provider && o.account_key==account,"foreign quota window");
+            check_indexed(&self.connection,"quota_windows",&[("provider",json!(o.provider)),("account_key",json!(o.account_key)),("bucket",json!(o.bucket)),("observed_at",json!(o.observed_at))])?;Ok(o)
+        }).collect()
     }
     pub(crate) fn observe_quota(&mut self,observation:&QuotaObservation) -> Result<()> {
         ensure!([&observation.provider,&observation.account_key,&observation.bucket,&observation.window_id,&observation.source_version]
@@ -51,6 +54,10 @@ impl Store {
         let observations=windows.query_map(params![provider,account],|r|r.get::<_,String>(0))?.map(|r|r.map_err(anyhow::Error::from).and_then(decode::<QuotaObservation>)).collect::<Result<Vec<_>>>()?;
         drop(windows);
         let exhausted=observations.iter().any(|o|o.status==QuotaStatus::Exhausted);
+        for o in &observations {
+            ensure!(o.provider==provider && o.account_key==account,"foreign quota window");
+            check_indexed(&tx,"quota_windows",&[("provider",json!(o.provider)),("account_key",json!(o.account_key)),("bucket",json!(o.bucket)),("observed_at",json!(o.observed_at))])?;
+        }
         let global:usize=tx.query_row("SELECT COUNT(*) FROM quota_leases WHERE active=1",[],|r|r.get(0))?;
         let (provider_live,executor_live):(usize,usize)=tx.query_row("SELECT COUNT(*),COALESCE(SUM(role='executor'),0) FROM quota_leases WHERE provider=?1 AND account_key=?2 AND active=1",params![provider,account],|r|Ok((r.get(0)?,r.get(1)?)))?;
         let capacity=global>=global_max || provider_live>=provider_max || (unit.kind==UnitKind::Executor && executor_live>=executor_max);

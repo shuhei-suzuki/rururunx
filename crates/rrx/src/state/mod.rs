@@ -1267,6 +1267,7 @@ fn put_task_tx(tx: &Transaction<'_>, task: &Task) -> Result<Task> {
         next.version,
     )?;
     // Issue is query metadata and may be linked after Task creation.
+    if task_terminal(next.state) {execution::fence_task_tx(tx,&next.scope())?;}
     tx.execute(
         "UPDATE tasks SET issue=?1 WHERE id=?2",
         params![next.issue, next.id.to_string()],

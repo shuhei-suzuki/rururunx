@@ -14,18 +14,17 @@ impl Store {
         tx.commit()?;Ok(())
     }
     pub fn managed_effect(&self,id:OperationId) -> Result<ManagedEffect> {
-        let body:String=self.connection.query_row("SELECT body FROM managed_effects WHERE id=?1",[id.to_string()],|r|r.get(0))?;
-        let effect:ManagedEffect=decode(body)?;ensure!(effect.id==id,"effect indexed identity mismatch");Ok(effect)
+        effect_tx(&self.connection,id)
     }
     pub fn managed_effects(&self,unit:UnitId) -> Result<Vec<ManagedEffect>> {
-        let mut s=self.connection.prepare("SELECT body FROM managed_effects WHERE unit_id=?1 ORDER BY rowid")?;
-        s.query_map([unit.to_string()],|r|r.get::<_,String>(0))?.map(|r|r.map_err(anyhow::Error::from).and_then(decode)).collect()
+        let mut s=self.connection.prepare("SELECT id FROM managed_effects WHERE unit_id=?1 ORDER BY rowid")?;
+        let ids=s.query_map([unit.to_string()],|r|r.get::<_,String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
+        ids.into_iter().map(|id|{let e=self.managed_effect(id.parse()?)?;ensure!(e.unit_id==unit,"foreign effect");Ok(e)}).collect()
     }
     pub(crate) fn reconcile_managed_effect(&mut self,id:OperationId,expected:u64,state:EffectState,receipt:BTreeMap<String,String>) -> Result<()> {
         ensure!(receipt.len()<=16 && receipt.iter().all(|(k,v)|k.len()<=64 && v.len()<=256 && !v.chars().any(char::is_control)),"invalid effect safe receipt");
         let tx=self.connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let body:String=tx.query_row("SELECT body FROM managed_effects WHERE id=?1",[id.to_string()],|r|r.get(0))?;
-        let mut effect:ManagedEffect=decode(body)?;
+        let mut effect=effect_tx(&tx,id)?;
         ensure!(effect.version==expected && effect.state!=EffectState::Resolved,"effect CAS/terminal conflict");
         ensure!(state!=EffectState::Pending,"effect intent cannot be replayed");
         effect.state=state;effect.receipt=receipt;effect.version+=1;
@@ -36,8 +35,7 @@ impl Store {
     }
     pub(crate) fn release_execution_lease(&mut self,id:LeaseId,unit_id:UnitId,expected:u64,confirmed:bool) -> Result<()> {
         let tx=self.connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let body:String=tx.query_row("SELECT body FROM resource_leases WHERE id=?1",[id.to_string()],|r|r.get(0))?;
-        let mut lease:ResourceLease=decode(body)?;
+        let mut lease=lease_tx(&tx,id)?;
         ensure!(lease.id==id && lease.unit_id==unit_id && lease.version==expected,"lease identity/CAS conflict");
         let unit=unit_tx(&tx,unit_id)?;
         ensure!(!unit.native_effects_open,"cannot release active execution resources");

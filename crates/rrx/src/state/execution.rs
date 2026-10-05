@@ -12,6 +12,7 @@ const MUTABLE_TABLES: &[&str] = &[
 ];
 
 pub(super) fn install_schema(tx: &Transaction<'_>) -> Result<()> {
+    migration::validate_legacy(tx)?;
     tx.execute_batch(include_str!("execution.sql"))?;
     tx.execute("INSERT INTO runtime_epoch(singleton,instance_id,epoch) VALUES(1,?1,0)", [Uuid::new_v4().to_string()])?;
     // This guard is connection-local, not a persisted flag a pre-open old client inherits.
@@ -60,7 +61,26 @@ fn unit_tx(tx: &Connection,id:UnitId) -> Result<ExecutionUnit> {
     ensure!(unit.id==id && unit.version==version && scope==scope_keys(&unit.scope)? && kind==key(unit.kind)
         && generation==unit.generation && epoch==unit.owner_epoch && native==unit.native_effects_open
         && finalize==unit.result_finalization_open,"execution unit indexed/body identity mismatch");
+    check_indexed(tx,"execution_units",&[("id",json!(id)),("worktree",json!(unit.worktree)),("branch",json!(unit.branch))])?;
     Ok(unit)
+}
+fn check_indexed(connection:&Connection,table:&str,columns:&[(&str,Value)])->Result<()> {
+    let mut values=Vec::new();let mut clauses=Vec::new();
+    for (name,value) in columns {
+        clauses.push(format!("{name} IS ?"));
+        values.push(match value {
+            Value::Null=>rusqlite::types::Value::Null,
+            Value::String(s)=>rusqlite::types::Value::Text(s.clone()),
+            Value::Bool(v)=>rusqlite::types::Value::Integer(i64::from(*v)),
+            Value::Number(n)=>rusqlite::types::Value::Integer(n.as_i64().context("invalid indexed integer")?),
+            _=>anyhow::bail!("invalid indexed value"),
+        });
+    }
+    let matched:bool=connection.query_row(&format!("SELECT EXISTS(SELECT 1 FROM {table} WHERE {})",clauses.join(" AND ")),rusqlite::params_from_iter(values),|r|r.get(0))?;
+    ensure!(matched,"{table} indexed/body mismatch");Ok(())
+}
+fn scoped_columns(scope:&Scope)->Vec<(&'static str,Value)> {
+    vec![("project_id",json!(scope.project_id)),("goal_id",json!(scope.goal_id)),("task_id",json!(scope.task_id))]
 }
 fn scope_keys(scope:&Scope) -> Result<(String,String,String)> {
     Ok((scope.project_id.to_string(),scope.goal_id.context("unit requires Goal")?.to_string(),scope.task_id.context("unit requires Task")?.to_string()))
@@ -79,6 +99,22 @@ fn write_unit(tx:&Transaction<'_>,unit:&mut ExecutionUnit) -> Result<()> {
         params![unit.version,unit.native_effects_open,unit.result_finalization_open,serde_json::to_string(unit)?,unit.id.to_string(),old])?;
     ensure!(changed==1,"execution unit CAS conflict");Ok(())
 }
+pub(super) fn fence_task_tx(tx:&Transaction<'_>,scope:&Scope)->Result<()> {
+    let (_,_,task)=scope_keys(scope)?;
+    let mut s=tx.prepare("SELECT id FROM execution_units WHERE task_id=?1 AND (native_effects_open=1 OR result_finalization_open=1)")?;
+    let ids=s.query_map([&task],|r|r.get::<_,String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;drop(s);
+    for id in ids {
+        let mut unit=unit_tx(tx,id.parse()?)?;ensure!(unit.scope==*scope,"Task fence scope mismatch");
+        unit.native_effects_open=false;unit.result_finalization_open=false;unit.state=UnitState::Retired;unit.disposition=Disposition::Cancelled;
+        if unit.work.is_none(){unit.work=Some(WorkOutcome::Unknown);}
+        write_unit(tx,&mut unit)?;quotas::release_quota_tx(tx,unit.id)?;
+        tx.execute("DELETE FROM quota_waiters WHERE unit_id=?1",[unit.id.to_string()])?;
+        tx.execute("INSERT INTO cleanup_jobs(unit_id,next_due,attempts,version) VALUES(?1,?2,0,1) ON CONFLICT(unit_id) DO NOTHING",params![unit.id.to_string(),now_ms()])?;
+        append_event(tx,scope,"execution.task_fenced",json!({"unit":unit.id,"work":unit.work}))?;
+    }
+    tx.execute("UPDATE task_execution SET generation=generation+1,active_unit=NULL WHERE task_id=?1 AND active_unit IS NOT NULL",[task])?;
+    Ok(())
+}
 fn validate_authority(tx:&Connection,authority:&ExecutionAuthority,native:bool,finalize:bool) -> Result<ExecutionUnit> {
     let unit=unit_tx(tx,authority.unit_id)?;
     ensure!(unit.authority()==*authority,"execution authority identity mismatch");
@@ -88,9 +124,14 @@ fn validate_authority(tx:&Connection,authority:&ExecutionAuthority,native:bool,f
     ensure!(generation==authority.generation,"execution generation retired");
     ensure!(!native || unit.native_effects_open,"native effect permission closed");
     ensure!(!finalize || unit.result_finalization_open,"result finalization permission closed");
-    let project:Project=read_tx(tx,"projects",&unit.scope.project_id.to_string())?.context("unknown Project")?;
-    let goal:Goal=read_tx(tx,"goals",&unit.scope.goal_id.context("Goal required")?.to_string())?.context("unknown Goal")?;
-    ensure!(project.state==ProjectState::Registered && !matches!(goal.state,GoalState::Paused|GoalState::Completed|GoalState::Cancelled|GoalState::Failed),"inactive Project/Goal");
+    if native || finalize {
+        let project:Project=read_tx(tx,"projects",&unit.scope.project_id.to_string())?.context("unknown Project")?;
+        let goal:Goal=read_tx(tx,"goals",&unit.scope.goal_id.context("Goal required")?.to_string())?.context("unknown Goal")?;
+        let task:Task=read_tx(tx,"tasks",&unit.scope.task_id.context("Task required")?.to_string())?.context("unknown Task")?;
+        ensure!(task.scope()==unit.scope && !task_terminal(task.state),"inactive/foreign Task");
+        ensure!(project.state==ProjectState::Registered && !matches!(goal.state,GoalState::Paused|GoalState::Completed|GoalState::Cancelled|GoalState::Failed),"inactive Project/Goal");
+        if unit.kind==UnitKind::Executor {ensure!(task.worktree.as_ref()==Some(&unit.worktree) && task.branch==unit.branch,"executor projection changed");}
+    }
     Ok(unit)
 }
 fn insert_lease(tx:&Transaction<'_>,lease:&ResourceLease) -> Result<()> {
@@ -100,6 +141,10 @@ fn insert_lease(tx:&Transaction<'_>,lease:&ResourceLease) -> Result<()> {
 }
 
 impl Store {
+    #[cfg(test)]
+    pub(crate) fn connection_epoch_for_test(&self)->u64 {
+        self.connection.query_row("SELECT epoch FROM runtime_epoch WHERE singleton=1",[],|r|r.get(0)).unwrap()
+    }
     /// Only the holder of the exclusive Runtime lock may call this at startup.
     /// Closing logical authority does not establish native workload death.
     pub(crate) fn begin_execution_epoch(&mut self) -> Result<(String,u64)> {
@@ -169,6 +214,13 @@ impl Store {
         ensure!(matches!(state,UnitState::Preparing|UnitState::DispatchPending|UnitState::Running|UnitState::WaitingQuota),"invalid nonterminal transition");
         let tx=self.connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let mut unit=validate_authority(&tx,authority,true,false)?;
+        let allowed=matches!((unit.state,state),
+            (UnitState::Reserved,UnitState::Preparing)|
+            (UnitState::Preparing,UnitState::DispatchPending)|
+            (UnitState::DispatchPending,UnitState::Running)|
+            (UnitState::Running,UnitState::WaitingQuota)|
+            (UnitState::WaitingQuota,UnitState::Running));
+        ensure!(allowed,"invalid execution state edge");
         unit.state=state;write_unit(&tx,&mut unit)?;
         append_event(&tx,&unit.scope,"execution.state",json!({"unit":unit.id,"state":unit.state}))?;
         tx.commit()?;Ok(unit)
@@ -219,8 +271,9 @@ impl Store {
         tx.commit()?;Ok(())
     }
     pub fn execution_leases(&self,id:UnitId) -> Result<Vec<ResourceLease>> {
-        let mut s=self.connection.prepare("SELECT body FROM resource_leases WHERE unit_id=?1 ORDER BY rowid")?;
-        s.query_map([id.to_string()],|r|r.get::<_,String>(0))?.map(|r|r.map_err(anyhow::Error::from).and_then(decode)).collect()
+        let mut s=self.connection.prepare("SELECT id FROM resource_leases WHERE unit_id=?1 ORDER BY rowid")?;
+        let ids=s.query_map([id.to_string()],|r|r.get::<_,String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
+        ids.into_iter().map(|key| {let lease=lease_tx(&self.connection,key.parse()?)?;ensure!(lease.unit_id==id,"foreign lease");Ok(lease)}).collect()
     }
     pub(crate) fn record_execution_cleanup(&mut self,observation:&CleanupObservation) -> Result<()> {
         ensure!(observation.coverage.len()<=32 && observation.remaining.len()<=1024 && observation.errors.len()<=32,"cleanup observation bound exceeded");
@@ -235,11 +288,27 @@ impl Store {
 
 fn self_artifact_tx(connection:&Connection,id:ArtifactId) -> Result<ResultArtifact> {
     let body:String=connection.query_row("SELECT body FROM result_artifacts WHERE id=?1",[id.to_string()],|r|r.get(0))?;
-    let artifact:ResultArtifact=decode(body)?;ensure!(artifact.id==id,"artifact indexed identity mismatch");Ok(artifact)
+    let artifact:ResultArtifact=decode(body)?;ensure!(artifact.id==id,"artifact indexed identity mismatch");
+    let mut columns=scoped_columns(&artifact.scope);columns.extend([("id",json!(id)),("unit_id",json!(artifact.unit_id)),("state",json!(artifact.state)),("version",json!(artifact.version))]);
+    check_indexed(connection,"result_artifacts",&columns)?;Ok(artifact)
+}
+fn lease_tx(connection:&Connection,id:LeaseId)->Result<ResourceLease> {
+    let body:String=connection.query_row("SELECT body FROM resource_leases WHERE id=?1",[id.to_string()],|r|r.get(0))?;
+    let lease:ResourceLease=decode(body)?;ensure!(lease.id==id,"lease identity mismatch");
+    let mut cols=scoped_columns(&lease.scope);cols.extend([("id",json!(id)),("unit_id",json!(lease.unit_id)),("kind",json!(lease.kind)),("namespace",json!(lease.namespace)),("value",json!(lease.value)),
+        ("port_start",json!(lease.port_start)),("port_end",json!(lease.port_end)),("state",json!(lease.state)),("version",json!(lease.version))]);
+    check_indexed(connection,"resource_leases",&cols)?;Ok(lease)
+}
+fn effect_tx(connection:&Connection,id:OperationId)->Result<ManagedEffect> {
+    let body:String=connection.query_row("SELECT body FROM managed_effects WHERE id=?1",[id.to_string()],|r|r.get(0))?;
+    let effect:ManagedEffect=decode(body)?;ensure!(effect.id==id,"effect identity mismatch");
+    let mut cols=scoped_columns(&effect.scope);cols.extend([("id",json!(id)),("unit_id",json!(effect.unit_id)),("idempotency_key",json!(effect.idempotency_key)),("state",json!(effect.state)),("version",json!(effect.version))]);
+    check_indexed(connection,"managed_effects",&cols)?;Ok(effect)
 }
 
 // Other state operations share the same connection and transaction helpers.
 mod artifacts;
 mod effects;
 mod quotas;
+mod migration;
 #[cfg(test)]mod tests;

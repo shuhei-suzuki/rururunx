@@ -4,8 +4,9 @@ impl Store {
     pub fn result_artifact(&self,id:ArtifactId) -> Result<ResultArtifact> {self_artifact_tx(&self.connection,id)}
     pub fn result_artifacts(&self,scope:&Scope) -> Result<Vec<ResultArtifact>> {
         let (p,g,t)=scope_keys(scope)?;
-        let mut s=self.connection.prepare("SELECT body FROM result_artifacts WHERE project_id=?1 AND goal_id=?2 AND task_id=?3 ORDER BY rowid")?;
-        s.query_map(params![p,g,t],|r|r.get::<_,String>(0))?.map(|r|r.map_err(anyhow::Error::from).and_then(decode)).collect()
+        let mut s=self.connection.prepare("SELECT id FROM result_artifacts WHERE project_id=?1 AND goal_id=?2 AND task_id=?3 ORDER BY rowid")?;
+        let ids=s.query_map(params![p,g,t],|r|r.get::<_,String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
+        ids.into_iter().map(|id|{let a=self.result_artifact(id.parse()?)?;ensure!(a.scope==*scope,"foreign artifact");Ok(a)}).collect()
     }
     pub(crate) fn stage_result(&mut self,authority:&ExecutionAuthority,artifact:&ResultArtifact) -> Result<()> {
         ensure!(artifact.unit_id==authority.unit_id && artifact.scope==authority.scope && artifact.state==ArtifactState::Staging

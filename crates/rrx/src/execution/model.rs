@@ -81,11 +81,12 @@ pub struct ExecutionAuthority {
     pub generation: u64,
     pub owner_epoch: u64,
     pub session_id: Option<SessionId>,
+    pub record_version: u64,
 }
 impl ExecutionUnit {
     pub fn authority(&self) -> ExecutionAuthority {
         ExecutionAuthority { scope: self.scope.clone(), unit_id:self.id,
-            generation:self.generation, owner_epoch:self.owner_epoch, session_id:self.session_id }
+            generation:self.generation, owner_epoch:self.owner_epoch, session_id:self.session_id,record_version:self.version }
     }
 }
 

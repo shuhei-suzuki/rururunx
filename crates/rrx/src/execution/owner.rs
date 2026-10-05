@@ -13,6 +13,21 @@ pub struct RuntimeOwner {
     pub(crate) epoch:u64,
     pub(crate) git_gate:tokio::sync::Mutex<()>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn database_aliases_cannot_create_a_second_owner_or_advance_epoch() {
+        let dir=tempfile::tempdir().unwrap();let state=dir.path().join("state.db");
+        let owner=RuntimeOwner::open(&state).unwrap();
+        let symlink=dir.path().join("alias.db");std::os::unix::fs::symlink(&state,&symlink).unwrap();
+        let hardlink=dir.path().join("hardlink.db");std::fs::hard_link(&state,&hardlink).unwrap();
+        for path in [&state,&symlink,&hardlink] {assert!(RuntimeOwner::open(path).is_err());}
+        let epoch:u64=owner.store.lock().unwrap().connection_epoch_for_test();assert_eq!(epoch,owner.epoch());
+        drop(owner);let successor=RuntimeOwner::open(&state).unwrap();assert_eq!(successor.epoch(),epoch+1);
+    }
+}
 impl RuntimeOwner {
     pub fn open(state:&Path) -> Result<Arc<Self>> {
         let path=if state.is_absolute(){state.to_path_buf()}else{std::env::current_dir()?.join(state)};
