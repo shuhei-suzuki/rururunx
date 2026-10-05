@@ -526,3 +526,73 @@ async fn both_config_consumers_refuse_references_before_policy_and_account() {
         }
     }
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn consumed_input_checks_current_environment_before_real_wire() {
+    let owned = Fixture::new(false);
+    let (executable, directory) = wire_fixture(&owned, "complete");
+    let adapter = synthetic_adapter(&owned, executable);
+    let gate = adapter.gates.install(TestPoint::BeforeDispatch);
+    let actor = adapter.clone();
+    let request = owned.request.clone();
+    let caller = tokio::spawn(async move { actor.start(request).await });
+    bounded(gate.reached()).await;
+    let mut writer = writer(&owned);
+    foreign(&mut writer, "OPENAI_API_KEY");
+    gate.release();
+    let started = bounded(caller).await.unwrap();
+    if let Ok(session) = &started {
+        terminal_status(&adapter, &SessionRef::from(session)).await;
+    }
+    assert_leader_reaped(&directory.join("leader"));
+    assert!(
+        !journal_values(&directory)
+            .iter()
+            .any(|v| v["method"] == "turn/start")
+    );
+    let error = match started {
+        Err(error) => error,
+        Ok(_) => panic!("foreign conflict consumed a model frame"),
+    };
+    assert!(error.kind == ErrorKind::InvalidConfiguration);
+    let store = owned.store.lock().unwrap();
+    let sessions = store
+        .records(&owned.request.scope, crate::domain::RecordKind::Session)
+        .unwrap();
+    assert!(
+        sessions
+            .iter()
+            .all(|r| r.data["recovery"]["dispatch_intent"].is_null())
+    );
+}
+#[tokio::test]
+async fn already_owned_approve_deny_cancel_ignore_foreign_environment_roster() {
+    for decision in [
+        OperationDecision::Approve,
+        OperationDecision::Deny,
+        OperationDecision::Cancel,
+    ] {
+        let mut fixture = ApprovalFixture::new(true).await;
+        let baseline =
+            FrozenEnvironment::new([("OPENAI_API_KEY".into(), "synthetic-owned".into())]).unwrap();
+        fixture.reservation.environment = Some(Arc::new(
+            baseline
+                .select(&fixture.reservation.store, &fixture.authority.request)
+                .unwrap(),
+        ));
+        let mut writer = writer(&fixture._owned);
+        foreign(&mut writer, "OPENAI_API_KEY");
+        let (mut rpc, mut frames, peer) = rpc_peer().await;
+        let (answer, receipt) = reply(decision, "turn");
+        let answered = fixture.answer(&mut rpc, answer).await;
+        let receipt = receipt.await;
+        drop(rpc);
+        bounded(peer).await.unwrap();
+        let frame = frames.try_recv().unwrap();
+        assert!(answered.is_ok() && receipt.unwrap().is_ok());
+        assert!(frame["id"] == 1);
+        assert!(frames.try_recv().is_err());
+        assert!(fixture.intents() == 1);
+        assert!(!fixture.reservation.inference_started);
+    }
+}
