@@ -1,8 +1,9 @@
 # Issue #19 curated preparation custody integration
 
-Status: queued-abandonment defect reproduced and fixed; two independent read-only
-source reviews and the finite assertion re-reviews completed. Full Debug and Release
-regression remain RED. Not merge-ready. Whole Issue #19 and
+Status: queued-abandonment defect reproduced and fixed; the current d938 inventory
+passed full local macOS Debug/Release and every Linux/macOS CI step. Earlier RED
+observations and unknown causes are retained. Independent finite-source reviews
+completed; limited merge disposition is being reviewed. Whole Issue #19 and
 native readiness remain open.
 
 ## Immutable inputs and scope
@@ -247,7 +248,8 @@ It ran workspace Debug tests and Release builds, not full Release tests; it does
 not cover the later fix/test delta or explain the local failures. Log SHA256:
 `977b6d8daed6d8dc591ab25c730415ff35843dd0d8b70fa939ba98d9e1db5936`.
 The new immutable delta still requires independent review and final-head CI;
-workspace failure keeps this draft composition unmerged.
+workspace failure kept this draft composition unmerged at that phase; the later
+d938 current-inventory observations are recorded separately below.
 
 
 ## Finite source review and control corrections
@@ -315,7 +317,8 @@ abaa6ea9c097951fb4de2fafc1576255f13d7dc6 has parents26f3a48/f6b18af and
 fulltree396ce6618ace6fc76c41261d9811f6bd65ff9847 equal to f6. It executed
 Debug workspace tests and Release builds, not full Release tests. It does not
 cover the later226/968 test changes or discharge the local failed gates.
-Final-head CI remains pending; PR69 stays draft and unmerged.
+At that phase final-head CI remained pending and PR69 stayed draft/unmerged;
+later current-inventory observations are recorded below.
 
 
 ## Direct response ordering control
@@ -348,6 +351,43 @@ prove in-flight effect commitment, native cleanup or whole consumer acceptance.
 BothOS CI37265599043 succeeded on reviewedfa61: actualcheckout4b213df has
 parents26f3/fa61 and fulltreeccb1017a/all284pathblobs equal to fa61. This was
 Debug workspace TEST plus Debug/Release BUILD, not full Release TEST. It does
-not cover the later5b7 test addition. Current-source final CI remains pending;
-local full Debug876 and Release968 failures remain open with unknown causes.
+not cover the later5b7 test addition. At that phase current-source final CI was
+pending; local full Debug876 and Release968 failures retain unknown causes.
 No same-head retry, deadline/parallelism change or full-gate waiver is applied.
+
+
+## Current inventory gates and limited disposition
+
+At clean d938610e705271396d27a760813297eaf77f19f9, the first full default
+Debug and distinct Release workspace test commands for the newly added actual
+response control both exited0. Each executed403 Rust tests plus2 doctests, with
+26 ignored (library291 passed/0 failed/23 ignored). Command elapsed time was
+117.21s Debug and119.63s Release. Original internal deadlines and default test
+parallelism were preserved. All workspace targets executed in both modes.
+
+CI37267268133 passed every step on Linux and macOS. Both actual checkout logs
+identify7a45bf1963f104ec7eac5e33b595feb5ba35eeaf, whose parents are26f3a48/d938
+and complete tree123f0d2cffafc055716e383cae29c7a44c6223c8 (all285 mode/type/blob/path
+entries) equals d938. This supplies Debug workspace TEST, fmt, warnings-denied
+all-target clippy and Debug/Release BUILD. The distinct local Release command
+supplies Release TEST; CI does not. Details are bound in the
+[current gate record](issue-19-custody-current-gates.json).
+
+The changed test inventory is not a same-failed-head retry. Production has not
+changed since the two abandonment revocation calls at876. The53-line addition
+observes a real response boundary and has compiled sensitivity evidence; it
+does not change Grok preflight/inspection/watchdog consumers. These successful
+observations neither explain nor erase the historical943/876/968 and filtered
+f6 failures. Their causes, contribution and regression attribution remain unknown.
+Shared fixture/host load was not isolated or established as a cause.
+
+The candidate disposition is a limited mechanical composition only: test-only
+Create factory, production custody selection None, retained in-flight charging
+and refusal ordering. No native backend is enabled. The documented effect-commit
+linearization window, future worker-spawn/handler hardening, zero-created Lost
+retention/recovery, private producers and settlement remain unqualified before
+factory activation. Whole Issues19/6/43, workflow/context integration, native
+cleanup acceptance and the MVP remain open. The prior unqualified native review
+wrapper result stays unqualified; current gate success does not adopt its cleanup
+or elevate source-only approvals to merge approval. Final docs-only head CI and
+independent limited disposition review remain required before merge.

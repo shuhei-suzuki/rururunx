@@ -1,0 +1,162 @@
+{
+  "head": "d938610e705271396d27a760813297eaf77f19f9",
+  "base": "26f3a48fedce976b353a6a9fa899bc6fb13ca72a",
+  "actual_checkout": "7a45bf1963f104ec7eac5e33b595feb5ba35eeaf",
+  "parents": [
+    "26f3a48fedce976b353a6a9fa899bc6fb13ca72a",
+    "d938610e705271396d27a760813297eaf77f19f9"
+  ],
+  "tree": "123f0d2cffafc055716e383cae29c7a44c6223c8",
+  "full_mode_type_blob_path_entries_equal": true,
+  "entries": 285,
+  "ci_url": "https://github.com/shuhei-suzuki/rururunx/actions/runs/37267268133",
+  "ci_log_sha256": "e7da349cc7920c19881791217d6c846e29cfb45a6e82a02de085719209403715",
+  "ci_scope": "Every Linux/macOS CI step passed. Debug workspace tests, fmt, all-target warnings-denied clippy and Debug/Release builds; no Release workspace TEST in CI.",
+  "local_full_modes": [
+    {
+      "name": "full-debug",
+      "args": [
+        "cargo",
+        "test",
+        "--locked",
+        "--workspace"
+      ],
+      "exit": 0,
+      "seconds": 117.21,
+      "sha256": "60c84d885188e67922d41992ed7316d97f36b8bb528912812afc1bd5305f9769",
+      "rust_tests_passed": 403,
+      "doctests_passed": 2,
+      "ignored": 26,
+      "log_bytes": 47071,
+      "library": {
+        "passed": 291,
+        "failed": 0,
+        "ignored": 23
+      }
+    },
+    {
+      "name": "full-release",
+      "args": [
+        "cargo",
+        "test",
+        "--locked",
+        "--release",
+        "--workspace"
+      ],
+      "exit": 0,
+      "seconds": 119.63,
+      "sha256": "bb4573c215fb684bbfb4e64992a7beb1df6cbf8ea7b86e63f9ebfb6eeae0fc0e",
+      "rust_tests_passed": 403,
+      "doctests_passed": 2,
+      "ignored": 26,
+      "log_bytes": 46969,
+      "library": {
+        "passed": 291,
+        "failed": 0,
+        "ignored": 23
+      }
+    }
+  ],
+  "constraints": "Original internal deadlines and default parallelism; changed actual-response control inventory. Historical RED heads retained, no causal explanation/exoneration or samefailedhead rerun.",
+  "ci_jobs": [
+    {
+      "name": "check (ubuntu-latest)",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Set up job",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run dtolnay/rust-toolchain@1.91.1",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run cargo fmt --all -- --check",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run cargo clippy --locked --workspace --all-targets -- -D warnings",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run cargo test --locked --workspace",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run cargo build --locked --workspace",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run cargo build --locked --release --workspace",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "conclusion": "success"
+        },
+        {
+          "name": "Complete job",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "name": "check (macos-latest)",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Set up job",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run dtolnay/rust-toolchain@1.91.1",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run cargo fmt --all -- --check",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run cargo clippy --locked --workspace --all-targets -- -D warnings",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run cargo test --locked --workspace",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run cargo build --locked --workspace",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run cargo build --locked --release --workspace",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "conclusion": "success"
+        },
+        {
+          "name": "Complete job",
+          "conclusion": "success"
+        }
+      ]
+    }
+  ],
+  "limits": [
+    "Historical failed observations remain; causes/contribution/regression attribution unknown.",
+    "Finite mechanical composition only; production selection None and Create factory test-only.",
+    "No effect-commit linearization, complete native cleanup, managed backend, private producers, settlement or whole Issue/MVP credit.",
+    "Source-only reviews and a historical unqualified wrapper result do not become merge/native approval.",
+    "Docs-only final head CI and independent limited disposition review pending."
+  ]
+}
