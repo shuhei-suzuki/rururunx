@@ -33,6 +33,8 @@ struct FakeAgent {
     start_pause: Mutex<Option<Arc<Pause>>>,
     start_error: AtomicBool,
     start_error_session: AtomicBool,
+    status_calls: AtomicUsize,
+    retain_status: AtomicBool,
 }
 impl FakeAgent {
     fn new(name: &str, store: SharedStore, review: bool) -> Self {
@@ -48,6 +50,8 @@ impl FakeAgent {
             start_pause: Mutex::new(None),
             start_error: AtomicBool::new(false),
             start_error_session: AtomicBool::new(false),
+            status_calls: AtomicUsize::new(0),
+            retain_status: AtomicBool::new(false),
         }
     }
 }
@@ -154,13 +158,16 @@ impl AgentAdapter for FakeAgent {
     }
     fn status(&self, reference: SessionRef) -> AdapterFuture<'_, SessionStatus> {
         Box::pin(async move {
+            self.status_calls.fetch_add(1, Ordering::SeqCst);
             let mut statuses = self.statuses.lock().unwrap();
             let mut status = statuses
                 .get(&reference.id)
                 .cloned()
                 .ok_or_else(|| adapter_error("unknown session"))?;
             assert_eq!(status.session.scope, reference.scope);
-            if status.session.state == SessionState::Running {
+            if status.session.state == SessionState::Running
+                && !self.retain_status.load(Ordering::SeqCst)
+            {
                 status.session.state = if self.fail.load(Ordering::SeqCst) {
                     SessionState::Lost
                 } else {
@@ -4892,3 +4899,6 @@ async fn preparation_unbound_to_bound_before_refresh_releases_for_new_reservatio
 
 #[path = "tests/unbound_retry.rs"]
 mod unbound_retry;
+
+#[path = "tests/formal_refusal.rs"]
+mod formal_refusal;

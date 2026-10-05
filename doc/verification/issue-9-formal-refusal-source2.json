@@ -1,0 +1,329 @@
+{
+  "head": "7e04277c536a4bd0b8ab4fb539971b845b4ecefd",
+  "production_code_diff_vs_approved12cc": "empty",
+  "selected_delta": "test-only8configuredclass/Reviewer matrix and precise stagedREADME/master/CI evidence; no newWHAT/readiness/credit",
+  "both_native_closed_before_either_read": true,
+  "public_packet": {
+    "head": "7e04277c536a4bd0b8ab4fb539971b845b4ecefd",
+    "base": "26f3a48fedce976b353a6a9fa899bc6fb13ca72a",
+    "visibility": "PUBLIC",
+    "files": [
+      {
+        "path": "README.md",
+        "complete_sha256": "44ebad4eb11e1b076b16f3d378e9b42de24a009c111463a3e8dbb2ea1937bf01",
+        "blob": "434cf48c6272b5502cc338360f9091e06198b3c0",
+        "ranges": null,
+        "bytes": 20497
+      },
+      {
+        "path": "doc/requirements/product-requirements.md",
+        "complete_sha256": "bd34db425862ba80cab61c6a6ecb8a824eec969d24bd9184841ced444754eba1",
+        "blob": "a6034559d5fc622ba243cbe603b42f944ce4eaed",
+        "ranges": null,
+        "bytes": 41226
+      },
+      {
+        "path": "doc/requirements/issue-9-requirements.md",
+        "complete_sha256": "0af45849f067036815d36b3c43adb74515243c7a220b7a5789f379e6f722fcfb",
+        "blob": "38978a934fb6a10cc7d6156ab1bcc98358d68415",
+        "ranges": [
+          [
+            1910,
+            2100
+          ]
+        ],
+        "bytes": 15668
+      },
+      {
+        "path": "doc/design/issue-9-design.md",
+        "complete_sha256": "66bd24018d96ea53a4811ddfb944af19f8c85d776d8479cb23486826d0aa19b6",
+        "blob": "6a76d170656b7abfc42737f9cc9a94041f9cac58",
+        "ranges": null,
+        "bytes": 29898
+      },
+      {
+        "path": "doc/design/issue-9-formal-refusal-integration.md",
+        "complete_sha256": "6dc3a3599205d41d0145e09d3052baa94a64cfda04cfff5ba35d8d97289b2ff0",
+        "blob": "3d4005fe98d097aece98ad4a1fd51d2538bc24a0",
+        "ranges": null,
+        "bytes": 22053
+      },
+      {
+        "path": "doc/design/master/workflow-engine.md",
+        "complete_sha256": "4af97424b2dc90f9a13a396ddbc3fe60d83cad4443630d460ea11b7f27927622",
+        "blob": "70bcf9fedb820481385677a75bc0617f367441b5",
+        "ranges": null,
+        "bytes": 21948
+      },
+      {
+        "path": "crates/rrx/src/workflow.rs",
+        "complete_sha256": "38b4ee741cfe9ae9d610146d7402b603d9c0ec09d41f81924aa4117f953e09da",
+        "blob": "55e0213bafa4d5d24475d4558bd3a8b49fd2d432",
+        "ranges": null,
+        "bytes": 105506
+      },
+      {
+        "path": "crates/rrx/src/workflow/tests.rs",
+        "complete_sha256": "1b12c4129cf1552f89347bc2ccd605680bfdeaecbf5a8a51561e75ea2bddf00e",
+        "blob": "1bb2e5275cee408237c6c01f6b455cf97855e0e9",
+        "ranges": [
+          [
+            1,
+            510
+          ]
+        ],
+        "bytes": 17739
+      },
+      {
+        "path": "crates/rrx/src/workflow/tests/formal_refusal.rs",
+        "complete_sha256": "85d902f642974aadbecabbd371abfe4f4c765707ab6807bb0936a4af2d973280",
+        "blob": "d2402c3366a55f4bac31fab8c8e63b39418c76a7",
+        "ranges": null,
+        "bytes": 22853
+      },
+      {
+        "path": "crates/rrx/src/state/mod.rs",
+        "complete_sha256": "b18514c5bd2d11acdd99e47307bf36deea7ccdcce615916200a32390bcbf3bbd",
+        "blob": "7af6f7603629f22a0c690a9b49bc498ee34467df",
+        "ranges": [
+          [
+            50,
+            73
+          ],
+          [
+            345,
+            681
+          ]
+        ],
+        "bytes": 16191
+      },
+      {
+        "path": "doc/verification/issue-9-formal-refusal.md",
+        "complete_sha256": "fd45cf3ee37093a8c209ba8a8d139bca58bb4ec033b00647ef7558b1acf17eb4",
+        "blob": "36b5c4dc500d633c180c8e4ffcf058d428f9057d",
+        "ranges": null,
+        "bytes": 2720
+      },
+      {
+        "path": "doc/verification/issue-9-formal-refusal-source1.json",
+        "complete_sha256": "48785c68e50599aa6d395f2aa41ca11554104c60bf12177e6c78110d0e6e5f6d",
+        "blob": "b5c81ae8c893d69b3880e8a3a404ecbe08d6ff9b",
+        "ranges": null,
+        "bytes": 11975
+      },
+      {
+        "path": "doc/verification/issue-9-formal-refusal-source1-ci.json",
+        "complete_sha256": "f7a1d5ca55438cf0a8061c34c68f611d3004ce828f3726030cfd3daa5bdfea0e",
+        "blob": "29105e8c7f7c9dbb504dbfd5371ff0858dd7043a",
+        "ranges": null,
+        "bytes": 6866
+      },
+      {
+        "path": "doc/verification/issue-9-formal-refusal-source1-reviews.json",
+        "complete_sha256": "f5afdaa20ac1793cc339c34d203659e505b5ba6b44d7560f0463908bd51d8eab",
+        "blob": "89badd5f0570cd56fa81d0c769f43e2213c7c066",
+        "ranges": null,
+        "bytes": 12938
+      },
+      {
+        "path": "doc/verification/issue-9-formal-refusal-mutations/compound_successor_pack.patch",
+        "complete_sha256": "a965a638bb4e4cdabc9d64ae6196633dcd7fabd288eec9e28c6032873cdf48f8",
+        "blob": "07a939e50aa758fdefeaf28f80f19a04f874e115",
+        "ranges": null,
+        "bytes": 811
+      },
+      {
+        "path": "doc/verification/issue-9-formal-refusal-mutations/omit_downstream_classifier.patch",
+        "complete_sha256": "fa44ea4f979a1ada6d427ef7f977fb7aa53a48fe99ddea888adcc79ac289ff92",
+        "blob": "4622b0009735f97a6cefa3e2c60a951e85eac036",
+        "ranges": null,
+        "bytes": 536
+      },
+      {
+        "path": "doc/verification/issue-9-formal-refusal-mutations/omit_evaluate.patch",
+        "complete_sha256": "8b6f6941a6188a0b95db9201b5fadb7d9d43b337e00a77a053033f617925748b",
+        "blob": "0092166e398d6645f4f6921bc870c8054d921050",
+        "ranges": null,
+        "bytes": 508
+      },
+      {
+        "path": "doc/verification/issue-9-formal-refusal-mutations/omit_finalization.patch",
+        "complete_sha256": "b215244a6dfdb6ca516851f81676e484e8bfd76e0a3c39d30425567eff6db04f",
+        "blob": "5ea8cc95264d27d72e3d49dc090a9547b4ebae1e",
+        "ranges": null,
+        "bytes": 509
+      },
+      {
+        "path": "doc/verification/issue-9-formal-refusal-mutations/omit_pack.patch",
+        "complete_sha256": "8dc257effce1f457a9905e2a4f953ceb2fae9d0f8add605e6fde5747db09ed81",
+        "blob": "4cdd6cb9e3238935af225c16ddf65c8d598a9250",
+        "ranges": null,
+        "bytes": 507
+      },
+      {
+        "path": "doc/verification/issue-9-formal-refusal-mutations/omit_passed_block.patch",
+        "complete_sha256": "d92ddf2cacbd852f9cedf7fb863ca427dbd0dfa9ed40f841ed038bd330325a8f",
+        "blob": "861a1e337d0eebbc8ce43ddf30abda06766d1282",
+        "ranges": null,
+        "bytes": 895
+      },
+      {
+        "path": "doc/verification/issue-9-formal-refusal-mutations/omit_resume.patch",
+        "complete_sha256": "04712707817b557e6a02337ac38d8c7020202abe5a755dcb501dc3a0f314edc1",
+        "blob": "22023de152df1174eade8b181a2dcbbe8fc5411d",
+        "ranges": null,
+        "bytes": 566
+      },
+      {
+        "path": "doc/verification/issue-9-formal-refusal-mutations/omit_retry.patch",
+        "complete_sha256": "942ef7f3afc0014e9558e7fd41c1ae1e13ddf67c2948c6ea35d39bf5780bc1d5",
+        "blob": "4fb882f4f1d34b34f27e3b017d491129040d233b",
+        "ranges": null,
+        "bytes": 421
+      },
+      {
+        "path": "doc/verification/issue-9-formal-refusal-mutations/omit_step.patch",
+        "complete_sha256": "ede2782b2935eca13e9f81e04e6733e84559ff68debffbce000fccc49fe5f049",
+        "blob": "f37ca6e6f1c69e8472a47387cfda2a18a9a5bba6",
+        "ranges": null,
+        "bytes": 472
+      },
+      {
+        "path": "doc/verification/issue-9-formal-refusal-mutations/omit_successor.patch",
+        "complete_sha256": "7af990b4ea224771f7c99e5a999fadbf92fc93e3bfdf8ce032a047654f1dd1fd",
+        "blob": "f9aabaf9e62789d93b5d09c1ea626be758eb5827",
+        "ranges": null,
+        "bytes": 469
+      },
+      {
+        "path": "doc/verification/issue-9-formal-refusal-mutations/overbroad_poll.patch",
+        "complete_sha256": "8f6e68951c1320d20386e5d24685a06090c11058398896fe094327362720f9b3",
+        "blob": "3e838936e4d7e0dc73f12ff4b309348f8f0ec73b",
+        "ranges": null,
+        "bytes": 492
+      },
+      {
+        "head": "b191b466d5dea303585cfaf6968c6fb178be79cd",
+        "path": "crates/rrx/src/workflow.rs",
+        "complete_sha256": "a0597abd2e9f154dd20fe635cc7e82a58bff63cdbf21e34dde11c2972a4a35c7",
+        "provided_symbols": [
+          "preflight_native_adapter through next step boundary"
+        ],
+        "bytes": 9000
+      }
+    ],
+    "selected_diff_sha256": "81f434457c4b8a6ab3526bea222823234575c3a6114a05da52823839effaae27",
+    "packet_bytes": 427986,
+    "packet_sha256": "0794ca2de474e13b871927007d8fd710185f59c9d0f4324598aaf989b2fe0bbd"
+  },
+  "reviews": [
+    {
+      "actor": "a",
+      "session_id": "633cf446-fd66-45be-bdc8-535cce56bddb",
+      "exit": 0,
+      "num_turns": 1,
+      "stderr_bytes": 0,
+      "verdict": "APPROVE",
+      "findings": []
+    },
+    {
+      "actor": "b",
+      "session_id": "9d9801e9-9fcb-400a-b768-feb60e0d7453",
+      "exit": 0,
+      "num_turns": 1,
+      "stderr_bytes": 0,
+      "verdict": "APPROVE",
+      "findings": [
+        {
+          "severity": "Low",
+          "path": "doc/verification/issue-9-formal-refusal.md",
+          "section": "CI37262802366 sentence ('Linux218 pass/29 typed-refusal fail/16 ignored')",
+          "causal_reproduction": "The CI evidence JSON records a single test_results line: '218 passed; 29 failed; 16 ignored'. This is the first (lib) test binary. Because `cargo test --locked --workspace` aborts after the first failing binary, the adapter/context/grok/integration/doctest binaries never ran on Linux. Locally those binaries contributed 19+14+9 failures. A reader can take 'Linux218 pass/29 fail' as a complete Linux workspace result and infer that the 133 non-policy local failures are absent on Linux, which is unproven.",
+          "source_basis": "issue-9-formal-refusal-source1-ci.json test_results has exactly one line. Compare issue-9-formal-refusal-source1.json, where the full local run lists separate lib/adapter/context/grok binaries. The Ubuntu step 6 fails, and steps 7 and 8 are skipped.",
+          "minimal_fix": "Wording only: say 'Linux lib binary 218 pass/29 typed-refusal fail/16 ignored; remaining workspace binaries did not execute after that failure'. Make no attribution or nonregression claim for the unexecuted binaries. No source or test change."
+        }
+      ]
+    }
+  ],
+  "remaining_Low": "VerifiedCI218/29/16 is Linuxlib-only; remaining workspace binaries unexecuted, now wording corrected without inference",
+  "checks": {
+    "focused_debug": [
+      11,
+      0
+    ],
+    "focused_release": [
+      11,
+      0
+    ],
+    "fmt": 0,
+    "clippy_Dwarnings": 0,
+    "debug_build": 0,
+    "release_build": 0
+  },
+  "full_default_no_fail_fast": {
+    "exit": 101,
+    "pass": 234,
+    "fail": 162,
+    "ignored": 26,
+    "typed_policy_failures": 29,
+    "other133_cause_and_contribution": "UNKNOWN; no nonregression attribution or waiver"
+  },
+  "mutation_credit": "original11operators only; no newcredit for matrixparameterization",
+  "logs": [
+    {
+      "check": "focused",
+      "sha256": "1b625a6dc620377ba6b94f664ababe4af486dd3c7f4c7a01d05bcb420c4e6a4c",
+      "test_results": [
+        "test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 294 filtered out; finished in 7.00s"
+      ]
+    },
+    {
+      "check": "full",
+      "sha256": "b72d8df2f02ffff955b0572253eee91164c574c5e0273b2384db99815a34e03b",
+      "test_results": [
+        "test result: FAILED. 162 passed; 120 failed; 23 ignored; 0 measured; 0 filtered out; finished in 32.76s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: FAILED. 0 passed; 19 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.41s",
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.88s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.02s",
+        "test result: ok. 1 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.68s",
+        "test result: FAILED. 2 passed; 14 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.14s",
+        "test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 12.81s",
+        "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s",
+        "test result: FAILED. 6 passed; 9 failed; 2 ignored; 0 measured; 0 filtered out; finished in 10.95s",
+        "test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 16.72s",
+        "test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.17s"
+      ]
+    },
+    {
+      "check": "fmt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_results": []
+    },
+    {
+      "check": "clippy",
+      "sha256": "5959823c2e43bd331b3584871ff9fa33dc717f6ed9777f802cec5bcc1b8d8dcb",
+      "test_results": []
+    },
+    {
+      "check": "debug-build",
+      "sha256": "f4403412cb20dc7d8a0a94c08c9c8853e4bac9b3e8489158834f30512311ed97",
+      "test_results": []
+    },
+    {
+      "check": "release-build",
+      "sha256": "ba2425c7a36e4c914770e74bfb84d983da0bb865beafa387104d8f8721e9b636",
+      "test_results": []
+    },
+    {
+      "check": "release-focused",
+      "sha256": "bf13fc93486183309127fb7823b781a465d6e8a066a17be81dab07cf1d783867",
+      "test_results": [
+        "test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 294 filtered out; finished in 1.54s"
+      ]
+    }
+  ],
+  "acceptance": "SelectedSOURCE1+finiteSOURCE2APPROVE0CHM only. Fullregression/CI/positiveReviewSet/native/profile/producer/legacy/epoch/whole9/MVPOPEN."
+}

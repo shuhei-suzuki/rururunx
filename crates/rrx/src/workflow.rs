@@ -16,6 +16,24 @@ use crate::{
     state::{StateGuardError, Store, WorkflowAccess, goal_terminal, task_terminal},
 };
 
+/// Formal ReviewSet authority and qualified native profiles are not composed.
+/// This readiness refusal grants no input and does not spend a review attempt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReviewGatingUnavailable;
+impl std::fmt::Display for ReviewGatingUnavailable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("formal ReviewSet gating unavailable; production authority and native profiles are not composed (#9)")
+    }
+}
+impl std::error::Error for ReviewGatingUnavailable {}
+
+fn require_formal_review_ready(phase: Phase) -> Result<()> {
+    if phase.actor() == Actor::Reviewer || irreversible(phase) {
+        return Err(ReviewGatingUnavailable.into());
+    }
+    Ok(())
+}
+
 pub type WorkflowFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 
 pub(crate) const UNBOUND_NATIVE_RECOVERY_REQUIRED: &str = "native launch outcome unknown; launch may or may not have begun; original-attempt recovery required (#14)";
@@ -595,6 +613,7 @@ impl WorkflowEngine {
         class: WorkflowClass,
         generation: u64,
     ) -> Result<ContextVersion> {
+        require_formal_review_ready(phase)?;
         let (config, source, selected_budget) = self.inputs(project, task, phase, class).await?;
         ensure!(
             same_sources(expected, &source),
@@ -812,6 +831,7 @@ impl WorkflowEngine {
             self.persist(&mut snapshot, None)?;
             return Ok(StepResult::Finished);
         };
+        require_formal_review_ready(phase)?;
         let (config, source, selected_budget) = self
             .inputs(
                 &snapshot.project,
@@ -1440,6 +1460,7 @@ impl WorkflowEngine {
                 && snapshot.workflow.completed.contains_key(&Phase::Pr),
             "finalization requires finished QUICK PR evidence"
         );
+        require_formal_review_ready(Phase::MergeGate)?;
         let (_, source, _) = self
             .inputs(
                 &snapshot.project,
@@ -1607,6 +1628,7 @@ impl WorkflowEngine {
                 || (irreversible(attempt.phase) && attempt.state == AttemptState::Failed),
             "only a definitive waiting gate or failed external gate can resume"
         );
+        require_formal_review_ready(attempt.phase)?;
         let status = if let Some(id) = attempt.session_id {
             let agent = self
                 .registry
@@ -1677,8 +1699,9 @@ impl WorkflowEngine {
         index: usize,
         status: Option<SessionStatus>,
     ) -> Result<StepResult> {
-        self.refresh_owners(&mut snapshot)?;
         let phase = snapshot.workflow.history[index].phase;
+        require_formal_review_ready(phase)?;
+        self.refresh_owners(&mut snapshot)?;
         if matches!(
             snapshot.workflow.history[index].state,
             AttemptState::Waiting | AttemptState::Failed
@@ -1868,6 +1891,18 @@ impl WorkflowEngine {
         outcome: GateOutcome,
     ) -> Result<StepResult> {
         let phase = snapshot.workflow.history[index].phase;
+        if matches!(&outcome, GateOutcome::Passed(_)) {
+            require_formal_review_ready(phase)?;
+            if let Some(next) = snapshot
+                .workflow
+                .configured_phases
+                .iter()
+                .copied()
+                .find(|p| *p != phase && !snapshot.workflow.completed.contains_key(p))
+            {
+                require_formal_review_ready(next)?;
+            }
+        }
         let source = if phase == Phase::Cleanup {
             snapshot.workflow.sources.clone()
         } else {
@@ -2051,6 +2086,7 @@ impl WorkflowEngine {
             );
         }
         drop(store);
+        require_formal_review_ready(attempt.phase)?;
         snapshot.workflow.retries.push(RetryEvent {
             prior_attempt: index,
             reason,

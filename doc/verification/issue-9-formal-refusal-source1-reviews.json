@@ -1,0 +1,255 @@
+{
+  "head": "12cc9727330017068de38d80c58b3d4185708af8",
+  "scope": "Selected typed formal refusal SOURCE only; no native/epoch/ReviewSet/allocation/profiles/MVP readiness",
+  "both_closed_before_either_result_read": true,
+  "public_packet": {
+    "head": "12cc9727330017068de38d80c58b3d4185708af8",
+    "base": "26f3a48fedce976b353a6a9fa899bc6fb13ca72a",
+    "visibility": "PUBLIC",
+    "files": [
+      {
+        "path": "README.md",
+        "complete_sha256": "585e67055012a519bc4f44b96f62ca9d31d2706bb2eff96a0b82dbb53d4e7e80",
+        "blob": "da41b1076773294d9d82c01b04b1b8f3c9208dea",
+        "ranges": null,
+        "bytes": 20108
+      },
+      {
+        "path": "doc/requirements/product-requirements.md",
+        "complete_sha256": "bd34db425862ba80cab61c6a6ecb8a824eec969d24bd9184841ced444754eba1",
+        "blob": "a6034559d5fc622ba243cbe603b42f944ce4eaed",
+        "ranges": null,
+        "bytes": 41226
+      },
+      {
+        "path": "doc/requirements/issue-9-requirements.md",
+        "complete_sha256": "0af45849f067036815d36b3c43adb74515243c7a220b7a5789f379e6f722fcfb",
+        "blob": "38978a934fb6a10cc7d6156ab1bcc98358d68415",
+        "ranges": [
+          [
+            1910,
+            2100
+          ]
+        ],
+        "bytes": 15668
+      },
+      {
+        "path": "doc/design/issue-9-design.md",
+        "complete_sha256": "66bd24018d96ea53a4811ddfb944af19f8c85d776d8479cb23486826d0aa19b6",
+        "blob": "6a76d170656b7abfc42737f9cc9a94041f9cac58",
+        "ranges": null,
+        "bytes": 29898
+      },
+      {
+        "path": "doc/design/issue-9-formal-refusal-integration.md",
+        "complete_sha256": "6dc3a3599205d41d0145e09d3052baa94a64cfda04cfff5ba35d8d97289b2ff0",
+        "blob": "3d4005fe98d097aece98ad4a1fd51d2538bc24a0",
+        "ranges": null,
+        "bytes": 22053
+      },
+      {
+        "path": "doc/design/master/workflow-engine.md",
+        "complete_sha256": "1a091343da6f6548ecd396b9329dc751048f27281d1b1833587ec6e57d631b66",
+        "blob": "c5387277407af3bf600a59db5fd5c9146ad31ebd",
+        "ranges": null,
+        "bytes": 21255
+      },
+      {
+        "path": "crates/rrx/src/workflow.rs",
+        "complete_sha256": "38b4ee741cfe9ae9d610146d7402b603d9c0ec09d41f81924aa4117f953e09da",
+        "blob": "55e0213bafa4d5d24475d4558bd3a8b49fd2d432",
+        "ranges": null,
+        "bytes": 105506
+      },
+      {
+        "path": "crates/rrx/src/workflow/tests.rs",
+        "complete_sha256": "1b12c4129cf1552f89347bc2ccd605680bfdeaecbf5a8a51561e75ea2bddf00e",
+        "blob": "1bb2e5275cee408237c6c01f6b455cf97855e0e9",
+        "ranges": [
+          [
+            1,
+            510
+          ]
+        ],
+        "bytes": 17739
+      },
+      {
+        "path": "crates/rrx/src/workflow/tests/formal_refusal.rs",
+        "complete_sha256": "fae71e705d330cbac2cbdaf7b19a0f8df0d96d718e3a2f47829da8f7ca6a91bc",
+        "blob": "e9bdb26a54949ba1cd7f898ad8d5c2534c00ad3d",
+        "ranges": null,
+        "bytes": 22187
+      },
+      {
+        "path": "crates/rrx/src/state/mod.rs",
+        "complete_sha256": "b18514c5bd2d11acdd99e47307bf36deea7ccdcce615916200a32390bcbf3bbd",
+        "blob": "7af6f7603629f22a0c690a9b49bc498ee34467df",
+        "ranges": [
+          [
+            50,
+            73
+          ],
+          [
+            345,
+            681
+          ]
+        ],
+        "bytes": 16191
+      },
+      {
+        "path": "doc/verification/issue-9-formal-refusal.md",
+        "complete_sha256": "0648cbb834c90a85be97a610c1b6c514bba778e63d33dfc583ac20fa96905800",
+        "blob": "3aa8db5d368334b324ca715c4dc5df65b369b422",
+        "ranges": null,
+        "bytes": 2155
+      },
+      {
+        "path": "doc/verification/issue-9-formal-refusal-source1.json",
+        "complete_sha256": "48785c68e50599aa6d395f2aa41ca11554104c60bf12177e6c78110d0e6e5f6d",
+        "blob": "b5c81ae8c893d69b3880e8a3a404ecbe08d6ff9b",
+        "ranges": null,
+        "bytes": 11975
+      },
+      {
+        "path": "doc/verification/issue-9-formal-refusal-mutations/compound_successor_pack.patch",
+        "complete_sha256": "a965a638bb4e4cdabc9d64ae6196633dcd7fabd288eec9e28c6032873cdf48f8",
+        "blob": "07a939e50aa758fdefeaf28f80f19a04f874e115",
+        "ranges": null,
+        "bytes": 811
+      },
+      {
+        "path": "doc/verification/issue-9-formal-refusal-mutations/omit_downstream_classifier.patch",
+        "complete_sha256": "fa44ea4f979a1ada6d427ef7f977fb7aa53a48fe99ddea888adcc79ac289ff92",
+        "blob": "4622b0009735f97a6cefa3e2c60a951e85eac036",
+        "ranges": null,
+        "bytes": 536
+      },
+      {
+        "path": "doc/verification/issue-9-formal-refusal-mutations/omit_evaluate.patch",
+        "complete_sha256": "8b6f6941a6188a0b95db9201b5fadb7d9d43b337e00a77a053033f617925748b",
+        "blob": "0092166e398d6645f4f6921bc870c8054d921050",
+        "ranges": null,
+        "bytes": 508
+      },
+      {
+        "path": "doc/verification/issue-9-formal-refusal-mutations/omit_finalization.patch",
+        "complete_sha256": "b215244a6dfdb6ca516851f81676e484e8bfd76e0a3c39d30425567eff6db04f",
+        "blob": "5ea8cc95264d27d72e3d49dc090a9547b4ebae1e",
+        "ranges": null,
+        "bytes": 509
+      },
+      {
+        "path": "doc/verification/issue-9-formal-refusal-mutations/omit_pack.patch",
+        "complete_sha256": "8dc257effce1f457a9905e2a4f953ceb2fae9d0f8add605e6fde5747db09ed81",
+        "blob": "4cdd6cb9e3238935af225c16ddf65c8d598a9250",
+        "ranges": null,
+        "bytes": 507
+      },
+      {
+        "path": "doc/verification/issue-9-formal-refusal-mutations/omit_passed_block.patch",
+        "complete_sha256": "d92ddf2cacbd852f9cedf7fb863ca427dbd0dfa9ed40f841ed038bd330325a8f",
+        "blob": "861a1e337d0eebbc8ce43ddf30abda06766d1282",
+        "ranges": null,
+        "bytes": 895
+      },
+      {
+        "path": "doc/verification/issue-9-formal-refusal-mutations/omit_resume.patch",
+        "complete_sha256": "04712707817b557e6a02337ac38d8c7020202abe5a755dcb501dc3a0f314edc1",
+        "blob": "22023de152df1174eade8b181a2dcbbe8fc5411d",
+        "ranges": null,
+        "bytes": 566
+      },
+      {
+        "path": "doc/verification/issue-9-formal-refusal-mutations/omit_retry.patch",
+        "complete_sha256": "942ef7f3afc0014e9558e7fd41c1ae1e13ddf67c2948c6ea35d39bf5780bc1d5",
+        "blob": "4fb882f4f1d34b34f27e3b017d491129040d233b",
+        "ranges": null,
+        "bytes": 421
+      },
+      {
+        "path": "doc/verification/issue-9-formal-refusal-mutations/omit_step.patch",
+        "complete_sha256": "ede2782b2935eca13e9f81e04e6733e84559ff68debffbce000fccc49fe5f049",
+        "blob": "f37ca6e6f1c69e8472a47387cfda2a18a9a5bba6",
+        "ranges": null,
+        "bytes": 472
+      },
+      {
+        "path": "doc/verification/issue-9-formal-refusal-mutations/omit_successor.patch",
+        "complete_sha256": "7af990b4ea224771f7c99e5a999fadbf92fc93e3bfdf8ce032a047654f1dd1fd",
+        "blob": "f9aabaf9e62789d93b5d09c1ea626be758eb5827",
+        "ranges": null,
+        "bytes": 469
+      },
+      {
+        "path": "doc/verification/issue-9-formal-refusal-mutations/overbroad_poll.patch",
+        "complete_sha256": "8f6e68951c1320d20386e5d24685a06090c11058398896fe094327362720f9b3",
+        "blob": "3e838936e4d7e0dc73f12ff4b309348f8f0ec73b",
+        "ranges": null,
+        "bytes": 492
+      },
+      {
+        "head": "b191b466d5dea303585cfaf6968c6fb178be79cd",
+        "path": "crates/rrx/src/workflow.rs",
+        "complete_sha256": "a0597abd2e9f154dd20fe635cc7e82a58bff63cdbf21e34dde11c2972a4a35c7",
+        "provided_symbols": [
+          "preflight_native_adapter through next step boundary"
+        ],
+        "bytes": 9000
+      }
+    ],
+    "selected_diff_sha256": "7e33e9c481def2145d478e4a57135fd09146c5861c65dc75ff19468e0b619038",
+    "packet_bytes": 373326,
+    "packet_sha256": "22ff5e2dfcbf44fb10d9b05d410610ead0ed2aaf21562c0b890f3058ae527449"
+  },
+  "reviews": [
+    {
+      "actor": "a",
+      "session_id": "1f7c88b2-9b61-4527-b1c4-a3504c19b9de",
+      "exit": 0,
+      "num_turns": 1,
+      "stderr_bytes": 0,
+      "verdict": "APPROVE",
+      "findings": [
+        {
+          "severity": "Low",
+          "path": "README.md; doc/design/master/workflow-engine.md",
+          "section": "README 'Status' paragraph and 'Development' Workflow paragraph; master \u00a717 'Implemented Rust contract'",
+          "causal_reproduction": "At 12cc972 the README Status paragraph says the staged formal-refusal design 'is not implemented; legacy single-reviewer behavior remains current'. The README Development paragraph and master \u00a717 likewise describe the current reviewer delegation and the QUICK PR\u2192merge/cleanup finalization as executable. The same README later states that the staged component returns ReviewGatingUnavailable, and workflow.rs at this head refuses every Reviewer phase, Pr/MergeGate/Cleanup and request_finalization. A reader of the Status line would wrongly conclude that legacy single-reviewer gating still works on this source.",
+          "source_basis": "workflow.rs require_formal_review_ready, called from step, prepare_pack, evaluate, apply_outcome(Passed), retry, resume_gate and request_finalization. The I9-AC-21.j wording requires README/status to honestly distinguish unavailable formal gating.",
+          "minimal_fix": "Reword the README Status sentence and the master \u00a717 baseline sentence to say: on the staged Issue9 source, formal Review/Pr/MergeGate/Cleanup/finalization consumers return ReviewGatingUnavailable; legacy single-reviewer behavior describes main/history only. Make no source change."
+        }
+      ]
+    },
+    {
+      "actor": "b",
+      "session_id": "a7f385ad-e9c5-4186-b7ba-1bff924c2cbb",
+      "exit": 0,
+      "num_turns": 1,
+      "stderr_bytes": 0,
+      "verdict": "APPROVE",
+      "findings": [
+        {
+          "severity": "Low",
+          "path": "README.md",
+          "section": "## Status (Issue9 staged formal-refusal sentence)",
+          "causal_reproduction": "At SOURCE1 the Status section says the staged formal-refusal design 'is not implemented; legacy single-reviewer behavior remains current'. The later README paragraph and workflow.rs at this same head show require_formal_review_ready refusing Reviewer/Pr/MergeGate/Cleanup consumers. A reader of Status is told legacy single-reviewer gating is still the current behavior.",
+          "source_basis": "README Status paragraph versus the README paragraph 'The staged Issue #9 formal-refusal component returns typed ReviewGatingUnavailable...', crates/rrx/src/workflow.rs require_formal_review_ready and its callsites, and the I9-AC-21.j/21.k requirement that README/status state the withdrawal honestly. This is documentation inconsistency only; no runtime effect.",
+          "minimal_fix": "Replace the stale Status sentence with the same staged wording: the selected typed refusal source is staged and not source-qualified, and it holds new formal review and Pr/MergeGate/Cleanup/finalization consumers. Do not add any readiness claim."
+        },
+        {
+          "severity": "Low",
+          "path": "crates/rrx/src/workflow/tests/formal_refusal.rs",
+          "section": "phase/class/entrypoint matrix",
+          "causal_reproduction": "The controls do not cover:\n- STRICT RequirementsReview, DesignReview or ImplementationReview initial-step refusal.\n- STANDARD/STRICT RequirementsReview, DesignReview or SecurityReview through retry and resume_gate. retry is exercised only for QUICK ImplementationReview; resume_gate only for STANDARD ImplementationReview plus downstream phases.\nNo bug results today, because the guard keys only on Phase::actor()/irreversible and not on class. A future class-dependent change, however, would not be caught for those combinations.",
+          "source_basis": "The I9-AC-21.j test enumeration ('RequirementsReview/DesignReview/ImplementationReview/SecurityReview under QUICK/STANDARD/STRICT initial/retry/resume_gate/request_finalization where applicable') versus the target lists in formal_entry_refuses..., retry_review_refuses... and resume_refuses.... Speculative coverage gap, not a verified defect.",
+          "minimal_fix": "Parameterize the existing formal_entry, retry and resume controls over every configured Reviewer phase for each class, reusing history_before/reserve_history/journal with the same database()/counts() assertions. Add no new readiness path and claim no new mutation credit."
+        }
+      ]
+    }
+  ],
+  "dispositions": {
+    "shared_documentation_Low": "Verified against exact Status/master source sentences, corrected staged behavior wording only",
+    "B_matrix_Low": "Speculative coverage risk, not current production defect; relevant approved21.j matrix cheaply expanded every8configured class/Reviewer case at entry/retry/resume, no newWHAT/readiness/mutationcredit"
+  },
+  "whole_gates": "Fullregression/CI/positiveproducer/native/legacy/whole9 OPEN"
+}

@@ -104,6 +104,11 @@ Full dogfood (#16)
 
 Independent work may proceed in parallel, but MVP Optional/Post-MVP work must not become a dependency of this path.
 
+This priority list is not a hard dependency graph: Review Engine preparation can
+proceed after Workflow, while its closing native integration requires reviewed
+Task/Goal Context Pack prepared-input authority and native binding. Review Bundle
+production follows the Review Engine consumer; it is not a circular merge gate.
+
 ## 5. Core entities
 
 ### Project
@@ -589,13 +594,61 @@ review:
 
 Supported completion policies must include at least:
 
-- `all` — every configured reviewer must complete without an unresolved blocking result
-- `quorum` — configurable N-of-M reviewers
-- `any` — at least one reviewer is sufficient, for lightweight workflows
+- `all` — every configured reviewer must return an exact-round APPROVE with no unresolved blocking result
+- `quorum` — configurable N-of-M exact-round approvals; verified blockers veto and unresolved potential blockers in the effective blocking set hold
+- `any` — at least one exact-round approval, for lightweight workflows; the same verified/potential blocker holds apply
 
 A **two-reviewer setup is a first-class configuration**, not a workaround.
 
+Formal Core gates retain Critical/High/Medium as blocking severities. Workflow
+class changes approval count and verification breadth: QUICK/STANDARD require
+at least one independent non-author approval, STRICT at least two. Explicit
+allow-self author opinions can participate in completion policy, but cannot satisfy
+that independent floor. They never dismiss their own delta's blockers. Reviewer
+independence means runtime-controlled inputs/expansions exclude same-round peer
+outputs and raw executor transcripts; native permissions remain unchanged, with
+same-user filesystem visibility stated separately rather than an invented sandbox.
+
 The existing Claude + Codex + Grok Triple Adversarial Review is provided as a preset, not hard-coded into the runtime.
+STRICT fixed Triple is unavailable when cumulative document drafting and implementation
+include two native author families: only one eligible independent slot remains. An
+eligible custom roster is required for a certificate; Human may select that roster
+or terminate without a certificate, but never replace the independent floor; allow-self opinions
+do not meet the independent approval floor. Issue #16 must measure this availability
+boundary alongside supported native Triple configurations.
+
+
+Review roster examples including the current executor or any cumulative author family
+require explicit allow-self independent Sessions; those opinions never meet the
+independent approval floor. Default selection rejects before member input. Actual
+registered-adapter synthetic consumer proof is distinct from real native #16 success.
+
+Review completion holds on unresolved potential blockers in the effective blocking
+set as well as verified blockers; quorum/any tolerate only settled failures and
+nonblocking dissent. If all three MVP provider families are cumulative authors, no
+formal class has an eligible native approval from those families. Use an eligible
+registered non-author provider if actually supported, or terminate without a
+certificate. Human adjudication cannot mint a below-floor Review-Set certificate.
+
+Allow-duplicate-agent permits fresh Sessions sharing a non-author registered identity,
+independent of allow-self. Eligible Sessions can count toward the floor when the
+activated policy permits them; blocker-confirmer pair diversity still applies.
+
+Governing review policy, mandatory rules, instructions and required skills use an
+activated Runtime/Project revision outside Task-author control; edits in the
+reviewed delta remain reviewed content/proposals, never their author's rubric.
+After an earlier full round safely settles, labelled prior findings may enter a
+new fresh round and eligible approvals still count under current-round input
+independence. Certificates expose that history and never claim blind independence.
+Unreleased Lost/uncertain members fence every new formal round/Set/descendant in
+the obligation lineage, including after termination or decomposition. Normal
+completion cleanup expiry can produce this hold even after a valid APPROVE.
+The same-round exclusion covers every roster slot, including allow-self, duplicate
+and queued members, until all settle. Executor/condenser checkpoint narratives
+remain attributed claims; hashes attest captured content, not verification truth.
+Human-authority actions use trusted ingress/controller composition, unreachable
+through native/Workflow/Broker runtime JSON/API/IPC; direct same-UID machine/CLI/DB
+tampering remains the explicit application trust limit shared with Issue23.
 
 ### Parallel review
 
@@ -1241,3 +1294,15 @@ The MVP is accepted when all of the following are demonstrable:
 51. Runtime-wide status/TUI groups activity by Project → Goal → Task.
 52. Runtime restart restores Project registry and multi-project Goal/Task scheduling state.
 53. Dogfooding demonstrates at least two repositories progressing concurrently with no cross-project context/worktree contamination.
+
+
+Existing compact Review policy examples are illustrative, not accepted formal Runtime/
+Project configuration. Proposed Issue9 requires explicit class/model/effort, numeric
+parallelism1–32 and actual registered-profile eligibility; a fixed Triple containing
+an author cannot silently supply its independent floor. The actual persisted schema
+and activation handlers remain #15/#24 acceptance, with examples updated in their
+implementing PR. Proposed #9 formal gating remains unavailable until actual readiness;
+its fixed noncertifying conformance ingress uses the same real native ownership ports
+and cannot certify or replace a gate. Historical #8 single-reviewer Passed evidence
+cannot be grandfathered into that future gate; actual upgrade/drain and downstream
+refusal must satisfy I9-AC-21.k before deployment.

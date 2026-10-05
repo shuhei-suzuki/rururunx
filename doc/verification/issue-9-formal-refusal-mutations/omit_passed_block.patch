@@ -1,0 +1,23 @@
+diff --git a/crates/rrx/src/workflow.rs b/crates/rrx/src/workflow.rs
+index 55e0213..7f6ea00 100644
+--- a/crates/rrx/src/workflow.rs
++++ b/crates/rrx/src/workflow.rs
+@@ -1891,18 +1891,6 @@ impl WorkflowEngine {
+         outcome: GateOutcome,
+     ) -> Result<StepResult> {
+         let phase = snapshot.workflow.history[index].phase;
+-        if matches!(&outcome, GateOutcome::Passed(_)) {
+-            require_formal_review_ready(phase)?;
+-            if let Some(next) = snapshot
+-                .workflow
+-                .configured_phases
+-                .iter()
+-                .copied()
+-                .find(|p| *p != phase && !snapshot.workflow.completed.contains_key(p))
+-            {
+-                require_formal_review_ready(next)?;
+-            }
+-        }
+         let source = if phase == Phase::Cleanup {
+             snapshot.workflow.sources.clone()
+         } else {

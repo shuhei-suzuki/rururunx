@@ -99,6 +99,9 @@ Each phase declares:
 
 ## 6. Review policy
 
+The YAML below is a target contract. Configurable multi-reviewer sets and completion
+policies are not executable in the current single-Reviewer Rust implementation.
+
 Review policy is data, not hard-coded Triple Review logic.
 
 Example:
@@ -207,7 +210,8 @@ Expected behavior:
 - Task creation establishes Context Pack v1
 - requirements/design/implementation milestones update the Context Pack
 - commit/revision changes invalidate stale diff/review slices
-- review launch freezes a deterministic Review Bundle for that Review Set
+- current reviewer launch owns one phase ContextVersion; configurable per-round
+  ReviewBundle lifecycle remains [Issue9](../../requirements/issue-9-requirements.md)
 - re-review prefers a delta bundle from the previous reviewed revision
 - dynamic workflow escalation may add required rules/artifacts and therefore creates a new Context Pack version
 - context expansion requested by an agent is recorded but does not silently rewrite authoritative artifacts
@@ -275,6 +279,13 @@ A Goal may define minimum workflow constraints for all child Tasks, but project-
 
 ## 17. Implemented Rust contract
 
+This section describes the retained schema3 engine grammar. On the staged Issue9
+source, new Reviewer/Pr/MergeGate/Cleanup/finalization consumers return typed
+`ReviewGatingUnavailable`; the legacy single-reviewer success grammar is factual
+history, not new formal authority. Native status, journals and cancellation remain
+observable. No ReviewSet/native profile or positive ownership producer is composed,
+and full regression/deployment remain open.
+
 `workflow::WorkflowEngine` initializes one exact Task workflow, then `step` reserves
 and dispatches a phase or polls its stable native Session. QUICK, STANDARD and
 STRICT execute against `AgentAdapter`; formal requirements/design/impact phases
@@ -282,6 +293,8 @@ use executor capability and review phases require explicit Review capability.
 Generic CLI's honest Execute-only contract therefore cannot act as a reviewer.
 The baseline delegates one configured reviewer Session; independent multi-reviewer
 sets, completion policy and remediation reconciliation remain #9 integration.
+The proposed contract remains in [Issue9 requirements](../../requirements/issue-9-requirements.md),
+not an executable multi-reviewer API or permission of this current implementation.
 
 `WorkflowSources` supplies factual scoped revision/source versions and selected
 payload (#18). Authority versions remain comparable across phases; phase and budget
@@ -304,7 +317,8 @@ attempt history but starts a new generation and context version.
 evidence. It receives valid ordered prerequisites, source snapshot, prepared context
 and optional native transport result. Passed evidence must match phase, Scope,
 revision, source versions and Session, with durable artifact references. Reviews
-require an explicit approved verdict. Missing integration (`PendingGates`) waits;
+in the legacy format require an explicit approved verdict; this bool does not
+qualify formal approval on the staged Issue9 source. Missing integration (`PendingGates`) waits;
 no successful exit invents verification, approval, PR, merge or cleanup evidence.
 Ports must use their own Git/Session ownership and transactional guards at actual
 native side effects. #10 approval and #14 owner/restart recovery remain pending; uncertain phase
@@ -435,3 +449,45 @@ admitted under that Task version can then reject their own completion/approval.
 A separate atomic Record-only binding contract (#43) must preserve exact owner/context/
 Session identity guards without incrementing unchanged Task fields; Issue #41
 does not introduce that shared integration API.
+
+
+### Current reviewer ownership
+
+The implemented Workflow phase owns one native Reviewer Session through
+PhaseAttempt.session_id. A parallel ReviewSet roster and certificates are not yet
+implemented. Current context ownership does not permit per-member Session cloning
+or arbitrary role-based delegation.
+
+The proposed configurable ReviewSet contract is tracked in
+[Issue9 requirements](../../requirements/issue-9-requirements.md).
+This master describes the current single-Reviewer implementation only.
+
+The provider-neutral [Issue9 design candidate](../issue-9-design.md) separates
+the immutable ReviewSet roster, actual member ownership/settlement and native
+profile qualification from opinion tally. It supplies no compiled N-way native
+delegation or weaker formal fallback; the actual19/43/native integration design and
+required production native profile evidence remain open before source acceptance.
+23 composition later replaces the interim9 nongating library-ingress derivation;
+it is not an additional9 source merge prerequisite. The implementing co-integration
+must withdraw legacy single-reviewer Passed as authority for formal PR/MergeGate/
+finalization and hold/drain pre-epoch Evaluating owners unchanged (I9-AC-21.k).
+This proposed withdrawal can hold existing work; current merged behavior remains
+historical until that actual source is implemented and deployed.
+
+
+Formal multi-reviewer gating and accepted Review policy configuration remain
+unimplemented; the current proposed contract and actual integration gates are pinned
+in [Issue9 requirements](../../requirements/issue-9-requirements.md).
+
+The staged [formal-refusal integration design](../issue-9-formal-refusal-integration.md)
+maps the approved unavailable-gating requirement to current Workflow entrypoints,
+successor context creation and legacy Passed consumers. It preserves Workflow
+status observation and recorded factual outcomes without treating them as formal
+completion. External adapter stop/cleanup remains unchanged, not a Workflow
+consumer. A public Waiting/nonempty journal does not authorize
+a fresh irreversible gate invocation; actual13/14 reconciliation remains pending.
+It does not duplicate #43 adapter preflight, implement its missing private producer,
+upgrade the database or qualify a positive ReviewSet/native profile. The selected design and Source1 refusal component have two independent approvals
+without Critical/High/Medium findings. A finite documentation/test-matrix delta is
+under verification; full regression/deployment and positive ReviewSet authority
+remain open. This is no native/profile/epoch or whole Issue9 qualification.

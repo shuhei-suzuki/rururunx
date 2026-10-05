@@ -488,3 +488,8 @@ Project registry foundation is implemented by `project::ProjectRegistry` (Issue
 recovery, scoped input APIs and transactional soft removal. Native context/env
 forwarding and global scheduling remain dependent integrations. See
 `../issue-26-design.md`.
+
+
+Formal multi-reviewer gating and accepted Review policy configuration remain
+unimplemented; the current proposed contract and actual integration gates are pinned
+in [Issue9 requirements](../../requirements/issue-9-requirements.md).

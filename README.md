@@ -236,6 +236,12 @@ See [Product Requirements](doc/requirements/product-requirements.md), [Architect
 ## Status
 
 Rust executable foundation; workflow components are being implemented incrementally.
+Issue9's [staged formal-refusal design](doc/design/issue-9-formal-refusal-integration.md)
+maps the approved unavailable-review contract to actual Workflow consumers. It is
+staged in this branch: new formal Review/Pr/MergeGate/Cleanup/finalization consumers
+return typed `ReviewGatingUnavailable`. Legacy single-reviewer behavior describes
+the pre-change main baseline/history only; full regression remains red, and positive
+ReviewSet/native-profile, ownership and migration gates remain open.
 The command examples above describe the MVP target. Currently implemented:
 - Issue 18 adds the Task-scoped `RepositoryContext` Rust API for lexical repository
   maps, relevance ranking, budgeted selection, file/symbol/reference expansion,
@@ -287,8 +293,11 @@ remain unsupported. Independent review and final CI evidence are tracked in
 Development of rururunx should dogfood QUICK / STANDARD / STRICT classification where project rules permit. Verification should be proportional to risk: safety-critical runtime/Git/state/process changes may require STRICT treatment, while small local/documentation changes should not inherit STRICT-only gates unless policy or discovered impact requires escalation.
 
 Install [Rust with rustup](https://www.rust-lang.org/tools/install) and Git.
-The Rust workflow library now drives QUICK/STANDARD/STRICT phases through adapters
-and explicit evidence ports, commits each milestone before tests/review, persists
+The schema3 baseline Rust workflow library defines QUICK/STANDARD/STRICT phases
+through adapters and explicit evidence ports. This staged Issue9 source refuses
+new formal reviews, PR/merge/cleanup gates and finalization; legacy success below
+is factual history, not current formal authority. The retained nonformal engine
+commits each milestone before tests/review, persists
 phase/context history atomically, and raises
 workflow requirements when risk or scoped policy changes. Missing test/review/PR/
 merge integrations wait for evidence; review exit zero alone cannot pass a gate.
@@ -298,7 +307,7 @@ checks; unknown outcomes keep recovery reservations. QUICK PR-created stays nont
 until requested merge/cleanup gates supply evidence. Cancellation preserves native
 reservations until verified termination.
 The generic CLI cannot review. Workflow CLI/TUI, independent review sets (#9),
-approval routing (#10), owner/restart recovery (#14), and production Context Pack publication (#19)
+approval routing (#10), owner/restart recovery (#14), GitHub outcome reconciliation (#13), and production Context Pack publication (#19)
 remain pending. Issue #18 repository-context selection is available independently. See [Workflow Engine](doc/design/master/workflow-engine.md).
 
 Issue #41 implements passive observation of agent preparation reservations and
@@ -419,3 +428,10 @@ diagnostic slice; final metadata-head CI remains pending under the recorded part
 gate disposition. Local full release555 FAILED, cause and regression status unknown.
 No backend availability fix or owned-reader/workload settlement is claimed; full #60
 and native acceptance remain open.
+
+The staged Issue #9 formal-refusal component returns typed `ReviewGatingUnavailable`
+before new formal reviews, PR/merge/cleanup gates or legacy Passed completion can
+grant input or publish a successor. Existing native status and factual journals
+remain observable. It supplies no ReviewSet certificate or qualified native profile;
+full regression/deployment and whole Issue #9 acceptance remain open. See the
+[scoped integration design](doc/design/issue-9-formal-refusal-integration.md).
