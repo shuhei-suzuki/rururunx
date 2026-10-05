@@ -78,29 +78,72 @@ fn destructive_private_controls_leave_fresh_production_pool_unchanged() {
         return;
     }
     let executable = std::env::current_exe().unwrap();
-    let mut command = StdCommand::new(executable);
-    command
-        .args([
-            "adapter::git_owner::tests::",
-            "adapter::grok::reader_tests::",
-            "context::tests::actual_late_reap_keeps_context_latch_after_real_worker_settlement",
-            "context::tests::actual_dropped_git_future_sets_context_latch_before_late_settlement",
-            "context::tests::actual_output_open_error_keeps_context_latch_after_reader_late_settlement",
-            "context::tests::opaque_attempted_git_error_keeps_original_cause_and_context_latch",
+    let mut filters = vec![
+        "adapter::git_owner::tests::",
+        "adapter::grok::reader_tests::",
+        "context::tests::actual_late_reap_keeps_context_latch_after_real_worker_settlement",
+        "context::tests::actual_dropped_git_future_sets_context_latch_before_late_settlement",
+        "context::tests::actual_output_open_error_keeps_context_latch_after_reader_late_settlement",
+        "context::tests::opaque_attempted_git_error_keeps_original_cause_and_context_latch",
+    ];
+    if cfg!(target_os = "macos") {
+        filters.extend([
             "adapter::tests::real_git_unknown_observations_keep_cleanup_reservation",
             "context::tests::real_git_unknown_cleanup_preserves_cause_and_latches_later_context_launches",
-        ])
-        .env_clear()
-        .env("RRX_PRIVATE_GIT_POOL_AUDIT", "1")
-        .env("PATH", std::env::var_os("PATH").unwrap_or_default())
-        .stdin(Stdio::null())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .process_group(0);
+        ]);
+    }
+    let scalar = "adapter::git_owner::tests::unchanged_scalar_contract_trims_metadata";
+    let command = || {
+        let mut command = StdCommand::new(&executable);
+        command
+            .args(&filters)
+            .args(["--skip", scalar])
+            .env_clear()
+            .env("RRX_PRIVATE_GIT_POOL_AUDIT", "1")
+            .env("PATH", std::env::var_os("PATH").unwrap_or_default())
+            .stdin(Stdio::null())
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .process_group(0);
+        command
+    };
+    // A trusted --list child executes no test body. Its regular output file adds
+    // no pipe reader job. Both children share the original test-only 60s window.
+    let deadline = Instant::now() + Duration::from_secs(60);
+    let mut listing = tempfile::tempfile().unwrap();
+    let mut inventory = command();
+    inventory.arg("--list").stdout(listing.try_clone().unwrap());
+    let mut child = inventory.spawn().unwrap(); // Actual Child before observation.
+    assert!(wait_audit_child(&mut child, deadline).success());
+    std::io::Seek::rewind(&mut listing).unwrap();
+    let mut bounded = std::io::Read::take(&mut listing, 65537);
+    let mut text = String::new();
+    std::io::Read::read_to_string(&mut bounded, &mut text).unwrap();
+    assert!(text.len() <= 65536, "audit inventory exceeded byte limit");
+    let names = text
+        .lines()
+        .filter_map(|line| line.strip_suffix(": test"))
+        .collect::<std::collections::BTreeSet<_>>();
+    for filter in &filters {
+        assert!(
+            names.iter().any(|name| name.contains(filter)),
+            "audit selector matched no tests: {filter}"
+        );
+    }
+    assert!(!names.contains(scalar));
+    assert_eq!(
+        names.len(),
+        if cfg!(target_os = "macos") { 45 } else { 42 },
+        "audit inventory changed; verify all private carriers before updating it"
+    );
+    let mut command = command();
     // Actual std Child is held before inspecting its group. This fixture is a
     // test-process boundary; it grants no production/workload settlement proof.
     let mut child = command.spawn().unwrap();
-    let deadline = Instant::now() + Duration::from_secs(60);
+    assert!(wait_audit_child(&mut child, deadline).success());
+}
+
+fn wait_audit_child(child: &mut StdChild, deadline: Instant) -> ExitStatus {
     loop {
         match child.try_wait() {
             Ok(Some(status)) => {
@@ -108,7 +151,7 @@ fn destructive_private_controls_leave_fresh_production_pool_unchanged() {
                     status.success(),
                     "private-pool audit child failed: {status}"
                 );
-                return;
+                return status;
             }
             Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(5)),
             outcome => {
@@ -336,17 +379,17 @@ async fn cancelled_authorized_command_never_creates_a_child() {
     assert!(record.ticket.publication.lock().unwrap().state == State::Spawning);
     assert!(record.native.lock().unwrap().child.is_none());
     // AuthorizeSpawn is already dequeued, but std::Command::spawn has not run.
-    record.ticket.cancel();
+    // Actual caller Drop delivers cancellation while the worker is paused after
+    // dequeuing AuthorizeSpawn; no test-only live-caller cancellation response.
+    task.abort();
+    assert!(task.await.unwrap_err().is_cancelled());
     drop(release);
-    let failure = task.await.unwrap().unwrap_err();
     released(&context).await;
     assert_eq!(
         record.returned_children.load(Ordering::SeqCst),
         0,
         "cancelled authorization created an actual Child"
     );
-    assert_eq!(failure.kind, ErrorKind::LaunchFailure);
-    assert_eq!(failure.message, "Git launch cancelled before spawn");
     assert!(record.native.lock().unwrap().child.is_none());
     assert!(
         flag.load(Ordering::SeqCst),

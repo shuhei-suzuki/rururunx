@@ -257,7 +257,8 @@ fn assert_private_pool_isolation() {
 #[cfg(test)]
 impl Drop for TestGitContext {
     fn drop(&mut self) {
-        // The dedicated subprocess selects only private destructive controls.
+        // The dedicated subprocess selects the checked private-control inventory;
+        // the ordinary production-pool scalar contract is explicitly excluded.
         // Unrelated default-parallel tests cannot change its fresh baseline.
         // A failing control already failed; avoid double-panic during unwind.
         if !thread::panicking() {
