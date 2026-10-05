@@ -464,3 +464,24 @@ initial controls and verified test-only fixture corrections are recorded in
 RELEASE at9c574a2 both FAILED; cause AND regression UNKNOWN. Source reviews,
 causal mutants, remaining quality/CI gates are pending. This status does not
 amend the approved design or grant full native/runtime-workload settlement.
+
+
+## Source1 correction mechanics within approved Design2
+
+The source at35f0 keeps reap-cutoff observation authoritative: even an actual wait
+finishing during the output window cannot clear frozen caller facts after that
+cutoff. Its later joined resources may release capacity without revising the
+returned Unknown. Admission diagnostics count derived Rust work-job slots under
+the short pool lock: four per active or retained-unresolved record, saturating64;
+poison reports unavailable, never fabricated occupancy. Only a request that
+actually waited for capacity receives that suffix. These implement existing
+Requirements4/Design2, with no new availability certificate or WHAT contract.
+
+Anchored stdio moves into a separate preallocated Endpoints vault before the
+spawned stage. Reader registration takes that vault, not the native mutex held
+across first cleanup/inspection/wait. Actual private pauses prove registration
+progress while the native mutex is held; actual per-record pause entries and
+reader-handle facts replace pre-spawn mutex inference. Retained always forces
+settled=false. Dead post-join predicates and a silent test-to-production pool
+fallback are removed. Source1 remained request_changes; Source2/current required
+full-suite gates remain unqualified as recorded in the verification ledger.

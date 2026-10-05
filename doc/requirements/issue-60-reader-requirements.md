@@ -1,8 +1,10 @@
-# Issue60 selected Git reader lifetime — Requirements4 approved; design pending
+# Issue60 selected Git reader lifetime — Requirements4/Design2 approved; Source2 pending
 
 Risk: STRICT. Status: Requirements4 at a8e8a8b received two independent native
-approvals, no Critical/High/Medium findings, two Low findings each. Design and
-source gates remain pending. The four Low findings are verified precision items
+approvals, no Critical/High/Medium findings, two Low findings each. Design2
+at46f819b has two independent approvals/no C/H/M; Source1 at a92c4d0 returned
+request_changes. Source2 independent gates remain pending. The four requirements
+Low findings are verified precision items
 carried into Design1 and the outcome ledger; this is not reader implementation
 approval. Earlier combined/reader Requirements1–3 request_changes remain preserved.
 Initial base: public main2c6ae9d6f54e68a3bdbead25817c46981d231db0.
@@ -46,7 +48,7 @@ predicate does not cover executor spawn; no actual occurrence is asserted.
 The numbered clauses7–15 of [the reader/driver candidate](issue-60-git-reader-contract-draft.md)
 are the full contract reviewed together with this document. Requirements4 approval
 covers a8e8a8b; the derived Low precision below must be verified by Design1 reviewers.
-No design or source is approved. In particular:
+Design2 is approved; no source is approved. In particular:
 
 - Before Git spawn, reserve actual bounded capacity for supervisor, both readers
   and cleanup; exactly64 total job permits, four per operation, maximum16 admitted

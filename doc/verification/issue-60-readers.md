@@ -468,3 +468,67 @@ or silent production-pool fallback. Actual pause-entry counts follow initializat
 per-record cfg(test) reader-lane facts count actual created handles, not successful
 reads. Saturation asserts16 actual Children/32 handles; four-operation progress
 asserts4 actual Children/8 handles, preserving original timeout budgets.
+
+
+### Source1 verified fixes; Source2 candidate at35f0cda
+
+Both raw Source1 outcomes remain request_changes. Their two distinct Medium and
+four distinct Low/latent precision issues have bounded corrections. R1 now keeps
+!reap_pending in the settled computation: actual wait after cutoff remains frozen
+Unknown even when all original jobs later join and release. Actual direct flag,
+Context latch and Grok saved Lost reservation controls cover that interval. R2
+reports finite capacity facts only after actual admission waiting, in Rust job-slot
+units, four per record. An actual mixed pool requires56 active/8 retained jobs.
+
+A separate preallocated endpoint vault removes reader registration's dependency
+on the native mutex held during first cleanup/inspection/wait. The actual consumer
+observes both reader handles created while that mutex is held, aborts and awaits
+actual caller-task cancellation, then releases held stages and requires late
+actual settlement. Actual post-initialization pause entries/handle facts replace
+the early mutex proxy:16 actual Children/32 handles and4 Children/8 handles.
+No successful read/CPU-concurrency fact is inferred. Dead defensive predicates are
+removed without credit; every Retained outcome stays unsettled, and destructive
+TestGitContext cannot silently choose the production pool.
+
+Four new compiled operators R13–R16 each assertion-killed their intended actual
+consumer; R14 is diagnostic-count evidence only. Exact restored private source
+matches35f0; all four restored positive controls PASS. Cumulative ledger is18
+compiled runs/16 distinct operators/16 kill runs/TWO old masked survivors with
+zero credit. This is finite coverage, not every guard or full native inventory.
+[Baseline failures, operators and restored controls](issue-60-reader-source2-mutations.json).
+
+Full DEFAULT Debug at35f0 FAILED: library306 PASS/3 FAIL/24 ignored68.42s;
+full DEFAULT Release separately FAILED: library307 PASS/2 FAIL/24 ignored62.85s.
+Both stopped at the library, later workspace targets unexecuted. Debug's own-start
+child exited101 after11040ms at StateConflict-prefix assertion; the actual failure
+string is absent. Both modes' unrelated checkpoint/resume children reached their
+original60s watchdog and actual SIGKILL. Debug final static stages are boundary1/2
+case7=resumed_terminal. Release checkpoint final stage is boundary1 case7=
+resumed_terminal; resume is boundary2 case8=checkpoint. Earlier completed cases
+include release/finished. These facts do not identify the wait owner, scheduling
+cause, all nested-job settlement, or regression status; both remain UNKNOWN.
+No old-head rerun, deadline/parallel/latch change, arbitrary-state allowance or
+passing subset/mode substitution is used.
+
+Focused owner29 PASS/1 ignored, Context8 PASS and Grok reader5 PASS at35f0;
+fmt/all-target Clippy(-D warnings)/Debug BUILD/Release BUILD PASS. Peer curated19
+Rust workload was reported; overlap has no measured causal attribution. The
+[raw-log hashes and actual source blobs](issue-60-reader-source2-gates.json)
+keep full failed TEST gates distinct from successful builds and selected controls.
+Source2 independent re-review and new public bothOS CI/actual checkout proof remain
+pending. PR64 remains DRAFT/unmerged; no current full-suite/source/MVP readiness.
+All earlier failed gates and whole60/F1/native16/recovery/availability limits remain.
+
+
+Two separate private cfg-only timing probes preserve default concurrency and all
+original5s/250ms/60s limits. Probe1 environment15 PASS/14 ignored58.63s, but its
+owning fixture discarded successful stderr, so accessible samples0/credit0.
+Probe2 adds a bounded static/numeric-only successful-stderr sink: environment15
+PASS/14 ignored57.15s;1721 capped observation samples min31602us/median60209us/
+max882285us, all sampled direct-child terminal observations true. Last case8
+finished at checkpoint56853ms/resume57049ms/start32437ms. These are successful
+private-run measurements only: original failures NOT reproduced, cause AND
+regression still UNKNOWN, no gate/native availability credit or all-operation/
+nested-resource completeness. Actual private source was restored exactly to35f0
+and is clean; diagnostic code never enters the production candidate. Finite
+raw-report/log hashes and restored head appear in the Source2 gates artifact.
