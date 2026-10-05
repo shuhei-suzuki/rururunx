@@ -383,7 +383,13 @@ struct TestHooks {
     missing_matching: Option<(Vec<String>, usize)>,
     matching_calls: Arc<std::sync::atomic::AtomicUsize>,
     signal_result: Option<rustix::io::Errno>,
-    signal_attempt: Arc<Mutex<Option<(Result<(), rustix::io::Errno>, Option<rustix::io::Errno>)>>>,
+    signal_attempt: Arc<Mutex<Option<SignalAttempt>>>,
+}
+#[cfg(test)]
+#[derive(Clone, Copy)]
+struct SignalAttempt {
+    actual: Result<(), rustix::io::Errno>,
+    injected: Option<rustix::io::Errno>,
 }
 #[cfg(test)]
 #[derive(Default)]
@@ -1470,7 +1476,8 @@ fn first_cleanup(_record: &OpRecord, native: &mut NativeAssets) {
                     }
                     _ => None,
                 };
-                *_record._context.hooks.signal_attempt.lock().unwrap() = Some((actual, injected));
+                *_record._context.hooks.signal_attempt.lock().unwrap() =
+                    Some(SignalAttempt { actual, injected });
                 injected.map_or(actual, Err)
             };
             #[cfg(test)]

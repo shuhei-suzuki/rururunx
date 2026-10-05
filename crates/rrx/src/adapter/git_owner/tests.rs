@@ -140,13 +140,15 @@ async fn selected_owned_signal_result_parity_preserves_os_specific_unknown() {
         context.context.hooks.signal_result = Some(injected);
         let flag = Arc::new(AtomicBool::new(false));
         let outcome = shell(context.clone(), "exit 0", flag.clone()).await;
-        let (actual, applied) = context
+        let attempt = context
             .context
             .hooks
             .signal_attempt
             .lock()
             .unwrap()
             .unwrap();
+        let actual = attempt.actual;
+        let applied = attempt.injected;
         assert!(
             matches!(
                 actual,
