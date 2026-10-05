@@ -175,8 +175,10 @@ async fn wait_file(path: &Path) {
     .unwrap();
 }
 fn configuration(provider: &str, program: &Path) -> Config {
-    let mut config = Config::default();
-    config.minimum_workflow = WorkflowClass::Quick;
+    let mut config = Config {
+        minimum_workflow: WorkflowClass::Quick,
+        ..Default::default()
+    };
     config.workflow.risk_mapping = [WorkflowClass::Quick; 4];
     config.agents.insert(
         "native-alias".into(),
@@ -327,7 +329,7 @@ async fn workflow_native_capacity_terminal_waits_with_fresh_resources_instead_of
 #[tokio::test]
 async fn managed_workflow_reviews_retained_snapshot_and_rejects_changed_review_input() {
     use std::os::unix::fs::PermissionsExt;
-    for changed in [false, true] {
+    for control in ["publish", "input-changed", "artifact-changed", "cancel"] {
         let (dir, owner, fixture_task) = results::tests::fixture().await;
         let mut task = Task::new(
             fixture_task.project_id,
@@ -471,15 +473,33 @@ async fn managed_workflow_reviews_retained_snapshot_and_rejects_changed_review_i
             std::fs::read(unit.worktree.join("fixture-result.txt")).unwrap(),
             std::fs::read(executor_unit.worktree.join("fixture-result.txt")).unwrap()
         );
-        if changed {
+        if control == "input-changed" {
             let path = unit.worktree.join("answer.txt");
             let permissions = std::fs::metadata(&path).unwrap().permissions();
             std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
             std::fs::write(&path, "changed review input\n").unwrap();
             std::fs::set_permissions(&path, permissions).unwrap();
         }
+        if matches!(control, "artifact-changed" | "cancel") {
+            let owner = owner.clone();
+            let authority = unit.authority();
+            let artifact = unit.artifact_id.unwrap();
+            *engine.hooks.before_publication.lock().unwrap() = Some(Box::new(move || {
+                let mut store = owner.store.lock().unwrap();
+                if control == "cancel" {
+                    store.retire_execution(&authority, false).unwrap();
+                } else {
+                    store
+                        .invalidate_execution_artifact(
+                            artifact,
+                            "fixture after-verification change",
+                        )
+                        .unwrap();
+                }
+            }));
+        }
         let outcome = engine.step(task.id, BTreeMap::new()).await;
-        if changed {
+        if control != "publish" {
             assert!(outcome.is_err());
             assert!(
                 !engine
@@ -496,6 +516,13 @@ async fn managed_workflow_reviews_retained_snapshot_and_rejects_changed_review_i
                 }
             ));
         }
+        let finalized = owner.store.lock().unwrap().execution_unit(unit.id).unwrap();
+        assert!(!finalized.native_effects_open);
+        assert_eq!(finalized.work, Some(WorkOutcome::Success));
+        assert_eq!(
+            finalized.result_finalization_open,
+            matches!(control, "input-changed" | "artifact-changed")
+        );
         assert_eq!(
             owner
                 .store
@@ -538,8 +565,10 @@ async fn managed_registry_workflow_qualifies_real_retained_content_before_atomic
         task.workflow = WorkflowClass::Quick;
         owner.store.lock().unwrap().put_task(&mut task).unwrap();
         let program = execution::native::tests::program(dir.path(), provider);
-        let mut config = Config::default();
-        config.minimum_workflow = WorkflowClass::Quick;
+        let mut config = Config {
+            minimum_workflow: WorkflowClass::Quick,
+            ..Default::default()
+        };
         config.workflow.risk_mapping = [WorkflowClass::Quick; 4];
         config.agents.insert(
             task.executor.clone(),
@@ -679,6 +708,194 @@ async fn managed_registry_workflow_qualifies_real_retained_content_before_atomic
             assert_eq!(after.context_version, before.context_version);
             assert_eq!(context.version, before.context_version);
             assert!(!workflow.completed.contains_key(&Phase::Implement));
+        }
+    }
+}
+
+#[tokio::test]
+async fn concurrent_due_wait_claim_preserves_the_native_launch_or_wait_owner() {
+    use execution::{QuotaObservation, QuotaStatus, UnitState, WaitReason};
+    for exhausted_again in [false, true] {
+        let (dir, owner, fixture_task) = results::tests::fixture().await;
+        let mut task = Task::new(
+            fixture_task.project_id,
+            fixture_task.goal_id,
+            "due wait claim".into(),
+            "native-alias".into(),
+        );
+        task.workflow = WorkflowClass::Quick;
+        owner.store.lock().unwrap().put_task(&mut task).unwrap();
+        let seed = results::text(
+            &results::git(&dir.path().join("repo"), ["rev-parse", "HEAD"])
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        let path = execution::native::tests::program(dir.path(), "codex");
+        let config = configuration("codex", &path);
+        let registry =
+            Arc::new(AgentRegistry::from_managed_config(&config, owner.clone()).unwrap());
+        let sources = Arc::new(Sources {
+            owner: owner.clone(),
+            seed,
+            result: results::ResultStore::new(owner.clone()),
+        });
+        let gates = Arc::new(Gates {
+            owner: owner.clone(),
+            control: "publish",
+        });
+        let engine = Arc::new(
+            WorkflowEngine::new(
+                owner.store(),
+                registry.clone(),
+                config.clone(),
+                sources.clone(),
+                gates.clone(),
+            )
+            .unwrap(),
+        );
+        let observer = Arc::new(
+            WorkflowEngine::new(owner.store(), registry.clone(), config, sources, gates).unwrap(),
+        );
+        let observation = |status, at| QuotaObservation {
+            provider: "codex".into(),
+            account_key: "unknown".into(),
+            bucket: "claim-fixture".into(),
+            confirmed_subscription: true,
+            window_id: if status == QuotaStatus::Available {
+                "recovered"
+            } else {
+                "fixture"
+            }
+            .into(),
+            status,
+            used_percent: None,
+            resets_at: Some(at + 3_600_000),
+            observed_at: at,
+            source_version: "fixture".into(),
+        };
+        owner
+            .store
+            .lock()
+            .unwrap()
+            .observe_quota(&observation(QuotaStatus::Exhausted, now_ms()))
+            .unwrap();
+        engine.initialize(task.id, None).await.unwrap();
+        engine.step(task.id, BTreeMap::new()).await.unwrap();
+        assert!(matches!(
+            engine.step(task.id, BTreeMap::new()).await.unwrap(),
+            StepResult::Waiting { .. }
+        ));
+        let mut waiting = engine.read(task.id).unwrap();
+        let index = waiting.workflow.active.unwrap();
+        let unit = waiting.workflow.history[index].unit.as_ref().unwrap().unit;
+        assert_eq!(
+            waiting.workflow.history[index].native_wait,
+            Some(WaitReason::Quota)
+        );
+        waiting.workflow.history[index].next_due = Some(0);
+        engine.persist(&mut waiting, None).unwrap();
+        // Advance only this fixture's observed quota window, not wall time.
+        // The first real wait stays closed even under a slow full-workspace run.
+        let recovery_at = now_ms() + 3_600_001;
+        owner
+            .store
+            .lock()
+            .unwrap()
+            .observe_quota(&observation(QuotaStatus::Available, recovery_at))
+            .unwrap();
+        let current = owner.store.lock().unwrap().execution_unit(unit).unwrap();
+        // Refresh the old future-due waiter to its ordinary bounded capacity recheck.
+        execution::quota::QuotaScheduler::new(owner.clone())
+            .admission(&current.authority(), now_ms())
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(1100)).await;
+        let waiting_unit = owner.store.lock().unwrap().execution_unit(unit).unwrap();
+        let profile = execution::resources::ResourceManager::new(owner.clone())
+            .profile(&waiting_unit)
+            .unwrap();
+        let script = std::fs::read_to_string(&path).unwrap().replace("if sys.argv[1:] == [\"--version\"]:", "if sys.argv[1:] == [\"--version\"]:\n    with open(os.path.join(os.environ[\"RRX_OUTPUT_DIR\"], \"fixture-version-ready\"), \"w\") as ready: ready.write(\"ready\")\n    while not os.path.exists(os.path.join(os.environ[\"RRX_OUTPUT_DIR\"], \"fixture-version-release\")): time.sleep(0.02)");
+        std::fs::write(&path, script).unwrap();
+        let (seen_tx, seen_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+        *observer.hooks.before_wait_claim.lock().unwrap() = Some(Box::pin(async move {
+            seen_tx.send(()).unwrap();
+            release_rx.await.unwrap();
+        }));
+        let loser = tokio::spawn({
+            let observer = observer.clone();
+            async move { observer.step(task.id, BTreeMap::new()).await }
+        });
+        seen_rx.await.unwrap();
+        let winner = tokio::spawn({
+            let engine = engine.clone();
+            async move { engine.step(task.id, BTreeMap::new()).await }
+        });
+        wait_file(&profile.output.join("fixture-version-ready")).await;
+        let claimed_version = owner
+            .store
+            .lock()
+            .unwrap()
+            .records(&task.scope(), RecordKind::Workflow)
+            .unwrap()[0]
+            .version;
+        release_tx.send(()).unwrap();
+        assert!(matches!(
+            loser.await.unwrap().unwrap(),
+            StepResult::Waiting { .. }
+        ));
+        assert_eq!(
+            owner
+                .store
+                .lock()
+                .unwrap()
+                .records(&task.scope(), RecordKind::Workflow)
+                .unwrap()[0]
+                .version,
+            claimed_version
+        );
+        if exhausted_again {
+            owner
+                .store
+                .lock()
+                .unwrap()
+                .observe_quota(&observation(QuotaStatus::Exhausted, recovery_at + 1))
+                .unwrap();
+        }
+        std::fs::write(profile.output.join("fixture-version-release"), "release").unwrap();
+        let outcome = winner.await.unwrap().unwrap();
+        let workflow = engine.snapshot(task.id).unwrap();
+        let attempt = &workflow.history[workflow.active.unwrap()];
+        let current = owner.store.lock().unwrap().execution_unit(unit).unwrap();
+        assert!(current.native_effects_open);
+        assert_ne!(current.state, UnitState::Retired);
+        if exhausted_again {
+            assert!(matches!(outcome, StepResult::Waiting { .. }));
+            assert_eq!(attempt.native_wait, Some(WaitReason::Quota));
+            assert!(attempt.session_id.is_none());
+        } else {
+            assert!(
+                matches!(
+                    outcome,
+                    StepResult::Started {
+                        session: Some(_),
+                        ..
+                    }
+                ),
+                "winner outcome: {outcome:?}"
+            );
+            let identity = attempt.execution.as_ref().unwrap();
+            assert_eq!(attempt.session_id, current.session_id);
+            assert_eq!(identity.session, current.session_id.unwrap());
+            let adapter = registry.get("native-alias").unwrap();
+            adapter
+                .stop(SessionRef {
+                    id: identity.session,
+                    scope: identity.scope.clone(),
+                    execution: Some(identity.clone()),
+                })
+                .await
+                .unwrap();
         }
     }
 }

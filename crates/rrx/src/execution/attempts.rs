@@ -73,7 +73,7 @@ impl AttemptManager {
         let id = UnitId::new();
         let path = project.worktree_root.join(format!("{}-{id}", task.id));
         ensure!(
-            !path.exists() && !path.symlink_metadata().is_ok(),
+            !path.exists() && path.symlink_metadata().is_err(),
             "fresh worktree path already exists"
         );
         let profile = self.resources.draft(id, &task.scope(), &path)?;

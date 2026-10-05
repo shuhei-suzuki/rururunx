@@ -105,7 +105,17 @@ pub(super) fn install_schema(tx: &Transaction<'_>) -> Result<()> {
 }
 
 pub(super) fn unit_tx(tx: &Connection, id: UnitId) -> Result<ExecutionUnit> {
-    let (body,version,scope,kind,generation,epoch,native,finalize):(String,u64,(String,String,String),String,u64,u64,bool,bool)=tx.query_row(
+    type IndexedUnit = (
+        String,
+        u64,
+        (String, String, String),
+        String,
+        u64,
+        u64,
+        bool,
+        bool,
+    );
+    let (body,version,scope,kind,generation,epoch,native,finalize): IndexedUnit =tx.query_row(
         "SELECT body,version,project_id,goal_id,task_id,kind,generation,owner_epoch,native_effects_open,result_finalization_open FROM execution_units WHERE id=?1",
         [id.to_string()],|r| Ok((r.get(0)?,r.get(1)?,(r.get(2)?,r.get(3)?,r.get(4)?),r.get(5)?,r.get(6)?,r.get(7)?,r.get(8)?,r.get(9)?)))?;
     let mut unit: ExecutionUnit = decode(body)?;
@@ -766,6 +776,7 @@ impl Store {
         tx.commit()?;
         Ok(unit)
     }
+    #[cfg(test)]
     pub(crate) fn finish_execution(
         &mut self,
         authority: &ExecutionAuthority,
@@ -1072,7 +1083,7 @@ fn effect_tx(connection: &Connection, id: OperationId) -> Result<ManagedEffect> 
 
 // Other state operations share the same connection and transaction helpers.
 mod artifacts;
-pub(super) use artifacts::publish_workflow_result_tx;
+pub(super) use artifacts::{complete_workflow_readonly_tx, publish_workflow_result_tx};
 mod effects;
 mod quotas;
 pub(crate) use quotas::QuotaAdmission;

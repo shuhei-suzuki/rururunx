@@ -390,7 +390,7 @@ async fn execute(
         group_cleanup_unknown: receipt.group_error.is_some(),
     };
     write_frame(stream, &completed).await?;
-    let ack = tokio::time::timeout(Duration::from_secs(10), async {
+    tokio::time::timeout(Duration::from_secs(10), async {
         loop {
             match decoder.receive(stream).await? {
                 Frame::Acknowledged => break Ok::<_, anyhow::Error>(()),
@@ -400,7 +400,6 @@ async fn execute(
         }
     })
     .await??;
-    let _ = ack;
     observed?;
     Ok((receipt.status.code(), bytes))
 }

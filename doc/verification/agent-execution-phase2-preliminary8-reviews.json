@@ -1,0 +1,290 @@
+{
+  "source_commit": "63604edb8c64c7da93ad7bc6423b8f264aa96611",
+  "review_kind": "Independent preliminary component reviews; not Phase2 acceptance",
+  "reports": [
+    {
+      "review": "Phase2 preliminary independent STRICT component review, round 8",
+      "source_commit": "63604edb8c64c7da93ad7bc6423b8f264aa96611",
+      "baseline_commit": "3732553750a7fb0d2ca020e8935628cf7909c10b",
+      "approved_contract_commit": "9a11d03f1b1676c2c3c8a24b6b3fd328759f7db5",
+      "verdict": "request_changes",
+      "counts": {
+        "Critical": 0,
+        "High": 0,
+        "Medium": 1,
+        "Low": 0
+      },
+      "findings": [
+        {
+          "id": "H-M1",
+          "severity": "Medium",
+          "title": "Concurrent due-wait polls can overwrite the native re-admission owner and strand its successful launch",
+          "locations": [
+            {
+              "path": "crates/rrx/src/workflow.rs",
+              "lines": [
+                1577,
+                1612
+              ],
+              "symbol": "WorkflowEngine::poll"
+            },
+            {
+              "path": "crates/rrx/src/workflow.rs",
+              "lines": [
+                1405,
+                1444
+              ],
+              "symbol": "WorkflowEngine::prepare_managed"
+            },
+            {
+              "path": "crates/rrx/src/workflow.rs",
+              "lines": [
+                1472,
+                1486
+              ],
+              "symbol": "managed launch binding"
+            },
+            {
+              "path": "crates/rrx/src/workflow.rs",
+              "lines": [
+                1939,
+                1951
+              ],
+              "symbol": "WorkflowEngine::refresh_owners"
+            },
+            {
+              "path": "crates/rrx/src/execution/owner.rs",
+              "lines": [
+                56,
+                71
+              ],
+              "symbol": "PreparationGuard::drop"
+            },
+            {
+              "path": "crates/rrx/src/execution/native.rs",
+              "lines": [
+                124,
+                148
+              ],
+              "symbol": "NativeSessions::start_inner"
+            }
+          ],
+          "evidence": "A due attempt with unit Some, session None, and native_wait Some sends every polling step into prepare_managed. The initial waiting Workflow record is not claimed exclusively before its asynchronous source calls. prepare_managed unconditionally replaces that snapshot with self.read at line 1409, and only checks the active index and unit identity; it does not require the same waiting record version/native_wait or reject a newly in-flight preparation. It then clears native_wait and persists another record version. The earlier invocation requires its own Workflow record version to remain unchanged before binding the returned Session. The per-unit NativeSessions mutex serializes native starts, but does not protect these preceding Workflow writes or their outer PreparationGuards.",
+          "causal_interleaving": [
+            "A and B both read the same due waiting attempt; pause B in the poll inputs call at lines 1602-1609.",
+            "A clears native_wait and persists at 1439-1444, then holds its native_version helper before Session registration.",
+            "Release B. Its unit still has no Session, and self.read at 1409 adopts A's new record with native_wait already None. It persists a further Workflow version and waits for the same native start mutex.",
+            "Allow A to finish native preparation. If it launches, the actual Unit and Session become bound at NativeSessions lines 349 and 417-429, but A's refresh_owners at 1484 rejects B's Workflow version. The durable Workflow remains unbound. A's outer PreparationGuard has session None and cannot retire the now Session-bound Unit.",
+            "B subsequently fails the original Session-less ExecutionAuthority check; its error branch can publish WaitingHuman while leaving the live Unit/Session unbound. Ordinary polls now return the unbound recovery hold instead of monitoring the actual successful launch.",
+            "If A instead returns another quota/capacity wait, its binding/update CAS fails for the same reason; its still-armed Session-less outer guard can retire the healthy waiting Unit as Lost. Neither outcome is caused by actual native transport loss."
+          ],
+          "impact": "Healthy concurrent polling can require explicit recovery or an unnecessary fresh attempt even though native preparation/launch ownership was preserved. This does not demonstrate duplicate model input or a false result approval: the lower-level per-unit mutex and ledger fences remain effective. It is a concrete availability/currency defect in the newly connected wait consumer, rather than an absent future Runtime integration.",
+          "contract_evidence": [
+            {
+              "path": "doc/requirements/agent-execution-requirements.md",
+              "commit": "9a11d03f1b1676c2c3c8a24b6b3fd328759f7db5",
+              "lines": [
+                82,
+                95
+              ],
+              "requirement": "R3 immutable attempt binding and record-version CAS"
+            },
+            {
+              "path": "doc/requirements/agent-execution-requirements.md",
+              "commit": "9a11d03f1b1676c2c3c8a24b6b3fd328759f7db5",
+              "lines": [
+                142,
+                161
+              ],
+              "requirement": "R5 bounded quota recovery, preserved continuation and waiting semantics"
+            }
+          ],
+          "minimal_fix": "Atomically claim the exact due waiting Workflow record/attempt/unit before re-admission. A CAS loser or observer that sees native_wait already cleared must return Waiting without writing or arming a retirement guard for the winner. Preserve the winning invocation's committed version/token through re-admission and binding; do not adopt a competing in-flight Workflow by unconditional reread. The initial newly reserved Unit reload may remain separately justified by its own successful atomic reservation.",
+          "causal_controls": [
+            "Use the real managed Registry/Workflow fixture. First obtain a genuine Session-less quota/capacity wait, then make its bounded recheck due and permit capacity recovery.",
+            "Use source and version-helper barriers to force the listed interleaving with two WorkflowEngine instances sharing the same Registry/Store. Assert one native start/input, exactly one durable Workflow Session binding to the launched Unit, no unexpected Lost/WaitingHuman, and observer/no-winner writes do not revoke the owner.",
+            "Repeat with the winning native recheck returning Waiting again: its Unit must stay open and WaitingQuota/WaitingCapacity with intact waiter/lease accounting, not become Lost because of the other poll.",
+            "Retain normal sequential wait recovery, initial concurrent native start exclusion, cancellation and fresh terminal-capacity retry controls. An omission of the waiting-claim/current-version check must fail the actual Workflow binding or waiter-state assertion."
+          ],
+          "verification": "Verified from immutable production control flow and a feasible explicitly ordered interleaving; no test/build/probe was executed by this reviewer.",
+          "confidence": 0.94
+        }
+      ],
+      "prior_own_findings": [
+        {
+          "id": "G-H1",
+          "prior_severity": "High",
+          "disposition": "closed_in_source",
+          "evidence": "WorkflowPublication now has private fields in execution/results.rs and is minted only by workflow_publication after the real manifest/reference/object graph verification using scoped UnitGit. The owner is checked before and after verification. The complete saved ResultArtifact is compared after verification and again in publish_workflow_result_tx. Workflow success now requires that descriptor; ledger-only Ready metadata cannot mint it.",
+          "locations": [
+            "crates/rrx/src/execution/results.rs:workflow_publication/verify_inner",
+            "crates/rrx/src/state/execution/artifacts.rs:publish_workflow_result_tx",
+            "crates/rrx/src/workflow.rs:persist/apply_outcome"
+          ],
+          "controls_inspected": "Real capture/publication fixtures cover intact Claude/Codex, missing/corrupt manifest, missing ref, cancellation, and artifact-version change after verification. The prior fabricated ledger-only positive is now negative. These controls were read, not executed."
+        },
+        {
+          "id": "G-M1",
+          "prior_severity": "Medium",
+          "disposition": "closed_in_source",
+          "evidence": "retire_execution_as calls retire_readonly_generation within the same transaction before advancing the Executor generation. The helper validates exact scope/epoch/generation, closes both readonly authorities, preserves known work/artifact history, releases quota and waiters, and schedules cleanup. Task cancellation, direct replacement and epoch fencing have separate all-unit closure paths.",
+          "locations": [
+            "crates/rrx/src/state/execution.rs:retire_execution_as",
+            "crates/rrx/src/state/execution.rs:retire_readonly_generation",
+            "crates/rrx/src/state/execution.rs:fence_task_tx/begin_execution_epoch/reserve_execution_inner"
+          ],
+          "controls_inspected": "The state control now adds an actual readonly quota lease, explicitly retires the Executor, checks readonly closure and zero active quota leases, then successfully reserves a fresh generation while retaining Published artifact history. Read only."
+        },
+        {
+          "id": "F-L1",
+          "prior_severity": "Low",
+          "disposition": "source_control_correction_retained",
+          "evidence": "The competing_native_start_cannot_retire_the_live_winner test still holds the first real version helper, starts a competing start during the hold, checks it remains unfinished, releases the helper, and verifies the winner remains live with one native_version effect. This addresses the former sequential-only control, but it does not exercise the new Workflow-level due-wait reentry race reported as H-M1.",
+          "locations": [
+            "crates/rrx/src/execution/native/tests.rs:346-417"
+          ],
+          "limit": "No independent execution or timing sensitivity proof was performed in this review."
+        }
+      ],
+      "reviewed_connections": [
+        "Managed Registry requires explicit claude/codex provider identity distinct from alias, validates executables/configuration before creating the shared NativeSessions server, and rejects managed configuration on the generic Registry path.",
+        "Workflow reservation atomically checks owner versions, exact Task/Workflow/context/index/generation and phase kind, then installs the pre-Session Unit and Executor projection with the Workflow Unit binding before managed preparation helpers.",
+        "NativeAdapter verifies the reserved immutable Context revision/source set/full serialized payload, current provider/alias/path/role and pre-Session attempt state; NativeSessions gates competing starts before its preparation guard and actual effect admission.",
+        "Readonly ResultSnapshot provenance retains private source/output/owner/scope/generation/epoch and verifies readonly source HEAD/digest/dirty state before launch and after native completion using finalization authority. Independent retained source fixture changes are rejected.",
+        "Terminal quota/capacity interruption preserves Unknown work, closes the old Unit, and schedules a distinct fresh attempt/resources rather than marking formal phase success or native work failure.",
+        "Known native failure closes draft finalization before ordinary phase failure. Unknown terminals retain explicit fresh-retry semantics. Managed retry requires closed exact authority and rejects unknown gate observations. Cancellation uses existing Task fencing and separate best-effort native stop; no physical death certificate is inferred."
+      ],
+      "limits": [
+        "Static fixed-commit component review only, not final Phase2/source merge/native/MVP approval.",
+        "No production tests/builds or authenticated Agent/model/account/native probes, network operations, resource signaling or WT edits were performed.",
+        "Read only the named immutable source and approved contract; did not inspect later/dirty source, peer reports, merged disposition JSON or progress.md.",
+        "Sources/Gates in the new managed controls are fixture integrations, not qualified production context/evidence policy.",
+        "Production Sources/Gates, readonly finalization closure, operational Runtime/CLI, reclamation/cookie/systemd/Docker reconciliation, hook/dependency qualifications and final native conformance remain unqualified; their announced absence is not counted as a finding.",
+        "No universal same-user filesystem sandbox, arbitrary SID/helper death, or unknown external-effect clearance is established by this source review."
+      ],
+      "live_handles": [],
+      "commands_closed": true
+    },
+    {
+      "reviewer": "agent_execution_phase0_review_b",
+      "round": 8,
+      "source_commit": "63604edb8c64c7da93ad7bc6423b8f264aa96611",
+      "baseline_commit": "3732553750a7fb0d2ca020e8935628cf7909c10b",
+      "approved_contract_commit": "9a11d03f1b1676c2c3c8a24b6b3fd328759f7db5",
+      "review_kind": "Independent read-only STRICT preliminary component source review",
+      "verdict": "REQUEST_CHANGES",
+      "severity_counts": {
+        "C": 0,
+        "H": 0,
+        "M": 1,
+        "L": 0
+      },
+      "findings": [
+        {
+          "id": "M1",
+          "severity": "M",
+          "title": "Managed subscriptions never publish the durable quota/capacity wait reason",
+          "primary_location": {
+            "file": "crates/rrx/src/execution/native.rs",
+            "start_line": 1086,
+            "end_line": 1090
+          },
+          "related_locations": [
+            {
+              "file": "crates/rrx/src/execution/native.rs",
+              "start_line": 384,
+              "end_line": 397
+            },
+            {
+              "file": "crates/rrx/src/execution/native.rs",
+              "start_line": 452,
+              "end_line": 465
+            },
+            {
+              "file": "crates/rrx/src/execution/native.rs",
+              "start_line": 955,
+              "end_line": 976
+            },
+            {
+              "file": "crates/rrx/src/adapter/native.rs",
+              "start_line": 286,
+              "end_line": 297
+            },
+            {
+              "file": "crates/rrx/src/state/execution/quotas.rs",
+              "start_line": 352,
+              "end_line": 380
+            },
+            {
+              "file": "crates/rrx/src/state/execution.rs",
+              "start_line": 796,
+              "end_line": 805
+            }
+          ],
+          "evidence": "NativeStatus starts with wait_reason=None. No watch-channel producer in this pinned source assigns wait_reason thereafter. A Codex usageLimitExceeded notification with willRetry=true durably changes the live unit to WaitingQuota/Some(Quota), but the subsequent send_modify assigns only authority and diagnostic. Terminal persistence assigns Some(Quota) or Some(Capacity) for the corresponding interrupted dispositions, while the final send_modify again omits wait_reason. NativeSessions::status overlays the durable unit's wait_reason, but NativeAdapter::subscribe forwards the unrefreshed NativeStatus directly, including its initial value for a late subscriber.",
+          "causal_sequence": [
+            "Start a managed Codex session and subscribe through the managed adapter.",
+            "Receive a correlated usageLimitExceeded notification whose willRetry is true; mark_execution_quota_retry commits wait_reason=Quota.",
+            "The emitted watch value reports the same native turn and a quota diagnostic, but execution.wait_reason remains None. A synchronous adapter.status for the same handle reports Some(Quota).",
+            "A terminal quota/capacity interruption preserves the disagreement because terminal watch publication omits wait_reason as well."
+          ],
+          "impact": "The existing public subscription path cannot reliably expose the new structured wait state. A subscriber can continue treating an exhausted retained turn as running while synchronous status says it is waiting, and must parse diagnostic prose to reconstruct the state. Current Workflow::poll uses synchronous status, so this finding does not claim that its quota wait/retry branch fails, that results are corrupted, or that capacity is incorrectly classified as work failure.",
+          "recommended_change": "Publish an internally consistent NativeStatus from the current persisted unit whenever quota retry, terminal persistence, retirement or other authoritative state changes are emitted. At minimum, copy unit.wait_reason alongside authority/work/disposition/cleanup in the quota and terminal producer updates; ensure recovery clears it. Alternatively refresh the durable fields before each adapter subscription emission. Preserve the retained native Session/turn without resending input.",
+          "proposed_causal_controls_not_executed": [
+            "An account-free managed-adapter fixture emits a held correlated usageLimitExceeded/willRetry=true notification. Compare subscription.execution.wait_reason and adapter.status.execution.wait_reason; both must equal Some(Quota), and assert there is still exactly one native input/turn.",
+            "Repeat the comparison for terminal QuotaInterrupted and CapacityInterrupted, including a subscriber created after the terminal update.",
+            "Complete a retained retry successfully and assert both views clear wait_reason without creating a replacement native turn."
+          ],
+          "confidence": "Verified by the complete pinned-source assignment search and producer-to-consumer tracing; no test was run."
+        }
+      ],
+      "prior_own_findings_disposition": [
+        {
+          "round": 7,
+          "id": "H1",
+          "title": "Actual executor stop/retirement left old readonly units and quota leases open before generation advancement",
+          "disposition": "CLOSED_STATIC",
+          "evidence": [
+            "crates/rrx/src/state/execution.rs:856-860 now invokes retire_readonly_generation before the executor's Task generation UPDATE in the existing retire_execution_as path.",
+            "crates/rrx/src/state/execution.rs:963-1009 validates the readonly unit scope/epoch/generation, closes both permission axes, preserves known work facts, releases quota leases, deletes waiters, records cleanup intent, and appends an audit event in the same transaction.",
+            "The pinned source addition to crates/rrx/src/state/execution/tests.rs supplies a stop/retire causal control asserting readonly closure, lease release, fresh retry worktree and preservation of an already published artifact. This review inspected its source but did not execute it."
+          ],
+          "limit": "This is source-level closure of the actual managed stop/retire path, not observed process reclamation or native runtime acceptance."
+        },
+        {
+          "round": 6,
+          "id": "H1_original_withdrawn",
+          "disposition": "REMAINS_WITHDRAWN",
+          "evidence": "The earlier live-executor replacement claim was withdrawn because the partial UNIQUE active-executor constraint rejects insertion before generation advancement and rolls the transaction back. It is not counted as an open or fixed finding."
+        },
+        {
+          "round": 6,
+          "id": "H2_revised",
+          "disposition": "CLOSED_STATIC_IN_PRIOR_ROUND_AND_RELATED_STOP_PATH_NOW_CLOSED",
+          "evidence": "Fresh executor reservation fences old readonly generations; the remaining stop/retire producer identified in round7 is now covered as described above."
+        }
+      ],
+      "additional_verified_source_observations": [
+        "Managed Registry construction requires explicit claude/codex provider mapping, preserves configured agent aliases, resolves the configured native executable, and shares a RuntimeOwner-backed NativeSessions registry. Generic start remains unavailable for the managed adapter, while the actual AgentAdapter managed vtable path is used by Workflow.",
+        "Managed Workflow admission stores the semantic pre-Session Unit reference with Task projection and Workflow phase reservation in one transaction. It checks Workflow/Project/Goal/Context versions and actor-to-unit-kind binding before native preparation.",
+        "The managed adapter compares its native input to the durable ContextVersion and running Workflow attempt, including agent alias, phase, semantic Unit identity, revision, source hashes and payload; caller-provided input cannot independently substitute for that frame.",
+        "Workflow polling handles confirmed live native retry without resending input and handles terminal quota/capacity interruption by retiring the phase attempt and admitting a fresh execution unit/worktree/resource set. The due-time pre-Session wait path uses the persisted Context input and the same not-yet-launched unit; that is not reuse of a previously launched executor attempt.",
+        "Workflow publication now requires a private real ResultStore proof produced by retained manifest/graph verification, then compares the complete artifact snapshot in the coordinated publication transaction. Artifact, Unit finalization, Task, Workflow and Context updates retain CAS rollback behavior.",
+        "Readonly managed review uses a private ResultSnapshot provenance object and verifies its semantic unit, exact retained SHA, tracked content and read-only source/Git tree before launch, before gate evaluation and before accepting passed review evidence. This is a cooperative source-consumption guarantee, not a same-UID security sandbox."
+      ],
+      "limits": [
+        "No builds, tests, native agents, accounts, authentication/configuration probes, network operations, Docker operations or process signals were performed. Proposed causal controls are not observed passing tests.",
+        "This review used only fixed git source objects at the stated source/baseline/contract commits and did not inspect dirty source, subsequent commits, peer reports, merged review artifacts or progress documents.",
+        "Production Sources/Gates, readonly finalization closure, Runtime operational CLI, cleanup backends and final native compatibility/concurrency qualification remain incomplete as explicitly scoped by the parent. Their absence alone is not counted as a finding and this verdict is not Phase2 approval.",
+        "Actual Claude/Codex authentication, settings, required hooks, sandbox compatibility, subscription exhaustion/reset and four simultaneous native Tasks on macOS/Linux remain unverified.",
+        "Configured operational concurrency limits and completed due-time quota recovery require later integration/qualification; source fixture inspection does not establish either native behavior or CLI readiness.",
+        "Retained source trees are not a security boundary against intentional chmod/raw filesystem bypass by the same user; external effects and best-effort cleanup remain outside complete process-reclamation guarantees."
+      ],
+      "owned_handles": {
+        "live_command_sessions": [],
+        "native_processes_started": [],
+        "tool_status": "All read-only shell commands completed without a session_id; no owned execution handles remain."
+      }
+    }
+  ]
+}

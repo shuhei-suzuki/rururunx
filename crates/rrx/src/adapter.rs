@@ -381,8 +381,11 @@ impl AgentRegistry {
             selected.push((name.clone(), provider.to_owned(), program));
         }
         let sessions = Arc::new(
-            crate::execution::native::NativeSessions::new(owner.clone())
-                .map_err(|_| error(ErrorKind::StateFailure, "managed tool server unavailable"))?,
+            crate::execution::native::NativeSessions::with_limits(
+                owner.clone(),
+                crate::execution::native::NativeLimits::configured(config),
+            )
+            .map_err(|_| error(ErrorKind::StateFailure, "managed tool server unavailable"))?,
         );
         let mut registry = Self {
             managed_owner: Some(owner.clone()),

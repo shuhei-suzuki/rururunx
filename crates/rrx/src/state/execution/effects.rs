@@ -169,6 +169,7 @@ impl Store {
         tx.commit()?;
         Ok(())
     }
+    #[cfg(test)]
     pub(crate) fn release_execution_lease(
         &mut self,
         id: LeaseId,

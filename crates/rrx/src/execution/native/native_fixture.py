@@ -85,9 +85,11 @@ for line in sys.stdin:
                 if payload == "capacity-retry-success":
                     send({"method":"error", "params":{"threadId":os.environ["RRX_UNIT_ID"], "turnId":"fixture-turn", "willRetry":True, "error":{"codexErrorInfo":info}}})
                 send({"method":"turn/completed", "params":{"threadId":os.environ["RRX_UNIT_ID"], "turn":{"id":"fixture-turn", "status":"completed" if payload == "capacity-retry-success" else "failed", "error":{"codexErrorInfo":info}}}})
-            elif payload in ("quota-terminal", "quota-retry-terminal", "ordinary-failure"):
-                if payload == "quota-retry-terminal":
+            elif payload in ("quota-terminal", "quota-retry-terminal", "quota-retry-held", "ordinary-failure"):
+                if payload in ("quota-retry-terminal", "quota-retry-held"):
                     send({"method": "error", "params": {"threadId": os.environ["RRX_UNIT_ID"], "turnId": "fixture-turn", "willRetry": True, "error": {"codexErrorInfo": "usageLimitExceeded"}}})
+                if payload == "quota-retry-held":
+                    while not os.path.exists(os.path.join(os.environ["RRX_OUTPUT_DIR"], "fixture-quota-release")): time.sleep(0.02)
                 error = {"codexErrorInfo": "usageLimitExceeded" if payload != "ordinary-failure" else "other"}
                 send({"method": "turn/completed", "params": {"threadId": os.environ["RRX_UNIT_ID"], "turn": {"id": "fixture-turn", "status": "failed", "error": error}}})
             else:

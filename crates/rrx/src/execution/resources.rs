@@ -286,7 +286,7 @@ impl ResourceManager {
     pub(crate) fn materialize(&self, profile: &ResourceProfile) -> Result<()> {
         std::fs::create_dir_all(profile.root.parent().context("unit root parent missing")?)?;
         ensure!(
-            !profile.root.exists() && !profile.root.symlink_metadata().is_ok(),
+            !profile.root.exists() && profile.root.symlink_metadata().is_err(),
             "unit namespace is never reused"
         );
         std::fs::create_dir(&profile.root)?;

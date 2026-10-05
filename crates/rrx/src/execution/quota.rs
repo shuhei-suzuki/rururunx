@@ -9,6 +9,7 @@ pub struct QuotaScheduler {
     pub global_total: usize,
     pub provider_executor: usize,
     pub provider_total: usize,
+    pub project_tasks: usize,
 }
 impl QuotaScheduler {
     pub fn new(owner: Arc<RuntimeOwner>) -> Self {
@@ -17,6 +18,7 @@ impl QuotaScheduler {
             global_total: 6,
             provider_executor: 2,
             provider_total: 3,
+            project_tasks: 4,
         }
     }
     pub fn observe(&self, observation: &QuotaObservation) -> Result<()> {
@@ -55,13 +57,14 @@ impl QuotaScheduler {
             .store
             .lock()
             .map_err(|_| anyhow::anyhow!("state poisoned"))?
-            .reserve_execution_quota(
+            .reserve_execution_quota_with_project_limit(
                 authority,
                 &provider,
                 "unknown",
                 self.global_total,
                 self.provider_executor,
                 self.provider_total,
+                self.project_tasks,
                 at,
             )?;
         match outcome {

@@ -112,29 +112,6 @@ impl Drop for HelperGuard {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn database_aliases_cannot_create_a_second_owner_or_advance_epoch() {
-        let dir = tempfile::tempdir().unwrap();
-        let state = dir.path().join("state.db");
-        let owner = RuntimeOwner::open(&state).unwrap();
-        let symlink = dir.path().join("alias.db");
-        std::os::unix::fs::symlink(&state, &symlink).unwrap();
-        let hardlink = dir.path().join("hardlink.db");
-        std::fs::hard_link(&state, &hardlink).unwrap();
-        for path in [&state, &symlink, &hardlink] {
-            assert!(RuntimeOwner::open(path).is_err());
-        }
-        let epoch: u64 = owner.store.lock().unwrap().connection_epoch_for_test();
-        assert_eq!(epoch, owner.epoch());
-        std::fs::remove_file(&hardlink).unwrap();
-        drop(owner);
-        let successor = RuntimeOwner::open(&state).unwrap();
-        assert_eq!(successor.epoch(), epoch + 1);
-    }
-}
 impl RuntimeOwner {
     pub fn open(state: &Path) -> Result<Arc<Self>> {
         let path = if state.is_absolute() {
@@ -261,5 +238,29 @@ impl RuntimeOwner {
         leases.retain(|_, lease| lease.strong_count() > 0);
         leases.insert(lease.id, Arc::downgrade(&lease));
         Ok(lease)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn database_aliases_cannot_create_a_second_owner_or_advance_epoch() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = dir.path().join("state.db");
+        let owner = RuntimeOwner::open(&state).unwrap();
+        let symlink = dir.path().join("alias.db");
+        std::os::unix::fs::symlink(&state, &symlink).unwrap();
+        let hardlink = dir.path().join("hardlink.db");
+        std::fs::hard_link(&state, &hardlink).unwrap();
+        for path in [&state, &symlink, &hardlink] {
+            assert!(RuntimeOwner::open(path).is_err());
+        }
+        let epoch: u64 = owner.store.lock().unwrap().connection_epoch_for_test();
+        assert_eq!(epoch, owner.epoch());
+        std::fs::remove_file(&hardlink).unwrap();
+        drop(owner);
+        let successor = RuntimeOwner::open(&state).unwrap();
+        assert_eq!(successor.epoch(), epoch + 1);
     }
 }

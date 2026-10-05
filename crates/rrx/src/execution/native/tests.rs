@@ -299,10 +299,11 @@ async fn version_preparation_abort_and_retirement_do_not_leave_launch_authority(
             start.abort();
             assert!(matches!(start.await, Err(e) if e.is_cancelled()));
         } else {
-            let mut store = owner.store.lock().unwrap();
-            let current = store.execution_unit(unit.id).unwrap();
-            store.retire_execution(&current.authority(), false).unwrap();
-            drop(store);
+            {
+                let mut store = owner.store.lock().unwrap();
+                let current = store.execution_unit(unit.id).unwrap();
+                store.retire_execution(&current.authority(), false).unwrap();
+            }
             assert!(
                 tokio::time::timeout(Duration::from_secs(5), start)
                     .await
@@ -311,28 +312,29 @@ async fn version_preparation_abort_and_retirement_do_not_leave_launch_authority(
                     .is_err()
             );
         }
-        let store = owner.store.lock().unwrap();
-        let closed = store.execution_unit(unit.id).unwrap();
-        assert!(!closed.native_effects_open && !closed.result_finalization_open);
-        assert_eq!(closed.work, Some(WorkOutcome::Unknown));
-        assert_eq!(
-            closed.disposition,
-            if abort {
-                Disposition::Lost
-            } else {
-                Disposition::Cancelled
-            }
-        );
-        assert!(closed.session_id.is_none());
-        let effects = store.managed_effects(unit.id).unwrap();
-        assert!(effects.iter().all(|e| e.state != EffectState::Pending));
-        assert!(
-            effects
-                .iter()
-                .any(|e| e.kind == "native_version" && e.state == EffectState::Unknown)
-        );
-        assert!(effects.iter().all(|e| e.kind != "native_input"));
-        drop(store);
+        {
+            let store = owner.store.lock().unwrap();
+            let closed = store.execution_unit(unit.id).unwrap();
+            assert!(!closed.native_effects_open && !closed.result_finalization_open);
+            assert_eq!(closed.work, Some(WorkOutcome::Unknown));
+            assert_eq!(
+                closed.disposition,
+                if abort {
+                    Disposition::Lost
+                } else {
+                    Disposition::Cancelled
+                }
+            );
+            assert!(closed.session_id.is_none());
+            let effects = store.managed_effects(unit.id).unwrap();
+            assert!(effects.iter().all(|e| e.state != EffectState::Pending));
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| e.kind == "native_version" && e.state == EffectState::Unknown)
+            );
+            assert!(effects.iter().all(|e| e.kind != "native_input"));
+        }
         let (fresh, _) = attempts::AttemptManager::new(owner.clone())
             .prepare(task.id, "claude", "Implement", None)
             .await
@@ -943,6 +945,154 @@ async fn bootstrap_failure_categories_survive_without_retaining_native_error_pay
                 .unwrap()
                 .iter()
                 .all(|e| e.kind != "native_input")
+        );
+    }
+}
+
+#[tokio::test]
+async fn native_subscription_wait_reason_matches_status_during_retry_and_terminal() {
+    let (dir, owner, task) = results::tests::fixture().await;
+    let (unit, _) = attempts::AttemptManager::new(owner.clone())
+        .prepare(task.id, "codex", "Implement", None)
+        .await
+        .unwrap();
+    let output = resources::ResourceManager::new(owner.clone())
+        .profile(&unit)
+        .unwrap()
+        .output;
+    let sessions = NativeSessions::new(owner).unwrap();
+    let NativeStart::Launched(handle) = sessions
+        .start_inner(
+            input(&unit, "quota-retry-held"),
+            None,
+            None,
+            Some(program(dir.path(), "codex")),
+        )
+        .await
+        .unwrap()
+    else {
+        panic!("expected launch");
+    };
+    let mut updates = sessions.subscribe(&handle).unwrap();
+    tokio::time::timeout(Duration::from_secs(15), async {
+        loop {
+            let status = updates.borrow().clone();
+            if status.wait_reason == Some(WaitReason::Quota) {
+                assert!(status.work.is_none());
+                assert_eq!(
+                    sessions.status(&handle).unwrap().wait_reason,
+                    status.wait_reason
+                );
+                assert_eq!(
+                    sessions.status(&handle).unwrap().authority,
+                    status.authority
+                );
+                break;
+            }
+            updates.changed().await.unwrap();
+        }
+    })
+    .await
+    .unwrap();
+    std::fs::write(output.join("fixture-quota-release"), "release").unwrap();
+    let end = terminal(&sessions, &handle).await;
+    assert_eq!(end.wait_reason, Some(WaitReason::Quota));
+    assert_eq!(
+        end.wait_reason,
+        sessions.status(&handle).unwrap().wait_reason
+    );
+    assert_eq!(end.work, Some(WorkOutcome::Unknown));
+    assert_eq!(end.disposition, Disposition::QuotaInterrupted);
+}
+
+#[tokio::test]
+async fn configured_global_provider_alias_and_project_caps_wait_before_native_spawn() {
+    for limit in ["global", "provider-alias", "project"] {
+        let (dir, owner, task) = results::tests::fixture().await;
+        let mut config = crate::config::Config::default();
+        if limit == "global" {
+            config.scheduler.global_max_sessions = 1;
+        }
+        if limit == "project" {
+            config.scheduler.max_tasks_per_project = 1;
+        }
+        if limit == "provider-alias" {
+            for (name, cap) in [("fast", 3), ("bounded", 1)] {
+                config.agents.insert(
+                    name.into(),
+                    crate::config::AgentConfig {
+                        provider: Some("codex".into()),
+                        max_concurrent: Some(cap),
+                        ..Default::default()
+                    },
+                );
+            }
+        }
+        let sessions =
+            NativeSessions::with_limits(owner.clone(), NativeLimits::configured(&config)).unwrap();
+        let manager = attempts::AttemptManager::new(owner.clone());
+        let first_provider = if limit == "provider-alias" {
+            "codex"
+        } else {
+            "claude"
+        };
+        let (first, _) = manager
+            .prepare(task.id, first_provider, "Implement", None)
+            .await
+            .unwrap();
+        let NativeStart::Launched(handle) = sessions
+            .start_inner(
+                input(&first, "complete"),
+                None,
+                None,
+                Some(program(dir.path(), first_provider)),
+            )
+            .await
+            .unwrap()
+        else {
+            panic!("first launch unexpectedly waiting");
+        };
+        let mut sibling = crate::domain::Task::new(
+            task.project_id,
+            task.goal_id,
+            "cap sibling".into(),
+            "codex".into(),
+        );
+        owner.store.lock().unwrap().put_task(&mut sibling).unwrap();
+        let (second, _) = manager
+            .prepare(sibling.id, "codex", "Implement", None)
+            .await
+            .unwrap();
+        let NativeStart::Waiting { unit, reason, .. } = sessions
+            .start_inner(
+                input(&second, "complete"),
+                None,
+                None,
+                Some(program(dir.path(), "codex")),
+            )
+            .await
+            .unwrap()
+        else {
+            panic!("configured cap bypassed: {limit}");
+        };
+        assert_eq!(reason, WaitReason::Capacity);
+        assert_eq!(unit.work, None);
+        assert!(unit.native_effects_open);
+        assert!(unit.session_id.is_none());
+        assert!(
+            !owner
+                .store
+                .lock()
+                .unwrap()
+                .managed_effects(unit.id)
+                .unwrap()
+                .iter()
+                .any(|e| e.kind == "native_spawn" || e.kind == "native_input")
+        );
+        sessions.cancel(&handle).await.unwrap();
+        assert_eq!(
+            terminal(&sessions, &handle).await.disposition,
+            Disposition::Cancelled
         );
     }
 }

@@ -161,6 +161,7 @@ impl Store {
         tx.commit()?;
         Ok(())
     }
+    #[cfg(test)]
     pub(crate) fn invalidate_execution_artifact(
         &mut self,
         id: ArtifactId,
@@ -281,6 +282,95 @@ pub(in crate::state) fn publish_workflow_result_tx(
         tx,
         &unit.scope,
         "execution.result_published",
+        json!({"unit":unit.id,"artifact":artifact.id,"sha":artifact.revision,"workflow":next_record.id,"context_version":context.version}),
+    )?;
+    Ok(())
+}
+
+/// Close readonly finalization only together with acceptance of its exact input.
+pub(in crate::state) fn complete_workflow_readonly_tx(
+    tx: &Transaction<'_>,
+    completion: &ReadonlyCompletion,
+    task: &Task,
+    next_record: &Record,
+    previous_record: &Record,
+    context: &ContextVersion,
+) -> Result<()> {
+    use crate::workflow::{Actor, AttemptState, WorkflowSnapshot};
+    let mut unit = validate_authority(tx, completion.authority(), false, true)?;
+    ensure!(
+        matches!(unit.kind, UnitKind::Reviewer | UnitKind::Verifier)
+            && unit.work == Some(WorkOutcome::Success)
+            && !unit.native_effects_open
+            && unit.scope == task.scope(),
+        "readonly acceptance requires successful owning terminal"
+    );
+    let before: WorkflowSnapshot = serde_json::from_value(previous_record.data.clone())?;
+    let after: WorkflowSnapshot = serde_json::from_value(next_record.data.clone())?;
+    let index = before
+        .active
+        .context("readonly acceptance requires active reservation")?;
+    let old = before
+        .history
+        .get(index)
+        .context("readonly reservation invalid")?;
+    let next = after
+        .history
+        .get(index)
+        .context("readonly phase history missing")?;
+    ensure!(
+        old.phase.actor() == Actor::Reviewer
+            && old.phase.key() == unit.phase
+            && old.unit.as_ref() == Some(&ManagedUnitRef::from(&unit))
+            && old.session_id == unit.session_id
+            && unit.session_id.is_some()
+            && before.generation == after.generation
+            && next.state == AttemptState::Succeeded
+            && after.active.is_none(),
+        "readonly Workflow/Session/generation binding mismatch"
+    );
+    let artifact = self_artifact_tx(tx, completion.artifact().id)?;
+    ensure!(
+        serde_json::to_value(&artifact)? == serde_json::to_value(completion.artifact())?
+            && artifact.state == ArtifactState::Published
+            && artifact.scope == unit.scope
+            && unit.artifact_id == Some(artifact.id)
+            && unit.base_sha == artifact.revision,
+        "readonly verified artifact snapshot changed"
+    );
+    let evidence = after
+        .completed
+        .get(&old.phase)
+        .context("readonly passed evidence missing")?;
+    ensure!(
+        task.revision.as_ref() == Some(&artifact.revision)
+            && context.revision == artifact.revision
+            && after.sources.revision == artifact.revision
+            && after.sources.artifact == Some(artifact.id)
+            && context.source_hashes.get("workflow:artifact") == Some(&artifact.id.to_string())
+            && evidence.revision == artifact.revision
+            && evidence.session_id == unit.session_id
+            && evidence.review_approved == Some(true),
+        "readonly exact input/evidence binding mismatch"
+    );
+    ensure!(
+        artifact
+            .dependencies
+            .iter()
+            .all(
+                |(key, value)| after.sources.source_versions.get(key) == Some(value)
+                    && context.source_hashes.get(key) == Some(value)
+            ),
+        "readonly dependency versions changed"
+    );
+    unit.result_finalization_open = false;
+    write_unit(tx, &mut unit)?;
+    tx.execute("INSERT INTO cleanup_jobs(unit_id,next_due,attempts,version) VALUES(?1,?2,0,1) ON CONFLICT(unit_id) DO NOTHING",
+        params![unit.id.to_string(), now_ms()])?;
+    append_event(
+        tx,
+        &unit.scope,
+        "execution.readonly_result_accepted",
         json!({"unit":unit.id,"artifact":artifact.id,"sha":artifact.revision,"workflow":next_record.id,"context_version":context.version}),
     )?;
     Ok(())

@@ -88,6 +88,10 @@ pub(crate) fn current_test_writer(path: &Path) -> Result<Connection> {
     Ok(connection)
 }
 
+enum WorkflowCompletion<'a> {
+    Executor(&'a crate::execution::WorkflowPublication),
+    Readonly(&'a crate::execution::ReadonlyCompletion),
+}
 impl Store {
     pub fn open(path: &Path) -> Result<Self> {
         let connection = Connection::open(path)
@@ -422,9 +426,30 @@ impl Store {
             project_version,
             goal_version,
             WorkflowAccess::StateOnly,
-            Some(publication),
+            Some(WorkflowCompletion::Executor(publication)),
         )
     }
+    pub(crate) fn put_workflow_readonly_transition(
+        &mut self,
+        task: &mut Task,
+        workflow: &mut Record,
+        context: &ContextVersion,
+        project_version: u64,
+        goal_version: u64,
+        completion: &crate::execution::ReadonlyCompletion,
+    ) -> Result<()> {
+        self.put_workflow_transition_inner(
+            task,
+            workflow,
+            Some(context),
+            project_version,
+            goal_version,
+            WorkflowAccess::StateOnly,
+            Some(WorkflowCompletion::Readonly(completion)),
+        )
+    }
+    // Exact owner CAS and optional completion proof are independent inputs.
+    #[allow(clippy::too_many_arguments)]
     fn put_workflow_transition_inner(
         &mut self,
         task: &mut Task,
@@ -433,7 +458,7 @@ impl Store {
         project_version: u64,
         goal_version: u64,
         access: WorkflowAccess,
-        publication: Option<&crate::execution::WorkflowPublication>,
+        publication: Option<WorkflowCompletion<'_>>,
     ) -> Result<()> {
         ensure!(
             workflow.kind == RecordKind::Workflow && workflow.scope == task.scope(),
@@ -728,17 +753,26 @@ impl Store {
             )?;
             crate::workflow::validate_context(task, workflow, &decode(body)?)?;
         }
-        if let Some(publication) = publication {
-            execution::publish_workflow_result_tx(
-                &tx,
-                publication,
-                task,
-                workflow,
-                previous_workflow
-                    .as_ref()
-                    .context("result publication requires a reserved Workflow")?,
-                context.context("result publication requires a new ContextVersion")?,
-            )?;
+        if let Some(completion) = publication {
+            let previous = previous_workflow
+                .as_ref()
+                .context("completion requires a reserved Workflow")?;
+            let context = context.context("completion requires a new ContextVersion")?;
+            match completion {
+                WorkflowCompletion::Executor(publication) => execution::publish_workflow_result_tx(
+                    &tx,
+                    publication,
+                    task,
+                    workflow,
+                    previous,
+                    context,
+                )?,
+                WorkflowCompletion::Readonly(completion) => {
+                    execution::complete_workflow_readonly_tx(
+                        &tx, completion, task, workflow, previous, context,
+                    )?
+                }
+            }
         }
         let next_task = put_task_tx(&tx, task)?;
         let next_workflow = put_record_tx(&tx, workflow)?;

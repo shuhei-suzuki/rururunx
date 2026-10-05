@@ -32,6 +32,20 @@ impl WorkflowPublication {
         &self.artifact
     }
 }
+/// A verified immutable reviewer/verifier input and exact terminal authority.
+/// Only the private snapshot provenance can mint this completion proof.
+pub(crate) struct ReadonlyCompletion {
+    authority: ExecutionAuthority,
+    artifact: ResultArtifact,
+}
+impl ReadonlyCompletion {
+    pub(crate) fn authority(&self) -> &ExecutionAuthority {
+        &self.authority
+    }
+    pub(crate) fn artifact(&self) -> &ResultArtifact {
+        &self.artifact
+    }
+}
 #[cfg(test)]
 pub(crate) mod tests;
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -53,6 +67,7 @@ pub struct ResultSnapshot {
     source: PathBuf,
     output: PathBuf,
     manifest_sha256: String,
+    retained: ResultArtifact,
     owner: Arc<RuntimeOwner>,
     scope: crate::domain::Scope,
     generation: u64,
@@ -76,6 +91,50 @@ impl ResultSnapshot {
     }
     pub fn manifest_sha256(&self) -> &str {
         &self.manifest_sha256
+    }
+    pub(crate) async fn completion(&self) -> Result<ReadonlyCompletion> {
+        self.verify().await?;
+        let unit = {
+            let store = self
+                .owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?;
+            let unit = store.execution_unit(self.unit)?;
+            store.validate_execution(&unit.authority(), false, true)?;
+            ensure!(
+                matches!(unit.kind, UnitKind::Reviewer | UnitKind::Verifier)
+                    && unit.work == Some(WorkOutcome::Success)
+                    && !unit.native_effects_open,
+                "readonly completion requires known successful native terminal"
+            );
+            ensure!(
+                serde_json::to_value(store.result_artifact(self.artifact)?)?
+                    == serde_json::to_value(&self.retained)?,
+                "snapshot retained artifact changed"
+            );
+            unit
+        };
+        let io = UnitGit::new(self.owner.clone(), &unit, false)?;
+        ResultStore::new(self.owner.clone())
+            .verify_inner(&self.retained, Some(&io))
+            .await?;
+        self.verify().await?;
+        let store = self
+            .owner
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("state poisoned"))?;
+        store.validate_execution(&unit.authority(), false, true)?;
+        ensure!(
+            serde_json::to_value(store.result_artifact(self.artifact)?)?
+                == serde_json::to_value(&self.retained)?,
+            "snapshot retained artifact changed after verification"
+        );
+        Ok(ReadonlyCompletion {
+            authority: unit.authority(),
+            artifact: self.retained.clone(),
+        })
     }
     pub async fn verify(&self) -> Result<()> {
         let unit = {
@@ -478,7 +537,7 @@ impl ResultStore {
         let io = UnitGit::new(self.owner.clone(), unit, true)?;
         self.verify_inner(&artifact, Some(&io)).await?;
         ensure!(
-            !unit.worktree.exists() && !unit.worktree.symlink_metadata().is_ok(),
+            !unit.worktree.exists() && unit.worktree.symlink_metadata().is_err(),
             "snapshot paths are never reused"
         );
         let output = self
@@ -534,7 +593,8 @@ impl ResultStore {
         let snapshot = ResultSnapshot {
             artifact: artifact.id,
             unit: unit.id,
-            revision: artifact.revision,
+            revision: artifact.revision.clone(),
+            retained: artifact,
             source: unit.worktree.clone(),
             output,
             manifest_sha256: digest,

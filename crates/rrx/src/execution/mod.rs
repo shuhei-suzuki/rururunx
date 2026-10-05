@@ -13,5 +13,5 @@ pub mod process;
 pub mod quota;
 pub mod resources;
 pub mod results;
-pub(crate) use results::WorkflowPublication;
+pub(crate) use results::{ReadonlyCompletion, WorkflowPublication};
 pub mod tools;

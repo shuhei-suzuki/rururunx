@@ -121,6 +121,8 @@ impl Store {
         Ok(())
     }
     /// Unknown balances have explicit finite concurrency; they never manufacture token capacity.
+    #[cfg(test)]
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn reserve_execution_quota(
         &mut self,
         authority: &ExecutionAuthority,
@@ -131,8 +133,33 @@ impl Store {
         provider_max: usize,
         at: i64,
     ) -> Result<QuotaAdmission> {
+        self.reserve_execution_quota_with_project_limit(
+            authority,
+            provider,
+            account,
+            global_max,
+            executor_max,
+            provider_max,
+            usize::MAX,
+            at,
+        )
+    }
+    // Keep pool identity, exact authority, clock and each independent cap explicit.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn reserve_execution_quota_with_project_limit(
+        &mut self,
+        authority: &ExecutionAuthority,
+        provider: &str,
+        account: &str,
+        global_max: usize,
+        executor_max: usize,
+        provider_max: usize,
+        project_max: usize,
+        at: i64,
+    ) -> Result<QuotaAdmission> {
         ensure!(
-            global_max > 0
+            project_max > 0
+                && global_max > 0
                 && executor_max > 0
                 && provider_max > 0
                 && global_max <= 1024
@@ -194,7 +221,9 @@ impl Store {
         } else {
             executor_max
         };
-        let capacity = global >= global_max
+        let project_blocked = project_capacity_blocked(&tx, &unit, project_max)?;
+        let capacity = project_blocked
+            || global >= global_max
             || provider_live >= provider_max
             || (unit.kind == UnitKind::Executor
                 && (executor_live >= effective_executor
@@ -252,6 +281,9 @@ impl Store {
         let mut first = None;
         for id in candidates {
             let candidate = unit_tx(&tx, id.parse()?)?;
+            if project_capacity_blocked(&tx, &candidate, project_max)? {
+                continue;
+            }
             if candidate.kind == UnitKind::Executor
                 && (executor_live >= effective_executor
                     || global_executor >= global_max.saturating_sub(2).max(1))
@@ -414,4 +446,20 @@ pub(super) fn release_quota_tx(tx: &Transaction<'_>, id: UnitId) -> Result<()> {
     )?;
     tx.execute("UPDATE quota_pools SET probe_unit=NULL,next_probe_at=MAX(next_probe_at,?1+backoff) WHERE probe_unit=?2",params![now_ms(),id.to_string()])?;
     Ok(())
+}
+
+fn project_capacity_blocked(
+    tx: &Transaction<'_>,
+    unit: &ExecutionUnit,
+    configured: usize,
+) -> Result<bool> {
+    let project: Project =
+        read_tx(tx, "projects", &unit.scope.project_id.to_string())?.context("unknown project")?;
+    let limit = configured.min(project.max_tasks);
+    ensure!(limit > 0, "invalid project concurrency");
+    let (tasks, own): (usize, bool) = tx.query_row(
+        "SELECT COUNT(DISTINCT u.task_id),COALESCE(MAX(u.task_id=?2),0) FROM quota_leases q JOIN execution_units u ON u.id=q.unit_id WHERE q.active=1 AND u.project_id=?1",
+        params![unit.scope.project_id.to_string(),unit.scope.task_id.unwrap().to_string()],
+        |r| Ok((r.get(0)?, r.get(1)?)))?;
+    Ok(!own && tasks >= limit)
 }

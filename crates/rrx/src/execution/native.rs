@@ -55,7 +55,7 @@ pub struct NativeStatus {
 pub enum NativeStart {
     Launched(ManagedSessionRef),
     Waiting {
-        unit: ExecutionUnit,
+        unit: Box<ExecutionUnit>,
         reason: WaitReason,
         next_due: i64,
     },
@@ -75,7 +75,51 @@ struct Entry {
     status: watch::Receiver<NativeStatus>,
     control: mpsc::Sender<Control>,
 }
+/// Conservative caps: aliases for a provider share the strictest configured cap.
+/// Counting leases in SQLite includes admission before a Session exists.
+#[derive(Clone)]
+pub(crate) struct NativeLimits {
+    global: usize,
+    project: usize,
+    providers: BTreeMap<String, usize>,
+}
+impl NativeLimits {
+    fn default_policy() -> Self {
+        Self {
+            global: 6,
+            project: 4,
+            providers: BTreeMap::new(),
+        }
+    }
+    pub(crate) fn configured(config: &crate::config::Config) -> Self {
+        let mut providers = BTreeMap::<String, usize>::new();
+        for agent in config.agents.values() {
+            if let (Some(provider), Some(cap)) = (&agent.provider, agent.max_concurrent) {
+                providers
+                    .entry(provider.clone())
+                    .and_modify(|c| *c = (*c).min(cap))
+                    .or_insert(cap);
+            }
+        }
+        Self {
+            global: config.scheduler.global_max_sessions.min(6),
+            project: config.scheduler.max_tasks_per_project,
+            providers,
+        }
+    }
+    fn scheduler(&self, owner: Arc<RuntimeOwner>, provider: &str) -> quota::QuotaScheduler {
+        let mut scheduler = quota::QuotaScheduler::new(owner);
+        scheduler.global_total = self.global;
+        scheduler.project_tasks = self.project;
+        if let Some(cap) = self.providers.get(provider) {
+            scheduler.provider_executor = scheduler.provider_executor.min(*cap);
+            scheduler.provider_total = scheduler.provider_total.min(*cap);
+        }
+        scheduler
+    }
+}
 pub struct NativeSessions {
+    limits: NativeLimits,
     owner: Arc<RuntimeOwner>,
     _tools: Arc<ipc::ToolServer>,
     entries: Mutex<BTreeMap<SessionId, Entry>>,
@@ -83,8 +127,12 @@ pub struct NativeSessions {
 }
 impl NativeSessions {
     pub fn new(owner: Arc<RuntimeOwner>) -> Result<Self> {
+        Self::with_limits(owner, NativeLimits::default_policy())
+    }
+    pub(crate) fn with_limits(owner: Arc<RuntimeOwner>, limits: NativeLimits) -> Result<Self> {
         let tools = Arc::new(ipc::ToolServer::start(owner.clone())?);
         Ok(Self {
+            limits,
             owner,
             _tools: tools,
             entries: Mutex::new(BTreeMap::new()),
@@ -257,8 +305,10 @@ impl NativeSessions {
         } else {
             claude_wire::verify_version(&version)?;
         }
-        if let Some((reason, next_due)) =
-            quota::QuotaScheduler::new(self.owner.clone()).admission(&unit.authority(), now_ms())?
+        if let Some((reason, next_due)) = self
+            .limits
+            .scheduler(self.owner.clone(), &unit.provider)
+            .admission(&unit.authority(), now_ms())?
         {
             let unit = self
                 .owner
@@ -268,7 +318,7 @@ impl NativeSessions {
                 .execution_unit(unit.id)?;
             preparation_guard.disarm();
             return Ok(NativeStart::Waiting {
-                unit,
+                unit: Box::new(unit),
                 reason,
                 next_due,
             });
@@ -829,6 +879,7 @@ impl Core {
         self.update.send_modify(|s| {
             s.session = self.session.clone();
             s.authority = self.unit.authority();
+            s.wait_reason = self.unit.wait_reason;
         });
         Ok(())
     }
@@ -888,19 +939,19 @@ impl Core {
                 .lock()
                 .map_err(|_| anyhow::anyhow!("state poisoned"))?;
             let current = store.execution_unit(self.unit.id)?;
-            if current.native_effects_open {
-                if let Err(e) = store.finish_execution_with_failure(
+            if current.native_effects_open
+                && let Err(e) = store.finish_execution_with_failure(
                     &current.authority(),
                     work,
                     disposition,
                     failure,
-                ) {
-                    let current = store.execution_unit(self.unit.id)?;
-                    if current.native_effects_open || current.result_finalization_open {
-                        store.retire_execution(&current.authority(), false)?;
-                    }
-                    return Err(e);
+                )
+            {
+                let current = store.execution_unit(self.unit.id)?;
+                if current.native_effects_open || current.result_finalization_open {
+                    store.retire_execution(&current.authority(), false)?;
                 }
+                return Err(e);
             }
             Ok::<_, anyhow::Error>(())
         })();
@@ -956,6 +1007,7 @@ impl Core {
             s.authority = final_authority;
             s.session = self.session.clone();
             s.work = current.work;
+            s.wait_reason = current.wait_reason;
             s.disposition = current.disposition;
             s.cleanup = CleanupOutcome::Unknown;
             s.pending.clear();
@@ -1080,14 +1132,14 @@ impl Core {
                     match frame["method"].as_str() {
                         Some("item/started")=>approvals.item(&p["item"])? ,
                         Some("error") if p["threadId"]==thread_id && p["turnId"]==turn_id && quota::codex_subscription_error(&p["error"])=>{
-                            quota_ended=!p["willRetry"].as_bool().context("native retry flag missing")?;
+                            quota_ended = !p["willRetry"].as_bool().context("native retry flag missing")?;
                             quota::QuotaScheduler::new(self.owner.clone()).observe(&QuotaObservation {provider:"codex".into(),account_key:"unknown".into(),bucket:"native.subscription".into(),window_id:"unknown-native".into(),
                                 status:QuotaStatus::Exhausted,used_percent:None,resets_at:None,observed_at:now_ms(),source_version:"codex-cli 0.160.0/usageLimitExceeded".into(),confirmed_subscription:true})?;
                             if !quota_ended {
                                 let authority=self.authority()?;
                                 self.unit=self.owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?.mark_execution_quota_retry(&authority)?;
                             }
-                            self.update.send_modify(|s|{s.authority=self.unit.authority();s.diagnostic=Some("subscription quota exhausted; native retry state retained");});
+                            self.update.send_modify(|s|{s.authority=self.unit.authority();s.wait_reason=self.unit.wait_reason;s.diagnostic=Some("subscription quota exhausted; native retry state retained");});
                         },
                         Some("turn/completed") if p["threadId"]==thread_id && p["turn"]["id"]==turn_id=>{
                             let status=p["turn"]["status"].as_str().context("native turn status missing")?;
@@ -1232,6 +1284,11 @@ impl Drop for Core {
                 s.session.state = SessionState::Lost;
                 s.work = Some(WorkOutcome::Unknown);
                 s.disposition = Disposition::Lost;
+                s.authority = store
+                    .execution_unit(self.unit.id)
+                    .map(|u| u.authority())
+                    .unwrap_or_else(|_| self.unit.authority());
+                s.wait_reason = None;
                 s.pending.clear();
                 s.diagnostic = Some("native supervisor ended without terminal");
             });

@@ -238,8 +238,50 @@ metadata-only publication is refused. Formatting and diff whitespace checks
 passed. CI/native conformance, operational CLI and final independent review are
 still required; no new release/OS/account claim follows from these controls.
 
+The [round8 independent reports](agent-execution-phase2-preliminary8-reviews.json)
+confirmed the prior retained-publication and stop-generation corrections. Each
+reported one Medium: concurrent due-wait callers could overwrite the winning
+Workflow version; subscription updates omitted the durable wait reason. The
+wait consumer now claims the exact due record before asynchronous source/native
+work, never adopts a competing in-flight record, and leaves CAS losers without
+write or retirement authority. A barrier control overlaps two Workflow engines
+sharing Registry/Store and checks both successful Session binding and a renewed
+quota wait. The subscription control holds a native retry open and compares its
+watch update with status, then checks the terminal wait reason. Both controls
+passed on this host; neither exercises a genuine subscription.
+
+Readonly completion now requires a private provenance proof reverified against
+its immutable source tree and retained graph. The exact unit authority and full
+Published artifact snapshot are rechecked in the same Task/Workflow/Context SQL
+transaction that closes readonly finalization. Intact review, changed input,
+after-verification artifact mutation and cancellation controls passed; known work
+and the executor's accepted SHA remain independent of rejected review acceptance.
+
+Managed Registry construction now applies configured concurrency ceilings to
+transactional admission leases, including leases before Session registration.
+Unknown-capacity policy caps global sessions at six and provider executors/total
+at two/three. Lower configured global limits apply; configured per-agent alias
+caps conservatively share the strictest cap for that provider, rather than
+promise independent account balances. Project capacity counts distinct active
+Tasks and applies the lower scheduler/registered-Project limit; another readonly
+unit for an already admitted Task does not consume another Task slot. Global,
+provider alias and Project cap controls wait before native spawn. These are
+component tests, not completed production scheduling/installation qualification.
+
+The subsequent stable macOS workspace regression passed 390 library tests,
+112 primary integration tests and two doctests, zero failures and 27 primary
+ignored cases. The first full run caught a misplaced test-only publication hook;
+the second caught a short reset deadline expiring under parallel test load.
+The hook now runs only for actual managed completion proofs, and the competing
+wait control advances its fixture's observation window explicitly before a
+bounded capacity recheck. Both negative/control cases remain enabled. Clippy
+with `--workspace --all-targets -- -D warnings` passed after correcting formatting,
+unnecessary unit bindings, explicit test mutex scopes and finite enum storage.
+No authentication, real model operation, Linux run or release qualification was
+performed by these checks.
+
 - Full current-source/retained-graph qualification and production source/evidence
-  ports; Runtime orchestration, readonly result closure and operational CLI.
+  ports; Runtime orchestration and operational CLI.
 - Required native/Git settings and hooks, dependency qualification and remaining
   scoped preparation/retained-inspection helpers; full finite tool profiles and
   installed-binary tool mediation tests.

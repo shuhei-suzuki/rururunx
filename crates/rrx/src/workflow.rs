@@ -421,6 +421,7 @@ struct Snapshot {
     record: Record,
     workflow: WorkflowSnapshot,
     publication: Option<crate::execution::WorkflowPublication>,
+    readonly_completion: Option<crate::execution::ReadonlyCompletion>,
 }
 
 /// Invocation-local proof minted only from a successfully committed agent reservation.
@@ -460,6 +461,7 @@ struct AgentPreparation {
 struct EngineHooks {
     before_publication: std::sync::Mutex<Option<Box<dyn FnOnce() + Send>>>,
     before_release: std::sync::Mutex<Option<Box<dyn FnOnce() + Send>>>,
+    before_wait_claim: std::sync::Mutex<Option<Pin<Box<dyn Future<Output = ()> + Send>>>>,
     before_reserve: std::sync::Mutex<Option<Pin<Box<dyn Future<Output = ()> + Send>>>>,
     attempt_started_at: std::sync::Mutex<Option<i64>>,
 }
@@ -529,6 +531,7 @@ impl WorkflowEngine {
         );
         Ok(Snapshot {
             publication: None,
+            readonly_completion: None,
             project,
             goal,
             task,
@@ -592,6 +595,27 @@ impl WorkflowEngine {
                         snapshot.project.version,
                         snapshot.goal.version,
                         publication,
+                    );
+                }
+                if attempt.phase.actor() == Actor::Reviewer
+                    && snapshot.workflow.history[index].state == AttemptState::Succeeded
+                    && let Some(session) = attempt.session_id
+                    && let Some(unit) = store.session_execution_unit(session)?
+                {
+                    let proof = snapshot.readonly_completion.as_ref().context(
+                        "managed readonly acceptance requires verified snapshot provenance",
+                    )?;
+                    ensure!(
+                        proof.authority() == &unit.authority(),
+                        "readonly verified authority changed"
+                    );
+                    return store.put_workflow_readonly_transition(
+                        &mut snapshot.task,
+                        &mut snapshot.record,
+                        context.context("readonly acceptance requires fresh context")?,
+                        snapshot.project.version,
+                        snapshot.goal.version,
+                        proof,
                     );
                 }
             }
@@ -754,6 +778,7 @@ impl WorkflowEngine {
         );
         let mut snapshot = Snapshot {
             publication: None,
+            readonly_completion: None,
             project,
             goal,
             task,
@@ -1339,6 +1364,7 @@ impl WorkflowEngine {
             .clone()
             .context("native agent missing")?;
         let attempts = execution::attempts::AttemptManager::new(owner.clone());
+        let already_reserved = snapshot.workflow.history[index].unit.is_some();
         let unit = if let Some(identity) = &snapshot.workflow.history[index].unit {
             let unit = self
                 .store
@@ -1406,7 +1432,9 @@ impl WorkflowEngine {
         // Unit identity and Task projection were committed with the exact phase
         // reservation before any preparation helper. Reload that transaction;
         // do not adopt a Unit discovered from a Task or recovery hint.
-        snapshot = self.read(snapshot.task.id)?;
+        if !already_reserved {
+            snapshot = self.read(snapshot.task.id)?;
+        }
         ensure!(
             snapshot.workflow.active == Some(index)
                 && snapshot.workflow.history[index].unit.as_ref()
@@ -1495,7 +1523,7 @@ impl WorkflowEngine {
                 next_due,
             }) => {
                 ensure!(
-                    execution::ManagedUnitRef::from(&waiting)
+                    execution::ManagedUnitRef::from(waiting.as_ref())
                         == execution::ManagedUnitRef::from(&unit)
                         && waiting.session_id.is_none(),
                     "foreign native wait identity"
@@ -1599,6 +1627,43 @@ impl WorkflowEngine {
                     source_versions: context.source_hashes.clone(),
                     payload: serde_json::to_string(&context.data)?,
                 };
+                #[cfg(test)]
+                {
+                    let barrier = self.hooks.before_wait_claim.lock().unwrap().take();
+                    if let Some(barrier) = barrier {
+                        barrier.await;
+                    }
+                }
+                // Claim the exact due waiter before any async source/native work.
+                // A stale poll never adopts the winner's record or arms its guard.
+                let owner = self
+                    .registry
+                    .managed_owner()
+                    .context("managed owner missing")?;
+                let unit = self
+                    .store
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                    .execution_unit(attempt.unit.as_ref().unwrap().unit)?;
+                let mut snapshot = snapshot;
+                snapshot.workflow.history[index].native_wait = None;
+                snapshot.workflow.history[index].next_due = None;
+                if let Err(error) = self.persist(&mut snapshot, None) {
+                    if error
+                        .downcast_ref::<crate::state::StateGuardError>()
+                        .is_some_and(|e| {
+                            matches!(e, crate::state::StateGuardError::SnapshotChanged { .. })
+                        })
+                    {
+                        return Ok(StepResult::Waiting {
+                            phase,
+                            reason: "native admission already claimed; poll current reservation"
+                                .into(),
+                        });
+                    }
+                    return Err(error);
+                }
+                let mut claim = crate::execution::owner::PreparationGuard::new(owner, &unit);
                 let (config, _, _) = self
                     .inputs(
                         &snapshot.project,
@@ -1607,9 +1672,13 @@ impl WorkflowEngine {
                         snapshot.workflow.workflow,
                     )
                     .await?;
-                return self
+                let result = self
                     .prepare_managed(snapshot, index, input, config, BTreeMap::new(), adapter)
                     .await;
+                if result.is_ok() {
+                    claim.disarm();
+                }
+                return result;
             }
             return Ok(StepResult::Waiting {
                 phase,
@@ -2537,17 +2606,30 @@ impl WorkflowEngine {
                                 .workflow_publication(&unit.authority(), markers[0].parse()?)
                                 .await?,
                         );
-                        #[cfg(test)]
-                        if let Some(hook) = self
-                            .hooks
-                            .before_publication
-                            .lock()
-                            .expect("publication hook")
-                            .take()
-                        {
-                            hook();
-                        }
                     }
+                }
+                if phase.actor() == Actor::Reviewer
+                    && let Some(identity) = &snapshot.workflow.history[index].unit
+                {
+                    let provenance = self
+                        .managed_snapshots
+                        .lock()
+                        .map_err(|_| anyhow::anyhow!("snapshot provenance poisoned"))?
+                        .get(&identity.unit)
+                        .cloned()
+                        .context("readonly snapshot provenance missing")?;
+                    snapshot.readonly_completion = Some(provenance.completion().await?);
+                }
+                #[cfg(test)]
+                if (snapshot.publication.is_some() || snapshot.readonly_completion.is_some())
+                    && let Some(hook) = self
+                        .hooks
+                        .before_publication
+                        .lock()
+                        .expect("publication hook")
+                        .take()
+                {
+                    hook();
                 }
                 self.persist(&mut snapshot, Some(&context))?;
                 Ok(StepResult::Completed { phase })
