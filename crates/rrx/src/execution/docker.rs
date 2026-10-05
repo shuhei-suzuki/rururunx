@@ -117,7 +117,9 @@ async fn qualify_inner(
     // Refuse this finite profile before tool grant instead of silently using a
     // different daemon. No host/TLS/auth file is copied into the ledger.
     ensure!(
-        std::env::var_os("DOCKER_HOST").is_none(),
+        // The private fixture substitutes an account-free protocol program,
+        // not a daemon endpoint. Ambient Docker settings cannot affect it.
+        fixture.is_some() || std::env::var_os("DOCKER_HOST").is_none(),
         "managed Docker requires a named context, not DOCKER_HOST"
     );
     let existing = owner
