@@ -1,6 +1,7 @@
 # Issue19 selected lifetime source evidence
 
-Status: selected mechanical source candidate; independent SOURCE gates pending.
+Status: selected mechanical source candidate; Source1 returned a verified Medium;
+its actual corrections await independent Source2 gates. Whole Issue19 remains OPEN.
 Two native selected Design5 reviewers approved public
 `3a12ef787e6bcf1cdb5f6732fdc18b2c482b783a` with no Critical/High/Medium findings
 (sessions `3eefede9-bb34-43f9-8041-df0b616c72ec` and
@@ -53,7 +54,7 @@ distinguishes outstanding resources/created Unknown from zero-effect bookkeeping
 as the approved design requires. Actual worker join before the context error now
 preserves the original no-work removal. Created resources and Unknown remain held.
 
-Current selected controls at9393545 pass15/15 under default test parallelism,
+Selected controls at9393545 passed15/15 under default test parallelism,
 including consumed/Failing preparation-latch revocation with no native stop,
 closed/missing runtime accounting, pre-/post-creation caller Drop, full revoked
 queue independent join cleanup, endpoint EOF, panic-before-Begin, actual previous
@@ -129,3 +130,76 @@ private injected error; it does not prove any OS spawn error has no effects.
 
 Whole Issue19/#43/#23/#60/#14 co-integration and actual supported native backend
 readiness remain required. This selected component cannot satisfy those gates.
+
+## Source1 findings and actual corrections
+
+Both independent Source1 reviewers examined public immutable
+`f2162926b4d4a22a2c3e897a5e6483fb5f2f0a0e` and returned REQUEST_CHANGES:
+one verified Medium each, no Critical/High. Their native sessions were
+`b9036bb7-c5cb-4398-b118-767821c001d5` and
+`b8d9f67f-9ca3-4b5c-b20d-b906196fefc1`. Both operations finished before
+either result was inspected. The identical public-only packet was458148 bytes,
+SHA256 `8fb53088a1f8ab510ae997e7df51b83338f1d539f22ebc8c21fc1913de69f2ee`.
+Exact f216 CI37253422993 passed all steps on Linux/macOS; that historical green
+did not discharge the reviewers' actual counter-ordering defect.
+
+The custodian sent a rejected Create reply BEFORE retiring that request's
+accepted/inflight counts. The actual actor could observe outstanding bookkeeping,
+freeze CustodyHeld with created=false, then retain the registry entry forever:
+the unchanged original-disposition gate correctly refuses uncreated workers.
+A deterministic real enqueue/revoke/handler-retirement barrier at
+`2039b07084674c6fe286c7772e97c20b8616cf47` reproduced0PASS/1FAIL.
+`3fa536720b677ea2913a52ad7383ecb4cef0dc44` retires the request before replying.
+
+A second-handler control at `28edada3a25387f76de9f7faa1b14c7cd5e0427f`
+then reproduced0PASS/1FAIL with a fixed Note queued AFTER the rejected Create.
+Even correctly ordered Create retirement left that later Note outstanding when
+the actor reported its genuine pre-work error. `6e300f3a6229193254e9900caf28e30af28f9bef` distinguishes pending
+effect-capable requests/actual effects from fixed metadata. Only an exact normal
+Finished FreshUnpublished/RestoredBeforeAdmission with no created/unknown/pending
+effect can preserve ordinary remove/restore while metadata drains. Preparing,
+Lost, real created resources and Unknown are not exempted. No new native authority
+or permission exists; OriginalDisposition still requires CREATED, all three
+actual joins, no Unknown/outstanding and no published Lost.
+
+The actual second-handler and checkpoint consumer holds the custodian while the
+registry removes a fresh no-work entry or restores its exact previous Control.
+All THREE job slots remain charged and joined=false throughout that interval;
+only actual subsequent actor/custodian joins plus observed worker NotCreated
+refund them. No Session/input admission or availability effect occurs. This
+separates registry bookkeeping from resource/job release.
+
+The two Source1 Low observations remain explicit pending-activation limitations:
+(a) successful custody installation followed by actor-install failure can retain
+a polling custodian; the actual fresh Control is Vacant with an unpoisoned private
+mutex and is spawned exactly once, while closed runtime installs a genuinely
+observable cancelled JoinHandle. No current consumer reproduces the proposed
+no-actor error. Opaque constructor Err already retains its complete reservation.
+(b) globally Unknown plus all three Joined/NotCreated results could refund an
+unproved frame if a future handler adds an unattributed panic. Current fixed
+Note handling cannot panic; actor join Err sets actor_joined=false, worker/callback
+panic keeps WorkerDisposition::Unknown, and Begin is sent after exact retained
+installation. Neither hypothetical source is reachable in this selected handler
+inventory. New handler/Ok native supervision activation must qualify its own
+actor/panic/unknown-frame semantics; this component does not qualify those paths.
+No native backend or parent policy expansion is claimed from these dispositions.
+
+At immutable `0a21095a4a0b4931f1be6d47abc279414abf10a1`, all18 selected
+consumers passed under default parallelism. The exact current compiled mutation
+run killed16/16 by actual assertions; the restored18 controls passed and the
+owned detached mutation worktree returned clean to that same head. The prior13
+controls were retained, and these three causal omissions were added:
+
+| Changed current boundary | Actual causal assertion |
+| --- | --- |
+| Reply before own effect-request retirement | Revoked queued Create freezes an invalid uncreated Held result |
+| Fixed Note counts as outstanding effect | Actual second handler overlaps actor error; genuine Fresh no-work must survive |
+| Registry holds pure metadata after exact Restored outcome | Actual checkpoint must restore its exact previous Control while all3 jobs stay charged |
+
+The whole workspace default-parallel regression passed471 tests plus2 doctests;
+26 existing cases were ignored. Fmt, warnings-denied clippy and Debug/Release builds
+passed. CPP44 and all18 current mechanics passed; code tree is
+`bc515cf97c25a12714763bf9e16f7158654efbeb`. This current-head observation does
+not explain the historical7Grok failures or older native inspection/watchdog RED
+results. Source2 must review this exact selected correction/consumer scope; even
+approval cannot qualify broad CPP/schema5/schema6/native producer or make PR39 ready.
