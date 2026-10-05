@@ -269,3 +269,9 @@ TaskDag::default, and neither the fixture nor these environment cases constructs
 DAG edges. Both validators accept that empty graph. No profile-dependent graph
 logic, no native/process I/O in hard_order, and no fixture DAG edits are static
 non-interaction facts; cause and regression of the failures remain UNKNOWN.
+
+## Composition round 2 causal controls (2026-10-05)
+
+At clean `153376548a94fd7482e4c9969ce2a8c064ab597b`, affected Debug and Release each pass all four graph controls and all 17 State integration controls with default test parallelism. Formatting, all-target Clippy with warnings denied, and both Debug and Release all-target builds pass. Full workspace Release is not repeated: its prior two isolated Grok watchdog failures and unknown cause remain recorded in the composed1 failure observations, assigned to #51/#67; separate main CI failures remain assigned to #60/#6. This is no full Release suite qualification.
+
+Two additional compiled endpoint operators now fail the actual Store consumer at `goal_graph.rs:148`, where an invalid graph was committed and the expected refusal becomes `Ok`. G07 checks the hard-only endpoint bypass against soft missing endpoints; G08 checks skipping a missing prerequisite. Both isolated mutant commits are restored and the complete restored tree equals the clean tested head; all four graph controls then pass. These are two new distinct operators, alongside the six previously qualified operators, not 14 operators or native acceptance. Exact patches and hashes are retained in JSON. Production source is unchanged from composed1; the verified Medium finding was a missing causal test, now addressed pending two independent delta reviews.

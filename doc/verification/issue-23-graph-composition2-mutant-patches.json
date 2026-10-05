@@ -1,0 +1,12 @@
+[
+  {
+    "operator": "G07-hard-only-endpoint",
+    "patch": "diff --git a/crates/rrx/src/goal.rs b/crates/rrx/src/goal.rs\nindex 3cc75b6..ddbe5e9 100644\n--- a/crates/rrx/src/goal.rs\n+++ b/crates/rrx/src/goal.rs\n@@ -33,6 +33,9 @@ impl TaskDag {\n                 pairs.insert((edge.prerequisite, edge.dependent)),\n                 \"duplicate goal DAG edge pair\"\n             );\n+            if !edge.hard {\n+                continue;\n+            }\n             let (Some(&prerequisite), Some(&dependent)) =\n                 (index.get(&edge.prerequisite), index.get(&edge.dependent))\n             else {\n",
+    "sha256": "00e6e66f7565b50b1ef2ac98f12ae62c5a4ab84a209cf4fdb3a15c61bb9143ad"
+  },
+  {
+    "operator": "G08-skip-missing-prerequisite",
+    "patch": "diff --git a/crates/rrx/src/goal.rs b/crates/rrx/src/goal.rs\nindex 3cc75b6..c2583cd 100644\n--- a/crates/rrx/src/goal.rs\n+++ b/crates/rrx/src/goal.rs\n@@ -33,9 +33,10 @@ impl TaskDag {\n                 pairs.insert((edge.prerequisite, edge.dependent)),\n                 \"duplicate goal DAG edge pair\"\n             );\n-            let (Some(&prerequisite), Some(&dependent)) =\n-                (index.get(&edge.prerequisite), index.get(&edge.dependent))\n-            else {\n+            let Some(&prerequisite) = index.get(&edge.prerequisite) else {\n+                continue;\n+            };\n+            let Some(&dependent) = index.get(&edge.dependent) else {\n                 anyhow::bail!(\"DAG edge endpoints must be declared nodes\");\n             };\n             if edge.hard {\n",
+    "sha256": "020b3b3b48a11b63f95e6462de5731422a1cbf727f37c3be366c648da25fbe7a"
+  }
+]

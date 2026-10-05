@@ -1,0 +1,49 @@
+{
+  "head": "153376548a94fd7482e4c9969ce2a8c064ab597b",
+  "scope": "Two new endpoint operators at actual Store consumer; six prior operators retained, not re-counted.",
+  "mutations": [
+    {
+      "operator": "G07-hard-only-endpoint",
+      "head": "153376548a94fd7482e4c9969ce2a8c064ab597b",
+      "mutant": "705c74fe86e1b679b2b65f8a3e845f1b4deaa55b",
+      "file": "crates/rrx/src/goal.rs",
+      "scope": "actual_store",
+      "test": "store_rejects_invalid_graph_changes_without_rows_versions_or_audit",
+      "compiled": true,
+      "exit_code": 101,
+      "intended_assertion_killed": true,
+      "assertions": [
+        "panicked at crates/rrx/tests/goal_graph.rs:148:51:"
+      ],
+      "source_sha256": "0a4869985a387c88ab75743466d75663366466c69d931bdb9ef2bcf7b0762ce6",
+      "log_sha256": "d81e3a6b74ca5a7053030f1c28e7783c43fbcfd8ba3e89ccf571c71289c0040b",
+      "patch_sha256": "00e6e66f7565b50b1ef2ac98f12ae62c5a4ab84a209cf4fdb3a15c61bb9143ad"
+    },
+    {
+      "operator": "G08-skip-missing-prerequisite",
+      "head": "153376548a94fd7482e4c9969ce2a8c064ab597b",
+      "mutant": "12b8219dc0d892bb39cabcd91d2313ae97000487",
+      "file": "crates/rrx/src/goal.rs",
+      "scope": "actual_store",
+      "test": "store_rejects_invalid_graph_changes_without_rows_versions_or_audit",
+      "compiled": true,
+      "exit_code": 101,
+      "intended_assertion_killed": true,
+      "assertions": [
+        "panicked at crates/rrx/tests/goal_graph.rs:148:51:"
+      ],
+      "source_sha256": "55103192476d6e90848ed855ff9b5bd3349a1c5b46d281fd1a9a4d744bdc1567",
+      "log_sha256": "a654b3016b0d6fd8f72e74ea05a1a6ab8c9bd2f658b13470c6761e2592f5f732",
+      "patch_sha256": "020b3b3b48a11b63f95e6462de5731422a1cbf727f37c3be366c648da25fbe7a"
+    }
+  ],
+  "restored_head": "addde5c2f5ddc6ec2764c63a355adeb01ce3deda",
+  "complete_restored_tree_equal": true,
+  "restored_control_exit": 0,
+  "restored_log_sha256": "4a26201c02ba622ba07e2257f3aa6765f5066a48801dde56d4d84fc543e4fca9",
+  "counts": {
+    "new_distinct_operators": 2,
+    "actual_store_assertion_kills": 2,
+    "restored_controls": 4
+  }
+}

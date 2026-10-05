@@ -1,0 +1,126 @@
+{
+  "head": "153376548a94fd7482e4c9969ce2a8c064ab597b",
+  "default_parallelism": true,
+  "scope": "Changed graph controls and existing State integration consumers; no repeat of previously failed full release suite.",
+  "commands": [
+    {
+      "name": "debug-affected",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--test",
+        "goal_graph",
+        "--test",
+        "state"
+      ],
+      "exit_code": 0,
+      "log_sha256": "e40bfb6a2c1745e7e391f64fec28dc00222b4f95074f922ddb4f6291c921bfdf",
+      "seconds": 1.411439917050302,
+      "test_result_rows": [
+        {
+          "result": "ok",
+          "passed": 4,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "result": "ok",
+          "passed": 17,
+          "failed": 0,
+          "ignored": 0
+        }
+      ]
+    },
+    {
+      "name": "release-affected",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--release",
+        "--test",
+        "goal_graph",
+        "--test",
+        "state"
+      ],
+      "exit_code": 0,
+      "log_sha256": "a48fef8fecd27a087468983f9ba11f1ba9bd41a1e22d3a08bca153a49b49b7bc",
+      "seconds": 3.117882209015079,
+      "test_result_rows": [
+        {
+          "result": "ok",
+          "passed": 4,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "result": "ok",
+          "passed": 17,
+          "failed": 0,
+          "ignored": 0
+        }
+      ]
+    },
+    {
+      "name": "fmt",
+      "command": [
+        "cargo",
+        "fmt",
+        "--all",
+        "--",
+        "--check"
+      ],
+      "exit_code": 0,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "seconds": 0.26776308298576623,
+      "test_result_rows": []
+    },
+    {
+      "name": "clippy",
+      "command": [
+        "cargo",
+        "clippy",
+        "--locked",
+        "--workspace",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exit_code": 0,
+      "log_sha256": "707db17da20579dc66f7af83f259581d0264300061cbbacc32839e6876d3a75d",
+      "seconds": 0.6332798750372604,
+      "test_result_rows": []
+    },
+    {
+      "name": "debug-build",
+      "command": [
+        "cargo",
+        "build",
+        "--locked",
+        "--workspace",
+        "--all-targets"
+      ],
+      "exit_code": 0,
+      "log_sha256": "f471979fb47ed4f57caf862f63d22368d318b818c6d7c00bbd0ecdc807650f29",
+      "seconds": 1.489331915974617,
+      "test_result_rows": []
+    },
+    {
+      "name": "release-build",
+      "command": [
+        "cargo",
+        "build",
+        "--locked",
+        "--release",
+        "--workspace",
+        "--all-targets"
+      ],
+      "exit_code": 0,
+      "log_sha256": "3997fc6790b8063b86c119e91f87ac7395ac6cf26135da637dcb229006bc32dc",
+      "seconds": 0.12261962506454438,
+      "test_result_rows": []
+    }
+  ]
+}
