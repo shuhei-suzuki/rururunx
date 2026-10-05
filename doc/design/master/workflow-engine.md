@@ -1,5 +1,10 @@
 # Workflow Engine Design
 
+Proposed native-execution policy: see [result protection](agent-execution.md).
+It supersedes conflicting ownership/live-worktree prerequisites only when the
+new profile is implemented; historical/current implementation sections below
+remain baseline descriptions, not acceptance of that proposal.
+
 **Status:** Rust phase runner implemented (Issue #8); dependent integrations pending
 **Scope:** MVP workflow orchestration
 

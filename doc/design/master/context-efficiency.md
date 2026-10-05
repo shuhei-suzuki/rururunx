@@ -1,5 +1,10 @@
 # Context Efficiency Design
 
+Proposed native-execution policy: see [result protection](agent-execution.md).
+It supersedes conflicting ownership/live-worktree prerequisites only when the
+new profile is implemented; historical/current implementation sections below
+remain baseline descriptions, not acceptance of that proposal.
+
 **Status:** Draft
 **Scope:** MVP token/context efficiency
 
