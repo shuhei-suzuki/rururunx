@@ -279,6 +279,13 @@ A Goal may define minimum workflow constraints for all child Tasks, but project-
 
 ## 17. Implemented Rust contract
 
+This section describes the retained schema3 engine grammar. On the staged Issue9
+source, new Reviewer/Pr/MergeGate/Cleanup/finalization consumers return typed
+`ReviewGatingUnavailable`; the legacy single-reviewer success grammar is factual
+history, not new formal authority. Native status, journals and cancellation remain
+observable. No ReviewSet/native profile or positive ownership producer is composed,
+and full regression/deployment remain open.
+
 `workflow::WorkflowEngine` initializes one exact Task workflow, then `step` reserves
 and dispatches a phase or polls its stable native Session. QUICK, STANDARD and
 STRICT execute against `AgentAdapter`; formal requirements/design/impact phases
@@ -310,7 +317,8 @@ attempt history but starts a new generation and context version.
 evidence. It receives valid ordered prerequisites, source snapshot, prepared context
 and optional native transport result. Passed evidence must match phase, Scope,
 revision, source versions and Session, with durable artifact references. Reviews
-require an explicit approved verdict. Missing integration (`PendingGates`) waits;
+in the legacy format require an explicit approved verdict; this bool does not
+qualify formal approval on the staged Issue9 source. Missing integration (`PendingGates`) waits;
 no successful exit invents verification, approval, PR, merge or cleanup evidence.
 Ports must use their own Git/Session ownership and transactional guards at actual
 native side effects. #10 approval and #14 owner/restart recovery remain pending; uncertain phase

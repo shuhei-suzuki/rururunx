@@ -217,6 +217,22 @@ async fn history_before(class: WorkflowClass, target: Phase) -> Fixture {
     f
 }
 
+fn review_cases() -> Vec<(WorkflowClass, Phase)> {
+    [
+        WorkflowClass::Quick,
+        WorkflowClass::Standard,
+        WorkflowClass::Strict,
+    ]
+    .into_iter()
+    .flat_map(|class| {
+        phases(class, &Config::default())
+            .into_iter()
+            .filter(|phase| phase.actor() == Actor::Reviewer)
+            .map(move |phase| (class, phase))
+    })
+    .collect()
+}
+
 #[tokio::test]
 async fn formal_entry_refuses_all_reviews_and_downstream_presets_without_effects() {
     for (class, targets) in [
@@ -238,6 +254,9 @@ async fn formal_entry_refuses_all_reviews_and_downstream_presets_without_effects
         (
             WorkflowClass::Strict,
             vec![
+                Phase::RequirementsReview,
+                Phase::DesignReview,
+                Phase::ImplementationReview,
                 Phase::SecurityReview,
                 Phase::Pr,
                 Phase::MergeGate,
@@ -300,17 +319,18 @@ async fn protected_passed_journal_and_successor_refuse_before_capture_and_replay
 
 #[tokio::test]
 async fn resume_refuses_prior_waiting_failed_and_bound_review_before_status() {
-    for phase in [
-        Phase::ImplementationReview,
-        Phase::Pr,
-        Phase::MergeGate,
-        Phase::Cleanup,
-    ] {
+    let mut cases = review_cases();
+    cases.extend(
+        [Phase::Pr, Phase::MergeGate, Phase::Cleanup]
+            .into_iter()
+            .map(|phase| (WorkflowClass::Standard, phase)),
+    );
+    for (class, phase) in cases {
         for failed in [false, true] {
             if failed && phase.actor() == Actor::Reviewer {
                 continue;
             }
-            let f = history_before(WorkflowClass::Standard, phase).await;
+            let f = history_before(class, phase).await;
             reserve_history(&f);
             journal(
                 &f,
@@ -342,18 +362,20 @@ async fn resume_refuses_prior_waiting_failed_and_bound_review_before_status() {
 
 #[tokio::test]
 async fn retry_review_refuses_but_existing_unknown_owner_fence_keeps_precedence() {
-    let f = history_before(WorkflowClass::Quick, Phase::ImplementationReview).await;
-    reserve_history(&f);
-    journal(&f, GateOutcome::Failed("old review failed".into()));
-    assert!(matches!(
-        f.engine.step(f.task.id, BTreeMap::new()).await.unwrap(),
-        StepResult::Failed { .. }
-    ));
-    let before = database(&f);
-    let calls = counts(&f);
-    refused(f.engine.retry(f.task.id, "fresh review requested".into()));
-    assert_eq!(database(&f), before);
-    assert_eq!(counts(&f), calls);
+    for (class, phase) in review_cases() {
+        let f = history_before(class, phase).await;
+        reserve_history(&f);
+        journal(&f, GateOutcome::Failed("old review failed".into()));
+        assert!(matches!(
+            f.engine.step(f.task.id, BTreeMap::new()).await.unwrap(),
+            StepResult::Failed { .. }
+        ));
+        let before = database(&f);
+        let calls = counts(&f);
+        refused(f.engine.retry(f.task.id, "fresh review requested".into()));
+        assert_eq!(database(&f), before);
+        assert_eq!(counts(&f), calls);
+    }
 
     let f = history_before(WorkflowClass::Quick, Phase::ImplementationReview).await;
     let mut s = f.engine.read(f.task.id).unwrap();

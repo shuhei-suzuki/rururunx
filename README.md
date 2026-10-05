@@ -238,7 +238,9 @@ See [Product Requirements](doc/requirements/product-requirements.md), [Architect
 Rust executable foundation; workflow components are being implemented incrementally.
 Issue9's [staged formal-refusal design](doc/design/issue-9-formal-refusal-integration.md)
 maps the approved unavailable-review contract to actual Workflow consumers. It is
-not implemented; legacy single-reviewer behavior remains current, and positive
+staged in this branch: new formal Review/Pr/MergeGate/Cleanup/finalization consumers
+return typed `ReviewGatingUnavailable`. Legacy single-reviewer behavior describes
+main/history only; full regression remains red, and positive
 ReviewSet/native-profile, ownership and migration gates remain open.
 The command examples above describe the MVP target. Currently implemented:
 - Issue 18 adds the Task-scoped `RepositoryContext` Rust API for lexical repository
@@ -291,8 +293,10 @@ remain unsupported. Independent review and final CI evidence are tracked in
 Development of rururunx should dogfood QUICK / STANDARD / STRICT classification where project rules permit. Verification should be proportional to risk: safety-critical runtime/Git/state/process changes may require STRICT treatment, while small local/documentation changes should not inherit STRICT-only gates unless policy or discovered impact requires escalation.
 
 Install [Rust with rustup](https://www.rust-lang.org/tools/install) and Git.
-The Rust workflow library now drives QUICK/STANDARD/STRICT phases through adapters
-and explicit evidence ports, commits each milestone before tests/review, persists
+The schema3 baseline Rust workflow library defines QUICK/STANDARD/STRICT phases
+through adapters and explicit evidence ports. This staged Issue9 source refuses
+new formal reviews, PR/merge/cleanup gates and finalization; legacy success below
+is factual history, not current formal authority. The retained nonformal engine commits each milestone before tests/review, persists
 phase/context history atomically, and raises
 workflow requirements when risk or scoped policy changes. Missing test/review/PR/
 merge integrations wait for evidence; review exit zero alone cannot pass a gate.
@@ -428,5 +432,5 @@ The staged Issue #9 formal-refusal component returns typed `ReviewGatingUnavaila
 before new formal reviews, PR/merge/cleanup gates or legacy Passed completion can
 grant input or publish a successor. Existing native status and factual journals
 remain observable. It supplies no ReviewSet certificate or qualified native profile;
-source qualification and whole Issue #9 acceptance remain open. See the
+full regression/deployment and whole Issue #9 acceptance remain open. See the
 [scoped integration design](doc/design/issue-9-formal-refusal-integration.md).
