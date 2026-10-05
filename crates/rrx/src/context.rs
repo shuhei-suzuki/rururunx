@@ -1395,6 +1395,56 @@ fn expansion_paths(map: &RepositoryMap, expansion: &Expansion) -> Result<BTreeSe
 #[cfg(test)]
 mod tests {
     #[tokio::test]
+    async fn actual_dropped_git_future_sets_context_latch_before_late_settlement() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().to_owned();
+        let (context, pause) = crate::adapter::TestGitContext::paused_after_spawn();
+        let latch = Arc::new(AtomicBool::new(false));
+        let own_latch = latch.clone();
+        let own_context = context.clone();
+        let call = tokio::spawn(async move {
+            git_value_owned(
+                Path::new("/usr/bin/git"),
+                &root,
+                &["--version"],
+                tokio::time::Instant::now() + std::time::Duration::from_secs(5),
+                own_latch,
+                Some(own_context),
+            )
+            .await
+        });
+        pause.reached().await;
+        call.abort();
+        assert!(call.await.unwrap_err().is_cancelled());
+        assert!(
+            latch.load(Ordering::SeqCst),
+            "own bounded future must freeze before GitObservation drops"
+        );
+        assert_eq!(context.held_jobs(), 4);
+        drop(pause);
+        context.wait_until_released().await;
+        assert!(
+            latch.load(Ordering::SeqCst),
+            "late settlement cannot clear Context's frozen latch"
+        );
+        let denied = git_value_owned(
+            Path::new("/usr/bin/git"),
+            directory.path(),
+            &["--version"],
+            tokio::time::Instant::now() + std::time::Duration::from_secs(5),
+            latch,
+            Some(context.clone()),
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            denied
+                .to_string()
+                .contains("earlier context Git cleanup uncertain")
+        );
+        assert_eq!(context.held_jobs(), 0, "latch refuses before new admission");
+    }
+    #[tokio::test]
     async fn opaque_attempted_git_error_keeps_original_cause_and_context_latch() {
         let directory = tempfile::tempdir().unwrap();
         let context = crate::adapter::TestGitContext::missing_executable();

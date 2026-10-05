@@ -224,6 +224,37 @@ impl TestGitContext {
         context.context.hooks.initialized_error = true;
         context
     }
+    pub(crate) fn paused_after_spawn() -> (Self, TestGitPause) {
+        let mut context = Self::isolated();
+        let pause = Arc::new(TestPause::default());
+        context.context.hooks.after_spawn = Some(pause.clone());
+        (context, TestGitPause(TestRelease(pause)))
+    }
+    pub(crate) async fn wait_until_released(&self) {
+        let pool = self.pool.as_ref().unwrap();
+        tokio::time::timeout(Duration::from_secs(3), async {
+            loop {
+                let notified = pool.available.notified();
+                tokio::pin!(notified);
+                notified.as_mut().enable();
+                if pool.state.lock().unwrap().records.is_empty() {
+                    return;
+                }
+                notified.await;
+            }
+        })
+        .await
+        .unwrap();
+    }
+    pub(crate) fn missing_matching(prefix: &[&str], ordinal: usize) -> Self {
+        assert!(ordinal > 0 && !prefix.is_empty());
+        let mut context = Self::isolated();
+        context.context.hooks.missing_matching = Some((
+            prefix.iter().map(|value| (*value).to_owned()).collect(),
+            ordinal,
+        ));
+        context
+    }
     pub(crate) fn held_jobs(&self) -> usize {
         self.pool
             .as_ref()
@@ -256,6 +287,8 @@ struct TestHooks {
     after_primary_panic: bool,
     pending_stderr: bool,
     missing_executable: bool,
+    missing_matching: Option<(Vec<String>, usize)>,
+    matching_calls: Arc<std::sync::atomic::AtomicUsize>,
 }
 #[cfg(test)]
 #[derive(Default)]
@@ -293,6 +326,14 @@ impl TestPause {
     fn release(&self) {
         *self.released.lock().unwrap() = true;
         self.wake.notify_all();
+    }
+}
+#[cfg(test)]
+pub(crate) struct TestGitPause(TestRelease);
+#[cfg(test)]
+impl TestGitPause {
+    pub(crate) async fn reached(&self) {
+        self.0.0.reached().await;
     }
 }
 #[cfg(test)]
@@ -1089,7 +1130,22 @@ fn native_worker(
                         return;
                     }
                     #[cfg(test)]
-                    let executable = if record._context.hooks.missing_executable {
+                    let selected_missing =
+                        record._context.hooks.missing_matching.as_ref().is_some_and(
+                            |(prefix, ordinal)| {
+                                request.args.starts_with(prefix)
+                                    && record
+                                        ._context
+                                        .hooks
+                                        .matching_calls
+                                        .fetch_add(1, Ordering::SeqCst)
+                                        + 1
+                                        == *ordinal
+                            },
+                        );
+                    #[cfg(test)]
+                    let executable = if record._context.hooks.missing_executable || selected_missing
+                    {
                         Path::new("/rrx-synthetic-missing-git-executable")
                     } else {
                         &request.executable
