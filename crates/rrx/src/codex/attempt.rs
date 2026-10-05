@@ -191,7 +191,7 @@ impl Control {
     }
     pub fn holds_resources(&self) -> bool {
         self.custody()
-            .is_some_and(|c| c.outstanding() || (c.created() && (!c.joined() || c.unknown())))
+            .is_some_and(|c| c.outstanding() || (c.created() && c.unknown()))
     }
     pub fn original_disposition(&self) -> Option<Outcome> {
         let phase = self.subscribe().borrow().clone();
