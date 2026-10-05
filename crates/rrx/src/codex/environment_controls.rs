@@ -74,6 +74,14 @@ async fn initial_and_each_selected_exec_refuse_new_foreign_conflict_before_that_
             assert_leader_reaped(&directory.join("leader"));
         }
         assert!(adapter.environment_hooks.total(site) == (0, 0));
+        let initialized = journal_values(&directory)
+            .iter()
+            .filter(|v| v["method"] == "initialize")
+            .count();
+        assert!(initialized == if site == ExecSite::Main { 1 } else { 0 });
+        if matches!(site, ExecSite::Initial | ExecSite::Version) {
+            assert!(!directory.join("version-entry").exists());
+        }
         assert!(
             adapter
                 .environment_hooks
@@ -191,7 +199,14 @@ fn preparing_only_pre_exec_preserves_first_cause_and_never_calls_closed_admissio
 async fn public_constructor_raw_child() {
     let directory = PathBuf::from(std::env::var_os("RRX_RAW_CTOR_FIXTURE").unwrap());
     let store = Arc::new(Mutex::new(
-        Store::open(&directory.join("state.sqlite3")).unwrap(),
+        Store::open(
+            &directory.join(if std::env::var_os("RRX_RAW_CTOR_BOUNDS").is_some() {
+                "bounds.sqlite3"
+            } else {
+                "raw.sqlite3"
+            }),
+        )
+        .unwrap(),
     ));
     let mut project = Project::new(
         "raw synthetic".into(),
