@@ -305,6 +305,10 @@ impl AttemptManager {
         provider: &str,
         phase: &str,
     ) -> Result<(ExecutionUnit, ResourceProfile)> {
+        ensure!(
+            phase != WORKFLOW_SOURCE_BOOTSTRAP,
+            "reserved preparation phase"
+        );
         self.prepare_snapshot_inner(task, artifact, kind, provider, phase, None)
             .await
     }

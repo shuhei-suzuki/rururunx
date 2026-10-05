@@ -54,6 +54,22 @@ async fn workflow_source_bootstrap_reads_commit_and_refuses_native_before_effect
                 .await
                 .is_err()
         );
+        let snapshot_error = attempts
+            .prepare_snapshot(
+                task.id,
+                ArtifactId::new(),
+                UnitKind::Reviewer,
+                provider,
+                WORKFLOW_SOURCE_BOOTSTRAP,
+            )
+            .await
+            .err()
+            .unwrap();
+        assert!(
+            snapshot_error
+                .to_string()
+                .contains("reserved preparation phase")
+        );
         assert!(
             owner
                 .store
@@ -143,30 +159,31 @@ async fn workflow_source_bootstrap_reads_commit_and_refuses_native_before_effect
             .err()
             .unwrap();
         assert!(error.to_string().contains("native input identity mismatch"));
-        let store = owner.store.lock().unwrap();
-        let current = store.execution_unit(unit.id).unwrap();
-        assert_eq!(current.work, None);
-        assert_eq!(current.session_id, None);
-        assert_eq!(current.state, UnitState::Preparing);
-        assert!(current.native_effects_open && current.result_finalization_open);
-        let effects = store.managed_effects(unit.id).unwrap();
-        assert_eq!(effects.len(), before.len());
-        assert!(
-            effects
+        {
+            let store = owner.store.lock().unwrap();
+            let current = store.execution_unit(unit.id).unwrap();
+            assert_eq!(current.work, None);
+            assert_eq!(current.session_id, None);
+            assert_eq!(current.state, UnitState::Preparing);
+            assert!(current.native_effects_open && current.result_finalization_open);
+            let effects = store.managed_effects(unit.id).unwrap();
+            assert_eq!(effects.len(), before.len());
+            assert!(
+                effects
+                    .iter()
+                    .all(|e| e.kind == "git_helper" && e.state == EffectState::Confirmed)
+            );
+            let events = store.events(&unit.scope, 0, 1000).unwrap();
+            let reserved = events
                 .iter()
-                .all(|e| e.kind == "git_helper" && e.state == EffectState::Confirmed)
-        );
-        let events = store.events(&unit.scope, 0, 1000).unwrap();
-        let reserved = events
-            .iter()
-            .position(|e| e.kind == "execution.attempt_reserved")
-            .unwrap();
-        let bound = events
-            .iter()
-            .position(|e| e.kind == "execution.base_bound")
-            .unwrap();
-        assert!(reserved < bound);
-        drop(store);
+                .position(|e| e.kind == "execution.attempt_reserved")
+                .unwrap();
+            let bound = events
+                .iter()
+                .position(|e| e.kind == "execution.base_bound")
+                .unwrap();
+            assert!(reserved < bound);
+        }
         drop(prepared);
         let retired = owner.store.lock().unwrap().execution_unit(unit.id).unwrap();
         assert!(!retired.native_effects_open && !retired.result_finalization_open);
@@ -182,6 +199,75 @@ async fn workflow_source_bootstrap_reads_commit_and_refuses_native_before_effect
         assert!(retry.generation > unit.generation);
         attempts.retire(&retry.authority(), false).unwrap();
     }
+}
+
+#[tokio::test]
+async fn workflow_source_bootstrap_file_reader_enforces_type_literal_path_and_size() {
+    let (_dir, owner, task) = results::tests::fixture().await;
+    let source = owner
+        .store
+        .lock()
+        .unwrap()
+        .project(task.project_id)
+        .unwrap()
+        .unwrap()
+        .root;
+    std::fs::write(source.join("limit.txt"), vec![b'x'; 256 * 1024]).unwrap();
+    std::fs::write(source.join("large.txt"), vec![b'x'; 256 * 1024 + 1]).unwrap();
+    std::fs::write(source.join(":(glob)*"), "literal\n").unwrap();
+    std::os::unix::fs::symlink("answer.txt", source.join("link.txt")).unwrap();
+    results::git(&source, ["add", "--all"]).await.unwrap();
+    results::git(
+        &source,
+        [
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=fixture@example.invalid",
+            "-c",
+            "commit.gpgsign=false",
+            "commit",
+            "-m",
+            "source kinds",
+        ],
+    )
+    .await
+    .unwrap();
+    let prepared = attempts::AttemptManager::new(owner.clone())
+        .prepare_workflow_source(task.id, "codex")
+        .await
+        .unwrap();
+    let bytes = prepared.read_committed_file("limit.txt").await.unwrap();
+    assert_eq!(bytes.len(), 256 * 1024);
+    assert!(bytes.iter().all(|b| *b == b'x'));
+    let error = prepared
+        .read_committed_file("large.txt")
+        .await
+        .err()
+        .unwrap();
+    assert!(error.to_string().contains("exceeds file bound"));
+    assert_eq!(
+        prepared.read_committed_file(":(glob)*").await.unwrap(),
+        b"literal\n"
+    );
+    let error = prepared
+        .read_committed_file("link.txt")
+        .await
+        .err()
+        .unwrap();
+    assert!(error.to_string().contains("not an exact ordinary file"));
+    let unit = prepared.unit().clone();
+    drop(prepared);
+    assert_eq!(
+        owner
+            .store
+            .lock()
+            .unwrap()
+            .execution_unit(unit.id)
+            .unwrap()
+            .work,
+        Some(WorkOutcome::Unknown)
+    );
 }
 #[tokio::test]
 async fn four_protocol_fixture_sessions_keep_sibling_work_when_one_is_cancelled() {
