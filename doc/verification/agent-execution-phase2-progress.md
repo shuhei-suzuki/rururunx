@@ -280,6 +280,48 @@ unnecessary unit bindings, explicit test mutex scopes and finite enum storage.
 No authentication, real model operation, Linux run or release qualification was
 performed by these checks.
 
+Round9 [independent component reports](agent-execution-phase2-preliminary9-reviews.json)
+confirmed the readonly completion proof, due-wait claim and configured admission
+caps. A approved that fixed component source with no findings. B requested a
+Medium correction: supervisor Drop used durable Cancelled but published Lost,
+and omitted the retained wait reason. Abandoned supervision now retires as Lost
+and projects the actual unit/Session fields; known terminals and explicit
+cancellation are preserved. A dedicated Tokio executor is destroyed during an
+ordinary running turn and a held native quota retry. Both owned synthetic
+controls confirm closed permissions, durable/session/watch Lost agreement and
+one input dispatch. This is supervisor lifecycle evidence, not Runtime SIGKILL
+or authenticated Agent qualification.
+
+An independent `rrx-process-tracker` crate now contains the public libproc/sysctl
+FFI. rrx's workspace unsafe forbid is unchanged. Only this crate's macOS module
+permits audited unsafe; it depends on OS wrappers and no rrx/SQLite APIs. Its
+bounded same-user enumeration returns exact cookie matches, birth identities and
+coverage categories; no argv/environment values or cookie appear in public
+results/debug output. Temporary environment buffers are filtered for the cookie
+and overwritten before discard. macOS never signals a discovered raw PID.
+Linux opens a pidfd before reading the process environment and checks both birth
+identity and the fd's current process association after the read; signals use
+only that retained handle and report send/denial/unknown separately from exit.
+
+On this Mac, three tracker unit controls and one owned-child integration control
+passed. Two same-user children carry distinct cookies: only the exact match is
+returned, discovered-PID termination reports Unsupported without signaling it,
+and the sibling stays live. The child-only entry is ignored in the parent run.
+The Linux implementation has not been built or executed on this host. No claim
+of Linux pidfd conformance or complete enumeration follows. The tracker is not
+yet connected to a Runtime cleanup backlog or native stop path.
+
+The stable subsequent workspace run passed 391 rrx library tests, three tracker
+unit tests, 112 rrx primary integration tests, one tracker child-discovery control
+and two doctests, with zero failures. The primary ignored count is 28 including
+the new child-only tracker entry. Workspace Clippy with all targets and warnings
+as errors passed. The first full run encountered a legacy Context Git output
+cleanup timeout, which latched that integration process and failed 13 cases;
+the unchanged Context-only rerun passed all 16, and the unchanged full rerun passed.
+This observation is retained as a limitation of the frozen legacy path, not a
+reason to extend its ps-based observations. Production retained-source integration
+must use the scoped authority path instead of that global latch.
+
 - Full current-source/retained-graph qualification and production source/evidence
   ports; Runtime orchestration and operational CLI.
 - Required native/Git settings and hooks, dependency qualification and remaining

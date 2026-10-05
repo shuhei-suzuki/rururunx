@@ -1,0 +1,235 @@
+{
+  "source_commit": "fad0bc5cefab6248d59efaafddd0481e57d2cffd",
+  "review_kind": "Independent preliminary component reviews; not Phase2 acceptance",
+  "reports": [
+    {
+      "review": "Independent STRICT preliminary component review, round 9",
+      "source_commit": "fad0bc5cefab6248d59efaafddd0481e57d2cffd",
+      "baseline_commit": "63604edb8c64c7da93ad7bc6423b8f264aa96611",
+      "approved_contract_commit": "9a11d03f1b1676c2c3c8a24b6b3fd328759f7db5",
+      "verdict": "approve",
+      "verdict_scope": "Static approval of the reviewed component delta only; not final Phase2, native conformance, Runtime or MVP approval.",
+      "counts": {
+        "Critical": 0,
+        "High": 0,
+        "Medium": 0,
+        "Low": 0
+      },
+      "findings": [],
+      "prior_own_findings": [
+        {
+          "id": "H-M1",
+          "previous_round": 8,
+          "previous_severity": "Medium",
+          "disposition": "closed_in_source",
+          "locations": [
+            "crates/rrx/src/workflow.rs:1637-1681",
+            "crates/rrx/src/workflow.rs:1432-1436"
+          ],
+          "evidence": "The due-wait branch clears native_wait/next_due by persist using the exact original Task/Workflow/Project/Goal snapshot before async sources or native work. A stale SnapshotChanged poll returns Waiting before arming a PreparationGuard. A successfully committed claim arms its own guard before its first await. prepare_managed no longer rereads/adopts another Workflow version when the Unit is already reserved; the initial new reservation reload is separate. Observers seeing the cleared wait return the existing unbound preparation hold without a record write. The winning committed record version therefore remains the binding currency.",
+          "causal_controls_inspected": "concurrent_due_wait_claim_preserves_the_native_launch_or_wait_owner holds the stale observer before claim, lets the real winner enter its version helper, releases the loser and checks no Workflow version update, then tests both launch/binding and another Exhausted wait with the Unit still open and not Retired. This is the actual Registry/Workflow consumer, rather than only NativeSessions start serialization.",
+          "execution_limit": "Read source only; no independent test execution or mutant run."
+        },
+        {
+          "id": "G-H1",
+          "previous_round": 7,
+          "disposition": "prior_source_closure_retained",
+          "evidence": "Private WorkflowPublication remains derived only from actual retained graph/manifest verification with full Artifact snapshot comparison at publication. This delta does not restore ledger-only publication."
+        },
+        {
+          "id": "G-M1",
+          "previous_round": 7,
+          "disposition": "prior_source_closure_retained",
+          "evidence": "The shared readonly generation retirement and all-unit Task/epoch fences remain unchanged except formatting/type aliases."
+        }
+      ],
+      "producer_consumer_checks": [
+        {
+          "area": "Readonly provenance and terminal qualification",
+          "locations": [
+            "crates/rrx/src/execution/results.rs:95-137",
+            "crates/rrx/src/execution/results.rs:139-180"
+          ],
+          "evidence": "ReadonlyCompletion has private fields and can only be minted by genuine ResultSnapshot provenance. completion verifies the readonly source, validates exact Unit finalization authority plus known Success/native effects closed, compares the full saved retained Artifact, verifies its manifest/refs/object graph through scoped UnitGit, verifies the readonly source again, then repeats authority and Artifact checks. Natural terminal closure does not revoke the trusted Runtime finalization capability."
+        },
+        {
+          "area": "Atomic acceptance and finalization closure",
+          "locations": [
+            "crates/rrx/src/workflow.rs:600-619",
+            "crates/rrx/src/workflow.rs:2611-2634",
+            "crates/rrx/src/state/mod.rs:753-779",
+            "crates/rrx/src/state/execution/artifacts.rs:290-376"
+          ],
+          "evidence": "The Workflow success consumer requires the private readonly proof and exact current Unit authority. complete_workflow_readonly_tx checks active phase, typed Unit identity, Session binding, generation, known terminal, full Artifact snapshot/state, revision/input pin, approved evidence and dependencies. It closes finalization, schedules cleanup and appends factual acceptance in the same existing Immediate transaction that inserts the new Context and updates Task/Workflow. Any later Task/Record CAS or closure predicate failure rolls back all writes.",
+          "causal_controls_inspected": "The real retained snapshot Workflow control now includes valid publish, changed readonly input, Artifact mutation after proof minting, and cancellation after proof minting. It checks no review completion on refusal and finalization flags for accepted versus rejected/independently cancelled cases. These controls were not run by this reviewer."
+        },
+        {
+          "area": "Configured caps before native Session/process launch",
+          "locations": [
+            "crates/rrx/src/adapter.rs:383-388",
+            "crates/rrx/src/execution/native.rs:78-119",
+            "crates/rrx/src/execution/native.rs:308-325",
+            "crates/rrx/src/state/execution/quotas.rs:150-366",
+            "crates/rrx/src/state/execution/quotas.rs:451-465"
+          ],
+          "evidence": "Managed Registry passes validated configured NativeLimits into its shared NativeSessions. Runtime global cap and the strictest provider-alias cap bound the quota scheduler. Project admission also reads authoritative Project.max_tasks and counts distinct Tasks among active leases, so sibling reviewers of the same Task do not consume additional Project Task slots. Fresh Unit leases, including pre-Session admissions, are counted atomically before the actual native Session process spawn. A capacity refusal returns a Session-less waiting Unit; it is not subscription exhaustion. Version qualification helpers still run before this Session admission, and are distinct managed helper effects.",
+          "causal_controls_inspected": "configured_global_provider_alias_and_project_caps_wait_before_native_spawn uses actual NativeSessions start consumers with global, provider alias and Project limits; it requires Capacity wait, no Session, open waiting authority and no native_spawn/native_input effect. No test execution here."
+        },
+        {
+          "area": "Project configuration authority interpretation",
+          "locations": [
+            "crates/rrx/src/project.rs:129-139",
+            "crates/rrx/src/project.rs:567-576",
+            "crates/rrx/src/state/execution/quotas.rs:451-465"
+          ],
+          "evidence": "A possible scoped-config-limit omission was checked against the actual existing registry contract before disposition. Registry initialization derives Project.max_tasks from effective config unless explicitly overridden; later effective_config gives the durable Project.max_tasks precedence. The new lease predicate reads that durable cap. A separately changed config_ref file is therefore not sufficient evidence of a cap bypass when the registered Project cap still has the documented explicit precedence. No finding was assigned."
+        },
+        {
+          "area": "Wait status and failure categories",
+          "locations": [
+            "crates/rrx/src/execution/native.rs:Core state/terminal/Drop publication",
+            "crates/rrx/src/execution/native/tests.rs:native_subscription_wait_reason_matches_status_during_retry_and_terminal"
+          ],
+          "evidence": "Native watch status now carries Unit wait_reason during retry/state publication and terminal publication, while Core abandonment clears the wait and refreshes retained authority. This preserves the distinction among live native quota retry, terminal interrupted capacity, and genuine unknown/failed native work. No native terminal alone becomes formal gate success."
+        }
+      ],
+      "causal_controls_required_for_final_acceptance": [
+        "Execute the actual concurrent due-wait launch and re-wait controls, and show omission of the original-version claim or reserved-snapshot preservation fails the real binding/wait-state oracle.",
+        "Execute readonly proof/closure controls and a causal omission of source/Artifact/current authority checks; publication refusal must leave Task/context/completed phase and finalization authority unchanged except independently committed cancellation.",
+        "Execute configured cap controls through registered actual launch consumers, preserving quota/capacity distinction and pre-Session lease accounting.",
+        "Run required current full tests/quality gates and actual native/provider profile conformance separately; source inspection and fixture declarations do not certify those outcomes."
+      ],
+      "limitations": [
+        "Only fixed Git source at the named commit, its baseline diff and approved contract were read. No dirty/later source, peer conclusions, progress.md or aggregated review JSON was read.",
+        "No tests/builds, real Agents, model/account/auth/network operations, resource signals or worktree edits were performed. Only this report was written under /private/tmp.",
+        "Production Sources/Gates and operational Runtime/CLI remain unfinished, as do cookie/Docker/reclaimer and optional resource profiles. Their announced absence is not counted as a defect in this component delta.",
+        "The fixture Source/Gate integrations provide consumer/control structure, not a qualified shipped review/testing policy or native acceptance.",
+        "Best-effort cleanup remains a separate outcome. No all-descendant death, same-user isolation, complete helper reclamation or unknown external-effect clearance is certified.",
+        "This review is not approval of the whole Phase2 implementation or deployment."
+      ],
+      "confidence": 0.92,
+      "live_handles": [],
+      "commands_closed": true
+    },
+    {
+      "reviewer": "agent_execution_phase0_review_b",
+      "round": 9,
+      "source_commit": "fad0bc5cefab6248d59efaafddd0481e57d2cffd",
+      "baseline_commit": "63604edb8c64c7da93ad7bc6423b8f264aa96611",
+      "approved_contract_commit": "9a11d03f1b1676c2c3c8a24b6b3fd328759f7db5",
+      "review_kind": "Independent read-only preliminary STRICT component source review",
+      "verdict": "REQUEST_CHANGES",
+      "severity_counts": {
+        "C": 0,
+        "H": 0,
+        "M": 1,
+        "L": 0
+      },
+      "findings": [
+        {
+          "id": "M1",
+          "severity": "M",
+          "title": "Abnormal supervisor Drop publishes a terminal disposition and wait reason different from the durable execution unit",
+          "primary_location": {
+            "file": "crates/rrx/src/execution/native.rs",
+            "start_line": 1276,
+            "end_line": 1293
+          },
+          "related_locations": [
+            {
+              "file": "crates/rrx/src/state/execution.rs",
+              "start_line": 837,
+              "end_line": 866
+            },
+            {
+              "file": "crates/rrx/src/execution/native.rs",
+              "start_line": 502,
+              "end_line": 515
+            },
+            {
+              "file": "crates/rrx/src/state/execution/quotas.rs",
+              "start_line": 384,
+              "end_line": 402
+            },
+            {
+              "file": "crates/rrx/src/adapter/native.rs",
+              "start_line": 286,
+              "end_line": 297
+            }
+          ],
+          "evidence": "Core::drop calls store.retire_execution(..., false), whose wrapper durably uses Disposition::Cancelled. retire_execution_as closes permissions and sets Retired/Unknown but does not clear the existing wait_reason. The Drop watch update instead unconditionally assigns Disposition::Lost and wait_reason=None. NativeSessions::status overlays disposition and wait_reason from the unit, while the adapter subscription forwards the watch value. Therefore every successful Drop retirement produces a disposition disagreement; a previously retained quota-retrying turn also produces a wait_reason disagreement. The new authority refresh in Drop does not refresh those other durable fields.",
+          "causal_sequence": [
+            "Start an account-free managed Codex fixture and hold it after a correlated usageLimitExceeded/willRetry=true notification; the unit is live with wait_reason=Some(Quota).",
+            "Retain NativeSessions and the watch receiver outside the executor runtime, then shut down that Tokio runtime before the held turn supplies a terminal. Its spawned Core future is dropped without running the normal terminal publication path.",
+            "Core::drop successfully retires the unit as Cancelled and retains Some(Quota), then emits a watch terminal as Lost with None.",
+            "Inspect the durable unit or NativeSessions::status from the surviving owner: it disagrees with the subscription on both disposition and wait_reason for the same terminal handle. Even without quota retry, Lost versus Cancelled disagrees."
+          ],
+          "impact": "A consumer cannot use the managed subscription and synchronous/durable status interchangeably to distinguish cancellation from lost supervision or to interpret wait state. The durable record incorrectly labels an unrequested supervisor loss as cancellation. Work remains unknown and the fencing/lease release still occurs; this finding does not claim result corruption, complete process reclamation, or that Workflow's synchronous polling mistakes work for success.",
+          "recommended_change": "Persist the intended abnormal-loss disposition through retire_execution_as(..., false, Disposition::Lost), decide and persist the terminal wait-reason policy, and populate the emitted terminal fields from the committed unit. Do not independently invent Lost/None in the watch value while recording Cancelled/Quota in SQLite. Preserve any already established work/cleanup facts and report persistence failure as unknown rather than implying a committed terminal.",
+          "proposed_causal_controls_not_executed": [
+            "Use an account-free held native fixture whose NativeSessions/owner/watch outlive a separate Tokio runtime. Destroy that runtime before a native terminal, then compare the watch terminal, NativeSessions::status, persisted Session and ExecutionUnit. The unit and both views should agree on the intended Lost disposition and wait reason, with both permission axes closed and quota leases released.",
+            "Repeat after the same native turn enters confirmed quota retry, and repeat for an ordinary running turn without quota. Assert no synthetic second native input is sent.",
+            "Keep an explicit cancellation control to distinguish requested Cancelled from abnormal Lost without overwriting known work results."
+          ],
+          "confidence": "Verified by pinned-source producer/store-wrapper/consumer tracing. This causal control was not executed."
+        }
+      ],
+      "prior_own_findings_disposition": [
+        {
+          "round": 8,
+          "id": "M1",
+          "disposition": "CLOSED_STATIC_FOR_REPORTED_NORMAL_QUOTA_RETRY_AND_TERMINAL_PATHS",
+          "evidence": [
+            "crates/rrx/src/execution/native.rs:1135-1142 now copies self.unit.wait_reason into the watch update following retained quota retry.",
+            "crates/rrx/src/execution/native.rs:1006-1012 now copies current.wait_reason into the normal terminal update; finish_execution_with_failure durably clears it on Completed and sets the named reason on QuotaInterrupted/CapacityInterrupted.",
+            "The pinned native_subscription_wait_reason_matches_status_during_retry_and_terminal fixture source exercises the held retry and quota-interrupted terminal views, but was not executed by this review."
+          ],
+          "qualification": "The separately reported round9 M1 covers the abnormal Core Drop producer, whose disposition and wait reason still disagree with the durable unit. Normal-path closure is not a claim of complete subscription consistency or native acceptance."
+        },
+        {
+          "round": 7,
+          "id": "H1",
+          "disposition": "REMAINS_CLOSED_STATIC",
+          "evidence": "The actual executor retirement path still fences readonly units, closes quota waits/leases and records cleanup before Task generation advancement in the same transaction; this round does not establish physical cleanup."
+        },
+        {
+          "round": 6,
+          "id": "H1_original_withdrawn",
+          "disposition": "REMAINS_WITHDRAWN",
+          "evidence": "The earlier live-executor replacement causal sequence was invalidated by the partial UNIQUE active-executor constraint and transaction ordering; it remains excluded from finding counts."
+        }
+      ],
+      "additional_verified_source_observations": [
+        {
+          "subject": "Readonly private provenance and finalization",
+          "evidence": "crates/rrx/src/execution/results.rs:95-137 mints the private ReadonlyCompletion only after snapshot verification, exact successful terminal authority, full retained-artifact equality, retained manifest/graph verification and revalidation. state/execution/artifacts.rs:291-377 checks the proof against the current unit/artifact, exact Workflow phase/Session/generation, approved review evidence, SHA and Context dependencies before closing finalization. state/mod.rs:734-779 places that closure, Context insertion, Task CAS and Workflow CAS in one transaction."
+        },
+        {
+          "subject": "Due wait ownership",
+          "evidence": "crates/rrx/src/workflow.rs:1637-1681 clears the exact due wait through the original record/Task CAS before async source/native work or arming the claim guard. SnapshotChanged losers return without arming a guard. prepare_managed:1435-1442 does not reload and adopt a newer record for an already reserved unit. This closes the stale due-poll adoption/retirement race at source level."
+        },
+        {
+          "subject": "Configured caps",
+          "evidence": "Managed Registry constructs NativeSessions with configured limits. NativeLimits conservatively combines global cap, strictest provider alias cap and project cap; admission counts durable pre-Session leases and checks configured/project.max_tasks limits in a SQLite Immediate transaction. Admission precedes native Session/spawn/input, although scoped worktree preparation and the native --version helper still happen first. It therefore bounds native session admission, not all preparation helper processes."
+        },
+        {
+          "subject": "Fixture source coverage",
+          "evidence": "The committed source contains readonly proof/cancellation/artifact-change rollback controls, a concurrent due-wait claim fixture with launch versus renewed exhaustion branches, normal subscription wait-state comparison, and configured global/provider-alias/project ceiling controls. Inspection of these test bodies is not an observed test pass or authenticated provider qualification."
+        }
+      ],
+      "limits": [
+        "Read-only git object review used only the exact source/baseline/approved contract commits. No dirty source, later source, peer reports, merged review artifacts or progress documents were consulted.",
+        "No builds, tests, actual native agents, accounts, credentials, authentication/settings probes, network calls, Docker operations or process signals were performed. JSON report syntax checking does not execute production tests.",
+        "Production Sources/Gates, Runtime operational CLI, cookie/Docker/optional-scope reclamation and final native compatibility remain incomplete as explicitly scoped by the parent; absence of those future components alone is not counted as a source finding.",
+        "Actual four-Task native concurrency, cancel-one isolation, Runtime SIGKILL/restart, subscription reset/resume, settings/hooks/sandbox behavior and clean installation on macOS/Linux remain unverified.",
+        "Readonly trees provide cooperative immutable-input consumption; intentional same-UID chmod/raw access bypass remains outside the guarantee, and best-effort cleanup does not establish arbitrary descendant absence.",
+        "This is a preliminary component review and not final Phase2 approval or a claim of native readiness."
+      ],
+      "owned_handles": {
+        "live_command_sessions": [],
+        "native_processes_started": [],
+        "tool_status": "All read-only shell commands completed without session_id; no owned execution handles remain."
+      }
+    }
+  ]
+}

@@ -1096,3 +1096,82 @@ async fn configured_global_provider_alias_and_project_caps_wait_before_native_sp
         );
     }
 }
+
+#[test]
+fn dropped_executor_runtime_preserves_durable_lost_subscription_and_session() {
+    for payload in ["complete", "quota-retry-held"] {
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let (dir, owner, sessions, handle, updates) = runtime.block_on(async {
+            let (dir, owner, task) = results::tests::fixture().await;
+            let (unit, _) = attempts::AttemptManager::new(owner.clone())
+                .prepare(task.id, "codex", "Implement", None)
+                .await
+                .unwrap();
+            let sessions = NativeSessions::new(owner.clone()).unwrap();
+            let NativeStart::Launched(handle) = sessions
+                .start_inner(
+                    input(&unit, payload),
+                    None,
+                    None,
+                    Some(program(dir.path(), "codex")),
+                )
+                .await
+                .unwrap()
+            else {
+                panic!("unexpected wait");
+            };
+            let mut updates = sessions.subscribe(&handle).unwrap();
+            tokio::time::timeout(Duration::from_secs(10), async {
+                loop {
+                    let status = updates.borrow().clone();
+                    if status.session.state == SessionState::Running
+                        && (payload != "quota-retry-held"
+                            || status.wait_reason == Some(WaitReason::Quota))
+                    {
+                        break;
+                    }
+                    updates.changed().await.unwrap();
+                }
+            })
+            .await
+            .unwrap();
+            (dir, owner, sessions, handle, updates)
+        });
+        drop(runtime);
+        let watched = updates.borrow().clone();
+        let durable = sessions.status(&handle).unwrap();
+        let store = owner.store.lock().unwrap();
+        let unit = store.execution_unit(handle.unit).unwrap();
+        let (session, _) = store.session(handle.session).unwrap().unwrap();
+        assert!(!unit.native_effects_open && !unit.result_finalization_open);
+        assert_eq!(unit.work, Some(WorkOutcome::Unknown));
+        assert_eq!(unit.disposition, Disposition::Lost);
+        assert_eq!(session.state, SessionState::Lost);
+        assert_eq!(watched.session.state, session.state);
+        assert_eq!(watched.authority, durable.authority);
+        assert_eq!(watched.work, durable.work);
+        assert_eq!(watched.disposition, durable.disposition);
+        assert_eq!(watched.wait_reason, durable.wait_reason);
+        assert_eq!(
+            unit.wait_reason,
+            if payload == "quota-retry-held" {
+                Some(WaitReason::Quota)
+            } else {
+                None
+            }
+        );
+        assert_eq!(
+            store
+                .managed_effects(unit.id)
+                .unwrap()
+                .iter()
+                .filter(|e| e.kind == "native_input")
+                .count(),
+            1
+        );
+        drop(store);
+        drop(sessions);
+        drop(owner);
+        drop(dir);
+    }
+}

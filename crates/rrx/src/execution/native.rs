@@ -1273,25 +1273,65 @@ impl Core {
 impl Drop for Core {
     fn drop(&mut self) {
         self.drain.abort();
-        if let Ok(mut store) = self.owner.store.lock()
-            && let Ok(unit) = store.execution_unit(self.unit.id)
-            && unit.native_effects_open
-        {
-            let _ = store.retire_execution(&unit.authority(), false);
-            self.session.state = SessionState::Lost;
-            let _ = store.close_execution_session(unit.id, &self.session, self.record_version);
-            self.update.send_modify(|s| {
-                s.session.state = SessionState::Lost;
-                s.work = Some(WorkOutcome::Unknown);
-                s.disposition = Disposition::Lost;
-                s.authority = store
-                    .execution_unit(self.unit.id)
-                    .map(|u| u.authority())
-                    .unwrap_or_else(|_| self.unit.authority());
-                s.wait_reason = None;
-                s.pending.clear();
-                s.diagnostic = Some("native supervisor ended without terminal");
-            });
+        let Ok(mut store) = self.owner.store.lock() else {
+            return;
+        };
+        let Ok(mut unit) = store.execution_unit(self.unit.id) else {
+            return;
+        };
+        let abandoned = unit.native_effects_open;
+        if abandoned {
+            let Ok(retired) =
+                store.retire_execution_as(&unit.authority(), false, Disposition::Lost)
+            else {
+                return;
+            };
+            unit = retired;
         }
+        if let Ok(Some((mut session, version))) = store.session(self.session.id)
+            && !matches!(
+                session.state,
+                SessionState::Exited
+                    | SessionState::Failed
+                    | SessionState::Stopped
+                    | SessionState::Lost
+            )
+        {
+            session.state = if unit.disposition == Disposition::Cancelled {
+                SessionState::Stopped
+            } else if unit.work == Some(WorkOutcome::Failure) {
+                SessionState::Failed
+            } else if unit.work == Some(WorkOutcome::Unknown) {
+                SessionState::Lost
+            } else {
+                SessionState::Exited
+            };
+            let _ = store.close_execution_session(unit.id, &session, version);
+        }
+        let Ok(unit) = store.execution_unit(self.unit.id) else {
+            return;
+        };
+        let session = store
+            .session(self.session.id)
+            .ok()
+            .flatten()
+            .map(|(session, _)| session);
+        self.update.send_modify(|s| {
+            if let Some(session) = session {
+                s.session = session;
+            }
+            s.authority = unit.authority();
+            s.work = unit.work;
+            s.disposition = unit.disposition;
+            s.wait_reason = unit.wait_reason;
+            s.cleanup = unit.cleanup;
+            if unit.disposition == Disposition::Cancelled {
+                s.failure = None;
+            }
+            s.pending.clear();
+            if abandoned {
+                s.diagnostic = Some("native supervisor ended without terminal");
+            }
+        });
     }
 }

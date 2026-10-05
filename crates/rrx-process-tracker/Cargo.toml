@@ -1,0 +1,21 @@
+[package]
+name = "rrx-process-tracker"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+description = "Bounded cooperative process cookie discovery with explicit coverage limits"
+
+[dependencies]
+rustix.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+libc.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+# Public libproc/sysctl FFI is confined to the macOS module. The rrx crate
+# continues to inherit the workspace unsafe_code=forbid setting.
+[lints.rust]
+unsafe_code = "deny"
