@@ -82,6 +82,10 @@ finalization authority or requires historical executor/profile/temp paths. It
 resolves the current Runtime's canonical Git executable; a receipt hashes that
 path reference, not binary contents or a qualified version. Missing Git refuses
 inspection. Inspection failures do not alter accepted work or cleanup results.
+Internal Git commands clear inherited common-directory/object/namespace/ancestry
+routing and disable lazy fetch/replacement objects. Retained repositories refuse
+canonical-path aliases, external common/alternate stores and shallow/graft metadata;
+otherwise matching refs plus successful traversal could hide missing ancestry.
 
 Phase1 consists of independently reviewed requirements/design only. Phase2
 implements a coordinated profile without an unsafe intermediate launch path.

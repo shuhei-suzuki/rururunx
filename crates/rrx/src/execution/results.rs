@@ -310,10 +310,7 @@ impl ResultStore {
             )
             .await?;
         }
-        ensure!(
-            !repository.join("objects/info/alternates").exists(),
-            "result alternates forbidden"
-        );
+        retained_storage(&repository)?;
         ensure!(
             io.text(&repository, ["rev-parse", "--show-object-format"])
                 .await?
@@ -337,6 +334,7 @@ impl ResultStore {
             ],
         )
         .await?;
+        retained_storage(&repository)?;
         io.run(&repository, ["fsck", "--full", "--strict", "--no-dangling"])
             .await?;
         for oid in [revision, unit.base_sha.as_str()] {
@@ -465,10 +463,7 @@ impl ResultStore {
                 && m.sources == artifact.dependencies,
             "artifact manifest identity mismatch"
         );
-        ensure!(
-            !artifact.repository.join("objects/info/alternates").exists(),
-            "result alternates forbidden"
-        );
+        retained_storage(&artifact.repository)?;
         for (name, oid) in [("commit", &artifact.revision), ("base", &artifact.base_sha)] {
             ensure!(
                 text(
@@ -643,12 +638,38 @@ pub(crate) fn git_command_for(root: &Path, program: &Path) -> Result<Command> {
         "core.fsmonitor=false",
     ]);
     c.env("GIT_OPTIONAL_LOCKS", "0")
+        .env("GIT_NO_REPLACE_OBJECTS", "1")
+        .env("GIT_NO_LAZY_FETCH", "1")
         .env_remove("GIT_DIR")
+        .env_remove("GIT_COMMON_DIR")
         .env_remove("GIT_WORK_TREE")
         .env_remove("GIT_INDEX_FILE")
         .env_remove("GIT_OBJECT_DIRECTORY")
-        .env_remove("GIT_ALTERNATE_OBJECT_DIRECTORIES");
+        .env_remove("GIT_ALTERNATE_OBJECT_DIRECTORIES")
+        .env_remove("GIT_NAMESPACE")
+        .env_remove("GIT_REPLACE_REF_BASE")
+        .env_remove("GIT_SHALLOW_FILE")
+        .env_remove("GIT_GRAFT_FILE");
     Ok(c)
+}
+fn retained_storage(repository: &Path) -> Result<()> {
+    ensure!(
+        repository.canonicalize()? == repository && repository.is_dir(),
+        "retained repository aliases other storage"
+    );
+    for relative in [
+        "commondir",
+        "objects/info/alternates",
+        "shallow",
+        "info/grafts",
+    ] {
+        match std::fs::symlink_metadata(repository.join(relative)) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+            Ok(_) => anyhow::bail!("unsupported retained repository metadata: {relative}"),
+        }
+    }
+    Ok(())
 }
 async fn retained_git<const N: usize>(
     root: &Path,

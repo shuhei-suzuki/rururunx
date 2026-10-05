@@ -194,6 +194,20 @@ keeps an unknown helper observation. Public publication CAS rechecks the complet
 verified artifact snapshot, rather than trusting only its ID. Historical read
 failure never writes Task work, accepted evidence or cleanup disposition.
 
+Runtime internal Git commands remove inherited repository/common-directory,
+object-store, namespace and ancestry-routing variables and disable replacement
+objects and lazy fetch; native Agent auth/settings/hooks remain inherited. Physical
+retained storage must be canonical and independent: refuse `commondir`, alternates,
+`shallow` and `info/grafts`, including symlink entries. Check before/after capture
+fetch and before graph inspection; no file-read failure implies absence. The
+[Git repository environment](https://git-scm.com/docs/git) documents common-dir
+and object routing. [Git's shallow reader](https://github.com/git/git/blob/v2.54.0/shallow.c)
+and [graft reader](https://github.com/git/git/blob/v2.54.0/commit.c) interpret
+ancestry metadata: successful rev-list/fsck alone does not establish full original
+ancestry under those overrides. Removal of `GIT_SHALLOW_FILE`/`GIT_GRAFT_FILE` is
+defensive; their direct environment behavior has not been established for the
+tested Git version, and is not credited as a reproduced exploit.
+
 State layout (names are logical; path validation forbids nesting state/result
 storage under a Task workspace or aliasing sibling namespaces):
 
