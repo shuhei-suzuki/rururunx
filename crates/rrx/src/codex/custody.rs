@@ -447,6 +447,8 @@ fn run(inventory: &Arc<Inventory>, mut receiver: mpsc::Receiver<Request>) -> Cre
                 break;
             };
             inventory.inflight.fetch_add(1, Ordering::SeqCst);
+            #[cfg(test)]
+            let mut reply_after_retirement = None;
             let handled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 let owner = inventory.owner.upgrade();
                 let permitted = owner.as_ref().is_some_and(|o| !o.jobs_revoked());
@@ -470,7 +472,7 @@ fn run(inventory: &Arc<Inventory>, mut receiver: mpsc::Receiver<Request>) -> Cre
                                 "preparation effects revoked",
                             ))
                         };
-                        let _ = reply.send(result);
+                        reply_after_retirement = Some((reply, result));
                     }
                 }
             }));
@@ -487,6 +489,12 @@ fn run(inventory: &Arc<Inventory>, mut receiver: mpsc::Receiver<Request>) -> Cre
             }
             inventory.inflight.fetch_sub(1, Ordering::SeqCst);
             inventory.accepted.fetch_sub(1, Ordering::SeqCst);
+            // The response can enter the actor's no-work error arm immediately.
+            // Publish it only after that request's bookkeeping is retired.
+            #[cfg(test)]
+            if let Some((reply, result)) = reply_after_retirement {
+                let _ = reply.send(result);
+            }
         }
         let (actor_handle, worker_handle, attempted, worker_pending) = {
             let mut assets = inventory.assets.lock().unwrap_or_else(|e| e.into_inner());
