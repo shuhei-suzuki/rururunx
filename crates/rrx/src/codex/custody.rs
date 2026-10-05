@@ -27,6 +27,8 @@ pub(super) struct Pool(Mutex<PoolState>);
 struct PoolState {
     used: usize,
     entries: Vec<Entry>,
+    #[cfg(test)]
+    fail_creator: bool,
 }
 struct Entry {
     _owner: Arc<Control>,
@@ -82,15 +84,34 @@ impl Pool {
         let (begin, begun) = std::sync::mpsc::channel();
         let observed = inventory.clone();
         let retained_owner = owner.clone();
-        let spawned = std::thread::Builder::new()
-            .name("rrx-preparation-custody".into())
-            .spawn(move || {
-                let _owner = retained_owner;
-                if begun.recv().is_err() {
-                    observed.unknown.store(true, Ordering::SeqCst);
-                }
-                run(&observed, receiver)
-            });
+        let create = move || {
+            std::thread::Builder::new()
+                .name("rrx-preparation-custody".into())
+                .spawn(move || {
+                    let _owner = retained_owner;
+                    if begun.recv().is_err() {
+                        observed.unknown.store(true, Ordering::SeqCst);
+                    }
+                    run(&observed, receiver)
+                })
+        };
+        // Controlled constructor-error seam tests the same conservative result
+        // branch. It does not assert that a real OS spawn error proves absence.
+        #[cfg(test)]
+        let fail_creator = {
+            let mut state = self.0.lock().unwrap();
+            std::mem::take(&mut state.fail_creator)
+        };
+        #[cfg(test)]
+        let spawned = if fail_creator {
+            Err(io::Error::other(
+                "injected opaque custodian creation failure",
+            ))
+        } else {
+            create()
+        };
+        #[cfg(not(test))]
+        let spawned = create();
         match spawned {
             Ok(handle) => {
                 {
@@ -179,6 +200,10 @@ impl Pool {
     #[cfg(test)]
     pub fn used(&self) -> usize {
         self.0.lock().unwrap().used
+    }
+    #[cfg(test)]
+    pub fn fail_creator_once(&self) {
+        self.0.lock().unwrap().fail_creator = true;
     }
 }
 
@@ -440,7 +465,7 @@ fn run(inventory: &Arc<Inventory>, mut receiver: mpsc::Receiver<Request>) -> Cre
             inventory.inflight.fetch_sub(1, Ordering::SeqCst);
             inventory.accepted.fetch_sub(1, Ordering::SeqCst);
         }
-        let (actor_handle, worker_handle, attempted) = {
+        let (actor_handle, worker_handle, attempted, worker_pending) = {
             let mut assets = inventory.assets.lock().unwrap_or_else(|e| e.into_inner());
             let a = if assets
                 .actor
@@ -456,7 +481,7 @@ fn run(inventory: &Arc<Inventory>, mut receiver: mpsc::Receiver<Request>) -> Cre
             } else {
                 None
             };
-            (a, w, assets.worker_attempted)
+            (a, w, assets.worker_attempted, assets.worker.is_some())
         };
         if let Some(handle) = actor_handle {
             actor = Some(matches!(handle.now_or_never(), Some(Ok(()))));
@@ -483,7 +508,9 @@ fn run(inventory: &Arc<Inventory>, mut receiver: mpsc::Receiver<Request>) -> Cre
         if let Some(actor_joined) = actor
             && inventory.accepted.load(Ordering::SeqCst) == 0
             && inventory.inflight.load(Ordering::SeqCst) == 0
-            && (worker.is_some() || !attempted || inventory.unknown.load(Ordering::SeqCst))
+            && (worker.is_some()
+                || !attempted
+                || (inventory.unknown.load(Ordering::SeqCst) && !worker_pending))
         {
             let mut open = inventory.open.lock().unwrap_or_else(|e| e.into_inner());
             if inventory.accepted.load(Ordering::SeqCst) == 0 {

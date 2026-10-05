@@ -446,6 +446,103 @@ mod custody_mechanics {
     }
 
     #[tokio::test]
+    async fn armed_caller_drop_revokes_consumed_and_failing_endpoint_without_new_native_stop() {
+        for consumed in [true, false] {
+            let (owned, adapter, factory) = adapter();
+            let directory = tempfile::tempdir().unwrap();
+            let (file, mut release) = spec(directory.path().join("worker"), false, false, false);
+            factory.enqueue(file);
+            let registered = adapter.register_fresh(owned.request.clone(), None).unwrap();
+            let control = registered.transition.control.clone();
+            if consumed {
+                // This is a preparation-latch mechanics fixture, not native
+                // admission: no Session/wire/managed grant is manufactured.
+                control.preparation.consume(|| Ok(())).unwrap();
+            } else {
+                control
+                    .preparation
+                    .failed(failure(ErrorKind::StateConflict, "fixed first cause"));
+            }
+            adapter.spawn_launch(registered).await.unwrap_err();
+            let endpoint = control.take_endpoint().unwrap();
+            drop(CallerGuard::new(control.clone()));
+            assert!(control.jobs_revoked());
+            assert!(endpoint.try_note("new callback").is_err());
+            assert_eq!(control.consumed(), consumed);
+            if !consumed {
+                assert_eq!(
+                    control.preparation.check().unwrap_err().message,
+                    "fixed first cause"
+                );
+            }
+            assert_eq!(
+                control.stop.capacity(),
+                1,
+                "job revocation queued no native stop message"
+            );
+            assert_eq!(adapter.availability.sites(), [0; 10]);
+            release.release();
+            joined(&factory.pool, &control).await;
+            adapter.reconcile_custody().unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn opaque_custodian_creation_error_retains_complete_reservation_without_effect() {
+        let (owned, adapter, factory) = adapter();
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("never-created");
+        let (file, _release) = spec(path.clone(), false, false, false);
+        factory.enqueue(file);
+        factory.pool.fail_creator_once();
+        let registered = adapter.register_fresh(owned.request.clone(), None).unwrap();
+        let error = adapter.spawn_launch(registered).await.unwrap_err();
+        assert_eq!(error.kind, ErrorKind::SessionLost);
+        assert_eq!(error.message, "preparation custodian creation unverified");
+        assert_eq!(factory.pool.used(), 3);
+        factory.pool.drain();
+        assert_eq!(
+            factory.pool.used(),
+            3,
+            "opaque Err cannot refund unproved frames"
+        );
+        assert!(adapter.registry().unwrap().is_empty());
+        assert!(!path.exists());
+        assert_eq!(adapter.availability.sites(), [0; 10]);
+    }
+
+    #[tokio::test]
+    async fn actor_panic_keeps_late_worker_join_observer_until_cleanup() {
+        let (owned, adapter, factory) = adapter();
+        let directory = tempfile::tempdir().unwrap();
+        let (file, mut release) = spec(directory.path().join("worker"), false, true, false);
+        let started = file.started.clone();
+        factory.enqueue(file);
+        let registered = adapter.register_fresh(owned.request.clone(), None).unwrap();
+        let control = registered.transition.control.clone();
+        adapter.spawn_launch(registered).await.unwrap_err();
+        let custody = control.custody().unwrap();
+        wait(|| custody.unknown() && started.load(Ordering::SeqCst)).await;
+        factory.pool.drain();
+        assert_eq!(
+            factory.pool.used(),
+            3,
+            "unknown actor cannot discard a pending worker observer"
+        );
+        assert!(!custody.worker_joined());
+        release.release();
+        wait(|| {
+            factory.pool.drain();
+            factory.pool.used() == 1
+        })
+        .await;
+        assert!(custody.worker_joined());
+        assert!(custody.unknown());
+        assert!(!custody.joined());
+        assert!(control.original_disposition().is_none());
+    }
+
+    #[tokio::test]
     async fn complete_job_capacity_refuses_before_factory_and_recovers_after_actual_joins() {
         let (owned, adapter, factory) = adapter();
         let directory = tempfile::tempdir().unwrap();
