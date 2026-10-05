@@ -1089,46 +1089,48 @@ async fn claude_live_quota_wait_is_scoped_preserves_input_and_keeps_sibling_runn
         .unwrap();
         let watched = updates.borrow().clone();
         let durable = sessions.status(&handle).unwrap();
-        let store = owner.store.lock().unwrap();
-        let current = store.execution_unit(unit.id).unwrap();
-        let expected_wait = waits.then_some(WaitReason::Quota);
-        assert_eq!(watched.wait_reason, expected_wait, "{payload}: watch");
-        assert_eq!(durable.wait_reason, expected_wait, "{payload}: status");
-        assert_eq!(current.wait_reason, expected_wait, "{payload}: ledger");
-        assert_eq!(watched.authority, durable.authority, "{payload}");
-        assert_eq!(
-            current.state,
-            if waits {
-                UnitState::WaitingQuota
-            } else {
-                UnitState::Running
-            }
-        );
-        assert!(current.native_effects_open && current.result_finalization_open);
-        assert_eq!(current.work, None);
-        assert!(
-            !store
-                .execution_is_quota_probe(unit.id, "claude", "unknown")
-                .unwrap(),
-            "{payload}: telemetry does not mint recovery probe authority"
-        );
-        let sibling_before = store.execution_unit(other.id).unwrap();
-        assert_eq!(sibling_before.state, UnitState::Running);
-        assert_eq!(sibling_before.wait_reason, None);
-        assert_eq!(sibling_before.work, None);
-        for id in [unit.id, other.id] {
+        let (current, sibling_before) = {
+            let store = owner.store.lock().unwrap();
+            let current = store.execution_unit(unit.id).unwrap();
+            let expected_wait = waits.then_some(WaitReason::Quota);
+            assert_eq!(watched.wait_reason, expected_wait, "{payload}: watch");
+            assert_eq!(durable.wait_reason, expected_wait, "{payload}: status");
+            assert_eq!(current.wait_reason, expected_wait, "{payload}: ledger");
+            assert_eq!(watched.authority, durable.authority, "{payload}");
             assert_eq!(
-                store
-                    .managed_effects(id)
-                    .unwrap()
-                    .iter()
-                    .filter(|e| e.kind == "native_input")
-                    .count(),
-                1,
-                "{payload}: input before release"
+                current.state,
+                if waits {
+                    UnitState::WaitingQuota
+                } else {
+                    UnitState::Running
+                }
             );
-        }
-        drop(store);
+            assert!(current.native_effects_open && current.result_finalization_open);
+            assert_eq!(current.work, None);
+            assert!(
+                !store
+                    .execution_is_quota_probe(unit.id, "claude", "unknown")
+                    .unwrap(),
+                "{payload}: telemetry does not mint recovery probe authority"
+            );
+            let sibling_before = store.execution_unit(other.id).unwrap();
+            assert_eq!(sibling_before.state, UnitState::Running);
+            assert_eq!(sibling_before.wait_reason, None);
+            assert_eq!(sibling_before.work, None);
+            for id in [unit.id, other.id] {
+                assert_eq!(
+                    store
+                        .managed_effects(id)
+                        .unwrap()
+                        .iter()
+                        .filter(|e| e.kind == "native_input")
+                        .count(),
+                    1,
+                    "{payload}: input before release"
+                );
+            }
+            (current, sibling_before)
+        };
         if payload == "quota-live-recovery-held" {
             std::fs::write(output.join("fixture-recovery-release"), "recover").unwrap();
             tokio::time::timeout(Duration::from_secs(10), async {
@@ -1170,28 +1172,29 @@ async fn claude_live_quota_wait_is_scoped_preserves_input_and_keeps_sibling_runn
         let end = terminal(&sessions, &handle).await;
         assert_eq!(end.work, Some(work), "{payload}");
         assert_eq!(end.disposition, disposition, "{payload}");
-        let store = owner.store.lock().unwrap();
-        assert_eq!(
-            serde_json::to_value(store.execution_unit(other.id).unwrap()).unwrap(),
-            serde_json::to_value(sibling_before).unwrap(),
-            "{payload}: sibling ledger"
-        );
-        assert_eq!(
-            store
-                .managed_effects(unit.id)
-                .unwrap()
-                .iter()
-                .filter(|e| e.kind == "native_input")
-                .count(),
-            1,
-            "{payload}: input not resent"
-        );
-        assert!(
-            !store
-                .execution_is_quota_probe(unit.id, "claude", "unknown")
-                .unwrap()
-        );
-        drop(store);
+        {
+            let store = owner.store.lock().unwrap();
+            assert_eq!(
+                serde_json::to_value(store.execution_unit(other.id).unwrap()).unwrap(),
+                serde_json::to_value(sibling_before).unwrap(),
+                "{payload}: sibling ledger"
+            );
+            assert_eq!(
+                store
+                    .managed_effects(unit.id)
+                    .unwrap()
+                    .iter()
+                    .filter(|e| e.kind == "native_input")
+                    .count(),
+                1,
+                "{payload}: input not resent"
+            );
+            assert!(
+                !store
+                    .execution_is_quota_probe(unit.id, "claude", "unknown")
+                    .unwrap()
+            );
+        }
         sessions.cancel(&other_handle).await.unwrap();
         assert_eq!(
             terminal(&sessions, &other_handle).await.disposition,
