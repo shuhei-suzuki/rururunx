@@ -741,6 +741,59 @@ mod custody_mechanics {
     }
 
     #[tokio::test]
+    async fn revoked_create_response_is_pending_until_own_request_retires() {
+        // Poll the actual Factory/Create response directly. The retirement gate
+        // establishes that the handler reached the cut; no actor scheduling
+        // window or implementation-side "reply was early" flag is an oracle.
+        let (control, _) = Control::new(None);
+        let pool = Pool::isolated();
+        control.install_custody(pool.clone()).unwrap();
+        let custody = control.custody().unwrap();
+        let (end_actor, actor_ended) = tokio::sync::oneshot::channel();
+        control
+            .spawn(async move {
+                let _ = actor_ended.await;
+            })
+            .unwrap();
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("never-created");
+        let (file, _release) = spec(path.clone(), false, false, false);
+        let factory = Factory::new(pool.clone());
+        factory.enqueue(file);
+        let pause = RetirePause(custody.clone());
+        custody.pause(true);
+        custody.pause_retirement(true);
+        let mut response = Box::pin(factory.run(&control));
+        assert!(response.as_mut().now_or_never().is_none());
+        assert_eq!(custody.accepted(), 1);
+        assert!(custody.outstanding_effects());
+        drop(CallerGuard::new(control.clone()));
+        assert!(control.jobs_revoked());
+        custody.pause(false);
+        wait(|| custody.retirement_reached()).await;
+        // An early-send mutant has already published the real oneshot result
+        // before reaching this gate. Direct polling cannot miss that result
+        // merely because an adapter actor has not yet been scheduled.
+        assert!(
+            response.as_mut().now_or_never().is_none(),
+            "Create response published before its own request retired"
+        );
+        assert_eq!(custody.accepted(), 1);
+        assert!(custody.outstanding_effects());
+        drop(pause);
+        let error = tokio::time::timeout(Duration::from_secs(2), response)
+            .await
+            .expect("retired Create must deliver its actual response");
+        assert_eq!(error.kind, ErrorKind::StateConflict);
+        let _ = end_actor.send(());
+        joined(&pool, &control).await;
+        assert!(!custody.created());
+        assert!(!path.exists());
+        // Joined mechanical frames do not supply registry/native/settlement
+        // authority; the existing adapter error-arm controls cover that layer.
+    }
+
+    #[tokio::test]
     async fn queued_revoked_create_retires_before_actor_error_and_removes_no_work_entry() {
         revoked_create_with_note(false).await;
     }
