@@ -22,14 +22,19 @@ No credential inspection, copying or transfer is introduced.
 ## 2. Authority and durable results
 
 Workflow authority binds Scope, execution unit, Task generation, Runtime epoch,
-Session/native turn, artifact and record versions. Cleanup uncertainty retires
-logical write/grant authority without turning a known native result into failure.
+Session/native turn, artifact and record versions. Natural completion closes Native
+effect/grant authority while Runtime result-finalization remains open. Cancellation
+or replacement closes both; the janitor cannot revoke finalization or dispose
+its inputs. Cleanup uncertainty does not turn known native work into failure.
 Unknown external effects remain subject to idempotent reconciliation.
 
 Each retry gets a new executor worktree, branch and resources. Accepted commit
 objects and hashed evidence are retained in independent Runtime storage. Each
-reviewer/verifier receives a separate exact-SHA snapshot, never authoritative
-reads from a changing executor worktree. Publication selects accepted SHA with
+reviewer/verifier receives a separate exact-SHA snapshot with read-only source and
+separate output under a qualified tool profile, never authoritative reads from a
+changing executor worktree. Before/after hashes alone do not prove absence of
+transient mutation; same-user permission/raw bypasses remain uncovered. Required
+incompatible source-writing hooks/tools refuse that profile. Publication selects accepted SHA with
 expected-old-target validation. Quorum, rule completeness, permissions and review
 findings verification remain required.
 

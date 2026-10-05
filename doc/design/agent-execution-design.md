@@ -60,6 +60,15 @@ and artifact identity. No wildcard generation or Task-only fallback may authoriz
 publication, tool launch, grant or callback. Separate accounting updates can refer
 to a retired unit without restoring its authority.
 
+Authority has two separately persisted permissions: `native_effects_open` and
+`result_finalization_open`. A reliable natural terminal closes native tool/input/
+grant permissions but leaves Runtime-only finalization open for the known work.
+This permits exact commit capture/publication, not another Agent turn or remote
+mutation. Cancellation, replacement and epoch fencing close both by generation
+CAS. Waiting/status updates preserve the same native turn's semantic authority;
+Store acquires a fresh Task version for CAS and validates unit/generation/phase
+rather than requiring an obsolete launch-time Task version to remain unchanged.
+
 The Runtime exclusively locks its state-root lockfile using a kernel file lock.
 Runtime instance UUID is the durable state-root namespace, unchanged on restart;
 owner epoch changes on each new scheduler. Paths never move merely due to restart.
@@ -82,7 +91,7 @@ fields must agree with body values. Enum values and numeric ranges are CHECKed.
 | Table | Keys and essential fields / constraints |
 | --- | --- |
 | runtime_epoch | Single row for state-root identity, current epoch and Runtime instance UUID. Update only under exclusive lock. |
-| execution_units | PK unit_id; Scope FK; kind; generation; phase; owner_epoch; state; work_outcome nullable until observed; disposition; cleanup_outcome default unknown; version; fresh absolute worktree/branch; base_sha; profile_digest; Session reference. UNIQUE worktree, UNIQUE non-null branch per Project. Partial UNIQUE active executor per Task. |
+| execution_units | PK unit_id; Scope FK; kind; generation; phase; owner_epoch; state; native_effects_open and result_finalization_open; work_outcome nullable until observed; disposition; cleanup_outcome default unknown; version; fresh absolute worktree/branch; base_sha; profile_digest; Session reference. UNIQUE worktree, UNIQUE non-null branch per Project. Partial UNIQUE executor with either permission open per Task. |
 | task_execution | PK Task scope; current generation and active_attempt_id FK. Store validates referenced unit belongs to same scope/kind/generation. CAS atomically updates Task JSON projection and Workflow. |
 | session_units | Session record ID + Project FK; unit_id FK; exact scope; native dispatch/ack state and bounded protocol identity metadata. One Session belongs to one unit; a new native process gets a new Session. |
 | result_artifacts | PK artifact_id; Scope/unit FK; kind; exact full SHA/base; object format; manifest digest; storage location; state staging/ready/published/invalid; version. Published rows and identity fields immutable. |
@@ -112,8 +121,23 @@ Old native dispatch/pending external markers remain unresolved until reconciliat
 Malformed or contradictory legacy data aborts migration unchanged. A new local
 attempt can be allocated after explicit legacy logical fencing; its external
 dependent phase still cannot replay an unknown remote effect. Schema 3 readers
-must reject version 4. Round-trip, failed-migration and older-reader tests are
-required; opening a DB does not itself launch or kill anything.
+must reject version 4 on new open. Already-open schema 3 connections are a
+separate case: the old version check runs only on initialize and the new owner
+lock cannot fence them. Migration installs BEFORE INSERT/UPDATE/DELETE guards on
+every existing and new mutable application table, calling a connection-local,
+zero-argument `rrx_writer_contract_version()` function and rejecting any value
+other than 4. New writers register the side-effect-free function through safe
+rusqlite functions before migration/use; it is trigger-usable and innocuous, not
+DIRECTONLY. Old connections lack it, so post-migration writes fail, including
+cached statements recompiled after schema change. Do not use a global SQL flag
+which old connections could inherit accidentally. Existing write transactions
+serialize before migration; old read snapshots cannot silently upgrade through a
+new committed schema. This fences DB writes, not legacy native processes/effects.
+Tests must retain an old Store connection across migration and exercise cached
+and fresh INSERT/UPDATE/DELETE/REPLACE, old read→write transactions and successful
+new-writer operations, plus missing-function failure. Treat guard registration or
+coverage failure as migration refusal. Round-trip, failed-migration and new-open
+older-reader tests are also required; opening a DB does not launch or kill anything.
 
 ## 4. State machines and reservation replacement
 
@@ -127,7 +151,7 @@ requires its exact evidence/review/test policy.
 | --- | --- |
 | Admission | Create Reserved unit, increment generation on new executor attempt, bind fresh names, reserve resources/quota; persist intent before preparation. Ineligible capacity queues/refuses without launch. |
 | Start | Reserved→Preparing→DispatchPending; record Session/dispatch intent before spawn. Confirm acknowledged native start as Running. Unacknowledged dispatch stays unknown on crash. |
-| Reliable native terminal | Running→WorkKnown, preserve success/failure independently of cleanup; start bounded cleanup job. Successful candidate enters result capture and evidence evaluation. |
+| Reliable native terminal | Running→WorkKnown; close native_effects_open, retain result_finalization_open and capture dependencies. Preserve success/failure; process cleanup may start concurrently, destructive input disposal waits for finalization. Successful candidate enters result capture/evidence. |
 | Transport loss without terminal | WorkUnknown; fence local write/result/grant authority; checkpoint only supported data; queue cleanup. New local attempt permitted with fresh paths, external ambiguity still reconciled. |
 | Confirmed quota, native still retrying | Task WaitingQuota, unit retains same Session/turn and existing lease. Do not send duplicate input or create another live executor. |
 | Confirmed quota, native turn ended | Task WaitingQuota; unit retired with quota-interrupted disposition, work unknown unless already known. Preserve durable drafts/checkpoint references. Fresh attempt after recovery. |
@@ -185,10 +209,12 @@ Result capture protocol:
    rename; ensure durable parent entries before marking ready. Git object/ref
    durability is explicitly checked/synced for the required Runtime-SIGKILL case;
    arbitrary power-loss/device-failure durability is not promised.
-4. `publish_result` CAS checks active unit/generation/epoch, Workflow/source
+4. `publish_result` CAS checks result-finalization permission and unit/generation/epoch, Workflow/source
    versions and content digest; records published artifact and ContextVersion in
    the same DB transaction. Cancellation winning this race rejects publication;
-   abandoned captured content remains a draft/retention item.
+   abandoned captured content remains a draft/retention item. Successful publication
+   closes finalization permission. Failure to capture closes it only after a durable
+   unresolved/draft disposition, never by silently deleting the source.
 5. Crash after file/ref write but before DB publication leaves staging data.
    Restart verifies it and reconciles as ready/draft, never auto-publishes for a
    fenced generation. DB published with missing/corrupt content becomes invalid
@@ -200,11 +226,30 @@ index and writable build output; it does not share mutable refs/config with the
 executor or another reviewer. A clone implementation must use ordinary transport
 (`--no-local`) without alternates; the Runtime result repository is serialized
 only for short ref/import/retention operations. Verify actual materialized HEAD
-and tracked-source manifest before and after review/test. Dirty tracked-source
-changes invalidate that unit's evidence; normal generated outputs use declared
-untracked/output paths. Reviewers use native read-only capability where supported;
-no new outer sandbox or assumption that an advisory lock enforces read-only.
-Required source rechecks do not permit executor-path reads as authoritative data.
+and tracked-source manifest before and after review/test. These rechecks are
+diagnostics, **not proof** against a source change consumed and then restored.
+Before dispatch, SnapshotManager removes write permission from tracked source
+files/directories and pinned Git admin content, retaining executable/read bits;
+declared writable output/temp paths are separate and cannot contain tracked input.
+Native reviewers additionally require their supported read-only review capability.
+Verifiers use qualified tool profiles that keep source read-only and place all
+generated content in output paths (for example Cargo target/OUT_DIR outside source).
+Never fall back to writable source after an error. Source-writing generators or
+hooks must be assigned an explicit derived-output profile whose inputs/tool/digest
+are recorded and validated, or the required verification is refused as unsupported.
+An ordinary mutate-consume-restore control must fail on its first source write,
+not pass because final hashes match. Mixed source/output directories, source
+symlinks/aliases and required incompatible hook behavior refuse that profile.
+
+This is cooperative input protection, not a same-user security barrier: permission
+changes, alternate absolute inputs and tools/plugins bypassing the declared profile
+are uncovered. A chmod-and-restore/raw bypass control demonstrates this limitation
+and must never be reported as proven stable-input acceptance. Profiles permitting
+such behavior cannot qualify R2; detection invalidates evidence or records unknown
+coverage. Do not claim rechecks detect every undeclared transient bypass. Native
+user/auth/config roots are never write-protected; only the disposable source copy
+is. No namespace/Seatbelt or extra Agent permission mode is applied to executors.
+Required source checks never permit executor-path reads as authoritative data.
 
 Tracked rules/config come from the same commit; external project rule files are
 explicit noncredential references with content hashes captured into the artifact.
@@ -376,7 +421,13 @@ exhaustion or successful work. Definitive unrelated native failures remain failu
 
 ## 9. Best-effort cleanup and OS boundary
 
-Retire logical authority transactionally before cancel/cleanup. First use owned
+Cancellation/replacement retires both logical permissions before cleanup. Natural
+completion closes only native-effect permission; Runtime result-finalization
+remains until capture/publication or durable draft disposition (§2/5). Cleanup
+jobs have explicit dependencies: process stop/observations may run immediately,
+but worktree/branch/input deletion and dependent path release wait for finalization
+closure plus the draft retention policy. The janitor cannot close finalization
+or delete an input merely to make reclamation succeed. First use owned
 native cancel and safe unreaped process-group/direct-child stop/reap, then bounded
 cookie discovery, optional exact user-scope stop and managed Docker deletion.
 Natural native completion may precede reclamation. Keep owned child reaping and
@@ -477,6 +528,9 @@ Crash control points and required verification:
 | Tool create acknowledged lost / Docker daemon unavailable | Deterministic identity resolves or unknown remains; never issue global cleanup or recreate blindly. |
 | Runtime SIGKILL after accepted evidence | Retained SHA/manifest and review content survive restart; active native sessions unknown and fresh attempt policy used. |
 | Quota exhaustion/reset/out-of-order notification | Shared pool waiting, no work failure, bounded one-probe recovery, no stale event clearing new exhaustion. |
+| Normal completion with concurrent janitor | Process cleanup cannot revoke result-finalization permission or delete capture input; result publish succeeds unless cancellation/replacement wins its CAS. |
+| Schema migration with pre-open old Store | Old cached/fresh writes reject at DB guard; new writer succeeds; no Task/Session authority corruption. |
+| Snapshot mutate-consume-restore | Supported ordinary source writes fail before consumption; output writes succeed. Explicit permission/raw bypass is uncovered, never passed as input immutability proof. |
 | Orphan namespace and pending cleanup | New namespace proceeds subject to finite capacity; old leases not immediately recycled. |
 
 Phase2 verifies state/API migration, effect receipts, causal fault-injection and
@@ -522,3 +576,8 @@ unimplemented profile's native acceptance:
 - [Codex app-server](https://learn.chatgpt.com/docs/app-server),
   [Claude headless](https://code.claude.com/docs/en/headless): native schema/version
   conformance and actual account behavior need separate evidence.
+- [SQLite connection-local functions](https://www.sqlite.org/c3ref/create_function.html),
+  [schema-change statement recompilation](https://www.sqlite.org/c3ref/prepare.html),
+  [triggers](https://sqlite.org/lang_createtrigger.html) and
+  [transaction isolation](https://sqlite.org/isolation.html): support the proposed
+  old-writer guard; its actual bundled-rusqlite behavior remains a Phase2 test gate.
