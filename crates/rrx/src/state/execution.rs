@@ -124,7 +124,7 @@ fn checked_workflow_binding(
         "Workflow owner versions changed before unit reservation"
     );
     let record: Record =
-        read_tx(&tx, "records", &r.record.to_string())?.context("Workflow reservation missing")?;
+        read_tx(tx, "records", &r.record.to_string())?.context("Workflow reservation missing")?;
     ensure!(
         record.id == r.record
             && record.kind == RecordKind::Workflow
@@ -176,7 +176,7 @@ fn checked_workflow_binding(
         |row| row.get(0),
     )?;
     let context: ContextVersion = decode(context)?;
-    crate::workflow::validate_context(&task, &record, &context)?;
+    crate::workflow::validate_context(task, &record, &context)?;
     ensure!(
         context.revision == unit.base_sha,
         "Workflow unit base differs from immutable input"
@@ -436,7 +436,7 @@ fn validate_authority(
     }
     Ok(unit)
 }
-fn governing_digest(project: &Project, goal: &Goal) -> Result<String> {
+pub(crate) fn governing_digest(project: &Project, goal: &Goal) -> Result<String> {
     use sha2::{Digest, Sha256};
     // Scheduling/status/evidence bookkeeping does not rewrite the accepted instruction frame.
     let criteria = goal
@@ -662,11 +662,9 @@ impl Store {
         ensure!(
             !proof.sources().is_empty()
                 && proof.sources() == &actual
-                && context.data["payload"]
-                    .as_str()
-                    .map(|payload| crate::execution::workflow_source::digest(payload.as_bytes()))
-                    .as_deref()
-                    == Some(proof.payload_digest()),
+                && crate::execution::workflow_source::digest(
+                    serde_json::to_string(&context.data)?.as_bytes()
+                ) == proof.payload_digest(),
             "prepared source/rule frame differs from Context"
         );
         write_unit(&tx, &mut unit)?;

@@ -156,3 +156,13 @@ delegation and unsupported Compose are not fully tracked by this finite profile.
 No global prune, forced removal, complete workload collection or resource-release
 claim follows from an empty list. Worktrees/ports remain retained or quarantined;
 operational Runtime integration and actual OS/Docker/native qualification are pending.
+
+The managed Workflow input consumer receives committed policy, rules and repository
+selection in one private frame; it bypasses the legacy live rule loader. Complete
+inventory is retained in the pure index and represented by a digest in the bounded
+Workflow/artifact authority map. First-unit adoption checks both this frame and the
+actual complete Context envelope. Cached frames refuse accepted Project/Goal
+instruction drift even after preparation ownership is consumed. Finite retained
+inspection can read its exact commit tree and the bounded ordinary blobs observed
+in that tree. Automatic changed-input recovery and full Runtime gate/CLI wiring
+remain separate work; component controls do not qualify native compatibility.
