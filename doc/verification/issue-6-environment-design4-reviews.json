@@ -1,0 +1,270 @@
+{
+  "scope": "Design4 textual proposal only; pair not qualified, not source/native qualification",
+  "head": "e85d85bce71a8cf2f04a0bdac9e6947a00c5ffb2",
+  "independent_peer_free": true,
+  "native_defaults_and_rules_preserved": true,
+  "zero_operation_tools": true,
+  "reports": [
+    {
+      "head": "e85d85bce71a8cf2f04a0bdac9e6947a00c5ffb2",
+      "section": "A4",
+      "native_session": "6dbe7fcd-0c40-4ed5-8f79-751a0c30360f",
+      "review": {
+        "verdict": "request_changes",
+        "findings": [
+          {
+            "severity": "medium",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "29-31, 134-161 (source evidence: crates/rrx/src/codex/mod.rs:8; crates/rrx/src/codex/policy.rs:326-402)",
+            "problem": "The proposal names policy::native_environment as a current consumer and says its strip and pass-through assertions migrate. It never states what happens to that symbol. The symbol is crate-external public API: mod.rs declares 'pub mod policy' and policy.rs declares 'pub fn native_environment'. Its signature takes a fully decoded foreign Project roster (projects: &[Project]). It silently strips foreign-declared baseline names. It inserts any own-declared caller value without the ordinary or exact-frozen-value rule. The compatibility table, caller inventory and producer inventory all omit this public surface. If the symbol is removed or privatized, the proposal is missing a breaking-change record. If it is retained, it is an unsafe compatibility shim.",
+            "causal_scenario": "The implementer follows the listed migrations: prepare_launch moves to the private frozen selector and the Store DTO, and the in-crate actual-consumer tests and mutants pass. No row says to remove pub fn native_environment, or it is kept to avoid a public break. Any crate-external launcher, example or future factory can then build a Codex child environment through rrx::codex::policy::native_environment. That path still strips a foreign-only OPENAI_API_KEY instead of refusing, so it falls back to other global or cached auth. It forwards a differing own-declared credential value, and it requires decoding every foreign Project body. These are the Issue51 requirement 2/4 behaviors the proposal claims to remove, and no planned test observes them. The other outcome is also unrecorded: if the signature gains the pub(crate) EnvironmentAdmission type, denied-warning builds force privatization, and the public rrx API breaks with no recorded impact or consumer grep.",
+            "required_fix": "Add an explicit compatibility row and impact-analysis entry choosing one of two options. Option 1: native_environment (and provider_environment) leave the public codex::policy surface, either private to the codex module or deleted. Record the crate-external consumer inventory (examples, tests/, other workspace crates) and the breaking change. Option 2: if a public function must remain, make it a thin wrapper over the same private frozen selector. It must have no roster parameter and no stripping, apply the Issue51 OR/exact-value rule, and return the fixed opaque refusal. Add a test or compiled mutant that kills a reintroduced strip or arbitrary-value path through the public symbol."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "149, 182-191 (source evidence: crates/rrx/src/codex/session.rs:1468-1514)",
+            "problem": "Each pre-exec CAS must keep logical Session content unchanged. At the main/policy re-exec site, the reservation Session still carries pid = discovery leader. That value is set and persisted at session.rs:1470-1471 and is not cleared after discovery.shutdown() at 1494-1495. The new main pre-exec CAS is described as the last state check before main exec. It therefore durably republishes a reaped PID as a new versioned session.saved record and watch/Control snapshot.",
+            "causal_scenario": "The discovery server starts and its PID is persisted. Discovery is then cleaned up and reaped. The main pre-exec CAS bumps the record version, updated_at and the watch while still asserting that dead PID. Any reader of the newest record version sees a current-looking PID for an exited process whose number the OS may reuse. Such readers include the post-CAS hook's coherent Store/watch assertion, a status observer and later #14 inspection. The new publication itself adds this stale liveness hint.",
+            "required_fix": "Choose one of two options. Option 1: clear pid after verified discovery cleanup and before the main pre-exec CAS, and state that single factual content change instead of 'unchanged content'. Option 2: state explicitly that pre-exec writes carry the last persisted PID hint and imply no liveness. In both cases, assert the exact persisted pid value in the main-site post-CAS test."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "268-293",
+            "problem": "The section claims a deterministic component rule, but the extraction table rows are not mutually exclusive and no evaluation order is stated. First example: an absent model_provider with a non-object model_providers matches both the zero-reference row (pass) and the 'Non-null non-object model_providers' ParseFailure row (refuse). Second example: an invalid env_key name (UnsupportedCapability) can appear together with non-object env_http_headers (ParseFailure). Third example: a raw header count over 128 can contain a later non-string value (overflow UnsupportedCapability versus ParseFailure). serde_json map iteration order also decides which header error is hit first.",
+            "causal_scenario": "Two conforming implementations return pass versus refuse for the first example. For the others they return different fixed opaque categories for the same reported effective config. The 'cover EVERY extraction table row' gate and the kind-asserting tests then encode one arbitrary order. A later refactor can flip an outcome without contradicting any design statement.",
+            "required_fix": "State a total order in which the first failing step determines the outcome: (1) config object check; (2) model_provider absent/null returns zero references without inspecting model_providers; (3) selection type; (4) identifier bounds; (5) model_providers shape; (6) selected-entry shape; (7) env_key shape; (8) headers shape and every header value type; (9) raw occurrence and byte bounds; (10) per-name predicate; (11) presence in the selection. Add combined-shape tests for the overlapping cases."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "127-132, 333-337 (source evidence: crates/rrx/src/state/environment.rs:94-123; crates/rrx/src/codex/session.rs:523-544, 1406-1415)",
+            "problem": "Lines 127-132 correctly describe the initial check as separate reads. The verification gate at 336-337 states that initial own edits after capture are observed before publication, which is too broad. check_environment_admission evaluates the current persisted own refs, not the captured snapshot. Reservation::persist then publishes Starting through plain put_session, which has no P/G/T guard. Some own edits after capture do not make the current-reference decision fail. Examples are adding a declaration for a foreign-declared retained name, or any non-reference metadata edit. Such an edit passes the initial check, publishes Starting and runs the ambient-environment Git preflight. It is first observed by the post-Git recheck or the version pre-exec CAS as StateConflict.",
+            "causal_scenario": "A test is written to lines 336-337 using an enlarging own edit: A adds B's retained name X after capture. It sees a Starting session.saved event and a Git sentinel before the StateConflict. The implementer then either weakens the assertion or adds an unreviewed extra check, and the documented initial-versus-final precision claim stays false for that class of edit.",
+            "required_fix": "Restrict the claim to own edits that make the current-reference decision fail. Add the complementary gate: an enlarging or reference-neutral own edit after capture reaches Starting and ambient Git, then fails StateConflict at recheck or the version pre-exec CAS, with no selected-environment exec. Alternatively, make the initial check fail closed when the Store's own Project version differs from the captured snapshot, and state that."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "73-86 (source evidence: crates/rrx/src/project.rs:390-456)",
+            "problem": "Line 83 says credentials and credential-location prefixes never become controls. The control predicate defined in the same section (membership AND registry-forbidden) already makes several such names global controls. These include credential-locating HOME and CODEX_HOME, SSH_AUTH_SOCK, SSH_ASKPASS, credential-capable *_PROXY URLs and any CODEX_-prefixed credential name. Issue51 requirement 3 limits the prohibition to registry-valid credential-bearing or credential-locating names. The unqualified sentence contradicts the predicate it accompanies.",
+            "causal_scenario": "A structural drift test or source reviewer applying line 83 literally treats HOME, CODEX_HOME or SSH_AUTH_SOCK as wrongly controlled. An implementer who 'corrects' the predicate puts registry-forbidden names into the non-control DTO. EnvironmentAdmission::new then rejects the whole baseline, so CodexAdapter construction fails on essentially every host.",
+            "required_fix": "Qualify the sentence to registry-valid credential-bearing or credential-locating names, matching Issue51. Make the structural test enumerate HOME, CODEX_*, SSH_AUTH_SOCK, SSH_ASKPASS and *_PROXY as registry-forbidden global controls, alongside the three non-control API keys and the exact {USER, LOGNAME} additions."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "193-214, 333-343",
+            "problem": "Only a post-CAS cfg(test) hook is defined at each selected exec site. The second-Store relevant-change and own-edit tests must deny 'that particular NEW child'. That needs an injection point after the previous site's CAS and before this site's CAS, and no such point is specified. Existing gates (BeforeInitialPersist, BeforeBootstrap) exist only for some sites. Nothing exists between the discovery CAS and the main CAS.",
+            "causal_scenario": "An implementer reuses the post-CAS hook for the mutation, which shows non-retroactive spawn instead of denial. Or the mutation is placed at an earlier gate, so an own-ref edit is caught by the post-Git recheck rather than by the targeted pre-exec CAS. The per-site 'EACH pre-exec CAS omission' mutants are then killed by a different check, or survive for the main site. The causal binding the gate claims is lost.",
+            "required_fix": "Define a cfg(test) per-adapter pre-CAS hook at each of the three selected exec sites. It runs after command setup and before the Store transaction, outside the admission mutex and the shared Store mutex, and mutates only through a second connection. Bind each per-site omission mutant to the denial observed at that site's sentinel."
+          }
+        ],
+        "limitations": [
+          "This was a manual read-only review. No build, test, mutation, CI or native execution was performed or possible in this session.",
+          "session.rs beyond line 1950 was omitted: supervise, answer_approval, terminal publication and most tests. Claims that approval, observation and stop stay own-scope-only, and the count of eighteen new() call sites, were checked only against the supplied excerpts.",
+          "lib.rs, examples and other workspace crates were not supplied. Public reachability of rrx::codex::policy is inferred from mod.rs ('pub mod policy') and from tests/codex_unavailable.rs importing rrx::codex::CodexAdapter. No crate-external consumer inventory for native_environment, and no check that no example constructs CodexAdapter, could be made.",
+          "The authority behind the USER/LOGNAME whitelist addition ('explicitly requested') is not in the packet. It was assessed only as a stated, finite, non-credential identity-control addition, not as approved native compatibility.",
+          "Native Codex config/read shapes for default, built-in and custom providers were not observed. The reported-reference table was reviewed only for internal determinism. Default and custom provider conformance stays OPEN as the proposal states.",
+          "The shared Git helper's ambient environment (git.rs native_environment, used during launch and checkpoint preflight) and F1 whole-workload ownership and settlement are explicitly OPEN under #60/#19/#14. They were not re-reviewed as defects of this proposal, and nothing here treats them as accepted.",
+          "Branch verification records, master design text outside lines 410-510, and the full native RPC and Grok/Generic implementations were omitted. The proposal's statements of no shared Store/Grok/Generic change and of the master update content are taken from its text.",
+          "No other reviewer assessment, executor output or native auth/settings values were supplied or used."
+        ]
+      },
+      "usage": {
+        "input_tokens": 2,
+        "cache_creation_input_tokens": 183065,
+        "cache_read_input_tokens": 2160,
+        "output_tokens": 98216,
+        "output_tokens_details": {
+          "thinking_tokens": 93856
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 183065,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 98216,
+            "cache_read_input_tokens": 2160,
+            "cache_creation_input_tokens": 183065,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 183065
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard"
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 2,
+          "outputTokens": 98216,
+          "cacheReadInputTokens": 2160,
+          "cacheCreationInputTokens": 183065,
+          "webSearchRequests": 0,
+          "costUSD": 3.42928,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 93856,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "cost_usd": 3.42928,
+      "duration_api_ms": 933929,
+      "cleanup_verified": true,
+      "guardian_version": "v4-explicit-runtime-preflight",
+      "review_mode": "fresh-independent-strict-design-review"
+    },
+    {
+      "head": "e85d85bce71a8cf2f04a0bdac9e6947a00c5ffb2",
+      "section": "B4",
+      "native_session": "ccec9b73-6726-46f4-a881-839b3d721a88",
+      "review": {
+        "verdict": "request_changes",
+        "findings": [
+          {
+            "severity": "medium",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "268-292 (with 145-147)",
+            "problem": "The extraction table is called deterministic, but its rows overlap and no evaluation order is given. Where rows overlap, one reading lets the launch proceed and the other refuses it; the difference is not just the refusal kind. Examples: (a) an empty or >128-byte model_provider with model_providers absent/null matches row 3 (zero references, proceed) and row 4 (UnsupportedCapability). (b) An absent/null model_provider with a non-object model_providers matches row 2 (zero references; current code returns before reading model_providers) and row 5 (ParseFailure). (c) A non-string header value after the 128-occurrence bound, or next to an invalid env_key, matches row 7 (ParseFailure) and row 9 (UnsupportedCapability). Line 284 does not say whether the identifier bound applies when no providers table is reported.",
+            "causal_scenario": "Discovery config/read reports {'model_provider':null,'model_providers':'x'}. One implementation returns zero references and executes the main/policy server. Another refuses with ParseFailure before main exec. Both satisfy the table. The 'cover EVERY extraction table row' tests cannot tell them apart. A mutant that reorders the checks can be neither killed nor honestly declared redundant, so the component rule is not determined by the design.",
+            "required_fix": "Specify one ordered first-failure procedure. Cover at least: config shape; absent/null selection short-circuiting before model_providers is read; selection type; identifier bound; model_providers absent vs non-object; selected entry absent vs non-object; env_key shape; header-map shape; and per-header iteration, with the occurrence bound checked before or after the value type. Add one actual-consumer test per overlapping pair that proves the chosen precedence, plus a check-order mutant bound to it."
+          },
+          {
+            "severity": "medium",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "29-31, 51-58, 151-153 (vs crates/rrx/src/codex/mod.rs:8 and crates/rrx/src/codex/policy.rs:330-402)",
+            "problem": "codex::policy is a pub mod, and native_environment is a pub fn exported as rrx::codex::policy::native_environment. Its signature takes a fully decoded &[Project] roster. Its behavior is the policy this design rejects: it silently strips foreign-declared credentials (fallback), passes arbitrary own-declared caller values, and keeps its own whitelist copy without USER/LOGNAME. The design says only that old assertions 'migrate'. It does not say whether this public function is removed, made private, or rebuilt over the single common classifier, and the compatibility table and impact analysis omit this public API.",
+            "causal_scenario": "The adapter adopts the new private constructor and classifier. The public native_environment still compiles silently, because pub items raise no dead-code or Clippy warnings. The policy tests at policy.rs:680-726 keep calling it, so the structural and whitelist assertions exercise a second, drifting filter seam that lacks USER/LOGNAME and still strips and falls back. External or future callers can rebuild the forbidden strip/pass-through environment, while the tests give false drift assurance.",
+            "required_fix": "State the disposition explicitly. Option 1: remove native_environment and provider_environment and record the public API break in the compatibility table. Option 2: make them crate-private wrappers that delegate to the single common filter/classifier, with no roster parameter. Either way, retarget the policy structural tests to that one seam and assert that a single whitelist/classifier definition exists."
+          },
+          {
+            "severity": "medium",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "51-58, 110-115, 154-161, 311-314, 358-361",
+            "problem": "In-crate tests reach the common constructor only through the injected iterator, so the one production line in this seam goes untested: public new() supplying vars_os() exactly once. The sanitized external child holds only HOME/PATH (controls) and RRX_EMPTY_FIXTURE (not a member). Under EMPTY, every route refuses before Store or exec, so that child cannot show that new() captured, filtered, or bounded anything, and no new()-wiring mutant is named. The design also does not say whether the new public environment_candidates is gated by EMPTY availability. If gated, the ordinary library has no observable. If ungated, it is a new public Store-reading route that the master section-16 EMPTY route statement does not cover.",
+            "causal_scenario": "A mutant where new() passes std::iter::empty(), or re-reads vars_os() lazily at first use, compiles and passes every listed test. In-crate fixtures bypass new(), and the external child only observes UnsupportedCapability with no effects. The 'frozen once by the common constructor' fact would then enter master unverified at its only production entry.",
+            "required_fix": "Add a causal observable for real new() inside the env_clear child. Option (a): supply more than 512 synthetic non-control member names, or one >256-byte valid member, and assert that new() refuses opaquely while a matching control construction succeeds. Option (b): if environment_candidates is intentionally ungated, declare a synthetic marker in the child Project and assert it is reported. Name the new()-wiring mutant and its kill. State the availability gating of environment_candidates and update the master section-16 route list to match."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "288-293, 355",
+            "problem": "Each reference must be 1-128 bytes and there are at most 128 occurrences, so the aggregate is at most 16384 bytes, which equals the 16KiB bound. The aggregate can only be exceeded by a name that already fails the per-name bound, and that produces the same UnsupportedCapability. The claimed byte-overflow coverage and bounds-mutant credit therefore cannot isolate the aggregate check.",
+            "causal_scenario": "With the aggregate-byte check removed, every outcome is identical, and the specified byte-overflow test still passes against the mutant.",
+            "required_fix": "Drop the aggregate bound and rely on the per-name length checked before copying, or mark it redundant with no kill credit, or define an aggregate bound that can be reached independently and test it."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "183-186, 333-343, 358-361 (vs crates/rrx/src/codex/session.rs:5389-5390)",
+            "problem": "In the generated fixture executable, the --version branch prints and exits before writing any arguments, leader, or environment sentinel. A mutant that omits the version-site pre-exec CAS therefore has no distinguishing observable. A relevant foreign change is still refused at the discovery CAS with identical Store, audit and error outcomes, because neither run commits a successful pre-exec write.",
+            "causal_scenario": "Omitting the version-site CAS survives. The native version child runs with a retained name that is now foreign-declared, discovery's CAS then refuses with the same InvalidConfiguration, and the session.saved count matches the non-mutant run.",
+            "required_fix": "Require the fixture to record a version-invocation entry sentinel and canary-presence booleans before it exits, and bind the version-site omission mutant to that sentinel."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "65-71, 145",
+            "problem": "The USER/LOGNAME whitelist widening is justified as an 'explicitly requested compatibility addition', but no supplied requirement contains that request. The consumed Issue51 policy (requirement 5) says to preserve the whitelist, and the Grok design keeps its whitelist unchanged. The delta changes the native child baseline and introduces newly reviewed identity-control classification.",
+            "causal_scenario": "The delta newly refuses Codex for every Project that declares USER or LOGNAME for another provider and forwards new inherited values to native children. Reviewers and master readers cannot trace its authority, and the design itself says its native need is unproven.",
+            "required_fix": "Cite or record the authority and rationale in the Issue6 requirements or verification, including why these names are identity controls rather than left out of the whitelist; otherwise remove the delta."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "196-200 (vs crates/rrx/src/codex/preparation.rs:159-182)",
+            "problem": "The design says to use Preparation::publish semantics and also that these callers require Preparing. Existing publish short-circuits only Cancelled and Failing; in Consumed or CheckpointCommitted it still runs its closure.",
+            "causal_scenario": "An implementation that reuses publish verbatim would accept a pre-exec environment CAS after consumption without error. No site does this today, but the stated invariant is not enforced and no test or mutant checks it.",
+            "required_fix": "Specify a pre-exec primitive that returns StateConflict unless the state is Preparing, leaves Preparing unchanged on success, and latches Failing on CAS error. Unit-test it."
+          },
+          {
+            "severity": "low",
+            "file": "doc/design/issue-6-environment-design.md",
+            "lines": "117-126",
+            "problem": "The order is fixed for an invalid own reference combined with a malformed caller key. It is not fixed for one caller map that contains both a malformed/GIT_/NUL key (InvalidInput) and an unsupported, undeclared or RRX_ key (InvalidConfiguration). The Grok per-key loop returns whichever comes first in BTreeMap order.",
+            "causal_scenario": "{'A_UNDECLARED':'x','GIT_DIR':'y'} yields InvalidConfiguration, while {'GIT_DIR':'y','Z_UNDECLARED':'x'} yields InvalidInput. Error-kind assertions and migrated tests then depend on key spelling.",
+            "required_fix": "Either state that all syntax checks run over the whole map before any eligibility check, or adopt the per-key BTreeMap order explicitly. Test both orderings."
+          }
+        ],
+        "limitations": [
+          "Manual read-only review of the supplied excerpts only. No compilation, tests, mutants, CI or native probe were run or observed.",
+          "Bodies after crates/rrx/src/codex/session.rs line 1950 were omitted, including supervise, answer_approval, bootstrap_fixture and synthetic_owned_native_rpc_child. Whether any other consumer of ScopeSnapshot.projects, native_environment or the environment exists there could not be verified.",
+          "Whether rrx::codex::policy has consumers outside the crate (CLI, examples, Workflow tests, other providers) was not supplied.",
+          "Installed native config/read shapes for the default/built-in providers, profiles and optional headers are not supplied. The conservative reference subset's effect on ordinary native defaults and auth is unassessed and remains OPEN, as the design states.",
+          "The shared Git helper environment residual (all ambient pairs except nine routing names, used by preflight and checkpoint) is treated as explicitly OPEN under #51/#60 and is not counted as a defect of this proposal.",
+          "Whether serde_json is built with preserve_order (which affects env_http_headers iteration order and per-header error precedence) was not supplied.",
+          "The remainder of issue-6-requirements.md, the F1 issue design, the full master agent-adapter.md, the omitted verification records and the remaining Grok module were not supplied.",
+          "Whether the macOS or Linux runtime injects any variable into an env_clear test child, which would affect the proposed fail-closed pre-constructor guard, cannot be determined from the packet.",
+          "No assessment of full native MVP, ownership/settlement readiness, IPC02, Task attach or four-plus concurrency is implied; ordinary Codex availability remains EMPTY."
+        ]
+      },
+      "usage": {
+        "input_tokens": 2,
+        "cache_creation_input_tokens": 183058,
+        "cache_read_input_tokens": 2160,
+        "output_tokens": 63278,
+        "output_tokens_details": {
+          "thinking_tokens": 59082
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 183058,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 63278,
+            "cache_read_input_tokens": 2160,
+            "cache_creation_input_tokens": 183058,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 183058
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard"
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 2,
+          "outputTokens": 63278,
+          "cacheReadInputTokens": 2160,
+          "cacheCreationInputTokens": 183058,
+          "webSearchRequests": 0,
+          "costUSD": 2.730464,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 59082,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "cost_usd": 2.730464,
+      "duration_api_ms": 593793,
+      "cleanup_verified": true,
+      "guardian_version": "v4-explicit-runtime-preflight",
+      "review_mode": "fresh-independent-strict-design-review"
+    }
+  ]
+}

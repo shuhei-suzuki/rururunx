@@ -1,7 +1,8 @@
-# Issue 6: existing name-only environment admission integration (Design4)
+# Issue 6: existing name-only environment admission integration (Design5)
 
 Status: proposed STRICT component integration; design/source qualification pending.
-Design1 `6264702`, Design2 `9884ec3` and Design3 `4a60fa2` were not qualified as a pair.
+Design1 `6264702`, Design2 `9884ec3`, Design3 `4a60fa2` and Design4 `e85d85b`
+were not qualified as pairs. No Rust implementation has begun.
 This proposal normally composes main `5b4a3147b2b2cd4ed88642741f6b25c4c5f3441b`.
 Production Codex availability stays
 EMPTY. No native workload backend, managed operation, setup/settlement receipt,
@@ -62,27 +63,23 @@ membership then retains the current Codex whitelist: HOME, PATH, SHELL, LANG,
 TERM, TMPDIR, TEMP, TMP, NODE_OPTIONS, NODE_PATH, SSL_CERT_FILE, SSL_CERT_DIR,
 NODE_EXTRA_CA_CERTS, OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_API_BASE, XAI_API_KEY,
 ANTHROPIC_API_KEY, SSH_AUTH_SOCK, SSH_ASKPASS, EDITOR and VISUAL; plus LC_, XDG_,
-CODEX_ prefixes and case-insensitive *_PROXY suffix. Explicit compatibility delta:
-USER and LOGNAME join that whitelist to preserve inherited runtime identity when
-present. These process-environment values are not
-kernel-attested identity, and no native need is claimed from the historical component
-evidence, which omitted them. This explicitly requested compatibility addition is
-unqualified native behavior until the required defaults/hooks/auth gates pass.
-Do not synthesize missing values. No other native prefix/variable is added.
+CODEX_ prefixes and case-insensitive *_PROXY suffix. Preserve that membership
+exactly; USER/LOGNAME remain excluded, with no synthetic missing value. Issue51
+requirement 5 and current policy provide no native need for widening it. Historical
+native auth without those names is supporting evidence only, not complete native
+compatibility. The earlier optional identity delta is deferred outside this scope.
 
 The exact private control predicate is baseline membership AND (invalid registry
-name OR registry-forbidden name OR member of the finite additions {USER, LOGNAME}).
-Admitted syntactically invalid baseline names remain unownable global controls,
-preserved privately and excluded from the DTO. Do not reject an entire host for a
-name that no valid Project can own. Foreign control declarations cannot strip or
-replace the baseline. Reject owning control declarations when the name satisfies
-this provider's membership predicate, including USER/LOGNAME even if their value was
-absent from this frozen snapshot. This deliberate metadata-eligibility change means
-such own declarations for another provider also refuse Codex; no caller is needed.
-Other valid own metadata outside Codex's membership is not a blanket rejection.
-Credentials/credential-location prefixes
-never become controls; structural tests keep OPENAI_API_KEY, XAI_API_KEY and
-ANTHROPIC_API_KEY non-control and assert the finite additions exactly.
+name OR registry-forbidden name). Admitted syntactically invalid baseline names
+remain unownable global controls, preserved privately and excluded from the DTO.
+Do not reject an entire host for a name that no valid Project can own. Foreign
+control declarations cannot strip or replace the baseline. Reject owning control
+declarations when this provider's membership predicate admits the name, including
+when its value was absent. Valid own metadata outside Codex membership is not a
+blanket rejection. Registry-valid credential-bearing or credential-locating names
+never become controls. HOME, CODEX_*, SSH_AUTH_SOCK, SSH_ASKPASS and *_PROXY are
+registry-forbidden global controls; OPENAI_API_KEY, XAI_API_KEY and ANTHROPIC_API_KEY
+remain non-control. Use that single classifier for constructor, caller and references.
 
 Caller eligibility is the existing Issue51 OR rule: registry-valid, owning-declared,
 non-control, and either one of LANG/LC_ALL/LC_CTYPE/TERM/COLORTERM/TZ with its ordinary
@@ -107,16 +104,24 @@ Ordinary own scoped caller values can differ under the existing OR rule. This is
 the availability limit of Issue51 requirements 2/4/5, not complete per-Project value
 routing or waiver of the required multi-Project/native-agent acceptance.
 
-Add explicit Codex-owned `environment_candidates(project)` inspection using
+Add explicit UNGATED, pure own-state metadata inspection
+`CodexAdapter::environment_candidates(project)` using
 `Store::environment_candidates` and this frozen baseline's non-control DTO with
 empty caller names. It returns only the requested Project's declared candidate
 names, for Registered/Blocked/Removed states; no values, foreign query or filesystem
 read. It is never invoked from another Project's rejection. Invalid/unknown own
 metadata retains the Store's opaque failure; the method grants no launch authority.
+Ordinary EMPTY gates all operational launch/approval/checkpoint routes, not this
+bounded synchronous names-only Store inspection; master section 16 must list the
+exception explicitly. It runs no Git/native child and reads no foreign inventory.
 
 As in Issue51, validate own references/control declarations before caller-map syntax,
-then malformed/GIT_/NUL caller input uses InvalidInput (a change from Codex's current
-OwnershipMismatch). A combined invalid-own plus malformed-caller case therefore uses
+then traverse the caller BTreeMap in lexical key order, as the existing Grok loop
+does. For each key, malformed/GIT_/NUL syntax is checked before its eligibility;
+it uses InvalidInput (a change from Codex's current OwnershipMismatch). The first
+failing key wins; there is no whole-map syntax prepass. Thus A_UNDECLARED before
+GIT_DIR is InvalidConfiguration, while GIT_DIR before Z_UNDECLARED is InvalidInput.
+A combined invalid-own plus malformed-caller case therefore uses
 the opaque own-reference InvalidConfiguration. Invalid/control own refs,
 reserved RRX_, unsupported caller names, undeclared/foreign-only eligible caller
 names, different frozen credential values and baseline conflicts use the same
@@ -142,12 +147,22 @@ Intentional changes and test migrations:
 | Effective config restores an arbitrary runtime key/header | No value restoration; explicit unproven-reference refusal described below |
 | Own invalid refs return InvalidInput; undeclared caller returns OwnershipMismatch | Fixed opaque InvalidConfiguration |
 | Malformed/GIT_/NUL caller returns OwnershipMismatch | InvalidInput after own-reference validation; combined-invalid order is explicit |
-| USER/LOGNAME omitted | Inherited constructor values forwarded; owning declarations and caller overrides refused, including absent-value own declarations; native qualification pending |
+| USER/LOGNAME omitted | Remain omitted; no identity whitelist/control delta |
+| Public policy::native_environment and private provider_environment | Removed; one private frozen selector/classifier and pure reference predicate replace them, with no roster parameter |
 | Missing/null selected-provider entry yields zero refs | Same zero-reported-ref outcome; no inferred/default/built-in conformance |
 | Empty/over-128-byte selected id or non-object provider/settings can yield zero refs | Explicit Unsupported identifier bound or ParseFailure shape refusal; conservative unqualified-default limitation |
 | Public new() never captures environment | Frozen constructor selection can fail opaquely on unsupported bounds; successful construction still leaves ordinary availability EMPTY |
-| No extra pre-exec Session publications | Up to three unchanged-content session.saved writes/version increments per fresh/resume attempt; no new consumption/dispatch intent |
+| No extra pre-exec Session publications | Up to three session.saved writes/version increments per fresh/resume attempt; main pre-exec publication also clears verified-dead discovery PID; no new consumption/dispatch intent |
 
+Remove the public `rrx::codex::policy::native_environment` helper and its private
+`provider_environment` restoration helper; no compatibility strip/pass-through shim
+or second whitelist remains. This is an intentional pre-1.0 public API break. Current
+workspace source consumers are prepare_launch, provider_environment and policy unit
+tests; repository CLI/examples/other providers have no call to this Codex helper.
+The separate shared git::native_environment is unchanged and not this API. Future
+external consumers must migrate rather than retain the rejected roster/stripping path.
+Retarget old policy structural tests to the one private selector/classifier; record
+the source/API inventory and ensure no second definition survives.
 Old strip/pass-through/custom-reference policy assertions migrate to these declared
 outcomes. Existing own currency/cancellation, native
 defaults/auth/hooks/config, consumed-input/Lost facts and shared cleanup semantics
@@ -155,9 +170,15 @@ retain their current purpose. All eighteen unit-test new() calls in session.rs
 must migrate to the common injected iterator constructor, including ordinary
 unavailable tests; no test captures ambient credentials then overwrites a baseline.
 The two external integration calls in tests/codex_unavailable.rs are already inside
-an env_clear re-executed child with synthetic HOME/PATH. Add a pre-constructor
-expected-name/value boolean guard there; no unknown value is printed or captured
-by the adapter. No example or production factory currently constructs CodexAdapter.
+an env_clear re-executed child. Supply synthetic HOME/PATH and an owning-declared
+OPENAI_API_KEY marker; an ungated own candidate inspection must report that key after
+real public new(), proving the production iterator wiring. In a distinct child, one
+registry-valid LC_ member over 256 bytes makes new() fail opaquely at construction,
+while its bounded matching control constructs successfully. Before either constructor,
+check the exact permitted synthetic OS-name/value pairs with boolean-only failures;
+never capture an unknown value or print one. A new()->empty-iterator mutant is killed
+by the candidate assertion, and lazy capture/bounds mutants by constructor refusal.
+No example or production factory currently constructs CodexAdapter.
 Ordinary EMPTY behavior remains, but this construction migration is intentional.
 
 Current caller producer inventory: Workflow prepare_agent forwards its input map
@@ -184,8 +205,12 @@ attempt. Immediately before EACH exec receiving those values, invoke the existin
 environment-aware exact CAS on the current reservation Session as the last state
 check: native version, discovery server, main/policy re-exec. Each successful CAS
 increments the actual Session record version and appends session.saved while keeping
-logical Session content and dispatch_intent unchanged (null for this new unconsumed
-attempt). Update reservation version, Control's published exact snapshot and watch
+dispatch_intent unchanged (null for this new unconsumed attempt). The discovery
+PID is cleared to None only after its actual verified shutdown and before the main
+pre-exec CAS; that publication must not advertise the reaped discovery PID. All other
+logical content remains unchanged. Unknown shutdown keeps the existing hold/uncertainty
+and cannot reach this clear or main exec; clearing is not a new death-proof authority.
+Update reservation version, Control's published exact snapshot and watch
 coherently; migrate fixed version/audit assertions to these explicit publications.
 Irrelevant foreign changes add no different event kind/count. The initial check is
 not this final exec fence and performs no publication.
@@ -194,10 +219,13 @@ Use an additive private synchronous before-spawn callback at the actual selected
 exec sites in `preparation::bounded_git` and `NativeServer::launch_preparing`, after
 their command/local setup and directly before spawn. The callback is a statically
 owned reservation Store CAS, not caller code, a background job, a native lifetime
-lease or a new public API. Use `Preparation::publish` semantics under its admission
-mutex: Cancelled/Failing short-circuit, failed CAS latches Failing, and successful
-pre-exec CAS leaves Preparing unchanged. These callers require Preparing; consume
-and checkpoint are not pre-exec primitives. Only admit_dispatch transitions this
+lease or a new public API. Add a private pre-exec primitive under the existing
+admission mutex: Cancelled/Failing return their latched cause; any other non-Preparing
+state (Consumed/CheckpointCommitted) returns StateConflict without running the
+closure. Preparing success stays Preparing; CAS error latches Failing before cleanup.
+Existing publish alone does not enforce this invariant and must not be reused
+verbatim. Unit and actual caller controls prove the phase guard; consume and
+checkpoint are not pre-exec primitives. Only admit_dispatch transitions this
 launch attempt to Consumed. Stop can still cancel after a successful pre-exec CAS.
 Only the existing cancellation check may intervene between successful CAS and spawn;
 no production await/new Store observer. Plain Git preflight uses its existing Git
@@ -207,7 +235,11 @@ covered by this selection. That shared Git environment/ownership acceptance rema
 OPEN under #51/#60 and ordinary EMPTY blocks these Codex preparation effects. No
 shared helper/new/Drop/custody implementation is changed or declared safe here.
 
-At each selected exec site, a cfg(test)-only synchronous post-CAS hook precedes the
+At EACH selected exec site, a cfg(test)-only synchronous PRE-CAS hook runs after
+command setup but before the transaction, outside both admission and Store mutexes.
+It performs relevant/own edits only through a second Store connection, so no earlier
+post-Git gate can mask that particular CAS omission. A distinct post-CAS hook precedes
+the
 unchanged final preparation.check()/spawn. A multi-thread runtime rendezvous drives
 the actual adapter.stop() concurrently and waits only until cancellation is visible,
 then releases the hook so stop can complete; waiting for stop's full outcome inside
@@ -265,33 +297,44 @@ cleanup with no current model frame/consumption. A different selected provider w
 only permitted references does not supply origin evidence; full provenance stays
 OPEN. Selected values pass unchanged; no values are added.
 
-Deterministic extraction reads only model_provider and the selected entry of
-model_providers, then env_key and env_http_headers VALUES (never header names as
-environment names). No inferred includeLayers origin or built-in-provider expansion:
+Extraction reads only model_provider and its selected model_providers entry, then
+env_key and env_http_headers VALUES, never header names as environment names. Apply
+this ordered FIRST-FAILURE procedure at both actual config consumers:
 
-| Reported shape | Component outcome |
-| --- | --- |
-| Config not an object; non-string non-null selection | Fixed opaque ParseFailure |
-| Absent/null model_provider | Zero reported references; no default/provider/auth conformance inferred |
-| Absent/null model_providers; selected entry absent/null | Zero reported references, same as absent selection; no invented built-in/default entry |
-| Empty or over-128-byte selected id | Fixed opaque UnsupportedCapability identifier limitation |
-| Non-null non-object model_providers or selected entry | Fixed opaque ParseFailure shape limitation |
-| Selected object, absent/null env_key and env_http_headers | Zero reported references |
-| Non-string non-null env_key, non-object non-null headers, non-string header value | Fixed opaque ParseFailure |
-| Reported valid references all present and non-control | Same frozen selection; no restoration |
-| Invalid/control/absent reference or extraction overflow | Fixed opaque UnsupportedCapability |
+1. Config must be an object, else fixed opaque ParseFailure.
+2. Absent/null model_provider returns zero references immediately, without inspecting
+   model_providers. Otherwise selection must be a string, else ParseFailure.
+3. Empty or over-128-byte selected identifier returns fixed opaque UnsupportedCapability
+   BEFORE looking at the providers table, including when that table is absent.
+4. Absent/null model_providers returns zero references. Non-null non-object is
+   ParseFailure. Absent/null selected entry returns zero; non-null non-object is ParseFailure.
+5. env_key absent/null is no occurrence; otherwise require string, else ParseFailure.
+   Next, headers absent/null is empty; otherwise require object, else ParseFailure.
+6. Count raw occurrences (present env_key plus header map length), including duplicates.
+   More than 128 returns UnsupportedCapability BEFORE header-value type/name checks.
+7. Inspect ALL header values in lexical header-key order; any non-string is ParseFailure.
+   Only bounded borrowed references are retained. This ordering does not depend on
+   serde_json preserve_order. No name semantics are checked before all shapes pass.
+8. Validate env_key first, then headers in lexical order: each reference is 1–128
+   ASCII bytes, first alphabetic/underscore, remaining alphanumeric/underscore, and
+   registry-valid, not registry-forbidden/GIT_/this classifier's control. Otherwise
+   UnsupportedCapability. Validate lengths before copying.
+9. Every reference must already be present in the private selection, else
+   UnsupportedCapability. Return the IDENTICAL frozen selected values, never restoration.
 
-Selected identifiers are nonempty UTF-8 strings bounded to 128 bytes. Each reference
-preserves the existing selector's 1–128 ASCII-byte predicate: first alphabetic or
-underscore, remaining alphanumeric or underscore; additionally registry-valid,
-not registry-forbidden, not GIT_ and not this baseline's control predicate. Invalid
-names/control names refuse even if HOME/PATH or another value is present. Limit the
-raw env_key-plus-header reference occurrences to 128 and their aggregate name bytes
-to 16KiB, checking before copying/collecting; repeated names still count. Unsupported
-overflow never truncates. This reuses the existing caller-count envelope and native
-reference length as an explicit component bound, not measured native availability.
-Header iteration is bounded before retaining names; unrelated config fields are
-already bounded by the existing 4MiB native RPC frame, not the 1MiB review harness.
+Zero reported refs do not infer built-in/default/auth conformance. There is no
+includeLayers origin or built-in expansion. The count/per-name bounds imply at most
+16KiB name bytes; no redundant aggregate check or independent byte-overflow mutant
+credit is claimed. Existing native RPC bounds unrelated config fields to 4MiB;
+the review harness 1MiB cap is separate.
+
+Combined actual-consumer cases pin precedence: null selection plus wrong-type table
+is zero; empty/oversize id plus absent table is Unsupported; invalid env_key name
+plus malformed header map is ParseFailure; 129 occurrences plus a non-string header
+value is Unsupported; within-bound non-string value plus invalid env_key name is
+ParseFailure. Test selected-table/entry missing and null separately. Compile targeted
+check-order mutants and bind their kills to the exact consumer/error/no-main or
+no-account/thread/frame sentinel, with no masked/redundant credit.
 
 This deliberately treats absent and ambient-only excluded references alike as an
 unproven configuration route. It makes no assertion that an absent value is required,
@@ -311,7 +354,10 @@ The refusal is an explicit component limitation, not whole native MVP acceptance
 Use isolated synthetic iterator input through the actual common constructor and
 fail-closed expected-marker booleans; no ambient credential capture, global set_var
 or value-printing assert. A sanitized env_clear re-exec checks real public new()
-with only known synthetic markers. Observe entry sentinels, canary presence
+with only known synthetic markers and the public-new capture/bounds observables above.
+The native fixture writes a version-entry sentinel and canary-presence booleans
+BEFORE its --version early exit, distinct from discovery/main entry. Observe entry
+sentinels, canary presence
 booleans, Store/watch/audit/frame facts before error labels. Include:
 
 - Constructor freeze/filter/control/bounds, shared API-key and foreign-only collision,
@@ -319,8 +365,8 @@ booleans, Store/watch/audit/frame facts before error labels. Include:
   invalid admitted global-control names and malformed owning refs; opaque errors.
   Assert all named routing/identity whitelist members, CODEX_* and *_PROXY stay
   controls through the shared registry predicate; API keys stay non-control.
-  Assert USER/LOGNAME own and caller refusals with both present and absent values;
-  these are inherited runtime metadata, not proof of native or kernel identity.
+  Assert USER/LOGNAME never join membership; their metadata alone does not refuse
+  Codex, and non-ordinary/non-whitelisted caller values remain unsupported.
   Assert non-UTF-8/GIT_PROXY exclusion before suffix matching, raw OS values, bounds
   constructor refusal and ordinary EMPTY after valid construction. Explicit own
   candidate inspection reads only that Project's names and never another rejection.
@@ -333,13 +379,17 @@ booleans, Store/watch/audit/frame facts before error labels. Include:
 - Actual second-Store replacement hooks immediately before version/discovery/main
   exec: both foreign relevant changes and own-ref edits deny that particular NEW
   child/canary; own edits assert transactional StateConflict and coherent versions.
-  Initial own edits after capture are separately observed before publication without
-  claiming atomic preflight/error-kind precedence. Earlier selected
+  Initial rejecting own edits after capture refuse before publication with the observed
+  opaque category. Neutral or enlarging own-ref edits can pass the separate selection,
+  publish Starting/run Git, then fail the existing post-Git recheck or first native CAS
+  as stale-own StateConflict. Record that complementary path; do not claim every own
+  edit is fenced by initial selection or add a new transaction. Earlier selected
   children may have run and must clean up factually. Post-CAS real stop uses the
   specified hook: assert no child, real stop outcome and coherent Store/watch.
   Matching controls prove each path reaches its exec unchanged, still Preparing
   after each pre-exec CAS, with the later consumed CAS independently succeeding.
-  Assert unchanged Session/dispatch intent and identical scoped event kind/count
+  Assert coherent Session/dispatch intent (including verified-dead discovery PID None
+  in the main pre-exec event), and identical scoped event kind/count
   under irrelevant roster changes; pre-exec success is a durable versioned write.
 - Final consumed CAS conflict yields no current turn/start frame/consumed publication,
   without pretending prior execs never happened. Already-owned approval/stop remains
@@ -351,13 +401,16 @@ booleans, Store/watch/audit/frame facts before error labels. Include:
   consumer. Unknown references never restore a runtime canary; discovery cleanup
   precedes refusal, with no main exec/model frame. A second effective config with an
   unpermitted ref denies before account/thread/model/consumption after real main
-  cleanup; identical config is positive. Cover EVERY extraction table row, synthetic
-  reported default entry, raw duplicate/count/byte overflow and exact restored source.
+  cleanup; identical config is positive. Cover EVERY extraction procedure branch, synthetic
+  reported default entry, combined first-failure cases, raw duplicate/count and per-name
+  bounds, and exact restored source. No redundant aggregate-bound kill credit.
   No native optionality/default-provider proof claimed.
 
-Compiled actual-consumer mutants cover constructor filtering/control/freeze/bounds,
+Compiled actual-consumer mutants cover real public-new iterator/eager-bounds wiring,
+constructor filtering/control/freeze/bounds,
 DTO baseline/caller population, exact-value comparison, initial check omission,
-EACH pre-exec CAS omission, post-CAS cancellation check omission, wrongly consuming
+EACH pre-exec CAS omission (version killed by its pre-exit sentinel), Preparing-only
+phase guard omission, post-CAS cancellation check omission, wrongly consuming
 pre-exec publication, discovery reference-check omission killed on no-main-entry,
 main reference-check omission killed on no-account/thread/model/consumption,
 consumed CAS omission,
@@ -368,7 +421,8 @@ Redundant/masked/surviving operators earn no kill credit; restore exact source b
 
 Implementation must update master agent-adapter section 16 (Codex component boundary)
 and its environment-admission current-state text: frozen/filter/control/DTO facts,
-all-non-control availability and own candidate inspection, each pre-exec publication,
+all-non-control availability and ungated pure own candidate metadata inspection,
+removed public legacy helper/API migration, each pre-exec publication,
 own-only checkpoint, both effective-config predicates and conservative subset limits.
 Keep ordinary EMPTY and all missing ownership/native producers explicit, with no
 issue history in those master paragraphs. Root #19 lifetime component remains a

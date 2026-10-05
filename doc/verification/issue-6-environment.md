@@ -1,6 +1,6 @@
 # Issue 6 environment admission component: verification
 
-Current state: Design4 proposed; Design1/2/3 not qualified as pairs. No Rust implementation or
+Current state: Design5 proposed; Design1/2/3/4 not qualified as pairs. No Rust implementation or
 source/native acceptance.
 Ordinary Codex availability remains EMPTY. This consumes existing Issue51 policy
 only; no native workload/backend, managed ownership, settlement or configuration
@@ -128,3 +128,38 @@ as `ea3e8efe6774fcbd97d7bb648212736d1be2876f`. Incoming reviewed structural Goal
 validation changes no Codex source or Store environment helper bytes. Its source
 composition is not a same-head rerun. Design4 requires its own qualified finite gate;
 no Rust source implementation has begun, and historical old native holds remain.
+
+## Design4, public immutable `e85d85b`
+
+Two fresh peer-free native zero-tool manual sessions reviewed 49 explicit public
+source sections, byte-compared at the immutable head; common packet 465,220 bytes.
+Both returned request_changes and actually verified retained selected-group cleanup,
+child reap and stdin-writer join. Normal native auth/rules/hooks/model/effort remained.
+
+| Review | Native session | Findings | Observed cost | Native API duration |
+| --- | --- | --- | --- | --- |
+| A4 | `6dbe7fcd-0c40-4ed5-8f79-751a0c30360f` | 0 CH, 1 medium, 5 low | $3.429280 | 933,929 ms |
+| B4 | `ccec9b73-6726-46f4-a881-839b3d721a88` | 0 CH, 3 medium, 5 low | $2.730464 | 593,793 ms |
+
+The pair is not qualified. Verified against code: the public legacy Codex environment
+helper retains a second roster/stripping classifier; the extraction table has
+conflicting overlapping outcomes; injected fixtures alone cannot observe public
+new() capturing eagerly. Design5 explicitly removes that pre-1.0 helper API, uses
+one private seam, orders every extraction refusal, and requires real env_clear-child
+capture/candidate and constructor-bounds controls. Finite lows correct version-entry
+sentinels, per-site pre-CAS hooks, Preparing-only publication, verified-dead discovery
+PID clearing, mixed-caller order, redundant-bound credit and initial-own-edit claims.
+
+Issue51 requirement 5 (preserve whitelist) and current policy.rs membership provide
+no native need for USER/LOGNAME. Parent accepted removing that optional delta after
+both reviews closed. Historical native auth succeeded without it, but that is only
+supporting evidence of no additional requirement, never full native compatibility.
+The ordinary baseline is preserved; no new auth/config/default or host probe is added.
+
+Docs CI37249643773 checked `4f0a71b4` parents [5b4,e85], complete tree
+`4f9914ee9d1abe500fd99857f9a581c635ae24b4` equal to e85. Both OS jobs/every step passed.
+This new composed docs head neither reruns nor cures the older inspection failures;
+no cause, deadline/concurrency or workload attribution is inferred. Adjacent records
+retain exact findings, public-input identities, actual checkout provenance and reds.
+Design5 still needs its own independent pair qualification before Rust implementation.
+Ordinary EMPTY and all whole native/ownership/settlement/MVP gates remain OPEN.
