@@ -201,8 +201,8 @@ retained storage must be canonical and independent: refuse `commondir`, alternat
 `shallow` and `info/grafts`, including symlink entries. Check before/after capture
 fetch and before graph inspection; no file-read failure implies absence. The
 [Git repository environment](https://git-scm.com/docs/git) documents common-dir
-and object routing. [Git's shallow reader](https://github.com/git/git/blob/v2.54.0/shallow.c)
-and [graft reader](https://github.com/git/git/blob/v2.54.0/commit.c) interpret
+and object routing. [Git's shallow semantics](https://git-scm.com/docs/shallow)
+and [graft reader](https://github.com/git/git/blob/v2.49.0/commit.c) interpret
 ancestry metadata: successful rev-list/fsck alone does not establish full original
 ancestry under those overrides. Removal of `GIT_SHALLOW_FILE`/`GIT_GRAFT_FILE` is
 defensive; their direct environment behavior has not been established for the

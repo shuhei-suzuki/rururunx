@@ -490,12 +490,70 @@ or unsupported. Observed unexpected networks/volumes are reported, not deleted.
 The overall cleanup remains unknown or leftovers; ports/worktrees stay quarantined,
 and an empty Docker list is not a complete collection or release certificate.
 
+## Historical retained-result inspection checkpoint
+
+The public ResultStore verification path now registers each finite read-only Git
+helper before spawn. Its authority is the current Runtime epoch plus the complete
+indexed Ready/Published artifact snapshot, independent of the producing unit's
+retired generation or closed native/finalization permissions. Each operation has
+a distinct cookie, finite safe target, bounded capture, periodic epoch/artifact
+checks and transactional receipt revalidation. Historical executor/profile/temp
+paths are not needed, and read failures never overwrite work or cleanup outcomes.
+Public publication rechecks the complete verified artifact in its existing CAS.
+Manifest reads are bounded at 128 KiB plus a sentinel. Generic unregistered Git/
+capture helpers now compile only for owned test fixtures.
+
+At `1ac7700`, ten result controls passed and one failed because the corruption
+fixture assumed loose-object storage. A pack-independent correction at `10e9abc`
+passed all eleven. The twenty existing execution-ledger controls also passed.
+Initial Clippy exposed the now-unused production helpers; test-only compilation
+and imports were corrected without allowing dead code.
+
+The [round16 independent reports](agent-execution-phase2-preliminary16-reviews.json)
+requested changes: inherited GIT_COMMON_DIR could substitute another common store,
+and shallow ancestry could hide missing required parents. Both were verified with
+actual public-path negative controls in owned temporary repositories, at `8543974`.
+An additional graft-metadata audit reproduced the same ancestry truncation. All
+three oracles failed before correction. Internal Runtime Git now clears inherited
+repository/common/object/namespace/ancestry routing; retained capture/inspection
+refuses canonical aliases, commondir, alternates, shallow and info/grafts. Required
+native settings/hooks and HOME are not replaced. Direct GIT_SHALLOW_FILE/GIT_GRAFT_FILE
+environment behavior is unestablished; it is not credited as an exploit reproduction.
+
+The [round17](agent-execution-phase2-preliminary17-reviews.json) reviews approved
+the corrected component at `ccae042`, each with zero C/H/M/L. A full run found one
+cleanup fixture still passing the pre-publication Ready DTO after publication.
+Its two-line test-only correction uses the actual Published DTO at `187cc63`;
+the targeted cleanup control and full workspace then passed. The
+[round18](agent-execution-phase2-preliminary18-reviews.json) reviewers independently
+approved that test delta with zero findings and unchanged production bytes.
+These are static component approvals, not coordinated Phase2 or native acceptance.
+
+On exact `187cc63`, the macOS workspace run passed 415 rrx library tests, four
+tracker unit tests, 113 primary rrx integrations, one tracker discovery control and
+two doctests: 535 primary passes, zero failures and 30 primary ignored cases.
+Nested reexecuted witnesses are not counted again. Current workspace/all-target
+Clippy with warnings denied, formatting and diff checks passed. Explicit verification
+PATH selected Git 2.49.0, although the interactive shell selects Apple Git 2.54.0;
+only the former is credited to these controls. Neither is a general tool-version
+qualification. Linux and actual native-provider compatibility remain unverified.
+
+The [retained inspection ledger](agent-execution-phase2-retained-checkpoint.json)
+preserves exact sources, all six compiled mutation patches/commits and restoration
+trees, plus 23 local log hashes. Omitting common-directory sanitation, shallow
+refusal, graft refusal, intent registration, exact artifact equality or publication
+snapshot equality fails its actual selected oracle. Each restored source passes,
+with a tree identical to the corrected mutation baseline. Owned mutation worktrees
+were normally removed after commands ended; their commit chain remains under a
+local verification ref. No push, actual account/Docker call, license or README
+Status change, current-source installation or Phase3 acceptance occurred.
+
 ## Remaining Phase2 and acceptance work
 
 - Full current-source/retained-graph qualification and production source/evidence
   ports; Runtime orchestration and operational CLI.
 - Required native/Git settings and hooks, dependency qualification and remaining
-  scoped preparation/retained-inspection helpers; full finite tool profiles and
+  scoped bootstrap/preparation helpers; full finite tool profiles and
   installed-binary tool mediation tests.
 - Optional Linux scope, actual Docker qualification, filesystem/port release
   policy and complete crash/restart/legacy reconciliation.

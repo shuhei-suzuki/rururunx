@@ -1,0 +1,204 @@
+{
+  "source_commit": "ccae04272f59c5db55e2476344f956e79ff85324",
+  "baseline_commit": "1ac77007f39986e1506ff01c1d5eb290922f78ac",
+  "review_kind": "Independent preliminary component static reviews; not Phase2/native/MVP acceptance",
+  "reports": [
+    {
+      "review": "Independent preliminary STRICT component re-review, round 17",
+      "source_commit": "ccae04272f59c5db55e2476344f956e79ff85324",
+      "baseline_commit": "1ac77007f39986e1506ff01c1d5eb290922f78ac",
+      "approved_contract": "9a11d03f1b1676c2c3c8a24b6b3fd328759f7db5",
+      "verdict": "APPROVE",
+      "counts": {
+        "Critical": 0,
+        "High": 0,
+        "Medium": 0,
+        "Low": 0
+      },
+      "findings": [],
+      "own_prior_findings_disposition": [
+        {
+          "id": "P-M1",
+          "status": "Source-closed",
+          "evidence": [
+            "results.rs:655-671 retained_storage rejects canonical-root aliases and any commondir, objects/info/alternates, shallow or info/grafts entry. symlink_metadata distinguishes missing entries from errors and also rejects dangling symlink entries.",
+            "results.rs:313,337 invokes the storage predicate before and after capture fetch; results.rs:466 applies it before retained graph verification. Thus a physical shallow boundary cannot qualify missing ancestry in capture or public verification.",
+            "results.rs:630-652 shared internal git_command_for clears common-directory, namespace, ancestry, object and repository routing, and explicitly disables replacements/lazy fetch. Both UnitGit and RetainedGit use the shared constructor.",
+            "routing_tests.rs:124-152 uses the actual public verify path with selectively missing older commit objects, then a physical shallow boundary, and a restored genuine graph control."
+          ],
+          "qualification": "No test execution or parent pass claims inherited. My prior report included a GIT_SHALLOW_FILE environment route as a static hypothesis; its direct installed-version behavior is not established here and is not credited as a reproduced exploit. Removal of GIT_SHALLOW_FILE/GIT_GRAFT_FILE is defensive; physical shallow/graft metadata behavior and its refusal are the relevant source closure."
+        }
+      ],
+      "changed_consumers_reviewed": [
+        {
+          "locations": "results.rs:288-369,425-509,626-691; git_io.rs:59-67; retained_io.rs:55-126",
+          "assessment": "The shared constructor retains runtime auto-maintenance/fsmonitor suppression and does not remove native auth, HOME, global user configuration or required hooks. New routing exclusions apply only to internal scoped Git, not native Agent default settings. Current artifact capture, snapshot/readonly verification and historical inspection use the same constructor; storage refusal happens before graph traversal and before Ready publication. Existing epoch, whole-artifact SQL CAS, wait guard and Unknown projection are unchanged."
+        },
+        {
+          "locations": "process.rs:95-111; results.rs:626-628,684-690; call-site grep across fixed source",
+          "assessment": "Generic unregistered Git/capture helpers now compile only for tests. Remaining production native helper paths use actual registered UnitGit/RetainedGit plus capture_child/capture_scoped. Fixed-source callers of removed helpers are test modules; no current production dangling caller found."
+        }
+      ],
+      "fixture_source_assessment": [
+        {
+          "locations": "results/tests/retained_tests/routing_tests.rs:4-63",
+          "assessment": "The owned parent copies a complete backup through independent transport, removes original graph objects, and confirms original storage failure. Its separate actual test process receives ambient GIT_COMMON_DIR pointing at the complete backup and invokes public verify after Runtime reopening. The child asserts refusal and parent checks actual process status. This can distinguish ignoring an incomplete original store from accidental fallback to complete foreign storage. It is fixture routing evidence only, not native-account qualification."
+        },
+        {
+          "locations": "results/tests/retained_tests/routing_tests.rs:65-175",
+          "assessment": "Three-commit fixture preserves actual tip while removing older ancestors. The owned unpack step targets a fresh store and removes exact ancestor IDs, followed by public missing-ancestry/shallow and graft refusals. The shallow test also restores the full original object store and requires success. Its explicit pack prerequisite is a fixture setup assumption, not a universal Git-storage guarantee; I did not execute it."
+        },
+        {
+          "locations": "results/tests/retained_tests.rs:293-334",
+          "assessment": "The general missing-graph control now renames the full objects directory, preserving refs, instead of assuming a selected blob is loose. It verifies exact ref identity survives while public verification refuses missing graph, then restores objects and checks success. Manifest size refusal still asserts no additional inspections."
+        }
+      ],
+      "causal_controls_not_executed": [
+        "Omit the physical shallow/graft refusal and use the corresponding selective ancestor test; the control should reject any accepted truncated graph, not merely a setup failure.",
+        "Omit GIT_COMMON_DIR removal and use the separate process public verification control with its complete foreign backup; the worker must fail its refusal oracle if original missing objects are hidden.",
+        "Restored complete graph should continue to verify after negative-control metadata is removed. No mutation sensitivity or pass is claimed without execution."
+      ],
+      "documentation_assessment": "Read only the changed design/master paragraphs, which distinguish direct environment behavior not established for the tested Git from physical metadata semantics. They preserve current-runtime read authority, receipt program-reference scope, inherited hooks/auth and no physical death/recovery claim. External primary-source links were not fetched; external version behavior is not certified.",
+      "limitations": [
+        "Static immutable-object component review only; no dirty/later source, peer report, aggregate review JSON, progress/checkpoint or parent test/evidence logs read.",
+        "No tests/builds/native accounts/models/network/Docker/OS/configuration/credential actions or signals performed.",
+        "No universal same-UID filesystem enforcement or concurrent external mutation proof inferred from canonical path/metadata checks.",
+        "No final Phase2/native/profile/MVP acceptance. Planned missing integrations were not counted solely for their absence."
+      ],
+      "live_handles": [],
+      "commands_closed": true
+    },
+    {
+      "reviewer": "agent_execution_phase0_review_b",
+      "round": 17,
+      "source_commit": "ccae04272f59c5db55e2476344f956e79ff85324",
+      "baseline_commit": "1ac77007f39986e1506ff01c1d5eb290922f78ac",
+      "approved_contract_commit": "9a11d03f1b1676c2c3c8a24b6b3fd328759f7db5",
+      "review_kind": "Independent preliminary STRICT immutable-source component re-review",
+      "verdict": "APPROVE_COMPONENT_SOURCE_ONLY",
+      "severity_counts": {
+        "C": 0,
+        "H": 0,
+        "M": 0,
+        "L": 0
+      },
+      "findings": [],
+      "prior_own_findings_disposition": [
+        {
+          "id": "round16-H1",
+          "severity": "H",
+          "disposition": "CLOSED_STATIC",
+          "locations": [
+            {
+              "file": "crates/rrx/src/execution/results.rs",
+              "lines": "630-653"
+            },
+            {
+              "file": "crates/rrx/src/execution/retained_io.rs",
+              "lines": "55-69"
+            },
+            {
+              "file": "crates/rrx/src/execution/git_io.rs",
+              "lines": "59-67, 113-117"
+            }
+          ],
+          "evidence": "The shared internal Git constructor now explicitly removes GIT_COMMON_DIR along with inherited repository/object/namespace/replacement/ancestry routing variables. Both actual historical RetainedGit and existing UnitGit call that constructor. Later overlays contain unit resource and Git policy entries, not a restored common-directory override. Thus the previous current-Runtime public verification with ambient GIT_COMMON_DIR pointing to a complete backup cannot read that backup in place of the recorded retained repository. Lazy fetch and replacement objects are disabled on both internal paths. Native official Agent inheritance is not changed by this constructor hardening.",
+          "controls_source_inspected_not_executed": [
+            {
+              "file": "crates/rrx/src/execution/results/tests/retained_tests/routing_tests.rs",
+              "lines": "4-63",
+              "evidence": "The fixture makes a transport copy, removes the original objects while preserving refs/manifest, drops the owner and starts a separate current test process inheriting GIT_COMMON_DIR. That child opens the current Runtime and invokes actual public ResultStore::verify; it must reject the missing original graph. This is the requested public/native-process causal wiring, not merely an observer environment assertion."
+            }
+          ]
+        }
+      ],
+      "verified_source_observations": [
+        {
+          "topic": "Physical retained storage checks",
+          "locations": [
+            {
+              "file": "crates/rrx/src/execution/results.rs",
+              "lines": "313-337, 448-466, 655-673"
+            }
+          ],
+          "evidence": "retained_storage requires the retained repository path to equal its canonical directory path and rejects any existing commondir, objects/info/alternates, shallow or info/grafts entry using symlink_metadata. Symlinks count as present; access or other metadata errors propagate rather than imply absence. The check runs before capture fetch, after capture fetch and before verify's exact refs/graph/fsck commands. Existing capture graph checks/durability and historical current-epoch/indexed-artifact fences remain."
+        },
+        {
+          "topic": "Read authority and publication consumers",
+          "locations": [
+            {
+              "file": "crates/rrx/src/execution/retained_io.rs",
+              "lines": "70-125"
+            },
+            {
+              "file": "crates/rrx/src/execution/results.rs",
+              "lines": "369-373, 498-509"
+            },
+            {
+              "file": "crates/rrx/src/state/execution/artifacts.rs",
+              "lines": "5-39, 50-146, 231-283"
+            }
+          ],
+          "evidence": "The delta does not change current-epoch/full-indexed-artifact authority, finite command forms, durable per-operation intent before spawn, separate cookie, periodic validation, bounded capture and transactional receipt revalidation. Public publish still verifies then CAS-checks the entire verified artifact with the owning authority/Task state. Historical helpers do not reopen Task/Session/native/finalization permission or require old executor/profile paths."
+        },
+        {
+          "topic": "Unregistered helper boundary",
+          "locations": [
+            {
+              "file": "crates/rrx/src/execution/process.rs",
+              "lines": "95-114"
+            },
+            {
+              "file": "crates/rrx/src/execution/results.rs",
+              "lines": "626-629, 684-691"
+            }
+          ],
+          "evidence": "Generic capture/capture_observed and unregistered results git/git_command helpers are now cfg(test). Fixed-source symbol searches found their consumers in test-only paths; production internal Git uses journaled UnitGit or RetainedGit. Owned capture_child/capture_scoped remain production hygiene primitives. No dirty source or build evidence was used to infer compilation."
+        },
+        {
+          "topic": "Documentation scope",
+          "locations": [
+            {
+              "file": "doc/design/agent-execution-design.md",
+              "lines": "197-208"
+            },
+            {
+              "file": "doc/design/master/agent-execution.md",
+              "lines": "85-88"
+            }
+          ],
+          "evidence": "The design describes internal routing hardening and physical metadata refusal while retaining native Agent auth/settings/hooks. It expressly treats GIT_SHALLOW_FILE/GIT_GRAFT_FILE removal as defensive and does not claim their direct environment semantics were demonstrated. Linked external Git references were not browsed under this source-only task; no external-version/conformance assertion is credited."
+        }
+      ],
+      "controls_inspected_but_not_executed": [
+        {
+          "file": "crates/rrx/src/execution/results/tests/retained_tests.rs",
+          "lines": "295-333",
+          "purpose": "Public reference and graph-loss checks now relocate the entire object store, avoiding assumptions about whether the missing graph is loose or packed; restore and bounded-manifest controls remain."
+        },
+        {
+          "file": "crates/rrx/src/execution/results/tests/retained_tests/routing_tests.rs",
+          "lines": "65-175",
+          "purpose": "A three-commit fixture removes selected ancestors, tests ordinary missing graph failure, then installs physical shallow/graft metadata and calls actual public verify. The helper converts fetched packs to an owned loose store for selective deletion; its existing pack assertion is a fixture prerequisite, not universal Git storage qualification."
+        }
+      ],
+      "additional_proposed_controls_not_executed": [
+        "Execute the public common-directory child control and existing epoch/invalidation/abandonment/publication controls on the fixed source; distinguish native Git fixture results from actual authenticated Agent qualification.",
+        "Add/execute explicit physical commondir, alternates and dangling-symlink entry cases plus capture refusal before fetch. Source branches are clear but this review did not observe these cases execute.",
+        "Qualify the selective-ancestor fixture under the chosen Git profile, including its fetched-pack prerequisite; supporting another object-storage choice may require explicit fixture packing or object enumeration. Do not credit the defensive shallow/graft environment removals as reproduced environment exploits."
+      ],
+      "limits": [
+        "Only fixed git objects at source/baseline and relevant approved contract reasoning were inspected. No dirty/later source, peer report, aggregate/progress/checkpoint document or parent logs/test claims were read.",
+        "No build/test/native Agent/Docker/network/OS/process/configuration/credential action was performed. Only this authorized private report was written. Controls above were inspected or proposed, never observed passing.",
+        "Static review closes this reviewer's routing finding and finds no additional concrete production delta defect. It does not establish actual Git/OS/native account compatibility, complete isolation, or every fixture's portability.",
+        "Physical checks and separate Git calls are non-atomic under arbitrary outside mutation; same-user malicious storage edits/host destruction remain outside the cooperative guarantee. No security sandbox claim is made.",
+        "Pending operational Runtime/Gates/CLI/install and actual four-Task native acceptance remain outside this component re-review. This is not final Phase2/native/MVP acceptance."
+      ],
+      "owned_handles": {
+        "live_command_sessions": [],
+        "native_processes_started": [],
+        "tool_status": "All immutable-source read commands completed with exit codes and without session_id. No owned command, child, Agent, Docker, cleanup worker or tracker handle remains."
+      }
+    }
+  ]
+}
