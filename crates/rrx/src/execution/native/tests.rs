@@ -1006,6 +1006,158 @@ async fn native_subscription_wait_reason_matches_status_during_retry_and_termina
 }
 
 #[tokio::test]
+async fn claude_live_quota_wait_is_scoped_preserves_input_and_keeps_sibling_running() {
+    for (payload, waits, work, disposition) in [
+        (
+            "quota-retry-held",
+            true,
+            WorkOutcome::Unknown,
+            Disposition::QuotaInterrupted,
+        ),
+        (
+            "quota-retry-success-held",
+            true,
+            WorkOutcome::Success,
+            Disposition::Completed,
+        ),
+        (
+            "quota-foreign-held",
+            false,
+            WorkOutcome::Failure,
+            Disposition::Completed,
+        ),
+        (
+            "quota-unknown-held",
+            false,
+            WorkOutcome::Unknown,
+            Disposition::CapacityInterrupted,
+        ),
+    ] {
+        let (dir, owner, task) = results::tests::fixture().await;
+        let manager = attempts::AttemptManager::new(owner.clone());
+        let sessions = NativeSessions::new(owner.clone()).unwrap();
+        let mut sibling = crate::domain::Task::new(
+            task.project_id,
+            task.goal_id,
+            "sibling".into(),
+            "claude".into(),
+        );
+        owner.store.lock().unwrap().put_task(&mut sibling).unwrap();
+        let (other, _) = manager
+            .prepare(sibling.id, "claude", "Implement", None)
+            .await
+            .unwrap();
+        let program = program(dir.path(), "claude");
+        let NativeStart::Launched(other_handle) = sessions
+            .start_inner(input(&other, "complete"), None, None, Some(program.clone()))
+            .await
+            .unwrap()
+        else {
+            panic!("sibling queued");
+        };
+        let (unit, _) = manager
+            .prepare(task.id, "claude", "Implement", None)
+            .await
+            .unwrap();
+        let output = resources::ResourceManager::new(owner.clone())
+            .profile(&unit)
+            .unwrap()
+            .output;
+        let NativeStart::Launched(handle) = sessions
+            .start_inner(input(&unit, payload), None, None, Some(program))
+            .await
+            .unwrap()
+        else {
+            panic!("quota fixture queued");
+        };
+        let mut updates = sessions.subscribe(&handle).unwrap();
+        tokio::time::timeout(Duration::from_secs(10), async {
+            loop {
+                if !updates.borrow().pending.is_empty() {
+                    break;
+                }
+                updates.changed().await.unwrap();
+            }
+        })
+        .await
+        .unwrap();
+        let watched = updates.borrow().clone();
+        let durable = sessions.status(&handle).unwrap();
+        let store = owner.store.lock().unwrap();
+        let current = store.execution_unit(unit.id).unwrap();
+        let expected_wait = waits.then_some(WaitReason::Quota);
+        assert_eq!(watched.wait_reason, expected_wait, "{payload}: watch");
+        assert_eq!(durable.wait_reason, expected_wait, "{payload}: status");
+        assert_eq!(current.wait_reason, expected_wait, "{payload}: ledger");
+        assert_eq!(watched.authority, durable.authority, "{payload}");
+        assert_eq!(
+            current.state,
+            if waits {
+                UnitState::WaitingQuota
+            } else {
+                UnitState::Running
+            }
+        );
+        assert!(current.native_effects_open && current.result_finalization_open);
+        assert_eq!(current.work, None);
+        assert_eq!(
+            store
+                .execution_is_quota_probe(unit.id, "claude", "unknown")
+                .unwrap(),
+            waits
+        );
+        let sibling_before = store.execution_unit(other.id).unwrap();
+        assert_eq!(sibling_before.state, UnitState::Running);
+        assert_eq!(sibling_before.wait_reason, None);
+        assert_eq!(sibling_before.work, None);
+        for id in [unit.id, other.id] {
+            assert_eq!(
+                store
+                    .managed_effects(id)
+                    .unwrap()
+                    .iter()
+                    .filter(|e| e.kind == "native_input")
+                    .count(),
+                1,
+                "{payload}: input before release"
+            );
+        }
+        drop(store);
+        std::fs::write(output.join("fixture-quota-release"), "release").unwrap();
+        let end = terminal(&sessions, &handle).await;
+        assert_eq!(end.work, Some(work), "{payload}");
+        assert_eq!(end.disposition, disposition, "{payload}");
+        let store = owner.store.lock().unwrap();
+        assert_eq!(
+            serde_json::to_value(store.execution_unit(other.id).unwrap()).unwrap(),
+            serde_json::to_value(sibling_before).unwrap(),
+            "{payload}: sibling ledger"
+        );
+        assert_eq!(
+            store
+                .managed_effects(unit.id)
+                .unwrap()
+                .iter()
+                .filter(|e| e.kind == "native_input")
+                .count(),
+            1,
+            "{payload}: input not resent"
+        );
+        assert!(
+            !store
+                .execution_is_quota_probe(unit.id, "claude", "unknown")
+                .unwrap()
+        );
+        drop(store);
+        sessions.cancel(&other_handle).await.unwrap();
+        assert_eq!(
+            terminal(&sessions, &other_handle).await.disposition,
+            Disposition::Cancelled
+        );
+    }
+}
+
+#[tokio::test]
 async fn configured_global_provider_alias_and_project_caps_wait_before_native_spawn() {
     for limit in ["global", "provider-alias", "project"] {
         let (dir, owner, task) = results::tests::fixture().await;
