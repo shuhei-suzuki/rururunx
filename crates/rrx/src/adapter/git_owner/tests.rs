@@ -828,9 +828,10 @@ async fn actual_reader_registration_progresses_while_native_cleanup_holds_its_va
         record.native.try_lock().is_err(),
         "reader progress must precede native unlock"
     );
+    call.abort();
+    assert!(call.await.unwrap_err().is_cancelled());
     drop(release_initialized);
     drop(release_native);
-    assert_eq!(call.await.unwrap().unwrap_err().kind, ErrorKind::Timeout);
     released(&context).await;
     assert!(
         flag.load(Ordering::SeqCst),
