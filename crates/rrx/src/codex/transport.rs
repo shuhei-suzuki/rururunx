@@ -148,6 +148,9 @@ impl NativeServer {
         availability.require()?;
         availability.record(Site::Transport);
         preparation.check()?;
+        environment
+            .require_boundary(before_spawn.is_some())
+            .map_err(|error| preparation.failed(error))?;
         if !executable.is_absolute() || !workspace.is_absolute() || workspace.to_str().is_none() {
             return Err(failure(
                 ErrorKind::InvalidConfiguration,

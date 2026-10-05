@@ -487,6 +487,12 @@ impl Reservation {
         authority: &ScopeSnapshot,
         request: &LaunchRequest,
     ) -> AdapterResult<()> {
+        let environment = self.environment.as_ref().ok_or_else(|| {
+            failure(
+                ErrorKind::StateConflict,
+                "native environment selection missing",
+            )
+        })?;
         let previous_intent = self.session.recovery.get("dispatch_intent").cloned();
         self.session.recovery["dispatch_intent"] = json!({
             "id":uuid::Uuid::new_v4(),"origin":"runtime","consumed":true,
@@ -494,12 +500,6 @@ impl Reservation {
             "input_sha256":format!("{:x}",Sha256::digest(request.input.payload.as_bytes())),
             "authority_versions":authority.versions(),
         });
-        let environment = self.environment.as_ref().ok_or_else(|| {
-            failure(
-                ErrorKind::StateConflict,
-                "native environment selection missing",
-            )
-        })?;
         let attempt = self.attempt.clone();
         let admitted = attempt.preparation.consume(|| {
             #[cfg(test)]

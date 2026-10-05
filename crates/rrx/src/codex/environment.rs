@@ -266,6 +266,15 @@ impl ExecEnvironment<'_> {
     pub fn selected(&self) -> bool {
         matches!(self, Self::Selected(_))
     }
+    pub fn require_boundary(&self, present: bool) -> AdapterResult<()> {
+        if self.selected() && !present {
+            return Err(failure(
+                ErrorKind::StateConflict,
+                "selected native exec admission unavailable",
+            ));
+        }
+        Ok(())
+    }
     pub fn apply(&self, command: &mut tokio::process::Command) {
         match self {
             Self::Ambient(pairs) => {
@@ -336,6 +345,77 @@ mod tests {
             Err(error) => error.kind,
             Ok(_) => panic!("expected opaque refusal"),
         }
+    }
+    #[test]
+    fn exact_membership_control_classification_has_no_additional_controls() {
+        let controls = [
+            "HOME",
+            "PATH",
+            "SHELL",
+            "TMPDIR",
+            "TEMP",
+            "TMP",
+            "NODE_OPTIONS",
+            "NODE_PATH",
+            "SSL_CERT_FILE",
+            "SSL_CERT_DIR",
+            "NODE_EXTRA_CA_CERTS",
+            "OPENAI_BASE_URL",
+            "OPENAI_API_BASE",
+            "SSH_AUTH_SOCK",
+            "SSH_ASKPASS",
+            "EDITOR",
+            "VISUAL",
+            "XDG_CONFIG_HOME",
+            "XDG_STATE_HOME",
+            "XDG_DATA_HOME",
+            "XDG_CACHE_HOME",
+            "XDG_RUNTIME_DIR",
+            "CODEX_HOME",
+            "CODEX_SYNTHETIC",
+            "HTTP_PROXY",
+            "https_proxy",
+            "LC_BAD-NAME",
+        ];
+        let non_controls = [
+            "LANG",
+            "TERM",
+            "OPENAI_API_KEY",
+            "XAI_API_KEY",
+            "ANTHROPIC_API_KEY",
+            "LC_ALL",
+            "LC_CTYPE",
+            "LC_SYNTHETIC",
+            "XDG_CONFIG_DIRS",
+            "XDG_DATA_DIRS",
+            "XDG_SYNTHETIC",
+        ];
+        for name in controls {
+            assert!(baseline_key(name) && control(name));
+        }
+        for name in non_controls {
+            assert!(baseline_key(name) && !control(name));
+        }
+        for name in controls.into_iter().chain(non_controls).chain([
+            "USER",
+            "LOGNAME",
+            "COLORTERM",
+            "TZ",
+            "GIT_HTTP_PROXY",
+            "SYNTHETIC",
+        ]) {
+            // With EMPTY additions, membership is the only extra condition;
+            // no registry-valid, ownable name becomes a global control.
+            assert!(
+                control(name)
+                    == (baseline_key(name)
+                        && (!environment_name_valid(name) || environment_name_forbidden(name)))
+            );
+            assert!(
+                !control(name) || !environment_name_valid(name) || environment_name_forbidden(name)
+            );
+        }
+        assert!(!baseline_key("USER") && !baseline_key("LOGNAME"));
     }
     #[test]
     fn common_constructor_preserves_raw_values_controls_and_exact_membership() {
@@ -472,6 +552,7 @@ mod tests {
         assert!(kind(baseline.select(&store, &request)) == ErrorKind::InvalidConfiguration);
         let mut malformed = request.clone();
         malformed.project.environment_refs = vec!["HOME".into()];
+        malformed.environment = BTreeMap::from([("GIT_DIR".into(), "synthetic".into())]);
         assert!(kind(baseline.select(&store, &malformed)) == ErrorKind::InvalidConfiguration);
         let input = (0..129)
             .map(|i| (format!("LC_{i:03}"), "synthetic".to_owned()))

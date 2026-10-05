@@ -297,6 +297,9 @@ pub(super) async fn bounded_git(
     availability.require()?;
     availability.record(super::availability::Site::GitExecution);
     preparation.check()?;
+    environment
+        .require_boundary(before_spawn.is_some())
+        .map_err(|error| preparation.failed(error))?;
     if tokio::time::Instant::now() >= deadline {
         return Err(preparation.failed(failure(
             ErrorKind::Timeout,

@@ -38,6 +38,168 @@ fn foreign(writer: &mut Store, reference: &str) {
     project.environment_refs = vec![reference.into()];
     writer.put_project(&mut project).unwrap();
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn missing_selection_keeps_intent_and_both_helpers_require_last_admission() {
+    use super::super::super::environment::{ExecEnvironment, Selection};
+    let mut fixture = ApprovalFixture::new(true).await;
+    fixture.reservation.environment = None;
+    let before = fixture.reservation.session.clone();
+    let version = fixture.reservation.version;
+    let events = fixture
+        .reservation
+        .store
+        .lock()
+        .unwrap()
+        .events(&before.scope, 0, 1000)
+        .unwrap();
+    let request = fixture.authority.request.clone();
+    let result = fixture
+        .reservation
+        .admit_dispatch(&fixture.authority.snapshot, &request);
+    assert!(matches!(result, Err(ref error) if error.kind == ErrorKind::StateConflict));
+    assert!(
+        serde_json::to_value(&fixture.reservation.session).unwrap()
+            == serde_json::to_value(&before).unwrap()
+    );
+    assert!(fixture.reservation.version == version && !fixture.reservation.inference_started);
+    assert!(matches!(
+        fixture.reservation.attempt.preparation.state().unwrap(),
+        Admission::Preparing
+    ));
+    assert!(
+        serde_json::to_value(
+            fixture
+                .reservation
+                .store
+                .lock()
+                .unwrap()
+                .events(&before.scope, 0, 1000)
+                .unwrap()
+        )
+        .unwrap()
+            == serde_json::to_value(&events).unwrap()
+    );
+
+    let owned = Fixture::new(false);
+    let (executable, directory) = wire_fixture(&owned, "complete");
+    let selection = Selection::fixture_empty();
+    for native_server in [false, true] {
+        let preparation = super::super::super::preparation::Preparation::new();
+        let uncertain = Arc::new(AtomicBool::new(false));
+        let error = if native_server {
+            let result = NativeServer::launch_preparing(
+                &crate::codex::availability::component_availability(),
+                &executable,
+                &owned.request.worktree,
+                None,
+                ExecEnvironment::Selected(&selection),
+                None,
+                uncertain.clone(),
+                &preparation,
+            )
+            .await;
+            match result {
+                Ok(server) => {
+                    server.shutdown().await.unwrap();
+                    panic!("selected server omitted its last admission")
+                }
+                Err(error) => error,
+            }
+        } else {
+            match super::super::super::preparation::bounded_git(
+                &crate::codex::availability::component_availability(),
+                &executable,
+                &owned.request.worktree,
+                &["--version".into()],
+                ExecEnvironment::Selected(&selection),
+                None,
+                tokio::time::Instant::now() + std::time::Duration::from_secs(5),
+                uncertain.clone(),
+                &preparation,
+            )
+            .await
+            {
+                Ok(_) => panic!("selected version omitted its last admission"),
+                Err(error) => error,
+            }
+        };
+        assert!(
+            error.kind == ErrorKind::StateConflict
+                && error.message == "selected native exec admission unavailable"
+        );
+        assert!(!uncertain.load(Ordering::SeqCst));
+        assert!(!directory.join("version-entry").exists() && !directory.join("leader").exists());
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn own_reference_edit_at_initial_and_each_exec_preserves_stale_currency() {
+    for site in [
+        ExecSite::Initial,
+        ExecSite::Version,
+        ExecSite::Discovery,
+        ExecSite::Main,
+    ] {
+        let mut owned = Fixture::new(false);
+        let mut write = writer(&owned);
+        let mut project = write.project(owned.request.project.id).unwrap().unwrap();
+        project.environment_refs = vec!["OPENAI_API_KEY".into()];
+        write.put_project(&mut project).unwrap();
+        owned.request.project = project;
+        owned
+            .request
+            .environment
+            .insert("OPENAI_API_KEY".into(), "synthetic-codex-marker".into());
+        let (executable, directory) = wire_fixture(&owned, "complete");
+        let adapter = synthetic_adapter(&owned, executable);
+        let id = owned.request.project.id;
+        adapter.environment_hooks.install(
+            site,
+            if site == ExecSite::Initial {
+                HookPoint::Initial
+            } else {
+                HookPoint::PreCas
+            },
+            move |_| {
+                let mut project = write.project(id).unwrap().unwrap();
+                project.environment_refs.clear();
+                write.put_project(&mut project).unwrap();
+            },
+        );
+        let before = no_effect_snapshot(&adapter, &owned.request.scope);
+        let result = bounded(adapter.start(owned.request.clone())).await;
+        if let Ok(session) = &result {
+            terminal_status(&adapter, &SessionRef::from(session)).await;
+        }
+        if directory.join("leader").exists() {
+            assert_leader_reaped(&directory.join("leader"));
+        }
+        assert!(matches!(result, Err(ref error) if error.kind == ErrorKind::StateConflict));
+        assert!(adapter.environment_hooks.total(site) == (0, 0));
+        assert!(
+            !journal_values(&directory)
+                .iter()
+                .any(|v| v["method"] == "turn/start")
+        );
+        if site == ExecSite::Initial {
+            let after = no_effect_snapshot(&adapter, &owned.request.scope);
+            assert!(before["sessions"] == after["sessions"]);
+            let saves = |snapshot: &Value| {
+                snapshot["events"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .filter(|event| event["kind"] == "session.saved")
+                    .cloned()
+                    .collect::<Vec<_>>()
+            };
+            assert!(saves(&before) == saves(&after));
+            assert!(adapter.availability.sites()[Site::GitExecution as usize] == 0);
+            assert!(!directory.join("version-entry").exists());
+        }
+    }
+}
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn initial_and_each_selected_exec_refuse_new_foreign_conflict_before_that_spawn() {
     for site in [

@@ -151,9 +151,12 @@ including Store EnvironmentAuthority mapping. Never emit foreign IDs, names,
 versions, values or inventory. Existing own stale/lifecycle/Session/lock checks
 retain their kinds and precede selection when they observe the conflict.
 The initial read-only scope check and environment check are separate SQLite reads,
-not a new transaction: an own edit between them can be observed as an opaque
-environment refusal. That refusal remains before effects/publication; do not claim
-one atomic initial snapshot or deterministic stale-kind precedence across that race.
+not a new transaction. On an environment refusal, the implementation re-reads
+the own Project and returns StateConflict when that snapshot differs from the
+request; unchanged own metadata retains the opaque environment refusal. These
+separate reads do not guarantee one atomic initial snapshot or deterministic
+stale-kind precedence across every concurrent edit. Both refusals precede effects
+and publication.
 Each later pre-exec/consumed CAS retains the existing transactional own-version
 precedence; explicit own edits at those windows must be StateConflict.
 
@@ -231,12 +234,18 @@ no new Session/audit/consumption publication or process entry sentinel. Inside
 the synchronous context closure, a cfg(test)-only initial-selection hook runs AFTER
 Scope capture/resume currency validation and BEFORE selection/initial Store decision,
 outside the Store mutex, without await. It edits only via a second Store connection.
-Removed caller refs/current invalid own refs refuse opaquely before publication;
-neutral/enlarging edits can pass this read and get stale-own StateConflict after
+Removed caller refs/current invalid own refs refuse before publication; the own
+snapshot reread reports StateConflict when it observes an edit, otherwise the
+environment refusal remains opaque.
+Neutral/enlarging edits can pass this read and get stale-own StateConflict after
 Starting/Git at the existing recheck. This seam is separate from BeforeInitialPersist.
 
 Retain the selected private environment and names DTO in that exact fresh/resume
-attempt. Immediately before EACH exec receiving those values, invoke the existing
+attempt. A Selected helper request without its synchronous admission callback
+returns StateConflict before process or private IPC setup; Ambient helpers retain
+their existing callback-free behavior. A missing selection at consumed admission
+returns StateConflict before changing dispatch_intent or attempting a Store write.
+Immediately before EACH exec receiving those values, invoke the existing
 environment-aware exact CAS on the current reservation Session as the last state
 check: native version, discovery server, main/policy re-exec. Each successful CAS
 increments the actual Session record version and appends session.saved while keeping
@@ -461,8 +470,8 @@ booleans, Store/watch/audit/frame facts before error labels. Include:
 - Actual second-Store replacement hooks immediately before version/discovery/main
   exec: both foreign relevant changes and own-ref edits deny that particular NEW
   child/canary; own edits assert transactional StateConflict and coherent versions.
-  Initial rejecting own edits after capture refuse before publication with the observed
-  opaque category. Neutral or enlarging own-ref edits can pass the separate selection,
+  Initial rejecting own edits after capture refuse before publication; a differing
+  own snapshot in the refusal reread yields StateConflict. Neutral or enlarging own-ref edits can pass the separate selection,
   publish Starting/run Git, then fail the existing post-Git recheck or first native CAS
   as stale-own StateConflict. Record that complementary path; do not claim every own
   edit is fenced by initial selection or add a new transaction. Earlier selected

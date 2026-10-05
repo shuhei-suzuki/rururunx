@@ -376,3 +376,13 @@ inspection deadline353890us/zero stdout/statuspending, inspector killWaitreaped.
 CauseUNKNOWN; no rerun, guard/deadline/default-concurrency change or attribution.
 The pair approves only this finite source; current full/CI/native acceptance is not
 established. Exact reports/input/provenance are adjacent; historical failures remain.
+
+The finite follow-up preserves existing semantics while closing two latent private
+caller gaps: selected helpers require their last admission callback before effects,
+and consumed admission resolves its selection before mutating dispatch intent.
+Initial refusal prose now matches the actual own-Project reread: a differing own
+snapshot yields StateConflict, while unchanged own metadata retains the opaque
+environment refusal. Added controls distinguish own-first malformed-input order,
+the exact EMPTY additional-control classification, and rejecting own-ref edits at
+Initial/Version/Discovery/Main. Their current execution results are pending; no
+new backend, credential provenance, native compatibility or cleanup proof follows.
