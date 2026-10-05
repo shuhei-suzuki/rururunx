@@ -1,8 +1,9 @@
-# Issue 6: existing name-only environment admission integration (Design6)
+# Issue 6: existing name-only environment admission integration (Design7)
 
 Status: proposed STRICT component integration; design/source qualification pending.
 Design1 `6264702`, Design2 `9884ec3`, Design3 `4a60fa2`, Design4 `e85d85b`
-and Design5 `55369e9` were not qualified as pairs. No Rust implementation has begun.
+Design5 `55369e9` and Design6 `f0fc37c` were not qualified as pairs.
+No Rust implementation has begun.
 This proposal normally composes main `768f84319cd2a73e14cd39336eb12d99e9be81a7`.
 Production Codex availability stays
 EMPTY. No native workload backend, managed operation, setup/settlement receipt,
@@ -54,7 +55,11 @@ Route public `new()` and fixtures through one private constructor consuming an
 fixtures supply only isolated synthetic pairs before that same filter/classifier/
 bounds/freeze. Do not construct over ambient secrets and overwrite the result.
 Keep values private in native OS-string form and share the same immutable snapshot
-with owned handles. No process-wide environment mutation, credential extraction,
+with owned handles. Frozen/selected containers and CodexAdapter implement NO Debug,
+Display or Serialize.
+Tests use match/.err()/boolean kind-message checks, never unwrap_err requiring an
+Ok-value Debug or value-bearing assertion diagnostics. No process-wide environment
+mutation, credential extraction,
 different-per-Project native value routing or API-client auth substitution.
 
 Preserve ordered membership: discard non-UTF-8 names and ALL GIT_* names before
@@ -88,7 +93,11 @@ references can refuse a NEW exec, not strip/change a running child's global rout
 This explicit availability coupling is the existing51 conservative subset, not
 complete native-config isolation. No new prefix/control eligibility policy is added.
 Any future widening needs separate qualified impact; unknown native readiness stays
-OPEN. Use that single classifier for constructor, caller and references.
+OPEN. With EMPTY additions, own/control, caller/control and reference/control/GIT_
+clauses are subsumed by registry validation: structural duplicates, no independent
+mutant credit. The classifier has distinguishing effect on constructor DTO control
+exclusion. Assert this equivalence structurally and reopen impact/mutation planning
+if additions change. Use that single classifier consistently.
 
 Caller eligibility is the existing Issue51 OR rule: registry-valid, owning-declared,
 non-control, and either one of LANG/LC_ALL/LC_CTYPE/TERM/COLORTERM/TZ with its ordinary
@@ -168,7 +177,15 @@ Intentional changes and test migrations:
 
 Remove the public `rrx::codex::policy::native_environment` helper and its private
 `provider_environment` restoration helper; no compatibility strip/pass-through shim
-or second whitelist remains. This is an intentional pre-1.0 public API break. Current
+or second whitelist remains. This is an intentional pre-1.0 public API break.
+At the read-only publication check
+(2026-10-05), first-party crates.io/api/v1/crates/rrx returned 404; repository has no
+Git tags/release-publish workflow, and README documents local --path installation.
+The 0.1.0 manifest remains publishable, so do not claim publish=false or published
+API compatibility. Require a README migration note in the source PR; before any
+future registry release containing this removal, a 0.2.0-or-higher breaking minor
+release/version qualification is mandatory. No publishing/version mutation is part
+of this component. Current
 workspace source consumers are prepare_launch, provider_environment and policy unit
 tests; repository CLI/examples/other providers have no call to this Codex helper.
 The separate shared git::native_environment is unchanged and not this API. Future
@@ -250,8 +267,12 @@ Existing publish alone does not enforce this invariant and must not be reused
 verbatim. Unit and actual caller controls prove the phase guard; consume and
 checkpoint are not pre-exec primitives. Only admit_dispatch transitions this
 launch attempt to Consumed. Stop can still cancel after a successful pre-exec CAS.
-Only the existing cancellation check may intervene between successful CAS and spawn;
-no production await/new Store observer. Plain Git preflight uses its existing Git
+Only the existing cancellation check and a pure local deadline recheck may
+intervene between successful CAS and spawn; no await/new Store observer. bounded_git
+can spend its 5s budget inside the SQLite CAS, so expired version deadline must latch
+Timeout without spawn. Do not extend/restart the existing budget. Native startup
+timeout keeps its existing semantics; no new native deadline weakening.
+Plain Git preflight uses its existing Git
 environment and ownership gate, not this native DTO. Its helper currently captures
 ALL ambient OS pairs except nine Git routing names; it is not credential-free or
 covered by this selection. That shared Git environment/ownership acceptance remains
@@ -268,7 +289,9 @@ watch/Control publication before cleanup, Cancelled first cause and no entry sen
 Bind the Cancelled-guard omission mutant to that extra-write assertion; the final
 preparation.check alone prevents spawn and cannot earn this kill. Consumed and
 CheckpointCommitted phase rejection is UNIT-ONLY because actual pre-exec consumers
-do not reach those phases; no actual-consumer mutant credit for them.
+do not reach those phases. Failing rejection is also UNIT-ONLY, masked by entry
+preparation.check(); mutate it separately from reachable concurrent Cancelled. No
+actual-consumer mutant credit for those branches.
 A distinct cfg(test) post-primitive outcome observer runs outside both mutexes before
 any result propagation/cleanup, including a Cancelled refusal, to assert those exact
 unchanged snapshots/events. On success, it is also the post-CAS hook preceding the
@@ -279,7 +302,16 @@ then releases the hook so stop can complete; waiting for stop's full outcome ins
 the hook would deadlock cleanup. Every synchronous hook rendezvous has a finite
 deadline and a distinct fail-closed
 harness error; one-worker/default-CPU scheduling is not acceptable evidence.
-Production has no hook or await in that window.
+At each selected site, attempt-scoped cfg(test) spawn observers increment an attempt
+counter immediately BEFORE Command::spawn, and a success counter immediately AFTER
+it returns an actual Child, before ProcessGroup wrapping/await. They carry no values
+or PID/kill authority. Post-CAS real-stop controls assert BOTH counters zero; bind
+EACH final-check omission mutant to this deterministic observation. Fixture entry
+sentinels are supplementary only: a spawned child can die before writing one. A
+Tokio Err is not proof no OS child existed (open #60 wrapping gap); counter/evidence
+does not grant production no-effect/cohort/cleanup authority. Any uncertain fixture
+spawn/cleanup fails closed, never earns acceptance.
+Production has no test hooks, counters or await in that window.
 
 Keep a separate environment-aware CAS at `Reservation::admit_dispatch` immediately
 before the buffered `turn/start` wire. This is the consumed-input fence. Its failure
@@ -312,7 +344,11 @@ semantics only, never credential isolation, resource custody or native settlemen
 A relevant foreign change or caller-key removal before checkpoint must not make
 that checkpoint fail. Resume uses the explicitly checkpointed Project and fresh
 own-scope snapshot, then performs its own initial/pre-exec/consumed-input environment
-checks. Removed caller keys now fail opaquely before any new native exec. Own edits
+checks. Relevant foreign conflicts/removed caller keys must be refused by resume
+INITIAL selection, with exact RestoredBeforeAdmission, unchanged persisted Session
+version/events, no Starting, Git or version/native entry, and opaque InvalidConfiguration.
+Bind resume-initial-check omission to those pre-publication assertions, not merely
+no native exec (the later version CAS would mask it). Own edits
 after checkpoint still produce stale-own StateConflict and require another explicit
 checkpoint; no implicit metadata refresh or cached-authority exception. Fresh input,
 known UUID identity and no implicit mutating replay remain unchanged. Managed
@@ -431,7 +467,8 @@ booleans, Store/watch/audit/frame facts before error labels. Include:
   as stale-own StateConflict. Record that complementary path; do not claim every own
   edit is fenced by initial selection or add a new transaction. Earlier selected
   children may have run and must clean up factually. Post-CAS real stop uses the
-  specified hook: assert no child, real stop outcome and coherent Store/watch.
+  specified hook: assert zero spawn-attempt/success counters, supplementary no entry,
+  real stop outcome and coherent Store/watch.
   Matching controls prove each path reaches its exec unchanged, still Preparing
   after each pre-exec CAS, with the later consumed CAS independently succeeding.
   Assert coherent Session/dispatch intent (including verified-dead discovery PID None
@@ -442,8 +479,14 @@ booleans, Store/watch/audit/frame facts before error labels. Include:
   without pretending prior execs never happened. Already-owned approval/stop remains
   independent of later foreign metadata.
 - Relevant foreign declaration/own caller-key removal before checkpoint permits
-  checkpoint, then resume fails pre-exec; post-checkpoint own change keeps StateConflict.
-  Irrelevant roster changes permit actual initial/checkpoint/resume controls.
+  checkpoint, then resume refuses at initial selection with the exact no-publication/
+  no-Git shape above; post-checkpoint own change keeps StateConflict.
+  Inject start/resume irrelevant changes at initial-selection hook AFTER capture or
+  a pre-exec hook BEFORE the second recheck. For checkpoint, use its existing
+  BeforeInitialPersist gate AFTER capture/before Git/recheck, and a second Store for
+  BOTH relevant and irrelevant foreign changes. Checkpoint commits with identical
+  own-scope event kinds/counts to unchanged control. Bind EACH reintroduced roster
+  equality mutant to its own windowed actual consumer; pre-call edits earn no credit.
 - Config selected/absent/ambient-only/control/invalid reference cases reach the actual
   consumer. Unknown references never restore a runtime canary; discovery cleanup
   precedes refusal, with no main exec/model frame. A second effective config with an
@@ -460,10 +503,12 @@ constructor filtering/control/freeze/bounds,
 DTO baseline/caller population, exact-value comparison, initial check omission,
 EACH pre-exec CAS omission (version killed by its pre-exit sentinel), Cancelled pre-exec
 guard omission killed by extra-write evidence, with non-reachable phase branches
-unit-only; post-CAS cancellation check omission, wrongly consuming
+unit-only; EACH post-CAS cancellation check omission killed by deterministic spawn
+counters (entry sentinel alone is racy and earns no kill credit), wrongly consuming
 pre-exec publication, discovery reference-check omission killed on no-main-entry,
 main reference-check omission killed on no-account/thread/model/consumption,
 consumed CAS omission,
+verified-dead discovery PID-clear omission bound to persisted/watch/Control snapshots,
 arbitrary reference restoration,
 and reintroduced roster equality at start/checkpoint/resume. Bind each to its precise
 canary/entry/Store assertion. Checkpoint is not an environment-CAS mutation target.

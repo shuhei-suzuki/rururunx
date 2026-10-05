@@ -1,6 +1,6 @@
 # Issue 6 environment admission component: verification
 
-Current state: Design6 proposed; Design1/2/3/4/5 not qualified as pairs. No Rust implementation or
+Current state: Design7 proposed; Design1/2/3/4/5/6 not qualified as pairs. No Rust implementation or
 source/native acceptance.
 Ordinary Codex availability remains EMPTY. This consumes existing Issue51 policy
 only; no native workload/backend, managed ownership, settlement or configuration
@@ -192,3 +192,36 @@ After both reviewers actually closed, normal main768 composition as `443e927` br
 only its reviewed cfg(test) Grok diagnostic/source and factual evidence; Codex and
 Store environment API bytes stayed unchanged. Historical red/held resources remain.
 Design6 is still proposed; no Rust implementation or whole native acceptance exists.
+
+## Design6, public immutable `f0fc37c`
+
+Two peer-free manual native zero-tool sessions reviewed54 public sections,477,448
+common-packet bytes, each compared to immutable public blobs. Both completed with
+actual retained selected-group cleanup/reap and joined stdin writer. Normal native
+auth/rules/hooks/model/effort unchanged.
+
+| Review | Native session | Findings | Observed cost | Native API duration |
+| --- | --- | --- | --- | --- |
+| A6 | `9958f97c-1172-4fae-92e7-d2dbe91069a1` | 0 CH, 1 medium, 6 low | $3.208180 | 796,053 ms |
+| B6 | `e0a06552-a81c-4fe1-8b92-84ac28bdf717` | 0 CH, 1 medium, 2 low | $3.028204 | 703,788 ms |
+
+Pair not qualified. Verified Mediums: post-CAS cancelled-spawn omission can survive
+entry sentinels because immediate cleanup wins the shell-start race; checkpoint
+roster equality needs a change inside its capture/recheck window. Design7 binds the
+first to attempt-scoped cfg(test) spawn-attempt/success counters and the latter to
+existing BeforeInitialPersist. Finite lows classify Failing/duplicate control checks
+unit-only/equivalent, prevent value-bearing Debug/Display/Serialize and diagnostics,
+pin resume initial no-publication shape, and permit pure post-CAS deadline recheck.
+These change no native authority, backend, policy or shared cleanup implementation.
+
+Read-only first-party https://crates.io/api/v1/crates/rrx returned404 on2026-10-05;
+manifest remains publishable0.1.0, repository has no tags/publish workflow, README
+uses local --path install. This is limited publication evidence, not release or
+external Git-consumer compatibility. Design7 requires README API migration disclosure
+and explicit breaking-minor qualification before any future registry release; no
+version or publishing action is authorized by that observation.
+
+CI37253595929 checked `d3b4b1b9782b6873c345dccb22b59671267575f9`, parents[768,f0fc],
+complete tree `3c5e78472ed71ced8005cc18e9c4b33a996e8383` equal to Design6. BothOS every
+step passed. Prior failures, causeUNKNOWN and physical old holds remain unchanged.
+Design7 still requires independent qualification; no Rust implementation exists.
