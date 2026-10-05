@@ -499,7 +499,6 @@ async fn docker_changing_inventories_fit_the_actual_cookie_persistence_budget() 
         actions: vec![],
     };
     super::super::cleanup::append_docker(&mut observation, report);
-    assert_eq!(observation.remaining.len(), 1024);
     fixture
         .owner
         .store
@@ -507,6 +506,7 @@ async fn docker_changing_inventories_fit_the_actual_cookie_persistence_budget() 
         .unwrap()
         .finish_execution_cleanup(&claim, &observation)
         .unwrap();
+    assert_eq!(observation.remaining.len(), 1024);
     let persisted = fixture
         .owner
         .store
