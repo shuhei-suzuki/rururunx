@@ -54,6 +54,16 @@ impl Store {
         id: OperationId,
         action: &str,
     ) -> Result<()> {
+        self.reserve_retained_inspection_bound(epoch, artifact, id, action, None)
+    }
+    pub(crate) fn reserve_retained_inspection_bound(
+        &mut self,
+        epoch: u64,
+        artifact: &ResultArtifact,
+        id: OperationId,
+        action: &str,
+        recovery: Option<&source_recovery::SourceReadBinding>,
+    ) -> Result<()> {
         ensure!(
             matches!(
                 action,
@@ -71,6 +81,13 @@ impl Store {
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         validate_retained_inspection(&tx, epoch, artifact)?;
+        if let Some(binding) = recovery {
+            ensure!(
+                binding.owns_artifact(artifact.id),
+                "source-bound reader artifact differs"
+            );
+            source_recovery::validate_binding(&tx, binding)?;
+        }
         let effect = ManagedEffect {
             id,
             unit_id: artifact.unit_id,
@@ -106,6 +123,26 @@ impl Store {
         group_error: bool,
         program_digest: &str,
     ) -> Result<()> {
+        self.finish_retained_inspection_bound(
+            epoch,
+            artifact,
+            id,
+            exit,
+            group_error,
+            program_digest,
+            None,
+        )
+    }
+    pub(crate) fn finish_retained_inspection_bound(
+        &mut self,
+        epoch: u64,
+        artifact: &ResultArtifact,
+        id: OperationId,
+        exit: Option<i32>,
+        group_error: bool,
+        program_digest: &str,
+        recovery: Option<&source_recovery::SourceReadBinding>,
+    ) -> Result<()> {
         ensure!(
             program_digest.len() == 64 && program_digest.bytes().all(|b| b.is_ascii_hexdigit()),
             "invalid retained reader program reference digest"
@@ -114,6 +151,13 @@ impl Store {
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         validate_retained_inspection(&tx, epoch, artifact)?;
+        if let Some(binding) = recovery {
+            ensure!(
+                binding.owns_artifact(artifact.id),
+                "source-bound reader artifact differs"
+            );
+            source_recovery::validate_binding(&tx, binding)?;
+        }
         let mut effect = effect_tx(&tx, id)?;
         ensure!(
             effect.unit_id == artifact.unit_id

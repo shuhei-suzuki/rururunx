@@ -37,6 +37,7 @@ pub struct ManagedWorkflowSources {
 struct TaskSources {
     prepared: Option<PreparedExecutor>,
     frame: Arc<Frame>,
+    recovery: Option<crate::state::SourceReadBinding>,
 }
 struct Frame {
     scope: Scope,
@@ -48,6 +49,48 @@ struct Frame {
     versions: BTreeMap<String, String>,
     mandatory: BTreeMap<String, String>,
     governing_digest: String,
+}
+/// Only the complete corpus/rule/config producer below creates this proof.
+pub(crate) struct ReconstructedFrame {
+    frame: Arc<Frame>,
+    digest: String,
+}
+impl ReconstructedFrame {
+    pub(crate) fn scope(&self) -> &Scope {
+        &self.frame.scope
+    }
+    pub(crate) fn revision(&self) -> &str {
+        &self.frame.revision
+    }
+    pub(crate) fn artifact(&self) -> ArtifactId {
+        self.frame
+            .artifact
+            .expect("reconstructed retained artifact")
+    }
+    pub(crate) fn versions(&self) -> &BTreeMap<String, String> {
+        &self.frame.versions
+    }
+    pub(crate) fn governing(&self) -> &str {
+        &self.frame.governing_digest
+    }
+    pub(crate) fn digest(&self) -> &str {
+        &self.digest
+    }
+}
+struct RecoveryGuard {
+    owner: Arc<RuntimeOwner>,
+    binding: Option<crate::state::SourceReadBinding>,
+}
+impl Drop for RecoveryGuard {
+    fn drop(&mut self) {
+        if let Some(binding) = self.binding.take()
+            && let Ok(mut store) = self.owner.store.lock()
+        {
+            // An error retains Preparing and requires explicit epoch fencing.
+            // Dropping cannot install a cache or overwrite helper observations.
+            let _ = store.abandon_retained_source_recovery(&binding);
+        }
+    }
 }
 /// Single-use private provenance for the actual first native phase.
 pub struct InitialWorkflowExecutor {
@@ -192,8 +235,69 @@ impl ManagedWorkflowSources {
         *state = Some(TaskSources {
             prepared: Some(prepared),
             frame: Arc::new(frame),
+            recovery: None,
         });
         Ok(unit)
+    }
+    /// Rebuild only the sole Workflow's exact Published frame under a genuine
+    /// current-owner source claim. This does not reconstruct a Runtime driver.
+    pub(crate) async fn recover_retained(&self, task: TaskId) -> Result<()> {
+        let slot = self.slot(task)?;
+        let mut state = slot.lock().await;
+        let claim = self
+            .owner
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("state poisoned"))?
+            .begin_retained_source_recovery(task, self.owner.epoch)?;
+        let binding = claim.binding();
+        let mut guard = RecoveryGuard {
+            owner: self.owner.clone(),
+            binding: Some(binding.clone()),
+        };
+        let result = results::ResultStore::new(self.owner.clone());
+        result.verify_recovery(&claim.artifact, &binding).await?;
+        let io = RetainedGit::for_recovery(self.owner.clone(), &claim.artifact, binding.clone())?;
+        let files = read_corpus(
+            CorpusReader::Retained(&io),
+            &claim.artifact.repository,
+            &claim.artifact.revision,
+        )
+        .await?;
+        let frame = Frame::build(
+            &claim.project,
+            &claim.goal,
+            &claim.task,
+            &self.runtime,
+            claim.artifact.revision.clone(),
+            Some(claim.artifact.id),
+            files,
+        )?;
+        ensure!(
+            frame.versions == claim.artifact.dependencies,
+            "reconstructed retained dependency frame changed"
+        );
+        result.verify_recovery(&claim.artifact, &binding).await?;
+        let digest = digest(&serde_json::to_vec(
+            &serde_json::json!({"scope":frame.scope,"revision":frame.revision,"artifact":frame.artifact,"versions":frame.versions,"governing":frame.governing_digest,"rules":frame.rules,"config":frame.config,"mandatory":frame.mandatory}),
+        )?);
+        let proof = ReconstructedFrame {
+            frame: Arc::new(frame),
+            digest,
+        };
+        let installed = self
+            .owner
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("state poisoned"))?
+            .accept_retained_source_recovery(&claim, &proof)?;
+        *state = Some(TaskSources {
+            prepared: None,
+            frame: proof.frame,
+            recovery: Some(installed),
+        });
+        guard.binding = None;
+        Ok(())
     }
     fn owners(&self, task: TaskId) -> Result<(Project, Goal, Task)> {
         let store = self
@@ -216,6 +320,21 @@ impl ManagedWorkflowSources {
             state.frame.scope == task.scope() && project.id == task.project_id,
             "foreign Workflow source"
         );
+        if let Some(binding) = &state.recovery {
+            let store = self
+                .owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?;
+            store.validate_source_read(binding)?;
+            ensure!(
+                serde_json::to_value(store.project(project.id)?.context("Project missing")?)?
+                    == serde_json::to_value(project)?
+                    && serde_json::to_value(store.task(task.id)?.context("Task missing")?)?
+                        == serde_json::to_value(task)?,
+                "recovered source caller DTO changed"
+            );
+        }
         let (unit, artifact, goal) = {
             let store = self
                 .owner
@@ -297,11 +416,27 @@ impl ManagedWorkflowSources {
             state.frame = Arc::new(frame);
         } else if let Some(artifact) = artifact {
             ensure!(artifact.scope == task.scope(), "foreign retained input");
-            result.verify(&artifact).await?;
+            if let Some(binding) = state
+                .recovery
+                .as_ref()
+                .filter(|b| b.owns_artifact(artifact.id))
+            {
+                result.verify_recovery(&artifact, binding).await?;
+            } else {
+                result.verify(&artifact).await?;
+            }
             if state.frame.artifact != Some(artifact.id)
                 || state.frame.revision != artifact.revision
             {
-                let io = RetainedGit::new(self.owner.clone(), &artifact)?;
+                let io = if let Some(binding) = state
+                    .recovery
+                    .as_ref()
+                    .filter(|b| b.owns_artifact(artifact.id))
+                {
+                    RetainedGit::for_recovery(self.owner.clone(), &artifact, binding.clone())?
+                } else {
+                    RetainedGit::new(self.owner.clone(), &artifact)?
+                };
                 let files = read_corpus(
                     CorpusReader::Retained(&io),
                     &artifact.repository,
@@ -590,7 +725,7 @@ impl Frame {
         })
     }
 }
-fn task_digest(task: &Task) -> Result<String> {
+pub(crate) fn task_digest(task: &Task) -> Result<String> {
     Ok(digest(&serde_json::to_vec(
         &serde_json::json!({"title":task.title,"criteria":task.acceptance_criteria,
         "issue":task.issue,"executor":task.executor,"reviewers":task.reviewers}),

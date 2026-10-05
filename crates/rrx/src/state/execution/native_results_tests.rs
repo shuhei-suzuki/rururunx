@@ -45,7 +45,7 @@ fn schema6_migrates_real5_layout_and_fences_preopen_cached_writer() {
         .unwrap();
     cached.execute([]).unwrap();
     let mut current = Store::open(&path).unwrap();
-    assert_eq!(current.schema_version().unwrap(), 6);
+    assert_eq!(current.schema_version().unwrap(), SCHEMA_VERSION);
     assert!(cached.execute([]).is_err());
     for sql in [
         "UPDATE runtime_epoch SET epoch=epoch+1 WHERE singleton=1",
@@ -94,7 +94,10 @@ fn schema6_migrates_real5_layout_and_fences_preopen_cached_writer() {
     drop(cached);
     drop(old);
     drop(current);
-    assert_eq!(Store::open(&path).unwrap().schema_version().unwrap(), 6);
+    assert_eq!(
+        Store::open(&path).unwrap().schema_version().unwrap(),
+        SCHEMA_VERSION
+    );
 }
 
 #[test]
