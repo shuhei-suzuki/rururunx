@@ -1,0 +1,485 @@
+{
+  "schema": "phase2_native_schema6_checkpoint_v1",
+  "source": "d19f1a1f49917bad1a3fc414847bd06a56092f20",
+  "source_original": "beb555ecf77e9b099592af1dd7319d6a1937bc8a",
+  "source_correction": "cc5e5cc588142f5100fa1c95e6e05b7f03a4de04",
+  "integrated_original": "75616ff",
+  "scope": "Standalone schema6 empty native invocation/result ledger and bounded DTO/read API; actual Core/collector/terminal/watch producers remain unchanged and pending.",
+  "state_schema": 6,
+  "platform": "macOS26.6.2/25G83 arm64, Rust/Cargo1.91.1, Git2.49.0, offline fixtures, four test threads",
+  "source_hashes": [
+    {
+      "file": "crates/rrx/src/execution/native_result.rs",
+      "sha256": "b7ceb041e0de22c934793c4379a6a5603227bc064a8847d13b070041a4edc4b8"
+    },
+    {
+      "file": "crates/rrx/src/state/execution/native_results.rs",
+      "sha256": "6058626194144d882f626b60696a03ea90c429f0658edd1efd274bfb0cdeafd2"
+    },
+    {
+      "file": "crates/rrx/src/state/execution/native_results.sql",
+      "sha256": "587ed53cd43a5466e0c5fd606cbf8e7de604faa65fa5b37e9189a6e6b89b17cc"
+    },
+    {
+      "file": "crates/rrx/src/state/execution/native_results_tests.rs",
+      "sha256": "0c48d5bfa6a354b99fbd4bd8318aec6e70ab5066e065d29b602a1f3325bfd7c4"
+    },
+    {
+      "file": "crates/rrx/src/state/mod.rs",
+      "sha256": "7c8a2ea280d13cbdb405e1a51e46c7c68be8c9bec32c5b30f241ae4c7469ef5e"
+    },
+    {
+      "file": "crates/rrx/src/state/execution.rs",
+      "sha256": "aa8eb458225e425480fdd279f5213f602d62af25250607aca323e289d55f0f9a"
+    }
+  ],
+  "primary_regression": {
+    "passed": 571,
+    "failed": 0,
+    "ignored": 30,
+    "raw_passed_failed_ignored": [
+      616,
+      0,
+      31
+    ],
+    "excluded_duplicate_passes": 45,
+    "excluded_child_ignored": 1,
+    "breakdown": {
+      "rrx_lib": 451,
+      "integration": 113,
+      "tracker_lib": 4,
+      "tracker_discovery": 1,
+      "doctest": 2
+    }
+  },
+  "checks": {
+    "source": "d19f1a1f49917bad1a3fc414847bd06a56092f20",
+    "threads": 4,
+    "checks": [
+      {
+        "name": "clippy",
+        "command": [
+          "cargo",
+          "clippy",
+          "--workspace",
+          "--all-targets",
+          "--offline",
+          "--target-dir",
+          "/private/tmp/rrx-phase2-target",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "exit_code": 0,
+        "elapsed_seconds": 9.174149751663208,
+        "log": "/private/tmp/rrx-phase2-native-schema6-clippy.log",
+        "sha256": "9437d6614cf23d6420946e092933dac5522c67a8dd3cd06e07b9ea212b3a99b4"
+      },
+      {
+        "name": "build",
+        "command": [
+          "cargo",
+          "build",
+          "--workspace",
+          "--offline",
+          "--target-dir",
+          "/private/tmp/rrx-phase2-target"
+        ],
+        "exit_code": 0,
+        "elapsed_seconds": 8.235445022583008,
+        "log": "/private/tmp/rrx-phase2-native-schema6-build.log",
+        "sha256": "b64aa88aa6f46d5d1bf0c2d138415f43c88538055fb69756b5b76277a17cad4f"
+      },
+      {
+        "name": "fmt",
+        "command": [
+          "cargo",
+          "fmt",
+          "--all",
+          "--",
+          "--check"
+        ],
+        "exit_code": 0,
+        "elapsed_seconds": 0.45311594009399414,
+        "log": "/private/tmp/rrx-phase2-native-schema6-fmt.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "name": "regression",
+        "command": [
+          "cargo",
+          "test",
+          "--workspace",
+          "--offline",
+          "--target-dir",
+          "/private/tmp/rrx-phase2-target"
+        ],
+        "exit_code": 0,
+        "elapsed_seconds": 206.76924896240234,
+        "log": "/private/tmp/rrx-phase2-native-schema6-regression.log",
+        "sha256": "378b76b924d8cf3a498f02a8a8eea422fe2535625bfced2e78316d8d9578cf7a"
+      }
+    ]
+  },
+  "delegated_formal_checks": [
+    {
+      "source_commit": "beb555ecf77e9b099592af1dd7319d6a1937bc8a",
+      "clean_before_after": true,
+      "stage": "schema6 ledger/reader component, Native consumer not connected",
+      "results": [
+        {
+          "argv": [
+            "cargo",
+            "test",
+            "--offline",
+            "-p",
+            "rrx",
+            "state::execution::",
+            "--target-dir",
+            "/private/tmp/rrx-native-results-target",
+            "--lib"
+          ],
+          "exit_code": 0,
+          "log": "/private/tmp/rrx-native-schema6-formal/1.log",
+          "sha256": "4811547387d063fd3915d8f5206e9c6e4043aa89f178d47024ac2e52e1f1bdbb",
+          "bytes": 2996
+        },
+        {
+          "argv": [
+            "cargo",
+            "clippy",
+            "--workspace",
+            "--all-targets",
+            "--offline",
+            "--target-dir",
+            "/private/tmp/rrx-native-results-target",
+            "--",
+            "-D",
+            "warnings"
+          ],
+          "exit_code": 0,
+          "log": "/private/tmp/rrx-native-schema6-formal/2.log",
+          "sha256": "6559e492e58c951fa3b19edea66bbfaada6c66893c08a55fd21620447e7f1abb",
+          "bytes": 192
+        }
+      ],
+      "qualification_limits": [
+        "No native producer qualification",
+        "No authenticated agent/OS/MVP acceptance"
+      ],
+      "live_handles": []
+    },
+    {
+      "source_commit": "cc5e5cc588142f5100fa1c95e6e05b7f03a4de04",
+      "clean_before_after": true,
+      "stage": "schema6 ledger and bounded typed reader correction; Native producers not connected",
+      "results": [
+        {
+          "argv": [
+            "cargo",
+            "test",
+            "--offline",
+            "-p",
+            "rrx",
+            "state::execution::",
+            "--target-dir",
+            "/private/tmp/rrx-native-results-target",
+            "--lib"
+          ],
+          "exit_code": 0,
+          "log": "/private/tmp/rrx-native-schema6-correction-formal/1.log",
+          "sha256": "d43d7316ea35ef606c87fa39b2705b1f4f7ae7dcb882d151ea97e6f42366de04",
+          "bytes": 3123
+        },
+        {
+          "argv": [
+            "cargo",
+            "clippy",
+            "--workspace",
+            "--all-targets",
+            "--offline",
+            "--target-dir",
+            "/private/tmp/rrx-native-results-target",
+            "--",
+            "-D",
+            "warnings"
+          ],
+          "exit_code": 0,
+          "log": "/private/tmp/rrx-native-schema6-correction-formal/2.log",
+          "sha256": "4cf86278c1e6d659943a46a3d7e3da429ac15be90f0f17742e24ef85228e7d3e",
+          "bytes": 72
+        }
+      ],
+      "qualification_limits": [
+        "No native producer qualification",
+        "No authenticated Agent, OS or MVP acceptance"
+      ],
+      "live_handles": []
+    }
+  ],
+  "initial_exploration": "Before beb555 commit author ran24 controls/Clippy on dirty source; these were corrected to exploratory only, then rerun clean at fixed source. Initial exploration is not formal qualification.",
+  "controls": {
+    "functions": 4,
+    "result": "PASS",
+    "migration": "Actual legacy5 layout, already-open cached5 writer and INSERT/UPDATE/DELETE rejection, all-table guard matrix, current6 use/reopen, conflicting namespace rollback.",
+    "reader": "Populated raw test-only rows: typed Store.native_result text/UTF8 partial positive, ordinary/>1MiB/depth33 structured negatives, inconsistent prefix negatives. Raw rows do not mint owned native terminal or result proof."
+  },
+  "verified_defect": "One overlapping Medium ROOT-N6-M1/C-N6-M1: non-Complete structured content bypassed decoded budgets. Text-only correction rejects all structured data and adds actual bounded reader controls. Static original/re-reviews retained; no actual native exploit or approval bypass claimed.",
+  "independent_reviews": [
+    {
+      "path": "/private/tmp/rrx-native-schema6-source-review-root.json",
+      "sha256": "a264b0ee7c59546e98fcf062b2afc4ac24350c572358ae529a74f243ac353711",
+      "report": {
+        "reviewer": "Root",
+        "source_commit": "beb555ecf77e9b099592af1dd7319d6a1937bc8a",
+        "verdict": "REQUEST_CHANGES_COMPONENT",
+        "risk": "STRICT",
+        "findings": [
+          {
+            "id": "ROOT-N6-M1",
+            "severity": "Medium",
+            "location": "execution/native_result.rs::NativeResultReceipt::validate; state/execution/native_results.rs::Store::native_result",
+            "title": "Non-Complete structured output bypasses content budgets",
+            "repository_verification": "The non-Complete branch checks only answer_sha256=None and text=None. structured_output has no decoded-byte/depth/status cap. An Unsupported receipt with a 1MiB+1 structured string or33 nested arrays and valid remaining metadata passes every branch and the 2MiB encoded-body check; typed native_result reads call this exact validate and accept it. The SQL body ceiling is not the declared1MiB acquisition/64KiB invalid-prefix/depth32 contract.",
+            "requested_fix": "For this text-only stage, reject structured_output until a separately bounded representation profile is supported, or implement complete acquisition-specific aggregate/depth/prefix budgets. Add populated DTO and typed Store reader positive/negative controls; do not count empty-table migration tests as content-reader coverage."
+          }
+        ],
+        "confirmed": [
+          "Ordered atomic fresh/legacy migration installs Native tables before this-binary guards, replaces all old-table writer guards, and records one final schema version.",
+          "Reader checks indexed body identities plus actual Unit/session and invocation ownership; no public write/send/result authority is provided.",
+          "Immutable result and bounded SQL body guards are present, but do not substitute for semantic decoded budgets."
+        ],
+        "scope": "Standalone empty-ledger schema/DTO/read component only; no Core, collector, atomic terminal producer or native watch change.",
+        "limits": [
+          "Static source verification only. Constructor path verified from exact predicates, not an executed reproduction.",
+          "Did not inspect peer finding/report until Root independently verified same code path; overlapping Root/C defect is one issue, not two distinct defects.",
+          "Native/schema6 full-source qualification, both-OS, Phase2/MVP acceptance remain pending."
+        ]
+      }
+    },
+    {
+      "path": "/private/tmp/rrx-native-schema6-source-review-c.json",
+      "sha256": "b636e24281bff9ca2ceb7d55975e4f8b592d07e314f28db415ded7bb362901b4",
+      "report": {
+        "reviewer": "workflow_source_review_c",
+        "source_commit": "beb555ecf77e9b099592af1dd7319d6a1937bc8a",
+        "design_source": "0ed72ab90c101bc7ad2beb0dca382c9adc465fa7",
+        "mode": "independent STRICT static source review; immutable git objects; no peer findings or execution logs",
+        "scope": [
+          "execution/native_result DTOs and identity types",
+          "state schema6 fresh/ordered installation and old-writer contracts",
+          "native invocation/result SQL constraints and typed bounded/indexed readers",
+          "migration controls source"
+        ],
+        "verdict": "REQUEST_CHANGES_COMPONENT",
+        "findings": [
+          {
+            "id": "C-N6-M1",
+            "severity": "Medium",
+            "title": "Non-Complete structured_output bypasses acquisition/prefix content bounds and depth validation",
+            "evidence": [
+              "crates/rrx/src/execution/native_result.rs:225-255 only checks prefix bytes, text bytes and complete serialized receipt bytes; structured_output is forbidden for Complete but unrestricted for all other acquisitions.",
+              "crates/rrx/src/state/execution/native_results.rs:87-97 deserializes a <=2MiB body with generic decode and uses the same validate; no structured-content depth/decoded-content limit precedes returning the DTO.",
+              "Approved native-result-receipts-design.md section3 specifies 1MiB decoded answer bytes, depth32 and <=64KiB total safe model-content prefix for invalid/partial/overflow paths."
+            ],
+            "actual_guard_condition": "For acquisition Unsupported/Partial/Ambiguous/Overflow, text=None and answer_sha256=None satisfy the non-Complete branch even when structured_output contains a >1MiB string (and the total encoded body still fits 2MiB). A nested structured Value above depth32 but below serde default recursion limit also passes this validator. SQL body length and all indexed/ownership checks can remain valid; they do not close the content hole.",
+            "impact": "The claimed bounded reader can return content outside the approved acquisition/depth/prefix profile. Core is not connected at this stage, so this is a persisted DTO contract/read-validation defect, not evidence of an actual native input exploit or approval bypass.",
+            "requested_change": "Enforce acquisition-specific structured/prefix invariants in the DTO reader/write validator, including bounded decoded content and depth/counts, aggregate content budget and appropriate unseen-suffix handling. The text-only initial stage may instead reject structured_output entirely until a separately qualified bounded representation path exists; do not preserve unrestricted structured content under Overflow or partial status.",
+            "acceptance_gap": "Add populated valid receipt/read positive controls plus structured over-limit/depth and invalid prefix-status negatives; demonstrate the typed reader rejects those bodies without inferring authority. Static branch analysis only; this reviewer did not execute a reproduction."
+          }
+        ],
+        "assessment": [
+          {
+            "topic": "fresh/ordered schema6",
+            "evidence": "state/mod.rs initialize; state/execution.rs install_schema; native_results.rs validate_legacy_namespace; native_results.sql",
+            "actual_guard_condition": "Fresh install is an Immediate empty/application-checked transaction. Existing1..5 namespaces are checked before the ordered migration. Tables are installed before guards for the atomic ordered4/5/6 path; metadata updates and DDL/guards are within one transaction."
+          },
+          {
+            "topic": "cached old writer exclusion",
+            "evidence": "state/execution.rs MUTABLE_TABLES/install_writer_guards; state/mod.rs register_writer_contract; native_results_tests schema6_migrates_real5_layout_and_fences_preopen_cached_writer",
+            "actual_guard_condition": "Both new tables and all previously mutable tables get INSERT/UPDATE/DELETE triggers comparing the connection-local function to6. Previously open5 writers keep5; a cached statement must reprepare against changed schema and trips replacement guards. Control source checks actual cached runtime_epoch write and full trigger matrix; execution evidence was not read."
+          },
+          {
+            "topic": "migration refusal rollback",
+            "evidence": "native_results.rs validate_legacy_namespace; native_results_tests schema6_failed_table_install_rolls_back_guards_and_version",
+            "actual_guard_condition": "Conflicting native namespace refuses under the same Immediate migration transaction; tables/guards/user_version are not partially published. Control source asserts old version5/native_results absent and old5 writer remains usable."
+          },
+          {
+            "topic": "ownership/indexed bounded read",
+            "evidence": "native_results.sql FK/uniqueness/immutable triggers; native_results.rs bounded_body/invocation_tx/native_result",
+            "actual_guard_condition": "SQL byte length is inspected before DTO body allocation; DTO IDs/versions/scopes/digests and all stored indexed columns are checked; invocation is matched to exact Unit and session_units scope; receipt identity/provider/thread/turn matches invocation. Results are immutable and uniquely linked by composite invocation FK. Finding C-N6-M1 limits content qualification."
+          },
+          {
+            "topic": "stage authority separation",
+            "evidence": "native_result.rs module comment and DTO APIs; only9 changed files; no execution/native.rs/Core changes",
+            "actual_guard_condition": "Public readers return untrusted serialized DTOs. There is no new public receipt writer/private owned terminal producer in this source; standalone empty ledger installation is not native terminal/answer or Review approval authority."
+          }
+        ],
+        "acceptance_gaps": [
+          "No actual Core-owned invocation registration, input intent/ack, provider collector or atomic terminal receipt/watch producer is connected; a later fixed whole-source review is required.",
+          "No populated native receipt producer/read controls are present in this source; migration tests do not qualify full DTO content or original native wire ownership.",
+          "Reviewer ran no tests/native/auth/OS qualification and did not inspect parent execution logs or peer reviews.",
+          "Scoped paginated history, target/base provenance, terminal/failure normalized provenance, raw native bounded acquisition and typed idempotent completion remain part of later actual producer qualification; this review does not approve their absence as full design implementation."
+        ],
+        "limitations": [
+          "Component-only static verdict. No Native6 integration, final Phase2/MVP, security isolation, authenticated CLI, Review vote or Workflow completion approval.",
+          "Finite 2MiB encoded SQL ceiling remains effective; finding identifies stronger approved content-profile gaps, not unbounded arbitrary input allocation.",
+          "Schema allocation metadata changes after design do not alter this source review; Verifier documents are excluded."
+        ]
+      }
+    },
+    {
+      "path": "/private/tmp/rrx-native-schema6-source2-review-root.json",
+      "sha256": "0c48c103cdac70389e920d2023800b80ae468a20bf2a69fce2d4604aba2bc8a8",
+      "report": {
+        "reviewer": "Root",
+        "source_commit": "cc5e5cc588142f5100fa1c95e6e05b7f03a4de04",
+        "prior_source": "beb555ecf77e9b099592af1dd7319d6a1937bc8a",
+        "verdict": "APPROVE_COMPONENT_SOURCE_DELTA",
+        "risk": "STRICT",
+        "findings": [],
+        "prior_findings": [
+          {
+            "id": "ROOT-N6-M1",
+            "disposition": "CLOSED_IN_TEXT_ONLY_READER",
+            "basis": "Unconditional structured_output=None check now rejects any representation before acquisition-specific branches. Actual populated Store.native_result negatives cover ordinary, >1MiB and depth33 structured values below2MiB SQL cap. Prefix consistency/Missing checks and valid text/UTF8 partial positives exercise typed reader. No schema/version changed."
+          }
+        ],
+        "scope": "Standalone bounded DTO/read/migration stage, not native-owned invocation/receipt producer. Original unchanged migration/index checks retain their original review scope.",
+        "limits": [
+          "Static immutable delta review only; no tests/parent logs/peer rereview read for verdict.",
+          "Raw test-only rows exercise read validation but do not prove a native terminal, mint grants or qualify owned receipts.",
+          "Unknown structured-only profile remains explicitly unsupported; future model content selection/acquisition/terminal/work/watch integration must be separately qualified.",
+          "No native accounts/two-OS/Phase2/MVP acceptance."
+        ]
+      }
+    },
+    {
+      "path": "/private/tmp/rrx-native-schema6-source2-review-c.json",
+      "sha256": "cab283d82bcd53c74ebc2a1c3aecd4457df851944a64a0ca347d443b035747bc",
+      "report": {
+        "reviewer": "workflow_source_review_c",
+        "source_commit": "cc5e5cc588142f5100fa1c95e6e05b7f03a4de04",
+        "previous_source_commit": "beb555ecf77e9b099592af1dd7319d6a1937bc8a",
+        "mode": "independent STRICT immutable static delta review; no peer results or execution logs",
+        "scope": [
+          "execution/native_result.rs acquisition content limits",
+          "state/execution/native_results_tests.rs actual populated typed reader controls"
+        ],
+        "verdict": "APPROVE_COMPONENT_SOURCE",
+        "findings": [],
+        "resolved_findings": [
+          {
+            "id": "C-N6-M1",
+            "resolution": "NativeResultReceipt.validate rejects structured_output for every acquisition in the initial text-only profile, closing both large decoded-content and structured-depth cases before returning a typed reader DTO. Prefix validates byte/hash/observed bounds, rejects Missing content, and computes unseen_suffix consistently with exact/unknown observed length.",
+            "evidence": [
+              "native_result.rs newly unconditional structured_output.is_none guard",
+              "native_results_tests.rs populated_native_reader_accepts_text_and_bounded_partial_prefix",
+              "native_results_tests.rs populated_native_reader_refuses_unqualified_structured_and_inconsistent_prefix"
+            ],
+            "actual_guard_condition": "The actual native_result reader runs receipt.validate before identity/index/ownership return. Negative populated rows fit SQL byte ceilings and test the typed guard for small/large/deep structured content and inconsistent prefix provenance. Raw row fixture intentionally mints no owned producer authority."
+          }
+        ],
+        "acceptance_gaps": [
+          "Tests are inspected statically, not executed by this reviewer.",
+          "Core admission, actual input intent/ack, native owned collectors, atomic terminal/watch persistence and native version/acquisition behavior remain unconnected at this stage.",
+          "Populated raw test rows are content/read controls, not actual owned native completion or review/gate authority.",
+          "Full-source qualification and original remaining implementation gaps require a later fixed review; no both-OS/auth/native/Phase2 approval."
+        ],
+        "limitations": [
+          "Initial text-only restriction is truthful and finite; future structured representation support requires its own strict bounded acquisition/profile controls.",
+          "The unchanged SQL frame and serde parser bound transient decoding; this review does not claim zero allocation for rejected structured body.",
+          "Own Verifier design/implementation excluded."
+        ]
+      }
+    }
+  ],
+  "mutations": {
+    "base": "d19f1a1f49917bad1a3fc414847bd06a56092f20",
+    "mutations": [
+      {
+        "operator": "structured",
+        "mutant": "64917464d6c65beabd2a8a10d54f2112d87cd838",
+        "restored": "b9b9d270df1ff2735c45e3a301b1e9af26b0c78f",
+        "restored_tree": "8a2f05f82d6bf545f01a55d865923c70f95458af",
+        "result": "COMPILED_RUNTIME_ASSERTION_KILL",
+        "check": {
+          "command": [
+            "cargo",
+            "test",
+            "-p",
+            "rrx",
+            "--lib",
+            "state::execution::native_results_tests::populated_native_reader_refuses_unqualified_structured_and_inconsistent_prefix",
+            "--offline",
+            "--target-dir",
+            "/private/tmp/rrx-phase2-retained-mutation-target"
+          ],
+          "exit_code": 101,
+          "seconds": 23.64685893058777,
+          "log": "/private/tmp/rrx-phase2-native-schema6-mutant-structured.log",
+          "sha256": "1b92fa2e5da8394c2a52a27748dacf21999e6903c7fafe9d5781f1a5fedc0d08",
+          "bytes": 2239
+        }
+      },
+      {
+        "operator": "old-writer",
+        "mutant": "e6a495f738f3c9f47e60a6305500d627270c1263",
+        "restored": "e5cd3070ec3cf1e14054a0c7aa9e37fdf67806ce",
+        "restored_tree": "8a2f05f82d6bf545f01a55d865923c70f95458af",
+        "result": "COMPILED_RUNTIME_ASSERTION_KILL",
+        "check": {
+          "command": [
+            "cargo",
+            "test",
+            "-p",
+            "rrx",
+            "--lib",
+            "state::execution::native_results_tests::schema6_migrates_real5_layout_and_fences_preopen_cached_writer",
+            "--offline",
+            "--target-dir",
+            "/private/tmp/rrx-phase2-retained-mutation-target"
+          ],
+          "exit_code": 101,
+          "seconds": 6.155366897583008,
+          "log": "/private/tmp/rrx-phase2-native-schema6-mutant-old-writer.log",
+          "sha256": "6f3b836cce14b9118178fdd5bf7dbe9c3c4901698bf6e54c906fad53a6bcc278",
+          "bytes": 1135
+        }
+      }
+    ]
+  },
+  "restored": {
+    "source": "e5cd3070ec3cf1e14054a0c7aa9e37fdf67806ce",
+    "tree": "8a2f05f82d6bf545f01a55d865923c70f95458af",
+    "check": {
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "rrx",
+        "--lib",
+        "state::execution::native_results_tests",
+        "--offline",
+        "--target-dir",
+        "/private/tmp/rrx-phase2-retained-mutation-target"
+      ],
+      "exit_code": 0,
+      "seconds": 4.4038190841674805,
+      "log": "/private/tmp/rrx-phase2-native-schema6-mutants-restored.log",
+      "sha256": "9ae2c83a5eca0762385c6e155ddd30254aa6af51d259aaab1962721751d5e06f",
+      "bytes": 864
+    },
+    "scope": "All4 native ledger controls after both restorations, not after each."
+  },
+  "mutation_branch": "test/agent-execution-native-schema6-mutations",
+  "mutation_cleanup": "Owned tmp worktree normally removed after exact restored tree and4controlsPASS; history retained.",
+  "limitations": [
+    "Current real native Sessions do not yet register invocation/results in this component; no final model answer or atomic terminal-before-watch qualification.",
+    "No private receipt write/grant, Review opinion counting, formal verifier, Runtime/operationalCLI or new currentinstall/native qualification.",
+    "Typed reader data are not authority; all new actual consumers require separately qualified proofs.",
+    "Text-only acquisition profile rejects all structured outputs; separate supported representation profile remains future work.",
+    "Mutant structured guard is killed by ordinary structured Partial reader assertion, not independently at every oversized/depth/prefix variant. Old writer mutant is killed at actual cached5 write.",
+    "No authenticated accounts, Linux/currentdefault-unrestricted/four-Task/settings/hooks/quota/Phase2/MVP acceptance. Earlier unrestricted Source32 failures remain unresolved."
+  ]
+}

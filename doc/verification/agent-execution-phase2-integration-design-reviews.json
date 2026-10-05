@@ -697,6 +697,226 @@
           }
         }
       ]
+    },
+    {
+      "name": "published_frame_recovery_supplement",
+      "final_source": "730eb37c86a1365426a77b0e77c5de7484e3b9da",
+      "integrated_commit": "5ffaa79",
+      "reports": [
+        {
+          "path": "/private/tmp/rrx-retained-source-recovery-design-review-root.json",
+          "sha256": "f80401ecab34c49f03702756a841f785697dd24d744a69c185bdd6f96754b4ee",
+          "report": {
+            "reviewer": "Root",
+            "source_commit": "730eb37c86a1365426a77b0e77c5de7484e3b9da",
+            "verdict": "APPROVE_COMPONENT_DESIGN",
+            "risk": "STRICT",
+            "findings": [],
+            "scope": "Independent static supplement design only; no source, native qualification or Runtime/Phase2 completion approval.",
+            "confirmed": [
+              "Separate source-only current-owner private claim does not fabricate unavailable driver/native/PreparedExecutor authority. Published artifact selection is pinned to exact sole Workflow/current immutable Context, not latest artifact.",
+              "Immediate durable full-body/versions/generation/artifact/source currency binds claim, helper reserve/poll/receipt, final acceptance and all installed consumers; new source-only read binding supplements actual RetainedGit epoch/artifact-only guards.",
+              "Typed ordinary Workflow/Context/reservation hooks validate before original mutation and advance exact resulting pins; generic owner/record drift cannot be ratified. Cancellation invalidates without reopening old authority.",
+              "Complete canonical-body SQL read bounds, source metadata bounds, artifact indexed dependencies and ordered Native6 then Recovery7 old-writer fencing are explicit.",
+              "Sources slot is held through genuine complete corpus reconstruction, final accepted frame and map assignment; crash/restart/drop does not reconstruct old live capabilities.",
+              "First delivery intentionally excludes fresh preinput route, Runtime drivers and actual native operation; unsupported histories remain held."
+            ],
+            "actual_consumers_read": [
+              "execution/workflow_source.rs::prepare/frame/slot/InitialWorkflowExecutor",
+              "execution/retained_io.rs::RetainedGit::new/validate/run",
+              "state/mod.rs::put_workflow_transition_inner/observe_workflow_gate",
+              "state/execution.rs::checked_workflow_binding/validate_authority/reserve_execution_inner",
+              "execution/results.rs::verify/verify_inner"
+            ],
+            "implementation_seam": "Results verify must pass the source-only private binding through initial/final graph verification as well as corpus reads. Approved proposed wrapper, existing ordinary historical path unchanged.",
+            "limits": [
+              "Static design review only; no execution, tests, branch edits, network/native credentials or source implementation qualification.",
+              "Private source recovery has no driver claim until later Runtime producer binds it; no scheduling capability follows.",
+              "B independent report was not read or shared before its completion."
+            ]
+          }
+        },
+        {
+          "path": "/private/tmp/rrx-retained-source-recovery-design-review-b.json",
+          "sha256": "699b3ededd4ef954814d1be01976e8d39998e369548f0cbcbf44cc57edfa8a82",
+          "report": {
+            "source_commit": "730eb37c86a1365426a77b0e77c5de7484e3b9da",
+            "source_baseline": "a79a3051d41bc122e1e7e88cb7399c3cdfb83787",
+            "reviewer": "B",
+            "scope": "Independent static published committed-source recovery supplement review. Reviewer-authored Native receipt supplement/schema6 is excluded from independent approval.",
+            "verdict": "APPROVE_DESIGN_COMPONENT",
+            "severity_counts": {
+              "C": 0,
+              "H": 0,
+              "M": 0,
+              "L": 0
+            },
+            "findings": [],
+            "evidence": [
+              {
+                "location": "doc/design/retained-source-recovery-integration-design.md:13-38",
+                "observation": "Selection is the exact Published artifact in sole current Workflow/Context under genuine owner epoch, not latest/Ready/terminal labels. The source-only claim explicitly does not substitute the missing task-driver claim or clear native/Workflow ownership."
+              },
+              {
+                "location": "doc/design/retained-source-recovery-integration-design.md:49-71",
+                "observation": "Full canonical body/index/current-version pins have finite length-before-decoding limits, same-epoch preparing claims cannot be stolen by time, and non-Clone producer/Drop bookkeeping cannot recreate a persisted-row capability."
+              },
+              {
+                "location": "doc/design/retained-source-recovery-integration-design.md:75-107",
+                "observation": "Registered retained Git has source-aware pre-spawn, periodic and receipt fences; genuine Frame proof and final Store CAS precede source-slot assignment. Actual capture/input/grant consumers validate installed cache authority. No shared Store lock spans Git I/O."
+              },
+              {
+                "location": "doc/design/retained-source-recovery-integration-design.md:109-127",
+                "observation": "Existing typed Workflow/observation/Unit-binding writes are the only legitimate pin-advance producers, retaining full P/G, instructions/generation/artifact/source identity. Changed source or terminal lifecycle invalidates instead of ratifies. Stale-cache cancellation remains allowed to fence without regrant."
+              },
+              {
+                "location": "crates/rrx/src/state/execution/sessions.rs at fixed source; quota source at fixed source",
+                "observation": "Current Session registration/ack/close modify Session record/Unit rather than Task projection; no current Task writer from those paths is omitted by the proposed Task/WF/Context advancement hooks."
+              },
+              {
+                "location": "doc/design/retained-source-recovery-integration-design.md:40-47; 129-154",
+                "observation": "Schema7 composes actual Native6 first with ordered migration/all-table old-writer fencing; genuine reconstruction/typed transition/grant controls are required. Pre-artifact route and Runtime scheduling remain explicitly unsupported."
+              }
+            ],
+            "controls_not_executed": [
+              "Actual Published artifact reopen/new owner/new Sources reconstruction with changed/missing executor input; exact committed config/rules/corpus at capture and input.",
+              "Typed transitions and fresh phase reserve advance current pins; generic drift then typed writes cannot ratify stale authority.",
+              "Pre-spawn/helper-wait/final-accept/cancel/epoch/source drift races, Drop/competing preparing claims and crash-before-map-assignment.",
+              "Ordered6→7 rollback and pre-open6 cached writer/new-open6 refusal.",
+              "Compiled causal omissions of exact selection/full pins/helper fence/install CAS/generic drift refusal."
+            ],
+            "limits": [
+              "No tests/builds/native/accounts/network/signals/credentials or source edits; only immutable git objects and this private report.",
+              "No peer conclusions, merged/progress reports or dirty/later source consulted.",
+              "New private APIs and hooks are a plan; native receipt/schema6 correctness is not independently approved by its author here.",
+              "No full recovery, pre-artifact support, Runtime shipping, Phase2/native/OS/MVP acceptance."
+            ],
+            "live_handles": [],
+            "commands_closed": true
+          }
+        }
+      ],
+      "implementation_status": "Private source/collector/Workflow/SQL producers under development; no implementation qualification from design approval."
+    },
+    {
+      "name": "workflow_verification",
+      "final_source": "07023fa0dbed38f9561461f8b495682e53c25f82",
+      "integrated_commit": "0726f630e16f6073085ede356bd9df6f141d94e5",
+      "reports": [
+        {
+          "path": "/private/tmp/rrx-workflow-verification-design-review-root.json",
+          "sha256": "32309847b5a5121796d3859497e88a4d13f067094ce28c2e68c1c6cd68ee98a3",
+          "report": {
+            "reviewer": "Root",
+            "source_commit": "07023fa0dbed38f9561461f8b495682e53c25f82",
+            "verdict": "APPROVE_COMPONENT_DESIGN",
+            "risk": "STRICT",
+            "findings": [],
+            "scope": "Independent static Issue12 requirements/design supplement review against actual Evaluating EvidencePort, Session-based readonly acceptance and initial production gates. No source/OS/tool/Phase2 approval.",
+            "confirmed": [
+              "Public PhaseGates Passed cannot certify managed command verification: immutable activation marker and all actual Store success writers guard before any optional unit exists.",
+              "New private Evaluating claim command-only grant and exact authorized successor allow internal reservation bookkeeping without ignoring foreign version drift; actor/Session/native admission rejects command-only units.",
+              "Frozen separately activated executable catalog, required risk/applicability monotonic coverage and exact original base/Implement SHA prevent source changes, agent suggestions or false preset flags from weakening checks.",
+              "Real owned child/backend completion captures both streams under finite wall/drain/output/evidence budgets; known work, complete evidence and best-effort cleanup remain independent.",
+              "Fresh readonly exact retained artifacts and independently finalized evidence are inspected before private completion; full claim/Context/owners/source/receipts/artifact/dependencies CAS is atomic with accepted Workflow transition.",
+              "Mutation requires actual baseline/setup/assertion classifier and fresh original-SHA restored input; compile/setup/timeouts/unrelated failures never earn causal kill credit.",
+              "Deterministic headed CDP and explicit nonproduction staging target/actions use private launched/backend provenance and registered effects; unsupported external dependencies wait, unknown staging ack is not blind resend.",
+              "Recovery cannot invent lost child wait status, grants or old accepted authority from logs/rows; history refs require current retained-read authority."
+            ],
+            "actual_consumers_read": [
+              "workflow.rs::start/persist Evaluating EvidencePort/Reviewer-specific completion",
+              "execution/attempts.rs::prepare_snapshot/prepare_workflow_snapshot",
+              "state/execution/artifacts.rs::complete_workflow_readonly_tx",
+              "execution/workflow_gates.rs pending named verifier outcomes"
+            ],
+            "limits": [
+              "Static contract review only; new grants/planner/collectors/tables/Store success writers require fixed-source tests and independent source review.",
+              "Generic JSON receipt/native successful text is not retained readonly proof; native receipt/schema6 and Review/Runtime dependencies are not declared qualified.",
+              "Whole Issue12 requires actual deterministic headed/staging backend qualification where applicable; merely retaining Waiting preserves scope but does not complete acceptance.",
+              "No peer A report, model/account/auth/profile, OS backend execution or tests were inspected."
+            ]
+          }
+        },
+        {
+          "path": "/private/tmp/rrx-workflow-verification-design-review-a.json",
+          "sha256": "c7a5fda704c2ee76ed8c2595708e85622ef89684645d6deecf04eaf7b0c26159",
+          "report": {
+            "source_commit": "07023fa0dbed38f9561461f8b495682e53c25f82",
+            "source_baseline": "a79a3051d41bc122e1e7e88cb7399c3cdfb83787",
+            "verdict": "APPROVE_COMPONENT_REQUIREMENTS_AND_DESIGN",
+            "counts": {
+              "critical": 0,
+              "high": 0,
+              "medium": 0,
+              "low": 0
+            },
+            "findings": [],
+            "scope": [
+              "doc/requirements/workflow-verification-integration-requirements.md (complete, 156 lines)",
+              "doc/design/workflow-verification-integration-design.md (complete, 421 lines)",
+              "Relevant fixed-source Workflow/production gate/AttemptManager/Store execution grant consumers"
+            ],
+            "verified_consistency": [
+              {
+                "claim": "The existing EvidencePort is Session-free and does not possess the private native readonly completion or an Evaluating verifier reservation. The proposal explicitly supplies distinct command-only authority rather than relabeling the existing native path.",
+                "evidence": [
+                  "crates/rrx/src/workflow.rs:1088-1109,2691-2714",
+                  "crates/rrx/src/execution/attempts.rs:437-451",
+                  "crates/rrx/src/state/execution.rs:114-170",
+                  "design sections 1,4,8"
+                ]
+              },
+              {
+                "claim": "Current production gates validate complete invocation owners/Context/prerequisites and return Waiting for unavailable verification. The proposed reservation returns a private enumerated successor claim, including on Waiting/error, and guards public Passed before a unit exists; ordinary version drift is not excused.",
+                "evidence": [
+                  "crates/rrx/src/execution/workflow_gates.rs:38-90,259-263",
+                  "design section 4"
+                ]
+              },
+              {
+                "claim": "Actual retained graph, independent readonly namespaces, source routing, admitted tool profiles and separate immutable retained evidence cover ordinary survivor writes without asserting same-user security confinement. Source-writing required tools are explicitly incompatible.",
+                "evidence": [
+                  "requirements V1,V5,V11",
+                  "design sections 2,4,5,6,9"
+                ]
+              },
+              {
+                "claim": "Success requires actual closed command/backend receipts, complete plan coverage, inspected evidence and private readonly proof accepted atomically with current Workflow/Context/unit/source/epoch CAS. Cleanup remains a distinct axis; timeout/output loss cannot be reclassified as certifying success.",
+                "evidence": [
+                  "requirements V6,V10,V12",
+                  "design sections 5,8,9"
+                ]
+              },
+              {
+                "claim": "Impact freezes the implementation target and original initial baseline; source changes invalidate analysis and downstream results. Causal mutation requires build/setup success plus the declared behavioral assertion and a fresh restored control. Headed and staging claims require actual qualified backends, not public flags.",
+                "evidence": [
+                  "requirements V2,V3,V7,V8,V9",
+                  "design sections 3,6,7"
+                ]
+              }
+            ],
+            "proposed_causal_controls_not_executed": [
+              "Reservation-successor omission versus unrelated Workflow/Context/owner drift; forged Passed with no command unit",
+              "Session/native grant attempted on command-only unit",
+              "Evidence changed or symlinked before completion/acceptance; timeout, lost stderr and late zero exit cannot pass",
+              "Stale claim, old connection writer, foreign receipt and replay after acceptance",
+              "Mutation compilation error versus actual expected assertion failure and fresh restored baseline",
+              "Headless/foreign browser endpoint and unknown/non-idempotent staging acknowledgement"
+            ],
+            "limitations": [
+              "Static proposed-contract review only; no production implementation or migration was reviewed or accepted.",
+              "No tests/build/native accounts/process/network/OS/backend/auth probes were performed. No parent test claims or peer conclusions were used.",
+              "Finite proposed limits, browser/display support, staging authorization and Runtime recovery/scheduling feasibility require actual implementation and their stated controls; they are not measured guarantees.",
+              "Author-owned CommittedIndex and SourceRecovery implementation correctness excluded.",
+              "No Phase2/native/MVP acceptance and no completion claim for Issue12 dependencies."
+            ],
+            "live_handles": [],
+            "commands_closed": true,
+            "confidence": 0.92
+          }
+        }
+      ],
+      "implementation_status": "Private source/collector/Workflow/SQL producers under development; no implementation qualification from design approval."
     }
   ],
   "parent_verified_findings": [
@@ -724,10 +944,11 @@
     }
   ],
   "migration_coordination": {
-    "current_implemented": 5,
+    "current_implemented": 6,
     "native_receipts_assigned": 6,
     "published_source_recovery_assigned": 7,
-    "review_round_candidate": 8,
-    "further_components": "Integrating owner coordinates exact ordered migrations; none is implemented by this design ledger. Recovery requires Native6 first. Fresh-preinput recovery and full Goal/Runtime remain later ports."
+    "verifier_first_delivery_assigned": 8,
+    "review_round_candidate": 9,
+    "further_components": "Native6 is standalone ledger only; owned producers remain pending. Shared ordered migrations are edited only after previous fixed source milestone."
   }
 }

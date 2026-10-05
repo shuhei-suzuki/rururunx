@@ -151,10 +151,10 @@ IDs, validity, hashes and finite diagnostics suffice for ordinary status.
 ## 4. Frozen invocation and SQL schema6
 
 Root assigned this component **schema6**. Subsequent coordination assigns
-Published-frame recovery schema7 and future ReviewRound schema8; Goal/Runtime
-uses the next coordinated migration. The original independently reviewed supplement
-named ReviewRound7 before that dependency was identified. Update SCHEMA_VERSION, fresh install and
-ordered migration5→6 in one STRICT source delivery. No parallel reuse of6.
+Published-frame recovery schema7, first Verifier delivery schema8 and future
+ReviewRound schema9; Goal/Runtime uses the next coordinated migration. The original independently reviewed supplement
+named ReviewRound7 before those dependencies were identified. Update SCHEMA_VERSION,
+fresh install and ordered migration5→6 in one STRICT source delivery. No parallel reuse of6.
 
 | Table | Identity and ownership |
 | --- | --- |

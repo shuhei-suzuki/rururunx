@@ -39,7 +39,8 @@ Runtime driver must first use genuine retry/reconciliation where necessary.
 
 ## 2. Schema7 and durable pins
 
-Native receipts own schema6; this supplement owns schema7, and ReviewRound uses8.
+Native receipts own schema6; this supplement owns schema7, first Verifier delivery
+uses8, and future ReviewRound uses9.
 Implementation must first compose the actual schema6 source, then install ordered
 6→7 and fresh7 in the same delivery. All mutable tables, including the new table,
 receive connection-version7 guards; an already-open6 writer must refuse writes,

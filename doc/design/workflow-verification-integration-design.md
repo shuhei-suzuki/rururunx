@@ -5,10 +5,12 @@ Risk: STRICT. Status: proposed Phase2 supplement for
 production implementation or native qualification. Source baseline
 `a79a3051d41bc122e1e7e88cb7399c3cdfb83787`. Independent review precedes changes.
 This extends [production gates](production-workflow-gates-design.md), not their
-current qualified coverage. SQLite migration contract is unallocated: Root must
-coordinate it after Native results (6), published-frame recovery (7) and proposed
-ReviewRound (8); do not assume a numeric version or implement an independent
-conflicting migration.
+current qualified coverage. The original reviewed migration was unallocated.
+Subsequent coordination assigns the first command-only Tests delivery schema8,
+after Native results6 and Published-frame recovery7; future ReviewRound uses9.
+Compose those actual preceding fixed migrations before shared schema edits; do not
+publish an independently numbered or partial migration. Other verification
+categories remain explicit pending integrations until implemented and qualified.
 
 ## 1. Actual consumer and proposed components
 

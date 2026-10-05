@@ -899,8 +899,8 @@ passed independent A/C static reviews. It specifies actual acknowledged input an
 native identity, bounded answer acquisition, durable receipt and terminal updates
 before watch publication, historical-only fenced drafts, and ordered schema6.
 Schema6 is assigned to that implementation; existing source still uses schema5.
-Published-frame recovery is assigned7 after Native6; future ReviewRound moves
-to8. Fresh pre-input recovery remains a later integration, explicitly unsupported.
+Published-frame recovery is assigned7 after Native6. At this design checkpoint,
+ReviewRound was assigned8; subsequent Verifier coordination moves it to9. Fresh pre-input recovery remains a later integration, explicitly unsupported.
 The local Codex-generated schema is protocol-shape evidence, not authenticated
 model/native qualification. Review counting/member grants and Runtime construction
 remain separate source work. These component approvals permit continued Phase2
@@ -930,6 +930,40 @@ needs strict DTO/identity/semantic validation plus owned receipt/read-only/membe
 proofs. Parsed APPROVE never supplies approval authority. Both-OS/current-install,
 actual native four-Task and unrestricted regression remain unqualified; earlier
 unrestricted Source32 failures remain retained.
+
+## Native schema6 ledger checkpoint
+
+Fixed clean integrated source `d19f1a1f49917bad1a3fc414847bd06a56092f20`
+installs the standalone Native invocation/result ledger and bounded typed readers.
+Native6 source `beb555ec` received one overlapping independently verified Medium
+finding from Root/C: non-Complete structured data bypassed the decoded-content
+profile. Correction `cc5e5cc` rejects all structured representations in the initial
+text-only profile, validates prefix consistency, and adds populated actual reader
+controls. Both reviewers approved the correction with no remaining findings.
+Original reports are retained; empty-table migration tests do not certify content.
+
+Four controls cover cached schema5 writers/all-table contract6 guards/rollback and
+populated text/UTF8 partial/invalid structured/prefix reads. These raw test-only
+rows are data, not owned native-terminal proof. Parent compiled structured-refusal
+and old-writer-guard omissions fail the intended actual reader/cached-write checks;
+all four restored controls pass on the exact baseline tree. At current fixed clean
+source, **571 primary passed, 0 failed, 30 ignored**, all-target Clippy `-D warnings`,
+build and fmt pass with four test threads. Raw616 passes exclude the same45 child
+duplicates. The [checkpoint](agent-execution-phase2-native-schema6-checkpoint.json)
+records original/fixed reviews, formal author and parent checks, exact hashes,
+mutation chains and the earlier uncredited dirty exploration.
+
+Actual Core invocation/input/ack, bounded provider collector, atomic terminal
+receipt and watch projection are still being connected. Current source's existing
+native path does not yet populate this ledger. No native readiness, Review vote,
+current install or both-OS qualification follows. Strict JSON remains a separate
+content utility; retained Published source recovery and command-only Tests
+verification remain under implementation after their independent design approvals.
+Schema ordering is Native6 → Published source recovery7 → first Verifier8 → future
+ReviewRound9. Reallocations change metadata, not reviewed authority contracts.
+Fresh pre-input source recovery, other verification backends, Runtime/CLI and final
+account-based acceptance remain required. Earlier unrestricted regression failures
+are not erased; collection stays best effort and no security sandbox is claimed.
 
 ## Remaining Phase2 and acceptance work
 
