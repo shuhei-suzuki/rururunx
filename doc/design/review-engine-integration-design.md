@@ -74,8 +74,14 @@ Claude/Codex/Grok all-of-three and its explicit author-visible variant. Provider
 readiness is separate from configuration parsing: current managed NativeSessions
 supports Claude/Codex only; the legacy Grok adapter is not automatically a managed
 member producer. No Triple execution availability is claimed until a reviewed Grok
-member/result/read-only contract exists. Runtime permits may serialize members,
-without changing policy, equivalent core or independence exclusions.
+member/result/read-only contract exists. Runtime permits may serialize members
+only if genuine registered SERIALIZED_CAPABLE native-channel qualification covers
+that exact roster/view and every reachable schedule under the frozen finite queue
+policy. A CONCURRENT_ONLY profile never falls back to per-member serialized
+admission. Equivalent core bytes or a profile label is not this qualification.
+Freeze I9-AC-8.k's actual qualification identity, source/key scope, load/write timing,
+permitted queue/start-skew/parallel/permit envelope and its producer evidence with
+the policy. Absent genuine qualification refuses before member effects.
 
 ## 3. Persisted schema and invariants
 
@@ -97,9 +103,9 @@ incremented per slot. Table names below are proposed, not existing APIs.
 | `review_lineages` | id, exact Project/origin Task/review phase, version, charged/reserved bytes, admitted rounds, confirmation/tree and transient-cause counters; descendants jointly reference all inherited roots. |
 | `review_sets` | id, Scope, Workflow Record/index/generation, version, state, activated policy/roster/governing digests, cumulative author manifest, security/floor, active round; partial UNIQUE one nonterminal Set per current Task/phase. |
 | `review_set_roots` | (set, lineage) unique; immutable inherited budget/obligation membership. |
-| `review_rounds` | id, set, sequence, version, epoch, state, artifact id/version/full snapshot digest, exact SHA/base/tree, launch Context version/digest, Workflow claim/version and accepted Project/Goal/task semantic digests, core/policy/roster hashes, reserved charge, deadlines; UNIQUE(set, sequence), at most one active round. |
+| `review_rounds` | id, set, sequence, version, epoch, state, artifact id/version/full snapshot digest, exact SHA/base/tree, launch Context version/digest, Workflow claim/version and accepted Project/Goal/task semantic digests, core/policy/roster hashes, qualified native-channel identity/envelope, original schedule origin, optional exact cohort lease, noncertifying schedule disposition, reserved charge, deadlines; UNIQUE(set, sequence), at most one active round. |
 | `review_slots` | (round, slot key), immutable registered alias/provider/model/effort, eligible-author classification and focus/input/exposure hashes; UNIQUE slot key, no Session reused by slots. |
-| `review_workers` | (round, slot), version, state, unique Unit id, unique Session id when present, generation/epoch, dispatch operation/receipt, wait reason/due, deadline clock fields; exact FK to slot and execution Unit Scope. |
+| `review_workers` | (round, slot), version, state, unique Unit id, unique Session id when present, generation/epoch, dispatch operation/receipt, wait reason/due, deadline clock fields, original qualified-schedule admission receipt; exact FK to slot and execution Unit Scope. |
 | `review_inputs` | immutable round/slot complete bytes or exact durable owned content reference, byte count/hash, core/specialization/Context digests, coverage/exposure; no peer-output references. |
 | `native_results` | immutable operation/Unit/Session/native turn receipt, provider profile/version, terminal work/disposition, answer acquisition hash/count/prefix/overflow/ambiguity fields and owned bounded answer bytes; exact member input digest when review-owned. |
 | `review_results` | immutable round/slot/receipt, validated verdict or named invalid status, original typed envelope/content hash, measured model/effort or unavailable reason; one accepted receipt per invocation. |
@@ -174,6 +180,8 @@ Executor/ApprovalReviewer roles or an ordinary Reviewer Unit cannot impersonate 
 
 Store Session registration and `admit_native_frame` independently validate the
 durable member binding/currency and single dispatch winner before bootstrap/input.
+Actual input admission also consumes current original-schedule qualification and
+elapsed-envelope checks below; a pre-await capability check cannot substitute.
 Same provider alias does not mean same slot. All public NativeSessions paths check
 this authority variant; no Workflow-present caller can bypass it by directly
 passing an arbitrary prepared Reviewer Unit or self-labelled ReviewBundle.
@@ -183,8 +191,39 @@ intent before write and owned acknowledgement afterwards. Cancellation can win
 before an intent; after intent, unknown acknowledgement is not permission to replay.
 There is no SQL lock across version, quota, snapshot or protocol awaits.
 
-Use existing NativeSessions/QuotaScheduler global/Project/provider caps and leases.
-Admission wait updates only the owning worker; no Session/input has been created
+Use existing NativeSessions/QuotaScheduler global/Project/provider caps and leases
+only for schedules covered by the original frozen channel qualification. Each
+queued worker's due claim and actual native input producer rechecks elapsed queue
+time/start skew, current permits, scope and the original qualified channel identity.
+`NativeAdapter` admission and `admit_native_frame` cannot refresh the schedule origin
+or silently drop that check. Freeze a finite queue expiry compatible with the
+profile; an unbounded queue cannot qualify a finite native-input window. A failed
+check atomically fences further round input and marks the whole round noncertifying
+with original qualification/time/permit evidence. Already admitted workers retain
+their owned findings/results and complete logical closure; no prior approval is
+relabelled or discarded. A new round requires the existing genuine retry authority.
+
+For CONCURRENT_ONLY, add a private actual `ReviewCohortAdmission` producer and Store
+transaction before allocating member preparation/native effects. Revalidate all
+frozen slot/provider/profile/quota currency and compute the complete cohort's
+global/Project/provider requirements. In one Immediate transaction acquire all
+required scheduling permits/leases, or none; persist the exact cohort id, member
+allocation and versions. A queued cohort has zero partial member scheduling leases
+and a wholly unadmitted Set has no review worktree lock. Existing per-member quota
+lease calls cannot mint this authority; until the genuine atomic producer and its
+actual NativeAdapter/Session/input consumers exist, this profile refuses before
+effects. Resource-path/retention bookkeeping does not pretend to reserve capacity.
+Only successful whole-cohort reservation issues linked private member grants;
+startup uses the frozen qualified skew window and admission before every model
+input. Startup failure/expired skew makes the whole round noncertifying, preserving
+already started workers and forbidding serialized fallback. It does not promise
+all native startups succeed. Release individual scheduling allocations only on
+their exact logical closure, keeping the queued cohort atomic on its next claim;
+uncertain physical resources remain quarantined independently.
+
+For a qualified serialized-capable per-member wait, update only the owning worker;
+for a concurrent-only wait, update the whole zero-permit cohort atomically.
+No Session/input has been created
 on a before-spawn wait. Due recheck claims that exact current worker/wait record
 with CAS, rechecks input/currency and uses the existing bounded probe policy.
 WaitingQuota is not a failed/reject opinion. Accepted exhaustion/recovery live
@@ -252,6 +291,10 @@ or a second receipt is rejected. Failed/missing/partial/overflow/malformed resul
 statuses are explicit, retained and non-approving. An APPROVE with a potential
 Medium still creates a blocker. Requested vs reported model/effort mismatch fails;
 unavailable actual values are named and require-verified policy may refuse.
+Parsing well-formed APPROVE content from a failed native terminal records that
+original opinion and findings as acquired content; it does not make the worker
+successful or countable. Native work/disposition and content validity remain
+separate fields through result persistence, member closure and final SQL counting.
 
 ## 7. Member logical closure and round aggregate
 
@@ -276,7 +319,17 @@ settlement language for the new profile. Native/session liveness, logical grant
 closure, opinion validity and cleanup are separate fields.
 
 After all roster slots logically close, runtime may reveal peer findings for
-verification/aggregation. Default has no early stop. Aggregate checks mode count
+verification/aggregation. Default has no early stop. For each counted slot, require
+the conjunction: exact owned current terminal WorkOutcome::Success with completed
+noncancelled disposition, genuine verified readonly snapshot completion, validated
+current owned receipt/input/envelope, successful logical worker closure and APPROVE.
+Mode counting and independent-floor counting use that SAME predicate; floor adds
+eligible non-author identity. Failure/Unknown/cancelled/timeout/Lost contributes
+zero to both even when it emitted valid APPROVE content. Retain those findings and
+inspection obligations; a potential Medium from a failed worker still prevents
+certification until independently resolved. No successful content parse, cleanup
+observation or row labelled Closed replaces genuine native/snapshot provenance.
+Aggregate checks mode count
 AND eligible independent floor, all required per-finding dispositions and independent
 clearances, no potential/verified blocker, ESCALATE, dispute, unseen suffix or
 unexamined content, current artifact/bundle/policy/rules. Diagnostic-only failures
@@ -290,7 +343,11 @@ comparisons: current epoch, Task lifecycle/current projection/semantic digest,
 execution and Workflow generation, Project/Goal/governing versions, sole Workflow
 Record/active phase/round/version, immutable launch Context and next consecutive
 Context, full exact artifact snapshot, policy/roster/core/input hashes, each worker
-closure/result and immutable resolution evidence. Commit certificate + review
+closure/result and immutable resolution evidence. Recheck original qualified
+schedule/cohort, certifying round disposition and the owned-success/readonly/valid
+receipt/closed-success predicate for every counted member inside this transaction;
+caller-provided counts, terminal row labels or result JSON cannot mint it.
+Commit certificate + review
 Evidence reference + Workflow phase success/next active state + Task projection
 + next Context + audit together. No representative Session stands for the set.
 Cancellation/source drift racing publication has one winner. Failed CAS changes
@@ -358,7 +415,10 @@ startup begins at actual permit acquisition, default60s/range1–3600s per #9.
 Scheduling deadlines and opinion deadlines use frozen supported profile bounds,
 not cleanup/death guarantees. Quota parked time is named, excluded from active
 model timeout and still exposed as Task wall time; bounded rechecks/backoff and
-cancel remain available. Shutdown/cookie/Docker observations are independent
+cancel remain available. Quota parking never pauses or refreshes the original
+qualified pre-input queue/start-skew window; expire that round if the original
+native-channel envelope no longer permits a queued member's input.
+Shutdown/cookie/Docker observations are independent
 cleanup jobs; no physical settlement deadline is claimed for host-native hooks.
 
 Implementation sequence after requirements/design independent approval:
@@ -383,7 +443,28 @@ or governing-policy authority and actual independent input controls must fail.
 Current writer success/old writer refusal, concurrent duplicate starts, cancellation
 versus certificate rollback, retained graph loss, four members with sibling cancel,
 live quota/recovery and fresh round terminal quota tests are required. Synthetic
-native peers are labelled orchestration evidence only. Actual credentials, models,
+native peers are labelled orchestration evidence only.
+Add I9-AC-8.k actual consumer controls: a genuinely qualified finite-window
+serialized-capable profile admits its first worker, healthy contention delays the
+second beyond the original window, and the actual second input producer emits
+zero input while the whole round has zero certificate and retains first-worker
+closure/evidence. A concurrent-only missing cohort capacity emits zero input and
+holds zero partial member permits. Two two-member cohorts competing for capacity
+three admit exactly one complete pair, queue the other with zero, and admit the
+second pair after genuine returned capacity. A cohort startup failure cannot
+convert the round to serialized/certifying. Remove queued elapsed-schedule checking
+or replace atomic cohort acquisition with incremental partial holding; the
+corresponding real producer control must fail. A synthetic clock/channel label is
+not genuine native-profile qualification evidence.
+Add failure-terminal result controls through actual native receipt/parse/aggregate
+and publication consumers: syntactically valid exact APPROVE with native Failure
+or Unknown contributes zero mode/floor votes, so all-of-two or STRICT's two-floor
+cannot be satisfied by one real success plus that invocation. Failure containing
+a potential Medium retains inspection/veto and cannot be hidden by quorum/any.
+The restored Success plus verified readonly completion/current receipt/closed
+worker is a separate positive. Mutations removing native-success checking from
+aggregation AND final SQL counting must be caught at their actual consumers.
+Actual credentials, models,
 hooks/read-only enforcement and official profile independence are not tested by
 this documentation delivery.
 
