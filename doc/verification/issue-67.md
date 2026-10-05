@@ -2,7 +2,15 @@
 
 Related: #67, #51, #60, #6, #16.
 
-**Current status: PR68 remains DRAFT / merge HOLD. Final-head CI37250379945 failed on macOS with two actual ProcessStatus deadline observations. Cause/regression remain UNKNOWN. The forced-watchdog diagnostic probe below passes its intended diagnostic acceptance and restored control; it does not resolve the failed merge gate.** This QUICK test-only change makes failures of existing isolated environment fixtures observable. It does not fix or establish the cause of earlier full Release watchdog failures or main CI ProcessStatus deadline failures.
+**Current status: the limited test-only diagnostic slice merged through PR68 at
+`768f84319cd2a73e14cd39336eb12d99e9be81a7`; Issue67 is closed. Exact final-source
+CI37251714742 and subsequent main CI37252707188 passed every macOS/Linux step.
+The earlier failed CI37250379945 and full Release failures remain retained with
+UNKNOWN cause/regression.** The [observed final gate and merge record](issue-67-merged-status.json)
+qualifies only this diagnostic slice. This QUICK test-only change makes failures
+of existing isolated environment fixtures observable. It does not fix or
+establish the cause of earlier full Release watchdog failures or main CI
+ProcessStatus deadline failures.
 
 `isolated_with` retains its env-cleared owned child, synthetic environment, two existing bounded readers, 60-second observation deadline, cleanup/reap order and original success predicate. Its failure message adds a finite observation classification, elapsed observation milliseconds and actual reaped exit status. No environment values or filesystem/config/credential contents are added. Observation I/O errors are reported as a category without their error message.
 
@@ -45,10 +53,34 @@ Only a finite metadata delta follows the current approvals: sanitized actual rev
 
 The probe-only six-line park was fully restored in a committed clean detached worktree; its complete tree equals final5ca. The original same parent then passed in33.81s with unchanged deadline/predicate/cleanup. This intentional park is a diagnostic exercise, not an assurance mutant (zero operator credit), reproduction or cause/fix of earlier failures, all-native cleanup proof or native/F1/MVP acceptance. `observation_io_error` rendering remains compile-checked only. A stage names entry to an operation, not successful completion or the cause of a delay.
 
-## Failed exact final CI and unresolved merge gate
+## Prior failed final CI and publication-time merge hold
 
 [Final-head CI37250379945 failure and exact provenance](issue-67-final1-ci-failure.json) tests head5ca against main5b4. Both jobs actually checked out c526d6b; parents5b4/5ca and complete tree7b274cd/all tracked blobs match head5ca. Linux passed every step. macOS formatting and Clippy passed, but the library tests ended269PASS/2FAIL/23ignored; later Debug/Release builds were skipped.
 
 The two failing Codex synthetic-owner tests each recorded an actual independent process inspection deadline: terminal-publication at session.rs5873 observed295241us (spawn1266us/cleanup12us), and owner-saturation at5605 observed261412us (spawn1641us/cleanup3us). Both had zero stdout/stderr, one WouldBlock read per stream, pending exit status and validation not reached; the inspector reported kill requested then wait reaped. These are two actual observations, not the earlier Context cohort of one observation plus sticky uncertainty failures. No all-nested-job or native ownership certificate follows from inspector cleanup.
 
-Cause and regression, including indirect effects, remain UNKNOWN. No rerun, deadline increase, serial test execution or assertion waiver is used. The existing two source/composition approvals and earlier green runs do not override this failed final gate. PR68 remains draft and Issue67 remains open; genuine subsequent dependency/source verification must resolve the gate before merge. Publishing these actual probe/failure records is a finite evidence update, not a remedy for the failure. #51/#60/#6 and whole MVP acceptance remain open.
+Cause and regression, including indirect effects, remain UNKNOWN. No rerun,
+deadline increase, serial test execution or assertion waiver was used. At this
+publication point, the existing source/composition approvals and earlier green
+runs did not override the failed gate: PR68 was draft and Issue67 was open.
+Publishing the actual probe/failure records was a finite evidence update, not a
+remedy for the failure. The subsequent exact final gate and merge are recorded
+below. #51/#60/#6 and whole MVP acceptance remain open.
+
+## Observed final gate and limited merge
+
+Final evidence head `3d6ac5fb40f50239f0d0c69795f9c11247d263e1` recorded the
+forced-watchdog probe and failed prior CI without changing the approved code.
+Its distinct CI37251714742 passed every step on both hosts. Both jobs actually
+checked out `1e3fc29444a0a2473e8531f2e3ea50f117e88bf4`, parents main5b4/final3d6;
+complete tree `b671a403343dd2e99c0158b894e4fa60e6a5d949` and all274 tracked blobs
+match final3d6. This is a final-head gate observation, not a cause/fix proof or
+a retry of failed5ca.
+
+PR68 merged on2026-10-05T01:45:50Z to main768; Issue67 closed on01:50:58Z.
+The subsequent push CI37252707188 passed every macOS/Linux step at actual main768,
+with the same complete tree. These workflows run workspace Debug tests and
+Debug/Release builds; they do not run full Release tests. This status correction
+adds no new code/test verification, native acceptance, complete nested cleanup
+certificate or failure-cause claim. Historical HOLD fields in earlier immutable
+evidence files describe their publication-time state and remain unchanged.
