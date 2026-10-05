@@ -21,10 +21,12 @@ fn legacy5(path: &Path) -> Connection {
         [Uuid::new_v4().to_string()],
     )
     .unwrap();
-    for table in MUTABLE_TABLES
-        .iter()
-        .filter(|table| !matches!(**table, "native_invocations" | "native_results"))
-    {
+    for table in MUTABLE_TABLES.iter().filter(|table| {
+        !matches!(
+            **table,
+            "native_invocations" | "native_results" | "source_recoveries"
+        )
+    }) {
         for action in ["INSERT", "UPDATE", "DELETE"] {
             old.execute_batch(&format!("CREATE TRIGGER writer_{table}_{action} BEFORE {action} ON {table} WHEN rrx_writer_contract_version()<>5 BEGIN SELECT RAISE(ABORT,'incompatible rrx writer contract'); END;")).unwrap();
         }
@@ -80,7 +82,7 @@ fn schema6_migrates_real5_layout_and_fences_preopen_cached_writer() {
                     |r| r.get(0),
                 )
                 .unwrap();
-            assert!(sql.contains("<>6"));
+            assert!(sql.contains(&format!("<>{SCHEMA_VERSION}")));
         }
     }
     assert_eq!(

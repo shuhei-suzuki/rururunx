@@ -209,7 +209,17 @@ async fn published_recovery_reopens_exact_frame_and_advances_only_typed_workflow
     let f = published().await;
     let old_epoch = f.owner.epoch;
     let path = f.dir.path().join("state.db");
+    let released = Arc::downgrade(&f.owner);
     drop(f.owner);
+    // Dropped registry ToolServer cancellation is processed asynchronously;
+    // wait for that actual Rust owner to release the lock, not native death.
+    tokio::time::timeout(Duration::from_secs(10), async {
+        while released.strong_count() > 0 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
     let owner = RuntimeOwner::open(&path).unwrap();
     assert!(owner.epoch > old_epoch);
     let sources = Arc::new(ManagedWorkflowSources::new(owner.clone(), f.config.clone()).unwrap());
