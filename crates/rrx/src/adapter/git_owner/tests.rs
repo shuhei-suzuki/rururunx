@@ -1,5 +1,18 @@
 use super::*;
 
+// Temporary Root diagnostic exercise, never a production/source acceptance case.
+#[tokio::test]
+async fn root_forced_git_observation_timeout_probe() {
+    let context = TestGitContext::isolated();
+    let flag = Arc::new(AtomicBool::new(false));
+    let failure = shell(context.clone(), "exec /bin/sleep 30", flag.clone())
+        .await
+        .unwrap_err();
+    released(&context).await;
+    assert_eq!(failure.kind, ErrorKind::Timeout);
+    assert!(!flag.load(Ordering::SeqCst));
+}
+
 async fn shell(
     context: TestGitContext,
     script: &str,
