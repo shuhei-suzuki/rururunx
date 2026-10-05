@@ -151,6 +151,23 @@ pub fn codex_subscription_error(error: &Value) -> bool {
     error["codexErrorInfo"] == "usageLimitExceeded"
 }
 
+pub(super) fn codex_capacity_error(error: &Value) -> bool {
+    // These are finite members of the installed 0.160.0 schema. They do not
+    // establish a subscription balance and must not poison a sibling pool.
+    let info = &error["codexErrorInfo"];
+    matches!(
+        info.as_str(),
+        Some("rateLimitExceeded" | "flexUnavailable" | "serverOverloaded")
+    ) || [
+        "httpConnectionFailed",
+        "responseStreamConnectionFailed",
+        "responseStreamDisconnected",
+        "responseTooManyFailedAttempts",
+    ]
+    .iter()
+    .any(|key| matches!(info[key]["httpStatusCode"].as_u64(), Some(429 | 503)))
+}
+
 /// Recognize a bounded plan window only. Missing/type-unknown fields stay unclassified.
 pub fn claude_window(value: &Value, at: i64) -> Result<Option<QuotaObservation>> {
     if value["type"] != "rate_limit_event" {

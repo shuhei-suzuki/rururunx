@@ -79,6 +79,7 @@ pub(super) fn install_schema(tx: &Transaction<'_>) -> Result<()> {
                 session_id: None,
                 artifact_id: None,
                 wait_reason: Some(WaitReason::ExternalOutcome),
+                capacity_retry_at: None,
                 created_at: at,
                 updated_at: at,
             };
@@ -455,7 +456,8 @@ impl Store {
         ensure!(
             unit.kind != UnitKind::Legacy
                 && unit.version == 0
-                && valid_oid(&unit.base_sha)
+                && (valid_oid(&unit.base_sha)
+                    || (unit.kind == UnitKind::Executor && unit.base_sha.is_empty()))
                 && unit.profile_digest.len() == 64
                 && unit.cookie.len() == 36
                 && unit.worktree.is_absolute()
@@ -600,6 +602,37 @@ impl Store {
         tx.commit()?;
         Ok(unit)
     }
+    /// A reserved executor may resolve its base only once, through scoped
+    /// helpers, before worktree creation or native Session registration.
+    pub(crate) fn bind_execution_base(
+        &mut self,
+        authority: &ExecutionAuthority,
+        base: &str,
+    ) -> Result<ExecutionUnit> {
+        ensure!(valid_oid(base), "base must be exact commit OID");
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let mut unit = validate_authority(&tx, authority, true, false)?;
+        ensure!(
+            unit.kind == UnitKind::Executor
+                && unit.state == UnitState::Preparing
+                && unit.base_sha.is_empty()
+                && unit.session_id.is_none()
+                && unit.artifact_id.is_none(),
+            "execution base is already bound or cannot be resolved"
+        );
+        unit.base_sha = base.into();
+        write_unit(&tx, &mut unit)?;
+        append_event(
+            &tx,
+            &unit.scope,
+            "execution.base_bound",
+            json!({"unit":unit.id,"base":base}),
+        )?;
+        tx.commit()?;
+        Ok(unit)
+    }
     pub(crate) fn finish_execution(
         &mut self,
         authority: &ExecutionAuthority,
@@ -620,13 +653,22 @@ impl Store {
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         let mut unit = validate_authority(&tx, authority, false, true)?;
         ensure!(unit.work.is_none(), "work terminal already recorded");
+        ensure!(
+            !matches!(
+                disposition,
+                Disposition::QuotaInterrupted | Disposition::CapacityInterrupted
+            ) || work == WorkOutcome::Unknown,
+            "interrupted native work cannot be known"
+        );
         unit.native_effects_open = false;
         unit.work = Some(work);
         unit.disposition = disposition;
-        unit.wait_reason = if disposition == Disposition::QuotaInterrupted {
-            Some(WaitReason::Quota)
-        } else {
-            None
+        unit.capacity_retry_at = (disposition == Disposition::CapacityInterrupted)
+            .then(|| now_ms().saturating_add(60_000));
+        unit.wait_reason = match disposition {
+            Disposition::QuotaInterrupted => Some(WaitReason::Quota),
+            Disposition::CapacityInterrupted => Some(WaitReason::Capacity),
+            _ => None,
         };
         unit.state = if work == WorkOutcome::Unknown {
             UnitState::WorkUnknown
@@ -653,6 +695,19 @@ impl Store {
         authority: &ExecutionAuthority,
         cancel_task: bool,
     ) -> Result<ExecutionUnit> {
+        self.retire_execution_as(authority, cancel_task, Disposition::Cancelled)
+    }
+    pub(crate) fn retire_execution_as(
+        &mut self,
+        authority: &ExecutionAuthority,
+        cancel_task: bool,
+        disposition: Disposition,
+    ) -> Result<ExecutionUnit> {
+        ensure!(
+            matches!(disposition, Disposition::Cancelled | Disposition::Lost)
+                && (!cancel_task || disposition == Disposition::Cancelled),
+            "invalid retirement disposition"
+        );
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -660,7 +715,7 @@ impl Store {
         unit.native_effects_open = false;
         unit.result_finalization_open = false;
         unit.state = UnitState::Retired;
-        unit.disposition = Disposition::Cancelled;
+        unit.disposition = disposition;
         if unit.work.is_none() {
             unit.work = Some(WorkOutcome::Unknown);
         }

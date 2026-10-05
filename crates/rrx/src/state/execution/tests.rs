@@ -54,6 +54,7 @@ fn draft(task: &Task, epoch: u64) -> ExecutionUnit {
         session_id: None,
         artifact_id: None,
         wait_reason: None,
+        capacity_retry_at: None,
         created_at: at,
         updated_at: at,
     }
@@ -75,6 +76,84 @@ fn session(unit: &ExecutionUnit) -> Session {
         recovery: json!({}),
         started_at: now_ms(),
     }
+}
+
+#[test]
+fn unclassified_capacity_waits_for_a_fresh_attempt_without_closing_a_sibling_pool() {
+    let (mut store, task, epoch) = fixture();
+    let unit = store
+        .reserve_execution(draft(&task, epoch), task.version)
+        .unwrap();
+    let closed = store
+        .finish_execution(
+            &unit.authority(),
+            WorkOutcome::Unknown,
+            Disposition::CapacityInterrupted,
+        )
+        .unwrap();
+    let due = closed.capacity_retry_at.unwrap();
+    assert_eq!(closed.wait_reason, Some(WaitReason::Capacity));
+    assert!(
+        store
+            .reserve_execution_quota(&closed.authority(), "codex", "unknown", 6, 2, 3, due)
+            .is_err()
+    );
+    let current_task = store.task(task.id).unwrap().unwrap();
+    let retry = store
+        .reserve_execution(draft(&current_task, epoch), current_task.version)
+        .unwrap();
+    assert_ne!(closed.id, retry.id);
+    assert_ne!(closed.worktree, retry.worktree);
+    assert_eq!(
+        store
+            .reserve_execution_quota(&retry.authority(), "codex", "unknown", 6, 2, 3, due - 1)
+            .unwrap(),
+        QuotaAdmission::Waiting {
+            reason: WaitReason::Capacity,
+            next_due: due
+        }
+    );
+    let waiting = store.execution_unit(retry.id).unwrap();
+    let mut sibling = Task::new(
+        task.project_id,
+        task.goal_id,
+        "sibling".into(),
+        "codex".into(),
+    );
+    store.put_task(&mut sibling).unwrap();
+    let sibling_unit = store
+        .reserve_execution(draft(&sibling, epoch), sibling.version)
+        .unwrap();
+    assert_eq!(
+        store
+            .reserve_execution_quota(
+                &sibling_unit.authority(),
+                "codex",
+                "unknown",
+                6,
+                2,
+                3,
+                due - 1
+            )
+            .unwrap(),
+        QuotaAdmission::Admitted
+    );
+    assert_eq!(
+        store
+            .reserve_execution_quota(&waiting.authority(), "codex", "unknown", 6, 2, 3, due)
+            .unwrap(),
+        QuotaAdmission::Admitted
+    );
+    assert!(
+        store
+            .quota_observations("codex", "unknown")
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        store.execution_unit(closed.id).unwrap().capacity_retry_at,
+        Some(due)
+    );
 }
 
 #[test]

@@ -53,6 +53,30 @@ These corrections still require independent re-review on a fixed commit.
 
 ## Executed controls
 
+The [round5 reports](agent-execution-phase2-preliminary5-reviews.json) independently
+examined immutable `74f484844119b6d3adcc16366ebb71f7626fd7c0`: A approved the
+reviewed components, B requested two medium corrections. Neither is a final
+Phase2 approval. The subsequent correction separates typed Claude authentication
+and unsupported-capability errors from ordinary work failure, and adds an
+unclassified capacity terminal: unknown work, closed native/finalization flags,
+capacity wait and a durable 60-second local recheck for a fresh attempt. It never
+fabricates confirmed subscription exhaustion or closes a sibling Task's pool.
+Finite installed Codex schema discriminators and owned Claude assistant/result
+indications select the bounded category; intermediate native retries are not
+terminals, and budget/turn caps remain failures. Claude structured error types
+are described in the [official SDK message reference](https://code.claude.com/docs/en/agent-sdk/python).
+That reference is a decoder-policy input, not real version/account conformance.
+New fields have nullable compatibility defaults for existing development rows.
+
+All initial source Git helpers now follow unit/resource registration and the
+common-Git gate. A missing explicit base is resolved once through that admitted
+helper and bound before native Session launch. Cancellation/epoch/source fences
+are checked during helper waits. Dropping preparation closes its own semantic
+unit/Session identity and marks its pending helper uncertain without replay;
+an independently admitted winning Session cannot be adopted by a competing start.
+These corrections require immutable independent re-review. Retained historical
+inspection and coordinated Workflow publication remain outstanding below.
+
 On this macOS host, owned temporary Git repositories and explicitly synthetic
 Claude/Codex protocol peers exercise actual new component producers. They do not
 use provider accounts, authentication, models or network. The synthetic peers

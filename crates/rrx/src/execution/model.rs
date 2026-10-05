@@ -77,6 +77,7 @@ states!(Disposition {
     Completed,
     Cancelled,
     QuotaInterrupted,
+    CapacityInterrupted,
     Lost,
     Refused,
     ProtocolError,
@@ -175,6 +176,8 @@ pub struct ExecutionUnit {
     pub session_id: Option<SessionId>,
     pub artifact_id: Option<ArtifactId>,
     pub wait_reason: Option<WaitReason>,
+    #[serde(default)]
+    pub capacity_retry_at: Option<i64>,
     pub created_at: i64,
     pub updated_at: i64,
 }

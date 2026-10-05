@@ -13,6 +13,7 @@ impl Store {
         let mut unit = validate_authority(&tx, authority, true, false)?;
         ensure!(
             unit.state == UnitState::Preparing
+                && valid_oid(&unit.base_sha)
                 && unit.session_id.is_none()
                 && session.scope == unit.scope
                 && session.worktree == unit.worktree

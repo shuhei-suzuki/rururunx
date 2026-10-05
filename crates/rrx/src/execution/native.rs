@@ -1,7 +1,7 @@
 //! Host-native sessions admitted by result and resource authority, not death proof.
 use super::*;
 use crate::{
-    adapter::PreparedInput,
+    adapter::{AdapterError, ErrorKind, PreparedInput},
     domain::{Session, SessionId, SessionRole, SessionState, now_ms},
 };
 use anyhow::{Context, Result, ensure};
@@ -10,7 +10,7 @@ use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, VecDeque},
     process::Stdio,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, Weak},
     time::Duration,
 };
 use tokio::{
@@ -77,6 +77,7 @@ pub struct NativeSessions {
     owner: Arc<RuntimeOwner>,
     _tools: Arc<ipc::ToolServer>,
     entries: Mutex<BTreeMap<SessionId, Entry>>,
+    starts: Mutex<BTreeMap<UnitId, Weak<tokio::sync::Mutex<()>>>>,
 }
 impl NativeSessions {
     pub fn new(owner: Arc<RuntimeOwner>) -> Result<Self> {
@@ -85,6 +86,7 @@ impl NativeSessions {
             owner,
             _tools: tools,
             entries: Mutex::new(BTreeMap::new()),
+            starts: Mutex::new(BTreeMap::new()),
         })
     }
     pub async fn start(
@@ -102,6 +104,24 @@ impl NativeSessions {
         effort: Option<String>,
         executable: Option<std::path::PathBuf>,
     ) -> Result<NativeStart> {
+        let gate = {
+            let mut starts = self
+                .starts
+                .lock()
+                .map_err(|_| anyhow::anyhow!("start state poisoned"))?;
+            starts.retain(|_, gate| gate.strong_count() > 0);
+            match starts.get(&input.authority.unit_id).and_then(Weak::upgrade) {
+                Some(gate) => gate,
+                None => {
+                    let gate = Arc::new(tokio::sync::Mutex::new(()));
+                    starts.insert(input.authority.unit_id, Arc::downgrade(&gate));
+                    gate
+                }
+            }
+        };
+        // Start preparation for separate Tasks remains concurrent. A competing
+        // start for this unit cannot adopt or retire the successful winner.
+        let _start = gate.lock().await;
         let mut unit = self
             .owner
             .store
@@ -114,11 +134,13 @@ impl NativeSessions {
                 && input.artifact == unit.artifact_id
                 && input.input.scope == unit.scope
                 && input.input.revision == unit.base_sha
+                && valid_oid(&unit.base_sha)
                 && input.input.version > 0
                 && !input.input.payload.is_empty()
                 && input.input.payload.len() <= 1024 * 1024,
             "native input identity mismatch"
         );
+        let mut preparation_guard = owner::PreparationGuard::new(self.owner.clone(), &unit);
         ensure!(
             matches!(unit.provider.as_str(), "codex" | "claude"),
             "unsupported native provider"
@@ -189,7 +211,8 @@ impl NativeSessions {
                 }
             }
         };
-        let observed = process::capture_child(child).await;
+        let mut helper_guard = owner::HelperGuard::new(self.owner.clone(), operation);
+        let observed = process::capture_scoped(child, &self.owner, &unit, true).await;
         let receipt = observed
             .as_ref()
             .ok()
@@ -217,6 +240,7 @@ impl NativeSessions {
                 },
                 receipt,
             )?;
+        helper_guard.disarm();
         let observed = observed?;
         ensure!(
             observed.receipt.status.success(),
@@ -237,6 +261,7 @@ impl NativeSessions {
                 .lock()
                 .map_err(|_| anyhow::anyhow!("state poisoned"))?
                 .execution_unit(unit.id)?;
+            preparation_guard.disarm();
             return Ok(NativeStart::Waiting {
                 unit,
                 reason,
@@ -249,6 +274,7 @@ impl NativeSessions {
             .lock()
             .map_err(|_| anyhow::anyhow!("state poisoned"))?
             .execution_unit(unit.id)?;
+        preparation_guard.update(&unit);
         let mut session = Session {
             id: SessionId::new(),
             scope: unit.scope.clone(),
@@ -316,6 +342,7 @@ impl NativeSessions {
                 .lock()
                 .map_err(|_| anyhow::anyhow!("state poisoned"))?;
             unit = store.register_execution_session(&unit.authority(), &session)?;
+            preparation_guard.update(&unit);
             match process::OwnedProcess::spawn(&mut command) {
                 Ok(child) => child,
                 Err(e) => {
@@ -381,7 +408,6 @@ impl NativeSessions {
             native,
             drain,
         };
-        tokio::spawn(core.run(input.input, model, effort, profile));
         self.entries
             .lock()
             .map_err(|_| anyhow::anyhow!("sessions poisoned"))?
@@ -393,6 +419,8 @@ impl NativeSessions {
                     control,
                 },
             );
+        preparation_guard.disarm();
+        tokio::spawn(core.run(input.input, model, effort, profile));
         Ok(NativeStart::Launched(handle))
     }
     fn entry(
@@ -790,6 +818,21 @@ impl Core {
                 // finite nonsecret categories survive the supervisor.
                 let category = if let Some(category) = error.downcast_ref::<NativeFailure>() {
                     *category
+                } else if let Some(error) = error.downcast_ref::<AdapterError>() {
+                    match error.kind {
+                        ErrorKind::AuthenticationUnavailable => {
+                            NativeFailure::AuthenticationUnavailable
+                        }
+                        ErrorKind::UnsupportedCapability | ErrorKind::ExecutableMissing => {
+                            NativeFailure::UnsupportedCapability
+                        }
+                        ErrorKind::OwnershipMismatch
+                        | ErrorKind::StateFailure
+                        | ErrorKind::StateConflict
+                        | ErrorKind::Locked => NativeFailure::AuthorityUnavailable,
+                        ErrorKind::SessionLost | ErrorKind::Timeout => NativeFailure::TransportLost,
+                        _ => NativeFailure::ProtocolFailure,
+                    }
                 } else if error.is::<std::io::Error>() || error.is::<tokio::time::error::Elapsed>()
                 {
                     NativeFailure::TransportLost
@@ -893,6 +936,10 @@ impl Core {
                 Some(failure.diagnostic())
             } else if persisted.is_err() || session_result.is_err() {
                 Some("terminal persistence conflict")
+            } else if current.disposition == Disposition::CapacityInterrupted {
+                Some("native capacity unclassified; fresh attempt waits for bounded recheck")
+            } else if current.disposition == Disposition::QuotaInterrupted {
+                Some("subscription quota exhausted; fresh attempt waits for recovery")
             } else if group_error {
                 Some("owned group cleanup incomplete")
             } else {
@@ -1027,6 +1074,8 @@ impl Core {
                             }
                             return Ok(if status=="completed" {(WorkOutcome::Success,Disposition::Completed,Some(p["turn"].clone()))}
                                 else if quota_ended {(WorkOutcome::Unknown,Disposition::QuotaInterrupted,None)}
+                                else if status=="failed" && p["turn"]["error"]["codexErrorInfo"]=="unauthorized" {anyhow::bail!(NativeFailure::AuthenticationUnavailable)}
+                                else if status=="failed" && quota::codex_capacity_error(&p["turn"]["error"]) {(WorkOutcome::Unknown,Disposition::CapacityInterrupted,None)}
                                 else if status=="failed" {(WorkOutcome::Failure,Disposition::Completed,Some(p["turn"].clone()))}
                                 else {(WorkOutcome::Unknown,Disposition::Lost,None)});
                         },_=>{}
@@ -1077,6 +1126,7 @@ impl Core {
         let mut state = claude_wire::RunState::default();
         let mut pending = BTreeMap::<String, claude_wire::Pending>::new();
         let mut quota_buckets = std::collections::BTreeSet::new();
+        let mut unclassified_limit = false;
         let mut fence = tokio::time::interval(Duration::from_millis(100));
         loop {
             tokio::select! {
@@ -1084,6 +1134,9 @@ impl Core {
                     let frame=frame?;
                     // Only this native Session's event may change its subscription pool.
                     if frame["type"]=="rate_limit_event" && frame["session_id"]!=self.native {continue;}
+                    if frame["type"]=="rate_limit_event" && frame["session_id"]==self.native && frame["rate_limit_info"]["status"]=="rejected" && quota::claude_window(&frame,now_ms())?.is_none() {
+                        unclassified_limit=true;
+                    }
                     if let Some(observation)=quota::claude_window(&frame,now_ms())? {
                         quota_buckets.insert(observation.bucket.clone());
                         let scheduler=quota::QuotaScheduler::new(self.owner.clone());
@@ -1096,13 +1149,14 @@ impl Core {
                         self.update.send_modify(|s|s.pending.push(permission.public(&self.native)));pending.insert(permission.request_id.clone(),permission);continue;
                     }
                     let seen=state.observe(&frame,&self.native,&self.unit.worktree,false);
-                    if seen.is_err() && frame["type"]=="result" && frame["session_id"]==self.native && frame["is_error"]==true && state.initialized
-                        && matches!(frame["subtype"].as_str(),Some("error_during_execution"|"error_max_turns"|"error_max_budget_usd"|"error_max_structured_output_retries")) {
+                    if seen.as_ref().is_err_and(|e|e.kind==ErrorKind::ProcessFailure) {
                         // Consult accepted bucket state, not the last telemetry frame.
                         // Budget/turn/output caps remain work failures even during quota exhaustion.
-                        let quota_exhausted=frame["subtype"]=="error_during_execution" && self.owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?
+                        let quota_exhausted=matches!(frame["subtype"].as_str(),Some("success"|"error_during_execution")) && self.owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?
                             .quota_observations("claude","unknown")?.iter().any(|o|o.status==QuotaStatus::Exhausted && quota_buckets.contains(&o.bucket));
-                        return Ok(if quota_exhausted{(WorkOutcome::Unknown,Disposition::QuotaInterrupted,None)}else{(WorkOutcome::Failure,Disposition::Completed,Some(frame))});
+                        return Ok(if quota_exhausted{(WorkOutcome::Unknown,Disposition::QuotaInterrupted,None)}
+                            else if state.terminal_capacity || (unclassified_limit && matches!(frame["subtype"].as_str(),Some("success"|"error_during_execution"))){(WorkOutcome::Unknown,Disposition::CapacityInterrupted,None)}
+                            else{(WorkOutcome::Failure,Disposition::Completed,Some(frame))});
                     }
                     seen?;
                     if state.initialized && self.session.native_ref.is_none(){self.ack(self.native.clone())?;}

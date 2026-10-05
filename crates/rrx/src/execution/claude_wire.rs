@@ -24,7 +24,8 @@ pub(super) fn bounded_id(value: &Value) -> AdapterResult<String> {
         })
 }
 pub(super) fn verify_version(version: &str) -> AdapterResult<()> {
-    // This is the installed wire/control baseline actually exercised. Future
+    // A pinned local version/schema baseline, not native Agent conformance.
+    // Real account/settings/hook qualification belongs to Phase 3. Future
     // versions require a capability probe, rather than inheriting permissions.
     if version.split_whitespace().next() != Some("2.1.283") {
         return Err(failure(
@@ -168,6 +169,8 @@ pub(super) struct RunState {
     await_final_idle: bool,
     pub failed_tasks: bool,
     pub had_background: bool,
+    pub terminal_capacity: bool,
+    assistant_error: Option<String>,
 }
 impl RunState {
     pub fn observe(
@@ -297,6 +300,23 @@ impl RunState {
                 if self.injected_turn {
                     return Ok(false);
                 }
+                if message["session_id"] == native
+                    && message["parent_tool_use_id"].is_null()
+                    && (message["origin"].is_null() || message["origin"]["kind"] == "human")
+                {
+                    // This is a hint for a later owned terminal, not a terminal
+                    // itself: the native CLI may retry this assistant error.
+                    self.assistant_error = message["error"].as_str().and_then(|s| {
+                        matches!(
+                            s,
+                            "authentication_failed"
+                                | "billing_error"
+                                | "rate_limit"
+                                | "server_error"
+                        )
+                        .then(|| s.to_owned())
+                    });
+                }
             }
             Some("result") => {
                 if !self.initialized || message["session_id"] != native {
@@ -324,6 +344,21 @@ impl RunState {
                     self.failed_tasks |= subtype != Some("success") || is_error != Some(false);
                     return Ok(false);
                 }
+                if !matches!(
+                    subtype,
+                    Some(
+                        "success"
+                            | "error_during_execution"
+                            | "error_max_turns"
+                            | "error_max_budget_usd"
+                            | "error_max_structured_output_retries"
+                    )
+                ) {
+                    return Err(failure(
+                        ErrorKind::UnsupportedCapability,
+                        "unsupported native terminal subtype",
+                    ));
+                }
                 if message["subtype"] != "success" || message["is_error"] != false {
                     let authentication =
                         message
@@ -335,8 +370,31 @@ impl RunState {
                                     || lower.contains("authentication failed")
                                     || lower.contains("invalid api key")
                             });
+                    let api_failure = matches!(subtype, Some("success" | "error_during_execution"));
+                    self.terminal_capacity = api_failure
+                        && (matches!(
+                            self.assistant_error.as_deref(),
+                            Some("billing_error" | "rate_limit" | "server_error")
+                        ) || matches!(message["api_error_status"].as_u64(), Some(429 | 503))
+                            || message
+                                .get("result")
+                                .and_then(Value::as_str)
+                                .is_some_and(capacity_text)
+                            || message
+                                .get("errors")
+                                .and_then(Value::as_array)
+                                .is_some_and(|a| {
+                                    a.iter()
+                                        .take(64)
+                                        .any(|s| s.as_str().is_some_and(capacity_text))
+                                }));
                     return Err(failure(
-                        if authentication {
+                        if authentication
+                            || (api_failure
+                                && (self.assistant_error.as_deref()
+                                    == Some("authentication_failed")
+                                    || message["api_error_status"] == 401))
+                        {
                             ErrorKind::AuthenticationUnavailable
                         } else {
                             ErrorKind::ProcessFailure
@@ -382,6 +440,26 @@ impl RunState {
             && !self.await_final_idle
             && self.state.as_deref().is_none_or(|s| s == "idle")
     }
+}
+
+fn capacity_text(text: &str) -> bool {
+    // Text never proves subscription exhaustion. These finite diagnostics only
+    // choose Unknown + a bounded recheck, and are never retained in the ledger.
+    let lower = text
+        .chars()
+        .take(4096)
+        .collect::<String>()
+        .to_ascii_lowercase();
+    [
+        "rate limit",
+        "rate_limit",
+        "usage limit",
+        "too many requests",
+        "overloaded",
+        "capacity unavailable",
+    ]
+    .iter()
+    .any(|s| lower.contains(s))
 }
 #[cfg(test)]
 mod tests {

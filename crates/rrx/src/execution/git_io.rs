@@ -56,7 +56,13 @@ impl UnitGit {
         I: IntoIterator<Item = S>,
         S: AsRef<std::ffi::OsStr>,
     {
-        let mut command = results::git_command(root)?;
+        let mut command = results::git_command_for(
+            root,
+            self.profile
+                .real_tools
+                .get("git")
+                .context("qualified Git executable missing")?,
+        )?;
         command
             .args(args)
             .envs(
@@ -108,7 +114,8 @@ impl UnitGit {
                 }
             }
         };
-        let observed = process::capture_child(child).await;
+        let mut helper_guard = owner::HelperGuard::new(self.owner.clone(), operation);
+        let observed = process::capture_scoped(child, &self.owner, &self.unit, self.native).await;
         let mut receipt = BTreeMap::new();
         if let Ok(o) = &observed {
             receipt.insert(
@@ -142,6 +149,7 @@ impl UnitGit {
                 },
                 receipt,
             )?;
+        helper_guard.disarm();
         observed
     }
     pub(crate) async fn text(

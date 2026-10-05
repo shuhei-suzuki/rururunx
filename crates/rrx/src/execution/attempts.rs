@@ -1,7 +1,6 @@
 use super::{
     git_io::UnitGit,
     resources::{ResourceManager, ResourceProfile},
-    results::{git, text},
     *,
 };
 use anyhow::{Context, Result, ensure};
@@ -44,25 +43,12 @@ impl AttemptManager {
                 && !self.owner.root.starts_with(&project.worktree_root),
             "state must be independent of worktree namespace"
         );
-        let base = match base {
-            Some(oid) => {
+        let base = base
+            .map(|oid| {
                 ensure!(valid_oid(oid), "base must be exact OID");
-                oid.to_owned()
-            }
-            None => text(
-                &git(
-                    &project.root,
-                    [
-                        "rev-parse",
-                        "--verify",
-                        &format!("refs/heads/{}^{{commit}}", project.base_branch),
-                    ],
-                )
-                .await?,
-            )?,
-        };
-        ensure!(valid_oid(&base), "base identity missing");
-        results::qualified_content(&project.root, &base).await?;
+                Ok::<_, anyhow::Error>(oid.to_owned())
+            })
+            .transpose()?;
         let id = UnitId::new();
         let path = project.worktree_root.join(format!("{}-{id}", task.id));
         ensure!(
@@ -89,12 +75,13 @@ impl AttemptManager {
             disposition: Disposition::Active,
             worktree: path.clone(),
             branch: Some(branch.clone()),
-            base_sha: base.clone(),
+            base_sha: base.clone().unwrap_or_default(),
             profile_digest: profile.digest.clone(),
             cookie: uuid::Uuid::new_v4().to_string(),
             session_id: None,
             artifact_id: None,
             wait_reason: None,
+            capacity_retry_at: None,
             created_at: at,
             updated_at: at,
         };
@@ -104,22 +91,50 @@ impl AttemptManager {
             .lock()
             .map_err(|_| anyhow::anyhow!("state poisoned"))?
             .reserve_execution(unit, task.version)?;
+        let mut preparation_guard = owner::PreparationGuard::new(self.owner.clone(), &unit);
         let prepared = async {
             self.resources.reserve(&unit, &profile)?;
             self.resources.materialize(&profile)?;
-            let preparing = self
+            let mut preparing = self
                 .owner
                 .store
                 .lock()
                 .map_err(|_| anyhow::anyhow!("state poisoned"))?
                 .transition_execution(&unit.authority(), UnitState::Preparing)?;
+            preparation_guard.update(&preparing);
+            let common = self.owner.git_lease(preparing.id, None).await?;
+            let io =
+                UnitGit::new(self.owner.clone(), &preparing, true)?.with_git_lease(common.clone());
+            let base = match base {
+                Some(base) => base,
+                None => {
+                    let base = io
+                        .text(
+                            &project.root,
+                            [
+                                "rev-parse",
+                                "--verify",
+                                &format!("refs/heads/{}^{{commit}}", project.base_branch),
+                            ],
+                        )
+                        .await?;
+                    preparing = self
+                        .owner
+                        .store
+                        .lock()
+                        .map_err(|_| anyhow::anyhow!("state poisoned"))?
+                        .bind_execution_base(&preparing.authority(), &base)?;
+                    preparation_guard.update(&preparing);
+                    base
+                }
+            };
+            let io = UnitGit::new(self.owner.clone(), &preparing, true)?.with_git_lease(common);
+            results::qualified_content_scoped(&project.root, &base, &io).await?;
             std::fs::create_dir_all(&project.worktree_root)?;
             ensure!(
                 project.worktree_root.canonicalize()? == project.worktree_root,
                 "worktree namespace must be canonical"
             );
-            let common = self.owner.git_lease(preparing.id, None).await?;
-            let io = UnitGit::new(self.owner.clone(), &preparing, true)?.with_git_lease(common);
             io.run(
                 &project.root,
                 [
@@ -155,9 +170,12 @@ impl AttemptManager {
         }
         .await;
         match prepared {
-            Ok(unit) => Ok((unit, profile)),
+            Ok(unit) => {
+                preparation_guard.disarm();
+                Ok((unit, profile))
+            }
             Err(e) => {
-                self.close_failed_preparation(id)?;
+                drop(preparation_guard);
                 Err(e)
             }
         }
@@ -221,6 +239,7 @@ impl AttemptManager {
             session_id: None,
             artifact_id: Some(artifact),
             wait_reason: None,
+            capacity_retry_at: None,
             created_at: at,
             updated_at: at,
         };

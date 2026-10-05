@@ -199,6 +199,41 @@ impl Store {
             || (unit.kind == UnitKind::Executor
                 && (executor_live >= effective_executor
                     || global_executor >= global_max.saturating_sub(2).max(1)));
+        // A terminal unclassified native capacity error closes that attempt.
+        // Its fresh successor waits for a bounded local recheck; no subscription
+        // observation or provider-wide exhaustion is fabricated. Read indexed
+        // identities through unit_tx so a JSON body cannot redirect authority.
+        let mut q = tx.prepare("SELECT id FROM execution_units WHERE task_id=?1 AND id!=?2")?;
+        let history = q
+            .query_map(
+                params![unit.scope.task_id.unwrap().to_string(), unit.id.to_string()],
+                |r| r.get::<_, String>(0),
+            )?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        drop(q);
+        let mut capacity_due = at;
+        for id in history {
+            let previous = unit_tx(&tx, id.parse()?)?;
+            ensure!(
+                previous.scope == unit.scope,
+                "capacity history scope mismatch"
+            );
+            if previous.provider == provider
+                && previous.disposition == Disposition::CapacityInterrupted
+            {
+                ensure!(
+                    !previous.native_effects_open
+                        && !previous.result_finalization_open
+                        && previous.work == Some(WorkOutcome::Unknown),
+                    "invalid capacity terminal"
+                );
+                let due = previous
+                    .capacity_retry_at
+                    .context("capacity terminal recheck missing")?;
+                ensure!(due >= previous.created_at, "invalid capacity recheck time");
+                capacity_due = capacity_due.max(due);
+            }
+        }
         let resume = unit.state;
         tx.execute("INSERT INTO quota_waiters(unit_id,provider,account_key,reason,next_due,fairness_sequence,resume_state) VALUES(?1,?2,?3,'capacity',?4,?4,?5) ON CONFLICT(unit_id) DO NOTHING",
             params![unit.id.to_string(),provider,account,at,key(resume)])?;
@@ -232,6 +267,8 @@ impl Store {
             && (at < next || probe.as_ref().is_some_and(|id| id != &unit.id.to_string()))
         {
             Some((WaitReason::Quota, next.max(at.saturating_add(1_000))))
+        } else if capacity_due > at {
+            Some((WaitReason::Capacity, capacity_due))
         } else if capacity || first != Some(unit.id) {
             Some((WaitReason::Capacity, at.saturating_add(1_000)))
         } else {

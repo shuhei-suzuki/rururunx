@@ -249,6 +249,274 @@ async fn structured_quota_terminals_wait_without_converting_ordinary_failures() 
 }
 
 #[tokio::test]
+async fn version_preparation_abort_and_retirement_do_not_leave_launch_authority() {
+    for abort in [true, false] {
+        let (dir, owner, task) = results::tests::fixture().await;
+        let sessions = Arc::new(NativeSessions::new(owner.clone()).unwrap());
+        let (unit, _) = attempts::AttemptManager::new(owner.clone())
+            .prepare(task.id, "claude", "Implement", None)
+            .await
+            .unwrap();
+        let path = program(dir.path(), "claude");
+        let script = std::fs::read_to_string(&path).unwrap().replace("if sys.argv[1:] == [\"--version\"]:","if sys.argv[1:] == [\"--version\"]:\n    with open(os.path.join(os.environ[\"RRX_OUTPUT_DIR\"], \"fixture-version-ready\"), \"w\") as ready: ready.write(\"ready\")\n    while True: time.sleep(0.02)");
+        std::fs::write(&path, script).unwrap();
+        let start_sessions = sessions.clone();
+        let start_input = input(&unit, "must not dispatch");
+        let start = tokio::spawn(async move {
+            start_sessions
+                .start_inner(start_input, None, None, Some(path))
+                .await
+        });
+        let ready = owner
+            .root
+            .join("units")
+            .join(unit.id.to_string())
+            .join("output/fixture-version-ready");
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while !ready.exists() {
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .unwrap();
+        if abort {
+            start.abort();
+            assert!(matches!(start.await, Err(e) if e.is_cancelled()));
+        } else {
+            let mut store = owner.store.lock().unwrap();
+            let current = store.execution_unit(unit.id).unwrap();
+            store.retire_execution(&current.authority(), false).unwrap();
+            drop(store);
+            assert!(
+                tokio::time::timeout(Duration::from_secs(5), start)
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .is_err()
+            );
+        }
+        let store = owner.store.lock().unwrap();
+        let closed = store.execution_unit(unit.id).unwrap();
+        assert!(!closed.native_effects_open && !closed.result_finalization_open);
+        assert_eq!(closed.work, Some(WorkOutcome::Unknown));
+        assert_eq!(
+            closed.disposition,
+            if abort {
+                Disposition::Lost
+            } else {
+                Disposition::Cancelled
+            }
+        );
+        assert!(closed.session_id.is_none());
+        let effects = store.managed_effects(unit.id).unwrap();
+        assert!(effects.iter().all(|e| e.state != EffectState::Pending));
+        assert!(
+            effects
+                .iter()
+                .any(|e| e.kind == "native_version" && e.state == EffectState::Unknown)
+        );
+        assert!(effects.iter().all(|e| e.kind != "native_input"));
+        drop(store);
+        let (fresh, _) = attempts::AttemptManager::new(owner.clone())
+            .prepare(task.id, "claude", "Implement", None)
+            .await
+            .unwrap();
+        assert_ne!(fresh.worktree, unit.worktree);
+        assert_ne!(fresh.branch, unit.branch);
+    }
+}
+
+#[tokio::test]
+async fn competing_native_start_cannot_retire_the_live_winner() {
+    let (dir, owner, task) = results::tests::fixture().await;
+    let sessions = NativeSessions::new(owner.clone()).unwrap();
+    let (unit, _) = attempts::AttemptManager::new(owner.clone())
+        .prepare(task.id, "claude", "Implement", None)
+        .await
+        .unwrap();
+    let path = program(dir.path(), "claude");
+    let NativeStart::Launched(handle) = sessions
+        .start_inner(input(&unit, "hold"), None, None, Some(path.clone()))
+        .await
+        .unwrap()
+    else {
+        panic!("fixture queued")
+    };
+    assert!(
+        sessions
+            .start_inner(input(&unit, "duplicate"), None, None, Some(path))
+            .await
+            .is_err()
+    );
+    {
+        let store = owner.store.lock().unwrap();
+        let current = store.execution_unit(unit.id).unwrap();
+        assert!(current.native_effects_open);
+        assert_eq!(current.session_id, Some(handle.session));
+        assert_eq!(current.work, None);
+    }
+    sessions.cancel(&handle).await.unwrap();
+    assert_eq!(
+        terminal(&sessions, &handle).await.disposition,
+        Disposition::Cancelled
+    );
+}
+
+#[tokio::test]
+async fn authentication_and_unclassified_capacity_terminals_have_distinct_outcomes() {
+    for (provider, payload, failure, work, disposition) in [
+        (
+            "claude",
+            "authentication-terminal",
+            Some(NativeFailure::AuthenticationUnavailable),
+            WorkOutcome::Unknown,
+            Disposition::Refused,
+        ),
+        (
+            "claude",
+            "authentication-structured",
+            Some(NativeFailure::AuthenticationUnavailable),
+            WorkOutcome::Unknown,
+            Disposition::Refused,
+        ),
+        (
+            "claude",
+            "unsupported-control",
+            Some(NativeFailure::UnsupportedCapability),
+            WorkOutcome::Unknown,
+            Disposition::Refused,
+        ),
+        (
+            "codex",
+            "authentication-terminal",
+            Some(NativeFailure::AuthenticationUnavailable),
+            WorkOutcome::Unknown,
+            Disposition::Refused,
+        ),
+        (
+            "claude",
+            "capacity-rate",
+            None,
+            WorkOutcome::Unknown,
+            Disposition::CapacityInterrupted,
+        ),
+        (
+            "claude",
+            "capacity-http",
+            None,
+            WorkOutcome::Unknown,
+            Disposition::CapacityInterrupted,
+        ),
+        (
+            "claude",
+            "capacity-unknown-window",
+            None,
+            WorkOutcome::Unknown,
+            Disposition::CapacityInterrupted,
+        ),
+        (
+            "claude",
+            "capacity-cap-control",
+            None,
+            WorkOutcome::Failure,
+            Disposition::Completed,
+        ),
+        (
+            "claude",
+            "capacity-background-control",
+            None,
+            WorkOutcome::Failure,
+            Disposition::Completed,
+        ),
+        (
+            "claude",
+            "capacity-retry-success",
+            None,
+            WorkOutcome::Success,
+            Disposition::Completed,
+        ),
+        (
+            "codex",
+            "capacity-rate",
+            None,
+            WorkOutcome::Unknown,
+            Disposition::CapacityInterrupted,
+        ),
+        (
+            "codex",
+            "capacity-flex",
+            None,
+            WorkOutcome::Unknown,
+            Disposition::CapacityInterrupted,
+        ),
+        (
+            "codex",
+            "capacity-overload",
+            None,
+            WorkOutcome::Unknown,
+            Disposition::CapacityInterrupted,
+        ),
+        (
+            "codex",
+            "capacity-http",
+            None,
+            WorkOutcome::Unknown,
+            Disposition::CapacityInterrupted,
+        ),
+        (
+            "codex",
+            "capacity-retry-success",
+            None,
+            WorkOutcome::Success,
+            Disposition::Completed,
+        ),
+    ] {
+        let (dir, owner, task) = results::tests::fixture().await;
+        let sessions = NativeSessions::new(owner.clone()).unwrap();
+        let (unit, _) = attempts::AttemptManager::new(owner.clone())
+            .prepare(task.id, provider, "Implement", None)
+            .await
+            .unwrap();
+        let NativeStart::Launched(handle) = sessions
+            .start_inner(
+                input(&unit, payload),
+                None,
+                None,
+                Some(program(dir.path(), provider)),
+            )
+            .await
+            .unwrap()
+        else {
+            panic!("fixture queued")
+        };
+        let status = terminal(&sessions, &handle).await;
+        assert_eq!(
+            (status.failure, status.work, status.disposition),
+            (failure, Some(work), disposition),
+            "{provider}/{payload}"
+        );
+        let store = owner.store.lock().unwrap();
+        let current = store.execution_unit(unit.id).unwrap();
+        assert!(!current.native_effects_open);
+        if disposition == Disposition::CapacityInterrupted {
+            assert_eq!(current.wait_reason, Some(WaitReason::Capacity));
+            assert!(!current.result_finalization_open);
+            let due = current.capacity_retry_at.unwrap();
+            assert!(due >= current.created_at && due <= now_ms() + 60_000);
+        }
+        assert!(
+            store
+                .quota_observations(provider, "unknown")
+                .unwrap()
+                .iter()
+                .all(|o| o.status != QuotaStatus::Exhausted)
+        );
+        let events = serde_json::to_string(&store.events(&unit.scope, 0, 1000).unwrap()).unwrap();
+        assert!(!events.contains("PRIVATE_FIXTURE_ERROR_MUST_NOT_PERSIST"));
+    }
+}
+
+#[tokio::test]
 async fn codex_two_window_recovery_refresh_keeps_correlated_probe_through_turn_dispatch() {
     let (dir, owner, task) = results::tests::fixture().await;
     let (unit, _) = attempts::AttemptManager::new(owner.clone())

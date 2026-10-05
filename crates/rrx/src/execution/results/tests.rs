@@ -4,6 +4,7 @@ use crate::{
     domain::{CompletionCriterion, Goal, Task},
     project::{AddProject, ProjectRegistry},
 };
+use serde_json::json;
 
 pub(crate) async fn fixture() -> (tempfile::TempDir, Arc<RuntimeOwner>, Task) {
     let dir = tempfile::tempdir().unwrap();
@@ -263,6 +264,82 @@ async fn cancellation_while_waiting_for_common_git_prevents_preparation_spawn() 
             .unwrap()
             .is_empty()
     );
+}
+
+#[tokio::test]
+async fn abandoned_preparation_closes_its_exact_unit_and_a_retry_uses_fresh_names() {
+    let (_dir, owner, task) = fixture().await;
+    let gate = owner.git_gate.lock().await;
+    let worker_owner = owner.clone();
+    let worker = tokio::spawn(async move {
+        super::super::attempts::AttemptManager::new(worker_owner)
+            .prepare(task.id, "codex", "Implement", None)
+            .await
+    });
+    let unit = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        loop {
+            if let Some(unit) = owner
+                .store
+                .lock()
+                .unwrap()
+                .execution_units(None)
+                .unwrap()
+                .into_iter()
+                .find(|unit| unit.state == UnitState::Preparing)
+            {
+                break unit;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert!(
+        unit.base_sha.is_empty(),
+        "base resolution is a scoped helper effect after reservation"
+    );
+    worker.abort();
+    assert!(worker.await.unwrap_err().is_cancelled());
+    drop(gate);
+    let abandoned = owner.store.lock().unwrap().execution_unit(unit.id).unwrap();
+    assert!(!abandoned.native_effects_open && !abandoned.result_finalization_open);
+    assert_eq!(abandoned.disposition, Disposition::Lost);
+    assert_eq!(abandoned.work, Some(WorkOutcome::Unknown));
+    assert!(!unit.worktree.exists());
+    assert!(
+        owner
+            .store
+            .lock()
+            .unwrap()
+            .managed_effects(unit.id)
+            .unwrap()
+            .is_empty()
+    );
+    let (retry, _) = super::super::attempts::AttemptManager::new(owner.clone())
+        .prepare(task.id, "codex", "Implement", None)
+        .await
+        .unwrap();
+    assert_ne!(retry.worktree, unit.worktree);
+    assert_ne!(retry.branch, unit.branch);
+    let store = owner.store.lock().unwrap();
+    assert!(valid_oid(&retry.base_sha));
+    let effects = store.managed_effects(retry.id).unwrap();
+    assert!(effects.len() >= 4);
+    assert!(effects.iter().all(|effect| effect.unit_id == retry.id
+        && effect.scope == retry.scope
+        && effect.kind == "git_helper"));
+    let events = store.events(&retry.scope, 0, 1000).unwrap();
+    let reserved = events
+        .iter()
+        .find(|event| {
+            event.kind == "execution.attempt_reserved" && event.data["unit"] == json!(retry.id)
+        })
+        .unwrap();
+    let bound = events
+        .iter()
+        .find(|event| event.kind == "execution.base_bound" && event.data["unit"] == json!(retry.id))
+        .unwrap();
+    assert!(reserved.sequence < bound.sequence);
 }
 
 #[tokio::test]

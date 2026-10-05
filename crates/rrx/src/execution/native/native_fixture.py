@@ -73,7 +73,12 @@ for line in sys.stdin:
         elif method == "turn/start":
             send({"id": value["id"], "result": {"turn": {"id": "fixture-turn"}}})
             payload = value["params"]["input"][0]["text"]
-            if payload in ("quota-terminal", "quota-retry-terminal", "ordinary-failure"):
+            if payload.startswith("capacity-") or payload == "authentication-terminal":
+                info = {"capacity-rate":"rateLimitExceeded", "capacity-flex":"flexUnavailable", "capacity-overload":"serverOverloaded", "capacity-http":{"httpConnectionFailed":{"httpStatusCode":429}}, "capacity-retry-success":"rateLimitExceeded", "authentication-terminal":"unauthorized"}[payload]
+                if payload == "capacity-retry-success":
+                    send({"method":"error", "params":{"threadId":os.environ["RRX_UNIT_ID"], "turnId":"fixture-turn", "willRetry":True, "error":{"codexErrorInfo":info}}})
+                send({"method":"turn/completed", "params":{"threadId":os.environ["RRX_UNIT_ID"], "turn":{"id":"fixture-turn", "status":"completed" if payload == "capacity-retry-success" else "failed", "error":{"codexErrorInfo":info}}}})
+            elif payload in ("quota-terminal", "quota-retry-terminal", "ordinary-failure"):
                 if payload == "quota-retry-terminal":
                     send({"method": "error", "params": {"threadId": os.environ["RRX_UNIT_ID"], "turnId": "fixture-turn", "willRetry": True, "error": {"codexErrorInfo": "usageLimitExceeded"}}})
                 error = {"codexErrorInfo": "usageLimitExceeded" if payload != "ordinary-failure" else "other"}
@@ -94,7 +99,25 @@ for line in sys.stdin:
         elif value["type"] == "user":
             send({"type": "system", "subtype": "init", "session_id": native, "cwd": os.getcwd(), "tools": ["Bash"], "mcp_servers": []})
             payload = value["message"]["content"]
-            if payload.startswith("quota-"):
+            if payload in ("authentication-terminal", "authentication-structured", "unsupported-control"):
+                if payload == "unsupported-control":
+                    send({"type":"control_request", "request_id":"future-control", "request":{"subtype":"future-control","input":{}}})
+                else:
+                    if payload == "authentication-structured":
+                        send({"type":"assistant", "session_id":native, "parent_tool_use_id":None, "error":"authentication_failed", "message":{"role":"assistant","content":[]}})
+                    send({"type":"result", "session_id":native, "subtype":"error_during_execution", "is_error":True, "result":"Not logged in: PRIVATE_FIXTURE_ERROR_MUST_NOT_PERSIST" if payload == "authentication-terminal" else ""})
+            elif payload.startswith("capacity-"):
+                if payload == "capacity-unknown-window":
+                    send({"type":"rate_limit_event", "session_id":native, "rate_limit_info":{"rateLimitType":"future_window", "status":"rejected"}})
+                if payload in ("capacity-rate", "capacity-cap-control", "capacity-background-control", "capacity-retry-success"):
+                    assistant = {"type":"assistant", "session_id":native, "parent_tool_use_id":None, "error":"rate_limit", "message":{"role":"assistant","content":[]}}
+                    if payload == "capacity-background-control": assistant["parent_tool_use_id"] = "background-tool"
+                    send(assistant)
+                if payload == "capacity-retry-success":
+                    send({"type":"result", "session_id":native, "subtype":"success", "is_error":False})
+                else:
+                    send({"type":"result", "session_id":native, "subtype":"error_max_turns" if payload == "capacity-cap-control" else "success" if payload == "capacity-http" else "error_during_execution", "is_error":True, "api_error_status":429 if payload == "capacity-http" else None})
+            elif payload.startswith("quota-"):
                 def quota(bucket, status, session=native):
                     send({"type": "rate_limit_event", "session_id": session, "rate_limit_info": {"rateLimitType": bucket, "status": status, "resetsAt": int(time.time()) + 3600}})
                 quota("five_hour", "rejected", "foreign" if payload == "quota-foreign" else native)

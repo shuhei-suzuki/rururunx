@@ -138,3 +138,25 @@ pub(crate) async fn capture_child(mut child: OwnedProcess) -> Result<CommandCapt
         receipt,
     })
 }
+
+pub(crate) async fn capture_scoped(
+    child: OwnedProcess,
+    owner: &super::RuntimeOwner,
+    pinned: &super::ExecutionUnit,
+    native: bool,
+) -> Result<CommandCapture> {
+    let capture = capture_child(child);
+    tokio::pin!(capture);
+    let mut fence = tokio::time::interval(Duration::from_millis(50));
+    loop {
+        tokio::select! {
+            observed = &mut capture => return observed,
+            _ = fence.tick() => {
+                let store = owner.store.lock().map_err(|_|anyhow::anyhow!("state poisoned"))?;
+                let current = store.execution_unit(pinned.id)?;
+                ensure!(current.scope == pinned.scope && current.generation == pinned.generation && current.owner_epoch == pinned.owner_epoch && current.session_id == pinned.session_id, "helper execution identity changed");
+                store.validate_execution(&current.authority(), native, !native)?;
+            }
+        }
+    }
+}

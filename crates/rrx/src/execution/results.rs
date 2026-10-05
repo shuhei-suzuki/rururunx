@@ -91,7 +91,7 @@ impl ResultSnapshot {
             "snapshot HEAD changed"
         );
         ensure!(
-            tracked_digest_scoped(&self.source, Some(&io)).await? == self.manifest_sha256,
+            tracked_digest_scoped(&self.source, &io).await? == self.manifest_sha256,
             "snapshot source changed"
         );
         ensure!(
@@ -468,7 +468,7 @@ impl ResultStore {
         .await
         .context("checkout retained snapshot SHA")?;
         qualified_content_scoped(&unit.worktree, &artifact.revision, &io).await?;
-        let digest = tracked_digest_scoped(&unit.worktree, Some(&io)).await?;
+        let digest = tracked_digest_scoped(&unit.worktree, &io).await?;
         readonly_tree(&unit.worktree, true)?;
         let snapshot = ResultSnapshot {
             artifact: artifact.id,
@@ -495,7 +495,10 @@ impl ResultStore {
 }
 
 pub(crate) fn git_command(root: &Path) -> Result<Command> {
-    let mut c = Command::new(super::resources::resolve_program("git")?);
+    git_command_for(root, &super::resources::resolve_program("git")?)
+}
+pub(crate) fn git_command_for(root: &Path, program: &Path) -> Result<Command> {
+    let mut c = Command::new(program);
     c.arg("-C").arg(root).args([
         "-c",
         "gc.auto=0",
@@ -580,23 +583,21 @@ fn readonly_tree(path: &Path, apply: bool) -> Result<()> {
 pub(crate) fn verify_readonly_source(path: &Path) -> Result<()> {
     readonly_tree(path, false)
 }
-pub(crate) async fn qualified_content(root: &Path, revision: &str) -> Result<()> {
-    qualified_content_inner(root, revision, None).await
+pub(crate) async fn qualified_content_scoped(
+    root: &Path,
+    revision: &str,
+    io: &UnitGit,
+) -> Result<()> {
+    qualified_content_inner(root, revision, io).await
 }
-async fn qualified_content_scoped(root: &Path, revision: &str, io: &UnitGit) -> Result<()> {
-    qualified_content_inner(root, revision, Some(io)).await
-}
-async fn read_git<I, S>(root: &Path, args: I, io: Option<&UnitGit>) -> Result<Vec<u8>>
+async fn read_git<I, S>(root: &Path, args: I, io: &UnitGit) -> Result<Vec<u8>>
 where
     I: IntoIterator<Item = S>,
     S: AsRef<std::ffi::OsStr>,
 {
-    match io {
-        Some(io) => io.run(root, args).await,
-        None => git(root, args).await,
-    }
+    io.run(root, args).await
 }
-async fn qualified_content_inner(root: &Path, revision: &str, io: Option<&UnitGit>) -> Result<()> {
+async fn qualified_content_inner(root: &Path, revision: &str, io: &UnitGit) -> Result<()> {
     let tree = read_git(root, ["ls-tree", "-r", "-z", revision], io).await?;
     for line in tree.split(|b| *b == 0).filter(|s| !s.is_empty()) {
         ensure!(
@@ -618,10 +619,7 @@ async fn qualified_content_inner(root: &Path, revision: &str, io: Option<&UnitGi
         revision,
         "--",
     ];
-    let observed = match io {
-        Some(io) => io.run_observed(root, args).await?,
-        None => process::capture_observed(git_command(root)?.args(args)).await?,
-    };
+    let observed = io.run_observed(root, args).await?;
     ensure!(
         observed.receipt.status.code() == Some(1)
             || (observed.receipt.status.success() && observed.stdout.is_empty()),
@@ -642,7 +640,7 @@ async fn qualified_content_inner(root: &Path, revision: &str, io: Option<&UnitGi
     }
     Ok(())
 }
-async fn tracked_digest_scoped(root: &Path, io: Option<&UnitGit>) -> Result<String> {
+async fn tracked_digest_scoped(root: &Path, io: &UnitGit) -> Result<String> {
     let list = read_git(root, ["ls-files", "-z"], io).await?;
     let mut hash = Sha256::new();
     for name in list.split(|b| *b == 0).filter(|s| !s.is_empty()) {

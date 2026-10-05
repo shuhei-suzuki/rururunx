@@ -31,6 +31,87 @@ pub(crate) struct GitLease {
     _guard: tokio::sync::OwnedMutexGuard<()>,
 }
 
+/// Covers async preparation abandonment; it never adopts another Session or
+/// disposes inputs. Child handles own their independent best-effort stop.
+pub(crate) struct PreparationGuard {
+    owner: Arc<RuntimeOwner>,
+    unit: super::ExecutionUnit,
+    armed: bool,
+}
+impl PreparationGuard {
+    pub(crate) fn new(owner: Arc<RuntimeOwner>, unit: &super::ExecutionUnit) -> Self {
+        Self {
+            owner,
+            unit: unit.clone(),
+            armed: true,
+        }
+    }
+    pub(crate) fn update(&mut self, unit: &super::ExecutionUnit) {
+        self.unit = unit.clone();
+    }
+    pub(crate) fn disarm(&mut self) {
+        self.armed = false;
+    }
+}
+impl Drop for PreparationGuard {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        if let Ok(mut store) = self.owner.store.lock()
+            && let Ok(current) = store.execution_unit(self.unit.id)
+            && current.scope == self.unit.scope
+            && current.generation == self.unit.generation
+            && current.owner_epoch == self.unit.owner_epoch
+            && current.session_id == self.unit.session_id
+            && current.work.is_none()
+            && current.native_effects_open
+        {
+            let _ =
+                store.retire_execution_as(&current.authority(), false, super::Disposition::Lost);
+            if let Some(id) = current.session_id
+                && let Ok(Some((mut session, version))) = store.session(id)
+            {
+                session.state = crate::domain::SessionState::Lost;
+                let _ = store.close_execution_session(current.id, &session, version);
+            }
+        }
+    }
+}
+
+/// A dropped helper wait has an uncertain outcome, never a replayable intent.
+pub(crate) struct HelperGuard {
+    owner: Arc<RuntimeOwner>,
+    operation: OperationId,
+    armed: bool,
+}
+impl HelperGuard {
+    pub(crate) fn new(owner: Arc<RuntimeOwner>, operation: OperationId) -> Self {
+        Self {
+            owner,
+            operation,
+            armed: true,
+        }
+    }
+    pub(crate) fn disarm(&mut self) {
+        self.armed = false;
+    }
+}
+impl Drop for HelperGuard {
+    fn drop(&mut self) {
+        if self.armed
+            && let Ok(mut store) = self.owner.store.lock()
+        {
+            let _ = store.reconcile_managed_effect(
+                self.operation,
+                1,
+                super::EffectState::Unknown,
+                BTreeMap::from([("transport".into(), "helper_wait_abandoned".into())]),
+            );
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
