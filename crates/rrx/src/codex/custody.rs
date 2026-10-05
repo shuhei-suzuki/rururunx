@@ -65,6 +65,10 @@ impl Pool {
             endpoint_closed: AtomicBool::new(false),
             #[cfg(test)]
             paused: AtomicBool::new(false),
+            #[cfg(test)]
+            retirement_paused: AtomicBool::new(false),
+            #[cfg(test)]
+            retirement_reached: AtomicBool::new(false),
         });
         {
             let mut state = self.0.lock().unwrap_or_else(|e| e.into_inner());
@@ -231,6 +235,10 @@ pub(super) struct Inventory {
     endpoint_closed: AtomicBool,
     #[cfg(test)]
     paused: AtomicBool,
+    #[cfg(test)]
+    retirement_paused: AtomicBool,
+    #[cfg(test)]
+    retirement_reached: AtomicBool,
 }
 impl Inventory {
     pub fn install_actor(&self, actor: tokio::task::JoinHandle<()>) {
@@ -304,6 +312,14 @@ impl Inventory {
     #[cfg(test)]
     pub fn pause(&self, paused: bool) {
         self.paused.store(paused, Ordering::SeqCst);
+    }
+    #[cfg(test)]
+    pub fn pause_retirement(&self, paused: bool) {
+        self.retirement_paused.store(paused, Ordering::SeqCst);
+    }
+    #[cfg(test)]
+    pub fn retirement_reached(&self) -> bool {
+        self.retirement_reached.load(Ordering::SeqCst)
     }
     #[cfg(test)]
     pub fn accepted(&self) -> usize {
@@ -461,6 +477,13 @@ fn run(inventory: &Arc<Inventory>, mut receiver: mpsc::Receiver<Request>) -> Cre
             if handled.is_err() {
                 inventory.unknown.store(true, Ordering::SeqCst);
                 inventory.worker_uncertain.store(true, Ordering::SeqCst);
+            }
+            #[cfg(test)]
+            if inventory.retirement_paused.load(Ordering::SeqCst) {
+                inventory.retirement_reached.store(true, Ordering::SeqCst);
+                while inventory.retirement_paused.load(Ordering::SeqCst) {
+                    std::thread::sleep(Duration::from_millis(1));
+                }
             }
             inventory.inflight.fetch_sub(1, Ordering::SeqCst);
             inventory.accepted.fetch_sub(1, Ordering::SeqCst);

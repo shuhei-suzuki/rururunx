@@ -1,6 +1,6 @@
 // Included in session's existing tests: actual private registration/actor paths.
 mod custody_mechanics {
-    use super::super::super::custody::{Factory, FileSpec, Pool};
+    use super::super::super::custody::{Factory, FileSpec, Inventory, Pool};
     use super::*;
     use futures_util::FutureExt;
     use std::time::{Duration, Instant};
@@ -16,6 +16,13 @@ mod custody_mechanics {
     impl Drop for Release {
         fn drop(&mut self) {
             self.release();
+        }
+    }
+    struct RetirePause(Arc<Inventory>);
+    impl Drop for RetirePause {
+        fn drop(&mut self) {
+            self.0.pause_retirement(false);
+            self.0.pause(false);
         }
     }
     fn spec(
@@ -573,6 +580,54 @@ mod custody_mechanics {
             "bookkeeping-only joins cannot strand original no-work removal"
         );
         assert_eq!(adapter.availability.sites(), [0; 10]);
+    }
+
+    #[tokio::test]
+    async fn queued_revoked_create_retires_before_actor_error_and_removes_no_work_entry() {
+        let (owned, adapter, factory) = adapter();
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("never-created");
+        let (file, _release) = spec(path.clone(), false, false, false);
+        factory.enqueue(file);
+        let before = adapter.gates.install(TestPoint::BeforeCustodyFactory);
+        let after = adapter.gates.install(TestPoint::AfterCustodyFactory);
+        let registered = adapter.register_fresh(owned.request.clone(), None).unwrap();
+        let control = registered.transition.control.clone();
+        let mut calling = Box::pin(adapter.spawn_launch(registered));
+        tokio::select! { _ = before.reached() => {}, value = &mut calling => panic!("early return: {value:?}") }
+        let custody = control.custody().unwrap();
+        let pause = RetirePause(custody.clone());
+        custody.pause(true);
+        custody.pause_retirement(true);
+        before.release();
+        wait(|| custody.accepted() == 1).await;
+        drop(calling);
+        assert!(control.jobs_revoked());
+        custody.pause(false);
+        wait(|| custody.retirement_reached()).await;
+        // This logical fixture bound lets an incorrectly early reply reach its
+        // actual error arm while retirement is held. It is not OS/native proof.
+        let early_reply = tokio::time::timeout(Duration::from_secs(2), after.reached())
+            .await
+            .is_ok();
+        if early_reply {
+            after.release();
+            control.wait_finished().await.unwrap();
+        }
+        drop(pause);
+        after.reached().await;
+        after.release();
+        let outcome = control.wait_finished().await.unwrap();
+        joined(&factory.pool, &control).await;
+        adapter.reconcile_custody().unwrap();
+        assert!(!custody.created());
+        assert!(!path.exists());
+        assert_eq!(adapter.availability.sites(), [0; 10]);
+        assert!(matches!(outcome, Outcome::FreshUnpublished { .. }));
+        assert!(
+            adapter.registry().unwrap().is_empty(),
+            "zero-effect reply cannot strand a created=false Held entry"
+        );
     }
 
     #[tokio::test]
