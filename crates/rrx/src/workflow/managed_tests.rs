@@ -217,7 +217,11 @@ async fn native_terminal(
 
 #[tokio::test]
 async fn workflow_live_subscription_wait_retains_the_same_attempt_until_cancelled() {
-    for provider in ["claude", "codex"] {
+    for (provider, scenario, recovers) in [
+        ("claude", "quota-retry-held", false),
+        ("codex", "quota-retry-held", false),
+        ("claude", "quota-live-recovery-held", true),
+    ] {
         let (dir, owner, fixture_task) = results::tests::fixture().await;
         let mut task = Task::new(
             fixture_task.project_id,
@@ -239,7 +243,7 @@ async fn workflow_live_subscription_wait_retains_the_same_attempt_until_cancelle
             &program,
             text.replacen(
                 "import json",
-                "WORKFLOW_SCENARIO = 'quota-retry-held'\nimport json",
+                &format!("WORKFLOW_SCENARIO = {scenario:?}\nimport json"),
                 1,
             ),
         )
@@ -316,6 +320,57 @@ async fn workflow_live_subscription_wait_retains_the_same_attempt_until_cancelle
                     .filter(|e| e.kind == "native_input")
                     .count(),
                 1
+            );
+        }
+        if recovers {
+            let unit = owner
+                .store
+                .lock()
+                .unwrap()
+                .execution_unit(identity.unit)
+                .unwrap();
+            let output = execution::resources::ResourceManager::new(owner.clone())
+                .profile(&unit)
+                .unwrap()
+                .output;
+            std::fs::write(output.join("fixture-recovery-release"), "recover").unwrap();
+            tokio::time::timeout(Duration::from_secs(10), async {
+                loop {
+                    let status = adapter
+                        .status(SessionRef {
+                            id: identity.session,
+                            scope: identity.scope.clone(),
+                            execution: Some(identity.clone()),
+                        })
+                        .await
+                        .unwrap();
+                    if status.execution.as_ref().unwrap().wait_reason.is_none() {
+                        assert!(!status.terminal());
+                        break;
+                    }
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                }
+            })
+            .await
+            .unwrap();
+            assert!(matches!(
+                engine.step(task.id, BTreeMap::new()).await.unwrap(),
+                StepResult::Running { .. }
+            ));
+            let current = engine.snapshot(task.id).unwrap();
+            assert_eq!(current.active, Some(index));
+            assert_eq!(current.history.len(), workflow.history.len());
+            assert_eq!(current.history[index].execution.as_ref(), Some(&identity));
+            assert_eq!(
+                owner
+                    .store
+                    .lock()
+                    .unwrap()
+                    .task(task.id)
+                    .unwrap()
+                    .unwrap()
+                    .state,
+                TaskState::Implementing
             );
         }
         engine

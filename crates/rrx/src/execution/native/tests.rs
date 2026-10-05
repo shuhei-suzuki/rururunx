@@ -1021,6 +1021,12 @@ async fn claude_live_quota_wait_is_scoped_preserves_input_and_keeps_sibling_runn
             Disposition::Completed,
         ),
         (
+            "quota-live-recovery-held",
+            true,
+            WorkOutcome::Success,
+            Disposition::Completed,
+        ),
+        (
             "quota-foreign-held",
             false,
             WorkOutcome::Failure,
@@ -1123,6 +1129,43 @@ async fn claude_live_quota_wait_is_scoped_preserves_input_and_keeps_sibling_runn
             );
         }
         drop(store);
+        if payload == "quota-live-recovery-held" {
+            std::fs::write(output.join("fixture-recovery-release"), "recover").unwrap();
+            tokio::time::timeout(Duration::from_secs(10), async {
+                loop {
+                    if updates.borrow().pending.len() == 2 {
+                        break;
+                    }
+                    updates.changed().await.unwrap();
+                }
+            })
+            .await
+            .unwrap();
+            let watched = updates.borrow().clone();
+            let durable = sessions.status(&handle).unwrap();
+            let store = owner.store.lock().unwrap();
+            assert!(
+                store
+                    .quota_observations("claude", "unknown")
+                    .unwrap()
+                    .iter()
+                    .all(|o| o.status == QuotaStatus::Available)
+            );
+            let recovered = store.execution_unit(unit.id).unwrap();
+            assert_eq!(watched.wait_reason, None, "accepted live recovery: watch");
+            assert_eq!(durable.wait_reason, None, "accepted live recovery: status");
+            assert_eq!(
+                recovered.wait_reason, None,
+                "accepted live recovery: ledger"
+            );
+            assert_eq!(recovered.state, UnitState::Running);
+            assert_eq!(recovered.session_id, current.session_id);
+            assert_eq!(recovered.generation, current.generation);
+            assert_eq!(recovered.worktree, current.worktree);
+            assert!(recovered.native_effects_open && recovered.result_finalization_open);
+            assert_eq!(recovered.work, None);
+            assert_eq!(watched.authority, durable.authority);
+        }
         std::fs::write(output.join("fixture-quota-release"), "release").unwrap();
         let end = terminal(&sessions, &handle).await;
         assert_eq!(end.work, Some(work), "{payload}");

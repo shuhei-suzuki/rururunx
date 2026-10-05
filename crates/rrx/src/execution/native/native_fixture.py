@@ -127,16 +127,20 @@ for line in sys.stdin:
                 else:
                     send({"type":"result", "session_id":native, "subtype":"error_max_turns" if payload == "capacity-cap-control" else "success" if payload == "capacity-http" else "error_during_execution", "is_error":True, "api_error_status":429 if payload == "capacity-http" else None})
             elif payload.startswith("quota-"):
-                def quota(bucket, status, session=native):
-                    send({"type": "rate_limit_event", "session_id": session, "rate_limit_info": {"rateLimitType": bucket, "status": status, "resetsAt": int(time.time()) + 3600}})
-                quota("future_window" if payload == "quota-unknown-held" else "five_hour", "rejected", "foreign" if payload in ("quota-foreign", "quota-foreign-held") else native)
+                def quota(bucket, status, session=native, reset=None):
+                    send({"type": "rate_limit_event", "session_id": session, "rate_limit_info": {"rateLimitType": bucket, "status": status, "resetsAt": int(time.time()) + 3600 if reset is None else reset}})
+                quota("future_window" if payload == "quota-unknown-held" else "five_hour", "rejected", "foreign" if payload in ("quota-foreign", "quota-foreign-held") else native, int(time.time()) - 1 if payload == "quota-live-recovery-held" else None)
                 quota("five_hour" if payload == "quota-stale-available" else "seven_day", "allowed")
                 if payload.endswith("-held"):
                     # An ordinary permission notification is an ordered barrier:
                     # its published status proves the prior quota frames were read.
                     send({"type":"control_request", "request_id":"quota-barrier", "request":{"subtype":"can_use_tool", "tool_use_id":"fixture-barrier", "tool_name":"Bash", "input":{"command":"echo fixture"}}})
+                    if payload == "quota-live-recovery-held":
+                        while not os.path.exists(os.path.join(os.environ["RRX_OUTPUT_DIR"], "fixture-recovery-release")): time.sleep(0.02)
+                        quota("five_hour", "allowed")
+                        send({"type":"control_request", "request_id":"recovery-barrier", "request":{"subtype":"can_use_tool", "tool_use_id":"fixture-recovery-barrier", "tool_name":"Bash", "input":{"command":"echo fixture"}}})
                     while not os.path.exists(os.path.join(os.environ["RRX_OUTPUT_DIR"], "fixture-quota-release")): time.sleep(0.02)
-                if payload == "quota-retry-success-held":
+                if payload in ("quota-retry-success-held", "quota-live-recovery-held"):
                     send({"type":"result", "session_id":native, "subtype":"success", "is_error":False, "result":"fixture successful native retry"})
                     continue
                 subtype = "error_max_turns" if payload == "quota-budget-failure" else "error_during_execution"
