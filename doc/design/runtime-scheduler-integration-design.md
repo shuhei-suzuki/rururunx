@@ -14,7 +14,7 @@ producer/profile/native acceptance or amend the earlier unmerged designs silentl
 | `main.rs::Command`, `project::default_state_path` | Same global state selection; commands connect to owner rather than open competing epochs. Existing help/config paths remain pure. |
 | `goal.rs::TaskDag::hard_order`, `state::Store::put_goal` | Structural validation reused before accepted graph commit; separate scoped readiness/evidence extraction needed. |
 | `domain.rs::Goal/CompletionCriterion/Task` | Existing authoritative entities; accepted-definition/evaluator extensions from #23, not a duplicate scheduler DAG. |
-| `execution/workflow_source.rs::ManagedWorkflowSources` | `prepare` before `WorkflowEngine::initialize`, then actual committed frame and same-unit first adoption. |
+| `execution/workflow_source.rs::ManagedWorkflowSources` | First `prepare` before initialize; proposed retained-frame and fresh-bootstrap recovery ports populate a new Sources map for existing Workflow, without reconstructing old capabilities. |
 | `workflow.rs::initialize/step/cancel/retry/resume_gate/request_finalization` | One per-Task driver; current exact phase claims/bind/publication CAS preserved. Explicit retry/finalization, never generic periodic replay. |
 | `execution/native.rs::NativeSessions::subscribe/status`, `NativeLimits` | Native status watch wakes driver; unchanged current caps are effective admission policy. |
 | `execution/quota.rs::QuotaScheduler`, `state/execution/quotas.rs` | Single native permit authority and provider/account recovery; fair Scheduler rank composes inside final admission. |
@@ -72,8 +72,11 @@ typed access):
 
 - `task_drivers`: one current row per Task, Project/Goal, epoch, claim UUID/version,
   claimed Task/Workflow generation/versions, state (`Driving`, `Parked`, `Held`),
-  reason/deadline and initial preparation Unit reference if any. Historical claim
-  transitions remain audited. A nullable initial Unit is not launch permission.
+  reason/deadline and initial preparation Unit reference if any; checked source
+  recovery identity/version/route, frame/artifact/dependency/governing digest and
+  resulting Workflow/Context pins. Recovery intent is durable before preparation;
+  completed source install and historical claim transitions remain audited.
+  A nullable initial Unit or completed recovery row is not launch permission.
 - `scheduler_projects`: persisted round-robin last-served sequence and next Goal
   cursor; per-Goal queue position likewise persists using a scoped scheduler row.
   These records never change authoritative Goal/Task/native versions.
@@ -151,6 +154,104 @@ source/driver failures leave explicit held state and exact original reservations
 owner-local verified rollback remains as existing #41 permits. Dropping a driver
 does not prove no dispatch. Durable stale driver/Unit references are classified
 at restart, never used to reconstruct PreparedExecutor or native handles.
+
+### 5.1. Existing Workflow: retained-frame recovery
+
+The baseline `ManagedWorkflowSources::new` starts with an empty map; `frame` needs
+a Task entry before its retained-artifact branch and ordinary `prepare` refuses
+existing Workflow records. `ResultStore::verify` does not populate that map. Add
+the following **proposed private ports** as actual Runtime recovery consumers;
+these are new implementation work, not already available APIs:
+
+1. `Store::claim_retained_source_recovery(driver, expected)` records current-epoch
+   source intent and returns a non-deserializable `RetainedFrameRecovery` with
+   exact Scope, Task and sole Workflow id/version/generation/active phase, current
+   immutable Context id/version/digest, Project/Goal versions/governing digest,
+   driver-claim version and full **Published** artifact snapshot/dependencies.
+   Select the exact artifact referenced by current Workflow source/accepted
+   prerequisite evidence; neither latest-row guessing nor a Ready artifact is an
+   accepted recovery base. Check Running accepted Goal, nonterminal Task, applicable
+   effects/retry policy and current owner epoch. This grants no native preparation,
+   first adoption, Session, model input or producing Unit finalization authority.
+2. `ManagedWorkflowSources::recover_retained(proof)` serializes that Task's source
+   slot and uses actual `ResultStore::verify` plus finite registered `RetainedGit`
+   tree/blob reads, with intent before every helper and current epoch/artifact
+   checks during/after waits. Build `Frame` using exact retained config/rules/corpus,
+   current approved Project/Goal policy and the existing encoded/inventory bounds.
+   Require exact artifact revision/dependencies and governing digest; conflict with
+   approved activation is a hold, not implicit policy refresh or live-rule fallback.
+3. `Store::accept_source_recovery(proof, frame_proof)` rechecks the complete original
+   CAS/frame/artifact snapshot in one transaction and records resulting recovery
+   pins/audit. The sealed producer frame proof contains complete corpus/mandatory
+   digest and source versions, not caller JSON/hash alone. Keep the source-slot
+   mutex across this commit and assignment of `TaskSources { prepared: None, frame }`;
+   no source getter sees an uncommitted candidate. No SharedStore lock spans I/O.
+4. `capture`/`committed_input` validate the installed recovery id and current epoch,
+   Scope/Task/Workflow/generation/Context, governing and exact artifact pins before
+   rendering. Ordinary Workflow transitions advance the recovery's current pins
+   in their own transaction only when source authority is preserved; external
+   drift never refreshes them. Every actual frame-consumer grant rechecks those pins
+   atomically with its normal phase reservation/admission. The slot is a cache, not
+   independent authority. Crash after acceptance before assignment leaves no live
+   frame; next startup repeats genuine reconstruction under a new proof. Drop or
+   failed CAS publishes no frame, preserves artifacts, and records/parks the exact
+   failed recovery; cancellation/epoch changes invalidate any already installed one.
+
+`WorkflowEngine::inputs` and `prepare_pack` consume this installed committed frame,
+then existing per-phase fresh attempts/snapshots and publication gates apply.
+`take_initial_executor` returns None for this route. Do not call `initialize` again,
+reopen an old Unit, or treat an artifact-read receipt as accepted Workflow evidence.
+Installing a frame does not clear a Running/unknown old phase: the driver first
+uses the applicable genuine retry/reconciliation transition, and advances those
+source pins by its exact transaction, before requesting a new phase/input.
+
+### 5.2. Existing Workflow before an accepted artifact: fresh bootstrap recovery
+
+Add a separate `Store::begin_bootstrap_recovery(driver, expected)` and
+`ManagedWorkflowSources::recover_bootstrap(proof, provider)` composition. Its
+private `FreshBootstrapRecovery` is produced only for a classified pre-input
+Workflow: exact Scope/Task/Workflow/Context/generation/epoch/P/G/claim pins, no
+Published artifact, no consumed/ambiguous native input, no Session/native owner to
+resume, and no unreconciled gate/external effects. Absence of Session or PID alone
+proves none of these. Transactionally fence old preparation/phase permissions,
+retain all old history/Context/receipts as historical, record explicit recovery
+disposition, advance checked Task/Workflow generation and reserve a new preparation
+Unit/resource namespace plus driver reference **before any Git**. Preserve accepted
+configuration, phase policy, risk/review lineage and the exact approved initial
+Context revision/source pins; do not reset their budgets or relabel work Success.
+
+The recovery-specific AttemptManager entry accepts only this proof, produces a new
+live `PreparedExecutor`/abandonment guard and performs finite `UnitGit` reads in its
+new registered namespace. It cannot bypass ordinary `prepare`'s existing-Workflow
+refusal. Check out the exact full initial committed revision recorded by Context;
+missing objects, changed governing instructions or unavailable required blobs hold
+without reading a different live HEAD. Rebuild and compare the complete source/
+mandatory frame, then accept/install using the same slot-lock and final Store CAS
+protocol as §5.1, with the genuinely new prepared capability retained in Sources.
+
+Append new current-generation initial phase attempts and next consecutive Contexts
+through a private Workflow recovery transition; never overwrite history or use
+`initialize` replay. Rerun the actual initial gates against the new namespace before
+native dispatch. `take_initial_executor` consumes only this installed generation's
+capability, with the existing exact payload/source/adoption proof and a private
+recovery-aware first-adoption predicate. The baseline check rejecting all preceding
+Executor attempts must not be removed wholesale: only old generations explicitly
+classified and fenced as pre-input by this proof are excluded; no current-generation
+prior Executor/native attempt, old prepared row, Ready artifact, public recovery
+JSON or old Session can qualify. Final adoption rechecks resulting Task/Workflow/
+Context/phase/provider/unit/governing/epoch versions and known completed helper
+receipts/no quota or native consumption. Any mismatch/drop retires only the new
+owned preparation under its guard and keeps original history/claim diagnostics.
+
+Consumed/ambiguous native or gate effects use existing authorized fresh retry/
+reconciliation, not this route. A Ready-but-unpublished artifact is retained as
+draft/unknown; accepting it needs a separately qualified private finalization
+reconciliation producer with current full artifact/evidence CAS, never this frame
+install or an old terminal Success label. Until that producer exists, classify the
+draft, fence its old permissions and use an explicitly authorized fresh attempt
+from the approved retained/initial base or expose attention. No fake Published or
+restored finalization permission. Both recovery routes remain unavailable until
+their genuine producers and actual Sources/Workflow/Store consumers are implemented.
 
 ## 6. Capacity and fairness composition
 
@@ -249,7 +350,11 @@ Old native/finalization authority is retired by existing epoch handling. Then:
    live old input unknown; reliable old terminal; pending external outcome; published
    artifact; cleanup backlog. Missing PID/Session alone proves none of these.
 4. Close old driver epochs under exact CAS. Genuine accepted retained artifacts
-   are verified with current read authority; old preparation rows cannot be adopted.
+   are verified and installed into new Sources through §5.1's actual retained-frame
+   recovery. Existing pre-input Workflow without an artifact uses §5.2's new guarded
+   bootstrap; ordinary prepare/initialize cannot be replayed. Ready-unpublished is
+   draft/unknown pending qualified reconciliation, never an accepted source by guess.
+   Old preparation rows cannot be adopted.
    Unknown local work may receive an explicit fresh retry using actual new namespace;
    uncertain PR/merge/deploy remains held for #13 idempotent reconciliation.
 5. Recompute distinct Task/native capacity and fair queues; startup's release of
@@ -296,6 +401,20 @@ and abrupt owner restart. Kill compiled actual-consumer mutants for each authori
 limit/fairness/evidence check; test-only fabricated Success/private SQL seeding is
 not a positive producer. Default parallel Debug/Release, fmt/Clippy/build and
 exact-head Linux/macOS CI failures remain factual until resolved.
+
+RS-AC7.a/b require the actual new recovery producers, not a seeded Sources map:
+restart after real Published Implement, change/remove the abandoned executor
+workspace, and supply exact retained config/rules/corpus to a supported next gate;
+restart after initialize before native input, reserve a new preparation Unit/path,
+rerun initial gates and adopt only its genuine capability while old history stays
+unchanged. Race concurrent installers/cancel/epoch/Task/Workflow/Context/governing
+drift between read, accept and first consumption; one winner or zero grants, never
+an implicitly refreshed frame. A crash after recovery acceptance before map install
+must reconstruct again and converge. Corrupt retained dependencies/objects or offer
+Ready-unpublished/old prepared/Session metadata: hold/draft, no Published/native
+authority. Omit recovery acceptance CAS, installed-frame currency or recovery-aware
+first-adoption checks independently and kill each at its actual consumer; artifact
+verification alone or ordinary `prepare` refusal earns no restart-positive credit.
 
 Actual logged-in Claude/Codex four-Task/two-Project operation, settings/hooks/quota
 compatibility, current immutable review/test SHA controls and #16 enabled/baseline
