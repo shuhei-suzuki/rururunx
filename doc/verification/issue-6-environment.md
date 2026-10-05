@@ -345,3 +345,34 @@ workload containment/settlement. No whole-workspace failure has been rerun or cu
 Debug workspace build passed12.15s and release workspace build passed65s at
 `9eeeb20`; these compile gates do not substitute the failed whole test runs or
 pending independent source/native acceptance.
+
+
+## Source1, public immutable `98aeab5`
+
+Two independent native manual zero-tool reviews APPROVED with0critical/high/medium
+findings (A4low/B5low). Their actual retained selected-group cleanup/reap and stdin
+writer join were verified; original tools82954/94528 closed0. The672,604-byte packet
+used38 unauthenticated public byte-compared sections;29 current-head source paths
+plus an explicit original-helper comparison. Normal auth/rules/hooks/model/effort
+were preserved. A session4860d69c-d5d2-4d46-8a55-2402f5c06cd7 observed$3.214620/API526370ms;
+B5cafc182-cf12-43bf-bd9d-4464bf1bbac3 observed$3.197272/API527288ms. These are
+review-harness facts, not native workload/backend settlement or old-hold release.
+
+Finite lows and control omissions are being verified against qualified Design7: own
+initial reread error-category prose, missing-selection intent rollback, mandatory
+selected boundary, mixed-invalid precedence and classification drift. Malformed
+raw-pair ordering needs precise alignment with the explicit common-constructor
+contract; no extra native/backend/host capability is inferred. Unit-only guards,
+uncredited Main cancellation/roster windows and omitted consumer controls are
+retained limitations rather than invented mutation proof.
+
+CI37262331244 FAILED. Both jobs actually checkedae63dc8 parents[26f3a48,98aeab5],
+tree3ca09f0f4691d90031fc6c77e05c74337eb032e0; reviewed head tree82382e9febb67be792ba7627d3b2c2d309fa79a7.
+Only2Issue67 evidence docs differ;ALL29 current review-input blobs and allRust/package
+bytes match. Ubuntu every step succeeded;Mac fmt/clippy succeeded, Grok integration
+13pass/2fail/2ignored30.91s, later builds skipped. Stop-after-dispatch retained
+reconciliation uncertainty. schema_required sawLost rather thanFailed with actual
+inspection deadline353890us/zero stdout/statuspending, inspector killWaitreaped.
+CauseUNKNOWN; no rerun, guard/deadline/default-concurrency change or attribution.
+The pair approves only this finite source; current full/CI/native acceptance is not
+established. Exact reports/input/provenance are adjacent; historical failures remain.
