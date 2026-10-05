@@ -230,6 +230,10 @@ See [Product Requirements](doc/requirements/product-requirements.md), [Architect
 ## Status
 
 Rust executable foundation; workflow components are being implemented incrementally.
+Issue9's [staged formal-refusal design](doc/design/issue-9-formal-refusal-integration.md)
+maps the approved unavailable-review contract to actual Workflow consumers. It is
+not implemented; legacy single-reviewer behavior remains current, and positive
+ReviewSet/native-profile, ownership and migration gates remain open.
 The command examples above describe the MVP target. Currently implemented:
 - Issue 18 adds the Task-scoped `RepositoryContext` Rust API for lexical repository
   maps, relevance ranking, budgeted selection, file/symbol/reference expansion,
