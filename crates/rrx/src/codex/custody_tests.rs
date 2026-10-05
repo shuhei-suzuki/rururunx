@@ -664,6 +664,51 @@ mod custody_mechanics {
     }
 
     #[tokio::test]
+    async fn queued_metadata_after_revoked_checkpoint_restores_exact_previous_without_job_refund() {
+        let mut history = ApprovalFixture::new(false).await;
+        let (mut adapter, reference) = history.terminal_adapter();
+        let factory = Factory::new(Pool::isolated());
+        Arc::get_mut(&mut adapter).unwrap().file_factory = Some(factory.clone());
+        let previous = adapter.registry().unwrap()[&reference.id].control.clone();
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("never-created");
+        let (file, _release) = spec(path.clone(), false, false, false);
+        factory.enqueue(file);
+        let before = adapter.gates.install(TestPoint::BeforeCustodyFactory);
+        let after = adapter.gates.install(TestPoint::AfterCustodyFactory);
+        let registered = adapter.register_existing(&reference).unwrap();
+        let control = registered.transition.control.clone();
+        let input = registered.request.input.clone();
+        let mut calling = Box::pin(adapter.spawn_checkpoint(registered, input));
+        tokio::select! { _ = before.reached() => {}, value = &mut calling => panic!("early return: {value:?}") }
+        let custody = control.custody().unwrap();
+        let pause = RetirePause(custody.clone());
+        custody.pause(true);
+        custody.pause_retirement(true);
+        custody.retirement_target(2);
+        before.release();
+        wait(|| custody.accepted() == 1).await;
+        control.take_endpoint().unwrap().try_note("checkpoint metadata").unwrap();
+        drop(calling);
+        custody.pause(false);
+        wait(|| custody.retirement_reached()).await;
+        after.reached().await;
+        after.release();
+        assert!(matches!(control.wait_finished().await.unwrap(), Outcome::RestoredBeforeAdmission { .. }));
+        wait(|| Arc::ptr_eq(&adapter.registry().unwrap()[&reference.id].control, &previous)).await;
+        assert_eq!(factory.pool.used(), 3);
+        assert!(!custody.joined());
+        assert!(custody.outstanding());
+        assert!(!custody.outstanding_effects());
+        assert!(control.original_disposition().is_none());
+        assert_eq!(adapter.availability.sites(), [0; 10]);
+        assert!(!path.exists());
+        drop(pause);
+        joined(&factory.pool, &control).await;
+        assert!(Arc::ptr_eq(&adapter.registry().unwrap()[&reference.id].control, &previous));
+    }
+
+    #[tokio::test]
     async fn complete_job_capacity_refuses_before_factory_and_recovers_after_actual_joins() {
         let (owned, adapter, factory) = adapter();
         let directory = tempfile::tempdir().unwrap();
