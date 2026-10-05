@@ -1308,22 +1308,35 @@ async fn bounded_git_selected(
     process_uncertain: Arc<AtomicBool>,
     #[cfg(test)] context: Option<TestGitContext>,
 ) -> AdapterResult<String> {
-    let output = bounded_git_raw_selected(
+    #[cfg(not(test))]
+    return bounded_git(
         executable,
         cwd,
         args,
         environment,
         deadline,
         process_uncertain,
-        #[cfg(test)]
-        context,
     )
-    .await?;
-    String::from_utf8(output)
-        .map(|value| value.trim().to_string())
-        .map_err(|_| error(ErrorKind::ParseFailure, "invalid Git metadata encoding"))
+    .await;
+    #[cfg(test)]
+    {
+        let output = bounded_git_raw_selected(
+            executable,
+            cwd,
+            args,
+            environment,
+            deadline,
+            process_uncertain,
+            #[cfg(test)]
+            context,
+        )
+        .await?;
+        String::from_utf8(output)
+            .map(|value| value.trim().to_string())
+            .map_err(|_| error(ErrorKind::ParseFailure, "invalid Git metadata encoding"))
+    }
 }
-async fn bounded_git_raw_selected(
+pub(crate) async fn bounded_git_raw_selected(
     executable: &Path,
     cwd: &Path,
     args: &[String],
@@ -2037,7 +2050,8 @@ mod tests {
                 &request.worktree,
                 None,
                 Arc::new(AtomicBool::new(false)),
-                versions
+                versions,
+                None,
             )
             .await
             .unwrap_err()

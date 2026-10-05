@@ -16,6 +16,22 @@ async fn shell(
     )
     .await
 }
+async fn released(context: &TestGitContext) {
+    let pool = context.pool.as_ref().unwrap();
+    tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            let waiter = pool.available.notified();
+            tokio::pin!(waiter);
+            waiter.as_mut().enable();
+            if pool.state.lock().unwrap().records.is_empty() {
+                return;
+            }
+            waiter.await;
+        }
+    })
+    .await
+    .unwrap();
+}
 #[tokio::test]
 async fn binary_output_and_settled_error_clear_live_uncertainty() {
     let context = TestGitContext::isolated();
@@ -35,17 +51,7 @@ async fn binary_output_and_settled_error_clear_live_uncertainty() {
         ErrorKind::OwnershipMismatch
     );
     assert!(!flag.load(Ordering::SeqCst));
-    assert!(
-        context
-            .pool
-            .as_ref()
-            .unwrap()
-            .state
-            .lock()
-            .unwrap()
-            .records
-            .is_empty()
-    );
+    released(&context).await;
 }
 #[tokio::test]
 async fn expired_refusal_precedes_capacity_and_has_no_job_or_flag() {
@@ -64,17 +70,7 @@ async fn expired_refusal_precedes_capacity_and_has_no_job_or_flag() {
     .unwrap_err();
     assert_eq!(result.kind, ErrorKind::Timeout);
     assert!(!flag.load(Ordering::SeqCst));
-    assert!(
-        context
-            .pool
-            .as_ref()
-            .unwrap()
-            .state
-            .lock()
-            .unwrap()
-            .records
-            .is_empty()
-    );
+    released(&context).await;
 }
 #[tokio::test]
 async fn actual_std_spawn_then_initialization_failure_is_settled() {
@@ -86,17 +82,7 @@ async fn actual_std_spawn_then_initialization_failure_is_settled() {
         .unwrap_err();
     assert_eq!(failure.kind, ErrorKind::LaunchFailure);
     assert!(!flag.load(Ordering::SeqCst));
-    assert!(
-        context
-            .pool
-            .as_ref()
-            .unwrap()
-            .state
-            .lock()
-            .unwrap()
-            .records
-            .is_empty()
-    );
+    released(&context).await;
 }
 #[tokio::test]
 async fn opaque_attempted_spawn_error_retains_exact_four_slots() {
@@ -118,4 +104,21 @@ async fn opaque_attempted_spawn_error_retains_exact_four_slots() {
     let records = context.pool.as_ref().unwrap().state.lock().unwrap();
     assert_eq!(records.records.len() * JOBS, 4);
     assert!(records.records[0].native.lock().unwrap().child.is_none());
+}
+
+#[tokio::test]
+async fn unchanged_scalar_contract_trims_metadata() {
+    let flag = Arc::new(AtomicBool::new(false));
+    let output = super::super::bounded_git(
+        Path::new("/bin/sh"),
+        Path::new("/private/tmp"),
+        &["-c".into(), "printf ' a \n'".into()],
+        vec![],
+        tokio::time::Instant::now() + Duration::from_secs(5),
+        flag.clone(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(output, "a");
+    assert!(!flag.load(Ordering::SeqCst));
 }

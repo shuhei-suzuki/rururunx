@@ -13,8 +13,7 @@ use tokio::sync::Semaphore;
 use super::failure;
 use crate::{
     adapter::{
-        AdapterResult, ErrorKind, InputKind, LaunchRequest, SharedStore, bounded_git,
-        resolve_executable,
+        AdapterResult, ErrorKind, InputKind, LaunchRequest, SharedStore, resolve_executable,
     },
     domain::{
         Goal, GoalState, Project, ProjectState, Record, RecordKind, Session, SessionRole, Task,
