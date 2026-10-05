@@ -1,0 +1,129 @@
+{
+  "format": "rrx.phase0.review-exit.v1",
+  "reviewed_document_commit": "b513f42d6683c099cbc83529cd84f04978ef2d32",
+  "scope": "Independent static Phase0 documentation reviews only; no Phase1 or production/native acceptance authorization.",
+  "root_checks": {
+    "source_manifest_entries_verified_against_git": 52,
+    "json_and_relative_markdown_links": "valid",
+    "reviewed_diff": "five added documentation files only",
+    "tests_and_native_execution": "not run",
+    "phase1": "awaiting human approval"
+  },
+  "reviews": [
+    {
+      "id": "a",
+      "original_record_sha256": "3ce760202f41405df8e9468d802b3f2e9a24e66583ab4fff5f9e191a3ae5f08c",
+      "record": {
+        "review": "Independent Phase0 static documentation review A",
+        "verdict": "approve",
+        "confidence": 0.95,
+        "risk": "Low for these documentation additions; future schema/native launch changes remain STRICT and unapproved.",
+        "reviewed_commit": "b513f42d6683c099cbc83529cd84f04978ef2d32",
+        "main_source_baseline": "6146b1639bf03f244d1c5b716304dc1d20146194",
+        "claude_source_baseline_unmerged": "f9b671fc110bcabce66d9d4d9c01e098d69d8076",
+        "scope": "Only five added doc/verification/agent-execution-phase0* documents at immutable Git commit. No requirements/design/implementation/native acceptance or Phase1 authorization.",
+        "findings": [],
+        "finding_counts": {
+          "critical": 0,
+          "high": 0,
+          "medium": 0,
+          "low": 0
+        },
+        "reason": "Source-factual inventory distinguishes existing main behavior from the unmerged Claude candidate, separates work/cleanup outcomes and quota/resource admission, records actual source/materialization and fresh-attempt gaps, and preserves CAS, true outcome uncertainty and external-effect reconciliation. It explicitly stops for Human approval before Phase1 and does not import prior whole-custody readiness or broad containment requirements.",
+        "verified": [
+          "All five documents read from git show at the exact commit; JSON parsed in full. All 20 invariant mappings inspected.",
+          "All 52 source-manifest entries match actual pinned Git bytes: 25 invariant entries checked against blob identity/SHA256/line count; 27 refusal entries checked against bytes/SHA256/line count with Claude worktree prefixes resolved to the separate f9 commit.",
+          "Refusal Markdown exact artifact bytes 25515 and SHA256 10e815af65c89b025ee6781a726a0299e58159cdd74e8dfb732b157aa7d18ca5 match its JSON descriptor.",
+          "Targeted actual source checks confirm production Codex availability always refuses; private test readiness is not a production owner.",
+          "Codex Reservation::terminal, Generic supervise and unmerged Claude terminal publication mix cleanup uncertainty with known native outcomes; the proposed separation is accurately described as future migration work.",
+          "WorktreeManager::create and Store Task binding remain single-Task immutable; Workflow retry does not allocate fresh attempt worktrees. Context prepared_input/index reread live source rather than commit-only materialization.",
+          "Store Workflow close/retry, active/Lost Session and Project-idle fences are preserved as source facts. Existing scope/CAS/lock/late-callback and irreversible effect guards are not treated as OS confinement or waived by fresh paths.",
+          "Codex RPC parsing keeps numeric error code; native_turn_error maps non-auth failures to ProcessFailure. Claude f9 ignores rate_limit_event and maps unsuccessful non-auth terminals to ProcessFailure. Quota waiting is not implemented at these baselines.",
+          "Primary documentation independently corroborates Codex account rate-limit read/update windows and UsageLimitExceeded category, non-interactive failed/error events, Claude retry metadata and status-line quota fields, and Git shared refs/default config. Documents correctly distinguish documented channels from installed wire/conformance proof.",
+          "Capacity WAIT is not generalized from subscription exhaustion to every resource cap; Docker/systemd are not mandatory native launch prerequisites; credential/default-hook changes and a new outer sandbox are not proposed.",
+          "Exact added-path diff contains only five documentation files. Reviewed worktree remains clean and at b513f42 after all reads."
+        ],
+        "primary_pages_read": [
+          "https://learn.chatgpt.com/docs/app-server",
+          "https://learn.chatgpt.com/docs/non-interactive-mode",
+          "https://code.claude.com/docs/en/headless",
+          "https://code.claude.com/docs/en/statusline",
+          "https://git-scm.com/docs/git-worktree"
+        ],
+        "documents_sha256": {
+          "doc/verification/agent-execution-phase0-invariants.json": "df263033c175272c4d103d0638286dccebe08877a5f4168beaa47f786c103df9",
+          "doc/verification/agent-execution-phase0-invariants.md": "ac4efb9cabc83e2181c346dd2ced2e5e59b16eac85cbd18656e09868d2f8d739",
+          "doc/verification/agent-execution-phase0-refusals.json": "0dff40525d592509cc877bcf4ec1ad91e8adeb4a95a0a57b07913c3f55697623",
+          "doc/verification/agent-execution-phase0-refusals.md": "10e815af65c89b025ee6781a726a0299e58159cdd74e8dfb732b157aa7d18ca5",
+          "doc/verification/agent-execution-phase0.md": "63f89b9a44a341ba21339be670b911271baabffe4fd2b037eb1ebe858ce03681"
+        },
+        "limits": [
+          "Approval is only static Phase0 inventory/disposition input. Proposed Phase1 choices are not accepted normative requirements or executable capabilities.",
+          "No actual CLI quota payload, account exhaustion/recovery, native auth/hooks, process escape, cancellation/crash, Docker/systemd, four-Task or both-host acceptance was executed or certified.",
+          "Source inspection is focused contract/callsite verification; no complete code review or proof of every third-party/native command is claimed.",
+          "Same-user shared paths/common Git/raw external effects remain explicit cooperative-model residuals, not universal isolation guarantees.",
+          "Existing historical failures/retained harness ownership are not resolved, retried, cleaned or reclassified.",
+          "No other reviewer findings were consulted."
+        ],
+        "operations": {
+          "production_edits": false,
+          "tests": false,
+          "native_or_model_calls": false,
+          "auth_or_private_config_probes": false,
+          "service_install_or_host_mutation": false,
+          "external_writes": false,
+          "private_review_artifact_written": true
+        },
+        "command_closure": "All read-only exec commands completed with exit 0; web reads completed. No running tool cell, subprocess session or owned native handle was created by this review."
+      }
+    },
+    {
+      "id": "b",
+      "original_record_sha256": "3c519f93ccde4e7eb3e0c730ffa58f6263ad2b9fd3a41ee2a5ab32dbe51fc7d9",
+      "record": {
+        "format": "rrx.phase0.independent-static-review.v1",
+        "reviewer": "/root/agent_execution_phase0_review_b",
+        "reviewed_commit": "b513f42d6683c099cbc83529cd84f04978ef2d32",
+        "source_main": "6146b1639bf03f244d1c5b716304dc1d20146194",
+        "source_claude_unmerged": "f9b671fc110bcabce66d9d4d9c01e098d69d8076",
+        "decision": "PASS for Phase0 static investigation only",
+        "findings": [],
+        "independence": "No other reviewer's findings consulted. Findings derived from immutable commit/source reads and independent official documentation inspection.",
+        "scope": "Five agent-execution-phase0 documentation files, requirement completeness, source provenance, quota observations, namespace limits, SHA versus actual review inputs, external effects, and pre-Phase1 human decisions.",
+        "verified": [
+          "The 20 invariant families map commit-derived inputs, fresh attempt worktrees, cooperative resource names and explicit uncovered shared/external effects.",
+          "Codex Availability::require always refuses ordinary production use at pinned main; test-only fixture inputs are correctly distinguished from readiness.",
+          "Workflow dispatch supplies the Task's live worktree even for ReviewBundle. WorktreeManager's advisory review lock rechecks HEAD/cleanliness without materializing a pinned snapshot.",
+          "WorktreeManager::create rejects an existing Task binding and uses issue/task-based branch/path identity, confirming attempt-specific fresh worktrees require design changes.",
+          "Codex native_turn_error maps non-authentication errors to ProcessFailure; RPC handling retains a numeric code only. Claude candidate drops rate_limit_event metadata and maps unsuccessful results to authentication or process failure.",
+          "Main CLI exposes configuration/project commands, not a complete run/scheduler acceptance path; Claude baseline is explicitly unmerged.",
+          "Official Codex app-server docs describe UsageLimitExceeded, account/rateLimits/read, updated notifications, multi-bucket usage percentages and reset timestamps. The document correctly declines to assert installed CLI wire spelling or quota-specific process exit code.",
+          "Official Claude headless docs describe system/api_retry error categories and retry metadata; status-line docs describe optional subscriber usage/reset metadata after a response. The document correctly avoids equating these with proven headless subscription exhaustion semantics.",
+          "Resource environment variables and linked worktrees are correctly described as cooperative, with shared Git objects/refs/config, raw Docker delegation and absolute/shared writes uncovered.",
+          "Unknown remote effects, callback generation/CAS, bounded retained resources and native permission/auth checks remain distinct from cleanup-only blocking.",
+          "README/license/production changes and real native execution are explicitly excluded; Phase0 ends with human approval before Phase1.",
+          "Both JSON files parse. Refusal Markdown bytes/SHA256 match its manifest; source file SHA256 values checked against pinned source commits. Invariant source manifest Git blob and SHA256 identities verified."
+        ],
+        "primary_docs_inspected": [
+          "https://learn.chatgpt.com/docs/app-server",
+          "https://learn.chatgpt.com/docs/non-interactive-mode",
+          "https://code.claude.com/docs/en/headless",
+          "https://code.claude.com/docs/en/statusline"
+        ],
+        "not_certified": [
+          "Phase1 requirements/design or implementation approval",
+          "Actual Claude/Codex execution, authentication/settings/hooks preservation or four-Task behavior",
+          "Quota exhaustion/recovery, installed wire schema or process exit semantics",
+          "Linux/macOS cleanup, Docker/systemd operation or cargo-install compatibility",
+          "Universal isolation of same-user arbitrary host commands"
+        ],
+        "owned_handles": {
+          "all_exec_commands": "closed with exit code 0",
+          "running_exec_sessions": [],
+          "native_or_test_processes_started": false,
+          "repository_edits": false
+        }
+      }
+    }
+  ]
+}
