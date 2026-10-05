@@ -344,12 +344,15 @@ The selected Git reader Requirements4 has two independent approvals; its
 [Design2](../issue-60-reader-design.md) has two independent approvals. The committed candidate implements
 a Git-local actual std Child worker, caller-runtime-independent supervisor/runtime
 and both reader joins, four counted jobs per call/global64. Shared native
-ProcessGroup/new/reap/Drop stays unchanged. Actual scoped consumer controls and
-12 distinct compiled causal operators were assertion-killed; two prior masked worker-join
-survivors retain zero credit. Source/CI gates remain pending. Current composed
-default Debug failed while full Release passed415 Rust tests plus2 doctests;
-cause/regression remain unknown and Release does not close Debug or availability.
-These process-local holders grant no durable/full-workload proof.
+ProcessGroup/new/reap/Drop stays unchanged. The finite ledger is20 compiled consumer
+runs/17 operators/18 kills, withTWO prior masked worker-join survivors retaining
+zero credit; M14/M17 cover diagnostics only. Two independent Source2/Source3 approvals
+address limited component deltas, not full-source/merge/native acceptance. Public
+Source3 bothOS CI passed full DEBUG TEST and RELEASE BUILD, no RELEASE TEST.
+Local35f0 full Debug306 PASS/3 FAIL and Release307 PASS/2 FAIL remain failed;
+later workspace targets did not execute, cause/regression UNKNOWN. Historical5b09
+Release415 PASS is an older distinct source result. These process-local holders
+grant no durable/full-workload proof or availability qualification.
 
 ### Grok terminal supervision receipts
 

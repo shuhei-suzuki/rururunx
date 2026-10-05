@@ -620,3 +620,15 @@ and Release TEST remain FAILED/cause AND regression UNKNOWN. No current final
 full Release TEST/source/merge/native acceptance is claimed; whole60/F1/native16,
 bootstrap/shared-scope producers, fairness/recovery/availability remain OPEN.
 Final outcome-only documentation gate and its new actual-checkout CI remain pending.
+
+
+Observed outcome-only323e960 CI37260504677 EVERYstep succeeded bothOS; actual
+089df3081499d442bf6a27d8abe2110a189749fb parents768/323 and complete tested tree
+equals323. README and the two master-reader paragraphs are corrected from stale
+5b09 Release415 PASS/current-review-pending wording to actual35f0 both full TEST
+failures, completed limited Source2/3 reviews and diagnostic-only M14/M17 credit.
+The earlier5b09 Release remains an older-source result. Inspector diagnostics61
+are already merged under their recorded limited disposition; that does not prove
+reader/EOF/inspector availability. These are finite factual corrections only,
+with no normative/source/Cargo/CI behavior change. Final current docs-head gate
+and Root's explicit limited disposition remain pending; PR64 stays draft/unmerged.

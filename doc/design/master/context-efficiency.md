@@ -330,7 +330,10 @@ Selected Context Git reader retention is a separate STRICT component: Requiremen
 has two approvals, and [Design2](../issue-60-reader-design.md) has two independent approvals. Context's
 existing sticky process uncertainty must never clear on late settlement. Actual
 private-pool Context dropped-future and output-cutoff controls preserve that
-latch after late resource release. Source/CI gates remain pending; current
-default local Debug failed while distinct full Release passed415 Rust tests plus
-2 doctests. Prior failed gates remain failed/cause AND regression unknown. No historical
-EOF/inspection cause or full native availability is proved.
+latch after late resource release. Two independent Source2/Source3 approvals cover
+limited component deltas; full-source/native acceptance remains unqualified.
+Local35f0 default full Debug306 PASS/3 FAIL and Release307 PASS/2 FAIL remain failed,
+with later targets unrun. Source3 public bothOS CI passed DEBUG TEST and RELEASE
+BUILD only; older5b09 Release415 PASS is not current-source coverage. Prior failed
+gates remain failed/cause AND regression UNKNOWN. No historical EOF/inspection
+cause or full native availability is proved.

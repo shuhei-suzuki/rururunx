@@ -47,5 +47,55 @@
   "log_sha256": "a1c8dbf536e167e33acd26ff637d7933bc6bb6428a75fbe1c426369b01ad1b4e",
   "scope": "LimitedSource3test/docs; productioneqSource2; debugTEST/releaseBUILDonly; local35bothfullTESTFAILED retained",
   "release_test": "NOT_RUN; requiredCI debugTEST/releaseBUILDonly",
-  "old_local_full35f0_tests": "BOTHFAILED, cause/regressionUNKNOWN; no oldrerun or result replacement"
+  "old_local_full35f0_tests": "BOTHFAILED, cause/regressionUNKNOWN; no oldrerun or result replacement",
+  "later_outcome_only_metadata_CI": {
+    "run": 37260504677,
+    "trigger_head": "323e96050a37d27c79d2069dbf907bb400ec7203",
+    "actual_checkouts": {
+      "check (ubuntu-latest)": "089df3081499d442bf6a27d8abe2110a189749fb",
+      "check (macos-latest)": "089df3081499d442bf6a27d8abe2110a189749fb"
+    },
+    "parents": [
+      "768f84319cd2a73e14cd39336eb12d99e9be81a7",
+      "323e96050a37d27c79d2069dbf907bb400ec7203"
+    ],
+    "tested_tree": "ee0b3a4498a0aadb303742a58bd9bc981f7808cd",
+    "trigger_tree": "ee0b3a4498a0aadb303742a58bd9bc981f7808cd",
+    "tested_tree_equals_trigger": true,
+    "jobs": {
+      "check (ubuntu-latest)": {
+        "conclusion": "success",
+        "steps": {
+          "Set up job": "success",
+          "Run actions/checkout@v4": "success",
+          "Run dtolnay/rust-toolchain@1.91.1": "success",
+          "Run cargo fmt --all -- --check": "success",
+          "Run cargo clippy --locked --workspace --all-targets -- -D warnings": "success",
+          "Run cargo test --locked --workspace": "success",
+          "Run cargo build --locked --workspace": "success",
+          "Run cargo build --locked --release --workspace": "success",
+          "Post Run actions/checkout@v4": "success",
+          "Complete job": "success"
+        }
+      },
+      "check (macos-latest)": {
+        "conclusion": "success",
+        "steps": {
+          "Set up job": "success",
+          "Run actions/checkout@v4": "success",
+          "Run dtolnay/rust-toolchain@1.91.1": "success",
+          "Run cargo fmt --all -- --check": "success",
+          "Run cargo clippy --locked --workspace --all-targets -- -D warnings": "success",
+          "Run cargo test --locked --workspace": "success",
+          "Run cargo build --locked --workspace": "success",
+          "Run cargo build --locked --release --workspace": "success",
+          "Post Run actions/checkout@v4": "success",
+          "Complete job": "success"
+        }
+      }
+    },
+    "log_sha256": "11a4d7a332d067ddaadb99ffddb6f03c304b22d374106ae9c53e28894fa1cebe",
+    "scope": "Finalfiniteoutcomedocs; production+tests equalSource3; CIdebugTEST/releaseBUILDonly/localfull35bothFAILED",
+    "note": "Observed323e960 docs-only metadata CI, not future finaldocs head; DEBUG TEST/RELEASE BUILD only, no full local failed-test replacement."
+  }
 }
