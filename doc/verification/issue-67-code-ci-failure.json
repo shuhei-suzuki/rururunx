@@ -1,0 +1,39 @@
+{
+  "head": "87ec5eea34f93a49907b5dd941eb49121bd5e679",
+  "run": 37247900919,
+  "conclusion": "failure",
+  "actual_checkouts": [
+    "f342299464bdc47bb29db4bea0158d194c30c3ad",
+    "f342299464bdc47bb29db4bea0158d194c30c3ad"
+  ],
+  "parents": [
+    "cf8a1e7c4ab74367ad175bedcfb60e28cb6bfc8b",
+    "87ec5eea34f93a49907b5dd941eb49121bd5e679"
+  ],
+  "complete_tree_equal": true,
+  "log_sha256": "b92c5d2247f7cddfbca21869b0a32b0379c740679bb252ae17025a2a59d0d70c",
+  "jobs": [
+    {
+      "name": "check (macos-latest)",
+      "conclusion": "failure"
+    },
+    {
+      "name": "check (ubuntu-latest)",
+      "conclusion": "success"
+    }
+  ],
+  "public_assertion_excerpts": [
+    "2026-10-05T00:36:11.6514280Z     bounded context Git: AdapterError { kind: SessionLost, message: \"native process group cleanup failed: native process inspection timed out; inspection_facts{site=deadline_loop_entry,stream=none,refusal=deadline,returned_io_kind=timed_out,stdout_reads=1,stdout_bytes=0,stdout_would_block=1,stdout_interrupted=0,stdout_eof=pending,stderr_reads=1,stderr_bytes=0,stderr_would_block=1,stderr_interrupted=0,stderr_eof=pending,status_polls=1,status_pending=1,status_interrupted=0,status_errors=0,exit=unavailable,status_source_io_kind=unavailable,validation=not_reached,cleanup=kill_requested_then_wait_reaped,kill=returned_ok,observation_us=299506,spawn_us=1652,cleanup_us=14}\" }",
+    "2026-10-05T00:36:11.6570070Z test result: FAILED. 2 passed; 14 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.67s"
+  ],
+  "observed": "Context2PASS14FAIL: one bounded PS299506us observation plus concurrent/earlier sticky uncertainty latch failures. Not14 independent inspector causes.",
+  "cause_and_regression": "UNKNOWN",
+  "same_source_later_metadata_ci": "37248013333 all steps green; not a cause/fix explanation or failure erasure",
+  "rerun": false,
+  "deadline_change": false,
+  "owning_issues": [
+    "https://github.com/shuhei-suzuki/rururunx/issues/60",
+    "https://github.com/shuhei-suzuki/rururunx/issues/6"
+  ],
+  "limits": "No production native/supervisor or full Release qualification."
+}

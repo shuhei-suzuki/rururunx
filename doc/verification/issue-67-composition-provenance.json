@@ -1,0 +1,138 @@
+{
+  "composed_code": "7634d7547a16dad543fde0a62e0055a60843091b",
+  "main": "5b4a3147b2b2cd4ed88642741f6b25c4c5f3441b",
+  "main_merge": {
+    "headRefOid": "4071149de376c5c4bb1c75d24b939fdafdbccd8a",
+    "mergeCommit": {
+      "oid": "5b4a3147b2b2cd4ed88642741f6b25c4c5f3441b"
+    },
+    "mergedAt": "2026-10-05T00:49:52Z",
+    "number": 54,
+    "state": "MERGED",
+    "url": "https://github.com/shuhei-suzuki/rururunx/pull/54",
+    "parents": [
+      "cf8a1e7c4ab74367ad175bedcfb60e28cb6bfc8b",
+      "4071149de376c5c4bb1c75d24b939fdafdbccd8a"
+    ],
+    "tree": "73d5c6a41ec5e5ea97128ae7d71c82aa82c54ae5",
+    "complete_merge_tree_equal_finalhead": true
+  },
+  "main_ci": {
+    "head": "4071149de376c5c4bb1c75d24b939fdafdbccd8a",
+    "run": 37248466235,
+    "conclusion": "success",
+    "actual_checkout": "24b9470174ce057b42bd744d85f7c52a5a47decb",
+    "parents": [
+      "cf8a1e7c4ab74367ad175bedcfb60e28cb6bfc8b",
+      "4071149de376c5c4bb1c75d24b939fdafdbccd8a"
+    ],
+    "tree": "73d5c6a41ec5e5ea97128ae7d71c82aa82c54ae5",
+    "complete_tree_equal": true,
+    "all_tracked_blobs_equal": true,
+    "compared_tracked_blobs": 261,
+    "jobs": [
+      {
+        "name": "check (ubuntu-latest)",
+        "actual_checkout": "24b9470174ce057b42bd744d85f7c52a5a47decb",
+        "every_step_success": true,
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run dtolnay/rust-toolchain@1.91.1",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run cargo fmt --all -- --check",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run cargo clippy --locked --workspace --all-targets -- -D warnings",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run cargo test --locked --workspace",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run cargo build --locked --workspace",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run cargo build --locked --release --workspace",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Complete job",
+            "conclusion": "success"
+          }
+        ]
+      },
+      {
+        "name": "check (macos-latest)",
+        "actual_checkout": "24b9470174ce057b42bd744d85f7c52a5a47decb",
+        "every_step_success": true,
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run dtolnay/rust-toolchain@1.91.1",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run cargo fmt --all -- --check",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run cargo clippy --locked --workspace --all-targets -- -D warnings",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run cargo test --locked --workspace",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run cargo build --locked --workspace",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run cargo build --locked --release --workspace",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run actions/checkout@v4",
+            "conclusion": "success"
+          },
+          {
+            "name": "Complete job",
+            "conclusion": "success"
+          }
+        ]
+      }
+    ]
+  },
+  "normal_no_conflict_composition": true,
+  "all_Grok_adapter_Cargo_CI_bytes_unchanged_since_review1": true,
+  "production_delta_vs_main": [
+    "cfg(test) Grok environment diagnostic module"
+  ],
+  "selected_graph_source": "Two current source approvals0CHM at6fac; bounded structural only; nine compiled distinct operators/actual consumer kills. Whole23 OPEN.",
+  "failure_scope": "Prior graph fullRelease failed checkpoint/resume watchdog60s and Issue67codeCI37247900919 ContextPS299506us retained UNKNOWN; latergreen not explanation.",
+  "old_issue6_harness_hold_unchanged": true
+}
