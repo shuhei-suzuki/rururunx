@@ -1,9 +1,14 @@
 # Issue 6: existing name-only environment admission integration (Design7)
 
-Status: STRICT component Design7 independently qualified (two approve, 0 CHM); source qualification pending.
+Status: original STRICT component Design7 independently qualified (two approve,
+0 CHM). Constructor refusal/initial reread/defensive selected-boundary paragraphs
+were aligned during the source phase, not retroactively attributed to that design
+round. Source2 independently qualified the finite `798ee3e` delta (two approve,
+0 CHM); test precision and evidence Low follow-up remains pending. Whole gates stay open.
 Design1 `6264702`, Design2 `9884ec3`, Design3 `4a60fa2`, Design4 `e85d85b`
 Design5 `55369e9` and Design6 `f0fc37c` were not qualified as pairs.
-Rust component implementation has begun; independent source/native acceptance is pending.
+Finite Rust production source is independently qualified at `798ee3e`; the
+test/evidence follow-up, whole default gates and actual native acceptance remain pending.
 This proposal normally composes main `768f84319cd2a73e14cd39336eb12d99e9be81a7`.
 Production Codex availability stays
 EMPTY. No native workload backend, managed operation, setup/settlement receipt,
@@ -250,6 +255,11 @@ attempt. A Selected helper request without its synchronous admission callback
 returns StateConflict before process or private IPC setup; Ambient helpers retain
 their existing callback-free behavior. A missing selection at consumed admission
 returns StateConflict before changing dispatch_intent or attempting a Store write.
+This defensive missing-selection refusal does not itself latch the admission
+first cause; its existing outer error mapping does. An intervening stop can win
+that latch. Current launch reservations always have Some(selection); checkpoint's
+None reservation never dispatches. This is a documented internal-invariant branch,
+not a new public first-cause guarantee or reachable consumer mutation credit.
 Immediately before EACH exec receiving those values, invoke the existing
 environment-aware exact CAS on the current reservation Session as the last state
 check: native version, discovery server, main/policy re-exec. Each successful CAS

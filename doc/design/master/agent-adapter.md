@@ -456,7 +456,10 @@ invalid admitted names are controls; the additional control set is EMPTY. Every
 retained non-control baseline name participates in existing names-only admission,
 including locale/terminal and API keys. Caller ordinary locale/terminal/TZ values
 may differ; non-ordinary values must exactly equal their intentional frozen value.
-Constructor/name DTO bounds reject without truncation. Owning declared candidate
+Constructor/name DTO bounds reject without truncation.
+Malformed raw OS pairs refuse construction before membership filtering, even for
+otherwise excluded names, as a conservative compatibility limitation; arbitrary
+host/native-default compatibility remains unqualified. Owning declared candidate
 metadata is available without launch readiness, including inactive Projects.
 
 Initial admission precedes Starting/Git. Version, discovery and main selected execs
@@ -473,7 +476,8 @@ value provenance, and no absent value is restored. Missing selected references
 refuse Unsupported; optional/custom/default compatibility remains unqualified.
 The public legacy stripping/restoration helper is removed; README records the
 pre-publication API migration and future breaking-release compatibility gate.
-This source component still needs independent source qualification. EMPTY remains
+Finite production source independently qualified at `798ee3e`; its test/evidence
+follow-up remains pending. EMPTY remains
 first on operational routes; no constructor, DTO, callback or synthetic control
 creates native workload, managed setup, cleanup/settlement or provenance readiness.
 

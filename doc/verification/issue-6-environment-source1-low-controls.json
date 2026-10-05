@@ -11,51 +11,55 @@
       "failed": 0,
       "seconds": 0.02
     },
-    "actual_environment_controls": {
-      "passed": 11,
-      "failed": 0,
-      "ignored": 1,
-      "seconds": 6.1,
-      "default_internal_concurrency": true,
-      "host_scope": true
-    },
     "restored_private_archive_control": {
       "passed": 1,
       "failed": 0,
       "seconds": 1.81,
       "not_clean_head_acceptance": true
+    },
+    "environment_controls_module": {
+      "passed": 11,
+      "failed": 0,
+      "ignored": 1,
+      "seconds": 6.1,
+      "default_internal_concurrency": true,
+      "host_scope": true,
+      "credit": "Module includes reachable public consumers, direct-helper defensive guards and unit controls; count is not all actual-consumer kills."
     }
   },
   "mutants": [
     {
       "id": "E19",
       "source_head": "6ac8cc40cc440f941a43c4f2a5479059397ef58d",
-      "classification": "actual consumed-admission missing-selection intent mutation",
+      "classification": "direct-helper defensive consumed-admission missing-selection guard; unreachable from public start/resume",
       "compiled": true,
       "exit_code": 101,
       "assertion_failed": "unchanged exact Session before any Store write",
       "source_restored": true,
-      "log_sha256": "9b24c92b348cec7de405eb7efa09b9552b1df4bc5e7ec8cb5c013a1b62d2f192"
+      "log_sha256": "9b24c92b348cec7de405eb7efa09b9552b1df4bc5e7ec8cb5c013a1b62d2f192",
+      "public_start_resume_actual_consumer_credit": false
     },
     {
       "id": "E20",
       "source_head": "6ac8cc40cc440f941a43c4f2a5479059397ef58d",
-      "classification": "actual bounded version requires selected callback",
+      "classification": "direct-helper defensive Selected bounded-version callback guard; current public launch always supplies callback",
       "compiled": true,
       "exit_code": 101,
       "assertion_failed": "selected version omitted its last admission",
       "source_restored": true,
-      "log_sha256": "ce821e95edc03b3808f3a86d788043781561633d17874d6bdf7746880b4af151"
+      "log_sha256": "ce821e95edc03b3808f3a86d788043781561633d17874d6bdf7746880b4af151",
+      "public_start_resume_actual_consumer_credit": false
     },
     {
       "id": "E21",
       "source_head": "6ac8cc40cc440f941a43c4f2a5479059397ef58d",
-      "classification": "actual native server requires selected callback",
+      "classification": "direct-helper defensive Selected server callback guard; current public launch always supplies callback",
       "compiled": true,
       "exit_code": 101,
       "assertion_failed": "selected server omitted its last admission after actual shutdown returned Ok",
       "source_restored": true,
-      "log_sha256": "7408620e9ade0a8a34778f2b6e8e000a3de6d0b808a07996ca6ac182045798f8"
+      "log_sha256": "7408620e9ade0a8a34778f2b6e8e000a3de6d0b808a07996ca6ac182045798f8",
+      "public_start_resume_actual_consumer_credit": false
     }
   ],
   "log_sha256": {
@@ -69,6 +73,7 @@
     "Selected group cleanup in synthetic helper controls is not all-descendant containment or historical held-wrapper release.",
     "Old full debug/release and Mac CI failures remain preserved, cause unknown.",
     "The additional-control table is a unit classification control; no omission mutation credit for that table.",
-    "Raw-pair refusal is preserved as an explicit conservative constructor compatibility limitation."
+    "Raw-pair refusal is preserved as an explicit conservative constructor compatibility limitation.",
+    "E19\u2013E21 retain real helper/fixture assertion sensitivity, but have no reachable public-start/resume mutation credit."
   ]
 }

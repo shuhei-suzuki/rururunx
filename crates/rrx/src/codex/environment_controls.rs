@@ -176,13 +176,19 @@ async fn own_reference_edit_at_initial_and_each_exec_preserves_stale_currency() 
             assert_leader_reaped(&directory.join("leader"));
         }
         assert!(matches!(result, Err(ref error) if error.kind == ErrorKind::StateConflict));
-        assert!(adapter.environment_hooks.total(site) == (0, 0));
+        if site != ExecSite::Initial {
+            assert!(adapter.environment_hooks.total(site) == (0, 0));
+        }
         assert!(
             !journal_values(&directory)
                 .iter()
                 .any(|v| v["method"] == "turn/start")
         );
         if site == ExecSite::Initial {
+            for exec in [ExecSite::Version, ExecSite::Discovery, ExecSite::Main] {
+                assert!(adapter.environment_hooks.total(exec) == (0, 0));
+            }
+            assert!(adapter.registry().unwrap().is_empty());
             let after = no_effect_snapshot(&adapter, &owned.request.scope);
             assert!(before["sessions"] == after["sessions"]);
             let saves = |snapshot: &Value| {
@@ -359,15 +365,16 @@ fn preparing_only_pre_exec_preserves_first_cause_and_never_calls_closed_admissio
 #[tokio::test]
 #[ignore = "env-cleared real public constructor entry; invoked by retained own process"]
 async fn public_constructor_raw_child() {
-    let directory = PathBuf::from(std::env::var_os("RRX_RAW_CTOR_FIXTURE").unwrap());
+    let directory =
+        std::env::current_dir().unwrap_or_else(|_| panic!("synthetic constructor CWD unavailable"));
+    let bounds = std::env::var_os("RRX_RAW_CTOR_BOUNDS").is_some();
+    assert_synthetic_constructor_environment(&directory, bounds);
     let store = Arc::new(Mutex::new(
-        Store::open(
-            &directory.join(if std::env::var_os("RRX_RAW_CTOR_BOUNDS").is_some() {
-                "bounds.sqlite3"
-            } else {
-                "raw.sqlite3"
-            }),
-        )
+        Store::open(&directory.join(if bounds {
+            "bounds.sqlite3"
+        } else {
+            "raw.sqlite3"
+        }))
         .unwrap(),
     ));
     let mut project = Project::new(
@@ -379,7 +386,7 @@ async fn public_constructor_raw_child() {
     project.environment_refs = vec!["OPENAI_API_KEY".into()];
     store.lock().unwrap().put_project(&mut project).unwrap();
     let constructed = CodexAdapter::new("codex".into(), "/definitely-not-native".into(), store);
-    if std::env::var_os("RRX_RAW_CTOR_BOUNDS").is_some() {
+    if bounds {
         let error = match constructed {
             Err(error) => error,
             Ok(_) => panic!("real public constructor accepted oversized baseline"),
@@ -400,6 +407,7 @@ async fn public_constructor_raw_child() {
     assert!(adapter.capabilities().is_empty());
     let long_name = format!("LC_{}", "x".repeat(254));
     // A separately constructed common iterator proves the bound, without ambient override.
+    assert_synthetic_constructor_environment(&directory, bounds);
     assert!(
         CodexAdapter::with_environment(
             "codex".into(),
@@ -411,11 +419,43 @@ async fn public_constructor_raw_child() {
     );
     std::fs::write(directory.join("complete"), "raw constructor checked").unwrap();
 }
+fn assert_synthetic_constructor_environment(directory: &std::path::Path, bounds: bool) {
+    use std::ffi::{OsStr, OsString};
+    let mut expected = BTreeMap::from([
+        (OsString::from("HOME"), directory.as_os_str().to_owned()),
+        (OsString::from("PATH"), OsString::from("/usr/bin:/bin")),
+        (
+            OsString::from("RRX_RAW_CTOR_FIXTURE"),
+            directory.as_os_str().to_owned(),
+        ),
+        (
+            OsString::from("OPENAI_API_KEY"),
+            OsStr::from_bytes(b"synthetic-\xff").to_owned(),
+        ),
+        (
+            OsStr::from_bytes(b"LC_\xff").to_owned(),
+            OsString::from("synthetic excluded name"),
+        ),
+    ]);
+    if bounds {
+        expected.insert("RRX_RAW_CTOR_BOUNDS".into(), "1".into());
+        expected.insert(format!("LC_{}", "x".repeat(254)).into(), "synthetic".into());
+    }
+    let actual = std::env::vars_os().collect::<Vec<_>>();
+    assert!(
+        actual.len() == expected.len()
+            && actual
+                .iter()
+                .all(|(name, value)| expected.get(name) == Some(value)),
+        "synthetic constructor environment mismatch"
+    );
+}
 #[tokio::test]
 async fn real_public_constructor_captures_raw_os_once_in_scoped_child() {
     use crate::adapter::{ProcessGroup, cleanup_group};
     use std::process::Stdio;
     let directory = tempfile::tempdir().unwrap();
+    let child_directory = directory.path().canonicalize().unwrap();
     for bounds in [false, true] {
         let _ = std::fs::remove_file(directory.path().join("complete"));
         let mut command = tokio::process::Command::new(std::env::current_exe().unwrap());
@@ -426,10 +466,11 @@ async fn real_public_constructor_captures_raw_os_once_in_scoped_child() {
                 "--ignored",
                 "--nocapture",
             ])
+            .current_dir(&child_directory)
             .env_clear()
-            .env("HOME", directory.path())
+            .env("HOME", &child_directory)
             .env("PATH", "/usr/bin:/bin")
-            .env("RRX_RAW_CTOR_FIXTURE", directory.path())
+            .env("RRX_RAW_CTOR_FIXTURE", &child_directory)
             .env(
                 "OPENAI_API_KEY",
                 std::ffi::OsStr::from_bytes(b"synthetic-\xff"),

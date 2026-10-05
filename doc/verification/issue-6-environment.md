@@ -409,3 +409,30 @@ Current fmt/all-target Clippy-denied-warnings and both production builds passed;
 external ordinary EMPTY outer1pass/1ignored plus actual scoped child1pass passed.
 Later full workspace integration/doctest targets did not run after library failure.
 No full workspace success, all-job cleanup, native backend or MVP credit is added.
+
+## Source2, public immutable `798ee3e`
+
+Both independent native zero-tool source reviews APPROVED0CHM (A2low/B4low).
+Original owned tools27153/21880 both closed0; selected-own-group cleanup/reap and
+stdin joins preceded accepted verdicts. Findings were read only after both closed.
+A native session00e5631f-5d03-49d1-852b-5402487e8fe0 observed$3.493452/API279210ms;
+B8835cb22-3561-4435-8c7c-a12b2332d60f observed$3.779784/API413547ms. Native
+defaults/auth/hooks/rules remained unchanged. These are the native review API's
+reported observations, not qualified runtime usage/cost attribution. The947,354-byte packet used33 source
+sections plus6 independently byte-proved baseline blobs for the exact finite diff.
+
+CI37265698116 EVERY step on bothOS succeeded. Actual checkout66e962c8 has parents
+[26f3a48,798ee3e]; fulltree20417a9a998e2e74079be4f8e0745c8013996932 equals the
+reviewed head, all301 mode/type/blob entries and31 current review-input paths match.
+This is distinct from the retained local full Debug/Release failures, causeUNKNOWN.
+No whole default-gate/merge/native/backend/settlement/MVP waiver is supplied.
+
+Finite Low follow-up relabels E19–21 as defensive direct-helper controls without
+public-start/resume consumer credit; checks all3 real exec counters and fresh-entry
+removal on Initial refusal; and validates exact synthetic OS pairs before each
+raw-child constructor, anchored to the parent's canonical owned child CWD before
+Store/file writes. Equality failures are fixed and value-free. Source-phase Design7
+amendments and the master raw-refusal limitation are marked explicitly. Production
+is unchanged: the missing-selection defensive refusal remains non-latching until
+its existing outer mapping; no new first-cause guarantee for that invariant branch.
+Current test/evidence follow-up checks and direct delta review remain pending.
