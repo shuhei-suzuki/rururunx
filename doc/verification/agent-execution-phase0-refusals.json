@@ -1,0 +1,183 @@
+{
+  "phase": "read-only inventory only",
+  "main": "6146b1639bf03f244d1c5b716304dc1d20146194",
+  "claude_unmerged": "f9b671fc110bcabce66d9d4d9c01e098d69d8076",
+  "artifact": {
+    "bytes": 25515,
+    "sha256": "10e815af65c89b025ee6781a726a0299e58159cdd74e8dfb732b157aa7d18ca5",
+    "original_path": "/private/tmp/rururunx-phase0-best-effort-custody-code-inventory.md",
+    "path": "agent-execution-phase0-refusals.md"
+  },
+  "files": [
+    {
+      "path": "crates/rrx/src/adapter.rs",
+      "bytes": 78343,
+      "sha256": "b922841d9dead5edde26441d569bc525d5a80f449d3e491a40a52f98315cedba",
+      "lines": 2181
+    },
+    {
+      "path": "crates/rrx/src/adapter/git_owner.rs",
+      "bytes": 53807,
+      "sha256": "6bdb5a041ba1ada547fce222ed0619c4edb6eb3a36b07c66906784901ad5c9ca",
+      "lines": 1510
+    },
+    {
+      "path": "crates/rrx/src/adapter/inspection.rs",
+      "bytes": 46460,
+      "sha256": "5e655d8cff410b5533d17b0133285bfb67bf0569bb8042ee0cb30b91e9c33cd9",
+      "lines": 1257
+    },
+    {
+      "path": "crates/rrx/src/state/mod.rs",
+      "bytes": 67301,
+      "sha256": "b18514c5bd2d11acdd99e47307bf36deea7ccdcce615916200a32390bcbf3bbd",
+      "lines": 1678
+    },
+    {
+      "path": "crates/rrx/src/state/environment.rs",
+      "bytes": 5783,
+      "sha256": "784247ef59d3b9aa58896cfb0c493dc5a813bccd28cdb555549f48c39510cfe3",
+      "lines": 157
+    },
+    {
+      "path": "crates/rrx/src/git.rs",
+      "bytes": 20714,
+      "sha256": "d20a1d38ce57983e41d5b14ac4115478984a12c36a359417970406fe047e10f3",
+      "lines": 598
+    },
+    {
+      "path": "crates/rrx/src/workflow.rs",
+      "bytes": 104025,
+      "sha256": "8d13a29894b3af812ae2136731fd814a6b6327515af26cc44de0f353f22be394",
+      "lines": 2746
+    },
+    {
+      "path": "crates/rrx/src/domain.rs",
+      "bytes": 11346,
+      "sha256": "f8d1defcfe599d938d741491ce7865033a688eed65a669aa70de9dd04f79bc80",
+      "lines": 448
+    },
+    {
+      "path": "doc/design/master/agent-adapter.md",
+      "bytes": 30027,
+      "sha256": "ebcd9ad7d4959edca00205bec36ecfb9c5de5053b8f7988b6c10df2623c86c2b",
+      "lines": 570
+    },
+    {
+      "path": "doc/design/issue-4-design.md",
+      "bytes": 7465,
+      "sha256": "606d213fd71bec6217f0e277710e65b8652ca5b9be8d88f4aa3a036af51974a4",
+      "lines": 104
+    },
+    {
+      "path": "doc/design/issue-46-design.md",
+      "bytes": 19228,
+      "sha256": "42eb4b6bd214f8e3ead1b94d1bd24cf776d5ebe43aa393274bec78ebb651f8c1",
+      "lines": 262
+    },
+    {
+      "path": "doc/design/issue-60-reader-design.md",
+      "bytes": 35846,
+      "sha256": "74657ae034d29af43ef00e1bd5687bccd2a07b11ead275a37e94973cbef59cb1",
+      "lines": 488
+    },
+    {
+      "path": "doc/design/issue-60-inspection-design.md",
+      "bytes": 19761,
+      "sha256": "44a74308fcb235f2e7041ab858ec398e053005dd4ef36c558b4730d579abeec3",
+      "lines": 268
+    },
+    {
+      "path": "crates/rrx/src/codex/availability.rs",
+      "bytes": 5826,
+      "sha256": "735d30dba73765f87dc9bdb61401836790edf5b83445d88b5cb2a5fb5ddcba49",
+      "lines": 176
+    },
+    {
+      "path": "crates/rrx/src/codex/session.rs",
+      "bytes": 295292,
+      "sha256": "346cc497308e54bdd13c4ac006cbe9f5cae62e09a51b6990ce36979a4a37c771",
+      "lines": 7071
+    },
+    {
+      "path": "crates/rrx/src/codex/attempt.rs",
+      "bytes": 21581,
+      "sha256": "fbf70e77e4b3709bbd8df718848f3809695d4e65723aea3ea223905864515420",
+      "lines": 625
+    },
+    {
+      "path": "crates/rrx/src/codex/ownership.rs",
+      "bytes": 36326,
+      "sha256": "93c1218162146faef93b8b293b1c7e097da4627def6053e39d7e766873f67bd1",
+      "lines": 966
+    },
+    {
+      "path": "crates/rrx/src/codex/preparation.rs",
+      "bytes": 19147,
+      "sha256": "0c73e0ae95903ccf6bd95af63d39439968c0794a3fc9fe621382c4261bb033dc",
+      "lines": 539
+    },
+    {
+      "path": "crates/rrx/src/codex/protocol.rs",
+      "bytes": 62600,
+      "sha256": "21b047bd0c5554e9166b4dbca757d1a8335f7d3931aad4e3b731057da0d3ffa9",
+      "lines": 1663
+    },
+    {
+      "path": "crates/rrx/src/codex/transport.rs",
+      "bytes": 32750,
+      "sha256": "3af3e277ce27d2aacd7048cb07f467115fd2ba78159c79740494b4ad0d8e1368",
+      "lines": 837
+    },
+    {
+      "path": "crates/rrx/src/codex/policy.rs",
+      "bytes": 33553,
+      "sha256": "4e4574b0a0c584606a51817dfc12e98c94b380d24c10fc8dcfee4b9ec1088672",
+      "lines": 828
+    },
+    {
+      "path": "crates/rrx/src/codex/custody.rs",
+      "bytes": 24669,
+      "sha256": "ee1ec0054d7b823cdc8eff9e575b2d3f442d531265547e00413143fdc15b9a09",
+      "lines": 697
+    },
+    {
+      "path": "worktree/issue-5/crates/rrx/src/claude/session.rs",
+      "bytes": 153876,
+      "sha256": "c37c516548470b8224c4aa7b4b503abd26f0866012c1977912a81b5cde68bd2d",
+      "lines": 3553
+    },
+    {
+      "path": "worktree/issue-5/crates/rrx/src/claude/ownership.rs",
+      "bytes": 35740,
+      "sha256": "e7732488cb03ed6d334c216628ed8ce439b39dd17d8c62fc636233023428549f",
+      "lines": 953
+    },
+    {
+      "path": "worktree/issue-5/crates/rrx/src/claude/transport.rs",
+      "bytes": 8760,
+      "sha256": "f0c8d658b7c993f956aec74b80aad0183b87a2a2588411cf5540e2749c062f96",
+      "lines": 234
+    },
+    {
+      "path": "worktree/issue-5/crates/rrx/src/claude/policy.rs",
+      "bytes": 14324,
+      "sha256": "00c760a9235a54f1f2f54cd085330576791f6bb5a7de215a2a29a7281fc7f317",
+      "lines": 423
+    },
+    {
+      "path": "worktree/issue-5/crates/rrx/src/claude/protocol.rs",
+      "bytes": 24676,
+      "sha256": "cd02d0562b4cec36bc599e19f6740a140d1e27cf7af39d2ba786767f71ab4bcb",
+      "lines": 571
+    }
+  ],
+  "production_edits": false,
+  "tests_or_native_probes": false,
+  "classification": "proposed REMOVE/REPLACE/RETAIN, no source gate approval",
+  "capacity_scope_correction": {
+    "subscription_usage_quota": "WAIT required by user",
+    "bounded_resource_admission": "Phase1 may choose cancellation-aware WAIT or refusal before effects; finite caps retained",
+    "scope": "capacity/quota prose only; source manifest unchanged"
+  }
+}
