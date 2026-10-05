@@ -697,11 +697,120 @@ recovery and Linux/native qualification still remain. No new human decision is
 needed for this dependency-ready Phase2 work. The full Phase2-to-Phase3 human
 approval gate remains; README Status and licensing are unchanged.
 
+## Committed Workflow inputs and first-unit adoption
+
+This component advances the preceding bootstrap prerequisites into actual Workflow
+consumers. The final immutable source is
+`32e0ca18f76ee2932b30b93a36a945775f009c24`, with clean checks and independently
+scoped source reviews. See the [checkpoint](agent-execution-phase2-source-wiring-checkpoint.json)
+and [original review records](agent-execution-phase2-source-wiring-reviews.json).
+This is still Phase2 work, not shipped Runtime/CLI or native qualification.
+
+ManagedWorkflowSources registers its private preparation capability before
+initialize reads the Task projection. Its complete committed tree/blob corpus
+supplies the bounded lexical CommittedIndex. Workflow.inputs and prepare_pack now
+consume one private committed policy/rule/input frame, bypassing the legacy live
+rule/config loader for this managed integration. Unsupported untracked/external
+mandatory refs explicitly refuse. The index retains all inventory/content/OID/skip
+metadata; the existing bounded Workflow/artifact dependency map receives its
+complete-inventory digest, code, instruction and mandatory-rule/config digests.
+Goal/Task instructions and rules precede discretionary repository selection.
+
+The first actual Executor adopts the same Unit ID, generation, branch, worktree,
+profile and resource identity in an Immediate transaction. It retains the existing
+Task/Workflow/Context/P/G/epoch/projection checks, disarms the actual guard only on
+success, and compares both private source text and the complete actual serialized
+Context envelope. Subsequent successful native terminals produce genuinely
+captured/published commits, never a fabricated bootstrap work-success artifact.
+Cached frames also validate accepted P/G semantic instructions after capability
+consumption. A changed frame refuses before a new native effect; automatic fresh
+input recovery is still unfinished.
+
+RetainedGit extends its finite, current-epoch artifact inspection to the exact
+commit tree and ordinary bounded blob OIDs observed there. It registers each
+intent before spawn and verifies current artifact/epoch before receipt. The actual
+control retires the producer, removes its historical profile and changes surviving
+worktree bytes, then reads the captured commit bytes and refuses an unrelated old
+blob. No historical native/finalization grant is reopened.
+
+Independent Source1 reviews found the native Context envelope/raw-text mismatch
+(CP-M1/C-H1), a legitimate negative LFS grep exit misclassified as unsettled
+(CP-M2), and cached retained inputs missing current P/G instruction validation
+(C-H2). These were verified against actual source consumers and corrected. Fatal
+qualification/reader errors still prevent private frame creation. Adoption rejects
+unresolved helper states and non-Git effects; an observed no-match grep is valid
+qualification, not a fabricated successful helper. A separate test-fixture error
+attempted to downgrade a persisted Standard Task before its intended guard; the
+control now constructs a fresh Quick Task. Original failures remain in the record.
+
+At final Source2, C independently reviewed the whole component; A reviewed the
+producer/adoption/Workflow/readers/tests, excluding its own Index; B independently
+reviewed the Index/registered producer contract, excluding its own Workflow tests.
+All final reviewed scopes report zero findings. These are static component
+approvals, not final Phase2 or provider/OS acceptance. Peer findings were not
+shared before independent completion.
+
+| Provider | Workflow | Actual account-free consumer result |
+| --- | --- | --- |
+| Claude fixture | QUICK | Same initial Unit; complete fixed native input; terminal, commit capture/publication and graph verification passed. |
+| Claude fixture | STANDARD | Same result through the first Requirements Executor after initial Issue/Worktree gates. |
+| Claude fixture | STRICT | Same first Requirements Executor result; later STRICT gates are not attested. |
+| Codex fixture | QUICK | Same initial Unit; complete fixed native input; terminal, commit capture/publication and graph verification passed. |
+| Codex fixture | STANDARD | Same result through the first Requirements Executor after initial Issue/Worktree gates. |
+| Codex fixture | STRICT | Same first Requirements Executor result; later STRICT gates are not attested. |
+
+These six cases are sequential local protocol fixtures. Early evidence gates are
+also fixtures. They do not use subscriptions, models, authentication or network,
+and do not qualify real Claude/Codex, four parallel native Tasks or Linux.
+Actual initialize/prepare_pack/outgoing native bytes distinguish committed rule/
+config A from modified live Project B. Actual published-artifact consumers reject
+changed Goal objectives or Project rule refs without another native input or
+artifact mutation. Other controls target public payload injection, stored Context
+corruption, stale Task CAS, altered envelope generation, pending helpers and
+initial cancellation/failure/last-source-owner Drop.
+
+On macOS 26.6.2/25G83 arm64 with Rust/Cargo 1.91.1 and Git 2.49.0, final clean
+source32 with `RUST_TEST_THREADS=4` passes **554 primary tests, 0 failures and 30
+primary ignored**: 434 rrx library, 113 integration, 4 tracker library, 1 tracker
+discovery and 2 doctests. An internal 44-test observer subprocess and one filtered
+Codex child are excluded as duplicate execution. Workspace Clippy/all-targets with
+`-D warnings`, build and fmt pass on that same fixed source. This build is neither
+a new cargo-install qualification nor a Linux build.
+
+The initial unrestricted-parallel source32 run failed three existing fixtures:
+two Grok synthetic child watchdogs expired near 60 seconds and one Docker report
+lacked an expected unregistered volume. Its new Workflow controls passed. The
+same-source bounded-parallel full run passed all three and the entire workspace.
+Scheduling/load sensitivity is an inference; the precise cause and unrestricted
+repeatability are not established. Production and test deadlines were unchanged;
+the failed run is recorded and is not counted as successful regression.
+
+Six parent compiled mutations remove complete-envelope equality, exact Task CAS,
+unsettled-helper refusal, retained blob membership, actual Workflow committed-
+frame wiring or cached instruction validation. Every actual consumer fails with
+an assertion (exit 101), not a compile error. Final restored controls pass on exact
+baseline trees: two negative/reader controls for f429 and four Workflow controls
+for source32. The first four and last two chains are retained under
+`refs/rrx/verification/agent-execution-phase2-source-wiring/`, and their clean owned
+temporary worktree was normally removed. They are not claimed as controls executed
+after every restoration. The delegated pure index records seven debug/release
+controls and ten separate compiled mutations; their scope is not native authority.
+
+Unverified or unsupported boundaries remain explicit: automatic existing-Workflow/
+changed-instruction recovery, external mandatory refs, large disabled-context
+baselines beyond 128 requested files, actual native serialization/provider limits,
+production review/verifier gates, Runtime/CLI owner construction, both-OS CI and
+actual settings/hooks/subscription compatibility. Byte packing estimates are not
+provider tokens. Process collection remains best effort, and rururunx is not a
+security sandbox. There is no new human decision for dependency-ready Phase2
+integration; the whole Phase2-to-Phase3 approval gate remains in place.
+
 ## Remaining Phase2 and acceptance work
 
-- Production source/evidence ports and scoped initial-source bootstrap; Runtime
-  orchestration and operational CLI. Historical retained inspection is covered
-  above, independently of these still-missing production consumers.
+- Production evidence/verifier/reviewer gate consumers and Runtime orchestration/
+  operational CLI construction of the new source port. Initial committed source
+  and same-unit adoption are covered above; existing-Workflow/changed-input
+  recovery still needs fresh provenance rather than reconstructed ownership.
 - Required native/Git settings and hooks, dependency qualification and remaining
   scoped bootstrap/preparation helpers; full finite tool profiles and
   installed-binary tool mediation tests.
