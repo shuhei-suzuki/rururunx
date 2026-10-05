@@ -167,7 +167,7 @@ impl Store {
                     }
                     if next == 6 {
                         execution::native_results::install_schema(&tx)?;
-                        // Mutation: omit replacement of existing schema5 writer guards.
+                        execution::install_writer_guards(&tx)?;
                     }
                     tx.pragma_update(None, "user_version", next)?;
                 }
