@@ -1,13 +1,18 @@
 # Issue #19 curated preparation custody integration
 
-Status: first independent composition review completed; its queued-abandonment
-defect was reproduced and fixed. Delta review remains pending and full regression
-failed. Not merge-ready. Whole Issue #19 and
+Status: queued-abandonment defect reproduced and fixed; two independent read-only
+source reviews and the finite assertion re-reviews completed. Full Debug and Release
+regression remain RED. Not merge-ready. Whole Issue #19 and
 native readiness remain open.
 
 ## Immutable inputs and scope
 
-Base main: `768f84319cd2a73e14cd39336eb12d99e9be81a7`.
+Original Rust base main: `768f84319cd2a73e14cd39336eb12d99e9be81a7`.
+The head also composes main `26f3a48fedce976b353a6a9fa899bc6fb13ca72a`
+(PR70), adding only two Issue67 status documents. The observed difference
+`f6b36d3c64313a73a6ce84b077a934053796d91f` to
+`f6b18af1f27c56ee1d32957b8da5b2979588c946` is empty for crates, Cargo
+and .github; no Rust or CI behavior is credited to that main composition.
 Selected approved source: `857950094ae9732d31d6c11d773e7fe96adbae02`.
 Historical source evidence: `a8aa95108bfe2fc098f5333f7bb5cf445c4c74a9`.
 
@@ -243,3 +248,71 @@ not cover the later fix/test delta or explain the local failures. Log SHA256:
 `977b6d8daed6d8dc591ab25c730415ff35843dd0d8b70fa939ba98d9e1db5936`.
 The new immutable delta still requires independent review and final-head CI;
 workspace failure keeps this draft composition unmerged.
+
+
+## Finite source review and control corrections
+
+The f6 native delta round does not supply two qualified approvals. Reviewer A's
+terminal source approval returned through a wrapper that exited1 with
+owned_cleanup_unverified; later observed group death and reaped anchors do not
+clear the prior Unknown. That result is retained as unqualified content.
+Reviewer B's wrapper exited0 with verified cleanup and approved only the source
+with five Low, without merge/full-gate/native approval.
+
+At clean226d1ab, both actual custodied closed-runtime consumers use the same2s
+finite helper. Disconnected joins the helper and resumes its actual panic;
+Timeout fails explicitly and earns no synthetic-thread join/cleanup credit.
+The bare Control consumer captures only TaskGuard and observes its revocation,
+so RegisteredTransition cannot mask that call. Caller and finished observations
+also have the existing2s bound. A compiled single TaskGuard-call omission failed
+at that exact assertion. A second variant of the prior task-lock regression ran
+all19 controls:17 passed and BOTH closed-runtime consumers failed within the
+bound. These are sensitivity variants of existing boundary families, not two
+new guarantees. Clean exact226/tree563fac41 was restored; Debug19, Release19,
+fmt and warnings-denied all-target clippy passed before owned worktree removal.
+
+Two existing agents independently reviewed the actual source/consumers at226:
+both approved without Critical/High/Medium; one Low identified that the caller's
+revocation observation occurred after cleanup. Four test lines at9687bae move
+that assertion immediately after the actual caller Err observation, before
+error classification, wait_finished and drain. Both agents independently approved
+that four-line delta without findings; the targeted Debug and Release controls
+passed. These were read-only code reviews, with no new native inference or
+independently executed tests. Exact records and log hashes are in
+[the finite control ledger](issue-19-custody-source3-controls.json).
+
+The fix/control proves the queued-before-handler case. The custodian samples
+permission once before create_worker; thread creation, handle installation and
+Begin follow without a shared revocation/commit lock. Revocation after that
+sample can therefore precede a later file effect. This source-verifiable window
+was reported in unqualified review A content, not reproduced by a control;
+in-flight work remains retained and charged. Effect commitment and revocation
+must be linearized and tested before any factory activation. No after-Lost
+ordering-mutant guarantee is claimed. Zero-created Lost retention also depends
+on accepted/in-flight counters at drop: a queued request later refused can retain
+an entry without disposition, while the no-queued-work case removes it. Recovery
+for that documented availability cost remains pending.
+
+## Distinct comparison and current Release observations
+
+The separate main26f3 default Debug comparison passed383 Rust tests plus2
+doctests. A distinct f6 diagnostic with19 mechanics filtered remained RED:
+library259 passed/12 failed/23 ignored/19 filtered, later targets unrun. This
+filtered inventory is not a workspace gate or retry. Removing those mechanics
+was not sufficient for a pass; causes/component contribution remain unknown.
+
+At clean9687bae, the previously unrun full default Release workspace test
+exited101: library288 passed/2 failed/23 ignored in54.12s; later targets unrun.
+All19 mechanics passed. Grok own-reference-refresh failed because its current
+attempt canary was absent (actual child exit101 observed9244ms); the before-spawn
+stop child failed after9.74s with Timeout, owned native stop not yet verified.
+The blocking operation and component contribution remain unknown. No same-head
+retry or budget/parallelism/latch waiver follows. Earlier full Debug failures
+remain separate and undetermined causes remain open.
+
+Prior f6 CI37261604727 passed every macOS/Linux step. Actual checkout
+abaa6ea9c097951fb4de2fafc1576255f13d7dc6 has parents26f3a48/f6b18af and
+fulltree396ce6618ace6fc76c41261d9811f6bd65ff9847 equal to f6. It executed
+Debug workspace tests and Release builds, not full Release tests. It does not
+cover the later226/968 test changes or discharge the local failed gates.
+Final-head CI remains pending; PR69 stays draft and unmerged.

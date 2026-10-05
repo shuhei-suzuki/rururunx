@@ -113,8 +113,13 @@ bytes retain their existing separately charged bounds, never an unbounded hidden
 message. No serialized closure/operation credential or copied prepared frame enters
 the inbox. Job registration/actual resource ownership precedes the first request.
 Generation/control mismatch, revoked endpoint, over-bound metadata or queue capacity
-refuses before the requested effect. Cancellation revokes new effects; already-owned
-jobs still report cleanup/outcome facts with their exact identity.
+refuses before the requested effect. Cancellation revokes queued effects that have not passed the handler permission
+check; already-owned jobs still report cleanup/outcome facts with their exact
+identity. The current cfg(test) Create checks permission before worker creation,
+not under a shared lock at Begin/effect commitment. Revocation after that sample
+can precede a later file effect. Linearizing that boundary and verifying its
+controls/mutants is required before factory activation; this component does not
+prove the stronger no-effect-after-revocation property.
 
 Control keeps draining the inbox while awaiting jobs and deriving observed completion;
 it NEVER awaits a join while abandoning a sender blocked on that inbox. A std-worker request uses bounded try-enqueue ONLY; full means typed refusal, not
@@ -179,8 +184,9 @@ so the disarmed Err-return fixture endpoint remains usable until explicit revoca
 The Ok/Starting post-return endpoint remains UNEXERCISED until a real producer composes. Authoritative local cleanup facts are returned by their OWN JoinHandle outcome,
 not this saturable request inbox. Already-owned jobs retain that outcome until the
 custodian observes the join; optional progress refusal cannot lose cleanup facts. The handler
-checks the latch/generation immediately before effect; no recreated endpoint or queue
-message can clear it. No native semantic grant implements this mechanical latch.
+checks the latch/generation before handling each request. This permission sample
+does not linearize revocation with the worker Begin/effect commitment, as qualified
+above; no recreated endpoint or queue message can clear the latch. No native semantic grant implements this mechanical latch.
 
 Actual reused session consumers MUST check outstanding effect/resources/accepted
 requests: refused_before_work, prepare_launch/checkpoint context-error outcomes,

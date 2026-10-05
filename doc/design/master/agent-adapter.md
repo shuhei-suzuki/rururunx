@@ -458,9 +458,11 @@ registry entry and deferred original disposition. Complete observed joins withou
 unknown/outstanding work permit reconciling that deferred disposition. If the
 resource already joined before the error, the existing no-work disposition can
 remove/restore registry bookkeeping while actor/custodian metadata drains. Genuine
-actor abandonment revokes queued effects before publishing Lost; a retained Lost
-entry has no deferred restoration intent and needs the still-pending recovery
-path. A genuine no-created-resource outcome may also restore/remove bookkeeping
+actor abandonment revokes queued effects before publishing Lost. A handler
+that already sampled permission can still begin its retained worker afterward;
+revocation and effect commitment are not yet linearized. A retained Lost entry
+has no deferred restoration intent and needs the still-pending recovery path.
+Its zero-created retention depends on accepted/in-flight counters at drop time. A genuine no-created-resource outcome may also restore/remove bookkeeping
 while fixed metadata drains; neither path refunds unfinished jobs.
 
 The resource factory is cfg(test)-only and ordinary custody selection returns
