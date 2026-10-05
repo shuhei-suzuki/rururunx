@@ -1,0 +1,23 @@
+{
+  "head": "6fac07feb6c794a66be8e3898f1115c2104fe5b5",
+  "operator": "G09-unchanged-legacy-ratification",
+  "scope": "actual_store_legacy_characterization",
+  "mutant": "3f946382453edbece1ddd84abd192099a3a25be0",
+  "file": "crates/rrx/src/state/mod.rs",
+  "test": "legacy_invalid_graph_hold_and_terminal_refusals_preserve_original_history",
+  "compiled": true,
+  "exit_code": 101,
+  "intended_assertion_killed": true,
+  "assertions": [
+    "panicked at crates/rrx/tests/goal_graph.rs:271:60:"
+  ],
+  "source_sha256": "d00467507168115ff1dadd6742232771f65f00d8a263de3cf5d0210e4618a3cf",
+  "log_sha256": "a8a9b2bd6ee6e3a2274766dfb164a9282655023b6ac2171ebffc445d5a285472",
+  "patch": "diff --git a/crates/rrx/src/state/mod.rs b/crates/rrx/src/state/mod.rs\nindex 7af6f76..cbd960a 100644\n--- a/crates/rrx/src/state/mod.rs\n+++ b/crates/rrx/src/state/mod.rs\n@@ -1447,7 +1447,14 @@ fn str_id<T: std::fmt::Display>(id: Option<T>) -> Option<String> {\n }\n fn validate_goal_references(tx: &Transaction<'_>, goal: &Goal) -> Result<()> {\n     use std::collections::BTreeSet;\n-    let mut references: BTreeSet<_> = goal.dag.hard_order()?.into_iter().collect();\n+    let mut references: BTreeSet<_> = match read_tx::<Goal>(tx, \"goals\", &goal.id.to_string())? {\n+        Some(previous)\n+            if serde_json::to_value(&previous.dag)? == serde_json::to_value(&goal.dag)? =>\n+        {\n+            goal.dag.nodes.iter().copied().collect()\n+        }\n+        _ => goal.dag.hard_order()?.into_iter().collect(),\n+    };\n     for proposal in &goal.followups {\n         references.extend(proposal.dependencies.iter().copied());\n     }\n",
+  "patch_sha256": "f54469272804103369c3345fcc13efacf7137463228acf06947c0b5fa4f91e6e",
+  "restored_head": "c6f279dd2ce82b8ba8ad9f078b1d33d7990c9b2d",
+  "complete_restored_tree_equal": true,
+  "restored_control_exit": 0,
+  "restored_log_sha256": "4961ef21d352fedb6bc4e8eb004b9d8e534d12e93b7554838d9b404845f90afd",
+  "limits": "One new distinct compiled operator, not native/lifecycle/typed closure acceptance."
+}

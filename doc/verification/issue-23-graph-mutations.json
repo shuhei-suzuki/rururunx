@@ -1,0 +1,93 @@
+{
+  "base": "33e34d23275a56295a8181dad67037694b10a4dd",
+  "mutations": [
+    {
+      "operator": "G01-cycle",
+      "base": "33e34d23275a56295a8181dad67037694b10a4dd",
+      "mutant": "c5db6f296f954bdd49bd00e0436df27e83aba918",
+      "file": "crates/rrx/src/goal.rs",
+      "source_sha256": "7148854e25d4da1e3d9e5a45a4bbcf3bf6faf0e66a91b7d65cca3345fab577ef",
+      "test": "store_rejects_invalid_graph_changes_without_rows_versions_or_audit",
+      "scope": "actual_store",
+      "exit_code": 101,
+      "compiled": true,
+      "intended_assertion_killed": true,
+      "log_sha256": "fe2e9ca3db6397bb03669cdc74bbdb811f1e14c0357858d292eaab22abb65950"
+    },
+    {
+      "operator": "G02-edge-pair",
+      "base": "33e34d23275a56295a8181dad67037694b10a4dd",
+      "mutant": "e3f4996a75eb7bceb4857614877b05afc32a5b7b",
+      "file": "crates/rrx/src/goal.rs",
+      "source_sha256": "9584e80cb7e41ab330f9bca1b3cc8bec3e175e8bdd7e8a679bbaf6c2d684faa8",
+      "test": "store_rejects_invalid_graph_changes_without_rows_versions_or_audit",
+      "scope": "actual_store",
+      "exit_code": 101,
+      "compiled": true,
+      "intended_assertion_killed": true,
+      "log_sha256": "2253e2df62859fa95a6176b1e36a8683de76392aae5d6f1b5d9977867962a61c"
+    },
+    {
+      "operator": "G03-soft-self",
+      "base": "33e34d23275a56295a8181dad67037694b10a4dd",
+      "mutant": "c7fa0cdfeecf9cce2b6a53e05401636e0c17d95c",
+      "file": "crates/rrx/src/goal.rs",
+      "source_sha256": "d53eb7362dfebfaa9c328d006075f1951c67d7b24dd40cc8e5c22e16f5a76d6d",
+      "test": "store_rejects_invalid_graph_changes_without_rows_versions_or_audit",
+      "scope": "actual_store",
+      "exit_code": 101,
+      "compiled": true,
+      "intended_assertion_killed": true,
+      "log_sha256": "f7d5aa41118f75fb53340a47c460d7549ce7938e308199ca202c8f689e50852b"
+    },
+    {
+      "operator": "G04-store-wire",
+      "base": "33e34d23275a56295a8181dad67037694b10a4dd",
+      "mutant": "dbbed05b90fffc646babe0c1c8492c49a50b1fb7",
+      "file": "crates/rrx/src/state/mod.rs",
+      "source_sha256": "d69b15b2978ace37b96a61fba9b320bf2cabad08cc5544caa72f1fca83432c19",
+      "test": "store_rejects_invalid_graph_changes_without_rows_versions_or_audit",
+      "scope": "actual_store",
+      "exit_code": 101,
+      "compiled": true,
+      "intended_assertion_killed": true,
+      "log_sha256": "d4b16309a997a8029fa4d94ed8200543c62c8e4c365ad6e8f6291344dae8991b"
+    },
+    {
+      "operator": "G05-node-cap",
+      "base": "33e34d23275a56295a8181dad67037694b10a4dd",
+      "mutant": "26a7d6fec8be8635d4b12c394b3a730f2f89aa6e",
+      "file": "crates/rrx/src/goal.rs",
+      "source_sha256": "76ef3683ecd778169acb79e28cf2a58e34fe29cbb3fc38665cea156e3e1b0afd",
+      "test": "graph_bounds_have_valid_boundary_controls",
+      "scope": "structural_graph_api",
+      "exit_code": 101,
+      "compiled": true,
+      "intended_assertion_killed": true,
+      "log_sha256": "1cdbb80f0f5d8a8f924692e53b6d291010f40a36fbc161692491213992a06ff4"
+    },
+    {
+      "operator": "G06-edge-cap",
+      "base": "33e34d23275a56295a8181dad67037694b10a4dd",
+      "mutant": "8607c4c09d2dbcfb6beca700f29818ea3fd5688d",
+      "file": "crates/rrx/src/goal.rs",
+      "source_sha256": "a54f8075746ccc4f2432a04ec9417974c80f659e614fde75b29bf2deb2621e5c",
+      "test": "graph_bounds_have_valid_boundary_controls",
+      "scope": "structural_graph_api",
+      "exit_code": 101,
+      "compiled": true,
+      "intended_assertion_killed": true,
+      "log_sha256": "8ea52287970630eedf8579eee1ce4e109aaec48781fbc0ed144727426c0d9673"
+    }
+  ],
+  "counts": {
+    "operators": 6,
+    "actual_store_assertion_kills": 4,
+    "structural_graph_api_assertion_kills": 2
+  },
+  "restored_head": "15bad3e123157bc85df3dacc707c47d205fbe5ec",
+  "restored_tree_equals_base": true,
+  "restored_control_exit": 0,
+  "restored_control_log_sha256": "5d02313d5f9af3917d823cc15368c11e7d0be7d7ca8440919d6db04de078aeed",
+  "limits": "No managed readiness/completion, native admission, settlement, capacity scan, mutation policy or epoch acceptance is claimed."
+}
