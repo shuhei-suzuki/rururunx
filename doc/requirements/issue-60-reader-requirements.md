@@ -1,15 +1,18 @@
-# Issue60 selected Git reader lifetime — Requirements4/Design2 approved; Source2 pending
+# Issue60 selected Git reader lifetime — Requirements4/Design2 approved; Source3 partial gate pending
 
 Risk: STRICT. Status: Requirements4 at a8e8a8b received two independent native
 approvals, no Critical/High/Medium findings, two Low findings each. Design2
 at46f819b has two independent approvals/no C/H/M; Source1 at a92c4d0 returned
-request_changes. Source2 independent gates remain pending. The four requirements
+request_changes. Source2 at81e7c29 has two component-delta approvals/no C/H/M;
+full source acceptance remains unqualified and the limited Source3 delta is pending.
+The four requirements
 Low findings are verified precision items
 carried into Design1 and the outcome ledger; this is not reader implementation
 approval. Earlier combined/reader Requirements1–3 request_changes remain preserved.
 Initial base: public main2c6ae9d6f54e68a3bdbead25817c46981d231db0.
-Current candidate normally composes main efe977486693a065122d8fc177b0e83d29620bdc;
-its independent usage-read error projection changes no native/common source.
+Current candidate normally composes main768f84319cd2a73e14cd39336eb12d99e9be81a7;
+its incoming pure DAG/Store wiring and cfg(test) diagnostics are explicitly inventoried
+in the design and verification ledger.
 
 ## Problem and verified scope
 
@@ -48,7 +51,8 @@ predicate does not cover executor spawn; no actual occurrence is asserted.
 The numbered clauses7–15 of [the reader/driver candidate](issue-60-git-reader-contract-draft.md)
 are the full contract reviewed together with this document. Requirements4 approval
 covers a8e8a8b; the derived Low precision below must be verified by Design1 reviewers.
-Design2 is approved; no source is approved. In particular:
+Design2 is approved; Source2 component-delta approval supplies no full-source,
+merge, native or whole60 acceptance. In particular:
 
 - Before Git spawn, reserve actual bounded capacity for supervisor, both readers
   and cleanup; exactly64 total job permits, four per operation, maximum16 admitted
