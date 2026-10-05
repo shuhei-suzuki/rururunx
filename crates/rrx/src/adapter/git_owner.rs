@@ -51,9 +51,13 @@ impl GitPool {
             record: None,
             returned: false,
         };
+        let mut waited_for_capacity = false;
         let record = loop {
             // Expiry precedes capacity and setup; no new uncertainty on refusal.
             if tokio::time::Instant::now() >= request.deadline {
+                if waited_for_capacity {
+                    return Err(self.admission_timeout());
+                }
                 return Err(error(
                     ErrorKind::Timeout,
                     "Git ownership preflight timed out",
@@ -81,9 +85,10 @@ impl GitPool {
                 self.start(record.clone(), request)?;
                 break record;
             }
+            waited_for_capacity = true;
             tokio::time::timeout_at(request.deadline, waiter)
                 .await
-                .map_err(|_| error(ErrorKind::Timeout, "Git ownership preflight timed out"))?;
+                .map_err(|_| self.admission_timeout())?;
         };
         loop {
             let waiter = record.ticket.result_wake.notified();
@@ -141,7 +146,9 @@ impl GitPool {
                         owner.release(&thread_record);
                         liveness.armed = false;
                     }
-                    Ok(Completion::Retained(outcome)) => {
+                    Ok(Completion::Retained(mut outcome)) => {
+                        // Retention can never grant a live caller a settled clear.
+                        outcome.settled = false;
                         thread_record.ticket.publish(outcome);
                         liveness.armed = false;
                     }
@@ -177,6 +184,30 @@ impl GitPool {
             self.available.notify_waiters();
         }
     }
+    fn admission_timeout(&self) -> AdapterError {
+        // Derived process-local pressure, not fresh process inspection/authority.
+        // Units are Rust work-job slots, four for every retained record.
+        let facts = match self.state.lock() {
+            Ok(pool) => {
+                let mut active = 0usize;
+                let mut retained = 0usize;
+                for record in &pool.records {
+                    let count = if record.ticket.retained.load(Ordering::SeqCst) {
+                        &mut retained
+                    } else {
+                        &mut active
+                    };
+                    *count = count.saturating_add(JOBS).min(CAPACITY);
+                }
+                format!("active_jobs={active},retained_unresolved_jobs={retained}")
+            }
+            Err(_) => "occupancy=unavailable".into(),
+        };
+        error(
+            ErrorKind::Timeout,
+            format!("Git ownership preflight timed out; capacity_unavailable{{{facts}}}"),
+        )
+    }
 }
 fn production_pool() -> Arc<GitPool> {
     static POOL: OnceLock<Arc<GitPool>> = OnceLock::new();
@@ -191,7 +222,7 @@ struct Context {
     hooks: TestHooks,
 }
 #[cfg(test)]
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub(crate) struct TestGitContext {
     pool: Option<Arc<GitPool>>,
     context: Context,
@@ -313,6 +344,7 @@ struct TestHooks {
 #[derive(Default)]
 struct TestPause {
     entered: AtomicBool,
+    entries: std::sync::atomic::AtomicUsize,
     reached: Notify,
     released: Mutex<bool>,
     wake: std::sync::Condvar,
@@ -320,6 +352,7 @@ struct TestPause {
 #[cfg(test)]
 impl TestPause {
     fn block(&self) {
+        self.entries.fetch_add(1, Ordering::SeqCst);
         self.entered.store(true, Ordering::SeqCst);
         self.reached.notify_waiters();
         let mut released = self.released.lock().unwrap();
@@ -382,7 +415,11 @@ pub(super) async fn run(
 ) -> AdapterResult<Vec<u8>> {
     #[cfg(test)]
     let (pool, context) = match test {
-        Some(test) => (test.pool.unwrap_or_else(production_pool), test.context),
+        Some(test) => (
+            test.pool
+                .expect("private Git context requires an isolated pool"),
+            test.context,
+        ),
         None => (production_pool(), Context::default()),
     };
     #[cfg(not(test))]
@@ -424,6 +461,7 @@ struct Ticket {
     flag: Arc<AtomicBool>,
     cancel: AtomicBool,
     lost: AtomicBool,
+    retained: AtomicBool,
     result_wake: Notify,
     cancel_wake: Notify,
     commands: OnceLock<std_mpsc::SyncSender<NativeCommand>>,
@@ -457,6 +495,7 @@ impl Ticket {
         }
     }
     fn owner_loss(&self) {
+        self.retained.store(true, Ordering::SeqCst);
         if !self.lost.swap(true, Ordering::SeqCst) {
             let poisoned = self.publication.is_poisoned();
             let mut publication = self.publication.lock().unwrap_or_else(|p| p.into_inner());
@@ -502,6 +541,9 @@ impl Ticket {
         }
     }
     fn publish(&self, outcome: Outcome) {
+        if !outcome.settled {
+            self.retained.store(true, Ordering::SeqCst);
+        }
         if self.publication.is_poisoned() {
             self.owner_loss();
             return;
@@ -549,9 +591,11 @@ struct OpRecord {
     worker: Mutex<Option<thread::JoinHandle<()>>>,
     runtime: Mutex<Option<Runtime>>,
     readers: Mutex<Readers>,
+    endpoints: Mutex<Endpoints>,
     native: Mutex<NativeAssets>,
     native_settled: AtomicBool,
-    native_terminal_error: AtomicBool,
+    #[cfg(test)]
+    reader_lanes: std::sync::atomic::AtomicUsize,
 }
 impl OpRecord {
     fn new(flag: Arc<AtomicBool>, context: Context) -> Self {
@@ -565,6 +609,7 @@ impl OpRecord {
                 flag,
                 cancel: AtomicBool::new(false),
                 lost: AtomicBool::new(false),
+                retained: AtomicBool::new(false),
                 result_wake: Notify::new(),
                 cancel_wake: Notify::new(),
                 commands: OnceLock::new(),
@@ -575,11 +620,18 @@ impl OpRecord {
             worker: Mutex::new(None),
             runtime: Mutex::new(None),
             readers: Mutex::new(Readers::default()),
+            endpoints: Mutex::new(Endpoints::default()),
             native: Mutex::new(NativeAssets::default()),
             native_settled: AtomicBool::new(false),
-            native_terminal_error: AtomicBool::new(false),
+            #[cfg(test)]
+            reader_lanes: std::sync::atomic::AtomicUsize::new(0),
         }
     }
+}
+#[derive(Default)]
+struct Endpoints {
+    stdout: Option<std::process::ChildStdout>,
+    stderr: Option<std::process::ChildStderr>,
 }
 #[derive(Default)]
 struct NativeAssets {
@@ -847,19 +899,7 @@ fn supervise(record: &Arc<OpRecord>, request: Request) -> Completion {
             settled: false,
         });
     }
-    // Opaque spawn Err remains terminal Unknown even with measured no handle.
-    if record.ticket.lost.load(Ordering::SeqCst)
-        || record.native_terminal_error.load(Ordering::SeqCst)
-    {
-        return Completion::Retained(outcome);
-    }
-    let ambiguous_spawn = record.native.lock().unwrap().child.is_none()
-        && record.ticket.flag.load(Ordering::SeqCst)
-        && matches!(
-            outcome.primary.as_ref().err().map(|e| e.kind),
-            Some(ErrorKind::ProcessFailure)
-        );
-    if ambiguous_spawn {
+    if record.ticket.lost.load(Ordering::SeqCst) {
         return Completion::Retained(outcome);
     }
     *readers = Readers::default();
@@ -915,10 +955,10 @@ async fn supervisor_work(
     }
     let initialized = {
         let _entered = tokio::runtime::Handle::current().enter();
-        let mut native = record.native.lock().unwrap();
-        let child = native.child.as_mut().unwrap();
-        let stdout = child.stdout.take();
-        let stderr = child.stderr.take();
+        // Never held across native spawn, KILL, inspection or Child::wait.
+        let mut endpoints = record.endpoints.lock().unwrap();
+        let stdout = endpoints.stdout.take();
+        let stderr = endpoints.stderr.take();
         // Child remains anchored in NativeAssets during fallible registrations.
         (|| -> AdapterResult<()> {
             #[cfg(test)]
@@ -976,6 +1016,11 @@ async fn supervisor_work(
             Ok(())
         })()
     };
+    #[cfg(test)]
+    record.reader_lanes.store(
+        usize::from(readers.stdout.is_some()) + usize::from(readers.stderr.is_some()),
+        Ordering::SeqCst,
+    );
     #[cfg(test)]
     if let Some(pause) = &record._context.hooks.after_spawn {
         pause.block();
@@ -1110,7 +1155,8 @@ async fn supervisor_work(
         panic!("synthetic Git loss after primary");
     }
     // A deadline return is frozen before awaiting the same outstanding wait late.
-    let settled = record.native_settled.load(Ordering::SeqCst) && readers.settled();
+    let settled =
+        !reap_pending && record.native_settled.load(Ordering::SeqCst) && readers.settled();
     if !settled {
         #[cfg(test)]
         freeze_reader_facts(record, readers);
@@ -1233,6 +1279,12 @@ fn native_worker(
                                 pid
                             };
                             native.group = pid;
+                            if pid.is_some() {
+                                let child = native.child.as_mut().unwrap();
+                                let mut endpoints = record.endpoints.lock().unwrap();
+                                endpoints.stdout = child.stdout.take();
+                                endpoints.stderr = child.stderr.take();
+                            }
                             pid.map(Some).ok_or_else(|| {
                                 error(ErrorKind::LaunchFailure, "invalid native PID")
                             })
@@ -1277,7 +1329,6 @@ fn native_worker(
                         });
                     }
                     if !succeeded {
-                        record.native_terminal_error.store(true, Ordering::SeqCst);
                         return;
                     }
                     #[cfg(test)]
@@ -1288,8 +1339,6 @@ fn native_worker(
                     if result.is_ok() {
                         native.reaped = true;
                         record.native_settled.store(true, Ordering::SeqCst);
-                    } else {
-                        record.native_terminal_error.store(true, Ordering::SeqCst);
                     }
                     if let Some(sender) = reaped.take() {
                         let _ = sender.send(result);

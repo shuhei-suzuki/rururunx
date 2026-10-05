@@ -269,8 +269,8 @@ async fn sixteen_actual_owner_records_bound_all_four_job_lanes() {
             Arc::new(AtomicBool::new(false)),
         )));
     }
-    // Every record's readers are started before the common private pause. Holding
-    // the reader vault proves the sixteen independent runtime frames have reached it.
+    // Actual pause entries follow the std Child anchor and reader initialization.
+    // A held Readers mutex alone precedes those effects and is not readiness proof.
     tokio::time::timeout(Duration::from_secs(5), async {
         loop {
             let records = context
@@ -282,7 +282,7 @@ async fn sixteen_actual_owner_records_bound_all_four_job_lanes() {
                 .unwrap()
                 .records
                 .clone();
-            if records.len() == 16 && records.iter().all(|r| r.readers.try_lock().is_err()) {
+            if records.len() == 16 && pause.entries.load(Ordering::SeqCst) == 16 {
                 break;
             }
             tokio::task::yield_now().await;
@@ -311,6 +311,14 @@ async fn sixteen_actual_owner_records_bound_all_four_job_lanes() {
         .records
         .clone();
     let all_workers = actual.iter().all(|r| r.worker.lock().unwrap().is_some());
+    let created_readers: usize = actual
+        .iter()
+        .map(|record| record.reader_lanes.load(Ordering::SeqCst))
+        .sum();
+    let all_children = actual.iter().all(|record| {
+        let native = record.native.lock().unwrap();
+        native.child.is_some() && native.group.is_some() && !native.reaped
+    });
     drop(release);
     for task in tasks {
         task.await.unwrap().unwrap();
@@ -318,7 +326,14 @@ async fn sixteen_actual_owner_records_bound_all_four_job_lanes() {
     assert_eq!(actual.len() * JOBS, 64);
     released(&context).await;
     assert!(all_workers);
-    assert_eq!(refused.unwrap_err().kind, ErrorKind::Timeout);
+    assert!(all_children);
+    assert_eq!(created_readers, 32);
+    let refused = refused.unwrap_err();
+    assert_eq!(refused.kind, ErrorKind::Timeout);
+    assert_eq!(
+        refused.message,
+        "Git ownership preflight timed out; capacity_unavailable{active_jobs=64,retained_unresolved_jobs=0}"
+    );
     assert!(!rejected_flag.load(Ordering::SeqCst));
 }
 
@@ -910,7 +925,7 @@ async fn four_actual_git_operations_have_independent_native_and_reader_lanes() {
     let mut context = TestGitContext::isolated();
     let pause = Arc::new(TestPause::default());
     let release = TestRelease(pause.clone());
-    context.context.hooks.after_spawn = Some(pause);
+    context.context.hooks.after_spawn = Some(pause.clone());
     let mut calls = Vec::new();
     for _ in 0..4 {
         let executable = executable.clone();
@@ -940,11 +955,7 @@ async fn four_actual_git_operations_have_independent_native_and_reader_lanes() {
                 .unwrap()
                 .records
                 .clone();
-            if records.len() == 4
-                && records
-                    .iter()
-                    .all(|record| record.readers.try_lock().is_err())
-            {
+            if records.len() == 4 && pause.entries.load(Ordering::SeqCst) == 4 {
                 break records;
             }
             tokio::task::yield_now().await;
@@ -960,6 +971,10 @@ async fn four_actual_git_operations_have_independent_native_and_reader_lanes() {
             && !native.signal_issued
             && record.worker.lock().unwrap().is_some()
     });
+    let reader_lanes: usize = records
+        .iter()
+        .map(|record| record.reader_lanes.load(Ordering::SeqCst))
+        .sum();
     drop(release);
     let mut outputs = Vec::new();
     for call in calls {
@@ -968,9 +983,82 @@ async fn four_actual_git_operations_have_independent_native_and_reader_lanes() {
     released(&context).await;
     assert_eq!(records.len() * JOBS, 16);
     assert!(real_native);
+    assert_eq!(
+        reader_lanes, 8,
+        "actual created handles, not successful reads"
+    );
     assert_eq!(outputs.len(), 4);
     assert!(outputs.iter().all(|output| output == &outputs[0]));
     assert_eq!(outputs[0].len(), 41);
     // Four actual native Git operations are simultaneously owned. Their leaders
     // may already be zombies; this does not assert concurrent CPU execution.
+}
+
+#[tokio::test]
+async fn actual_mixed_capacity_pressure_reports_bounded_jobs_without_new_effects() {
+    let context = TestGitContext::isolated();
+    let mut retained = context.clone();
+    retained.context.hooks.missing_executable = true;
+    for _ in 0..2 {
+        assert_eq!(
+            shell(retained.clone(), "exit 0", Arc::new(AtomicBool::new(false)))
+                .await
+                .unwrap_err()
+                .kind,
+            ErrorKind::ProcessFailure
+        );
+    }
+    let pause = Arc::new(TestPause::default());
+    let release = TestRelease(pause.clone());
+    let mut active = context.clone();
+    active.context.hooks.after_spawn = Some(pause.clone());
+    let mut calls = Vec::new();
+    for _ in 0..14 {
+        calls.push(tokio::spawn(shell(
+            active.clone(),
+            "exit 0",
+            Arc::new(AtomicBool::new(false)),
+        )));
+    }
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while pause.entries.load(Ordering::SeqCst) != 14 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    let flag = Arc::new(AtomicBool::new(false));
+    let refused = run(
+        Path::new("/rrx-must-not-spawn"),
+        Path::new("/tmp"),
+        &[],
+        vec![],
+        tokio::time::Instant::now() + Duration::from_millis(30),
+        flag.clone(),
+        Some(context.clone()),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(refused.kind, ErrorKind::Timeout);
+    assert_eq!(
+        refused.message,
+        "Git ownership preflight timed out; capacity_unavailable{active_jobs=56,retained_unresolved_jobs=8}"
+    );
+    assert!(!flag.load(Ordering::SeqCst));
+    assert_eq!(
+        context.held_jobs(),
+        64,
+        "refusal allocates no new record/job"
+    );
+    drop(release);
+    for call in calls {
+        call.await.unwrap().unwrap();
+    }
+    tokio::time::timeout(Duration::from_secs(3), async {
+        while context.held_jobs() != 8 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
 }

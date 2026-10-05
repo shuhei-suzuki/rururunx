@@ -440,3 +440,31 @@ its real_native assertion can sample too early. Both native reviewers separately
 verified that proxy and the same saturation-control claim. A post-initialization
 actual pause-entry count will replace it, with no arbitrary state alternatives.
 [CI outcome/provenance](issue-60-reader-source1-ci.json) remains failed, not rerun.
+
+At committedcba8728 the new deterministic actual late-wait controls both compiled
+and FAILED at their intended assertions: directflag `late reap was renamed
+in-budget` (0.27s) and actual Context `late reap bypassed Context latch` (0.28s).
+These establish the specific R1 source defect, not the original full-sweep timeout
+or watchdog cause. The correction requires !reap_pending even when the same
+actual worker has already finished during the output window; late actual joins
+can release slots while the caller flag/Context latch remain frozen.
+
+Capacity expiry now keeps original ErrorKind::Timeout/prefix and adds finite
+capacity_unavailable facts only after actual admission waiting. Units are
+derived Rust work-job slots: active_jobs and retained_unresolved_jobs, each
+saturating at64, four per record; counts expose no identities or fresh process
+inspection. Internal never-cleared retention marks early Unknown publication
+and owner loss; late actual release removes the row. A poisoned pool reports
+occupancy=unavailable rather than fabricated counts. Already-expired initial
+deadline and observation/cancel texts stay unchanged. Mixed pressure requires
+exact56 active/8 retained jobs, unchanged refusal flag and no new record.
+
+Low fixes stay within the approved contract: a preallocated separate endpoint
+vault transfers anchored stdio before the spawned stage, so supervisor reader
+registration cannot acquire a mutex held during native spawn/KILL/inspection/wait.
+All Retained outcomes force settled=false. Dead post-join caller-flag/terminal
+predicates are removed without mutation credit. TestGitContext has no Default
+or silent production-pool fallback. Actual pause-entry counts follow initialization;
+per-record cfg(test) reader-lane facts count actual created handles, not successful
+reads. Saturation asserts16 actual Children/32 handles; four-operation progress
+asserts4 actual Children/8 handles, preserving original timeout budgets.
