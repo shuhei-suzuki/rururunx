@@ -548,9 +548,12 @@ silently become source/native acceptance when later observations complete.
 
 Three distinct Low items are verified. The already-expired API control lacked
 an exact-message assertion; it now requires the bare original Timeout message.
-Its condition mutant will receive diagnostic-branch credit only. A separate
-waited-then-expired-after-release re-entry control remains unexecuted and receives
-no coverage credit; no new production hook or diagnostic behavior is added.
+Its condition mutant receives diagnostic-branch credit only. A new actual
+release-wake re-entry control first polls the real refused admission future, holds
+it while its original30ms deadline expires, then joins/releases the16 actual
+owned child operations and re-polls the notified waiter. It requires Timeout with
+suffix0/0, false refused flag and no new record. No fake clock, new task, production
+hook or diagnostic behavior is added.
 Capacity counts are a fresh snapshot at expiry, not the last locked refusal,
 so a racing release/admission may produce counts below64; this is derived pressure
 only, never effect/cleanup authority. Reader-registration R15 is driven by direct
@@ -564,3 +567,23 @@ asserted before/after destructive private controls; the private carrier cannot
 fallback in current code, but that does not execute an occupancy invariant. Missing
 individual guard operators listed in the raw review retain zero credit. Selected
 controls, diagnostic probes and builds cannot close current full TEST failures.
+
+
+Current Source2 CI37258392978 completed EVERYstep SUCCESS bothOS. Actual checkout
+8da165ce768130bb90884df0887ffa4cf1aaf223 has parents768f843/81e7c29 and complete
+tested tree equals81e7. Mac420 top-level Rust+2 doctests/27 ignored; Linux384+2/
+20 ignored; nested ordinary Codex child1 PASS is separate on each. CI runs Debug
+TEST and Release BUILD, no Release TEST. [Actual checkout/step evidence](issue-60-reader-source2-ci.json)
+does not rename the local35f0 full Debug/Release failures or establish their cause.
+
+Narrow Source3 candidate a5aef47 changes only test/docs; production source equals
+reviewed81e7 exactly. Actual pre-expired bare-text and post-release expired re-entry
+controls each PASS in Debug and Release. One compiled inversion of the waited
+condition assertion-kills both intended API messages; exact restoration and both
+positive controls PASS. The initial short --exact selector ran0 tests and gets
+zero coverage. Cumulative20 compiled consumer runs/17 operators/18 kill runs/TWO
+preserved masked survivors zero credit; M17 diagnostic-only, not process authority.
+Fmt/all-target Clippy PASS. [Finite controls/operator/restoration](issue-60-reader-source3-controls.json)
+include the restored actual-consumer terminal evidence; its uncaptured raw-log hash
+is null rather than invented. Independent Source3 limited delta gate remains
+pending. No current final full Release TEST or merge/native/full60 readiness.
