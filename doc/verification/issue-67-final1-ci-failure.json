@@ -1,0 +1,199 @@
+{
+  "head": "5ca71f2d81a80ffe6d03f5eab51919677feb8493",
+  "run": 37250379945,
+  "url": "https://github.com/shuhei-suzuki/rururunx/actions/runs/37250379945",
+  "conclusion": "failure",
+  "actual_checkout": "c526d6b2948cb823c210c1303b5324f07c618fa6",
+  "parents": [
+    "5b4a3147b2b2cd4ed88642741f6b25c4c5f3441b",
+    "5ca71f2d81a80ffe6d03f5eab51919677feb8493"
+  ],
+  "tree": "7b274cd5e659d1ae6cf310f3c95d469e43cbfb00",
+  "complete_tree_equal": true,
+  "all_tracked_blobs_equal": true,
+  "compared_tracked_blobs": 272,
+  "jobs": [
+    {
+      "name": "check (macos-latest)",
+      "conclusion": "failure",
+      "actual_checkout": "c526d6b2948cb823c210c1303b5324f07c618fa6",
+      "every_step_success": false,
+      "steps": [
+        {
+          "name": "Set up job",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run dtolnay/rust-toolchain@1.91.1",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run cargo fmt --all -- --check",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run cargo clippy --locked --workspace --all-targets -- -D warnings",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run cargo test --locked --workspace",
+          "conclusion": "failure"
+        },
+        {
+          "name": "Run cargo build --locked --workspace",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Run cargo build --locked --release --workspace",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "conclusion": "success"
+        },
+        {
+          "name": "Complete job",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "name": "check (ubuntu-latest)",
+      "conclusion": "success",
+      "actual_checkout": "c526d6b2948cb823c210c1303b5324f07c618fa6",
+      "every_step_success": true,
+      "steps": [
+        {
+          "name": "Set up job",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run dtolnay/rust-toolchain@1.91.1",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run cargo fmt --all -- --check",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run cargo clippy --locked --workspace --all-targets -- -D warnings",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run cargo test --locked --workspace",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run cargo build --locked --workspace",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run cargo build --locked --release --workspace",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "conclusion": "success"
+        },
+        {
+          "name": "Complete job",
+          "conclusion": "success"
+        }
+      ]
+    }
+  ],
+  "macos_library_result": {
+    "passed": 269,
+    "failed": 2,
+    "ignored": 23
+  },
+  "actual_distinct_process_inspections": 2,
+  "observations": [
+    {
+      "test": "codex::session::tests::terminal_publication_must_finish_before_next_attempt_and_has_no_late_watch_write",
+      "path": "crates/rrx/src/codex/session.rs",
+      "line": 5873,
+      "column": 60,
+      "error_kind": "SessionLost",
+      "first_cause": "Git cleanup failed",
+      "inspection": {
+        "site": "deadline_loop_entry",
+        "stream": "none",
+        "refusal": "deadline",
+        "returned_io_kind": "timed_out",
+        "stdout_reads": 1,
+        "stdout_bytes": 0,
+        "stdout_would_block": 1,
+        "stdout_interrupted": 0,
+        "stdout_eof": "pending",
+        "stderr_reads": 1,
+        "stderr_bytes": 0,
+        "stderr_would_block": 1,
+        "stderr_interrupted": 0,
+        "stderr_eof": "pending",
+        "status_polls": 1,
+        "status_pending": 1,
+        "status_interrupted": 0,
+        "status_errors": 0,
+        "exit": "unavailable",
+        "status_source_io_kind": "unavailable",
+        "validation": "not_reached",
+        "cleanup": "kill_requested_then_wait_reaped",
+        "kill": "returned_ok",
+        "observation_us": 295241,
+        "spawn_us": 1266,
+        "cleanup_us": 12
+      }
+    },
+    {
+      "test": "codex::session::tests::saturated_actual_owners_refuse_before_insert_or_eviction",
+      "path": "crates/rrx/src/codex/session.rs",
+      "line": 5605,
+      "column": 79,
+      "error_kind": "SessionLost",
+      "first_cause": "Git cleanup failed",
+      "inspection": {
+        "site": "deadline_loop_entry",
+        "stream": "none",
+        "refusal": "deadline",
+        "returned_io_kind": "timed_out",
+        "stdout_reads": 1,
+        "stdout_bytes": 0,
+        "stdout_would_block": 1,
+        "stdout_interrupted": 0,
+        "stdout_eof": "pending",
+        "stderr_reads": 1,
+        "stderr_bytes": 0,
+        "stderr_would_block": 1,
+        "stderr_interrupted": 0,
+        "stderr_eof": "pending",
+        "status_polls": 1,
+        "status_pending": 1,
+        "status_interrupted": 0,
+        "status_errors": 0,
+        "exit": "unavailable",
+        "status_source_io_kind": "unavailable",
+        "validation": "not_reached",
+        "cleanup": "kill_requested_then_wait_reaped",
+        "kill": "returned_ok",
+        "observation_us": 261412,
+        "spawn_us": 1641,
+        "cleanup_us": 3
+      }
+    }
+  ],
+  "log_sha256": "201ffb542fca13f5dca8b69034bd77a9ec58437d8299e19788523e2084e9db3e",
+  "cause": "UNKNOWN",
+  "regression": "UNKNOWN",
+  "merge_gate": "HOLD: failed final CI remains unresolved; PR68 stays draft. Earlier or later metadata green is not a cause/fix proof and cannot erase this failure.",
+  "source_delta": "No code/test/Cargo/CI changes after independent source/composition approvals; this is a static fact, not proof excluding indirect regression.",
+  "limits": "Two actual inspection observations, not a single sticky-latch cohort. Kill/wait facts concern the selected inspector only, not all nested jobs. No rerun, deadline increase, serial test execution, assertion waiver or native/F1/MVP acceptance."
+}
