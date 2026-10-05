@@ -25,6 +25,9 @@ async fn wait_file(path: &Path) {
     .unwrap();
 }
 async fn published() -> Published {
+    artifact_fixture(true).await
+}
+async fn artifact_fixture(publish: bool) -> Published {
     let (dir, owner, seed) = results::tests::fixture().await;
     let program = native::tests::program(dir.path(), "codex");
     let mut config = Config {
@@ -156,20 +159,44 @@ async fn published() -> Published {
     })
     .await
     .unwrap();
-    assert!(matches!(
-        engine.step(task.id, BTreeMap::new()).await.unwrap(),
-        StepResult::Completed {
-            phase: Phase::Implement
-        }
-    ));
-    let wf = engine.snapshot(task.id).unwrap();
-    let artifact = owner
-        .store
-        .lock()
-        .unwrap()
-        .result_artifact(wf.sources.artifact.unwrap())
-        .unwrap();
-    assert_eq!(artifact.state, ArtifactState::Published);
+    let artifact = if publish {
+        assert!(matches!(
+            engine.step(task.id, BTreeMap::new()).await.unwrap(),
+            StepResult::Completed {
+                phase: Phase::Implement
+            }
+        ));
+        let wf = engine.snapshot(task.id).unwrap();
+        let artifact = owner
+            .store
+            .lock()
+            .unwrap()
+            .result_artifact(wf.sources.artifact.unwrap())
+            .unwrap();
+        assert_eq!(artifact.state, ArtifactState::Published);
+        artifact
+    } else {
+        // This Ready artifact is produced by actual retained capture of the same
+        // owned native terminal. It has not won the Workflow publication TX.
+        let done = owner
+            .store
+            .lock()
+            .unwrap()
+            .execution_unit(prepared.id)
+            .unwrap();
+        assert_eq!(done.work, Some(WorkOutcome::Success));
+        let io = UnitGit::new(owner.clone(), &done, false).unwrap();
+        let revision = io
+            .text(&done.worktree, ["rev-parse", "HEAD"])
+            .await
+            .unwrap();
+        let artifact = results::ResultStore::new(owner.clone())
+            .capture(&done.authority(), &revision, BTreeMap::new())
+            .await
+            .unwrap();
+        assert_eq!(artifact.state, ArtifactState::Ready);
+        artifact
+    };
     // The ordinary live Project copy cannot replace tracked committed rules.
     std::fs::write(root.join("rules.md"), "LIVE_B_MUST_NOT_REPLACE_A\n").unwrap();
     drop(adapter);
@@ -655,4 +682,92 @@ async fn source_bound_inflight_helper_rejects_drift_epoch_and_future_drop() {
             ArtifactState::Published
         );
     }
+}
+
+#[tokio::test]
+async fn unpublished_ready_and_foreign_retained_dtos_never_select_recovery() {
+    let f = artifact_fixture(false).await;
+    let sources = ManagedWorkflowSources::new(f.owner.clone(), f.config).unwrap();
+    let before = f
+        .owner
+        .store
+        .lock()
+        .unwrap()
+        .managed_effects(f.artifact.unit_id)
+        .unwrap();
+    assert!(
+        sources.recover_retained(f.task).await.is_err(),
+        "Ready is not Published source selection"
+    );
+    assert_eq!(
+        serde_json::to_value(
+            f.owner
+                .store
+                .lock()
+                .unwrap()
+                .managed_effects(f.artifact.unit_id)
+                .unwrap()
+        )
+        .unwrap(),
+        serde_json::to_value(before).unwrap(),
+        "Ready refusal precedes reconstruction helpers"
+    );
+    assert_eq!(
+        f.owner
+            .store
+            .lock()
+            .unwrap()
+            .result_artifact(f.artifact.id)
+            .unwrap()
+            .state,
+        ArtifactState::Ready
+    );
+    let (project, task) = owners(&f.owner, f.task);
+    assert!(capture(&sources, project, task).await.is_err());
+
+    let f = published().await;
+    let claim = f
+        .owner
+        .store
+        .lock()
+        .unwrap()
+        .begin_retained_source_recovery(f.task, f.owner.epoch)
+        .unwrap();
+    let before = f
+        .owner
+        .store
+        .lock()
+        .unwrap()
+        .managed_effects(f.artifact.unit_id)
+        .unwrap();
+    for field in 0..3 {
+        let mut foreign = f.artifact.clone();
+        match field {
+            0 => foreign.scope.project_id = ProjectId::new(),
+            1 => foreign.scope.task_id = Some(TaskId::new()),
+            _ => foreign.id = ArtifactId::new(),
+        }
+        assert!(
+            RetainedGit::for_recovery(f.owner.clone(), &foreign, claim.binding()).is_err(),
+            "foreign artifact DTO is negative input, never source authority"
+        );
+    }
+    assert_eq!(
+        serde_json::to_value(
+            f.owner
+                .store
+                .lock()
+                .unwrap()
+                .managed_effects(f.artifact.unit_id)
+                .unwrap()
+        )
+        .unwrap(),
+        serde_json::to_value(before).unwrap()
+    );
+    f.owner
+        .store
+        .lock()
+        .unwrap()
+        .abandon_retained_source_recovery(&claim.binding())
+        .unwrap();
 }
