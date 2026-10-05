@@ -267,6 +267,10 @@ The command examples above describe the MVP target. Currently implemented:
   Its standalone Task/Draft producer also caps the complete rendered frame at1MiB
   before prepared-frame publication, including mandatory metadata and rules;
   see the [scoped producer evidence](doc/design/issue-19-standalone-frame-evidence.md).
+  Selected retained-lifetime source now reuses Codex Control for closed file/thread
+  mechanics through a fixture-private consumer. Its source gate is pending;
+  production remains EMPTY/Unsupported. This is no native cleanup or managed
+  operation authority; see the [selected design](doc/design/issue-19-lifetime-component-design.md).
 - Library Git/worktree management with project ownership checks, protected branches,
   dirty-state checks, durable logical review locks and safe merged cleanup. CLI/workflow
   integration and interrupted-operation reconciliation are pending.

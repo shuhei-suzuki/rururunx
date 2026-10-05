@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::{mpsc, watch};
 
 use super::{
+    custody::{Endpoint, Inventory, Pool},
     preparation::{Admission, Cause, Preparation},
     protocol::failure,
 };
@@ -37,6 +38,10 @@ pub(super) enum Outcome {
         cause: Cause,
         error: Cause,
     },
+    CustodyHeld {
+        cause: Cause,
+        original: Box<Outcome>,
+    },
 }
 impl Outcome {
     pub fn snapshot(&self) -> Option<&SessionStatus> {
@@ -59,6 +64,7 @@ impl Outcome {
             | Self::Lost { cause, .. }
             | Self::RestoreUnpublished { cause, .. }
             | Self::FreshUnpublished { cause, .. } => Some(cause),
+            Self::CustodyHeld { cause, .. } => Some(cause),
             _ => None,
         }
     }
@@ -70,6 +76,7 @@ impl Outcome {
                 publication_result: Err(error),
                 ..
             } => Some(error.error()),
+            Self::CustodyHeld { cause, .. } => Some(cause.error()),
             _ => None,
         }
     }
@@ -91,6 +98,11 @@ pub(super) struct Control {
     // admission/registry. It cannot be stolen by a later attempt's shared watch.
     published: watch::Sender<Option<SessionStatus>>,
     task: Mutex<TaskOwner>,
+    pool: Mutex<Arc<Pool>>,
+    custody: Mutex<Option<Arc<Inventory>>>,
+    endpoint: Mutex<Option<Endpoint>>,
+    job_revoked: std::sync::atomic::AtomicBool,
+    notes: std::sync::atomic::AtomicUsize,
     #[cfg(test)]
     pub cas_entered: std::sync::atomic::AtomicBool,
 }
@@ -98,6 +110,7 @@ enum TaskOwner {
     Vacant,
     Installing,
     Running(tokio::task::JoinHandle<()>),
+    Observed(tokio::task::AbortHandle),
     Released,
 }
 impl Control {
@@ -112,6 +125,11 @@ impl Control {
                 phase,
                 published,
                 task: Mutex::new(TaskOwner::Vacant),
+                pool: Mutex::new(Pool::global()),
+                custody: Mutex::new(None),
+                endpoint: Mutex::new(None),
+                job_revoked: std::sync::atomic::AtomicBool::new(false),
+                notes: std::sync::atomic::AtomicUsize::new(0),
                 #[cfg(test)]
                 cas_entered: std::sync::atomic::AtomicBool::new(false),
             }),
@@ -134,7 +152,99 @@ impl Control {
         self.phase.send_replace(Phase::Supervised);
     }
     pub fn finished(&self, outcome: Outcome) {
+        if self
+            .custody()
+            .is_some_and(|c| c.created() && c.outstanding())
+            && let Some(endpoint) = self
+                .endpoint
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .as_ref()
+        {
+            let _ = endpoint.try_note("actor_finished");
+        }
         self.phase.send_replace(Phase::Finished(Arc::new(outcome)));
+    }
+    pub fn install_custody(self: &Arc<Self>, pool: Arc<Pool>) -> AdapterResult<()> {
+        tokio::runtime::Handle::try_current().map_err(|_| {
+            failure(
+                ErrorKind::LaunchFailure,
+                "native attempt requires an async runtime",
+            )
+        })?;
+        let inventory = pool.reserve(self)?;
+        let endpoint = inventory.endpoint()?;
+        *self.pool.lock().unwrap_or_else(|e| e.into_inner()) = pool;
+        *self.custody.lock().unwrap_or_else(|e| e.into_inner()) = Some(inventory);
+        *self.endpoint.lock().unwrap_or_else(|e| e.into_inner()) = Some(endpoint);
+        Ok(())
+    }
+    pub fn custody(&self) -> Option<Arc<Inventory>> {
+        self.custody
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+    }
+    pub fn drain_jobs(&self) {
+        let pool = self.pool.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        pool.drain();
+    }
+    pub fn holds_resources(&self) -> bool {
+        self.custody()
+            .is_some_and(|c| c.outstanding() || (c.created() && (!c.joined() || c.unknown())))
+    }
+    pub fn original_disposition(&self) -> Option<Outcome> {
+        let phase = self.subscribe().borrow().clone();
+        match phase {
+            Phase::Finished(outcome) => match outcome.as_ref() {
+                Outcome::CustodyHeld { original, .. }
+                    if self.custody().is_some_and(|c| {
+                        c.created() && c.joined() && !c.unknown() && !c.outstanding()
+                    }) && !self
+                        .published()
+                        .is_some_and(|s| s.session.state == crate::domain::SessionState::Lost) =>
+                {
+                    Some(original.as_ref().clone())
+                }
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+    pub fn finish_no_work(&self, outcome: Outcome) {
+        if self
+            .custody()
+            .is_some_and(|c| c.outstanding() || (c.created() && c.unknown()))
+        {
+            let cause = outcome.cause().cloned().unwrap_or(Cause::Failed(
+                ErrorKind::StateConflict,
+                "preparation custody held".into(),
+            ));
+            self.finished(Outcome::CustodyHeld {
+                cause,
+                original: Box::new(outcome),
+            });
+        } else {
+            self.finished(outcome);
+        }
+    }
+    pub fn revoke_jobs(&self) {
+        self.job_revoked
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+    pub fn jobs_revoked(&self) -> bool {
+        self.job_revoked.load(std::sync::atomic::Ordering::SeqCst)
+    }
+    pub fn record_mechanical_note(&self) {
+        self.notes.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    }
+    #[cfg(test)]
+    pub fn take_endpoint(&self) -> Option<Endpoint> {
+        self.endpoint.lock().unwrap().take()
+    }
+    #[cfg(test)]
+    pub fn notes(&self) -> usize {
+        self.notes.load(std::sync::atomic::Ordering::SeqCst)
     }
     pub fn spawn(
         self: &Arc<Self>,
@@ -164,13 +274,41 @@ impl Control {
         // A closed runtime can synchronously drop the future inside spawn. Its
         // TaskGuard must release this exact owner without re-locking a mutex
         // held by spawn. Released also records completion-before-installation.
-        let spawned = runtime.spawn(future);
-        let mut task = self.task.lock().unwrap_or_else(|error| error.into_inner());
-        if matches!(*task, TaskOwner::Installing) {
-            *task = TaskOwner::Running(spawned);
-        } else {
+        let custody = self.custody();
+        let (spawned, begin) = if let Some(custody) = custody {
+            let (begin, begun) = tokio::sync::oneshot::channel();
+            let spawned = runtime.spawn(async move {
+                if begun.await.is_ok() {
+                    future.await;
+                }
+            });
+            let abort = spawned.abort_handle();
+            custody.install_actor(spawned);
+            let mut task = self.task.lock().unwrap_or_else(|e| e.into_inner());
+            if matches!(*task, TaskOwner::Installing) {
+                *task = TaskOwner::Observed(abort);
+            }
             drop(task);
-            drop(spawned);
+            (None, Some(begin))
+        } else {
+            (Some(runtime.spawn(future)), None)
+        };
+        let mut task = self.task.lock().unwrap_or_else(|error| error.into_inner());
+        if let Some(spawned) = spawned {
+            if matches!(*task, TaskOwner::Installing) {
+                *task = TaskOwner::Running(spawned);
+            } else {
+                drop(task);
+                drop(spawned);
+                if let Some(begin) = begin {
+                    let _ = begin.send(());
+                }
+                return Ok(());
+            }
+        }
+        drop(task);
+        if let Some(begin) = begin {
+            let _ = begin.send(());
         }
         Ok(())
     }
@@ -180,6 +318,7 @@ impl Control {
             let task = self.task.lock().unwrap();
             match &*task {
                 TaskOwner::Running(task) => Some(task.abort_handle()),
+                TaskOwner::Observed(task) => Some(task.clone()),
                 _ => None,
             }
         };
@@ -194,6 +333,10 @@ impl Control {
             std::mem::replace(&mut *task, TaskOwner::Released)
         };
         if let TaskOwner::Running(task) = previous {
+            drop(task);
+        } else if let TaskOwner::Observed(task) = previous {
+            // The custodian still owns the JoinHandle. This leaf abort handle
+            // is only an observation, never Drop-triggered cancellation.
             drop(task);
         }
     }
@@ -234,6 +377,7 @@ impl CallerGuard {
 impl Drop for CallerGuard {
     fn drop(&mut self) {
         if self.armed {
+            self.control.revoke_jobs();
             self.control.preparation.cancel();
         }
     }
@@ -277,6 +421,7 @@ impl Drop for TaskGuard {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub(super) enum TestPoint {
     BeforeStarting,
+    BeforeCustodyFactory,
     BeforeInitialPersist,
     BeforeBootstrap,
     BeforeDispatch,

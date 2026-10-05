@@ -1,6 +1,7 @@
 # Issue19 retained preparation lifetime component
 
-Status: selected MECHANICAL Design5 gate, not whole Issue19 authority/native readiness.
+Status: selected MECHANICAL Design5 approved by TWO independent native reviewers;
+selected source follows, not whole Issue19 authority/native readiness.
 Parent Design37 at75cdae974da1ce9afa0a6de4e2cafc5065e60748 was rejected by both native
 reviews. Its broad open findings are retained in the adjacent ledger. Absence of a
 lifetime High/Medium in those rejected reviews is NOT this component's approval.
@@ -213,9 +214,12 @@ wait_finished returns this exact held result. Normal worker/actor joins followed
 the separate custody fact Joined, leave Phase unchanged and release only genuinely
 joined component slots. Worker panic/unobservable completion makes custody Unknown;
 TaskGuard's independent genuine actor panic/drop continues its existing Lost behavior.
-No held Phase authorizes native resume/recovery/success. While custody is Installing,
-Tracking or Unknown, register_existing and terminal eviction reject it and
-RegisteredTransition preserves the same Control/exclusion. An immutable Held
+No held Phase authorizes native resume/recovery/success. For Finished(CustodyHeld) or outstanding CREATED effects/requests, while custody
+is Installing, Tracking or Unknown, register_existing and terminal eviction reject it and
+RegisteredTransition preserves the same Control/exclusion. Zero-effect bookkeeping-only custody retains the existing
+no-work registry remove/restore behavior even while actor/custodian joins are pending.
+Closed-runtime unpublished Lost therefore removes its fresh registry entry, while
+its one uncertain actor slot remains held. An immutable Held
 Phase is never overwritten by a later join.
 
 For this CLOSED fixture consumer ONLY, the existing context-error arm also derives
@@ -300,7 +304,13 @@ WorkerDisposition::NotCreated releases its own and the unused worker slot. Missi
 runtime still reserves/creates ZERO slots. Wrapped never-Begun actor/opaque spawn
 results are observed through that same total per-frame disposition, never
 absence inferred from Err. This availability cost is explicit and no Lost is
-cleared. The delayed registry disposition remains stricter: it requires an
+cleared. If custodian thread creation returns opaque Err before actor/worker
+creation is attempted, the selected component deliberately retains ALL3 reserved
+slots as a bounded isolated-fixture availability cost. No worker/resource effect
+exists, so existing refused_before_work handles the registry disposition; unknown
+job accounting stays in the pool. The injected-creation-error control observes3
+held, and an Err-to-free mutant fails it. No new release authority is introduced.
+The delayed registry disposition remains stricter: it requires an
 actually CREATED and genuinely joined worker plus joined actor/custodian, so
 NotCreated cannot launder a held resource or execute that original intent.
 
@@ -345,7 +355,10 @@ Selected unit/actual controlled fixtures must prove all of these at the real con
   Control and published Lost never restore/remove. Omitted outstanding guard hides
   the actual worker and fails the prereconciliation negative control.
 - More than21 sequential caller-Drop-before-factory attempts on the SAME isolated
-  pool replenish after actual actor/custodian joins and observed NotCreated;
+  pool (and more than32 on the SAME adapter) replenish after actual actor/custodian
+  joins and observed NotCreated. Each iteration explicitly waits for the custodian
+  finished fact and drains outside locks, asserting zero counters/registry entries
+  BEFORE the next admission;
   omitted NotCreated disposition exhausts actual capacity. Opaque spawn Err remains
   held; an Err-to-NotCreated mutant cannot refund its unknown slot.
 - More than64/3 sequential completed fixtures replenish through actual custodian

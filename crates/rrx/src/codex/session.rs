@@ -17,6 +17,7 @@ use tokio::sync::{mpsc, oneshot, watch};
 use super::{
     attempt::{CallerGuard, Control, Outcome, Phase, TaskGuard},
     availability::{Availability, Site, UNAVAILABLE},
+    custody::Pool,
     ownership::{ProcessOwnership, ScopeSnapshot, filesystem},
     policy::{DecisionPolicy, native_environment, provider_environment, verify_auth_readiness},
     preparation::{Admission, Cause},
@@ -117,6 +118,8 @@ pub struct CodexAdapter {
     availability: Availability,
     #[cfg(test)]
     gates: Arc<TestGates>,
+    #[cfg(test)]
+    file_factory: Option<Arc<super::custody::Factory>>,
 }
 struct Entry {
     status: watch::Receiver<SessionStatus>,
@@ -128,6 +131,11 @@ struct Entry {
     request: LaunchRequest,
     schema: Option<Value>,
     control: Arc<Control>,
+    custody_disposition: Option<DelayedDisposition>,
+}
+struct DelayedDisposition {
+    owner: Arc<Control>,
+    previous: Option<Arc<Control>>,
 }
 #[cfg(test)]
 struct TransitionClaim(Arc<AtomicBool>);
@@ -192,6 +200,18 @@ impl Drop for RegisteredTransition {
             && let Some(entry) = sessions.get_mut(&self.id)
             && Arc::ptr_eq(&entry.control, &self.control)
         {
+            if self.control.holds_resources()
+                || matches!(&*self.control.subscribe().borrow(), Phase::Finished(outcome) if matches!(outcome.as_ref(), Outcome::CustodyHeld { .. }))
+            {
+                if matches!(&*self.control.subscribe().borrow(), Phase::Finished(outcome) if matches!(outcome.as_ref(), Outcome::CustodyHeld { .. }))
+                {
+                    entry.custody_disposition = Some(DelayedDisposition {
+                        owner: self.control.clone(),
+                        previous: self.previous_control.clone(),
+                    });
+                }
+                return;
+            }
             let restored = matches!(
                 &*self.control.subscribe().borrow(),
                 Phase::Finished(outcome) if matches!(outcome.as_ref(),Outcome::RestoredBeforeAdmission { .. } | Outcome::CheckpointCommitted { .. })
@@ -229,7 +249,7 @@ impl Registered {
         let control = &self.transition.control;
         let error = control.preparation.failed(error);
         let cause = control.preparation.cause(&error);
-        control.finished(match &self.previous {
+        control.finish_no_work(match &self.previous {
             Some(snapshot) => Outcome::RestoredBeforeAdmission {
                 cause,
                 snapshot: snapshot.clone(),
@@ -704,6 +724,8 @@ impl CodexAdapter {
             availability: Availability::default(),
             #[cfg(test)]
             gates: Arc::new(TestGates::default()),
+            #[cfg(test)]
+            file_factory: None,
         })
     }
     /// Opt-in integration for a trusted runtime Approval Broker. Native policy
@@ -723,6 +745,68 @@ impl CodexAdapter {
             .lock()
             .map_err(|_| failure(ErrorKind::StateFailure, "native Session registry poisoned"))
     }
+    fn custody_pool(&self) -> Option<Arc<Pool>> {
+        #[cfg(test)]
+        if let Some(factory) = &self.file_factory {
+            return Some(factory.pool.clone());
+        }
+        None
+    }
+    fn reconcile_custody(&self) -> AdapterResult<()> {
+        if let Some(pool) = self.custody_pool() {
+            pool.drain();
+        }
+        let controls: Vec<_> = self
+            .registry()?
+            .values()
+            .map(|e| e.control.clone())
+            .collect();
+        for control in controls {
+            control.drain_jobs();
+        }
+        let mut retired_entries = Vec::new();
+        let mut retired_controls = Vec::new();
+        let mut retired_intents = Vec::new();
+        {
+            let mut sessions = self.registry()?;
+            let ids: Vec<_> = sessions.keys().copied().collect();
+            for id in ids {
+                let Some(entry) = sessions.get_mut(&id) else {
+                    continue;
+                };
+                let Some(intent) = &entry.custody_disposition else {
+                    continue;
+                };
+                if !Arc::ptr_eq(&intent.owner, &entry.control) {
+                    continue;
+                }
+                let Some(outcome) = entry.control.original_disposition() else {
+                    continue;
+                };
+                match (&outcome, &intent.previous) {
+                    (Outcome::RestoredBeforeAdmission { .. }, Some(previous)) => {
+                        let previous = previous.clone();
+                        retired_controls
+                            .push(std::mem::replace(&mut entry.control, previous.clone()));
+                        entry.stop = previous.stop.clone();
+                        entry.transition.store(false, Ordering::SeqCst);
+                        retired_intents.push(
+                            entry
+                                .custody_disposition
+                                .take()
+                                .expect("same retained intent"),
+                        );
+                    }
+                    (Outcome::FreshUnpublished { .. }, None) => {
+                        retired_entries.push(sessions.remove(&id).expect("same retained entry"));
+                    }
+                    _ => {}
+                }
+            }
+        }
+        drop((retired_entries, retired_controls, retired_intents));
+        Ok(())
+    }
     fn owned_handles(&self) -> Self {
         Self {
             agent: self.agent.clone(),
@@ -733,6 +817,8 @@ impl CodexAdapter {
             availability: self.availability.clone(),
             #[cfg(test)]
             gates: self.gates.clone(),
+            #[cfg(test)]
+            file_factory: self.file_factory.clone(),
         }
     }
     fn register_fresh(
@@ -741,6 +827,7 @@ impl CodexAdapter {
         schema: Option<Value>,
     ) -> AdapterResult<Registered> {
         self.availability.require()?;
+        self.reconcile_custody()?;
         let session = fresh_session(&request, &self.agent);
         let (publisher, status) = watch::channel(empty_status(session.clone()));
         let (control, stopped) = Control::new(None);
@@ -764,6 +851,7 @@ impl CodexAdapter {
                 request: request.clone(),
                 schema: schema.clone(),
                 control: control.clone(),
+                custody_disposition: None,
             },
         );
         Ok(Registered {
@@ -783,6 +871,7 @@ impl CodexAdapter {
     }
     fn register_existing(&self, reference: &SessionRef) -> AdapterResult<Registered> {
         self.availability.require()?;
+        self.reconcile_custody()?;
         let mut sessions = self.registry()?;
         let entry = sessions.get_mut(&reference.id).ok_or_else(|| {
             failure(
@@ -807,6 +896,14 @@ impl CodexAdapter {
             return Err(failure(
                 ErrorKind::StateConflict,
                 "native predecessor has not finished its final publication",
+            ));
+        }
+        if entry.control.holds_resources()
+            || matches!(&*entry.control.subscribe().borrow(), Phase::Finished(outcome) if matches!(outcome.as_ref(), Outcome::CustodyHeld { .. }))
+        {
+            return Err(failure(
+                ErrorKind::StateConflict,
+                "native preparation custody remains held",
             ));
         }
         // Registry -> Store, without current/reference reentry. No write or await.
@@ -875,6 +972,11 @@ impl CodexAdapter {
             .require()
             .map_err(|error| registered.refused_before_work(error))?;
         let control = registered.transition.control.clone();
+        if let Some(pool) = self.custody_pool() {
+            control
+                .install_custody(pool)
+                .map_err(|error| registered.refused_before_work(error))?;
+        }
         let task_guard = TaskGuard(control.clone());
         let handles = self.owned_handles();
         let (result, receiver) = oneshot::channel();
@@ -1054,9 +1156,20 @@ impl CodexAdapter {
         };
         let control = registered.transition.control.clone();
         #[cfg(test)]
+        let factory_error = if let Some(factory) = &self.file_factory {
+            self.gates.wait(TestPoint::BeforeCustodyFactory).await;
+            Some(factory.run(&control).await)
+        } else {
+            None
+        };
+        #[cfg(test)]
         self.gates.wait(TestPoint::BeforeStarting).await;
         let mut request = registered.request.clone();
         let context = (|| -> AdapterResult<_> {
+            #[cfg(test)]
+            if let Some(error) = factory_error {
+                return Err(error);
+            }
             control.preparation.check()?;
             let status = registered.previous.clone().ok_or_else(|| {
                 failure(
@@ -1158,9 +1271,9 @@ impl CodexAdapter {
                 let error = control.preparation.failed(error);
                 let cause = control.preparation.cause(&error);
                 if let Some(snapshot) = registered.previous.clone() {
-                    control.finished(Outcome::RestoredBeforeAdmission { cause, snapshot });
+                    control.finish_no_work(Outcome::RestoredBeforeAdmission { cause, snapshot });
                 } else {
-                    control.finished(Outcome::FreshUnpublished {
+                    control.finish_no_work(Outcome::FreshUnpublished {
                         cause,
                         error: Cause::Failed(error.kind, error.message.clone()),
                     });
@@ -1241,6 +1354,11 @@ impl CodexAdapter {
             .require()
             .map_err(|error| registered.refused_before_work(error))?;
         let control = registered.transition.control.clone();
+        if let Some(pool) = self.custody_pool() {
+            control
+                .install_custody(pool)
+                .map_err(|error| registered.refused_before_work(error))?;
+        }
         let task_guard = TaskGuard(control.clone());
         let handles = self.owned_handles();
         let (result, receiver) = oneshot::channel();
@@ -1271,8 +1389,19 @@ impl CodexAdapter {
             .map(|status| status.session.clone());
         let control = registered.transition.control.clone();
         #[cfg(test)]
+        let factory_error = if let Some(factory) = &self.file_factory {
+            self.gates.wait(TestPoint::BeforeCustodyFactory).await;
+            Some(factory.run(&control).await)
+        } else {
+            None
+        };
+        #[cfg(test)]
         self.gates.wait(TestPoint::BeforeStarting).await;
         let context = (|| -> AdapterResult<_> {
+            #[cfg(test)]
+            if let Some(error) = factory_error {
+                return Err(error);
+            }
             control.preparation.check()?;
             if request.mode == LaunchMode::Interactive {
                 return Err(failure(
@@ -1392,7 +1521,7 @@ impl CodexAdapter {
             Err(error) => {
                 let error = control.preparation.failed(error);
                 let cause = control.preparation.cause(&error);
-                control.finished(if let Some(snapshot) = registered.previous.clone() {
+                control.finish_no_work(if let Some(snapshot) = registered.previous.clone() {
                     Outcome::RestoredBeforeAdmission { cause, snapshot }
                 } else {
                     Outcome::FreshUnpublished {
@@ -1737,6 +1866,14 @@ impl AgentAdapter for CodexAdapter {
             // Phase precedes admission: an idle stop must not reinterpret a
             // completed cancellation/failed restore as its own cancellation.
             let initial = control.subscribe().borrow().clone();
+            control.revoke_jobs();
+            if matches!(&initial, Phase::Finished(outcome) if matches!(outcome.as_ref(), Outcome::CustodyHeld { .. }))
+            {
+                return Err(failure(
+                    ErrorKind::StateConflict,
+                    "preparation custody held; no native stop sent",
+                ));
+            }
             let idle = matches!(initial, Phase::Finished(_));
             if !idle && !control.preparation.cancel() && control.consumed() {
                 // The same channel was installed before preparation and remains
@@ -3078,6 +3215,7 @@ mod tests {
                     evidence: self.evidence.clone(),
                     request: self.authority.request.clone(),
                     schema: None,
+                    custody_disposition: None,
                     control: {
                         let (control, _) = Control::new(Some(self.status.clone()));
                         control.finished(Outcome::Terminal {
@@ -6924,4 +7062,5 @@ mod tests {
             stored.recovery["dispatch_intent"]
         );
     }
+    include!("custody_tests.rs");
 }

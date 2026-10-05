@@ -408,3 +408,13 @@ adapter unwind/await, and every new Task input waits on durable ordered staged
 publication. Frozen receipts are64KiB complete encoded records, separately from
 4-MiB operations; status-aware factual UUID negatives grant no native ownership.
 No actual producer/backend/epoch or source acceptance is created by this design.
+
+
+The selected [retained-lifetime mechanical component](../issue-19-lifetime-component-design.md)
+has two Design5 approvals. Its current source candidate reuses actual Codex Control
+and registry consumers, counting three declared frames and retaining join custody
+outside caller futures. A CLOSED file/thread fixture reaches the existing context
+error arms before Git/native effects; no production constructor is available.
+Independent Source review, actual native producers, schema6 and all parent OPEN
+findings remain required. A mechanically joined fixture never earns a native
+settlement, managed phase permission or whole Issue19 acceptance.
