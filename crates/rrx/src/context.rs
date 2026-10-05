@@ -1,5 +1,6 @@
 //! Local lexical repository maps. I/O runs outside the shared Store lock.
 //! Estimates are explicit byte-based packing estimates, never provider usage.
+pub mod committed;
 use crate::{
     adapter::{InputKind, PreparedInput, SharedStore},
     domain::*,
