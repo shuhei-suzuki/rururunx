@@ -1,4 +1,5 @@
 use super::*;
+use std::time::Instant;
 
 async fn shell(
     context: TestGitContext,
@@ -58,6 +59,21 @@ async fn binary_output_and_settled_error_clear_live_uncertainty() {
 fn destructive_private_controls_leave_fresh_production_pool_unchanged() {
     if std::env::var_os("RRX_PRIVATE_GIT_POOL_AUDIT").is_some() {
         // The child uses normal libtest filtering/concurrency and must not recurse.
+        assert_private_pool_isolation();
+        let context = TestGitContext::missing_executable();
+        let flag = Arc::new(AtomicBool::new(false));
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let failure = runtime
+            .block_on(shell(context.clone(), "exit 0", flag.clone()))
+            .unwrap_err();
+        assert_eq!(failure.kind, ErrorKind::ProcessFailure);
+        assert!(flag.load(Ordering::SeqCst));
+        // No private held-count assertion masks this production-count witness.
+        // The actual unknown operation remains in the finite private inventory.
+        drop(context);
         assert_private_pool_isolation();
         return;
     }
