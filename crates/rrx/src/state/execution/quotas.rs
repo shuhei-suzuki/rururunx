@@ -19,9 +19,9 @@ impl Store {
         if let Some(prior)=prior {
             let old:QuotaObservation=decode(prior)?;
             if observation.observed_at<old.observed_at { tx.commit()?;return Ok(()); }
-            if old.status==QuotaStatus::Exhausted && observation.status==QuotaStatus::Available {
+            if old.status==QuotaStatus::Exhausted && observation.status!=QuotaStatus::Exhausted {
                 // A different connection/window cannot reopen exhaustion before the old reset.
-                let fresh_window=old.resets_at.is_some_and(|r|observation.observed_at>=r)
+                let fresh_window=observation.status==QuotaStatus::Available && old.resets_at.is_some_and(|r|observation.observed_at>=r)
                     && observation.window_id!=old.window_id;
                 if !fresh_window {tx.commit()?;return Ok(());}
             }
@@ -44,8 +44,8 @@ impl Store {
         let mut unit=validate_authority(&tx,authority,true,false)?;
         ensure!(unit.provider==provider,"foreign quota provider");
         tx.execute("INSERT INTO quota_pools(provider,account_key) VALUES(?1,?2) ON CONFLICT DO NOTHING",params![provider,account])?;
-        let already:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM quota_leases WHERE unit_id=?1 AND active=1)",[unit.id.to_string()],|r|r.get(0))?;
-        if already {tx.commit()?;return Ok(QuotaAdmission::Admitted);}
+        let already:Option<(String,String)>=tx.query_row("SELECT provider,account_key FROM quota_leases WHERE unit_id=?1 AND active=1",[unit.id.to_string()],|r|Ok((r.get(0)?,r.get(1)?))).optional()?;
+        if let Some((p,a))=already {ensure!(p==provider && a==account,"quota lease account mismatch");tx.commit()?;return Ok(QuotaAdmission::Admitted);}
         let (next,probe):(i64,Option<String>)=tx.query_row("SELECT next_probe_at,probe_unit FROM quota_pools WHERE provider=?1 AND account_key=?2",params![provider,account],|r|Ok((r.get(0)?,r.get(1)?)))?;
         let mut windows=tx.prepare("SELECT body FROM quota_windows WHERE provider=?1 AND account_key=?2")?;
         let observations=windows.query_map(params![provider,account],|r|r.get::<_,String>(0))?.map(|r|r.map_err(anyhow::Error::from).and_then(decode::<QuotaObservation>)).collect::<Result<Vec<_>>>()?;
@@ -66,8 +66,8 @@ impl Store {
         }
         // One native recovery probe, not one probe per Task. Lease survives until terminal.
         if exhausted {
-            tx.execute("UPDATE quota_pools SET probe_unit=?1,next_probe_at=?2,backoff=MIN(backoff*2,1800000) WHERE provider=?3 AND account_key=?4",
-                params![unit.id.to_string(),at.saturating_add(60_000),provider,account])?;
+            tx.execute("UPDATE quota_pools SET probe_unit=?1,next_probe_at=?2+backoff,backoff=MIN(backoff*2,1800000) WHERE provider=?3 AND account_key=?4",
+                params![unit.id.to_string(),at,provider,account])?;
         }
         tx.execute("INSERT INTO quota_leases(unit_id,provider,account_key,role,epoch,active) VALUES(?1,?2,?3,?4,?5,1) ON CONFLICT(unit_id) DO UPDATE SET provider=excluded.provider,account_key=excluded.account_key,role=excluded.role,epoch=excluded.epoch,active=1",
             params![unit.id.to_string(),provider,account,key(unit.kind),unit.owner_epoch])?;
@@ -79,8 +79,12 @@ impl Store {
     }
     pub(crate) fn release_execution_quota(&mut self,id:UnitId) -> Result<()> {
         let tx=self.connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        tx.execute("UPDATE quota_leases SET active=0 WHERE unit_id=?1",[id.to_string()])?;
-        tx.execute("UPDATE quota_pools SET probe_unit=NULL,next_probe_at=MAX(next_probe_at,?1+backoff) WHERE probe_unit=?2",params![now_ms(),id.to_string()])?;
+        release_quota_tx(&tx,id)?;
         tx.commit()?;Ok(())
     }
+}
+pub(super) fn release_quota_tx(tx:&Transaction<'_>,id:UnitId)->Result<()> {
+    tx.execute("UPDATE quota_leases SET active=0 WHERE unit_id=?1",[id.to_string()])?;
+    tx.execute("UPDATE quota_pools SET probe_unit=NULL,next_probe_at=MAX(next_probe_at,?1+backoff) WHERE probe_unit=?2",params![now_ms(),id.to_string()])?;
+    Ok(())
 }

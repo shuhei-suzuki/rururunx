@@ -6,7 +6,7 @@ fn fixture() -> (Store,Task,u64) {
     let mut store=Store::memory().unwrap();
     let mut p=Project::new("project".into(),PathBuf::from("/tmp/rrx-source"),"git-local".into(),"main".into());
     store.put_project(&mut p).unwrap();
-    let mut g=Goal::new(p.id,"goal".into(),vec![]);
+    let mut g=Goal::new(p.id,"goal".into(),vec![CompletionCriterion {id:"result".into(),description:"accepted commit".into(),evidence:None,satisfied:false}]);
     store.put_goal(&mut g).unwrap();
     let mut t=Task::new(p.id,g.id,"task".into(),"codex".into());t.workflow=WorkflowClass::Quick;
     store.put_task(&mut t).unwrap();

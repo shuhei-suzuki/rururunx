@@ -148,7 +148,7 @@ impl Store {
             else {prior.context("review/verifier requires admitted artifact generation")?};
         if unit.kind==UnitKind::Executor {
             ensure!(unit.worktree.parent()==Some(project.worktree_root.as_path()) && unit.branch.as_ref().is_some_and(|b|b.starts_with("rrx/") && b!=&project.base_branch),"invalid fresh executor namespace");
-            let pending:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM managed_effects WHERE task_id=?1 AND state IN ('pending','unknown'))",[task.id.to_string()],|r|r.get(0))?;
+            let pending:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM managed_effects WHERE task_id=?1 AND state IN ('pending','unknown') AND json_extract(body,'$.kind') IN ('publish','merge','deploy'))",[task.id.to_string()],|r|r.get(0))?;
             ensure!(!pending,"unknown external effect requires reconciliation");
         } else {
             let artifact=self_artifact_tx(&tx,unit.artifact_id.context("snapshot requires artifact")?)?;
@@ -182,7 +182,7 @@ impl Store {
         if disposition!=Disposition::Completed {unit.result_finalization_open=false;}
         write_unit(&tx,&mut unit)?;
         tx.execute("INSERT INTO cleanup_jobs(unit_id,next_due,attempts,version) VALUES(?1,?2,0,1) ON CONFLICT(unit_id) DO NOTHING",params![unit.id.to_string(),now_ms()])?;
-        tx.execute("UPDATE quota_leases SET active=0 WHERE unit_id=?1",[unit.id.to_string()])?;
+        quotas::release_quota_tx(&tx,unit.id)?;
         append_event(&tx,&unit.scope,"execution.work_terminal",json!({"unit":unit.id,"work":unit.work,"disposition":unit.disposition}))?;
         tx.commit()?;Ok(unit)
     }
@@ -201,7 +201,7 @@ impl Store {
                 put_task_tx(&tx,&task)?;
             }
         }
-        tx.execute("UPDATE quota_leases SET active=0 WHERE unit_id=?1",[unit.id.to_string()])?;
+        quotas::release_quota_tx(&tx,unit.id)?;
         tx.execute("DELETE FROM quota_waiters WHERE unit_id=?1",[unit.id.to_string()])?;
         tx.execute("INSERT INTO cleanup_jobs(unit_id,next_due,attempts,version) VALUES(?1,?2,0,1) ON CONFLICT(unit_id) DO NOTHING",params![unit.id.to_string(),now_ms()])?;
         append_event(&tx,&unit.scope,"execution.retired",json!({"unit":unit.id,"generation":unit.generation,"work":unit.work}))?;
