@@ -357,3 +357,13 @@ context-pointer publication (context_version/updated_at only, unchanged semantic
 version), preserving accepted definitions and separate consecutive head CAS; see the
 [proposed composition contract](../issue-19-design.md#design34-complete-factual-workflow-succession-and-scoped-authority-exits).
 It is not an implemented23 authority exception or native launch grant.
+
+## Current implementation foundation
+
+Goal snapshots and scoped Task references persist through the SQLite Store.
+TaskDag::hard_order validates finite node/edge bounds, declared unique nodes,
+non-self unique ordered edge pairs and hard dependency cycles. Store::put_goal
+uses it before publishing the Goal and its audit; soft advisory cycles are allowed.
+The deterministic order includes all declared nodes and grants no readiness or
+dispatch authority. Managed definitions, lifecycle, verified completion, controller
+loop and CLI remain pending in #23/#24 with #19/#43 producer integration.

@@ -281,6 +281,9 @@ The command examples above describe the MVP target. Currently implemented:
   work. This registry foundation does not yet run concurrent Goals/sessions.
 - `rrx --help`, `rrx --version`, and `rrx config-check`. Typed runtime entities and
   transactional SQLite state/audit persistence are available in the library.
+  Goal graph saves reject hard cycles, self edges, duplicate ordered pairs and
+  undeclared/foreign Task references within finite node/edge bounds. The library
+  hard ordering API provides no readiness or native dispatch authority.
 - An extensible asynchronous Agent Adapter registry and task-scoped generic native
   process supervision. Generic adapters support noninteractive execution with
   prepared context and explicit environment. Unsupported attach/resume/review,
