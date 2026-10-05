@@ -267,7 +267,7 @@ struct TestPause {
 impl TestPause {
     fn block(&self) {
         self.entered.store(true, Ordering::SeqCst);
-        self.reached.notify_one();
+        self.reached.notify_waiters();
         let mut released = self.released.lock().unwrap();
         while !*released {
             released = self.wake.wait(released).unwrap();

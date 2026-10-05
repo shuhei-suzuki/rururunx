@@ -420,6 +420,7 @@ async fn caller_runtime_shutdown_keeps_independent_owner_and_frozen_flag() {
     let own_flag = flag.clone();
     let own_pause = pause.clone();
     let (finished, observed) = oneshot::channel();
+    let (stop, stop_requested) = oneshot::channel();
     // One explicitly bounded fixture caller thread; this is not a component job.
     let caller = thread::spawn(move || {
         let runtime = tokio::runtime::Builder::new_current_thread()
@@ -427,15 +428,17 @@ async fn caller_runtime_shutdown_keeps_independent_owner_and_frozen_flag() {
             .build()
             .unwrap();
         runtime.spawn(shell(own_context, "exec /bin/sleep 30", own_flag));
-        runtime.block_on(own_pause.reached());
+        runtime.block_on(async {
+            tokio::select! { _ = own_pause.reached() => {}, _ = stop_requested => {} }
+        });
         drop(runtime); // This drops the CALLER future, never the owner's runtime.
         let _ = finished.send(());
     });
     pause.reached().await;
-    tokio::time::timeout(Duration::from_secs(3), observed)
-        .await
-        .unwrap()
-        .unwrap();
+    let stopped = tokio::time::timeout(Duration::from_secs(3), observed).await;
+    // Own caller control only: settle the fixture runtime even when its positive
+    // wake assertion fails. No PID rescue, extra job or production budget exists.
+    let _ = stop.send(());
     caller.join().unwrap();
     let record = context.pool.as_ref().unwrap().state.lock().unwrap().records[0].clone();
     assert!(flag.load(Ordering::SeqCst));
@@ -445,6 +448,7 @@ async fn caller_runtime_shutdown_keeps_independent_owner_and_frozen_flag() {
     assert!(record.runtime.lock().unwrap().is_none());
     assert!(record.worker.lock().unwrap().is_none());
     assert!(record.native.lock().unwrap().child.is_none());
+    stopped.unwrap().unwrap();
 }
 #[tokio::test]
 async fn generic_live_launch_error_uses_actual_git_flag_without_retyping_error() {
