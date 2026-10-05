@@ -419,3 +419,24 @@ Fmt/all-target Clippy(-D warnings)/Debug BUILD/Release BUILD all passed.
 bind these outcomes to5b09. No full Debug or native readiness is claimed from
 the Release result. Formal Source1 two-reviewer gate and required public bothOS
 CI/actual checkout provenance remain pending; this candidate is not merge-ready.
+
+Both independent Source1 reviews at immutablea92c4d0 completed request_changes,
+actual owned cleanup verified TRUE. The raw public-source findings and verified
+dispositions are preserved in [Source1](issue-60-reader-source1-findings.json).
+Two distinct Medium defects are verified: a reap timeout can be renamed settled
+when actual native wait finishes during the output window; admission expiry lacks
+approved finite capacity facts. Existing full-gate blockers remain open. New
+cfg(test) causal controls hold the actual native worker after cleanup ACK until
+the real250ms reap cutoff, release it on the same supervisor job, and observe
+actual wait success before the settled decision; no synthetic successful reap,
+new job, actual deadline change, or cleanup relaxation. Direct flag and actual
+Context latch assertions will first run against the unfixed computation.
+
+Source1 public CI37253446382 FAILED Ubuntu267 PASS/1 FAIL/17 ignored36.17s;
+macOS was cancelled by fail-fast, both builds skipped. Actual checkouted5c43ce
+parents768/a92 and completeTreeb0b89495 equals the trigger tree. The failing
+four-Git fixture uses a ReadersMutex-held proxy BEFORE actual Child spawn, so
+its real_native assertion can sample too early. Both native reviewers separately
+verified that proxy and the same saturation-control claim. A post-initialization
+actual pause-entry count will replace it, with no arbitrary state alternatives.
+[CI outcome/provenance](issue-60-reader-source1-ci.json) remains failed, not rerun.

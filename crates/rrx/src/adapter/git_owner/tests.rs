@@ -760,6 +760,31 @@ async fn actual_generic_launch_drop_distinguishes_admitted_from_live_git() {
 }
 
 #[tokio::test]
+async fn actual_reap_after_cutoff_never_clears_the_frozen_flag() {
+    let context = TestGitContext::reap_after_cutoff();
+    let flag = Arc::new(AtomicBool::new(false));
+    let failure = shell(context.clone(), "exit 0", flag.clone())
+        .await
+        .unwrap_err();
+    assert_eq!(failure.kind, ErrorKind::SessionLost);
+    assert_eq!(
+        failure.message,
+        "Git child death not confirmed after cleanup"
+    );
+    assert!(
+        flag.load(Ordering::SeqCst),
+        "late reap was renamed in-budget"
+    );
+    released(&context).await;
+    assert!(flag.load(Ordering::SeqCst));
+    assert_eq!(
+        context.held_jobs(),
+        0,
+        "actual same-job late joins can release slots"
+    );
+}
+
+#[tokio::test]
 async fn observed_reader_panic_is_distinct_from_abort_and_native_loss() {
     let mut context = TestGitContext::isolated();
     context.context.hooks.stdout_reader_panic = true;

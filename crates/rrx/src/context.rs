@@ -1395,6 +1395,30 @@ fn expansion_paths(map: &RepositoryMap, expansion: &Expansion) -> Result<BTreeSe
 #[cfg(test)]
 mod tests {
     #[tokio::test]
+    async fn actual_late_reap_keeps_context_latch_after_real_worker_settlement() {
+        let directory = tempfile::tempdir().unwrap();
+        let context = crate::adapter::TestGitContext::reap_after_cutoff();
+        let latch = Arc::new(AtomicBool::new(false));
+        let result = git_value_owned(
+            Path::new("/usr/bin/git"),
+            directory.path(),
+            &["--version"],
+            tokio::time::Instant::now() + std::time::Duration::from_secs(5),
+            latch.clone(),
+            Some(context.clone()),
+        )
+        .await
+        .unwrap_err();
+        assert!(format!("{result:#}").contains("Git child death not confirmed after cleanup"));
+        assert!(
+            latch.load(Ordering::SeqCst),
+            "late reap bypassed Context latch"
+        );
+        context.wait_until_released().await;
+        assert!(latch.load(Ordering::SeqCst));
+        assert_eq!(context.held_jobs(), 0);
+    }
+    #[tokio::test]
     async fn actual_dropped_git_future_sets_context_latch_before_late_settlement() {
         let directory = tempfile::tempdir().unwrap();
         let root = directory.path().to_owned();

@@ -260,6 +260,11 @@ impl TestGitContext {
         context.context.hooks.pending_stdout = true;
         context
     }
+    pub(crate) fn reap_after_cutoff() -> Self {
+        let mut context = Self::isolated();
+        context.context.hooks.reap_after_cutoff = Some(Arc::new(TestPause::default()));
+        context
+    }
     pub(crate) fn invalid_binding() -> Self {
         let mut context = Self::isolated();
         context.context.hooks.invalid_binding = true;
@@ -294,6 +299,7 @@ struct TestHooks {
     after_spawn: Option<Arc<TestPause>>,
     after_reap_send: Option<Arc<TestPause>>,
     before_cleanup_ack: Option<Arc<TestPause>>,
+    reap_after_cutoff: Option<Arc<TestPause>>,
     facts: Arc<Mutex<Option<ReaderFacts>>>,
     after_primary_panic: bool,
     pending_stderr: bool,
@@ -1018,6 +1024,21 @@ async fn supervisor_work(
             }
             Err(_) => {
                 reap_pending = true;
+                #[cfg(test)]
+                if let Some(pause) = &record._context.hooks.reap_after_cutoff {
+                    // The ACTUAL worker waits until the existing reap window expires.
+                    // Then the SAME worker observes actual Child::wait before this
+                    // decision; no synthetic successful reap, extra job or budget.
+                    pause.release();
+                    let limit = std::time::Instant::now() + Duration::from_secs(3);
+                    while !record.native_settled.load(Ordering::SeqCst) {
+                        assert!(
+                            std::time::Instant::now() < limit,
+                            "actual late reap missing"
+                        );
+                        thread::yield_now();
+                    }
+                }
                 Err(error(
                     ErrorKind::SessionLost,
                     "Git child death not confirmed after cleanup",
@@ -1258,6 +1279,10 @@ fn native_worker(
                     if !succeeded {
                         record.native_terminal_error.store(true, Ordering::SeqCst);
                         return;
+                    }
+                    #[cfg(test)]
+                    if let Some(pause) = &record._context.hooks.reap_after_cutoff {
+                        pause.block();
                     }
                     let result = native.child.as_mut().unwrap().wait();
                     if result.is_ok() {
