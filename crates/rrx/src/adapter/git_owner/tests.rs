@@ -311,8 +311,8 @@ async fn sixteen_actual_owner_records_bound_all_four_job_lanes() {
     for task in tasks {
         task.await.unwrap().unwrap();
     }
-    released(&context).await;
     assert_eq!(actual.len() * JOBS, 64);
+    released(&context).await;
     assert!(all_workers);
     assert_eq!(refused.unwrap_err().kind, ErrorKind::Timeout);
     assert!(!rejected_flag.load(Ordering::SeqCst));
@@ -504,22 +504,23 @@ async fn generic_live_launch_error_uses_actual_git_flag_without_retyping_error()
                 ErrorKind::LaunchFailure
             }
         );
-        let state = store.lock().unwrap();
-        let records = state.records(&task.scope(), RecordKind::Session).unwrap();
-        assert_eq!(records.len(), 1);
-        let session: Session = serde_json::from_value(records[0].data.clone()).unwrap();
-        assert_eq!(
-            session.state,
-            if unknown {
-                SessionState::Lost
-            } else {
-                SessionState::Failed
-            }
-        );
-        assert!(session.pid.is_none());
-        assert!(session.native_ref.is_none());
-        assert_eq!(crate::git::executor_reserved(&session), unknown);
-        drop(state);
+        {
+            let state = store.lock().unwrap();
+            let records = state.records(&task.scope(), RecordKind::Session).unwrap();
+            assert_eq!(records.len(), 1);
+            let session: Session = serde_json::from_value(records[0].data.clone()).unwrap();
+            assert_eq!(
+                session.state,
+                if unknown {
+                    SessionState::Lost
+                } else {
+                    SessionState::Failed
+                }
+            );
+            assert!(session.pid.is_none());
+            assert!(session.native_ref.is_none());
+            assert_eq!(crate::git::executor_reserved(&session), unknown);
+        }
         if unknown {
             assert_eq!(context.held_jobs(), 4);
         } else {
