@@ -1,0 +1,502 @@
+//! Private source-only recovery claims. Stored metadata never recreates a grant.
+use super::*;
+use crate::execution::workflow_source::{ReconstructedFrame, digest, task_digest};
+use serde::{Deserialize, Serialize};
+
+const META_BYTES: usize = 128 * 1024;
+const OWNER_BYTES: usize = 1024 * 1024;
+const CONTEXT_BYTES: usize = 8 * 1024 * 1024;
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct Pin {
+    version: u64,
+    digest: String,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct Pins {
+    scope: Scope,
+    project: Pin,
+    goal: Pin,
+    task: Pin,
+    workflow: Pin,
+    workflow_id: RecordId,
+    generation: u64,
+    context: Pin,
+    artifact: ResultArtifact,
+    governing: String,
+    instruction: String,
+}
+#[derive(Clone, Serialize, Deserialize)]
+struct Row {
+    id: Uuid,
+    epoch: u64,
+    version: u64,
+    state: String,
+    pins: Pins,
+    frame: Option<String>,
+}
+struct Snapshot {
+    project: Project,
+    goal: Goal,
+    task: Task,
+    pins: Pins,
+}
+/// Created only by begin's atomic current-owner claim; deliberately non-Clone.
+pub(crate) struct SourceRecovery {
+    pub(crate) project: Project,
+    pub(crate) goal: Goal,
+    pub(crate) task: Task,
+    pub(crate) artifact: ResultArtifact,
+    binding: SourceReadBinding,
+}
+#[derive(Clone)]
+pub(crate) struct SourceReadBinding {
+    task: TaskId,
+    id: Uuid,
+    epoch: u64,
+    preparing_version: Option<u64>,
+    frame: Option<String>,
+    artifact: ArtifactId,
+}
+impl SourceReadBinding {
+    pub(crate) fn owns_artifact(&self, id: ArtifactId) -> bool {
+        self.artifact == id
+    }
+}
+impl SourceRecovery {
+    pub(crate) fn binding(&self) -> SourceReadBinding {
+        self.binding.clone()
+    }
+}
+/// Only a validated pre-write snapshot may advance resulting typed bookkeeping.
+pub(in crate::state) struct SourceAdvance(Option<Row>);
+
+pub(in crate::state) fn install_schema(tx: &Transaction<'_>) -> Result<()> {
+    tx.execute_batch(include_str!("source_recovery.sql"))?;
+    Ok(())
+}
+pub(in crate::state) fn validate_legacy_namespace(tx: &Transaction<'_>) -> Result<()> {
+    let count: u64 = tx.query_row("SELECT COUNT(*) FROM sqlite_schema WHERE name IN ('source_recoveries','source_recovery_identity','source_recovery_no_replace','source_recovery_no_delete')", [], |r| r.get(0))?;
+    ensure!(count == 0, "legacy source recovery namespace is not empty");
+    Ok(())
+}
+fn bounded<T: DeserializeOwned>(c: &Connection, table: &str, id: &str, max: usize) -> Result<T> {
+    let bytes: usize = c.query_row(
+        &format!("SELECT length(CAST(body AS BLOB)) FROM {table} WHERE id=?1"),
+        [id],
+        |r| r.get(0),
+    )?;
+    ensure!(bytes <= max, "source recovery {table} body exceeds bound");
+    decode(c.query_row(
+        &format!("SELECT body FROM {table} WHERE id=?1"),
+        [id],
+        |r| r.get(0),
+    )?)
+}
+fn pin<T: Serialize>(version: u64, body: &T) -> Result<Pin> {
+    Ok(Pin {
+        version,
+        digest: digest(&serde_json::to_vec(body)?),
+    })
+}
+fn epoch(c: &Connection, expected: u64) -> Result<()> {
+    let current: u64 = c.query_row(
+        "SELECT epoch FROM runtime_epoch WHERE singleton=1",
+        [],
+        |r| r.get(0),
+    )?;
+    ensure!(
+        expected > 0 && current == expected,
+        "source recovery epoch retired"
+    );
+    Ok(())
+}
+fn snapshot(c: &Connection, task_id: TaskId) -> Result<Snapshot> {
+    let task: Task = bounded(c, "tasks", &task_id.to_string(), OWNER_BYTES)?;
+    ensure!(
+        task.id == task_id && !task_terminal(task.state),
+        "source recovery Task inactive/foreign"
+    );
+    let project: Project = bounded(c, "projects", &task.project_id.to_string(), OWNER_BYTES)?;
+    let goal: Goal = bounded(c, "goals", &task.goal_id.to_string(), OWNER_BYTES)?;
+    ensure!(
+        project.id == task.project_id
+            && goal.id == task.goal_id
+            && goal.project_id == project.id
+            && project.state == ProjectState::Registered
+            && goal.state == GoalState::Running,
+        "source recovery owners inactive/foreign"
+    );
+    check_indexed(
+        c,
+        "projects",
+        &[
+            ("id", json!(project.id)),
+            ("version", json!(project.version)),
+            ("root", json!(project.root)),
+        ],
+    )?;
+    check_indexed(
+        c,
+        "goals",
+        &[
+            ("id", json!(goal.id)),
+            ("version", json!(goal.version)),
+            ("project_id", json!(project.id)),
+        ],
+    )?;
+    check_indexed(
+        c,
+        "tasks",
+        &[
+            ("id", json!(task.id)),
+            ("version", json!(task.version)),
+            ("project_id", json!(project.id)),
+            ("goal_id", json!(goal.id)),
+            ("issue", json!(task.issue)),
+        ],
+    )?;
+    let (p, g, t) = scope_keys(&task.scope())?;
+    let mut stmt=c.prepare("SELECT id FROM records WHERE project_id=?1 AND goal_id=?2 AND task_id=?3 AND kind='workflow' LIMIT 2")?;
+    let ids = stmt
+        .query_map(params![p, g, t], |r| r.get::<_, String>(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    ensure!(ids.len() == 1, "source recovery requires sole Workflow");
+    let record: Record = bounded(c, "records", &ids[0], CONTEXT_BYTES)?;
+    ensure!(
+        record.id.to_string() == ids[0]
+            && record.scope == task.scope()
+            && record.kind == RecordKind::Workflow,
+        "source recovery Workflow scope/body mismatch"
+    );
+    let mut columns = scoped_columns(&record.scope);
+    columns.extend([
+        ("id", json!(record.id)),
+        ("version", json!(record.version)),
+        ("kind", json!("workflow")),
+    ]);
+    check_indexed(c, "records", &columns)?;
+    let workflow: crate::workflow::WorkflowSnapshot = serde_json::from_value(record.data.clone())?;
+    let owner = context_owner(&task.scope())?;
+    let (latest,bytes):(u64,usize)=c.query_row("SELECT version,length(CAST(body AS BLOB)) FROM context_versions WHERE project_id=?1 AND owner=?2 ORDER BY version DESC LIMIT 1",params![p,owner],|r|Ok((r.get(0)?,r.get(1)?)))?;
+    ensure!(
+        latest == task.context_version && bytes <= CONTEXT_BYTES,
+        "source recovery current Context exceeds bound or changed"
+    );
+    let context: ContextVersion = decode(c.query_row(
+        "SELECT body FROM context_versions WHERE project_id=?1 AND owner=?2 AND version=?3",
+        params![p, owner, latest],
+        |r| r.get(0),
+    )?)?;
+    let mut columns = scoped_columns(&context.scope);
+    columns.extend([("owner", json!(owner)), ("version", json!(context.version))]);
+    check_indexed(c, "context_versions", &columns)?;
+    crate::workflow::validate_context(&task, &record, &context)?;
+    crate::workflow::validate_transition(&task, &record, None)?;
+    let id = workflow
+        .sources
+        .artifact
+        .context("Published source artifact required; pre-artifact recovery unsupported")?;
+    let _: ResultArtifact = bounded(c, "result_artifacts", &id.to_string(), META_BYTES)?;
+    let artifact = self_artifact_tx(c, id)?;
+    ensure!(
+        artifact.scope == task.scope()
+            && artifact.state == ArtifactState::Published
+            && artifact.revision == context.revision
+            && artifact.revision == workflow.sources.revision
+            && artifact.dependencies == workflow.sources.source_versions,
+        "source recovery requires exact Published frame"
+    );
+    ensure!(
+        artifact.dependencies.len() <= 128
+            && artifact
+                .dependencies
+                .iter()
+                .all(|(k, v)| k.len() <= 128 && v.len() <= 256),
+        "source map exceeds bound"
+    );
+    let mut stmt =
+        c.prepare("SELECT name,digest FROM artifact_dependencies WHERE artifact_id=?1 LIMIT 129")?;
+    let deps = stmt
+        .query_map([id.to_string()], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+        })?
+        .collect::<rusqlite::Result<BTreeMap<_, _>>>()?;
+    ensure!(
+        deps == artifact.dependencies,
+        "source recovery indexed dependencies changed"
+    );
+    let unit = unit_tx(c, artifact.unit_id)?;
+    ensure!(
+        unit.scope == artifact.scope && unit.kind == UnitKind::Executor,
+        "source recovery producing Executor mismatch"
+    );
+    let pins = Pins {
+        scope: task.scope(),
+        project: pin(project.version, &project)?,
+        goal: pin(goal.version, &goal)?,
+        task: pin(task.version, &task)?,
+        workflow: pin(record.version, &record)?,
+        workflow_id: record.id,
+        generation: workflow.generation,
+        context: pin(context.version, &context)?,
+        artifact,
+        governing: governing_digest(&project, &goal)?,
+        instruction: task_digest(&task)?,
+    };
+    Ok(Snapshot {
+        project,
+        goal,
+        task,
+        pins,
+    })
+}
+fn row(c: &Connection, task: TaskId) -> Result<Option<Row>> {
+    let n: Option<usize> = c
+        .query_row(
+            "SELECT length(CAST(body AS BLOB)) FROM source_recoveries WHERE task_id=?1",
+            [task.to_string()],
+            |r| r.get(0),
+        )
+        .optional()?;
+    let Some(n) = n else { return Ok(None) };
+    ensure!(n <= META_BYTES, "source recovery metadata exceeds bound");
+    let row: Row = decode(c.query_row(
+        "SELECT body FROM source_recoveries WHERE task_id=?1",
+        [task.to_string()],
+        |r| r.get(0),
+    )?)?;
+    ensure!(
+        row.pins.scope.task_id == Some(task),
+        "source recovery Task index mismatch"
+    );
+    let mut columns = scoped_columns(&row.pins.scope);
+    columns.extend([
+        ("id", json!(row.id)),
+        ("owner_epoch", json!(row.epoch)),
+        ("version", json!(row.version)),
+        ("state", json!(row.state)),
+    ]);
+    check_indexed(c, "source_recoveries", &columns)?;
+    Ok(Some(row))
+}
+fn validate_row(c: &Connection, row: &Row) -> Result<()> {
+    epoch(c, row.epoch)?;
+    ensure!(
+        snapshot(c, row.pins.scope.task_id.context("Task missing")?)?.pins == row.pins,
+        "source recovery full authority snapshot changed"
+    );
+    Ok(())
+}
+fn write(c: &Connection, row: &mut Row) -> Result<()> {
+    let old = row.version;
+    bump(&mut row.version)?;
+    let body = serde_json::to_string(row)?;
+    ensure!(
+        body.len() <= META_BYTES,
+        "source recovery metadata exceeds bound"
+    );
+    ensure!(c.execute("UPDATE source_recoveries SET id=?1,owner_epoch=?2,version=?3,state=?4,body=?5 WHERE task_id=?6 AND version=?7",params![row.id.to_string(),row.epoch,row.version,row.state,body,row.pins.scope.task_id.unwrap().to_string(),old])?==1,"source recovery CAS changed");
+    Ok(())
+}
+pub(crate) fn validate_binding(c: &Connection, binding: &SourceReadBinding) -> Result<()> {
+    let row = row(c, binding.task)?.context("source recovery claim missing")?;
+    ensure!(
+        row.id == binding.id
+            && row.epoch == binding.epoch
+            && row.pins.artifact.id == binding.artifact
+            && match binding.preparing_version {
+                Some(v) => row.version == v && row.state == "preparing",
+                None => row.state == "installed" && row.frame == binding.frame,
+            },
+        "source recovery claim replaced/closed"
+    );
+    validate_row(c, &row)
+}
+pub(in crate::state) fn validate_task(c: &Connection, task: TaskId) -> Result<()> {
+    if let Some(row) = row(c, task)? {
+        ensure!(
+            row.state == "installed",
+            "recovered source not installed/current"
+        );
+        validate_row(c, &row)?;
+    }
+    Ok(())
+}
+pub(in crate::state) fn before_write(
+    c: &Connection,
+    task: TaskId,
+    conservative: bool,
+) -> Result<SourceAdvance> {
+    let row = row(c, task)?;
+    if !conservative && let Some(row) = &row {
+        ensure!(row.state == "installed", "source recovery is not installed");
+        validate_row(c, row)?;
+    }
+    Ok(SourceAdvance(row))
+}
+pub(in crate::state) fn after_write(
+    c: &Connection,
+    old: SourceAdvance,
+    conservative: bool,
+) -> Result<()> {
+    let Some(mut row) = old.0 else { return Ok(()) };
+    let next = if conservative {
+        None
+    } else {
+        snapshot(c, row.pins.scope.task_id.unwrap()).ok()
+    };
+    if let Some(next) = next.filter(|s| {
+        s.pins.project == row.pins.project
+            && s.pins.goal == row.pins.goal
+            && s.pins.generation == row.pins.generation
+            && s.pins.workflow_id == row.pins.workflow_id
+            && s.pins.artifact == row.pins.artifact
+            && s.pins.governing == row.pins.governing
+            && s.pins.instruction == row.pins.instruction
+    }) {
+        row.pins = next.pins;
+    } else {
+        row.state = "invalid".into();
+    }
+    write(c, &mut row)?;
+    Ok(())
+}
+pub(in crate::state) fn invalidate_epoch(c: &Connection) -> Result<()> {
+    // Bodies remain auditable; old rows never constitute a new current capability.
+    let mut stmt = c.prepare("SELECT task_id FROM source_recoveries WHERE state<>'invalid'")?;
+    let ids = stmt
+        .query_map([], |r| r.get::<_, String>(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    drop(stmt);
+    for id in ids {
+        let mut r = row(c, id.parse()?)?.unwrap();
+        r.state = "invalid".into();
+        write(c, &mut r)?;
+    }
+    Ok(())
+}
+impl Store {
+    pub(crate) fn begin_retained_source_recovery(
+        &mut self,
+        task: TaskId,
+        owner_epoch: u64,
+    ) -> Result<SourceRecovery> {
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        epoch(&tx, owner_epoch)?;
+        let snapshot = snapshot(&tx, task)?;
+        let old = row(&tx, task)?;
+        ensure!(
+            old.as_ref().is_none_or(|r| r.state != "preparing"),
+            "source recovery already Preparing; epoch fencing required"
+        );
+        let mut row = Row {
+            id: Uuid::new_v4(),
+            epoch: owner_epoch,
+            version: old.as_ref().map_or(1, |r| r.version),
+            state: "preparing".into(),
+            pins: snapshot.pins,
+            frame: None,
+        };
+        if old.is_some() {
+            write(&tx, &mut row)?;
+        } else {
+            let (p, g, t) = scope_keys(&row.pins.scope)?;
+            let body = serde_json::to_string(&row)?;
+            ensure!(
+                body.len() <= META_BYTES,
+                "source recovery metadata exceeds bound"
+            );
+            tx.execute("INSERT INTO source_recoveries(task_id,project_id,goal_id,id,owner_epoch,version,state,body) VALUES(?1,?2,?3,?4,?5,1,'preparing',?6)",params![t,p,g,row.id.to_string(),row.epoch,body])?;
+        }
+        append_event(
+            &tx,
+            &row.pins.scope,
+            "execution.source_recovery_claimed",
+            json!({"recovery":row.id,"version":row.version,"epoch":row.epoch,"artifact":row.pins.artifact.id}),
+        )?;
+        tx.commit()?;
+        let binding = SourceReadBinding {
+            task,
+            id: row.id,
+            epoch: row.epoch,
+            preparing_version: Some(row.version),
+            frame: None,
+            artifact: row.pins.artifact.id,
+        };
+        Ok(SourceRecovery {
+            project: snapshot.project,
+            goal: snapshot.goal,
+            task: snapshot.task,
+            artifact: row.pins.artifact,
+            binding,
+        })
+    }
+    pub(crate) fn validate_source_read(&self, binding: &SourceReadBinding) -> Result<()> {
+        validate_binding(&self.connection, binding)
+    }
+    pub(crate) fn accept_retained_source_recovery(
+        &mut self,
+        claim: &SourceRecovery,
+        frame: &ReconstructedFrame,
+    ) -> Result<SourceReadBinding> {
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        validate_binding(&tx, &claim.binding)?;
+        let mut row = row(&tx, claim.task.id)?.unwrap();
+        ensure!(
+            frame.scope() == &row.pins.scope
+                && frame.revision() == row.pins.artifact.revision
+                && frame.artifact() == row.pins.artifact.id
+                && frame.versions() == &row.pins.artifact.dependencies
+                && frame.governing() == row.pins.governing,
+            "reconstructed frame differs from claimed source"
+        );
+        row.state = "installed".into();
+        row.frame = Some(frame.digest().into());
+        write(&tx, &mut row)?;
+        append_event(
+            &tx,
+            &row.pins.scope,
+            "execution.source_recovery_installed",
+            json!({"recovery":row.id,"version":row.version,"epoch":row.epoch,"artifact":row.pins.artifact.id,"frame":row.frame}),
+        )?;
+        tx.commit()?;
+        Ok(SourceReadBinding {
+            task: claim.task.id,
+            id: row.id,
+            epoch: row.epoch,
+            preparing_version: None,
+            frame: row.frame,
+            artifact: row.pins.artifact.id,
+        })
+    }
+    pub(crate) fn abandon_retained_source_recovery(
+        &mut self,
+        binding: &SourceReadBinding,
+    ) -> Result<()> {
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        if let Some(mut row) = row(&tx, binding.task)?
+            && row.id == binding.id
+            && row.epoch == binding.epoch
+            && row.state == "preparing"
+            && Some(row.version) == binding.preparing_version
+        {
+            row.state = "invalid".into();
+            write(&tx, &mut row)?;
+            append_event(
+                &tx,
+                &row.pins.scope,
+                "execution.source_recovery_abandoned",
+                json!({"recovery":row.id,"epoch":row.epoch}),
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+}

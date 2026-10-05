@@ -374,6 +374,16 @@ impl ResultStore {
             .await?;
         io.validate()
     }
+    pub(crate) async fn verify_recovery(
+        &self,
+        artifact: &ResultArtifact,
+        binding: &crate::state::SourceReadBinding,
+    ) -> Result<()> {
+        let io = RetainedGit::for_recovery(self.owner.clone(), artifact, binding.clone())?;
+        self.verify_inner(artifact, RetainedReader::Historical(&io))
+            .await?;
+        io.validate()
+    }
     pub(crate) async fn workflow_publication(
         &self,
         authority: &ExecutionAuthority,

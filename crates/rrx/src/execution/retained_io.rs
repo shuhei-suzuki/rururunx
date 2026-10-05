@@ -15,6 +15,7 @@ pub(crate) struct RetainedGit {
     artifact: ResultArtifact,
     program: PathBuf,
     source_blobs: Mutex<BTreeSet<String>>,
+    recovery: Option<crate::state::SourceReadBinding>,
 }
 impl RetainedGit {
     pub(crate) fn new(owner: Arc<RuntimeOwner>, artifact: &ResultArtifact) -> Result<Self> {
@@ -30,7 +31,26 @@ impl RetainedGit {
             owner,
             artifact: artifact.clone(),
             source_blobs: Mutex::new(BTreeSet::new()),
+            recovery: None,
         })
+    }
+    pub(crate) fn for_recovery(
+        owner: Arc<RuntimeOwner>,
+        artifact: &ResultArtifact,
+        binding: crate::state::SourceReadBinding,
+    ) -> Result<Self> {
+        ensure!(
+            binding.owns_artifact(artifact.id),
+            "source-bound reader artifact differs"
+        );
+        owner
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("state poisoned"))?
+            .validate_source_read(&binding)?;
+        let mut io = Self::new(owner, artifact)?;
+        io.recovery = Some(binding);
+        Ok(io)
     }
     #[cfg(test)]
     pub(super) fn with_program(mut self, program: PathBuf) -> Self {
@@ -38,11 +58,16 @@ impl RetainedGit {
         self
     }
     pub(crate) fn validate(&self) -> Result<()> {
-        self.owner
+        let store = self
+            .owner
             .store
             .lock()
-            .map_err(|_| anyhow::anyhow!("state poisoned"))?
-            .validate_retained_inspection(self.owner.epoch, &self.artifact)
+            .map_err(|_| anyhow::anyhow!("state poisoned"))?;
+        store.validate_retained_inspection(self.owner.epoch, &self.artifact)?;
+        if let Some(binding) = &self.recovery {
+            store.validate_source_read(binding)?;
+        }
+        Ok(())
     }
     pub(crate) async fn run<const N: usize>(&self, args: [&str; N]) -> Result<Vec<u8>> {
         // No generic historical command capability. Inputs are exact refs/OIDs
@@ -94,12 +119,22 @@ impl RetainedGit {
                 .store
                 .lock()
                 .map_err(|_| anyhow::anyhow!("state poisoned"))?;
-            store.reserve_retained_inspection(
-                self.owner.epoch,
-                &self.artifact,
-                operation,
-                action,
-            )?;
+            if self.recovery.is_some() {
+                store.reserve_retained_inspection_bound(
+                    self.owner.epoch,
+                    &self.artifact,
+                    operation,
+                    action,
+                    self.recovery.as_ref(),
+                )?;
+            } else {
+                store.reserve_retained_inspection(
+                    self.owner.epoch,
+                    &self.artifact,
+                    operation,
+                    action,
+                )?;
+            }
             // There is no await/unlocked gap between durable intent and spawn.
             match process::OwnedProcess::spawn(&mut command) {
                 Ok(child) => child,
@@ -126,18 +161,34 @@ impl RetainedGit {
                 }
             }
         };
-        self.owner
-            .store
-            .lock()
-            .map_err(|_| anyhow::anyhow!("state poisoned"))?
-            .finish_retained_inspection(
-                self.owner.epoch,
-                &self.artifact,
-                operation,
-                observed.receipt.status.code(),
-                observed.receipt.group_error.is_some(),
-                &results::hex(self.program.as_os_str().as_bytes()),
-            )?;
+        {
+            let mut store = self
+                .owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?;
+            let program = results::hex(self.program.as_os_str().as_bytes());
+            if self.recovery.is_some() {
+                store.finish_retained_inspection_bound(
+                    self.owner.epoch,
+                    &self.artifact,
+                    operation,
+                    observed.receipt.status.code(),
+                    observed.receipt.group_error.is_some(),
+                    &program,
+                    self.recovery.as_ref(),
+                )?;
+            } else {
+                store.finish_retained_inspection(
+                    self.owner.epoch,
+                    &self.artifact,
+                    operation,
+                    observed.receipt.status.code(),
+                    observed.receipt.group_error.is_some(),
+                    &program,
+                )?;
+            }
+        }
         guard.disarm();
         ensure!(
             observed.receipt.status.success(),

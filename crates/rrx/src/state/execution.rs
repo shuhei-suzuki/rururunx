@@ -29,12 +29,14 @@ const MUTABLE_TABLES: &[&str] = &[
     "quota_waiters",
     "native_invocations",
     "native_results",
+    "source_recoveries",
 ];
 
 pub(super) fn install_schema(tx: &Transaction<'_>) -> Result<()> {
     migration::validate_legacy(tx)?;
     tx.execute_batch(include_str!("execution.sql"))?;
     native_results::install_schema(tx)?;
+    source_recovery::install_schema(tx)?;
     tx.execute(
         "INSERT INTO runtime_epoch(singleton,instance_id,epoch) VALUES(1,?1,0)",
         [Uuid::new_v4().to_string()],
@@ -126,6 +128,7 @@ fn checked_workflow_binding(
         project.version == r.project_version && goal.version == r.goal_version,
         "Workflow owner versions changed before unit reservation"
     );
+    source_recovery::validate_task(tx, task.id)?;
     let record: Record =
         read_tx(tx, "records", &r.record.to_string())?.context("Workflow reservation missing")?;
     ensure!(
@@ -392,6 +395,7 @@ fn validate_authority(
         "result finalization permission closed"
     );
     if native || finalize {
+        source_recovery::validate_task(tx, authority.scope.task_id.context("Task required")?)?;
         let project: Project = read_tx(tx, "projects", &unit.scope.project_id.to_string())?
             .context("unknown Project")?;
         let goal: Goal = read_tx(
@@ -483,6 +487,7 @@ impl Store {
             |r| Ok((r.get(0)?, r.get(1)?)),
         )?;
         let epoch = old.checked_add(1).context("owner epoch overflow")?;
+        source_recovery::invalidate_epoch(&tx)?;
         let mut statement=tx.prepare("SELECT id FROM execution_units WHERE native_effects_open=1 OR result_finalization_open=1")?;
         let units = statement
             .query_map([], |r| r.get::<_, String>(0))?
@@ -722,6 +727,7 @@ impl Store {
             .context("unknown Project")?;
         let goal: Goal =
             read_tx(&tx, "goals", &task.goal_id.to_string())?.context("unknown Goal")?;
+        let source_advance = source_recovery::before_write(&tx, task.id, false)?;
         let workflow_binding = reservation
             .map(|r| checked_workflow_binding(&tx, &task, &project, &goal, &unit, r))
             .transpose()?;
@@ -866,6 +872,7 @@ impl Store {
                 json!({"unit":unit.id,"workflow":record.id,"generation":unit.generation}),
             )?;
         }
+        source_recovery::after_write(&tx, source_advance, false)?;
         tx.commit()?;
         Ok(unit)
     }
@@ -1247,6 +1254,7 @@ fn effect_tx(connection: &Connection, id: OperationId) -> Result<ManagedEffect> 
 
 // Other state operations share the same connection and transaction helpers.
 mod artifacts;
+pub(super) mod source_recovery;
 pub(super) use artifacts::{complete_workflow_readonly_tx, publish_workflow_result_tx};
 pub(crate) mod cleanup;
 mod effects;

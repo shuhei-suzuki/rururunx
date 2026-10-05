@@ -12,7 +12,8 @@ use serde_json::{Value, json};
 
 use crate::domain::*;
 
-pub const SCHEMA_VERSION: i64 = 6;
+pub const SCHEMA_VERSION: i64 = 7;
+pub(crate) use execution::source_recovery::SourceReadBinding;
 mod execution;
 pub(crate) use execution::QuotaAdmission;
 pub(crate) use execution::cleanup::CleanupClaim;
@@ -154,6 +155,10 @@ impl Store {
                 if locked_version < 6 {
                     execution::native_results::validate_legacy_namespace(&tx)?;
                 }
+                if locked_version < 7 {
+                    execution::source_recovery::validate_legacy_namespace(&tx)?;
+                    execution::source_recovery::install_schema(&tx)?;
+                }
                 for next in (locked_version + 1)..=SCHEMA_VERSION {
                     if next == 4 {
                         execution::install_schema(&tx)?;
@@ -167,6 +172,9 @@ impl Store {
                     }
                     if next == 6 {
                         execution::native_results::install_schema(&tx)?;
+                        execution::install_writer_guards(&tx)?;
+                    }
+                    if next == 7 {
                         execution::install_writer_guards(&tx)?;
                     }
                     tx.pragma_update(None, "user_version", next)?;
@@ -487,6 +495,7 @@ impl Store {
             access,
             WorkflowAccess::TerminalDecision | WorkflowAccess::TerminalRecovery
         );
+        let source_advance = execution::source_recovery::before_write(&tx, task.id, conservative)?;
         if !conservative {
             ensure_project_registered(&tx, task.project_id)?;
         }
@@ -792,6 +801,7 @@ impl Store {
         }
         let next_task = put_task_tx(&tx, task)?;
         let next_workflow = put_record_tx(&tx, workflow)?;
+        execution::source_recovery::after_write(&tx, source_advance, conservative)?;
         tx.commit()?;
         *task = next_task;
         *workflow = next_workflow;
@@ -821,6 +831,11 @@ impl Store {
             latest.kind == RecordKind::Workflow && latest.scope == record.scope,
             "foreign workflow observation"
         );
+        let source_advance = execution::source_recovery::before_write(
+            &tx,
+            record.scope.task_id.context("Task required")?,
+            false,
+        )?;
         let mut workflow: crate::workflow::WorkflowSnapshot =
             serde_json::from_value(latest.data.clone())?;
         ensure!(
@@ -855,6 +870,7 @@ impl Store {
         attempt.observations.push(observation.clone());
         latest.data = serde_json::to_value(workflow)?;
         let next = put_record_tx(&tx, &latest)?;
+        execution::source_recovery::after_write(&tx, source_advance, false)?;
         append_event(
             &tx,
             &next.scope,
