@@ -75,6 +75,30 @@ mod custody_mechanics {
         .await;
         assert_eq!(pool.used(), 0);
     }
+    fn closed_runtime_observation<T: Send + 'static>(
+        operation: impl FnOnce() -> T + Send + 'static,
+    ) -> T {
+        let (sent, received) = std::sync::mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            let value = operation();
+            sent.send(value).unwrap();
+        });
+        match received.recv_timeout(Duration::from_secs(2)) {
+            Ok(value) => {
+                worker.join().unwrap();
+                value
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                match worker.join() {
+                    Err(payload) => std::panic::resume_unwind(payload),
+                    Ok(()) => panic!("closed-runtime helper returned no observation"),
+                }
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                panic!("closed scheduler cannot deadlock custodied task installation")
+            }
+        }
+    }
 
     #[tokio::test]
     async fn actual_err_return_retains_worker_then_join_reconciles_fresh_entry() {
@@ -310,27 +334,19 @@ mod custody_mechanics {
         let pool = Pool::isolated();
         let owner = control.clone();
         let reserved = pool.clone();
-        let (sent, received) = std::sync::mpsc::channel();
-        let worker = std::thread::spawn(move || {
+        // This future contains only TaskGuard, so its revocation is independently
+        // observed even when RegisteredTransition is absent.
+        closed_runtime_observation(move || {
             let _entered = handle.enter();
             owner.install_custody(reserved).unwrap();
             let guard = TaskGuard(owner.clone());
-            let result = owner.spawn(async move {
+            owner.spawn(async move {
                 let _guard = guard;
                 std::future::pending::<()>().await;
-            });
-            sent.send(result).unwrap();
-        });
-        // Exercise the actual custodied spawn/drop consumer. A deadlock mutant
-        // must fail within the existing bound instead of hanging the test suite.
-        // This closed-runtime fixture never queues a file or starts an OS child.
-        let result = received.recv_timeout(Duration::from_secs(2));
-        if result.is_ok() {
-            worker.join().unwrap();
-        }
-        result
-            .expect("closed scheduler cannot deadlock custodied task installation")
-            .unwrap();
+            })
+        })
+        .unwrap();
+        assert!(control.jobs_revoked(), "TaskGuard must revoke before Lost");
         let deadline = Instant::now() + Duration::from_secs(2);
         while pool.used() != 1 {
             pool.drain();
@@ -365,9 +381,18 @@ mod custody_mechanics {
         assert!(custody.outstanding_effects());
         assert!(!custody.created());
         control.abort_owned_task();
-        let error = calling.await.unwrap_err();
+        let error = tokio::time::timeout(Duration::from_secs(2), calling)
+            .await
+            .expect("abandoned actor must return its caller error")
+            .unwrap_err();
         assert_eq!(error.kind, ErrorKind::SessionLost);
-        assert!(matches!(control.wait_finished().await.unwrap(), Outcome::Lost { .. }));
+        assert!(matches!(
+            tokio::time::timeout(Duration::from_secs(2), control.wait_finished())
+                .await
+                .expect("abandoned actor must publish Lost")
+                .unwrap(),
+            Outcome::Lost { .. }
+        ));
         // Let every actual created job finish before asserting the refusal.
         // The cancelled actor remains Unknown; its slot is never refunded.
         release.release();
@@ -834,14 +859,17 @@ mod custody_mechanics {
             .unwrap();
         let handle = runtime.handle().clone();
         drop(runtime);
-        let _entered = handle.enter();
         let registered = adapter.register_fresh(owned.request.clone(), None).unwrap();
         let control = registered.transition.control.clone();
-        let error = adapter
-            .spawn_launch(registered)
-            .now_or_never()
-            .unwrap()
-            .unwrap_err();
+        let caller = adapter.clone();
+        let error = closed_runtime_observation(move || {
+            let _entered = handle.enter();
+            caller
+                .spawn_launch(registered)
+                .now_or_never()
+                .unwrap()
+                .unwrap_err()
+        });
         assert_eq!(error.kind, ErrorKind::SessionLost);
         assert!(adapter.registry().unwrap().is_empty());
         let deadline = Instant::now() + Duration::from_secs(2);
