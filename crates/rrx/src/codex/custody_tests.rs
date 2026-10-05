@@ -543,6 +543,39 @@ mod custody_mechanics {
     }
 
     #[tokio::test]
+    async fn worker_join_before_error_preserves_zero_effect_registry_disposition() {
+        let (owned, adapter, factory) = adapter();
+        let directory = tempfile::tempdir().unwrap();
+        let (file, mut release) = spec(directory.path().join("worker"), false, false, false);
+        factory.enqueue(file);
+        let gate = adapter.gates.install(TestPoint::AfterCustodyFactory);
+        let registered = adapter.register_fresh(owned.request.clone(), None).unwrap();
+        let control = registered.transition.control.clone();
+        let mut calling = Box::pin(adapter.spawn_launch(registered));
+        tokio::select! { _ = gate.reached() => {}, value = &mut calling => panic!("early return: {value:?}") }
+        let custody = control.custody().unwrap();
+        release.release();
+        wait(|| custody.worker_joined()).await;
+        assert!(!custody.outstanding());
+        assert!(
+            !custody.joined(),
+            "actor is still at its actual error-arm barrier"
+        );
+        gate.release();
+        calling.await.unwrap_err();
+        joined(&factory.pool, &control).await;
+        assert!(matches!(
+            control.wait_finished().await.unwrap(),
+            Outcome::FreshUnpublished { .. }
+        ));
+        assert!(
+            adapter.registry().unwrap().is_empty(),
+            "bookkeeping-only joins cannot strand original no-work removal"
+        );
+        assert_eq!(adapter.availability.sites(), [0; 10]);
+    }
+
+    #[tokio::test]
     async fn complete_job_capacity_refuses_before_factory_and_recovers_after_actual_joins() {
         let (owned, adapter, factory) = adapter();
         let directory = tempfile::tempdir().unwrap();
