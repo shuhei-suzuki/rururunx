@@ -12,9 +12,8 @@ UNKNOWN. Source5 e30 CI failed in one macOS Codex cleanup consumer; Linux all st
 passed. Normal main custody composition777 passed first local macOS full default
 Debug and distinct Release TEST, each445 top-level Rust tests+2docs/27ignored,
 plus quality/builds; two independent static composition approvals have no findings.
-CI37270293297 passed every step bothOS with tested-tree equality. Final docs-only
-checks remain before limited component merge, with whole60/native/backend/F1/MVP
-OPEN. No normative requirement changes or historical cause resolution are claimed.
+CI37270293297 passed every step bothOS with tested-tree equality. Final docs-only checks subsequently passed; the selected component merged
+through PR64 at6146b163, with whole60/native/backend/F1/MVP OPEN. No normative requirement changes or historical cause resolution are claimed.
 Full source/native acceptance remains unqualified; current facts are in
 the [verification ledger](../verification/issue-60-readers.md).
 The four requirements

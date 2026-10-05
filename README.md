@@ -440,13 +440,13 @@ Older35f0/fd406 and historical failures remain failed/cause AND regression UNKNO
 The default suite now includes a concurrent private audit child; no causal role is
 inferred. e295 public bothOS CI passed DEBUG TEST and RELEASE BUILD, not RELEASE
 TEST. Source5 e30 CI failed in one macOS Codex cleanup consumer; Linux all steps
-passed. The required final context remains unqualified, with cause/contribution/
+passed. That e30 failed context remains separately unqualified, with cause/contribution/
 regression UNKNOWN. Normal main custody composition777 now passed initial local
 macOS full default Debug and distinct Release TEST, each445 top-level Rust tests+
 2docs/27ignored, plus fmt/Clippy/both BUILDs. Two independent static reviews approve
 this finite composition without findings; CI37270293297 passed every step on both
-OS with complete tested-tree equality. Final docs-only checks precede any limited
-component merge. Whole60/native/backend/F1/MVP remain OPEN; these new observations
+OS with complete tested-tree equality. The final docs-only checks passed; the selected component was merged through
+PR64 at6146b163. Whole Issue60 remains open. Whole60/native/backend/F1/MVP remain OPEN; these new observations
 resolve no historical failure cause. The [finite ledger](doc/verification/issue-60-readers.md) is27 compiled runs/
 23 operators/25 intended kills/TWO masked survivors with zero credit; M14/M17 are
 diagnostics-only, R23 selector-non-vacuity only. Shared native lifetime and full #60/F1 remain open.
