@@ -105,6 +105,51 @@
       "assertion_failed": true,
       "source_restored": true,
       "sha256": "bb0dc9bcd27c9501ad0deb016c10fc7c5dce61cad3159f47d2fb8cad133a0d50"
+    },
+    {
+      "id": "E14",
+      "classification": "actual selected helper post-admission deadline",
+      "compiled": true,
+      "assertion_failed": true,
+      "exit_code": 101,
+      "source_restored": true,
+      "sha256": "ed785f30f85c246e6105fc842dd0994853050ce501155cdf46c4d8c8f46bbc36"
+    },
+    {
+      "id": "E15",
+      "classification": "actual ambient helper Some-only admission",
+      "compiled": true,
+      "assertion_failed": true,
+      "exit_code": 101,
+      "source_restored": true,
+      "sha256": "ed785f30f85c246e6105fc842dd0994853050ce501155cdf46c4d8c8f46bbc36"
+    },
+    {
+      "id": "E16",
+      "classification": "actual selected pre-CAS cancelled guard extra publication",
+      "compiled": true,
+      "assertion_failed": true,
+      "exit_code": 101,
+      "source_restored": true,
+      "sha256": "ed785f30f85c246e6105fc842dd0994853050ce501155cdf46c4d8c8f46bbc36"
+    },
+    {
+      "id": "E17",
+      "classification": "actual resume initial refusal before Starting and Git",
+      "compiled": true,
+      "assertion_failed": true,
+      "exit_code": 101,
+      "source_restored": true,
+      "sha256": "da5a8828b2ee17e4254b62741336b9e3980990246b2eccda2b2355726ad4077f"
+    },
+    {
+      "id": "E18",
+      "classification": "actual checkpoint roster capture/recheck",
+      "compiled": true,
+      "assertion_failed": true,
+      "exit_code": 101,
+      "source_restored": true,
+      "sha256": "fd89183bd48aea5dc0668cdfec9c25370272d9e87d925e84efa00e017726a20f"
     }
   ],
   "restored_control": {
@@ -121,6 +166,16 @@
     "E10 final server cancellation independently failed at Discovery; Main is not separately credited.",
     "Consumed, CheckpointCommitted and Failing pre-exec guards have unit controls only.",
     "Restoration matches five archived production source hashes; private archive is not the complete clean source tree.",
-    "Counters and direct selected-group cleanup are not whole native workload settlement."
-  ]
+    "Counters and direct selected-group cleanup are not whole native workload settlement.",
+    "Full-roster equality E18 independently failed at checkpoint; distinct start/resume kills are not credited."
+  ],
+  "additional_source_head": "9eeeb2073251d7fec37ae3949b654df053c382d4",
+  "additional_restored_control": {
+    "passed": 116,
+    "failed": 0,
+    "ignored": 2,
+    "seconds": 65.31,
+    "original_tool_exit": 0,
+    "scope": "archived affected Codex restoration; not clean-head acceptance"
+  }
 }

@@ -22,7 +22,7 @@ baseline names and caller names, never values. The Store streams current foreign
 The transaction preserves exact own P/G/T, Session and nullable lock guards.
 No shared Store/Grok/Generic/registry/schema implementation changes are planned.
 
-Current Codex consumers are:
+Pre-integration comparison consumers at main `768f843` were:
 
 - `CodexAdapter::new` and `owned_handles`; the current baseline is instead captured
   later by `prepare_launch` using `vars_os` after Starting/Git preparation.

@@ -327,3 +327,21 @@ second deadline without spawning, and unselected ambient Git ignoring the select
 callback/counters. These controls keep every production deadline, default internal
 concurrency, shared cleanup implementation and ordinary EMPTY availability unchanged.
 Their current committed results and independent source qualification are pending.
+
+
+At clean `9eeeb20`, the four Preparation controls passed in5.00s; current affected
+Codex DEFAULT release passed116/ignored2 in42.51s. Clippy all targets denied
+warnings and fmt passed. Five further archived mutants compiled/assertion-failed:
+post-admission original deadline, ambient Some-only exclusion, Cancelled pre-CAS
+extra publication, resume INITIAL refusal before Starting/Git and checkpoint
+full-roster equality. The last distinguishes checkpoint only; no start/resume
+roster kill is credited. After exact source restoration, archived affected Codex
+DEFAULT debug passed116/ignored2 in65.31s; original tool59663 exited0. The clean
+release and archived debug suites overlapped, recorded without timing/load/cause
+inference. Original release tool71699 exited0. Archived restoration never earns
+clean-head/native acceptance, and actual selected owner-group cleanup is not full
+workload containment/settlement. No whole-workspace failure has been rerun or cured.
+
+Debug workspace build passed12.15s and release workspace build passed65s at
+`9eeeb20`; these compile gates do not substitute the failed whole test runs or
+pending independent source/native acceptance.
