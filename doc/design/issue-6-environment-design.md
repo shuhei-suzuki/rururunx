@@ -62,7 +62,12 @@ Ok-value Debug or value-bearing assertion diagnostics. No process-wide environme
 mutation, credential extraction,
 different-per-Project native value routing or API-client auth substitution.
 
-Preserve ordered membership: discard non-UTF-8 names and ALL GIT_* names before
+Validate raw-pair well-formedness before discard or membership: a name containing
+NUL or `=`, or a value containing NUL, refuses the entire constructor with the fixed
+opaque environment error, even when that pair would otherwise be discarded. This
+is a conservative compatibility limitation, not a claim that arbitrary host
+environments or native defaults are supported. After that validation,
+preserve ordered membership: discard non-UTF-8 names and ALL GIT_* names before
 applying the whitelist, prefixes or suffix; never compare a lossy name. Baseline
 membership then retains the current Codex whitelist: HOME, PATH, SHELL, LANG,
 TERM, TMPDIR, TEMP, TMP, NODE_OPTIONS, NODE_PATH, SSL_CERT_FILE, SSL_CERT_DIR,

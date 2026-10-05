@@ -1,0 +1,74 @@
+{
+  "source_head": "6ac8cc40cc440f941a43c4f2a5479059397ef58d",
+  "scope": "Finite Source1 Low corrections; ordinary native availability EMPTY",
+  "controls": {
+    "all_test_targets_compile": {
+      "success": true,
+      "seconds": 9.71
+    },
+    "environment_units": {
+      "passed": 5,
+      "failed": 0,
+      "seconds": 0.02
+    },
+    "actual_environment_controls": {
+      "passed": 11,
+      "failed": 0,
+      "ignored": 1,
+      "seconds": 6.1,
+      "default_internal_concurrency": true,
+      "host_scope": true
+    },
+    "restored_private_archive_control": {
+      "passed": 1,
+      "failed": 0,
+      "seconds": 1.81,
+      "not_clean_head_acceptance": true
+    }
+  },
+  "mutants": [
+    {
+      "id": "E19",
+      "source_head": "6ac8cc40cc440f941a43c4f2a5479059397ef58d",
+      "classification": "actual consumed-admission missing-selection intent mutation",
+      "compiled": true,
+      "exit_code": 101,
+      "assertion_failed": "unchanged exact Session before any Store write",
+      "source_restored": true,
+      "log_sha256": "9b24c92b348cec7de405eb7efa09b9552b1df4bc5e7ec8cb5c013a1b62d2f192"
+    },
+    {
+      "id": "E20",
+      "source_head": "6ac8cc40cc440f941a43c4f2a5479059397ef58d",
+      "classification": "actual bounded version requires selected callback",
+      "compiled": true,
+      "exit_code": 101,
+      "assertion_failed": "selected version omitted its last admission",
+      "source_restored": true,
+      "log_sha256": "ce821e95edc03b3808f3a86d788043781561633d17874d6bdf7746880b4af151"
+    },
+    {
+      "id": "E21",
+      "source_head": "6ac8cc40cc440f941a43c4f2a5479059397ef58d",
+      "classification": "actual native server requires selected callback",
+      "compiled": true,
+      "exit_code": 101,
+      "assertion_failed": "selected server omitted its last admission after actual shutdown returned Ok",
+      "source_restored": true,
+      "log_sha256": "7408620e9ade0a8a34778f2b6e8e000a3de6d0b808a07996ca6ac182045798f8"
+    }
+  ],
+  "log_sha256": {
+    "rururunx-issue6-env-lowfix-6ac-compile.log": "335ce6dc04474ea0822584cebee955b7d84da9c1aad73e002a858c4f67ff54e1",
+    "rururunx-issue6-env-lowfix-6ac-unit.log": "012cb7e1334f7c0778fd1d91a90a380949c176a0389f82ce4fea7ca117bbeed0",
+    "rururunx-issue6-env-lowfix-6ac-controls.log": "b31e460487e4de25a5c09339f37c108284e5e861a08273dcb11db42c108acae6",
+    "rururunx-issue6-env-lowfix-restored.log": "ef86bdfe5fd37d3097d1ff6cf7bba6645fb6abe5f93c4dee9b0d912a647a3897"
+  },
+  "limits": [
+    "No native auth/model inference or native workload cohort proof.",
+    "Selected group cleanup in synthetic helper controls is not all-descendant containment or historical held-wrapper release.",
+    "Old full debug/release and Mac CI failures remain preserved, cause unknown.",
+    "The additional-control table is a unit classification control; no omission mutation credit for that table.",
+    "Raw-pair refusal is preserved as an explicit conservative constructor compatibility limitation."
+  ]
+}

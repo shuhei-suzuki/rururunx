@@ -384,5 +384,15 @@ Initial refusal prose now matches the actual own-Project reread: a differing own
 snapshot yields StateConflict, while unchanged own metadata retains the opaque
 environment refusal. Added controls distinguish own-first malformed-input order,
 the exact EMPTY additional-control classification, and rejecting own-ref edits at
-Initial/Version/Discovery/Main. Their current execution results are pending; no
+Initial/Version/Discovery/Main. On clean `6ac8cc4`, all test targets compiled and
+the five environment units passed. Default synthetic environment controls passed
+11/failed0/ignored1 in6.10s. Three private omission sensitivities compiled and
+failed the intended intent/version/server assertions; all files were byte-restored
+and the restored control passed1 in1.81s. The latter is archive control evidence,
+not clean-head acceptance. Exact records are adjacent. No
 new backend, credential provenance, native compatibility or cleanup proof follows.
+Raw-pair behavior is unchanged: malformed name/value well-formedness is checked
+before discard or membership and can reject a pair that would otherwise be
+excluded. Root accepted this finite prose alignment with the reviewed constructor
+refusal. It is an explicit conservative compatibility limitation; no ambient-value
+restoration, additional control or broader native-default compatibility is claimed.
