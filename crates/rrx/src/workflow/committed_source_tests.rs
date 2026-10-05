@@ -74,6 +74,30 @@ struct Fixture {
     project_root: std::path::PathBuf,
 }
 impl Fixture {
+    fn production_engine(&self, control: &'static str) -> WorkflowEngine {
+        {
+            let mut store = self.owner.store.lock().unwrap();
+            let mut task = store.task(self.task.id).unwrap().unwrap();
+            task.acceptance_criteria = vec!["retain the committed answer".into()];
+            store.put_task(&mut task).unwrap();
+        }
+        WorkflowEngine::new(
+            self.owner.store(),
+            self.registry.clone(),
+            self.config.clone(),
+            self.sources.clone(),
+            Arc::new(ProductionControl {
+                gate: execution::workflow_gates::ManagedWorkflowGates::new(
+                    self.owner.clone(),
+                    self.sources.clone(),
+                )
+                .unwrap(),
+                owner: self.owner.clone(),
+                control,
+            }),
+        )
+        .unwrap()
+    }
     async fn new(provider: &str, class: WorkflowClass) -> Self {
         let (dir, owner, seed_task) = results::tests::fixture().await;
         let mut task = Task::new(
@@ -238,6 +262,272 @@ impl Fixture {
                 .unwrap()
                 .is_empty()
         );
+    }
+}
+
+struct ProductionControl {
+    gate: execution::workflow_gates::ManagedWorkflowGates,
+    owner: Arc<execution::RuntimeOwner>,
+    control: &'static str,
+}
+impl PhaseGates for ProductionControl {
+    fn complete(
+        &self,
+        invocation: PhaseInvocation,
+        mut transport: Option<SessionStatus>,
+    ) -> WorkflowFuture<'_, GateOutcome> {
+        Box::pin(async move {
+            if invocation.phase == Phase::Implement {
+                if self.control == "terminal" {
+                    transport.as_mut().unwrap().execution.as_mut().unwrap().work =
+                        Some(WorkOutcome::Failure);
+                }
+                if self.control == "manifest" {
+                    let artifact = self
+                        .owner
+                        .store
+                        .lock()
+                        .unwrap()
+                        .result_artifact(invocation.sources.artifact.unwrap())
+                        .unwrap();
+                    std::fs::write(artifact.manifest, "corrupt").unwrap();
+                }
+            }
+            self.gate.complete(invocation, transport).await
+        })
+    }
+}
+
+#[tokio::test]
+async fn production_gates_observe_real_preparation_native_result_and_commit_but_wait_for_tests() {
+    for provider in ["claude", "codex"] {
+        let f = Fixture::new(provider, WorkflowClass::Quick).await;
+        let engine = f.production_engine("pass");
+        let prepared = f.sources.prepare(f.task.id, provider).await.unwrap();
+        engine.initialize(f.task.id, None).await.unwrap();
+        early_phases(&engine, f.task.id, WorkflowClass::Quick).await;
+        f.assert_no_native(prepared.id);
+        assert!(matches!(
+            engine.step(f.task.id, BTreeMap::new()).await.unwrap(),
+            StepResult::Started {
+                phase: Phase::Implement,
+                session: Some(_)
+            }
+        ));
+        let snapshot = engine.snapshot(f.task.id).unwrap();
+        let identity = snapshot.history[snapshot.active.unwrap()]
+            .execution
+            .as_ref()
+            .unwrap()
+            .clone();
+        assert_eq!(identity.unit, prepared.id);
+        let current = f
+            .owner
+            .store
+            .lock()
+            .unwrap()
+            .execution_unit(identity.unit)
+            .unwrap();
+        let output = execution::resources::ResourceManager::new(f.owner.clone())
+            .profile(&current)
+            .unwrap()
+            .output;
+        wait_file(&output.join("fixture-ready")).await;
+        std::fs::write(output.join("fixture-release"), "done").unwrap();
+        let adapter = f.registry.get("native-alias").unwrap();
+        tokio::time::timeout(Duration::from_secs(15), async {
+            loop {
+                if adapter
+                    .status(SessionRef {
+                        id: identity.session,
+                        scope: identity.scope.clone(),
+                        execution: Some(identity.clone()),
+                    })
+                    .await
+                    .unwrap()
+                    .terminal()
+                {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .unwrap();
+        assert!(matches!(
+            engine.step(f.task.id, BTreeMap::new()).await.unwrap(),
+            StepResult::Completed {
+                phase: Phase::Implement
+            }
+        ));
+        assert!(matches!(
+            engine.step(f.task.id, BTreeMap::new()).await.unwrap(),
+            StepResult::Completed {
+                phase: Phase::Commit
+            }
+        ));
+        assert!(matches!(
+            engine.step(f.task.id, BTreeMap::new()).await.unwrap(),
+            StepResult::Waiting {
+                phase: Phase::Tests,
+                ..
+            }
+        ));
+        let store = f.owner.store.lock().unwrap();
+        let artifacts = store.result_artifacts(&f.task.scope()).unwrap();
+        assert_eq!(artifacts.len(), 1);
+        assert_eq!(artifacts[0].state, execution::ArtifactState::Published);
+        let receipts = store
+            .records(&f.task.scope(), RecordKind::Verification)
+            .unwrap();
+        assert_eq!(receipts.len(), 3);
+        for record in receipts {
+            assert_eq!(record.data["schema"], "managed_workflow_gate_v1");
+            assert_eq!(
+                record.data["context_data_sha256"].as_str().unwrap().len(),
+                64
+            );
+            assert_eq!(store.record(record.id).unwrap().unwrap().data, record.data);
+        }
+        drop(store);
+        // A survivor can alter its abandoned workspace; commit evidence stays pinned.
+        std::fs::write(prepared.worktree.join("answer.txt"), "survivor\n").unwrap();
+        results::ResultStore::new(f.owner.clone())
+            .verify(&artifacts[0])
+            .await
+            .unwrap();
+        engine.cancel(f.task.id, "fixture complete".into()).unwrap();
+    }
+}
+
+#[tokio::test]
+async fn production_initial_gates_refuse_dirty_preparation_and_wait_for_missing_specification() {
+    for control in ["dirty", "spec", "standard"] {
+        let class = if control == "standard" {
+            WorkflowClass::Standard
+        } else {
+            WorkflowClass::Quick
+        };
+        let f = Fixture::new("codex", class).await;
+        let engine = f.production_engine("pass");
+        if control == "spec" {
+            let mut store = f.owner.store.lock().unwrap();
+            let mut task = store.task(f.task.id).unwrap().unwrap();
+            task.acceptance_criteria.clear();
+            store.put_task(&mut task).unwrap();
+        }
+        let prepared = f.sources.prepare(f.task.id, "codex").await.unwrap();
+        engine.initialize(f.task.id, None).await.unwrap();
+        if control == "dirty" {
+            std::fs::write(prepared.worktree.join("answer.txt"), "dirty\n").unwrap();
+        }
+        let result = engine.step(f.task.id, BTreeMap::new()).await.unwrap();
+        if control == "standard" {
+            assert!(matches!(
+                result,
+                StepResult::Completed {
+                    phase: Phase::Issue
+                }
+            ));
+            early_phases(&engine, f.task.id, WorkflowClass::Quick).await;
+        } else {
+            assert!(
+                matches!(
+                    result,
+                    StepResult::Waiting {
+                        phase: Phase::Worktree,
+                        ..
+                    }
+                ),
+                "{control}: {result:?}"
+            );
+            assert!(
+                f.owner
+                    .store
+                    .lock()
+                    .unwrap()
+                    .records(&f.task.scope(), RecordKind::Verification)
+                    .unwrap()
+                    .is_empty()
+            );
+        }
+        f.assert_no_native(prepared.id);
+        engine.cancel(f.task.id, "fixture complete".into()).unwrap();
+    }
+}
+
+#[tokio::test]
+async fn production_gate_rejects_forged_success_and_corrupted_retained_manifest() {
+    for control in ["terminal", "manifest"] {
+        let f = Fixture::new("codex", WorkflowClass::Quick).await;
+        let engine = f.production_engine(control);
+        let prepared = f.sources.prepare(f.task.id, "codex").await.unwrap();
+        engine.initialize(f.task.id, None).await.unwrap();
+        early_phases(&engine, f.task.id, WorkflowClass::Quick).await;
+        engine.step(f.task.id, BTreeMap::new()).await.unwrap();
+        let snapshot = engine.snapshot(f.task.id).unwrap();
+        let identity = snapshot.history[snapshot.active.unwrap()]
+            .execution
+            .as_ref()
+            .unwrap()
+            .clone();
+        let current = f
+            .owner
+            .store
+            .lock()
+            .unwrap()
+            .execution_unit(prepared.id)
+            .unwrap();
+        let output = execution::resources::ResourceManager::new(f.owner.clone())
+            .profile(&current)
+            .unwrap()
+            .output;
+        wait_file(&output.join("fixture-ready")).await;
+        std::fs::write(output.join("fixture-release"), "done").unwrap();
+        let adapter = f.registry.get("native-alias").unwrap();
+        tokio::time::timeout(Duration::from_secs(15), async {
+            loop {
+                if adapter
+                    .status(SessionRef {
+                        id: identity.session,
+                        scope: identity.scope.clone(),
+                        execution: Some(identity.clone()),
+                    })
+                    .await
+                    .unwrap()
+                    .terminal()
+                {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .unwrap();
+        let result = engine.step(f.task.id, BTreeMap::new()).await.unwrap();
+        assert!(
+            matches!(
+                result,
+                StepResult::Waiting {
+                    phase: Phase::Implement,
+                    ..
+                }
+            ),
+            "{control}: {result:?}"
+        );
+        let snapshot = engine.snapshot(f.task.id).unwrap();
+        assert!(!snapshot.completed.contains_key(&Phase::Implement));
+        assert!(
+            f.owner
+                .store
+                .lock()
+                .unwrap()
+                .result_artifacts(&f.task.scope())
+                .unwrap()
+                .iter()
+                .all(|a| a.state != execution::ArtifactState::Published)
+        );
+        engine.cancel(f.task.id, "fixture complete".into()).unwrap();
     }
 }
 

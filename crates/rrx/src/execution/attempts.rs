@@ -39,6 +39,52 @@ impl PreparedExecutor {
     pub fn unit(&self) -> &ExecutionUnit {
         &self.unit
     }
+    pub(crate) async fn verify_namespace(&self) -> Result<()> {
+        let (task, project) = {
+            let store = self
+                .owner
+                .store
+                .lock()
+                .map_err(|_| anyhow::anyhow!("state poisoned"))?;
+            let current = store.validate_execution(&self.unit.authority(), true, true)?;
+            ensure!(
+                current.kind == UnitKind::Executor
+                    && current.phase == WORKFLOW_SOURCE_BOOTSTRAP
+                    && current.state == UnitState::Preparing
+                    && current.work.is_none()
+                    && current.session_id.is_none()
+                    && current.artifact_id.is_none(),
+                "invalid live preparation"
+            );
+            let task = store
+                .task(self.unit.scope.task_id.context("Task required")?)?
+                .context("Task missing")?;
+            let project = store.project(task.project_id)?.context("Project missing")?;
+            (task, project)
+        };
+        let lease = self.owner.git_lease(self.unit.id, None).await?;
+        let io = UnitGit::new(self.owner.clone(), &self.unit, true)?.with_git_lease(lease);
+        io.ownership(&project, &task).await?;
+        ensure!(
+            io.text(&self.unit.worktree, ["rev-parse", "HEAD"]).await? == self.unit.base_sha,
+            "prepared worktree HEAD changed"
+        );
+        ensure!(
+            io.run(
+                &self.unit.worktree,
+                ["status", "--porcelain", "--untracked-files=all"]
+            )
+            .await?
+            .is_empty(),
+            "prepared worktree changed before initial gate"
+        );
+        self.owner
+            .store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("state poisoned"))?
+            .validate_execution(&self.unit.authority(), true, true)?;
+        Ok(())
+    }
     #[allow(clippy::too_many_arguments)]
     pub(crate) async fn adopt(
         mut self,

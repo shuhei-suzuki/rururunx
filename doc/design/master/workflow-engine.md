@@ -8,6 +8,14 @@ remain baseline descriptions, not acceptance of that proposal.
 **Status:** Rust phase runner implemented (Issue #8); dependent integrations pending
 **Scope:** MVP workflow orchestration
 
+The incremental [production gate integration](../production-workflow-gates-design.md)
+adds a concrete library port for real initial preparation, Implement terminal/result
+and retained commit observations. Its receipts are diagnostic; existing Workflow
+CAS and private atomic publication remain acceptance authority. Requirements,
+Design, ImpactAnalysis and review/test/external phases explicitly wait for their
+qualified integrations. Runtime/CLI wiring and native qualification remain pending;
+this port alone cannot complete a Task.
+
 ## 1. Goal
 
 Represent the current development process as an executable stateful workflow while allowing lighter paths for small changes.

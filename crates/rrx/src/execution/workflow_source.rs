@@ -90,6 +90,37 @@ impl InitialWorkflowExecutor {
     }
 }
 impl ManagedWorkflowSources {
+    pub(crate) fn belongs_to(&self, owner: &Arc<RuntimeOwner>) -> bool {
+        Arc::ptr_eq(&self.owner, owner)
+    }
+    pub(crate) async fn verify_initial(
+        &self,
+        project: &Project,
+        task: &Task,
+        phase: Phase,
+        budget: &ContextBudget,
+        expected: &SourceSnapshot,
+    ) -> Result<ExecutionUnit> {
+        let frame = self.frame(project, task).await?;
+        ensure!(
+            matches!(phase, Phase::Issue | Phase::Worktree)
+                && frame.artifact.is_none()
+                && frame.render(task, phase, budget)? == *expected,
+            "initial gate differs from prepared committed input"
+        );
+        let slot = self.slot(task.id)?;
+        let state = slot.lock().await;
+        let prepared = state
+            .as_ref()
+            .and_then(|s| s.prepared.as_ref())
+            .context("live initial preparation capability unavailable")?;
+        ensure!(
+            prepared.unit().scope == task.scope() && prepared.unit().base_sha == frame.revision,
+            "initial preparation identity changed"
+        );
+        prepared.verify_namespace().await?;
+        Ok(prepared.unit().clone())
+    }
     pub fn new(owner: Arc<RuntimeOwner>, runtime: Config) -> Result<Self> {
         runtime.validate()?;
         Ok(Self {
