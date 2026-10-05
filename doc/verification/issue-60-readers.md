@@ -450,7 +450,8 @@ actual worker has already finished during the output window; late actual joins
 can release slots while the caller flag/Context latch remain frozen.
 
 Capacity expiry now keeps original ErrorKind::Timeout/prefix and adds finite
-capacity_unavailable facts only after actual admission waiting. Units are
+capacity_unavailable facts only after actual admission waiting. Counts are sampled at expiry with a fresh pool lock, not at the last refusal;
+a racing release/admission may yield less than64. Units are
 derived Rust work-job slots: active_jobs and retained_unresolved_jobs, each
 saturating at64, four per record; counts expose no identities or fresh process
 inspection. Internal never-cleared retention marks early Unknown publication
@@ -482,8 +483,9 @@ units, four per record. An actual mixed pool requires56 active/8 retained jobs.
 
 A separate preallocated endpoint vault removes reader registration's dependency
 on the native mutex held during first cleanup/inspection/wait. The actual consumer
-observes both reader handles created while that mutex is held, aborts and awaits
-actual caller-task cancellation, then releases held stages and requires late
+observes both reader handles created while that mutex is held after a direct
+ticket.cancel(), then aborts and awaits caller-task teardown before releasing
+held stages and requiring late
 actual settlement. Actual post-initialization pause entries/handle facts replace
 the early mutex proxy:16 actual Children/32 handles and4 Children/8 handles.
 No successful read/CPU-concurrency fact is inferred. Dead defensive predicates are
@@ -532,3 +534,33 @@ regression still UNKNOWN, no gate/native availability credit or all-operation/
 nested-resource completeness. Actual private source was restored exactly to35f0
 and is clean; diagnostic code never enters the production candidate. Finite
 raw-report/log hashes and restored head appear in the Source2 gates artifact.
+
+
+### Source2 component findings verified; limited Source3 delta pending
+
+Both native Source2 reviews at81e7c29 completed APPROVE/no C/H/M, two Low each,
+actual owned cleanup TRUE. They independently verified every prior Medium/Low
+correction and exact changed-source equality to35f0. Their approvals address the
+component-defect question only: they explicitly retain both full-suite failures,
+required CI provenance and whole60/F1/native/recovery limitations. The raw outcomes
+are preserved unchanged in Source2 findings; launch-time pending notes do not
+silently become source/native acceptance when later observations complete.
+
+Three distinct Low items are verified. The already-expired API control lacked
+an exact-message assertion; it now requires the bare original Timeout message.
+Its condition mutant will receive diagnostic-branch credit only. A separate
+waited-then-expired-after-release re-entry control remains unexecuted and receives
+no coverage credit; no new production hook or diagnostic behavior is added.
+Capacity counts are a fresh snapshot at expiry, not the last locked refusal,
+so a racing release/admission may produce counts below64; this is derived pressure
+only, never effect/cleanup authority. Reader-registration R15 is driven by direct
+ticket.cancel(); the later actual caller abort proves teardown only. Credit is
+native-mutex-independent registration, not CallGuard cancellation delivery.
+Actual caller-drop wiring is covered separately by existing R05/Generic/Context
+controls. No production code, deadline, reader, signal or cleanup change.
+
+Other explicit finite coverage limits remain: production retained-occupancy is not
+asserted before/after destructive private controls; the private carrier cannot
+fallback in current code, but that does not execute an occupancy invariant. Missing
+individual guard operators listed in the raw review retain zero credit. Selected
+controls, diagnostic probes and builds cannot close current full TEST failures.

@@ -69,6 +69,7 @@ async fn expired_refusal_precedes_capacity_and_has_no_job_or_flag() {
     .await
     .unwrap_err();
     assert_eq!(result.kind, ErrorKind::Timeout);
+    assert_eq!(result.message, "Git ownership preflight timed out");
     assert!(!flag.load(Ordering::SeqCst));
     released(&context).await;
 }

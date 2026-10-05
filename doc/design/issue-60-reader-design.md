@@ -471,8 +471,9 @@ amend the approved design or grant full native/runtime-workload settlement.
 The source at35f0 keeps reap-cutoff observation authoritative: even an actual wait
 finishing during the output window cannot clear frozen caller facts after that
 cutoff. Its later joined resources may release capacity without revising the
-returned Unknown. Admission diagnostics count derived Rust work-job slots under
-the short pool lock: four per active or retained-unresolved record, saturating64;
+returned Unknown. Admission diagnostics sample at expiry using a fresh short pool lock, not
+the last locked refusal. Racing release/admission may leave counts below64;
+the diagnostic grants no effect authority. Counts use derived Rust work-job slots: four per active or retained-unresolved record, saturating64;
 poison reports unavailable, never fabricated occupancy. Only a request that
 actually waited for capacity receives that suffix. These implement existing
 Requirements4/Design2, with no new availability certificate or WHAT contract.

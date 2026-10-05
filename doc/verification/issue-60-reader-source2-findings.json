@@ -1,0 +1,198 @@
+{
+  "reviewed_head": "81e7c29ce2cc51746308874a57f8bc9aed888dc1",
+  "both_closed_and_cleanup_verified": true,
+  "scope": "Component-defect delta approval ONLY; both current full TEST failures/merge/native/F1 acceptance unresolved",
+  "reviews": {
+    "ownership": {
+      "raw_sha256": "0df088cfcf7d6beee5605a930dd77b6b1ce4b26695a498f71c169f06dd62f294",
+      "result": {
+        "head": "81e7c29ce2cc51746308874a57f8bc9aed888dc1",
+        "section": "reader-source2-ownership",
+        "native_session": "9ca55497-81c2-4c61-8bb4-e1eacdbadb8f",
+        "review": {
+          "verdict": "approve",
+          "assessment": "Delta re-review of public 81e7c29 against approved Requirements4 and Design2, using the full current files and the exact a92c4d0..81e7c29 diff. Scope is the selected Git process-local owner only. The four changed source blobs in the diff (git_owner.rs 39822ff, git_owner/tests.rs 5078115, context.rs e33f13a, grok/reader_tests.rs 355db61) equal the blobs in the 35f0cda Source2 gate ledger. adapter.rs (31f7236) and the other production consumers are unchanged since a92c4d0.\n\nEach prior finding was checked against the current code:\n\n- **R60-S1-01 (late reap renamed in-budget): fixed.** At git_owner.rs:1164-1165, settled is now `!reap_pending && native_settled && readers.settled()`. An actual wait that finishes after the real 250 ms cutoff (1076-1077) therefore publishes Unknown (1166-1175) and is awaited late on the same wait channel (1178-1180). supervise then performs the late reader joins and the actual worker join, destroys the vaults and releases the slots (885-915). The caller already holds a FrozenUnknown result, so nothing clears the flag. The cfg(test) hook holds the actual worker between the cleanup ACK and Child::wait (1344-1348), then the supervisor releases it after the real cutoff (1079-1092). No reap is synthesized, and no job or budget is added. The direct flag, Context latch and Grok saved-Lost/reservation controls (tests.rs:778-800, context.rs:1398-1420, reader_tests.rs:51-88) exercise this interval. The baseline failed at cba8728 and R13 kills the Context consumer.\n- **R60-S1-02 / CAP-1 (missing capacity facts): fixed.** Only a request that actually waited (54, 58-60, 88-91) gets `capacity_unavailable{active_jobs,retained_unresolved_jobs}` (187-210). Counts are in work-job slots, four per record, saturating at 64, taken under the short pool lock; a poisoned pool reports `occupancy=unavailable`. The Timeout kind and the original prefix are kept. The retained bit is never cleared and is set in owner_loss (500) and in every unsettled publish (546-548), so early Unknown, owner loss and late-settling records count as retained-unresolved until an actual release removes the row. The mixed-pressure control (56/8, no new record, refusal flag untouched) is backed by R14.\n- **CAP-2: fixed.** A separate preallocated Endpoints vault (596, 633-637) is filled from the anchored Child only after valid binding, before the spawned stage, with lock order native then endpoints (1288-1293). Reader registration locks only endpoints (962-1024). Before the worker join, the supervisor never takes the native mutex; its only remaining native access is at 910, after the join. Invalid binding still leaves the endpoints in the Child (asserted at tests.rs:876). R15 shows that reintroducing the native lock blocks the post-initialization stage.\n- **R60-S1-03 / CAP-3: fixed.** Post-initialization pause-entry counters (349, 357) and per-record reader_lanes (1026-1029) replace the pre-spawn mutex proxy: 16 actual Children / 32 handles, and 4 / 8.\n- **R60-S1-04 / CAP-4: fixed.** The dead caller-flag and terminal-error predicates and the native_terminal_error field are removed. Every Retained publication is forced to settled=false (149-152).\n- **R60-S1-05: fixed.** TestGitContext has no Default, and run() panics instead of falling back to the production pool (421-422).\n\nI found no new jobs, threads, tasks, deadlines, signals or waits, and no change to inspector, error-precedence or consumer equations. Lock order stays acyclic: native then endpoints only; publication is never nested with a vault; admission_timeout holds only the short pool lock. No new Critical, High or Medium component defect was found. The two Low items below concern test and credit precision only.\n\nThis approval is limited to that component-defect question for the selected owner source. It is not source, merge, full-gate, whole60, F1, native3/runtime16, recovery or availability acceptance, and it makes no inference about the cause or regression status of any failure.",
+          "findings": [
+            {
+              "id": "R60-S2-01",
+              "severity": "Low",
+              "file": "crates/rrx/src/adapter/git_owner.rs",
+              "line": 58,
+              "claim": "The ledger claim that the already-expired initial deadline keeps the unchanged text has no exact-message control, and the waited-then-expired-on-re-entry branch is not separately exercised.",
+              "evidence": "Lines 57-64 select admission_timeout() only when waited_for_capacity is set, and otherwise return the bare 'Git ownership preflight timed out'. expired_refusal_precedes_capacity_and_has_no_job_or_flag (tests.rs:56-74) asserts only kind==Timeout and a false flag. A mutant that drops or inverts the waited_for_capacity condition would therefore survive. The saturation and mixed controls (tests.rs:293-336, 1070-1086) normally expire through the timeout_at map_err at 89-91, not through the 58-60 re-entry branch. The verification ledger states 'Already-expired initial deadline and observation/cancel texts stay unchanged'.",
+              "fix": "Add exact-message assertions: the bare text for the already-expired request (ideally against a non-empty pool, to prove no suffix leaks), and the suffixed text for a request that was woken by a release and then expired. Then compile and kill a mutant of the waited_for_capacity condition. This affects diagnostic credit only; no production change is needed."
+            },
+            {
+              "id": "R60-S2-02",
+              "severity": "Low",
+              "file": "crates/rrx/src/adapter/git_owner/tests.rs",
+              "line": 818,
+              "claim": "In the reader-registration control, the native-mutex-held state is driven by a direct ticket.cancel() rather than by the caller's CallGuard drop. The later caller abort therefore has no causal role in the cancellation.",
+              "evidence": "Line 818 calls record.ticket.cancel() while the caller is still live. This sets the cancel bit, sets FrozenUnknown and sends the gated Cancel, which drives first_cleanup under the native mutex (git_owner.rs:1308-1321). The later call.abort() (tests.rs:831) drops CallGuard, whose cancel() is then a no-op because cancel.swap already returned true (git_owner.rs:488). The control and R15 still validly prove that reader registration does not depend on the native mutex. The ledger phrase 'aborts and awaits actual caller-task cancellation' describes caller teardown, not the source of the cancel.",
+              "fix": "Either abort the caller task first so that CallGuard::drop is the cancel source, or state in the ledger that the cancel is a direct ticket invocation. Limit R15 credit to registration independence from the native mutex; CallGuard Cancel wiring is covered separately by R05."
+            }
+          ],
+          "unresolved_blockers": [
+            "Full DEFAULT Debug at 35f0cda FAILED: library 306 PASS / 3 FAIL / 24 ignored. The own-start child failed at the StateConflict-prefix assertion with the actual failure value absent; the unrelated checkpoint and resume children hit the 60 s watchdog and were SIGKILLed. Later workspace targets did not execute. Cause and regression are UNKNOWN.",
+            "Full DEFAULT Release at 35f0cda FAILED: library 307 PASS / 2 FAIL / 24 ignored (checkpoint and resume watchdog SIGKILL), unlike the earlier 5b09 Release pass. Cause and regression are UNKNOWN. As a factual margin only: the passing private probe 2 finished those children at about 56.9 s and 57.0 s against the unchanged 60 s watchdog. This is not a cause claim.",
+            "The historical 9c574a2 and 1b37c78 Debug and Release failures, the 5b09 Debug failure, and the Source1 public CI 37253446382 (Ubuntu FAIL, macOS fail-fast CANCELLED) all remain failed and unqualified.",
+            "Public both-OS CI for 81e7c29 with actual checkout, parents and tree proof is pending. There is no Linux execution evidence yet for the new controls or for the Git-local signal resolution (Linux PERM must stay Unknown; Ok and SRCH succeed).",
+            "The second independent Source2 review and any fix or re-review are still pending. PR64 remains a draft.",
+            "Mutation coverage is finite. R01-R12 ran at earlier heads; their guard lines are still present but were not rerun at this head. Operators are still missing for: the Spawning authorization cancel check (853), the worker AuthorizeSpawn cancel/lost check (1228-1229), the release poison/lost skip (179), first_cleanup signal-outcome parity on both OS (1389-1424), the forced Retained settled=false (151, defensive), the waited_for_capacity text branch (58-64), and the endpoint-transfer guard (1288-1293).",
+            "No control asserts that production-pool retained occupancy is unchanged after the private destructive controls (Design2 lines 378-380). Removing the fallback turns misuse into a panic, but the asserted invariant remains unexecuted.",
+            "The capacity counts are diagnostics only. Global 64-slot cross-Project coupling, permanent retention and exhaustion after ambiguous Errs or cleanup/reap Unknown, fairness (#50), and retry amplification remain explicitly OPEN. There is no recovery or release port.",
+            "These remain unmigrated and OPEN: the Generic and Grok Tokio post-spawn wrapper Err paths, synchronous git.rs, the Codex private Git copies, the Grok checkpoint-to-resume Unknown fence, and shared ProcessGroup new/reap/Drop.",
+            "Whole Issue60, F1, native3/runtime16 mixed-workload acceptance, durable restart and recovery, and effect, delegation and producer authority remain OPEN. This component certifies only selected Git process-local custody."
+          ]
+        },
+        "usage": {
+          "input_tokens": 2,
+          "cache_creation_input_tokens": 664820,
+          "cache_read_input_tokens": 2160,
+          "output_tokens": 24178,
+          "output_tokens_details": {
+            "thinking_tokens": 20600
+          },
+          "server_tool_use": {
+            "web_search_requests": 0,
+            "web_fetch_requests": 0
+          },
+          "service_tier": "standard",
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 664820,
+            "ephemeral_5m_input_tokens": 0
+          },
+          "inference_geo": "not_available",
+          "iterations": [
+            {
+              "input_tokens": 2,
+              "output_tokens": 24178,
+              "cache_read_input_tokens": 2160,
+              "cache_creation_input_tokens": 664820,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 664820
+              },
+              "type": "message"
+            }
+          ],
+          "speed": "standard"
+        },
+        "model_usage": {
+          "claude-opus-5-5": {
+            "inputTokens": 4,
+            "outputTokens": 112811,
+            "thinkingTokens": 104503,
+            "cacheReadInputTokens": 4320,
+            "cacheCreationInputTokens": 1057657,
+            "webSearchRequests": 0,
+            "costUSD": 10.718356,
+            "contextWindow": 1000000,
+            "maxOutputTokens": 128000,
+            "canonicalModel": "claude-opus-5-5",
+            "provider": "firstParty",
+            "costBasis": "list"
+          }
+        },
+        "cost_usd": 10.718356,
+        "duration_api_ms": 1103327,
+        "cleanup_verified": true,
+        "meter_scope": "raw_native_resumed_session_fields_unverified_operation_inventory"
+      }
+    },
+    "capacity": {
+      "raw_sha256": "d795267d88ee35b2719f102cc5f5e76270620c6b422f8aaf7328479089397c97",
+      "result": {
+        "head": "81e7c29ce2cc51746308874a57f8bc9aed888dc1",
+        "section": "reader-source2-capacity",
+        "native_session": "5f2b184d-0cdd-4564-8f46-f48a3785d723",
+        "review": {
+          "verdict": "approve",
+          "assessment": "Delta re-review of public 81e7c29 against approved Requirements4/Design2 and the cached Source1 source, focused on capacity. The changed source blobs in the exact diff (git_owner.rs 39822ff, git_owner/tests.rs 5078115, grok/reader_tests.rs 355db61, context.rs e33f13a) match the 35f0 gates ledger, and adapter.rs is unchanged at 31f7236. The current source is therefore the 35f0 tested source.\n\nVerified fixes:\n\n(1) R1 / R60-S1-01. The settled computation at git_owner.rs:1164-1165 is now `!reap_pending && native_settled && readers.settled()`. A wait that finishes after the existing 250ms reap cutoff now always publishes frozen Unknown (1166-1181). The same supervisor late-awaits the same wait result; supervise's existing late path (885-915) then joins, destroys resources and releases, with no flag clear. The caller flag can still be cleared only by a live return of a settled outcome (106-108). Removing native_terminal_error changes nothing: wait Err and cleanup Err leave native_settled false, so they still return Retained at 886-887. Reader facts change only inside the timed join future, so settled still reflects in-window observation. The cba8728 baseline controls failing first, plus R13, give actual direct-flag, Context-latch and Grok Lost-reservation evidence. Capacity is still released late (Context held_jobs 0, Grok held_jobs 0).\n\n(2) R2 / CAP-1. Only a request that actually waited for capacity (waited_for_capacity, 54/58-60/88-91) receives the original Timeout kind and prefix plus capacity_unavailable{active_jobs,retained_unresolved_jobs}. Counts are taken under the short pool lock, four per record, saturating at 64, with no identities; a poisoned pool reports occupancy=unavailable (187-210). The already-expired initial request and the observe/cancel texts are unchanged (61-64, 1043, 1045). The retained bit is set by owner_loss (500) and by every publish of an unsettled outcome (546-548), is never cleared, and leaves with the removed row. Every permanently retained path (Retained arm, owner loss, poison, FrameGuard) sets it. Records whose Unknown was published but whose healthy supervisor is still late-observing are counted as unresolved, which matches 'retained occupancy denotes derived pressure'. The mixed control (2 opaque-Err retained plus 14 actual paused) asserts exactly 56/8, flag untouched and no new record. R14 kills the count source.\n\n(3) CAP-2. The worker now moves anchored stdio into a separate preallocated Endpoints vault while holding the native vault (1288-1293), before the spawned stage. The supervisor's reader registration takes only the endpoints mutex (965-967); that mutex is never held across spawn, KILL, inspection or wait, and lock order is acyclic (worker native\u2192endpoints, supervisor endpoints only). After its async start, the supervisor never acquires the native vault before the worker join (910). Invalid binding keeps the endpoints in the retained Child. The settled path always takes the endpoints before release, so no released row keeps pipes. R15 kills a reinserted native guard.\n\n(4) CAP-3 / R60-S1-03. Post-initialization pause-entry counts (357) plus per-record reader_lanes (1026-1029) replace the pre-spawn readers-mutex proxy. The saturation control asserts 16 actual Children with groups and 32 created handles; the four-operation control asserts 4 actual Children and 8 handles. These cover only handle creation and simultaneous ownership; no read success or CPU-concurrency fact is inferred.\n\n(5) CAP-4 / R60-S1-04. Every Retained publication now forces settled=false (149-153). The dead ambiguous_spawn and native_terminal_error branches and the caller-flag predicate are removed, with no mutant credit claimed.\n\n(6) R60-S1-05. TestGitContext no longer derives Default, and run uses expect on the private pool (419-426). Destructive hooks therefore cannot fall back to the production pool; the production path still uses Context::default().\n\nRe-checked unchanged mechanics: the 64/16 bound, four jobs per record, no hidden job, no await between allocation and start, the Notify enabled before the check, at most 4 command messages so the channel never blocks, release only on the explicit healthy terminal frame after worker join and resource destruction, and fail-closed retention. I found no introduced Critical, High or Medium defect in this delta. The two Low items below concern diagnostic and credit precision only. This approves the reviewed component delta only. It is not source, merge, native, availability, F1, whole60 or MVP acceptance, and the full-gate failures below remain blocking.",
+          "findings": [
+            {
+              "id": "CAP2-1",
+              "severity": "Low",
+              "file": "crates/rrx/src/adapter/git_owner.rs",
+              "line": 190,
+              "claim": "The capacity facts are sampled with a fresh pool lock after the admission timer expires, not with the final locked refusal. A release or another admission in between can produce a capacity_unavailable message whose counts do not show saturation (active+retained < 64).",
+              "evidence": "The refusal is decided inside the locked block at 69-80 (`records.len() < CAPACITY / JOBS` is false). The call then awaits timeout_at (89-91). admission_timeout() re-locks state at 190 and counts current records. The loop-top expiry path (58-59) also samples only at that time. The deterministic controls hold all 16 rows paused, so they cannot observe this race. The result is diagnostic only: no effect, flag or authority changes.",
+              "fix": "Record a saturating snapshot of the active and retained counts in the locked refusal branch (69-80) each time capacity is refused, and report the last refused snapshot on expiry. Alternatively, explicitly label the facts as sampled at expiry, not at refusal, in the message or ledger."
+            },
+            {
+              "id": "CAP2-2",
+              "severity": "Low",
+              "file": "crates/rrx/src/adapter/git_owner/tests.rs",
+              "line": 818,
+              "claim": "The reader-registration control triggers first cleanup through a direct record.ticket.cancel(), not through the caller's CallGuard drop. The later call.abort() is then a no-op for the cancel state. Its credit should be limited to reader registration not depending on the native vault, not to caller-drop ordering.",
+              "evidence": "tests.rs 818 calls record.ticket.cancel() while the caller future is still pending. CallGuard::drop (568-573) later calls cancel() again, but `cancel.swap(true)` at 488 is already true, so nothing changes. The R15 kill and the native try_lock assertions at 820-830 are unaffected. The Source2 ledger wording ('aborts and awaits actual caller-task cancellation') could be read as caller-drop cancellation evidence.",
+              "fix": "Either abort the caller task first so CallGuard::drop delivers the Cancel that holds the native vault, or state in the ledger that this control credits only native-vault-independent reader registration. Caller-drop ordering is covered by the existing Generic and Context drop controls."
+            }
+          ],
+          "unresolved_blockers": [
+            "Full DEFAULT Debug at tested source 35f0, equal to the current 81e7 source blobs, FAILED: library 306 PASS / 3 FAIL / 24 ignored. The failures are the own-start StateConflict-prefix child, whose actual value is absent, and the unrelated checkpoint and resume children, which hit the 60s watchdog with SIGKILL. Later workspace targets did not execute. Cause AND regression UNKNOWN.",
+            "Full DEFAULT Release at 35f0 FAILED: library 307 PASS / 2 FAIL / 24 ignored, the checkpoint and resume 60s watchdogs with SIGKILL. The earlier 5b09 Release PASS no longer describes current source, and Release never substitutes for Debug. Cause AND regression UNKNOWN. Successful private probes, finishing near 57s against the unchanged 60s watchdog, did not reproduce the failures and carry no gate or cause credit.",
+            "All historical failed gates remain FAILED with cause AND regression UNKNOWN: 9c574a2 Debug and Release, 1b37c78 Debug and Release, 5b09 Debug, and the a92c4d0 Source1 public CI (Ubuntu 267 PASS / 1 FAIL from the old proxy fixture; macOS cancelled by fail-fast; builds skipped).",
+            "Public both-OS CI for the current head, with actual checkout, parents and tree proof, is pending. The second independent Source2 review and any fix or re-review are pending. PR64 remains DRAFT and is not merge-ready.",
+            "The finite mutation matrix still lacks operators for: the Spawning-authorization cancel check (853), the worker AuthorizeSpawn cancel/lost check (1228-1229), the release skip on poison or lost (179), and first_cleanup signal-outcome parity on both OS (1389-1424). The two historical R04 survivors keep zero credit; R14 is diagnostic-count evidence only.",
+            "Explicitly OPEN availability limits, not approved here: ambiguous spawn Err (including pre-fork std failures) and cleanup or reap Unknown permanently retain 4 slots; global 64-slot cross-Project coupling and exhaustion; fairness (#50); retry amplification through unfenced Grok checkpoint or non-executor starts; and the absent Grok checkpoint-to-resume Unknown fence.",
+            "Unmigrated or OPEN inventory: Generic and Grok Tokio post-spawn wrapper Err before native owner registration, shared ProcessGroup new/reap/Drop, synchronous git.rs Git calls, and Codex private Git copies. Whole60, F1, native3/runtime16, durable restart recovery and effect/delegation authority also remain OPEN; this process-local selected-Git component certifies none of them."
+          ]
+        },
+        "usage": {
+          "input_tokens": 2,
+          "cache_creation_input_tokens": 653790,
+          "cache_read_input_tokens": 2160,
+          "output_tokens": 25568,
+          "output_tokens_details": {
+            "thinking_tokens": 22136
+          },
+          "server_tool_use": {
+            "web_search_requests": 0,
+            "web_fetch_requests": 0
+          },
+          "service_tier": "standard",
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 653790,
+            "ephemeral_5m_input_tokens": 0
+          },
+          "inference_geo": "not_available",
+          "iterations": [
+            {
+              "input_tokens": 2,
+              "output_tokens": 25568,
+              "cache_read_input_tokens": 2160,
+              "cache_creation_input_tokens": 653790,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 653790
+              },
+              "type": "message"
+            }
+          ],
+          "speed": "standard"
+        },
+        "model_usage": {
+          "claude-opus-5-5": {
+            "inputTokens": 4,
+            "outputTokens": 103171,
+            "thinkingTokens": 96447,
+            "cacheReadInputTokens": 4320,
+            "cacheCreationInputTokens": 1046627,
+            "webSearchRequests": 0,
+            "costUSD": 10.437316,
+            "contextWindow": 1000000,
+            "maxOutputTokens": 128000,
+            "canonicalModel": "claude-opus-5-5",
+            "provider": "firstParty",
+            "costBasis": "list"
+          }
+        },
+        "cost_usd": 10.437316,
+        "duration_api_ms": 1020949,
+        "cleanup_verified": true,
+        "meter_scope": "raw_native_resumed_session_fields_unverified_operation_inventory"
+      }
+    }
+  }
+}
