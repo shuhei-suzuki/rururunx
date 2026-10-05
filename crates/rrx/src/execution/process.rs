@@ -9,6 +9,10 @@ pub(crate) struct OwnedProcess {
     pid: Pid,
     unreaped: bool,
 }
+pub(crate) struct ProcessReceipt {
+    pub(crate) status:ExitStatus,
+    pub(crate) group_error:Option<String>,
+}
 impl OwnedProcess {
     pub(crate) fn spawn(command: &mut Command) -> Result<Self> {
         command.process_group(0).kill_on_drop(true);
@@ -33,11 +37,14 @@ impl OwnedProcess {
             Err(e)=>Err(anyhow::Error::from(e).context("signal owned unreaped process group")),
         }
     }
-    pub(crate) async fn stop_and_reap(&mut self) -> Result<ExitStatus> {
-        self.signal_group()?;
+    pub(crate) async fn stop_and_reap(&mut self) -> Result<ProcessReceipt> {
+        let group_error=self.signal_group().err().map(|e|format!("{e:#}"));
+        // Group hygiene failure must not discard known direct-child work.
+        // The child API retains its unreaped identity for this direct stop.
+        if group_error.is_some(){let _=self.child.start_kill();}
         let status=tokio::time::timeout(Duration::from_secs(10),self.child.wait()).await??;
         self.unreaped=false;
-        Ok(status)
+        Ok(ProcessReceipt {status,group_error})
     }
 }
 impl Drop for OwnedProcess {
@@ -64,16 +71,16 @@ pub(crate) async fn capture(command:&mut Command) -> Result<Vec<u8>> {
         tokio::select! {
             read=&mut readers=>{let bytes=read?;child.exited().await?;Ok::<_,anyhow::Error>(bytes)},
             exited=child.exited()=>{
-                exited?;child.signal_group()?;
+                exited?;let _=child.signal_group();
                 // Detached descendants may hold pipes; bounded drain is not death proof.
                 tokio::time::timeout(Duration::from_secs(2),&mut readers).await.context("output drain incomplete")?
             }
         }
     }).await;
     // Keep the leader unreaped until group signaling, even after a normal exit.
-    let status=child.stop_and_reap().await?;
+    let receipt=child.stop_and_reap().await?;
     let (out,_)=collected.context("command timed out")??;
     // Do not copy arbitrary tool stderr into an audit receipt (it may be sensitive).
-    ensure!(status.success(),"managed command failed (exit {:?})",status.code());
+    ensure!(receipt.status.success(),"managed command failed (exit {:?})",receipt.status.code());
     Ok(out)
 }
