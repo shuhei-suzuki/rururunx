@@ -1,6 +1,6 @@
 # Issue 9: staged formal-review refusal integration
 
-Status: Design2 candidate, NOT implemented or source-qualified. This is a finite
+Status: Design3 candidate, NOT implemented or source-qualified. This is a finite
 integration of the already approved Req38/Design4 refusal contract. It creates no
 ReviewSet, allocation, certificate, profile, Human authority, native preparation,
 settlement producer or database upgrade. Whole Issue9 acceptance remains open.
@@ -148,6 +148,17 @@ applied: callers get the typed unavailable error, all stored authority is unchan
 and no formal input is granted. Document these availability limits and cover both
 with exact DB/capture controls; do not add a broad risk/source-revocation exemption.
 
+Two further availability consequences are explicit. Intermediate nonprotected
+STRICT EvidencePort gates (ExpandedRegression/Mutation/Browser/Staging) can still
+run using factual legacy review entries among their prerequisites; the protected
+Pr successor is refused afterwards. An invalid/stale Passed whose successor is
+protected is retained/held before normal evidence-validation failure publication,
+not converted to Failed or an automatic retry. An already-observed Pr/MergeGate
+Passed likewise does not publish the former drift hold/blocker/WaitingHuman state.
+The returned error and retained journal expose this boundary; they are not durable
+13 attention or formal evidence. Controls cover these exact limits and the existing
+cancel/terminal-reconciliation path, without calling it a native death certificate.
+
 ## Consumer controls, compatibility and source gate
 
 Implementation uses actual Workflow entrypoints with dedicated Store/Project/Task
@@ -161,19 +172,36 @@ are retained, not falsely claimed to have never occurred.
 Cover all four Review phases/classes, Quick implementation review and Pr,
 retry/resume_gate/request_finalization, legacy Passed→Pr/MergeGate,
 already-journaled Passed replay, formal successor-context creation, active native
-Running/status-error/unbound/Lost observation, and zero/prior-observation ACTIVE
-Pr/MergeGate/Cleanup refusal through `step`→`poll` with zero gate calls. Separate
-known Waiting/Failed/Passed replay and unchanged native stop/cleanup observations;
+Running/status-error/unbound/Lost observation. For an ACTIVE Running session-less
+Pr/MergeGate/Cleanup with ZERO observations, `step`→`poll` reaches evaluate: require
+typed refusal, zero gate calls and unchanged DB. Prior-observation Waiting or
+irreversible-Failed attempts instead reach the new refusal through `resume_gate`;
+require typed refusal, zero gate calls and unchanged DB there. For those same
+prior-observation states, `step`→`poll` is a RETENTION control: its existing
+Waiting/Failed/unknown-Evaluating result is unchanged, not an evaluate-guard kill.
+Separate known Waiting/Failed/Passed replay through the actual audited grammar;
 include risk-only escalate/drift-refusal controls. Cancel and existing #14 terminal-release
 negative/positive component controls remain meaningful and never mint managed death.
-Historical fixtures are explicitly schema3 factual state, not new typed allocation;
-no Session JSON/private SQL seeding/ready flag certifies a positive native owner.
+Historical fixtures use the actual schema3 `Store::put_workflow_transition` grammar
+and `Store::observe_workflow_gate` audited observer to construct/reopen valid prior
+claims and known outcomes. Preserve actual Context/body/CAS/claim checks; raw
+observation append is forbidden by the existing validator. This is trusted
+fixture-only construction of factual legacy history, not a traced native invocation,
+new typed allocation or private owner. No raw SQL, test-ready flag, Session JSON or
+fictional lease produces a native/readiness positive. Full schema/old-writer fencing
+remains outside this component.
 
-Compiled omission controls must reach each public branch, context preparation,
-downstream approval application and Quick/finalization bypass. A separate original
-control proves actual running-owner status/stop and known cleanup factual journal
-replay remain reachable; an overbroad refusal mutant must fail that consumer. Never claim
-a mutant kill merely because an earlier unrelated producer guard already refused.
+Controls reach each public branch, context preparation, downstream Passed application
+and Quick/finalization bypass. Compiled mutations exercise causal guaranteed cuts,
+not a promised individual kill for every redundant guard: if another selected guard
+still masks the omission, record that survivor or use an explicit combined cut and
+name its credit. Before-capture counts versus authority-publication/claim/model
+prevention are separate guarantees. Never claim a kill from an earlier unrelated
+producer refusal. The running-owner overbroad-refusal control reaches the actual
+Workflow `poll`→adapter.status consumer; known journal replay reaches apply_outcome.
+Workflow has NO adapter.stop callsite: cancel is TerminalDecision publication,
+not stop. Existing adapter stop/cleanup is an unchanged external nonconsumer here,
+with no Workflow-mutant kill or new native-resource proof claimed.
 
 Retain existing tests and their actual semantics/evidence. Main's successful
 single-reviewer FakeAgent fixtures are legacy mechanics, not current ReviewSet
@@ -211,3 +239,14 @@ The shared Low availability/status observation is now explicit; successor pack a
 Passed guard cover downstream phases, and risk/drift requests cannot silently be
 reported applied. No source fix, producer proof, positive readiness or regression
 qualification is claimed by these design corrections.
+
+Design2 A `860723ec-89bf-48ca-bf24-d70d8794a381` approved with two Low consequences;
+B `8e5d5630-8226-4c12-987b-c7ba82f5f07f` found two Medium control-path defects.
+Both commands closed before either result was read. Source confirms prior-journal
+Waiting/Failed/unknown-Evaluating poll does not reach evaluate, while resume_gate
+does; controls now separate rejection from retention. Source also confirms no
+Workflow adapter.stop callsite; keep it unchanged without imaginary consumer credit.
+Known historical journal construction uses the actual audited schema3 Store grammar
+and is never native ownership or readiness. A's malformed Passed/intermediate STRICT
+and missing durable drift-attention consequences are disclosed, not exemptions or
+new policy. These are finite HOW/control corrections under unchanged21.j/21.k.
