@@ -1,8 +1,9 @@
 # Issue 6 environment admission component: verification
 
 Current state: Design7 qualified by two independent native design reviews;
-Design1/2/3/4/5/6 remain not qualified as pairs. Source implementation is in progress; its
-independent acceptance is pending; no native acceptance.
+Design1/2/3/4/5/6 remain not qualified as pairs. Finite Source2 code at798ee3e
+qualified through two independent source reviews; full local gates and actual native
+acceptance remain unresolved. The later finite test/evidence follow-up is separate.
 Ordinary Codex availability remains EMPTY. This consumes existing Issue51 policy
 only; no native workload/backend, managed ownership, settlement or configuration
 origin producer exists from these artifacts.
@@ -435,4 +436,12 @@ Store/file writes. Equality failures are fixed and value-free. Source-phase Desi
 amendments and the master raw-refusal limitation are marked explicitly. Production
 is unchanged: the missing-selection defensive refusal remains non-latching until
 its existing outer mapping; no new first-cause guarantee for that invariant branch.
-Current test/evidence follow-up checks and direct delta review remain pending.
+Root directly reviewed the finite9563e10 test/docs/evidence delta, APPROVE0findings.
+The first two targeted Debug commands compile-failed because the new test helper
+lacked its BTreeMap import; no tests executed. The test-only import correction at
+dc3d7ae preserves those failures. Corrected raw-constructor and Initial/three-exec
+controls each passed Debug and distinct Release (four targeted1pass results), as
+did fmt including the separately included test file and all-target Clippy-Dwarnings.
+Exact log hashes and limits are in the adjacent Source2 follow-up record. Earlier
+full-mode failures remain unqualified; current final-head CI is still pending.
+No full workspace, actual native workload, complete resource cleanup or MVP credit.
