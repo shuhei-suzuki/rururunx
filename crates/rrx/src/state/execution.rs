@@ -311,4 +311,6 @@ mod artifacts;
 mod effects;
 mod quotas;
 mod migration;
+mod sessions;
+pub(super) use sessions::logically_retired_session;
 #[cfg(test)]mod tests;

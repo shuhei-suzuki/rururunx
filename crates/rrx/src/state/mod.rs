@@ -438,6 +438,7 @@ impl Store {
                 let record: Record = decode(body?)?;
                 if record.kind == RecordKind::Session {
                     let session: Session = serde_json::from_value(record.data)?;
+                    if execution::logically_retired_session(&tx,&session)? {continue;}
                     if crate::git::executor_reserved(&session)
                         || session.state == SessionState::Lost
                         || (access == WorkflowAccess::Mutating && !session_terminal(session.state))
@@ -561,6 +562,11 @@ impl Store {
                         .active
                         .and_then(|index| before.history[index].session_id)
                         == Some(session.id);
+                    let retired=execution::logically_retired_session(&tx,&session)?;
+                    if retired && !own {continue;}
+                    if retired && own && after.history[before.active.unwrap()].state==crate::workflow::AttemptState::Interrupted {
+                        own_found=true;continue;
+                    }
                     ensure!(
                         !crate::git::executor_reserved(&session)
                             && session.state != SessionState::Lost
@@ -1284,6 +1290,8 @@ fn put_task_tx(tx: &Transaction<'_>, task: &Task) -> Result<Task> {
 fn guard_record_tx(tx: &Transaction<'_>, record: &Record) -> Result<()> {
     validate_scope(&record.scope)?;
     if record.kind == RecordKind::Session {
+        let managed:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM session_units WHERE session_id=?1)",[record.id.to_string()],|r|r.get(0))?;
+        ensure!(!managed,"managed Session writes require execution-unit authority");
         let session: Session =
             serde_json::from_value(record.data.clone()).context("invalid session payload")?;
         ensure!(
@@ -1596,6 +1604,7 @@ fn validate_worktree_exclusion(tx: &Transaction<'_>, record: &Record) -> Result<
             }
             RecordKind::Session if acquiring || executor => {
                 let session: Session = serde_json::from_value(other.data)?;
+                if execution::logically_retired_session(tx,&session)? {continue;}
                 if executor_reserved(&session) {
                     bail!(StateGuardError::ExecutorReserved);
                 }
