@@ -979,6 +979,7 @@ impl Core {
             store.close_execution_session(self.unit.id, &self.session, self.record_version);
         let group_error = stopped.as_ref().map_or(true, |s| s.group_error.is_some());
         let _ = store.record_execution_cleanup(&CleanupObservation {
+            actions: Vec::new(),
             unit_id: self.unit.id,
             at: now_ms(),
             outcome: CleanupOutcome::Unknown,

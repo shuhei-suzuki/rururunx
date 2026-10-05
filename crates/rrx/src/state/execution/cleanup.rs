@@ -7,6 +7,31 @@ pub(crate) struct CleanupClaim {
     pub version: u64,
 }
 impl Store {
+    pub fn execution_cleanup_observations(
+        &self,
+        id: UnitId,
+        limit: usize,
+    ) -> Result<Vec<CleanupObservation>> {
+        ensure!((1..=32).contains(&limit), "invalid cleanup history bound");
+        self.execution_unit(id)?;
+        let mut query = self.connection.prepare("SELECT at,body FROM cleanup_observations WHERE unit_id=?1 ORDER BY sequence DESC LIMIT ?2")?;
+        query
+            .query_map(params![id.to_string(), limit as i64], |r| {
+                Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))
+            })?
+            .map(|r| {
+                let (at, body) = r?;
+                let observation: CleanupObservation = decode(body)?;
+                ensure!(
+                    observation.unit_id == id
+                        && observation.at == at
+                        && valid_cleanup_actions(&observation.actions),
+                    "cleanup history indexed/body mismatch"
+                );
+                Ok(observation)
+            })
+            .collect()
+    }
     pub(crate) fn due_execution_cleanup(&self, at: i64, limit: usize) -> Result<Vec<UnitId>> {
         ensure!((1..=32).contains(&limit), "invalid cleanup batch bound");
         let mut query = self.connection.prepare("SELECT j.unit_id FROM cleanup_jobs j JOIN execution_units u ON u.id=j.unit_id WHERE j.next_due<=?1 AND u.native_effects_open=0 AND u.result_finalization_open=0 ORDER BY j.next_due,j.unit_id LIMIT ?2")?;
@@ -65,7 +90,8 @@ impl Store {
             observation.unit_id == claim.unit.id
                 && observation.coverage.len() <= 32
                 && observation.remaining.len() <= 1024
-                && observation.errors.len() <= 32,
+                && observation.errors.len() <= 32
+                && valid_cleanup_actions(&observation.actions),
             "invalid claimed cleanup observation"
         );
         let tx = self
@@ -116,6 +142,17 @@ impl Store {
         tx.commit()?;
         Ok(())
     }
+}
+pub(super) fn valid_cleanup_actions(actions: &[CleanupAction]) -> bool {
+    actions.len() <= 1024
+        && actions.iter().all(|a| {
+            !a.target.is_empty()
+                && a.target.len() <= 256
+                && a.target.bytes().all(|b| {
+                    b.is_ascii_alphanumeric()
+                        || matches!(b, b':' | b'@' | b'-' | b'_' | b'.' | b'/')
+                })
+        })
 }
 fn validate_cleanup_claim(tx: &Transaction<'_>, claim: &CleanupClaim) -> Result<()> {
     let epoch: u64 = tx.query_row(

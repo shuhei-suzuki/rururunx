@@ -639,6 +639,7 @@ fn normal_terminal_cleanup_keeps_finalization_and_result_publication_races_cance
     assert!(!known.native_effects_open && known.result_finalization_open);
     store
         .record_execution_cleanup(&CleanupObservation {
+            actions: Vec::new(),
             unit_id: unit.id,
             at: now_ms(),
             outcome: CleanupOutcome::Unknown,
@@ -732,6 +733,7 @@ fn cleanup_claim_waits_for_finalization_and_preserves_known_work_and_sibling() {
             .is_none()
     );
     let observation = CleanupObservation {
+        actions: Vec::new(),
         unit_id: unit.id,
         at,
         outcome: CleanupOutcome::Leftovers,
@@ -808,6 +810,7 @@ fn cleanup_backlog_fences_expired_claims_and_old_runtime_epochs() {
         .unwrap()
         .unwrap();
     let observation = CleanupObservation {
+        actions: Vec::new(),
         unit_id: unit.id,
         at: at + 60_000,
         outcome: CleanupOutcome::Unknown,

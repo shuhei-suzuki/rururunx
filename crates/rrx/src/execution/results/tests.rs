@@ -453,6 +453,7 @@ async fn cleanup_receipt_during_capture_does_not_revoke_successful_finalization(
         .lock()
         .unwrap()
         .record_execution_cleanup(&CleanupObservation {
+            actions: Vec::new(),
             unit_id: unit.id,
             at: crate::domain::now_ms(),
             outcome: CleanupOutcome::Leftovers,

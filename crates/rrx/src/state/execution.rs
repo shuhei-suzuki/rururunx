@@ -944,7 +944,8 @@ impl Store {
         ensure!(
             observation.coverage.len() <= 32
                 && observation.remaining.len() <= 1024
-                && observation.errors.len() <= 32,
+                && observation.errors.len() <= 32
+                && cleanup::valid_cleanup_actions(&observation.actions),
             "cleanup observation bound exceeded"
         );
         let tx = self

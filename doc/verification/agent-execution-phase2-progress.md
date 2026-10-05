@@ -376,6 +376,29 @@ passed. Clippy initially caught a redundant buffer borrow and test-module
 placement; both were corrected. No frozen ps observation, credential behavior,
 real subscription or Linux runtime qualification was added by these checks.
 
+Round11 [independent reports](agent-execution-phase2-preliminary11-reviews.json)
+closed both tracker corrections statically, and each requested the same Medium:
+the cleanup consumer discarded termination and exit-observation categories.
+Cleanup observations now include a bounded typed action list with safe resource
+identity, requested action, termination outcome and independent confirmation.
+Denied, Unsupported, Unknown, skipped budget, unavailable exit observation and
+observation errors remain distinct in persisted history. Remaining IDs describe
+last-seen candidates; only an actual retained-handle exit observation marks them
+exited. Raw OS error strings are not copied into these receipts. A bounded public
+history reader exposes those observations without changing authority; historical
+rows missing the new action field deserialize with an empty list. This is an
+additive JSON receipt change, not a schema or license change.
+
+The macOS retained-commit/sibling control now compares the persisted receipt with
+its returned observation and checks Unsupported/Unavailable for its live match.
+A fallible-observation control distinguishes Denied/still-observed from
+Unknown/observation-error, tests serialization and old-row defaults, and confirms
+raw injected diagnostics are absent. All three cleanup-service controls passed;
+all 20 execution-ledger controls also passed. The previous full workspace run belongs to the
+prior checkpoint; these action corrections do not inherit a later Linux/native
+or release acceptance. Formatting and current-action workspace/all-target Clippy with warnings as
+errors passed.
+
 - Full current-source/retained-graph qualification and production source/evidence
   ports; Runtime orchestration and operational CLI.
 - Required native/Git settings and hooks, dependency qualification and remaining

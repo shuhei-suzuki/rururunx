@@ -288,6 +288,38 @@ pub struct ManagedEffect {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct CleanupAction {
+    /// Safe resource identity only; never a command, environment or diagnostic.
+    pub target: String,
+    pub action: CleanupActionKind,
+    pub outcome: CleanupActionOutcome,
+    pub confirmation: CleanupConfirmation,
+}
+states!(CleanupActionKind {
+    ProcessTerminate,
+    DockerKill,
+    DockerRemove
+});
+states!(CleanupActionOutcome {
+    Sent,
+    AlreadyExited,
+    Unsupported,
+    Denied,
+    Unknown,
+    Skipped,
+    Confirmed
+});
+states!(CleanupConfirmation {
+    Exited,
+    StillObserved,
+    Unavailable,
+    Error,
+    NotAttempted,
+    Absent
+});
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CleanupObservation {
     pub unit_id: UnitId,
     pub at: i64,
@@ -295,6 +327,8 @@ pub struct CleanupObservation {
     pub coverage: BTreeMap<String, String>,
     pub remaining: Vec<String>,
     pub errors: Vec<String>,
+    #[serde(default)]
+    pub actions: Vec<CleanupAction>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

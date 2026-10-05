@@ -85,6 +85,7 @@ impl CleanupService {
             .await
             .unwrap_or_else(|_| Err(std::io::Error::other("cleanup discovery worker ended")));
             let mut observation = CleanupObservation {
+                actions: Vec::new(),
                 unit_id: id,
                 at: crate::domain::now_ms(),
                 outcome: CleanupOutcome::Unknown,
@@ -117,7 +118,7 @@ impl CleanupService {
                             discovery.coverage.identity_changed
                         ),
                     );
-                    if discovery.processes.len() > 1024 {
+                    if discovery.processes.len() > 960 {
                         observation
                             .errors
                             .push("cookie_action_limit_exceeded".into());
@@ -125,37 +126,53 @@ impl CleanupService {
                     observation.coverage.insert(
                         "cookie_actions".into(),
                         format!(
-                            "matches={},max=1024,poll_budget_ms=500",
+                            "matches={},max=960,poll_budget_ms=500",
                             discovery.processes.len()
                         ),
                     );
                     let started = Instant::now();
-                    for process in discovery.processes.into_iter().take(1024) {
+                    for process in discovery.processes.into_iter().take(960) {
                         let identity = process.identity();
+                        let target = format!(
+                            "pid:{}@{}:{}",
+                            identity.pid, identity.birth.0, identity.birth.1
+                        );
                         if started.elapsed() >= Duration::from_millis(500) {
-                            observation.remaining.push(format!(
-                                "pid:{}@{}:{}",
-                                identity.pid, identity.birth.0, identity.birth.1
-                            ));
+                            record_action(
+                                &mut observation,
+                                CleanupAction {
+                                    target,
+                                    action: CleanupActionKind::ProcessTerminate,
+                                    outcome: CleanupActionOutcome::Skipped,
+                                    confirmation: CleanupConfirmation::NotAttempted,
+                                },
+                            );
                             continue;
                         }
                         let sent = process.terminate();
-                        let mut exited = sent == Termination::AlreadyExited;
+                        let mut observed = if sent == Termination::AlreadyExited {
+                            CleanupConfirmation::Exited
+                        } else {
+                            exit_confirmation(process.exited())
+                        };
                         if sent == Termination::Sent {
                             for _ in 0..5 {
-                                if process.exited().ok().flatten() == Some(true) {
-                                    exited = true;
+                                if observed != CleanupConfirmation::StillObserved {
                                     break;
                                 }
                                 tokio::time::sleep(Duration::from_millis(20)).await;
+                                observed = exit_confirmation(process.exited());
                             }
                         }
-                        if !exited {
-                            observation.remaining.push(format!(
-                                "pid:{}@{}:{}",
-                                identity.pid, identity.birth.0, identity.birth.1
-                            ));
-                        }
+                        record_action(
+                            &mut observation,
+                            CleanupAction {
+                                target,
+                                action: CleanupActionKind::ProcessTerminate,
+                                outcome: termination_outcome(sent),
+                                confirmation: observed,
+                            },
+                        );
                     }
                     if !observation.remaining.is_empty() {
                         observation.outcome = CleanupOutcome::Leftovers;
@@ -172,6 +189,55 @@ impl CleanupService {
         }
         Ok(observations)
     }
+}
+
+fn termination_outcome(termination: Termination) -> CleanupActionOutcome {
+    match termination {
+        Termination::Sent => CleanupActionOutcome::Sent,
+        Termination::AlreadyExited => CleanupActionOutcome::AlreadyExited,
+        Termination::Unsupported => CleanupActionOutcome::Unsupported,
+        Termination::Denied => CleanupActionOutcome::Denied,
+        Termination::Unknown => CleanupActionOutcome::Unknown,
+    }
+}
+fn exit_confirmation(result: std::io::Result<Option<bool>>) -> CleanupConfirmation {
+    match result {
+        Ok(Some(true)) => CleanupConfirmation::Exited,
+        Ok(Some(false)) => CleanupConfirmation::StillObserved,
+        Ok(None) => CleanupConfirmation::Unavailable,
+        Err(_) => CleanupConfirmation::Error,
+    }
+}
+fn record_action(observation: &mut CleanupObservation, action: CleanupAction) {
+    let error = match action.outcome {
+        CleanupActionOutcome::Unsupported => Some("cookie_terminate_unsupported"),
+        CleanupActionOutcome::Denied => Some("cookie_terminate_denied"),
+        CleanupActionOutcome::Unknown => Some("cookie_terminate_unknown"),
+        CleanupActionOutcome::Skipped => Some("cookie_action_budget_exceeded"),
+        _ => None,
+    };
+    for category in [
+        error,
+        match action.confirmation {
+            CleanupConfirmation::Unavailable => Some("cookie_exit_unavailable"),
+            CleanupConfirmation::Error => Some("cookie_exit_error"),
+            _ => None,
+        },
+    ]
+    .into_iter()
+    .flatten()
+    {
+        if !observation.errors.iter().any(|s| s == category) {
+            observation.errors.push(category.into());
+        }
+    }
+    if !matches!(
+        action.confirmation,
+        CleanupConfirmation::Exited | CleanupConfirmation::Absent
+    ) {
+        observation.remaining.push(action.target.clone());
+    }
+    observation.actions.push(action);
 }
 
 #[cfg(test)]
@@ -268,6 +334,28 @@ mod tests {
         #[cfg(target_os = "macos")]
         {
             assert_eq!(observation[0].outcome, CleanupOutcome::Leftovers);
+            let action = observation[0]
+                .actions
+                .iter()
+                .find(|a| {
+                    a.target
+                        .starts_with(&format!("pid:{}@", first_child.0.id()))
+                })
+                .unwrap();
+            assert_eq!(action.outcome, CleanupActionOutcome::Unsupported);
+            assert_eq!(action.confirmation, CleanupConfirmation::Unavailable);
+            assert!(
+                observation[0]
+                    .errors
+                    .iter()
+                    .any(|s| s == "cookie_terminate_unsupported")
+            );
+            assert!(
+                observation[0]
+                    .errors
+                    .iter()
+                    .any(|s| s == "cookie_exit_unavailable")
+            );
             assert!(first_child.0.try_wait().unwrap().is_none());
         }
         #[cfg(target_os = "linux")]
@@ -286,6 +374,11 @@ mod tests {
             assert_eq!(
                 store.execution_unit(first.id).unwrap().work,
                 Some(WorkOutcome::Success)
+            );
+            let persisted = store.execution_cleanup_observations(first.id, 1).unwrap();
+            assert_eq!(
+                serde_json::to_value(&persisted[0]).unwrap(),
+                serde_json::to_value(&observation[0]).unwrap()
             );
             assert_eq!(
                 serde_json::to_value(store.result_artifact(published.id).unwrap()).unwrap(),
@@ -331,5 +424,81 @@ mod tests {
         let successor = RuntimeOwner::open(&state).unwrap();
         assert!(successor.epoch() > epoch);
         worker.shutdown().await;
+    }
+    #[test]
+    fn cookie_receipts_distinguish_actions_and_uncertain_exit_without_raw_errors() {
+        let mut observation = CleanupObservation {
+            unit_id: UnitId::new(),
+            at: 1,
+            outcome: CleanupOutcome::Unknown,
+            coverage: BTreeMap::new(),
+            remaining: Vec::new(),
+            errors: Vec::new(),
+            actions: Vec::new(),
+        };
+        for (index, (sent, result, expected)) in [
+            (
+                Termination::Sent,
+                Ok(Some(true)),
+                CleanupConfirmation::Exited,
+            ),
+            (
+                Termination::Denied,
+                Ok(Some(false)),
+                CleanupConfirmation::StillObserved,
+            ),
+            (
+                Termination::Unsupported,
+                Ok(None),
+                CleanupConfirmation::Unavailable,
+            ),
+            (
+                Termination::Unknown,
+                Err(std::io::Error::other(
+                    "fixture raw diagnostic must not persist",
+                )),
+                CleanupConfirmation::Error,
+            ),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            record_action(
+                &mut observation,
+                CleanupAction {
+                    target: format!("pid:{}@1:0", index + 1),
+                    action: CleanupActionKind::ProcessTerminate,
+                    outcome: termination_outcome(sent),
+                    confirmation: exit_confirmation(result),
+                },
+            );
+            assert_eq!(observation.actions[index].confirmation, expected);
+        }
+        assert_eq!(
+            observation.remaining,
+            vec!["pid:2@1:0", "pid:3@1:0", "pid:4@1:0"]
+        );
+        for category in [
+            "cookie_terminate_denied",
+            "cookie_terminate_unsupported",
+            "cookie_terminate_unknown",
+            "cookie_exit_unavailable",
+            "cookie_exit_error",
+        ] {
+            assert!(observation.errors.iter().any(|s| s == category));
+        }
+        let serialized = serde_json::to_string(&observation).unwrap();
+        assert!(!serialized.contains("raw diagnostic"));
+        let restored: CleanupObservation = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(restored.actions[1].outcome, CleanupActionOutcome::Denied);
+        assert_eq!(restored.actions[3].confirmation, CleanupConfirmation::Error);
+        let mut legacy = serde_json::to_value(restored).unwrap();
+        legacy.as_object_mut().unwrap().remove("actions");
+        assert!(
+            serde_json::from_value::<CleanupObservation>(legacy)
+                .unwrap()
+                .actions
+                .is_empty()
+        );
     }
 }
