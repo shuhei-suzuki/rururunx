@@ -197,6 +197,14 @@ fn run(cli: Cli) -> Result<()> {
     Ok(())
 }
 fn main() -> ExitCode {
+    match rrx::execution::ipc::tool_entry() {
+        Ok(Some(code)) => return ExitCode::from(u8::try_from(code).unwrap_or(125)),
+        Ok(None) => {}
+        Err(error) => {
+            eprintln!("rrx task tool: {error:#}");
+            return ExitCode::from(125);
+        }
+    }
     match run(Cli::parse()) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {

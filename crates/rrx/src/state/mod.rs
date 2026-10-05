@@ -80,7 +80,8 @@ impl Store {
 
     fn initialize(mut connection: Connection) -> Result<Self> {
         connection.create_scalar_function(
-            "rrx_writer_contract_version", 0,
+            "rrx_writer_contract_version",
+            0,
             rusqlite::functions::FunctionFlags::SQLITE_UTF8
                 | rusqlite::functions::FunctionFlags::SQLITE_DETERMINISTIC
                 | rusqlite::functions::FunctionFlags::SQLITE_INNOCUOUS,
@@ -131,7 +132,9 @@ impl Store {
                 // Ordered JSON-format migrations; SQL layout and ownership/audit stay intact.
                 // v2 adds Project blocked_reason; v3 adds authoritative Workflow records.
                 for next in (locked_version + 1)..=SCHEMA_VERSION {
-                    if next == 4 { execution::install_schema(&tx)?; }
+                    if next == 4 {
+                        execution::install_schema(&tx)?;
+                    }
                     tx.pragma_update(None, "user_version", next)?;
                 }
             }
@@ -439,7 +442,9 @@ impl Store {
                 let record: Record = decode(body?)?;
                 if record.kind == RecordKind::Session {
                     let session: Session = serde_json::from_value(record.data)?;
-                    if execution::logically_retired_session(&tx,&session)? {continue;}
+                    if execution::logically_retired_session(&tx, &session)? {
+                        continue;
+                    }
                     if crate::git::executor_reserved(&session)
                         || session.state == SessionState::Lost
                         || (access == WorkflowAccess::Mutating && !session_terminal(session.state))
@@ -563,10 +568,17 @@ impl Store {
                         .active
                         .and_then(|index| before.history[index].session_id)
                         == Some(session.id);
-                    let retired=execution::logically_retired_session(&tx,&session)?;
-                    if retired && !own {continue;}
-                    if retired && own && after.history[before.active.unwrap()].state==crate::workflow::AttemptState::Interrupted {
-                        own_found=true;continue;
+                    let retired = execution::logically_retired_session(&tx, &session)?;
+                    if retired && !own {
+                        continue;
+                    }
+                    if retired
+                        && own
+                        && after.history[before.active.unwrap()].state
+                            == crate::workflow::AttemptState::Interrupted
+                    {
+                        own_found = true;
+                        continue;
                     }
                     ensure!(
                         !crate::git::executor_reserved(&session)
@@ -1207,15 +1219,15 @@ fn put_task_tx(tx: &Transaction<'_>, task: &Task) -> Result<Task> {
             params![task.id.to_string(),task.worktree.as_ref().map(|p|p.to_string_lossy().into_owned()),task.branch], |r|r.get(0),
         )?;
         ensure!(
-            admitted_rebind || (
-            previous
-                .worktree
-                .as_ref()
-                .is_none_or(|path| task.worktree.as_ref() == Some(path))
-                && previous
-                    .branch
+            admitted_rebind
+                || (previous
+                    .worktree
                     .as_ref()
-                    .is_none_or(|branch| task.branch.as_ref() == Some(branch))),
+                    .is_none_or(|path| task.worktree.as_ref() == Some(path))
+                    && previous
+                        .branch
+                        .as_ref()
+                        .is_none_or(|branch| task.branch.as_ref() == Some(branch))),
             "assigned task worktree/branch binding is immutable"
         );
         ensure!(
@@ -1274,7 +1286,9 @@ fn put_task_tx(tx: &Transaction<'_>, task: &Task) -> Result<Task> {
         next.version,
     )?;
     // Issue is query metadata and may be linked after Task creation.
-    if task_terminal(next.state) {execution::fence_task_tx(tx,&next.scope())?;}
+    if task_terminal(next.state) {
+        execution::fence_task_tx(tx, &next.scope())?;
+    }
     tx.execute(
         "UPDATE tasks SET issue=?1 WHERE id=?2",
         params![next.issue, next.id.to_string()],
@@ -1291,8 +1305,15 @@ fn put_task_tx(tx: &Transaction<'_>, task: &Task) -> Result<Task> {
 fn guard_record_tx(tx: &Transaction<'_>, record: &Record) -> Result<()> {
     validate_scope(&record.scope)?;
     if record.kind == RecordKind::Session {
-        let managed:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM session_units WHERE session_id=?1)",[record.id.to_string()],|r|r.get(0))?;
-        ensure!(!managed,"managed Session writes require execution-unit authority");
+        let managed: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM session_units WHERE session_id=?1)",
+            [record.id.to_string()],
+            |r| r.get(0),
+        )?;
+        ensure!(
+            !managed,
+            "managed Session writes require execution-unit authority"
+        );
         let session: Session =
             serde_json::from_value(record.data.clone()).context("invalid session payload")?;
         ensure!(
@@ -1605,7 +1626,9 @@ fn validate_worktree_exclusion(tx: &Transaction<'_>, record: &Record) -> Result<
             }
             RecordKind::Session if acquiring || executor => {
                 let session: Session = serde_json::from_value(other.data)?;
-                if execution::logically_retired_session(tx,&session)? {continue;}
+                if execution::logically_retired_session(tx, &session)? {
+                    continue;
+                }
                 if executor_reserved(&session) {
                     bail!(StateGuardError::ExecutorReserved);
                 }

@@ -6,6 +6,7 @@ mod ownership;
 mod preparation;
 mod session;
 pub use session::CodexAdapter;
+pub(crate) mod managed;
 pub mod policy;
 mod protocol;
 mod transport;

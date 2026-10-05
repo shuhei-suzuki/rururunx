@@ -118,6 +118,7 @@ CREATE TABLE quota_pools (
     provider TEXT NOT NULL, account_key TEXT NOT NULL,
     next_probe_at INTEGER NOT NULL DEFAULT 0, probe_unit TEXT REFERENCES execution_units(id),
     backoff INTEGER NOT NULL DEFAULT 60000 CHECK(backoff BETWEEN 60000 AND 1800000),
+    last_role TEXT NOT NULL DEFAULT 'reviewer',
     PRIMARY KEY(provider,account_key)
 );
 CREATE TABLE quota_windows (
@@ -134,7 +135,10 @@ CREATE TABLE quota_leases (
 );
 CREATE TABLE quota_waiters (
     unit_id TEXT PRIMARY KEY NOT NULL REFERENCES execution_units(id),
-    reason TEXT NOT NULL, next_due INTEGER NOT NULL, fairness_sequence INTEGER NOT NULL
+    provider TEXT NOT NULL,account_key TEXT NOT NULL,
+    reason TEXT NOT NULL, next_due INTEGER NOT NULL, fairness_sequence INTEGER NOT NULL,
+    resume_state TEXT NOT NULL,
+    FOREIGN KEY(provider,account_key) REFERENCES quota_pools(provider,account_key)
 );
 CREATE TRIGGER cleanup_observation_no_update BEFORE UPDATE ON cleanup_observations
 BEGIN SELECT RAISE(ABORT,'cleanup observations are append-only'); END;
