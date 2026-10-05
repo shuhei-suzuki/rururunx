@@ -71,6 +71,23 @@ a same-head retry. Lint, debug and release build passed atc983; lint and14 focus
 controls passed at543b. Later exact-head regression and independent source gates
 must be recorded separately.
 
+The next exact code run at
+`94f7f744fa266e0e9f41c29131bc5650ebfa5d13` completed normally:
+468 workspace tests plus2 doctests passed,26 existing cases were ignored, and
+fmt/clippy with warnings denied passed. All15 mechanical consumers and44
+CPP regression tests passed. This head normally composed the narrow diagnostic
+dependency `3d6ac5fb40f50239f0d0c69795f9c11247d263e1`; its helper adds only
+test-side observation labels and does not fix or explain the earlier failure.
+After owned checks closed, normal main768f843 composition produced
+`181b4de6475cf86e23564f95eeacf39d871f3ba6` with the IDENTICAL whole tree
+`9ef6d3a2cc6478477a0867f5835f5db9b0318f41`. Debug and release workspace
+builds passed there. Code tree `f5c09c564cc33d12e71abc64f795928051dfb9b3`
+is exact for both executions; selected Codex tree
+`ae44cc25c71366e0edea5b2a0c2a4b9f3db06687` is unchanged from the mutation
+baseline9393545. Historical7Grok failures and the diagnostic dependency's
+earlier Codex inspection/watchdog failures retain UNKNOWN cause. Neither the
+new green run nor the mechanics source grants broad CPP/native/MVP acceptance.
+
 ## Compiled boundary controls
 
 Mutation evidence is scoped to the actual assertions, not a native grant claim.
