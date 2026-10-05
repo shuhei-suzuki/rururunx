@@ -222,11 +222,21 @@ impl NativeResultReceipt {
                 && self.terminal_sha256.as_deref().is_none_or(sha),
             "invalid native receipt digest"
         );
+        // Initial acquisition profile is text-only. Retaining an arbitrary Value here
+        // would bypass decoded-content/depth bounds for non-complete receipts.
+        ensure!(
+            self.structured_output.is_none(),
+            "structured native content profile is unsupported"
+        );
         if let Some(prefix) = &self.prefix {
             ensure!(
                 prefix.prefix.len() <= PREFIX_BYTES
                     && prefix.prefix_sha256 == digest(prefix.prefix.as_bytes())
-                    && prefix.observed_bytes >= prefix.prefix.len() as u64,
+                    && prefix.observed_bytes >= prefix.prefix.len() as u64
+                    && prefix.unseen_suffix
+                        == (!prefix.exact_length
+                            || prefix.observed_bytes > prefix.prefix.len() as u64)
+                    && self.acquisition != AcquisitionStatus::Missing,
                 "invalid native receipt prefix"
             );
         }
