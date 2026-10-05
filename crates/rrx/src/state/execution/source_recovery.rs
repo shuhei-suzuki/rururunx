@@ -12,7 +12,8 @@ struct Pin {
     version: u64,
     digest: String,
 }
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct Pins {
     scope: Scope,
     project: Pin,
@@ -27,6 +28,7 @@ struct Pins {
     instruction: String,
 }
 #[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct Row {
     id: Uuid,
     epoch: u64,
@@ -283,7 +285,8 @@ fn row(c: &Connection, task: TaskId) -> Result<Option<Row>> {
 fn validate_row(c: &Connection, row: &Row) -> Result<()> {
     epoch(c, row.epoch)?;
     ensure!(
-        snapshot(c, row.pins.scope.task_id.context("Task missing")?)?.pins == row.pins,
+        serde_json::to_vec(&snapshot(c, row.pins.scope.task_id.context("Task missing")?)?.pins)?
+            == serde_json::to_vec(&row.pins)?,
         "source recovery full authority snapshot changed"
     );
     Ok(())
@@ -346,15 +349,15 @@ pub(in crate::state) fn after_write(
     } else {
         snapshot(c, row.pins.scope.task_id.unwrap()).ok()
     };
-    if let Some(next) = next.filter(|s| {
-        s.pins.project == row.pins.project
-            && s.pins.goal == row.pins.goal
-            && s.pins.generation == row.pins.generation
-            && s.pins.workflow_id == row.pins.workflow_id
-            && s.pins.artifact == row.pins.artifact
-            && s.pins.governing == row.pins.governing
-            && s.pins.instruction == row.pins.instruction
-    }) {
+    if let Some(next) = next
+        && next.pins.project == row.pins.project
+        && next.pins.goal == row.pins.goal
+        && next.pins.generation == row.pins.generation
+        && next.pins.workflow_id == row.pins.workflow_id
+        && serde_json::to_vec(&next.pins.artifact)? == serde_json::to_vec(&row.pins.artifact)?
+        && next.pins.governing == row.pins.governing
+        && next.pins.instruction == row.pins.instruction
+    {
         row.pins = next.pins;
     } else {
         row.state = "invalid".into();

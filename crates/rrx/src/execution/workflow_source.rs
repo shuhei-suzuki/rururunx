@@ -241,6 +241,9 @@ impl ManagedWorkflowSources {
     }
     /// Rebuild only the sole Workflow's exact Published frame under a genuine
     /// current-owner source claim. This does not reconstruct a Runtime driver.
+    // The Runtime driver is a subsequent consumer; this private source port is
+    // exercised through real retained producers below, never a persisted grant.
+    #[allow(dead_code)]
     pub(crate) async fn recover_retained(&self, task: TaskId) -> Result<()> {
         let slot = self.slot(task)?;
         let mut state = slot.lock().await;
@@ -473,6 +476,8 @@ impl ManagedWorkflowSources {
         Ok(state.frame.clone())
     }
 }
+#[cfg(test)]
+mod recovery_tests;
 impl WorkflowSources for ManagedWorkflowSources {
     fn capture(
         &self,
