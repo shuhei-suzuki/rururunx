@@ -677,3 +677,68 @@ fn blocked_owning_child_wait_freezes_then_same_jobs_settle_late() {
     assert!(record.worker.lock().unwrap().is_none());
     assert!(record.native.lock().unwrap().child.is_none());
 }
+
+#[tokio::test]
+async fn actual_generic_launch_drop_distinguishes_admitted_from_live_git() {
+    for live in [false, true] {
+        let (_directory, store, project, task, worktree) = super::super::tests::preflight_fixture();
+        let mut context = TestGitContext::isolated();
+        let pause = Arc::new(TestPause::default());
+        let release = TestRelease(pause.clone());
+        if live {
+            context.context.hooks.after_spawn = Some(pause.clone());
+        } else {
+            context.context.hooks.before_authorize = Some(pause.clone());
+        }
+        let mut adapter =
+            GenericCliAdapter::new("fake".into(), vec!["/bin/cat".into()], store.clone()).unwrap();
+        adapter.git_context = Some(context.clone());
+        let request = super::super::tests::fixture_request(project, &task, worktree);
+        let launch = tokio::spawn(async move { adapter.start(request).await });
+        pause.reached().await;
+        launch.abort();
+        assert!(launch.await.unwrap_err().is_cancelled());
+        let records = store
+            .lock()
+            .unwrap()
+            .records(&task.scope(), RecordKind::Session)
+            .unwrap();
+        let saved: Session = serde_json::from_value(records[0].data.clone()).unwrap();
+        let expected = if live {
+            SessionState::Lost
+        } else {
+            SessionState::Failed
+        };
+        assert_eq!(saved.state, expected);
+        assert_eq!(crate::git::executor_reserved(&saved), live);
+        assert!(saved.pid.is_none() && saved.native_ref.is_none());
+        drop(release);
+        released(&context).await;
+        let after = store.lock().unwrap().session(saved.id).unwrap().unwrap().0;
+        assert_eq!(
+            after.state, expected,
+            "late Git settlement must not rewrite launch reservation"
+        );
+        assert_eq!(crate::git::executor_reserved(&after), live);
+    }
+}
+
+#[tokio::test]
+async fn observed_reader_panic_is_distinct_from_abort_and_native_loss() {
+    let mut context = TestGitContext::isolated();
+    context.context.hooks.stdout_reader_panic = true;
+    context.context.hooks.pending_stderr = true;
+    let flag = Arc::new(AtomicBool::new(false));
+    let failure = shell(context.clone(), "exit 0", flag.clone())
+        .await
+        .unwrap_err();
+    assert_eq!(failure.kind, ErrorKind::ProcessFailure);
+    released(&context).await;
+    assert!(!flag.load(Ordering::SeqCst));
+    let facts = context.context.hooks.facts.lock().unwrap().unwrap();
+    assert_eq!(facts.stdout.join, JoinState::Panicked);
+    assert!(!facts.stdout.abort_requested);
+    assert!(!facts.stdout.read_ok && facts.stdout.read_error.is_none());
+    assert_eq!(facts.stderr.join, JoinState::Cancelled);
+    assert!(facts.stderr.abort_requested);
+}

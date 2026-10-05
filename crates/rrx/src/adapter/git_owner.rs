@@ -286,6 +286,7 @@ struct TestHooks {
     facts: Arc<Mutex<Option<ReaderFacts>>>,
     after_primary_panic: bool,
     pending_stderr: bool,
+    stdout_reader_panic: bool,
     missing_executable: bool,
     missing_matching: Option<(Vec<String>, usize)>,
     matching_calls: Arc<std::sync::atomic::AtomicUsize>,
@@ -917,7 +918,19 @@ async fn supervisor_work(
                 .map_err(|_| error(ErrorKind::LaunchFailure, "Git stdout registration failed"))?;
             let stderr = tokio::process::ChildStderr::from_std(stderr)
                 .map_err(|_| error(ErrorKind::LaunchFailure, "Git stderr registration failed"))?;
-            readers.stdout = Some(tokio::spawn(read_git_output(stdout)));
+            #[cfg(test)]
+            if record._context.hooks.stdout_reader_panic {
+                readers.stdout = Some(tokio::spawn(async move {
+                    let _endpoint = stdout;
+                    panic!("synthetic Git stdout reader panic");
+                }));
+            } else {
+                readers.stdout = Some(tokio::spawn(read_git_output(stdout)));
+            }
+            #[cfg(not(test))]
+            {
+                readers.stdout = Some(tokio::spawn(read_git_output(stdout)));
+            }
             readers.facts.stdout.join = JoinState::NotObserved;
             #[cfg(test)]
             if record._context.hooks.pending_stderr {
