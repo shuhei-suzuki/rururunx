@@ -1,0 +1,78 @@
+{
+  "baseline": "bb81801594a0f540291bea89c51cebdce8049db9",
+  "cases": [
+    {
+      "name": "abandonment_revocation",
+      "head": "eb2c03b90fea17526f73f34143cba1ed912c1821",
+      "test": "abandoned_actor_revokes_queued_creation_before_caller_error_return",
+      "exit": 101,
+      "compiled": true,
+      "expected_assertion": "abandoned actor admitted a new queued file effect",
+      "intended_failure": true,
+      "killed": true,
+      "sha256": "3821b1340570baf02629452fabcae623f86a2c641147085017ced96f50707a8c",
+      "seconds": 17.08,
+      "raw_driver_classification": "false due to incorrect expected assertion string; execution not rerun",
+      "patch_sha256": "74f01c9b773d8cb58e466d8dc0315932623b1d8849edfc7b7ca704e37f84d3e0"
+    },
+    {
+      "name": "missing_runtime_precheck",
+      "head": "d396be6d74d4dcd219a29f14b86fd69e545f863c",
+      "test": "custodied_missing_and_closed_runtime_have_exact_no_effect_accounting",
+      "exit": 101,
+      "compiled": true,
+      "expected_assertion": "called `Result::unwrap_err()` on an `Ok` value",
+      "intended_failure": true,
+      "killed": true,
+      "sha256": "db2eb683fd8f5d1cd7ba0ea574d01fbf60f105b0355769d5b294c23b0617a4ad",
+      "seconds": 11.34,
+      "patch_sha256": "9aed2eb9c427f86ae5a69134a7aab3f7054238cb4d67e991ffd179f6bf295441"
+    },
+    {
+      "name": "closed_runtime_task_lock_release",
+      "head": "13bab582edc1ec508293a8899c38d76b3a45164b",
+      "test": "custodied_missing_and_closed_runtime_have_exact_no_effect_accounting",
+      "exit": 101,
+      "compiled": true,
+      "expected_assertion": "closed scheduler cannot deadlock custodied task installation",
+      "intended_failure": true,
+      "killed": true,
+      "sha256": "cbc96776b33572365bb808e60dec258a54dd43d8ddd3665e9f85d43770a88759",
+      "seconds": 12.62,
+      "patch_sha256": "35e9efcb237a11fc689f91082ff28c8cc8698b284699699ea0b0831884e540ae"
+    }
+  ],
+  "raw_driver_exit": 1,
+  "raw_driver_failure": "Final classification assertion failed because abandonment expected-string differed from the actual test assertion. Manual immutable-log verification established all three intended compiled failures; no execution rerun.",
+  "restored_tree": "ee8a541be2f714fb2e526471e2959b91e1bc4f44",
+  "restored_clean": true,
+  "restored_gates": [
+    {
+      "name": "debug",
+      "exit": 0,
+      "sha256": "fb08062c248c7e965a6f514c01b1461cf50d00a59e048b03947af52c23c79042"
+    },
+    {
+      "name": "release",
+      "exit": 0,
+      "sha256": "4a71425dd14e6770165195fed7fa33333a4dfbcc4e507dd2f46faa3573e72a92"
+    },
+    {
+      "name": "fmt",
+      "exit": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "clippy",
+      "exit": 0,
+      "sha256": "19d53df5afdf267631b7c2db4fe2a2faeb66e050132ff75310bf261912c0935d"
+    }
+  ],
+  "limits": [
+    "Three distinct new boundary operators, not duplicate credit for both abandonment guard calls.",
+    "Raw driver exit1 due to expected assertion text mistake preserved; manual immutable-log verification, no repeated mutant run.",
+    "Deadlock mutant synthetic thread ends at test-process exit; no observed join or native cleanup credit.",
+    "Historical16 operators remain observations of94350f; not rerun on this later baseline.",
+    "No native backend, managed authority, production factory or all-workload settlement supplied."
+  ]
+}

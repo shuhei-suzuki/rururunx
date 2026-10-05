@@ -463,6 +463,35 @@ effort have not been changed. Whole-workload containment/settlement, actual owni
 approval broker, both-host provider and four-plus concurrency acceptance remain
 mandatory/open. See [issue design](../issue-6-design.md).
 
+### Private preparation job custody (Issue #19)
+
+The private Codex Control can retain an actor handle, a custodian thread and a
+closed resource worker outside the waiting adapter future. The selected component
+uses a bounded 64-job pool, three declared slots per preparation, a 64-request
+inbox and a 4096-byte encoded metadata limit. Actual join observations refund
+eligible slots; opaque construction errors and unknown frames retain their
+unproved reservations. Caller Drop revokes mechanical callbacks independently of
+the native cancellation latch.
+
+A normal context error with outstanding created resources retains the exact
+registry entry and deferred original disposition. Complete observed joins without
+unknown/outstanding work permit reconciling that deferred disposition. If the
+resource already joined before the error, the existing no-work disposition can
+remove/restore registry bookkeeping while actor/custodian metadata drains. Genuine
+actor abandonment revokes queued effects before publishing Lost. A handler
+that already sampled permission can still begin its retained worker afterward;
+revocation and effect commitment are not yet linearized. A retained Lost entry
+has no deferred restoration intent and needs the still-pending recovery path.
+Its zero-created retention depends on accepted/in-flight counters at drop time. A genuine no-created-resource outcome may also restore/remove bookkeeping
+while fixed metadata drains; neither path refunds unfinished jobs.
+
+The resource factory is cfg(test)-only and ordinary custody selection returns
+None. Public Codex availability stays EMPTY. Existing Git/preparation consumers
+are not migrated to this pool. No native subprocess, cohort containment, managed
+admission, persistent owner recovery, Context Pack producer or settlement
+certificate is supplied. See the [selected component design](../issue-19-lifetime-component-design.md)
+and [curated integration evidence](../../verification/issue-19-native-custody.md).
+
 ## 17. Native workload ownership limit
 
 Section16 records the selected-process-group component baseline. Current native

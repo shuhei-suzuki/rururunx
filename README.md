@@ -301,6 +301,14 @@ The generic CLI cannot review. Workflow CLI/TUI, independent review sets (#9),
 approval routing (#10), owner/restart recovery (#14), and production Context Pack publication (#19)
 remain pending. Issue #18 repository-context selection is available independently. See [Workflow Engine](doc/design/master/workflow-engine.md).
 
+Issue #19 also contains a private Codex preparation custody component, exercised
+with closed file/worker fixtures. It retains job handles independently of the
+waiting caller and reconciles the original registry disposition after observed
+joins. Ordinary Codex availability remains empty; native process ownership and
+production Context Pack publication remain pending. See
+[component design](doc/design/issue-19-lifetime-component-design.md) and
+[curated integration evidence](doc/verification/issue-19-native-custody.md).
+
 Issue #41 implements passive observation of agent preparation reservations and
 release only by their committing owner after a verified eligible preparation error.
 Issue #14 must reconcile orphaned undispatched attempts, dropped futures/crashes,
