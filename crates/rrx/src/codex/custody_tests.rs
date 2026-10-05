@@ -582,8 +582,7 @@ mod custody_mechanics {
         assert_eq!(adapter.availability.sites(), [0; 10]);
     }
 
-    #[tokio::test]
-    async fn queued_revoked_create_retires_before_actor_error_and_removes_no_work_entry() {
+    async fn revoked_create_with_note(note_pending: bool) {
         let (owned, adapter, factory) = adapter();
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("never-created");
@@ -599,8 +598,17 @@ mod custody_mechanics {
         let pause = RetirePause(custody.clone());
         custody.pause(true);
         custody.pause_retirement(true);
+        custody.retirement_target(if note_pending { 2 } else { 1 });
         before.release();
         wait(|| custody.accepted() == 1).await;
+        if note_pending {
+            control
+                .take_endpoint()
+                .unwrap()
+                .try_note("metadata queued before revoke")
+                .unwrap();
+            assert_eq!(custody.accepted(), 2);
+        }
         drop(calling);
         assert!(control.jobs_revoked());
         custody.pause(false);
@@ -628,6 +636,16 @@ mod custody_mechanics {
             adapter.registry().unwrap().is_empty(),
             "zero-effect reply cannot strand a created=false Held entry"
         );
+    }
+
+    #[tokio::test]
+    async fn queued_revoked_create_retires_before_actor_error_and_removes_no_work_entry() {
+        revoked_create_with_note(false).await;
+    }
+
+    #[tokio::test]
+    async fn queued_metadata_after_revoked_create_preserves_no_work_registry_disposition() {
+        revoked_create_with_note(true).await;
     }
 
     #[tokio::test]

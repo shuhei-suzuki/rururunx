@@ -69,6 +69,10 @@ impl Pool {
             retirement_paused: AtomicBool::new(false),
             #[cfg(test)]
             retirement_reached: AtomicBool::new(false),
+            #[cfg(test)]
+            retirement_target: AtomicUsize::new(1),
+            #[cfg(test)]
+            retirement_steps: AtomicUsize::new(0),
         });
         {
             let mut state = self.0.lock().unwrap_or_else(|e| e.into_inner());
@@ -239,6 +243,10 @@ pub(super) struct Inventory {
     retirement_paused: AtomicBool,
     #[cfg(test)]
     retirement_reached: AtomicBool,
+    #[cfg(test)]
+    retirement_target: AtomicUsize,
+    #[cfg(test)]
+    retirement_steps: AtomicUsize,
 }
 impl Inventory {
     pub fn install_actor(&self, actor: tokio::task::JoinHandle<()>) {
@@ -320,6 +328,10 @@ impl Inventory {
     #[cfg(test)]
     pub fn retirement_reached(&self) -> bool {
         self.retirement_reached.load(Ordering::SeqCst)
+    }
+    #[cfg(test)]
+    pub fn retirement_target(&self, target: usize) {
+        self.retirement_target.store(target, Ordering::SeqCst);
     }
     #[cfg(test)]
     pub fn accepted(&self) -> usize {
@@ -481,7 +493,11 @@ fn run(inventory: &Arc<Inventory>, mut receiver: mpsc::Receiver<Request>) -> Cre
                 inventory.worker_uncertain.store(true, Ordering::SeqCst);
             }
             #[cfg(test)]
-            if inventory.retirement_paused.load(Ordering::SeqCst) {
+            let retirement_step = inventory.retirement_steps.fetch_add(1, Ordering::SeqCst) + 1;
+            #[cfg(test)]
+            if inventory.retirement_paused.load(Ordering::SeqCst)
+                && retirement_step == inventory.retirement_target.load(Ordering::SeqCst)
+            {
                 inventory.retirement_reached.store(true, Ordering::SeqCst);
                 while inventory.retirement_paused.load(Ordering::SeqCst) {
                     std::thread::sleep(Duration::from_millis(1));
