@@ -323,6 +323,11 @@ async fn cancelled_authorized_command_never_creates_a_child() {
     drop(release);
     let failure = task.await.unwrap().unwrap_err();
     released(&context).await;
+    assert_eq!(
+        record.returned_children.load(Ordering::SeqCst),
+        0,
+        "cancelled authorization created an actual Child"
+    );
     assert_eq!(failure.kind, ErrorKind::LaunchFailure);
     assert_eq!(failure.message, "Git launch cancelled before spawn");
     assert!(record.native.lock().unwrap().child.is_none());

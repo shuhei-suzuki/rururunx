@@ -643,6 +643,8 @@ struct OpRecord {
     reader_lanes: std::sync::atomic::AtomicUsize,
     #[cfg(test)]
     frame_actions_completed: AtomicBool,
+    #[cfg(test)]
+    returned_children: std::sync::atomic::AtomicUsize,
 }
 impl OpRecord {
     fn new(flag: Arc<AtomicBool>, context: Context) -> Self {
@@ -674,6 +676,8 @@ impl OpRecord {
             reader_lanes: std::sync::atomic::AtomicUsize::new(0),
             #[cfg(test)]
             frame_actions_completed: AtomicBool::new(false),
+            #[cfg(test)]
+            returned_children: std::sync::atomic::AtomicUsize::new(0),
         }
     }
 }
@@ -1323,6 +1327,8 @@ fn native_worker(
                     let result = match child {
                         Ok(child) => {
                             native.child = Some(child); // Anchor before binding/stdio/wrapping.
+                            #[cfg(test)]
+                            record.returned_children.fetch_add(1, Ordering::SeqCst);
                             let raw = native.child.as_ref().unwrap().id();
                             let pid = if raw > 1 && raw <= i32::MAX as u32 {
                                 Pid::from_raw(raw as i32)
