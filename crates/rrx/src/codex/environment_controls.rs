@@ -420,6 +420,7 @@ async fn public_constructor_raw_child() {
     std::fs::write(directory.join("complete"), "raw constructor checked").unwrap();
 }
 fn assert_synthetic_constructor_environment(directory: &std::path::Path, bounds: bool) {
+    use std::collections::BTreeMap;
     use std::ffi::{OsStr, OsString};
     let mut expected = BTreeMap::from([
         (OsString::from("HOME"), directory.as_os_str().to_owned()),
