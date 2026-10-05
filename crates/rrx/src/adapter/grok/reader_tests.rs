@@ -48,6 +48,46 @@ async fn terminal(adapter: &GrokAdapter, fixture: &Fixture, session: &Session) -
 }
 
 #[tokio::test]
+async fn actual_late_git_reap_keeps_grok_lost_receipt_and_reservation_after_slot_release() {
+    let fixture = Fixture::new();
+    let context = TestGitContext::reap_after_cutoff();
+    let mut adapter = fixture.adapter();
+    adapter.git_context = Some(context.clone());
+    let session = fixture.start(&adapter).await.unwrap();
+    let status = terminal(&adapter, &fixture, &session).await;
+    let receipt = fixture.observation(&status).receipt.unwrap();
+    assert_eq!(
+        status.session.state,
+        SessionState::Lost,
+        "{:?}",
+        status.failure
+    );
+    assert!(
+        status
+            .failure
+            .as_ref()
+            .unwrap()
+            .contains("Git child death not confirmed after cleanup")
+    );
+    assert_eq!(receipt["uncertainty_by_stage"]["pre_spawn"], true);
+    assert_eq!(receipt["ownership_uncertain"], true);
+    assert_eq!(receipt["owned_process_group_created"], false);
+    assert_eq!(receipt["dispatched"], false);
+    context.wait_until_released().await;
+    let saved = fixture
+        .store
+        .lock()
+        .unwrap()
+        .session(session.id)
+        .unwrap()
+        .unwrap()
+        .0;
+    assert_eq!(saved.state, SessionState::Lost);
+    assert!(crate::git::executor_reserved(&saved));
+    assert_eq!(context.held_jobs(), 0);
+}
+
+#[tokio::test]
 async fn actual_index_git_unknown_reaches_pre_spawn_and_reconciliation_receipts() {
     for (ordinal, stage, dispatched) in [(1, "pre_spawn", false), (2, "reconciliation", true)] {
         let fixture = Fixture::new();

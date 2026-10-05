@@ -800,6 +800,45 @@ async fn actual_reap_after_cutoff_never_clears_the_frozen_flag() {
 }
 
 #[tokio::test]
+async fn actual_reader_registration_progresses_while_native_cleanup_holds_its_vault() {
+    let mut context = TestGitContext::isolated();
+    let before_readers = Arc::new(TestPause::default());
+    let native_held = Arc::new(TestPause::default());
+    let initialized = Arc::new(TestPause::default());
+    let release_readers = TestRelease(before_readers.clone());
+    let release_native = TestRelease(native_held.clone());
+    let release_initialized = TestRelease(initialized.clone());
+    context.context.hooks.before_reader_initialization = Some(before_readers.clone());
+    context.context.hooks.after_cancel_cleanup = Some(native_held.clone());
+    context.context.hooks.after_spawn = Some(initialized.clone());
+    let flag = Arc::new(AtomicBool::new(false));
+    let call = tokio::spawn(shell(context.clone(), "exec sleep 60", flag.clone()));
+    before_readers.reached().await;
+    let record = context.pool.as_ref().unwrap().state.lock().unwrap().records[0].clone();
+    record.ticket.cancel();
+    native_held.reached().await;
+    assert!(
+        record.native.try_lock().is_err(),
+        "actual cleanup still holds native vault"
+    );
+    drop(release_readers);
+    initialized.reached().await;
+    assert_eq!(record.reader_lanes.load(Ordering::SeqCst), 2);
+    assert!(
+        record.native.try_lock().is_err(),
+        "reader progress must precede native unlock"
+    );
+    drop(release_initialized);
+    drop(release_native);
+    assert_eq!(call.await.unwrap().unwrap_err().kind, ErrorKind::Timeout);
+    released(&context).await;
+    assert!(
+        flag.load(Ordering::SeqCst),
+        "cancelled live outcome remains frozen"
+    );
+}
+
+#[tokio::test]
 async fn observed_reader_panic_is_distinct_from_abort_and_native_loss() {
     let mut context = TestGitContext::isolated();
     context.context.hooks.stdout_reader_panic = true;

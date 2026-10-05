@@ -330,6 +330,8 @@ struct TestHooks {
     after_spawn: Option<Arc<TestPause>>,
     after_reap_send: Option<Arc<TestPause>>,
     before_cleanup_ack: Option<Arc<TestPause>>,
+    before_reader_initialization: Option<Arc<TestPause>>,
+    after_cancel_cleanup: Option<Arc<TestPause>>,
     reap_after_cutoff: Option<Arc<TestPause>>,
     facts: Arc<Mutex<Option<ReaderFacts>>>,
     after_primary_panic: bool,
@@ -953,6 +955,10 @@ async fn supervisor_work(
             publication.state = State::Live;
         }
     }
+    #[cfg(test)]
+    if let Some(pause) = &record._context.hooks.before_reader_initialization {
+        pause.block();
+    }
     let initialized = {
         let _entered = tokio::runtime::Handle::current().enter();
         // Never held across native spawn, KILL, inspection or Child::wait.
@@ -1309,6 +1315,10 @@ fn native_worker(
                         return;
                     }
                     first_cleanup(record, &mut native);
+                    #[cfg(test)]
+                    if let Some(pause) = &record._context.hooks.after_cancel_cleanup {
+                        pause.block();
+                    }
                     if record.ticket.lost.load(Ordering::SeqCst) {
                         return;
                     }
