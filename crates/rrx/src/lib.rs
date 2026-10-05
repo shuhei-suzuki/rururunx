@@ -4,6 +4,7 @@ pub mod codex;
 pub mod config;
 pub mod context;
 pub mod domain;
+pub mod execution;
 pub mod git;
 mod goal;
 pub mod project;

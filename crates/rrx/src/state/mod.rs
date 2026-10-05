@@ -12,7 +12,8 @@ use serde_json::{Value, json};
 
 use crate::domain::*;
 
-pub const SCHEMA_VERSION: i64 = 3;
+pub const SCHEMA_VERSION: i64 = 4;
+mod execution;
 pub const APPLICATION_ID: i64 = 0x52525831; // ASCII RRX1.
 
 /// Typed transactional guards let callers distinguish contention from storage failure.
@@ -77,6 +78,13 @@ impl Store {
     }
 
     fn initialize(mut connection: Connection) -> Result<Self> {
+        connection.create_scalar_function(
+            "rrx_writer_contract_version", 0,
+            rusqlite::functions::FunctionFlags::SQLITE_UTF8
+                | rusqlite::functions::FunctionFlags::SQLITE_DETERMINISTIC
+                | rusqlite::functions::FunctionFlags::SQLITE_INNOCUOUS,
+            |_| Ok(SCHEMA_VERSION),
+        )?;
         connection.busy_timeout(Duration::from_secs(5))?;
         let version: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
         ensure!(
@@ -108,6 +116,7 @@ impl Store {
                     "refusing to initialize a nonempty or foreign database"
                 );
                 tx.execute_batch(include_str!("schema.sql"))?;
+                execution::install_schema(&tx)?;
                 tx.pragma_update(None, "application_id", APPLICATION_ID)?;
                 tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
             } else {
@@ -121,6 +130,7 @@ impl Store {
                 // Ordered JSON-format migrations; SQL layout and ownership/audit stay intact.
                 // v2 adds Project blocked_reason; v3 adds authoritative Workflow records.
                 for next in (locked_version + 1)..=SCHEMA_VERSION {
+                    if next == 4 { execution::install_schema(&tx)?; }
                     tx.pragma_update(None, "user_version", next)?;
                 }
             }
@@ -1185,7 +1195,12 @@ fn put_task_tx(tx: &Transaction<'_>, task: &Task) -> Result<Task> {
             previous.project_id == task.project_id && previous.goal_id == task.goal_id,
             "task ownership is immutable"
         );
+        let admitted_rebind: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM task_execution a JOIN execution_units u ON u.id=a.active_unit WHERE a.task_id=?1 AND u.kind='executor' AND u.generation=a.generation AND u.worktree=?2 AND u.branch=?3 AND u.native_effects_open=1)",
+            params![task.id.to_string(),task.worktree.as_ref().map(|p|p.to_string_lossy().into_owned()),task.branch], |r|r.get(0),
+        )?;
         ensure!(
+            admitted_rebind || (
             previous
                 .worktree
                 .as_ref()
@@ -1193,7 +1208,7 @@ fn put_task_tx(tx: &Transaction<'_>, task: &Task) -> Result<Task> {
                 && previous
                     .branch
                     .as_ref()
-                    .is_none_or(|branch| task.branch.as_ref() == Some(branch)),
+                    .is_none_or(|branch| task.branch.as_ref() == Some(branch))),
             "assigned task worktree/branch binding is immutable"
         );
         ensure!(
