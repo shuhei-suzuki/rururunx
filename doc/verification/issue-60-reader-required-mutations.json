@@ -21,7 +21,20 @@
         "  left: 1",
         " right: 0",
         "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 337 filtered out; finished in 0.01s"
-      ]
+      ],
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "rrx",
+        "--lib",
+        "adapter::git_owner::tests::cancelled_authorized_command_never_creates_a_child",
+        "--",
+        "--exact",
+        "--nocapture"
+      ],
+      "explicit_test_environment": {},
+      "credit": "direct ticket.cancel; worker cancel operand after dequeue only; no CallGuard delivery or lost-operand credit"
     },
     {
       "id": "M60-R19",
@@ -43,7 +56,20 @@
         "  left: 0",
         " right: 4",
         "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 337 filtered out; finished in 0.02s"
-      ]
+      ],
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "rrx",
+        "--lib",
+        "adapter::git_owner::tests::publication_poison_after_actual_settlement_still_retains_permits",
+        "--",
+        "--exact",
+        "--nocapture"
+      ],
+      "explicit_test_environment": {},
+      "credit": "combined poison/lost predicate omission; both halves true in poison case, no separate lost-half sensitivity"
     },
     {
       "id": "M60-R20",
@@ -63,7 +89,19 @@
         "thread 'adapter::git_owner::tests::invalid_binding_retains_actual_child_before_any_pipe_or_pid_adoption' (241502758) panicked at crates/rrx/src/adapter/git_owner/tests.rs:1127:5:",
         "assertion failed: child.stdout.is_some() && child.stderr.is_some()",
         "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 337 filtered out; finished in 0.00s"
-      ]
+      ],
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "rrx",
+        "--lib",
+        "adapter::git_owner::tests::invalid_binding_retains_actual_child_before_any_pipe_or_pid_adoption",
+        "--",
+        "--exact",
+        "--nocapture"
+      ],
+      "explicit_test_environment": {}
     },
     {
       "id": "M60-R21",
@@ -85,7 +123,22 @@
         "  left: 4",
         " right: 0",
         "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 337 filtered out; finished in 0.00s"
-      ]
+      ],
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "rrx",
+        "--lib",
+        "adapter::git_owner::tests::destructive_private_controls_leave_fresh_production_pool_unchanged",
+        "--",
+        "--exact",
+        "--nocapture"
+      ],
+      "explicit_test_environment": {
+        "RRX_PRIVATE_GIT_POOL_AUDIT": "1"
+      },
+      "credit": "single-test audit-mode missing-exec witness; no parent selection/exit propagation sensitivity"
     },
     {
       "id": "M60-R22",
@@ -105,7 +158,19 @@
         "thread 'adapter::git_owner::tests::selected_owned_signal_result_parity_preserves_os_specific_unknown' (241513501) panicked at crates/rrx/src/adapter/git_owner/tests.rs:165:32:",
         "called `Result::unwrap_err()` on an `Ok` value: []",
         "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 337 filtered out; finished in 0.02s"
-      ]
+      ],
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "rrx",
+        "--lib",
+        "adapter::git_owner::tests::selected_owned_signal_result_parity_preserves_os_specific_unknown",
+        "--",
+        "--exact",
+        "--nocapture"
+      ],
+      "explicit_test_environment": {}
     }
   ],
   "exact_restore_after_every_run": true,

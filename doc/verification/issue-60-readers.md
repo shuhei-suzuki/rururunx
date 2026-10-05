@@ -735,3 +735,74 @@ matrix close their local scoped coverage gaps only. Current source approval,
 required both-OS CI and Root's merge disposition remain pending; PR64 is DRAFT/HOLD.
 Whole60, all failed full TEST gates, F1/native16, availability/recovery and missing
 shared producer contracts remain OPEN.
+
+### Source4 outcomes and verified Source5 Low corrections
+
+[Source4](issue-60-reader-source4-findings.json) completed independently twice at
+e29567a: both APPROVE, zero Critical/High/Medium, five/four Low findings, actual
+owned review cleanup verified. Both commands closed before findings were read.
+The raw outcomes preserve launch-time pending notes; subsequent
+[CI37264766985](issue-60-reader-source4-ci.json) passed every step bothOS. Actual
+checkout0f182fce parents26f3/e295 has the same complete tree as e295. The actual
+audit child passed45/1ignored on macOS and42/1ignored on Linux; Linux executed
+the PERM-to-Unknown branch. This is DEBUG TEST plus RELEASE BUILD, not RELEASE
+TEST, and does not change any old/full-gate failure disposition.
+
+The audit selected the healthy ordinary scalar contract using the production pool,
+contrary to its private-only comment. f072799 explicitly skips that control in the
+audit child; the original scalar test still runs in the ordinary full suite. Its
+trusted compiled binary `--list` inventory now checks every applicable selector
+and per-OS cardinality before the actual audit. There are45 listed tests on macOS
+(44run/1ignored) and42 on Linux (41run/1ignored). The list child executes no test
+body, writes an owned regular file, creates no additional pipe-reader job, and
+shares the original60s test window with the audit child. Each actual Child is
+anchored before observation. This checks current selectors/counts; future carriers
+outside these prefixes still require source inventory review, not automatic
+discovery. No new production job, native profile, ps observer or deadline change.
+
+The existing worker gate control now aborts and awaits the actual caller while
+the native worker is paused after AuthorizeSpawn dequeue, then releases it. Its
+zero returned-Child count, frozen flag and late actual release now observe
+CallGuard delivery. The old R18 direct-ticket run earns only the cancel operand
+at the worker gate; its live-caller response was a test-only interleaving. The
+new [same-R18 sensitivity](issue-60-reader-source5-mutations.json) is compiled
+and killed at returned Child1versus0; this adds one run, not one distinct operator
+or a lost-operand guarantee. New R23 makes a selector stale; the actual trusted
+binary inventory rejects it before audited Git/native jobs start. Both sources
+were restored exactly; private restored parent1PASS and child44PASS/1ignored3.03s.
+The cumulative ledger is27 compiled runs/23 distinct operators/25 intended kill
+runs plus the two historical masked survivors with zero credit. R23 is selection
+oracle coverage; R19 tests the combined poison/lost predicate with both true,
+not separate lost-half sensitivity. R21 was the single-test audit-mode witness
+with `RRX_PRIVATE_GIT_POOL_AUDIT=1`, not the45-test parent's filter/status oracle.
+Exact commands, environment, tested blobs and fd406→e295→f072 path inventories
+are now recorded. This grants no complete per-guard/native workload proof.
+
+macOS PERM credit is narrowed to the source-traced shared resolver/callsite and
+the reachable settled branch. There is no independent real-ps invocation witness
+or compiled ps-call-site-omission sensitivity; no authoritative observer/profile
+is added. Actual e295 Linux branch execution is separate from current Source5 CI,
+which must verify the new Linux inventory. No Linux local mutant credit.
+
+From fd406 onward, the ordinary full default suite includes a second default-
+parallel process duplicating the selected controls concurrently with their parent
+copies, including saturation, the actual selected inspector and Generic/Grok/
+Context actors. f072 excludes one scalar copy and adds the no-body list child.
+The workload composition differs from35f0. Either copy failing is a failed gate;
+no cause, regression or exoneration is inferred, no skip-only diagnostic run or
+serialization is used, and existing deadlines/latches remain unchanged.
+
+[Current gates](issue-60-reader-source5-gates.json) at f072799: full default Debug
+PASS425 top-level Rust tests+2docs/27ignored, with nested44audit and1ordinary-library
+child counted separately. Distinct full Release TEST FAILED: library308PASS/
+6FAIL/24ignored in72.22s; later workspace targets unrun. Four Grok children
+observed exit101: absent-baseline transport predicate, native-reference explicit
+Git5s Timeout, stop Failed versus Stopped, and resume-admission explicit Git5s
+Timeout. Two watchdogs expired60001ms with actual parent-observed SIGKILL, both
+last boundary1/2 case6/resumed_terminal. Native dispatched=false/not_attempted
+does not prove no Git spawn. Cause, contribution AND regression UNKNOWN. The
+audit child44PASS/1ignored7.56s does not replace this failed full gate. Fmt,
+all-target Clippy-Dwarnings and both BUILDs passed. All older35f0/fd406 and historical
+full failures stay failed and separately scoped. Fresh Source5 source/CI gates
+and Root's disposition remain pending. PR64 stays DRAFT/HOLD; no native/F1/full60
+or shared-producer readiness is granted by any of these controls or metadata.

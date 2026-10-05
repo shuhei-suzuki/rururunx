@@ -1,11 +1,15 @@
-# Issue60 selected Git reader lifetime — Requirements4/Design2 approved; limited reviews complete, full gates unqualified
+# Issue60 selected Git reader lifetime — Requirements4/Design2 approved; Source5 candidate, full acceptance unqualified
 
 Risk: STRICT. Status: Requirements4 at a8e8a8b received two independent native
 approvals, no Critical/High/Medium findings, two Low findings each. Design2
 at46f819b has two independent approvals/no C/H/M; Source1 at a92c4d0 returned
 request_changes. Source2 at81e7c29 has two component-delta approvals/no C/H/M;
-limited Source3 at675471c likewise has two approvals/no C/H/M. Full source
-acceptance remains unqualified; both local full TEST gates failed.
+limited Source3 at675471c and Source4 ate29567a likewise have two approvals/no C/H/M.
+Source5 implements verified test/credit Low corrections; its fresh source/CI gates
+are pending. Current f072 full Debug passed; full Release TEST failed308/6 with
+later targets unrun. All older failed gates remain failed/cause AND regression
+UNKNOWN. Full source/native acceptance remains unqualified; current facts are in
+the [verification ledger](../verification/issue-60-readers.md).
 The four requirements
 Low findings are verified precision items
 carried into Design1 and the outcome ledger; this is not reader implementation

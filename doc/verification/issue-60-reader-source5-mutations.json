@@ -1,0 +1,70 @@
+{
+  "base_head": "f0727999d765aee1f1680ad8d58315b797008c19",
+  "runs": [
+    {
+      "id": "M60-R18-actual-caller",
+      "base_head": "f0727999d765aee1f1680ad8d58315b797008c19",
+      "mutant_head": "5ff312bd378999b0e036354b21d1aaea86f3aa95",
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "rrx",
+        "--lib",
+        "adapter::git_owner::tests::cancelled_authorized_command_never_creates_a_child",
+        "--",
+        "--exact",
+        "--nocapture"
+      ],
+      "operator": "diff --git a/crates/rrx/src/adapter/git_owner.rs b/crates/rrx/src/adapter/git_owner.rs\nindex c11922d..4f31bcb 100644\n--- a/crates/rrx/src/adapter/git_owner.rs\n+++ b/crates/rrx/src/adapter/git_owner.rs\n@@ -1288,8 +1288,7 @@ fn native_worker(\n                     if let Some(pause) = &record._context.hooks.before_worker_authorize {\n                         pause.block();\n                     }\n-                    if record.ticket.cancel.load(Ordering::SeqCst)\n-                        || record.ticket.lost.load(Ordering::SeqCst)\n+                    if false\n                     {\n                         record.native_settled.store(true, Ordering::SeqCst);\n                         if let Some(sender) = spawned.take() {\n",
+      "patch_sha256": "90550ce94e4a5ae54c771fbb2f38cabc2fcbed78222510824ff9ed665beaa7c5",
+      "compiled": true,
+      "exit": 101,
+      "assertion_killed": true,
+      "seconds": 10.645,
+      "scope": "same R18 operator; actual CallGuard cancellation sensitivity; cancel operand only",
+      "platform": "Darwin",
+      "log_sha256": "c8ee4c7e02ea5108b48f5c3a22242d4c03147f9c675f1a53e048eda4aef70452",
+      "excerpts": [
+        "thread 'adapter::git_owner::tests::cancelled_authorized_command_never_creates_a_child' (242290638) panicked at crates/rrx/src/adapter/git_owner/tests.rs:388:5:",
+        "assertion `left == right` failed: cancelled authorization created an actual Child",
+        "  left: 1",
+        " right: 0",
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 337 filtered out; finished in 0.00s"
+      ]
+    },
+    {
+      "id": "M60-R23",
+      "base_head": "f0727999d765aee1f1680ad8d58315b797008c19",
+      "mutant_head": "0843f74fc5259b100e984bccb08c5a8d846664ff",
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "rrx",
+        "--lib",
+        "adapter::git_owner::tests::destructive_private_controls_leave_fresh_production_pool_unchanged",
+        "--",
+        "--exact",
+        "--nocapture"
+      ],
+      "operator": "diff --git a/crates/rrx/src/adapter/git_owner/tests.rs b/crates/rrx/src/adapter/git_owner/tests.rs\nindex 6a7c77f..ab46cf2 100644\n--- a/crates/rrx/src/adapter/git_owner/tests.rs\n+++ b/crates/rrx/src/adapter/git_owner/tests.rs\n@@ -81,7 +81,7 @@ fn destructive_private_controls_leave_fresh_production_pool_unchanged() {\n     let mut filters = vec![\n         \"adapter::git_owner::tests::\",\n         \"adapter::grok::reader_tests::\",\n-        \"context::tests::actual_late_reap_keeps_context_latch_after_real_worker_settlement\",\n+        \"context::tests::deliberately_unmatched_private_carrier\",\n         \"context::tests::actual_dropped_git_future_sets_context_latch_before_late_settlement\",\n         \"context::tests::actual_output_open_error_keeps_context_latch_after_reader_late_settlement\",\n         \"context::tests::opaque_attempted_git_error_keeps_original_cause_and_context_latch\",\n",
+      "patch_sha256": "949db95997c07c1a22696354a898215302bd3d21636e0f15aa0fa417fb1fada7",
+      "compiled": true,
+      "exit": 101,
+      "assertion_killed": true,
+      "seconds": 2.574,
+      "scope": "actual compiled libtest inventory non-vacuity consumer; no audited Git/native jobs start after mismatch",
+      "platform": "Darwin",
+      "log_sha256": "abe0d3a19eebc316bb5251a6974255d5ad155b7fb1b3cf651e3fd1d8231cfdf2",
+      "excerpts": [
+        "thread 'adapter::git_owner::tests::destructive_private_controls_leave_fresh_production_pool_unchanged' (242291458) panicked at crates/rrx/src/adapter/git_owner/tests.rs:128:9:",
+        "audit selector matched no tests: context::tests::deliberately_unmatched_private_carrier",
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 337 filtered out; finished in 0.01s"
+      ]
+    }
+  ],
+  "exact_restore_after_every_run": true,
+  "R18_second_run_not_new_distinct_operator": true,
+  "no_linux_mutant_execution_claim": true
+}

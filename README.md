@@ -424,10 +424,13 @@ and native acceptance remain open.
 Selected Git reader lifetime has two independent Requirements4 approvals. The
 [Design2](doc/design/issue-60-reader-design.md), approved by two independent reviewers, now has a committed selected Git
 Child/readers implementation independent of caller runtime. Two independent
-Source2/Source3 reviews approve their limited component deltas without C/H/M;
-full-source/native acceptance remains unqualified. Local35f0 full default Debug
-FAILED306/3 and full Release TEST FAILED307/2 (library PASS/FAIL; later targets unrun).
-Source3 public bothOS CI passed full DEBUG TEST and RELEASE BUILD only. Historical
-failures retain cause and regression UNKNOWN. The finite mutation ledger is20
-compiled consumer runs/17 operators/18 kills/TWO masked survivors with zero credit;
-M14/M17 are diagnostics-only. Shared native lifetime and full #60/F1 remain open.
+Source2–4 reviews approve their limited component deltas without C/H/M; Source5
+Low corrections await fresh source/CI gates. Full-source/native acceptance remains
+unqualified. Current f072 full default Debug passed425 top-level Rust tests+2docs;
+distinct full Release TEST FAILED308/6 (library PASS/FAIL; later targets unrun).
+Older35f0/fd406 and historical failures remain failed/cause AND regression UNKNOWN.
+The default suite now includes a concurrent private audit child; no causal role is
+inferred. e295 public bothOS CI passed DEBUG TEST and RELEASE BUILD, not RELEASE
+TEST. The [finite ledger](doc/verification/issue-60-readers.md) is27 compiled runs/
+23 operators/25 intended kills/TWO masked survivors with zero credit; M14/M17 are
+diagnostics-only, R23 selection-only. Shared native lifetime and full #60/F1 remain open.

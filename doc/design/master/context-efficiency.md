@@ -330,10 +330,15 @@ Selected Context Git reader retention is a separate STRICT component: Requiremen
 has two approvals, and [Design2](../issue-60-reader-design.md) has two independent approvals. Context's
 existing sticky process uncertainty must never clear on late settlement. Actual
 private-pool Context dropped-future and output-cutoff controls preserve that
-latch after late resource release. Two independent Source2/Source3 approvals cover
-limited component deltas; full-source/native acceptance remains unqualified.
-Local35f0 default full Debug306 PASS/3 FAIL and Release307 PASS/2 FAIL remain failed,
-with later targets unrun. Source3 public bothOS CI passed DEBUG TEST and RELEASE
-BUILD only; older5b09 Release415 PASS is not current-source coverage. Prior failed
-gates remain failed/cause AND regression UNKNOWN. No historical EOF/inspection
-cause or full native availability is proved.
+latch after late resource release. Two independent Source2–4 approvals cover
+limited component deltas; Source5 Low corrections await fresh source/CI gates.
+Current f072 full Debug passed425 top-level Rust tests+2docs; distinct full Release
+TEST failed308/6 with later targets unrun. Older35f0/fd406 full failures remain
+failed/cause AND regression UNKNOWN. The added default-parallel audit process
+duplicates private controls alongside their parent copies; no causality or
+exoneration is inferred. e295 public bothOS CI passed DEBUG TEST and RELEASE BUILD
+with full tested-tree equality, not RELEASE TEST. Exact current scope and the
+finite27-run/23-operator/25-kill ledger are recorded in
+[verification](../../verification/issue-60-readers.md), with two zero-credit masked
+survivors and no native/per-guard completeness. No historical EOF/inspection cause
+or full native availability is proved.

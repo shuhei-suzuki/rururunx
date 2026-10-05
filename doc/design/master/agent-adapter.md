@@ -344,14 +344,18 @@ The selected Git reader Requirements4 has two independent approvals; its
 [Design2](../issue-60-reader-design.md) has two independent approvals. The committed candidate implements
 a Git-local actual std Child worker, caller-runtime-independent supervisor/runtime
 and both reader joins, four counted jobs per call/global64. Shared native
-ProcessGroup/new/reap/Drop stays unchanged. The finite ledger is20 compiled consumer
-runs/17 operators/18 kills, withTWO prior masked worker-join survivors retaining
-zero credit; M14/M17 cover diagnostics only. Two independent Source2/Source3 approvals
-address limited component deltas, not full-source/merge/native acceptance. Public
-Source3 bothOS CI passed full DEBUG TEST and RELEASE BUILD, no RELEASE TEST.
-Local35f0 full Debug306 PASS/3 FAIL and Release307 PASS/2 FAIL remain failed;
-later workspace targets did not execute, cause/regression UNKNOWN. Historical5b09
-Release415 PASS is an older distinct source result. These process-local holders
+ProcessGroup/new/reap/Drop stays unchanged. The finite ledger is27 compiled runs/
+23 operators/25 intended kills, withTWO prior masked worker-join survivors retaining
+zero credit; M14/M17 cover diagnostics only and R23 checks test selection. Source2–4
+approvals address limited component deltas; Source5's verified Low corrections
+await fresh source/CI gates. Public e295 bothOS CI passed DEBUG TEST and RELEASE
+BUILD with full tested-tree equality, not RELEASE TEST. Current f072 full Debug
+passed425 top-level Rust tests+2docs; distinct full Release TEST failed308/6,
+later targets unrun. Older35f0 and fd406 full failures remain failed, cause AND
+regression UNKNOWN. The new default suite also includes a concurrent private audit
+process; no causality or exoneration is inferred. See the current
+[ledger](../../verification/issue-60-readers.md) for exact scope and history.
+These process-local holders
 grant no durable/full-workload proof or availability qualification.
 
 ### Grok terminal supervision receipts
