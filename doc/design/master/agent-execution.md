@@ -105,6 +105,17 @@ detached helpers, quota waiting/recovery and auth/settings/hooks on both OSes.
 Hosted CI fixtures and controlled authenticated runs are labelled separately.
 README Status changes only after Phase3; unverified behavior stays unverified.
 
+Initial production context uses a preparation-only Executor registered before
+base-resolution Git, with a private live ownership capability retained until the
+first native Workflow phase. Its committed-object input does not invent Agent
+success. Exact atomic adoption binds the same unit/generation/namespace to that
+first phase; public native start and Session registration refuse the preparation
+phase before effects. Source ports for subsequent phases consume genuine retained
+artifacts. Schema 5 updates connection-local writer guards so already-open
+contract-4 writers cannot reinterpret the preparation-only mode. See detailed
+design section 10.1; this is a staged implementation contract, not shipped CLI or
+actual native acceptance evidence.
+
 ## 6. Staged Docker command profile
 
 The Phase2 component candidate supports managed `run`/`create` and filtered `ps`

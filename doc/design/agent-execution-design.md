@@ -559,6 +559,64 @@ then macOS does not imply Linux-only release meets the requested two-OS acceptan
 Config/public profile must expose the supported forms and reasons; hidden test
 capabilities cannot stand in for production support.
 
+### 10.1. Initial source preparation and first native adoption
+
+The production source port must break the initial dependency cycle explicitly:
+Workflow needs a full input revision and repository context before native phase
+reservation, while every Git helper needs an already registered execution unit.
+Runtime prepares one fresh Executor before `WorkflowEngine::initialize`, using a
+reserved preparation-only phase `workflow_source_bootstrap`. The existing attempt
+allocator journals the unit, generation, namespace and resources before resolving
+the configured base branch through UnitGit. The result remains Preparing, with
+no Session, native input, work result or result artifact. Namespace preparation
+is not successful Agent work and must not publish a fabricated result artifact.
+
+Only the actual preparation producer returns a private, non-serializable,
+non-Clone prepared-executor capability. It retains its abandonment guard through
+initial source capture, Workflow initialization and the initial non-native Issue
+or Worktree evidence phase. Runtime prepares before initialization reads its Task
+snapshot, so registration's Task projection change is not an accidental Context
+CAS conflict. Production sources read the exact base commit's tree/blob objects
+through registered, bounded UnitGit reads; a SHA attached to a live filesystem
+inventory is insufficient. Repository-map selection retains mandatory rules,
+scope/version identity, complete inventory bounds and explicit skipped content.
+Legacy context readers and #46/#60 ps observation are not extended as a fallback.
+
+At the first real Executor phase (Implement for Quick, Requirements for
+Standard/Strict), the capability revalidates the actual prepared namespace and
+source revision and invokes an Immediate adoption transaction. It checks exact
+unit/version/epoch/generation, active Task projection, provider, profile, path,
+branch, base, Preparing/Active, open permissions, absent Session/work/artifact,
+and absence of unresolved preparation helpers, native input and quota admission.
+The existing full Workflow reservation checks are shared: current Project/Goal
+versions and accepted governing digest, Task CAS/scope/lifecycle, sole Workflow
+record/version, active index/generation, undispatched Executor phase, exact Context
+version and immutable base. Only the preparation phase and the active history's
+unit binding change, with unit/record versions and an audit event. Generation,
+worktree and resource identity stay the same. Failure rolls back both changes;
+abandonment retires only the exact owned preparation. A Task hint or recovered row
+cannot recreate this capability. Later Executor phases use genuinely new attempts;
+their source port reads a genuine retained artifact without reopening old native
+or finalization authority. Reviewer/verifier snapshots remain independent.
+
+Native start rejects the preparation-only phase before version probes, quota or
+Session effects; Session registration independently rejects it inside its actual
+transaction. Public ordinary preparation cannot request the reserved phase.
+The persisted grant restriction changes the writer contract: schema 5 replaces
+the schema-4 connection-local write guards with contract 5 guards in one migration,
+without changing execution table layout. Fresh databases install contract 5.
+Already-open schema-4 writers, including ones with the old function registered,
+must fail writes after migration; old binaries must reject reopening schema 5.
+Migration does not fabricate preparation provenance or adopt existing units.
+
+Controls must exercise actual consumers: registered Git before bootstrap effects;
+no native version/Session/input before adoption; same-ID/generation/path first
+adoption; atomic refusal on Context/Workflow/Task/provider/epoch drift, unresolved
+helpers and repeat adoption; abandonment/restart retirement; old-writer guard
+failure and current-writer success. Removing each decisive grant/CAS guard must
+make its consumer control fail. This contract is a Phase2 implementation plan,
+not evidence of production source ports or native compatibility.
+
 ## 11. CLI, observability and verification plan
 
 `rrx run` resolves registered Goal/Task workflow and starts the owner scheduler;

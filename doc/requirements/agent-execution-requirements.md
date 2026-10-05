@@ -50,6 +50,12 @@ ownership proof is no longer an admission precondition. Report unsupported CLI
 versions/capabilities honestly; fixtures cannot advertise production execution.
 Preparation helpers and verifier/reviewer helpers receive their own recorded
 execution identity and resource namespace, not an untracked global launch path.
+Initial base/context preparation must be registered before its first Git effect.
+It must not invent Agent success or a retained result to initialize Workflow.
+The first native phase may consume the same genuinely prepared namespace only
+through exact, atomic Workflow/Context/Task authority checks; recovered rows alone
+are not preparation provenance. Preparation-only authority cannot admit native
+input. Old writers must not bypass the resulting grant restriction (R8).
 
 ## R2. Accepted results and review inputs
 
